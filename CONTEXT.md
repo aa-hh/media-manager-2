@@ -32,6 +32,10 @@ _Avoid_: snatch, queue, download (as a verb for this step)
 The user's choice to swap the tracked version for a hand-picked release. Always carried out, even when Sonarr or Radarr would not count the release as an upgrade.
 _Avoid_: upgrade (Sonarr's and Radarr's automatic replacement, which follows the quality profile), overwrite
 
+**Manual download**:
+A movie or episode whose tracked version the user chose by hand through a replace. Sonarr and Radarr must not upgrade over it; media-manager-2 labels it so.
+_Avoid_: protected item, locked, pinned
+
 **Import**:
 Placing a finished download into the library folder. Sonarr's and Radarr's own term.
 _Avoid_: move, copy, process
