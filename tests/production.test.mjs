@@ -30,6 +30,7 @@ const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
 const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
+const searchModuleUrl = new URL('../dist/server/search.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -1833,4 +1834,112 @@ test('operator command stores settings from stdin and checks connections without
   const relisted = await cli(['settings', 'list']);
   assert.equal(relisted.code, 0, relisted.stderr);
   assert.equal(relisted.stdout.split('\n').includes('credentials plex.token'), false);
+});
+
+// Routing an identifier to the wrong service, letting one failed service hide the other's results, sorting library matches after new ones, or passing a service-local image URL to the browser breaks search.
+test('one search routes to Sonarr and Radarr and reports each outcome', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { deleteSetting, setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createSearch, parseSearchQuery } = await import(searchModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-search-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const sonarrKey = `sonarr-key-${process.pid}-distinctive`;
+  const radarrKey = `radarr-key-${process.pid}-distinctive`;
+  const configure = () => {
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65011');
+    setSetting(database, 'serviceAddresses', 'radarr.url', 'http://127.0.0.1:65012/');
+    setSetting(database, 'credentials', 'sonarr.apiKey', sonarrKey);
+    setSetting(database, 'credentials', 'radarr.apiKey', radarrKey);
+  };
+  configure();
+  const poster = (remoteUrl) => [
+    { coverType: 'banner', remoteUrl: 'https://artworks.example/banner.jpg' },
+    { coverType: 'poster', url: `/MediaCover/1/poster.jpg?apikey=${sonarrKey}`, remoteUrl },
+  ];
+  const shows = [
+    { title: 'Dune: Prophecy', year: 2024, tvdbId: 1, network: 'HBO', status: 'continuing', ratings: { value: 7.4 }, overview: 'Sisters.', images: poster('https://artworks.example/1.jpg') },
+    { title: 'Dune', year: 2000, tvdbId: 2, id: 9, network: 'Sci Fi', status: 'ended', images: poster(`/MediaCover/2/poster.jpg?apikey=${sonarrKey}`) },
+    { title: 'Dune', tvdbId: 2 },
+    { title: '', tvdbId: 3 },
+  ];
+  const movies = [
+    { title: 'Dune', year: 2021, tmdbId: 438631, imdbId: 'tt1160419', studio: 'Legendary', status: 'released', ratings: { imdb: { value: 8 }, tmdb: { value: 7.8 } }, images: poster('https://image.tmdb.example/dune.jpg') },
+    { title: 'Dune', year: 1984, tmdbId: 841, id: 4, ratings: { tmdb: { value: 0 }, imdb: { value: 6.3 } } },
+  ];
+  let responders;
+  const calls = [];
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    const service = parsed.port === '65011' ? 'sonarr' : 'radarr';
+    calls.push({ service, path: parsed.pathname, term: parsed.searchParams.get('term'), key: new Headers(init.headers).get('x-api-key') });
+    return responders[service]();
+  };
+  const ok = (body) => () => new Response(JSON.stringify(body), { status: 200 });
+  const search = createSearch({ sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) });
+  const run = async (text) => {
+    calls.length = 0;
+    return search.search(parseSearchQuery(text));
+  };
+
+  responders = { sonarr: ok(shows), radarr: ok(movies) };
+  const both = await run('  Dune ');
+  assert.deepEqual(calls.map(({ service, path, term, key }) => [service, path, term, key]), [
+    ['sonarr', '/api/v3/series/lookup', 'Dune', sonarrKey],
+    ['radarr', '/api/v3/movie/lookup', 'Dune', radarrKey],
+  ]);
+  assert.deepEqual(both.services, { sonarr: { kind: 'ok', count: 2 }, radarr: { kind: 'ok', count: 2 } });
+  assert.deepEqual(both.results.map((result) => [result.key, result.inLibrary]), [
+    ['tvdb:2', true], ['tmdb:841', true], ['tvdb:1', false], ['tmdb:438631', false],
+  ]);
+  const [libraryShow, libraryMovie, show, movie] = both.results;
+  assert.deepEqual(show, {
+    type: 'tv', service: 'sonarr', key: 'tvdb:1', title: 'Dune: Prophecy', year: 2024, network: 'HBO', status: 'continuing',
+    rating: 7.4, overview: 'Sisters.', posterUrl: 'https://artworks.example/1.jpg', inLibrary: false, libraryId: null,
+    tvdbId: 1, tmdbId: null, imdbId: null,
+  });
+  assert.equal(libraryShow.libraryId, 9);
+  assert.equal(libraryShow.posterUrl, null);
+  assert.equal(movie.network, 'Legendary');
+  assert.equal(movie.rating, 7.8);
+  assert.equal(libraryMovie.rating, 6.3);
+  assert.equal(JSON.stringify(both).includes('apikey'), false);
+
+  for (const [text, expected] of [
+    ['tvdb:81189', [['sonarr', 'tvdb:81189']]],
+    ['TMDB: 0438631', [['radarr', 'tmdb:438631']]],
+    ['tt1160419', [['sonarr', 'imdb:tt1160419'], ['radarr', 'imdb:tt1160419']]],
+    ['imdb:TT1160419', [['sonarr', 'imdb:tt1160419'], ['radarr', 'imdb:tt1160419']]],
+    ['tvdb 81189', [['sonarr', 'tvdb 81189'], ['radarr', 'tvdb 81189']]],
+  ]) {
+    const result = await run(text);
+    assert.deepEqual(calls.map(({ service, term }) => [service, term]), expected, text);
+    if (expected.length === 1) assert.deepEqual(result.services[expected[0][0] === 'sonarr' ? 'radarr' : 'sonarr'], { kind: 'skipped' }, text);
+  }
+
+  for (const [label, sonarr, kind] of [
+    ['401', () => new Response('', { status: 401 }), 'rejected'],
+    ['network failure', () => { throw new TypeError('fetch failed'); }, 'unreachable'],
+    ['500', () => new Response('', { status: 500 }), 'unreachable'],
+    ['not a list', ok({ title: 'Dune' }), 'unreachable'],
+  ]) {
+    responders = { sonarr, radarr: ok(movies) };
+    const partial = await run('Dune');
+    assert.deepEqual(partial.services, { sonarr: { kind }, radarr: { kind: 'ok', count: 2 } }, label);
+    assert.deepEqual(partial.results.map((result) => result.service), ['radarr', 'radarr'], label);
+  }
+
+  responders = { sonarr: ok([]), radarr: ok([]) };
+  assert.deepEqual(await run('zzzz'), { results: [], services: { sonarr: { kind: 'ok', count: 0 }, radarr: { kind: 'ok', count: 0 } } });
+
+  deleteSetting(database, 'credentials', 'radarr.apiKey');
+  responders = { sonarr: ok(shows), radarr: () => assert.fail('unconfigured Radarr was called') };
+  assert.deepEqual((await run('Dune')).services.radarr, { kind: 'not_configured' });
+  configure();
+
+  for (const text of ['', '   ', 'x'.repeat(201)]) assert.equal(parseSearchQuery(text), undefined, JSON.stringify(text));
 });

@@ -5,6 +5,8 @@ import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createJobRunner } from './jobs.js';
+import { createSearch } from './search.js';
+import { createArr } from './services/arr.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 const host = process.env.HOST ?? '127.0.0.1';
@@ -27,6 +29,7 @@ if (database !== undefined) {
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
+    search: createSearch({ sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) }),
   });
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {

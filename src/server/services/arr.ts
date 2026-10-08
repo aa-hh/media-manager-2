@@ -58,5 +58,5 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
     return { kind: 'ok', version };
   };
 
-  return { check, request };
+  return { check, request, configured: () => readConfiguration() !== undefined };
 };
