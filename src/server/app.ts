@@ -7,6 +7,7 @@ import { streamSSE } from 'hono/streaming';
 import { createAuthentication } from './auth.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
+import { createAddRoutes, type Add } from './add.js';
 import { createSearchRoutes, type Search } from './search.js';
 
 export type CreateAppOptions = {
@@ -19,6 +20,7 @@ export type CreateAppOptions = {
   events?: EventHub;
   timers?: Timers;
   search?: Search;
+  add?: Add;
 };
 
 type AppEnvironment = {
@@ -289,6 +291,7 @@ export const createApp = (options: CreateAppOptions) => {
     });
   });
   if (options.search !== undefined) app.route('/api/search', createSearchRoutes(options.search));
+  if (options.add !== undefined) app.route('/api/add', createAddRoutes(options.add));
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));
 

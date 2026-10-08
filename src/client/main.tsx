@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
-import { Button } from './components/ui/button';
+import { Home } from './Home';
 import './globals.css';
 
 type SessionState =
@@ -189,6 +189,8 @@ function App() {
     }
   }, [beginRequest]);
 
+  const recheckSession = useCallback(() => void checkSession(), [checkSession]);
+
   if (session.kind === 'checking') {
     return (
       <main className="min-h-screen bg-[var(--ground)]">
@@ -202,30 +204,29 @@ function App() {
   }
 
   return (
-    <main className="flex min-h-screen items-center px-6 py-16 sm:px-12 lg:px-24">
-      <section className="w-full max-w-[25rem] text-left">
-        <h1 ref={headingRef} tabIndex={-1} className="text-[2rem] font-semibold leading-[1.15] tracking-[-0.035em] text-[var(--ink)] sm:text-[2.25rem]">
-          media-manager-2
-        </h1>
-        <div className="mt-8">
+    <Home
+      headingRef={headingRef}
+      signOutLabel={session.kind === 'signing-out'
+        ? 'Signing out…'
+        : session.kind === 'sign-out-failed'
+          ? 'Try sign out again'
+          : 'Sign out'}
+      signOutDisabled={session.kind === 'signing-out'}
+      signOutProblem={(
+        <>
           {session.kind === 'sign-out-failed' && (
-            <p role="alert" className="mb-5 text-base leading-7 text-[var(--secondary-ink)]">
+            <p role="alert" className="text-sm text-[var(--secondary-ink)]">
               Sign-out failed. Your session may still be active.
             </p>
           )}
-          <Button onClick={() => void signOut(session.expiresAt)} disabled={session.kind === 'signing-out'}>
-            {session.kind === 'signing-out'
-              ? 'Signing out…'
-              : session.kind === 'sign-out-failed'
-                ? 'Try sign out again'
-                : 'Sign out'}
-          </Button>
-        </div>
-        <p className="sr-only" aria-live="polite">
-          {session.kind === 'signing-out' ? 'Signing out…' : ''}
-        </p>
-      </section>
-    </main>
+          <p className="sr-only" aria-live="polite">
+            {session.kind === 'signing-out' ? 'Signing out…' : ''}
+          </p>
+        </>
+      )}
+      onSignOut={() => void signOut(session.expiresAt)}
+      onUnauthenticated={recheckSession}
+    />
   );
 }
 

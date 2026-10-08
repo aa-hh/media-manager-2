@@ -31,6 +31,7 @@ const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url))
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
 const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
 const searchModuleUrl = new URL('../dist/server/search.js', import.meta.url).href;
+const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -1185,13 +1186,13 @@ test('database initialization is repeatable and its default path is stable', asy
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-database-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const explicitPath = join(root, 'explicit', 'media-manager.sqlite');
-  const { openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, openDatabase } = await import(databaseModuleUrl);
 
   const first = openDatabase(explicitPath);
-  assert.equal(readUserVersion(first), 1);
+  assert.equal(readUserVersion(first), applicationMigrations.length);
   first.close();
   const second = openDatabase(explicitPath);
-  assert.equal(readUserVersion(second), 1);
+  assert.equal(readUserVersion(second), applicationMigrations.length);
   second.close();
 
   const home = join(root, 'home');
@@ -1276,12 +1277,12 @@ test('a successful later migration preserves existing settings', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-migration-success-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const databasePath = join(root, 'media-manager.sqlite');
-  const { migrateDatabase, openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, migrateDatabase, openDatabase } = await import(databaseModuleUrl);
   const { getSetting, setSetting } = await import(settingsModuleUrl);
   const database = openDatabase(databasePath);
   setSetting(database, 'credentials', 'token', 'preserved');
-  migrateDatabase(database, ['SELECT 1;', 'CREATE TABLE later_record (id INTEGER PRIMARY KEY);']);
-  assert.equal(readUserVersion(database), 2);
+  migrateDatabase(database, [...applicationMigrations, 'CREATE TABLE later_record (id INTEGER PRIMARY KEY);']);
+  assert.equal(readUserVersion(database), applicationMigrations.length + 1);
   assert.equal(getSetting(database, 'credentials', 'token'), 'preserved');
   assert.equal(database.prepare("SELECT name FROM sqlite_schema WHERE name = 'later_record'").get().name, 'later_record');
   database.close();
@@ -1292,13 +1293,13 @@ test('a failing later migration leaves the previous database unchanged', async (
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-migration-failure-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const databasePath = join(root, 'media-manager.sqlite');
-  const { migrateDatabase, openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, migrateDatabase, openDatabase } = await import(databaseModuleUrl);
   const { getSetting, setSetting } = await import(settingsModuleUrl);
   const database = openDatabase(databasePath);
   setSetting(database, 'credentials', 'token', 'original');
   assert.throws(
     () => migrateDatabase(database, [
-      'SELECT 1;',
+      ...applicationMigrations,
       "UPDATE settings SET value = 'changed'; CREATE TABLE partial_record (id INTEGER); INSERT INTO missing_table VALUES (1);",
     ]),
     { message: 'Database migration failed.' },
@@ -1306,7 +1307,7 @@ test('a failing later migration leaves the previous database unchanged', async (
   database.close();
 
   const reopened = openDatabase(databasePath);
-  assert.equal(readUserVersion(reopened), 1);
+  assert.equal(readUserVersion(reopened), applicationMigrations.length);
   assert.equal(getSetting(reopened, 'credentials', 'token'), 'original');
   assert.equal(reopened.prepare("SELECT name FROM sqlite_schema WHERE name = 'partial_record'").get(), undefined);
   reopened.close();
@@ -1316,7 +1317,7 @@ test('a failing later migration leaves the previous database unchanged', async (
 test('database initialization failures preserve existing files', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-preserve-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const { openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, openDatabase } = await import(databaseModuleUrl);
 
   const futurePath = join(root, 'future.sqlite');
   const future = new DatabaseSync(futurePath);
@@ -1355,7 +1356,7 @@ test('database initialization failures preserve existing files', async (t) => {
   lock.exec('ROLLBACK;');
   lock.close();
   const afterRelease = openDatabase(lockedPath);
-  assert.equal(readUserVersion(afterRelease), 1);
+  assert.equal(readUserVersion(afterRelease), applicationMigrations.length);
   afterRelease.close();
 });
 
@@ -1942,4 +1943,80 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   configure();
 
   for (const text of ['', '   ', 'x'.repeat(201)]) assert.equal(parseSearchQuery(text), undefined, JSON.stringify(text));
+});
+
+// Sending the owner's choices under the wrong fields, dropping the lookup record, saving defaults from a refused add, or offering defaults whose profile is gone breaks adding a title.
+test('adding a title sends the monitor decision and remembers it as the next default', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createAdd, parseMovieChoices, parseSeriesChoices } = await import(addModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-add-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const [service, port] of [['sonarr', 65021], ['radarr', 65022]]) {
+    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
+    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
+  }
+  let profiles = [{ id: 4, name: 'HD-1080p' }, { id: 6, name: 'Ultra-HD' }];
+  const folders = [{ path: '/home/owner/TV', freeSpace: 10 }];
+  let addResponse = { status: 201, body: { id: 77 } };
+  const posts = [];
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    const path = parsed.pathname;
+    if (init.method === 'POST') {
+      posts.push({ path, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify(addResponse.body), { status: addResponse.status });
+    }
+    const body = path.endsWith('/qualityprofile') ? profiles
+      : path.endsWith('/rootfolder') ? folders
+        : path.endsWith('/series/lookup') ? [{ title: 'Other', tvdbId: 1 }, { title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }] }]
+          : [{ title: 'Dune', tmdbId: 438631, images: [] }];
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+  const add = createAdd(database, { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) });
+  const series = {
+    monitor: 'none', monitorNewSeasons: true, qualityProfileId: 6, rootFolderPath: '/home/owner/TV',
+    seasonFolder: true, seriesType: 'standard', searchOnAdd: false,
+  };
+
+  assert.deepEqual(await add.options('sonarr'), { kind: 'ok', qualityProfiles: profiles, rootFolders: folders, defaults: null });
+
+  assert.deepEqual(await add.addSeries(371980, series), { kind: 'added', libraryId: 77 });
+  assert.deepEqual(posts.at(-1), {
+    path: '/api/v3/series',
+    body: {
+      title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }],
+      qualityProfileId: 6, rootFolderPath: '/home/owner/TV', seasonFolder: true, seriesType: 'standard',
+      monitored: true, monitorNewItems: 'all',
+      addOptions: { monitor: 'none', searchForMissingEpisodes: false, searchForCutoffUnmetEpisodes: false },
+    },
+  });
+  assert.deepEqual((await add.options('sonarr')).defaults, series);
+
+  addResponse = { status: 400, body: [{ propertyName: 'TvdbId', errorMessage: 'This series has already been added' }] };
+  assert.deepEqual(await add.addSeries(371980, { ...series, qualityProfileId: 4 }), { kind: 'refused', reason: 'This series has already been added' });
+  assert.deepEqual((await add.options('sonarr')).defaults, series);
+  assert.deepEqual(await add.addSeries(5, series), { kind: 'not_found' });
+
+  profiles = [{ id: 4, name: 'HD-1080p' }];
+  assert.equal((await add.options('sonarr')).defaults, null);
+
+  addResponse = { status: 201, body: { id: 12 } };
+  const movie = { monitor: 'none', minimumAvailability: 'inCinemas', qualityProfileId: 4, rootFolderPath: '/home/owner/TV', searchOnAdd: true };
+  assert.deepEqual(await add.addMovie(438631, movie), { kind: 'added', libraryId: 12 });
+  const { body } = posts.at(-1);
+  assert.equal(posts.at(-1).path, '/api/v3/movie');
+  assert.equal(body.title, 'Dune');
+  assert.equal(body.monitored, false);
+  assert.equal(body.minimumAvailability, 'inCinemas');
+  assert.deepEqual(body.addOptions, { monitor: 'none', searchForMovie: true });
+
+  assert.equal(parseSeriesChoices({ ...series, monitor: 'everything' }), undefined);
+  assert.equal(parseSeriesChoices({ ...series, qualityProfileId: '6' }), undefined);
+  assert.equal(parseMovieChoices({ ...movie, minimumAvailability: 'tba' }), undefined);
 });

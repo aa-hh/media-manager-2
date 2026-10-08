@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
+import { createAdd } from './add.js';
 import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
@@ -21,6 +22,7 @@ try {
 }
 
 if (database !== undefined) {
+  const arr = { sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) };
   const events = createEventHub();
   const runner = createJobRunner();
   const app = createApp({
@@ -29,7 +31,8 @@ if (database !== undefined) {
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
-    search: createSearch({ sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) }),
+    search: createSearch(arr),
+    add: createAdd(database, arr),
   });
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {

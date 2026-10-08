@@ -25,12 +25,16 @@ const databasePathMessage = 'Database path must be an absolute file path outside
 const directoryMessage = 'Database directory must be private and owned by the current user.';
 const fileMessage = 'Database file must be a private regular file owned by the current user.';
 
-const applicationMigrations = [
+export const applicationMigrations = [
   `CREATE TABLE settings (
     category TEXT NOT NULL CHECK (category IN ('hostPaths', 'serviceAddresses', 'trackerConfiguration', 'credentials')),
     key TEXT NOT NULL,
     value TEXT NOT NULL,
     PRIMARY KEY (category, key)
+  ) STRICT;`,
+  `CREATE TABLE preferences (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
   ) STRICT;`,
 ] as const;
 
