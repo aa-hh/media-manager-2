@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 import { once } from 'node:events';
 import {
   chmod,
@@ -21,8 +22,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const serverPath = fileURLToPath(new URL('../dist/server/index.js', import.meta.url));
 const databaseModuleUrl = new URL('../dist/server/database.js', import.meta.url).href;
+const appModuleUrl = new URL('../dist/server/app.js', import.meta.url).href;
 const settingsModuleUrl = new URL('../dist/server/settings.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
+const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
 const runNode = async (source, options = {}) => {
   const child = spawn(process.execPath, ['--input-type=module', '--eval', source], {
@@ -157,6 +160,709 @@ test('production server serves the built browser application from another direct
   await t.test('POST /smoke/nested returns 404', async () => {
     const response = await request('/smoke/nested', { method: 'POST', headers: { Accept: 'text/html' } });
     assert.equal(response.status, 404);
+  });
+
+  // Missing authorization must return JSON instead of exposing the application document through the private prefix.
+  await t.test('GET /api/session without a cookie returns 401 JSON', async () => {
+    const response = await request('/api/session', { headers: { Accept: 'text/html' } });
+    assert.equal(response.status, 401);
+    assert.match(response.headers.get('content-type'), /application\/json/);
+    assert.deepEqual(await response.json(), { error: 'unauthenticated' });
+  });
+});
+
+const jsonHeaders = (origin = 'https://media.example') => ({
+  'Content-Type': 'application/json',
+  Origin: origin,
+  'X-Requested-With': 'media-manager-2',
+});
+
+const responseJson = (value, status = 200, headers) => new Response(JSON.stringify(value), {
+  status,
+  headers: { 'Content-Type': 'application/json', ...headers },
+});
+
+const responseCookies = (response) => response.headers.getSetCookie?.()
+  ?? (response.headers.get('set-cookie')?.split(/,(?=\s*[^;,]+=)/) ?? []);
+
+const cookieValue = (response, name) => {
+  const cookie = responseCookies(response).find((value) => value.startsWith(`${name}=`));
+  return cookie?.split(';', 1)[0];
+};
+
+const plexStateFromUrl = (url, expectedOrigin = 'https://media.example') => {
+  const handoff = new URL(url);
+  assert.equal(handoff.origin, 'https://app.plex.tv');
+  assert.equal(handoff.pathname, '/auth');
+  assert.ok(handoff.hash.startsWith('#?'));
+  const parameters = new URLSearchParams(handoff.hash.slice(2));
+  const forwardUrl = new URL(parameters.get('forwardUrl'));
+  assert.equal(forwardUrl.origin, expectedOrigin);
+  assert.equal(forwardUrl.pathname, '/auth/callback');
+  return { parameters, state: forwardUrl.searchParams.get('state') };
+};
+
+const createPlexFixture = ({
+  now,
+  ownerId = 42,
+  createStatus = 201,
+  createBody,
+  checkStatus = 200,
+  checkBody,
+  userStatus = 200,
+  userBody,
+  failAt,
+  malformedAt,
+  checkGate,
+  createGate,
+  userBodyGate,
+} = {}) => {
+  let nextPinId = 100;
+  const attempts = new Map();
+  const calls = [];
+  const fetch = async (input, init = {}) => {
+    const url = new URL(input);
+    const headers = new Headers(init.headers);
+    calls.push({ url, init, headers });
+    assert.equal(init.redirect, 'error');
+    assert.ok(init.signal, 'provider requests must carry a timeout signal');
+    assert.equal(headers.get('accept'), 'application/json');
+    assert.equal(headers.get('x-plex-product'), 'media-manager-2');
+    assert.ok(headers.get('x-plex-client-identifier'));
+    if (failAt === 'network') throw new TypeError('fixture network failure');
+
+    if (url.href === 'https://clients.plex.tv/api/v2/pins') {
+      if (createGate?.enabled) {
+        createGate.enteredResolve();
+        await createGate.wait;
+      }
+      assert.equal(init.method, 'POST');
+      assert.equal(headers.get('content-type'), 'application/json');
+      if (failAt === 'create-redirect') throw new TypeError('redirect mode rejected the response');
+      const body = JSON.parse(init.body);
+      assert.deepEqual(Object.keys(body).sort(), ['jwk', 'strong']);
+      assert.equal(body.strong, true);
+      assert.deepEqual(Object.keys(body.jwk).sort(), ['alg', 'crv', 'kid', 'kty', 'x']);
+      assert.equal(body.jwk.kty, 'OKP');
+      assert.equal(body.jwk.crv, 'Ed25519');
+      assert.equal(body.jwk.alg, 'EdDSA');
+      assert.ok(body.jwk.kid);
+      assert.ok(body.jwk.x);
+      assert.equal(body.jwk.d, undefined);
+      const publicKey = createPublicKey({ key: body.jwk, format: 'jwk' });
+      const id = nextPinId++;
+      attempts.set(String(id), {
+        clientId: headers.get('x-plex-client-identifier'),
+        jwk: body.jwk,
+        publicKey,
+      });
+      const value = createBody ?? {
+        id,
+        code: `pin-${id}`,
+        expiresAt: new Date(now() + 9 * 60_000).toISOString(),
+      };
+      if (malformedAt === 'create') return { status: createStatus, json: async () => { throw new SyntaxError('malformed fixture JSON'); } };
+      return responseJson(value, createStatus);
+    }
+
+    if (url.origin === 'https://clients.plex.tv' && url.pathname.startsWith('/api/v2/pins/')) {
+      if (checkGate) await checkGate.wait;
+      assert.equal(init.method, 'GET');
+      const id = url.pathname.split('/').at(-1);
+      const attempt = attempts.get(id);
+      assert.ok(attempt, 'PIN check must use an ID returned by PIN creation');
+      assert.equal(headers.get('x-plex-client-identifier'), attempt.clientId);
+      const compact = url.searchParams.get('deviceJWT');
+      const parts = compact?.split('.') ?? [];
+      assert.equal(parts.length, 3);
+      const [encodedHeader, encodedPayload, encodedSignature] = parts;
+      const jwtHeader = JSON.parse(Buffer.from(encodedHeader, 'base64url'));
+      const jwtPayload = JSON.parse(Buffer.from(encodedPayload, 'base64url'));
+      assert.deepEqual(jwtHeader, { alg: 'EdDSA', kid: attempt.jwk.kid, typ: 'JWT' });
+      assert.equal(jwtPayload.aud, 'plex.tv');
+      assert.equal(jwtPayload.iss, attempt.clientId);
+      assert.equal(jwtPayload.iat, Math.floor(now() / 1000));
+      assert.equal(jwtPayload.exp, jwtPayload.iat + 60);
+      const signed = Buffer.from(`${encodedHeader}.${encodedPayload}`, 'ascii');
+      const signature = Buffer.from(encodedSignature, 'base64url');
+      assert.equal(verify(null, signed, attempt.publicKey, signature), true);
+      const changedPayload = `${encodedPayload.slice(0, -1)}${encodedPayload.endsWith('A') ? 'B' : 'A'}`;
+      assert.equal(verify(null, Buffer.from(`${encodedHeader}.${changedPayload}`, 'ascii'), attempt.publicKey, signature), false);
+      const { publicKey: wrongPublicKey } = generateKeyPairSync('ed25519');
+      assert.equal(verify(null, signed, wrongPublicKey, signature), false);
+      if (failAt === 'check-redirect') throw new TypeError('redirect mode rejected the response');
+      if (failAt === 'check-network') throw new TypeError('fixture network failure');
+      if (malformedAt === 'check') return { status: checkStatus, json: async () => { throw new SyntaxError('malformed fixture JSON'); } };
+      return responseJson(checkBody ?? { authToken: 'plex-secret-token' }, checkStatus);
+    }
+
+    if (url.href === 'https://plex.tv/api/v2/user') {
+      assert.equal(init.method, 'GET');
+      assert.equal(headers.get('x-plex-token'), 'plex-secret-token');
+      const checkCall = calls.filter((call) => call.url.origin === 'https://clients.plex.tv' && call.url.pathname.startsWith('/api/v2/pins/')).at(-1);
+      assert.equal(headers.get('x-plex-client-identifier'), checkCall.headers.get('x-plex-client-identifier'));
+      if (failAt === 'user-redirect') throw new TypeError('redirect mode rejected the response');
+      if (failAt === 'user-network') throw new TypeError('fixture network failure');
+      if (malformedAt === 'user') return { status: userStatus, json: async () => { throw new SyntaxError('malformed fixture JSON'); } };
+      if (userBodyGate) {
+        return {
+          status: userStatus,
+          json: async () => {
+            userBodyGate.enteredResolve();
+            await userBodyGate.wait;
+            return userBody ?? { id: ownerId, restricted: false, anonymous: false };
+          },
+        };
+      }
+      return responseJson(userBody ?? { id: ownerId, restricted: false, anonymous: false }, userStatus);
+    }
+
+    throw new Error(`Unexpected provider request: ${url.href}`);
+  };
+  return { attempts, calls, fetch };
+};
+
+const makeApp = async (input = {}) => {
+  const clock = input.clock ?? { value: 1_800_000_000_000 };
+  const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
+  const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
+  const listeningHost = input.listeningHost ?? '127.0.0.1';
+  const { fetch, fixtureOptions } = input;
+  const { createApp } = await import(appModuleUrl);
+  const now = () => clock.value;
+  const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
+  const app = createApp({
+    clientDirectory,
+    listeningHost,
+    ownerPlexId,
+    publicOrigin,
+    now,
+    fetch: fetch ?? fixture.fetch,
+  });
+  return { app, clock, fixture };
+};
+
+const startAuthentication = async (app, { cookie, origin = 'https://media.example', body = {} } = {}) => {
+  const response = await app.request('/auth/start', {
+    method: 'POST',
+    headers: { ...jsonHeaders(origin), ...(cookie ? { Cookie: cookie } : {}) },
+    body: JSON.stringify(body),
+  });
+  const json = await response.json();
+  return { binding: cookieValue(response, '__Host-mm_plex') ?? cookieValue(response, 'mm_plex'), json, response };
+};
+
+const completeAuthentication = async (app, binding, state, { cookie, origin = 'https://media.example' } = {}) => app.request('/auth/complete', {
+  method: 'POST',
+  headers: { ...jsonHeaders(origin), Cookie: [binding, cookie].filter(Boolean).join('; ') },
+  body: JSON.stringify({ state }),
+});
+
+// Weakening provider verification, cookie binding, expiry, or private-prefix routing must turn at least one case red.
+test('Plex owner authentication', async (t) => {
+  await t.test('owner success uses signed Plex requests and protects the private prefix', async () => {
+    const { app, clock, fixture } = await makeApp();
+    const status = await app.request('/auth/status');
+    assert.deepEqual(await status.json(), { configured: true, pending: false });
+    const started = await startAuthentication(app);
+    assert.equal(started.response.status, 201);
+    assert.match(started.binding, /^__Host-mm_plex=/);
+    assert.match(responseCookies(started.response).join('\n'), /HttpOnly/i);
+    assert.match(responseCookies(started.response).join('\n'), /SameSite=Lax/i);
+    assert.match(responseCookies(started.response).join('\n'), /Secure/i);
+    assert.match(responseCookies(started.response).join('\n'), /Path=\//i);
+    const { parameters, state } = plexStateFromUrl(started.json.url);
+    assert.equal(parameters.get('clientID'), fixture.calls[0].headers.get('x-plex-client-identifier'));
+    assert.equal(parameters.get('code'), 'pin-100');
+    assert.equal(parameters.get('context[device][product]'), 'media-manager-2');
+    assert.ok(state);
+    const pendingStatus = await app.request('/auth/status', { headers: { Cookie: started.binding } });
+    assert.deepEqual(await pendingStatus.json(), { configured: true, pending: true });
+    const callback = await app.request(`/auth/callback?state=${encodeURIComponent(state)}`);
+    assert.equal(callback.status, 200);
+    assert.match(callback.headers.get('content-type'), /text\/html/);
+    const completed = await completeAuthentication(app, started.binding, state);
+    assert.equal(completed.status, 200);
+    assert.deepEqual(await completed.json(), { expiresAt: clock.value + 24 * 60 * 60_000 });
+    const session = cookieValue(completed, '__Host-mm_session');
+    assert.match(session, /^__Host-mm_session=/);
+    const sessionSetCookie = responseCookies(completed).find((value) => value.startsWith('__Host-mm_session='));
+    assert.match(sessionSetCookie, /HttpOnly/i);
+    assert.match(sessionSetCookie, /SameSite=Lax/i);
+    assert.match(sessionSetCookie, /Secure/i);
+    assert.match(sessionSetCookie, /Path=\//i);
+    assert.match(sessionSetCookie, /Max-Age=86400/i);
+    assert.doesNotMatch(sessionSetCookie, /Domain=/i);
+    assert.doesNotMatch(JSON.stringify([...fixture.attempts.values()]), /plex-secret-token/);
+    assert.doesNotMatch(await callback.text(), /plex-secret-token|"42"/);
+    const privateResponse = await app.request('/api/session', { headers: { Cookie: session, Accept: 'text/html' } });
+    assert.equal(privateResponse.status, 200);
+    // Omitting current server time prevents expiry scheduling independent of the browser clock.
+    assert.deepEqual(await privateResponse.json(), { expiresAt: clock.value + 24 * 60 * 60_000, serverNow: clock.value });
+    for (const path of ['/api', '/api/missing']) {
+      const denied = await app.request(path, { headers: { Accept: 'text/event-stream' } });
+      assert.equal(denied.status, 401);
+      assert.deepEqual(await denied.json(), { error: 'unauthenticated' });
+      const unknown = await app.request(path, { headers: { Cookie: session } });
+      assert.equal(unknown.status, 404);
+      assert.match(unknown.headers.get('content-type'), /application\/json/);
+    }
+    const unsafeForeign = await app.request('/api/missing', {
+      method: 'POST',
+      headers: { ...jsonHeaders('https://foreign.example'), Cookie: session },
+      body: '{}',
+    });
+    assert.equal(unsafeForeign.status, 403);
+    assert.deepEqual(await unsafeForeign.json(), { error: 'invalid_origin' });
+    const unsafeOwner = await app.request('/api/missing', {
+      method: 'POST',
+      headers: { ...jsonHeaders(), Cookie: session },
+      body: '{}',
+    });
+    assert.equal(unsafeOwner.status, 404);
+    const oversized = await app.request('/api/missing', {
+      method: 'POST',
+      headers: { ...jsonHeaders(), Cookie: session },
+      body: JSON.stringify({ value: 'x'.repeat(2_000) }),
+    });
+    assert.equal(oversized.status, 413);
+  });
+
+  await t.test('invalid configuration keeps the public document available', async () => {
+    for (const options of [
+      { ownerPlexId: undefined },
+      { ownerPlexId: '0' },
+      { ownerPlexId: '01' },
+      { ownerPlexId: String(Number.MAX_SAFE_INTEGER + 1) },
+      { publicOrigin: undefined },
+      { publicOrigin: 'http://media.example' },
+      { publicOrigin: 'https://user:pass@media.example' },
+      { publicOrigin: 'https://media.example/path' },
+      { publicOrigin: 'https://media.example?query=1' },
+      { publicOrigin: 'https://media.example#fragment' },
+      { publicOrigin: 'http://localhost:3000', listeningHost: '0.0.0.0' },
+    ]) {
+      const { app } = await makeApp(options);
+      const status = await app.request('/auth/status');
+      assert.deepEqual(await status.json(), { configured: false, pending: false }, JSON.stringify(options));
+      const start = await startAuthentication(app, { origin: options.publicOrigin?.startsWith('http') ? new URL(options.publicOrigin).origin : undefined });
+      assert.equal(start.response.status, 503, JSON.stringify(options));
+      assert.deepEqual(start.json, { error: 'not_configured' });
+      assert.equal((await app.request('/')).status, 200);
+    }
+  });
+
+  await t.test('HTTP loopback uses local host-only cookie names', async () => {
+    const { app } = await makeApp({ publicOrigin: 'http://127.0.0.1:3000' });
+    const started = await startAuthentication(app, { origin: 'http://127.0.0.1:3000' });
+    assert.equal(started.response.status, 201);
+    assert.match(started.binding, /^mm_plex=/);
+    assert.doesNotMatch(responseCookies(started.response).join('\n'), /; Secure/i);
+    const state = plexStateFromUrl(started.json.url, 'http://127.0.0.1:3000').state;
+    const completed = await completeAuthentication(app, started.binding, state, { origin: 'http://127.0.0.1:3000' });
+    assert.equal(completed.status, 200);
+    const sessionSetCookie = responseCookies(completed).find((value) => value.startsWith('mm_session='));
+    assert.match(sessionSetCookie, /Max-Age=86400/i);
+    assert.doesNotMatch(sessionSetCookie, /; Secure/i);
+    assert.doesNotMatch(sessionSetCookie, /Domain=/i);
+    assert.equal((await app.request('/api/session', { headers: { Cookie: '__Host-mm_session=foreign' } })).status, 401);
+  });
+
+  await t.test('origin, metadata, JSON, body, and return input checks run on authentication and private writes', async () => {
+    const { app } = await makeApp();
+    const invalidRequests = [
+      { headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'media-manager-2' }, body: '{}' },
+      { headers: jsonHeaders('null'), body: '{}' },
+      { headers: jsonHeaders('https://foreign.example'), body: '{}' },
+      { headers: { ...jsonHeaders(), 'Sec-Fetch-Site': 'cross-site' }, body: '{}' },
+      { headers: { ...jsonHeaders(), 'Content-Type': 'text/plain' }, body: '{}' },
+      { headers: { ...jsonHeaders(), 'X-Requested-With': 'other' }, body: '{}' },
+    ];
+    for (const request of invalidRequests) {
+      const response = await app.request('/auth/start', { method: 'POST', ...request });
+      assert.equal(response.status, 403);
+      assert.deepEqual(await response.json(), { error: 'invalid_origin' });
+    }
+    const extra = await startAuthentication(app, { body: { returnTo: 'https://attacker.example' } });
+    assert.equal(extra.response.status, 400);
+    assert.deepEqual(extra.json, { error: 'invalid_request' });
+    const oversized = await app.request('/auth/start', {
+      method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ value: 'x'.repeat(2_000) }),
+    });
+    assert.equal(oversized.status, 413);
+    const forwarded = await app.request('/auth/start', {
+      method: 'POST', headers: { ...jsonHeaders('https://foreign.example'), 'X-Forwarded-Host': 'media.example', 'X-Forwarded-Proto': 'https' }, body: '{}',
+    });
+    assert.equal(forwarded.status, 403);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const missingSession = await app.request('/api/missing', { method, headers: jsonHeaders(), body: '{}' });
+      assert.equal(missingSession.status, 401);
+    }
+  });
+
+  await t.test('state, browser binding, malformed cookies, replay, and PIN expiry are rejected', async () => {
+    const { app, clock } = await makeApp();
+    const first = await startAuthentication(app);
+    const second = await startAuthentication(app);
+    const firstState = plexStateFromUrl(first.json.url).state;
+    const secondState = plexStateFromUrl(second.json.url).state;
+    for (const [binding, state] of [[first.binding, secondState], [second.binding, firstState], [undefined, firstState]]) {
+      const response = await completeAuthentication(app, binding, state);
+      assert.equal(response.status, 401);
+      assert.deepEqual(await response.json(), { error: 'invalid_flow' });
+    }
+    assert.equal((await completeAuthentication(app, first.binding, firstState)).status, 401);
+    assert.equal((await completeAuthentication(app, second.binding, secondState)).status, 401);
+
+    const successful = await startAuthentication(app);
+    const successfulState = plexStateFromUrl(successful.json.url).state;
+    const malformed = await completeAuthentication(app, 'bad-cookie', successfulState);
+    assert.equal(malformed.status, 401);
+    const duplicate = await app.request('/auth/complete', {
+      method: 'POST', headers: { ...jsonHeaders(), Cookie: `${successful.binding}; ${successful.binding}` }, body: JSON.stringify({ state: successfulState }),
+    });
+    assert.equal(duplicate.status, 401);
+    const success = await completeAuthentication(app, successful.binding, successfulState);
+    assert.equal(success.status, 200);
+    const replay = await completeAuthentication(app, successful.binding, successfulState);
+    assert.equal(replay.status, 401);
+    const expiring = await startAuthentication(app);
+    const expiringState = plexStateFromUrl(expiring.json.url).state;
+    clock.value += 9 * 60_000;
+    const expired = await completeAuthentication(app, expiring.binding, expiringState);
+    assert.equal(expired.status, 401);
+    assert.deepEqual(await expired.json(), { error: 'flow_expired' });
+  });
+
+  await t.test('pending and concurrent PIN completion retain the attempt', async () => {
+    const gate = {};
+    gate.wait = new Promise((resolve) => { gate.resolve = resolve; });
+    const { app } = await makeApp({ fixtureOptions: { checkGate: gate, checkBody: { authToken: null } } });
+    const started = await startAuthentication(app);
+    const state = plexStateFromUrl(started.json.url).state;
+    const first = completeAuthentication(app, started.binding, state);
+    await Promise.resolve();
+    const concurrent = await completeAuthentication(app, started.binding, state);
+    assert.equal(concurrent.status, 409);
+    assert.deepEqual(await concurrent.json(), { error: 'in_progress' });
+    gate.resolve();
+    const pending = await first;
+    assert.equal(pending.status, 202);
+    assert.deepEqual(await pending.json(), { status: 'pending' });
+    const status = await app.request('/auth/status', { headers: { Cookie: started.binding } });
+    assert.deepEqual(await status.json(), { configured: true, pending: true });
+  });
+
+  await t.test('cancel, restart, and logout prevent late provider results from creating sessions', async () => {
+    for (const action of ['cancel', 'restart', 'logout']) {
+      const gate = {};
+      gate.wait = new Promise((resolve) => { gate.resolve = resolve; });
+      const { app } = await makeApp({ fixtureOptions: { checkGate: gate } });
+      const started = await startAuthentication(app);
+      const state = plexStateFromUrl(started.json.url).state;
+      const completing = completeAuthentication(app, started.binding, state);
+      await Promise.resolve();
+      if (action === 'restart') {
+        const replacement = await startAuthentication(app, { cookie: started.binding });
+        assert.equal(replacement.response.status, 201);
+      } else {
+        const response = await app.request(`/auth/${action}`, {
+          method: 'POST', headers: { ...jsonHeaders(), Cookie: started.binding }, body: '{}',
+        });
+        assert.equal(response.status, 204);
+      }
+      gate.resolve();
+      const late = await completing;
+      assert.equal(late.status, 401);
+      assert.deepEqual(await late.json(), { error: 'invalid_flow' });
+      assert.equal((await app.request('/api/session')).status, 401);
+    }
+
+    const userBodyGate = {};
+    userBodyGate.entered = new Promise((resolve) => { userBodyGate.enteredResolve = resolve; });
+    userBodyGate.wait = new Promise((resolve) => { userBodyGate.resolve = resolve; });
+    const { app } = await makeApp({ fixtureOptions: { userBodyGate } });
+    const started = await startAuthentication(app);
+    const completing = completeAuthentication(app, started.binding, plexStateFromUrl(started.json.url).state);
+    await userBodyGate.entered;
+    const cancelled = await app.request('/auth/cancel', {
+      method: 'POST', headers: { ...jsonHeaders(), Cookie: started.binding }, body: '{}',
+    });
+    assert.equal(cancelled.status, 204);
+    userBodyGate.resolve();
+    const late = await completing;
+    assert.equal(late.status, 401);
+    assert.deepEqual(await late.json(), { error: 'invalid_flow' });
+  });
+
+  await t.test('owner identity must be a matching unrestricted Plex account ID', async () => {
+    for (const userBody of [
+      { id: 41, restricted: false, anonymous: false },
+      { id: 42, restricted: true, anonymous: false },
+      { id: 42, restricted: false, anonymous: true },
+      { id: '42', restricted: false, anonymous: false },
+      { id: 0, restricted: false, anonymous: false },
+      { id: Number.MAX_SAFE_INTEGER + 1, restricted: false, anonymous: false },
+      { username: 'owner', email: 'owner@example.test' },
+    ]) {
+      const { app } = await makeApp({ fixtureOptions: { userBody } });
+      const started = await startAuthentication(app);
+      const completed = await completeAuthentication(app, started.binding, plexStateFromUrl(started.json.url).state);
+      assert.equal(completed.status, 403, JSON.stringify(userBody));
+      assert.deepEqual(await completed.json(), { error: 'owner_only' });
+    }
+  });
+
+  await t.test('provider failures and malformed responses never create sessions or expose upstream data', async () => {
+    const cases = [
+      { fixtureOptions: { createStatus: 500 }, phase: 'start' },
+      { fixtureOptions: { createBody: { id: 1, code: 'code' } }, phase: 'start' },
+      { fixtureOptions: { createBody: { id: 'bad', code: 'code', expiresAt: new Date(1_900_000_000_000).toISOString() } }, phase: 'start' },
+      { fixtureOptions: { malformedAt: 'create' }, phase: 'start' },
+      { fixtureOptions: { failAt: 'create-redirect' }, phase: 'start' },
+      { fixtureOptions: { failAt: 'network' }, phase: 'start' },
+      { fixtureOptions: { checkStatus: 500 }, phase: 'complete' },
+      { fixtureOptions: { checkBody: { authToken: 42 } }, phase: 'complete' },
+      { fixtureOptions: { malformedAt: 'check' }, phase: 'complete' },
+      { fixtureOptions: { failAt: 'check-redirect' }, phase: 'complete' },
+      { fixtureOptions: { failAt: 'check-network' }, phase: 'complete' },
+      { fixtureOptions: { userStatus: 500 }, phase: 'complete' },
+      { fixtureOptions: { malformedAt: 'user' }, phase: 'complete' },
+      { fixtureOptions: { failAt: 'user-redirect' }, phase: 'complete' },
+      { fixtureOptions: { failAt: 'user-network' }, phase: 'complete' },
+    ];
+    for (const entry of cases) {
+      const { app } = await makeApp({ fixtureOptions: entry.fixtureOptions });
+      const started = await startAuthentication(app);
+      if (entry.phase === 'start') {
+        assert.equal(started.response.status, 503);
+        assert.deepEqual(started.json, { error: 'plex_unavailable' });
+        assert.doesNotMatch(JSON.stringify(started.json), /secret|clients\.plex|plex\.tv/i);
+      } else {
+        assert.equal(started.response.status, 201);
+        const completed = await completeAuthentication(app, started.binding, plexStateFromUrl(started.json.url).state);
+        assert.equal(completed.status, 503);
+        const body = await completed.json();
+        assert.deepEqual(body, { error: 'plex_unavailable' });
+        assert.doesNotMatch(JSON.stringify(body), /secret|clients\.plex|plex\.tv/i);
+      }
+    }
+  });
+
+  await t.test('sessions rotate, expire absolutely, do not slide, and vanish with a new factory', async () => {
+    const setup = await makeApp();
+    const firstStart = await startAuthentication(setup.app);
+    const firstComplete = await completeAuthentication(setup.app, firstStart.binding, plexStateFromUrl(firstStart.json.url).state);
+    const firstSession = cookieValue(firstComplete, '__Host-mm_session');
+    setup.clock.value += 60_000;
+    const replacementStart = await startAuthentication(setup.app, { cookie: firstStart.binding });
+    const replacementComplete = await completeAuthentication(
+      setup.app,
+      replacementStart.binding,
+      plexStateFromUrl(replacementStart.json.url).state,
+      { cookie: firstSession },
+    );
+    assert.equal(replacementComplete.status, 200);
+    const replacementSession = cookieValue(replacementComplete, '__Host-mm_session');
+    assert.notEqual(replacementSession, firstSession);
+    assert.equal((await setup.app.request('/api/session', { headers: { Cookie: firstSession } })).status, 401);
+    const expiry = setup.clock.value + 24 * 60 * 60_000;
+    // Omitting current server time prevents expiry scheduling independent of the browser clock.
+    for (const serverNow of [expiry - 60_000, expiry - 1]) {
+      setup.clock.value = serverNow;
+      const before = await setup.app.request('/api/session', { headers: { Cookie: replacementSession } });
+      assert.equal(before.status, 200);
+      assert.deepEqual(await before.json(), { expiresAt: expiry, serverNow });
+    }
+    setup.clock.value = expiry;
+    const expired = await setup.app.request('/api/session', { headers: { Cookie: replacementSession } });
+    assert.equal(expired.status, 401);
+    assert.deepEqual(await expired.json(), { error: 'session_expired' });
+    assert.match(responseCookies(expired).join('\n'), /Max-Age=0/i);
+    const restarted = await makeApp({ clock: setup.clock });
+    assert.equal((await restarted.app.request('/api/session', { headers: { Cookie: replacementSession } })).status, 401);
+  });
+
+  await t.test('logout revokes one browser while another owner session remains valid', async () => {
+    const { app } = await makeApp();
+    const sessions = [];
+    for (let index = 0; index < 2; index += 1) {
+      const started = await startAuthentication(app);
+      const completed = await completeAuthentication(app, started.binding, plexStateFromUrl(started.json.url).state);
+      assert.equal(completed.status, 200);
+      sessions.push({ binding: started.binding, session: cookieValue(completed, '__Host-mm_session') });
+    }
+    assert.notEqual(sessions[0].session, sessions[1].session);
+    const logout = await app.request('/auth/logout', {
+      method: 'POST', headers: { ...jsonHeaders(), Cookie: `${sessions[0].binding}; ${sessions[0].session}` }, body: '{}',
+    });
+    assert.equal(logout.status, 204);
+    assert.equal((await app.request('/api/session', { headers: { Cookie: sessions[0].session } })).status, 401);
+    assert.equal((await app.request('/api/session', { headers: { Cookie: sessions[1].session } })).status, 200);
+    const again = await app.request('/auth/logout', { method: 'POST', headers: jsonHeaders(), body: '{}' });
+    assert.equal(again.status, 204);
+  });
+
+  // Acknowledging ambiguous cancellation or sign-out as successful must fail without changing either browser credential.
+  await t.test('cancel and logout reject ambiguous cookies before changing sessions or attempts', async () => {
+    for (const [origin, prefix] of [['https://media.example', '__Host-'], ['http://127.0.0.1:3000', '']]) {
+      for (const path of ['/auth/cancel', '/auth/logout']) {
+        for (const name of ['mm_plex', 'mm_session']) {
+          for (const invalidKind of ['equal duplicates', 'different duplicates', 'malformed value']) {
+            const { app } = await makeApp({ publicOrigin: origin });
+            const started = await startAuthentication(app, { origin });
+            const state = plexStateFromUrl(started.json.url, origin).state;
+            const completed = await completeAuthentication(app, started.binding, state, { origin });
+            assert.equal(completed.status, 200);
+            const session = cookieValue(completed, `${prefix}mm_session`);
+            const pending = await startAuthentication(app, { origin });
+            assert.equal(pending.response.status, 201);
+            const cookies = [pending.binding, session];
+            const cookieName = `${prefix}${name}`;
+            const original = cookies.find((cookie) => cookie.startsWith(`${cookieName}=`));
+            const invalid = invalidKind === 'malformed value'
+              ? `${cookieName}=%not-valid`
+              : `${original}; ${invalidKind === 'equal duplicates' ? original : `${cookieName}=${'A'.repeat(43)}`}`;
+            const ambiguous = cookies.map((cookie) => cookie === original ? invalid : cookie).join('; ');
+            const rejected = await app.request(path, {
+              method: 'POST', headers: { ...jsonHeaders(origin), Cookie: ambiguous }, body: '{}',
+            });
+            assert.equal(rejected.status, 400, `${path}: ${cookieName}: ${invalidKind}`);
+            assert.deepEqual(await rejected.json(), { error: 'invalid_request' });
+            assert.deepEqual(responseCookies(rejected), []);
+            assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
+            const status = await app.request('/auth/status', { headers: { Cookie: pending.binding } });
+            assert.deepEqual(await status.json(), { configured: true, pending: true });
+            const retried = await app.request(path, {
+              method: 'POST', headers: { ...jsonHeaders(origin), Cookie: cookies.join('; ') }, body: '{}',
+            });
+            assert.equal(retried.status, 204);
+            const after = await app.request('/auth/status', { headers: { Cookie: pending.binding } });
+            assert.deepEqual(await after.json(), { configured: true, pending: false });
+            assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, path === '/auth/logout' ? 401 : 200);
+          }
+        }
+        const { app } = await makeApp({ publicOrigin: origin });
+        for (const cookie of [undefined, `${prefix}mm_plex=${'A'.repeat(43)}; ${prefix}mm_session=${'B'.repeat(43)}`]) {
+          const response = await app.request(path, {
+            method: 'POST', headers: { ...jsonHeaders(origin), ...(cookie ? { Cookie: cookie } : {}) }, body: '{}',
+          });
+          assert.equal(response.status, 204);
+        }
+      }
+    }
+  });
+
+  await t.test('forged, malformed, and duplicate session cookies are rejected and cleared', async () => {
+    const { app } = await makeApp();
+    for (const cookie of [
+      '__Host-mm_session=forged',
+      '__Host-mm_session=%not-valid',
+      '__Host-mm_session=one; __Host-mm_session=two',
+      'mm_session=local-name-on-https',
+    ]) {
+      const response = await app.request('/api/session', { headers: { Cookie: cookie } });
+      assert.equal(response.status, 401);
+      assert.deepEqual(await response.json(), { error: 'unauthenticated' });
+      assert.match(responseCookies(response).join('\n'), /__Host-mm_session=;|Max-Age=0/i);
+    }
+  });
+
+  await t.test('rate limits starts at the boundary and accepts starts after one minute', async () => {
+    const { app, clock } = await makeApp();
+    for (let index = 0; index < 10; index += 1) {
+      assert.equal((await startAuthentication(app)).response.status, 201);
+    }
+    const limited = await startAuthentication(app);
+    assert.equal(limited.response.status, 429);
+    assert.deepEqual(limited.json, { error: 'rate_limited' });
+    assert.ok(Number(limited.response.headers.get('retry-after')) >= 1);
+    clock.value += 60_000;
+    assert.equal((await startAuthentication(app)).response.status, 201);
+  });
+
+  await t.test('pending-attempt capacity refuses excess and removes expired attempts first', async () => {
+    const createGate = { enabled: true, entered: 0, waiters: [] };
+    createGate.enteredResolve = () => {
+      createGate.entered += 1;
+      const ready = createGate.waiters.filter(({ count }) => createGate.entered >= count);
+      createGate.waiters = createGate.waiters.filter(({ count }) => createGate.entered < count);
+      for (const { resolve } of ready) resolve();
+    };
+    createGate.waitFor = (count) => createGate.entered >= count
+      ? Promise.resolve()
+      : new Promise((resolve) => createGate.waiters.push({ count, resolve }));
+    createGate.wait = new Promise((resolve) => { createGate.resolve = resolve; });
+    const { app, clock } = await makeApp({ fixtureOptions: { createGate } });
+    const reserved = [];
+    for (let minute = 0; minute < 10; minute += 1) {
+      for (let index = 0; index < 10; index += 1) reserved.push(startAuthentication(app));
+      await createGate.waitFor((minute + 1) * 10);
+      clock.value += 60_000;
+    }
+    const full = await startAuthentication(app);
+    assert.equal(full.response.status, 503);
+    assert.deepEqual(full.json, { error: 'plex_unavailable' });
+    createGate.resolve();
+    const created = await Promise.all(reserved);
+    assert.equal(created.filter(({ response }) => response.status === 201).length, 100);
+    createGate.enabled = false;
+    clock.value += 10 * 60_000;
+    assert.equal((await startAuthentication(app)).response.status, 201);
+  });
+
+  await t.test('session capacity refuses excess and removes expired sessions first', async () => {
+    const { app, clock } = await makeApp();
+    for (let index = 0; index < 100; index += 1) {
+      if (index > 0 && index % 10 === 0) clock.value += 60_000;
+      const started = await startAuthentication(app);
+      assert.equal(started.response.status, 201, String(index));
+      const completed = await completeAuthentication(app, started.binding, plexStateFromUrl(started.json.url).state);
+      assert.equal(completed.status, 200, String(index));
+    }
+    clock.value += 60_000;
+    const excessStart = await startAuthentication(app);
+    const excess = await completeAuthentication(app, excessStart.binding, plexStateFromUrl(excessStart.json.url).state);
+    assert.equal(excess.status, 503);
+    assert.deepEqual(await excess.json(), { error: 'plex_unavailable' });
+    clock.value += 24 * 60 * 60_000;
+    const afterExpiryStart = await startAuthentication(app);
+    const afterExpiry = await completeAuthentication(app, afterExpiryStart.binding, plexStateFromUrl(afterExpiryStart.json.url).state);
+    assert.equal(afterExpiry.status, 200);
+  });
+
+  await t.test('all public authentication methods reject unsupported shapes without effects', async () => {
+    const { app } = await makeApp();
+    for (const path of ['/auth/start', '/auth/complete', '/auth/cancel', '/auth/logout']) {
+      const get = await app.request(path);
+      assert.equal(get.status, 405, path);
+    }
+    for (const path of ['/auth/status', '/auth/callback']) {
+      const post = await app.request(path, { method: 'POST', headers: jsonHeaders(), body: '{}' });
+      assert.equal(post.status, 405, path);
+    }
+    assert.equal((await app.request('/auth/unknown')).status, 404);
+    const malformed = await app.request('/auth/complete', { method: 'POST', headers: jsonHeaders(), body: '{' });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await malformed.json(), { error: 'invalid_request' });
+    const duplicateState = await app.request('/auth/complete', {
+      method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ state: 'one', other: 'two' }),
+    });
+    assert.equal(duplicateState.status, 400);
+    for (const path of ['/auth/cancel', '/auth/logout']) {
+      const nonempty = await app.request(path, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ value: true }) });
+      assert.equal(nonempty.status, 400);
+    }
+  });
+
+  await t.test('authentication and application responses carry browser security headers', async () => {
+    const { app } = await makeApp();
+    for (const response of [await app.request('/'), await app.request('/auth/status'), await app.request('/api/session')]) {
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+      assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(response.headers.get('x-frame-options'), 'DENY');
+    }
   });
 });
 

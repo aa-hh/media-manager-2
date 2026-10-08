@@ -1,0 +1,1168 @@
+{
+  "source": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/design/mediaManager2.pen",
+  "before": [
+    {
+      "id": "bi8Au",
+      "name": "shadcn/ui · Shared controls",
+      "bounds": {
+        "x": 0,
+        "y": -2000,
+        "width": 1400,
+        "height": 1160
+      }
+    },
+    {
+      "id": "GYT2F",
+      "name": "Desktop / Pick a release (movie detail)",
+      "bounds": {
+        "x": 920,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "pWgUy",
+      "name": "Desktop / Pick a release: already owned",
+      "bounds": {
+        "x": 2480,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "BxurY",
+      "name": "Desktop / Pick a release (episode detail)",
+      "bounds": {
+        "x": 4040,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "fSkBY",
+      "name": "Phone / Pick a release",
+      "bounds": {
+        "x": 5600,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "zWW5R",
+      "name": "Desktop / Search results + movie overview (default)",
+      "bounds": {
+        "x": 920,
+        "y": 1020,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "L7crsL",
+      "name": "Desktop / TV overview (default)",
+      "bounds": {
+        "x": 2480,
+        "y": 1020,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "GOM8w",
+      "name": "Desktop / Library",
+      "bounds": {
+        "x": 920,
+        "y": 2200,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "EYHjp",
+      "name": "Desktop / History",
+      "bounds": {
+        "x": 920,
+        "y": 5800,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "imWFw",
+      "name": "Desktop / Health",
+      "bounds": {
+        "x": 920,
+        "y": 9400,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "dIXwk",
+      "name": "Desktop / Downloads",
+      "bounds": {
+        "x": 920,
+        "y": 4600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "vIwpS",
+      "name": "Desktop / TV overview: monitoring",
+      "bounds": {
+        "x": 920,
+        "y": 3400,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "iAVnz",
+      "name": "Desktop / TV overview: range select",
+      "bounds": {
+        "x": 2480,
+        "y": 3400,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "TrXNw",
+      "name": "Desktop / Manual import",
+      "bounds": {
+        "x": 920,
+        "y": 10600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "R1GOrH",
+      "name": "Desktop / Flagged",
+      "bounds": {
+        "x": 920,
+        "y": 7000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "GTb4E",
+      "name": "Desktop / Pick a release: override before grab",
+      "bounds": {
+        "x": 920,
+        "y": 11800,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "J1uFA4",
+      "name": "Desktop / Calendar: week",
+      "bounds": {
+        "x": 920,
+        "y": 8200,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "rSYPn",
+      "name": "Desktop / Delete second version",
+      "bounds": {
+        "x": 920,
+        "y": 13000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "oeZxo",
+      "name": "Desktop / Downloads: remove",
+      "bounds": {
+        "x": 2480,
+        "y": 4600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "Ulb14",
+      "name": "Desktop / Flagged: missing and below cutoff",
+      "bounds": {
+        "x": 2480,
+        "y": 7000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "fs0ud",
+      "name": "Desktop / Mark as failed",
+      "bounds": {
+        "x": 2480,
+        "y": 10600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "XX6W9",
+      "name": "Desktop / Delete movie",
+      "bounds": {
+        "x": 2480,
+        "y": 13000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "d6TYkb",
+      "name": "Desktop / Delete: torrent seeding history unknown",
+      "bounds": {
+        "x": 4040,
+        "y": 13000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "g20KL",
+      "name": "Desktop / Calendar: month",
+      "bounds": {
+        "x": 2480,
+        "y": 8200,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "c9Z57",
+      "name": "Desktop / TV overview: episode details",
+      "bounds": {
+        "x": 2480,
+        "y": 11800,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "D1bufZ",
+      "name": "Desktop / Blocklist",
+      "bounds": {
+        "x": 4040,
+        "y": 10600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "S8S9Ex",
+      "name": "Desktop / Calendar: forecast",
+      "bounds": {
+        "x": 4040,
+        "y": 8200,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "p9EDhk",
+      "name": "shadcn/ui · TanStack Table and custom media views",
+      "bounds": {
+        "x": 1500,
+        "y": -2000,
+        "width": 1400,
+        "height": 1800
+      }
+    },
+    {
+      "id": "NPTcm",
+      "name": "shadcn/ui · Selection and disclosure",
+      "bounds": {
+        "x": 3000,
+        "y": -2000,
+        "width": 1400,
+        "height": 1800
+      }
+    },
+    {
+      "id": "Le3r1",
+      "name": "Sidequest",
+      "bounds": {
+        "x": -5262,
+        "y": 16478,
+        "width": 8791,
+        "height": 5405
+      }
+    },
+    {
+      "id": "YIKOI",
+      "name": "AA-37 / Desktop / Initial",
+      "bounds": {
+        "x": -5262,
+        "y": 22043,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "enXfL",
+      "name": "AA-37 / Phone / Initial",
+      "bounds": {
+        "x": -3662,
+        "y": 22043,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "FEVzb",
+      "name": "AA-37 / Desktop / Opening Plex",
+      "bounds": {
+        "x": -5262,
+        "y": 23063,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "ncANJ",
+      "name": "AA-37 / Phone / Opening Plex",
+      "bounds": {
+        "x": -3662,
+        "y": 23063,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "my0AC",
+      "name": "AA-37 / Desktop / Checking Plex account",
+      "bounds": {
+        "x": -5262,
+        "y": 24083,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "dwTz8",
+      "name": "AA-37 / Phone / Checking Plex account",
+      "bounds": {
+        "x": -3662,
+        "y": 24083,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "g42xjJ",
+      "name": "AA-37 / Desktop / Pending",
+      "bounds": {
+        "x": -5262,
+        "y": 25103,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "O9LdN5",
+      "name": "AA-37 / Phone / Pending",
+      "bounds": {
+        "x": -3662,
+        "y": 25103,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "kU2e6",
+      "name": "AA-37 / Desktop / Wrong owner",
+      "bounds": {
+        "x": -5262,
+        "y": 26123,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "V2XImO",
+      "name": "AA-37 / Phone / Wrong owner",
+      "bounds": {
+        "x": -3662,
+        "y": 26123,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "JzkZu",
+      "name": "AA-37 / Desktop / Plex unavailable",
+      "bounds": {
+        "x": -5262,
+        "y": 27143,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "a9hn3M",
+      "name": "AA-37 / Phone / Plex unavailable",
+      "bounds": {
+        "x": -3662,
+        "y": 27143,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "VInOQ",
+      "name": "AA-37 / Desktop / Sign-in not configured",
+      "bounds": {
+        "x": -5262,
+        "y": 28163,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "KorRG",
+      "name": "AA-37 / Phone / Sign-in not configured",
+      "bounds": {
+        "x": -3662,
+        "y": 28163,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "q6A0O",
+      "name": "AA-37 / Desktop / Attempt expired",
+      "bounds": {
+        "x": -5262,
+        "y": 29183,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "PS6ye",
+      "name": "AA-37 / Phone / Attempt expired",
+      "bounds": {
+        "x": -3662,
+        "y": 29183,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "evJ01",
+      "name": "AA-37 / Desktop / Session expired",
+      "bounds": {
+        "x": -5262,
+        "y": 30203,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "VsIny",
+      "name": "AA-37 / Phone / Session expired",
+      "bounds": {
+        "x": -3662,
+        "y": 30203,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "hoMhL",
+      "name": "AA-37 / Desktop / Signed in",
+      "bounds": {
+        "x": -5262,
+        "y": 31223,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "tJYuo",
+      "name": "AA-37 / Phone / Signed in",
+      "bounds": {
+        "x": -3662,
+        "y": 31223,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "SubcH",
+      "name": "AA-37 / Desktop / Signing out",
+      "bounds": {
+        "x": -5262,
+        "y": 32243,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "Mb0uQ",
+      "name": "AA-37 / Phone / Signing out",
+      "bounds": {
+        "x": -3662,
+        "y": 32243,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "hP94U",
+      "name": "AA-37 / Desktop / Sign-out failed",
+      "bounds": {
+        "x": -5262,
+        "y": 33263,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "thFcr",
+      "name": "AA-37 / Phone / Sign-out failed",
+      "bounds": {
+        "x": -3662,
+        "y": 33263,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "N2fXn",
+      "name": "AA-37 / Desktop / Signed out",
+      "bounds": {
+        "x": -5262,
+        "y": 34283,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "HJiFu",
+      "name": "AA-37 / Phone / Signed out",
+      "bounds": {
+        "x": -3662,
+        "y": 34283,
+        "width": 390,
+        "height": 844
+      }
+    }
+  ],
+  "after": [
+    {
+      "id": "bi8Au",
+      "name": "shadcn/ui · Shared controls",
+      "bounds": {
+        "x": 0,
+        "y": -2000,
+        "width": 1400,
+        "height": 1160
+      }
+    },
+    {
+      "id": "GYT2F",
+      "name": "Desktop / Pick a release (movie detail)",
+      "bounds": {
+        "x": 920,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "pWgUy",
+      "name": "Desktop / Pick a release: already owned",
+      "bounds": {
+        "x": 2480,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "BxurY",
+      "name": "Desktop / Pick a release (episode detail)",
+      "bounds": {
+        "x": 4040,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "fSkBY",
+      "name": "Phone / Pick a release",
+      "bounds": {
+        "x": 5600,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "zWW5R",
+      "name": "Desktop / Search results + movie overview (default)",
+      "bounds": {
+        "x": 920,
+        "y": 1020,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "L7crsL",
+      "name": "Desktop / TV overview (default)",
+      "bounds": {
+        "x": 2480,
+        "y": 1020,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "GOM8w",
+      "name": "Desktop / Library",
+      "bounds": {
+        "x": 920,
+        "y": 2200,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "EYHjp",
+      "name": "Desktop / History",
+      "bounds": {
+        "x": 920,
+        "y": 5800,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "imWFw",
+      "name": "Desktop / Health",
+      "bounds": {
+        "x": 920,
+        "y": 9400,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "dIXwk",
+      "name": "Desktop / Downloads",
+      "bounds": {
+        "x": 920,
+        "y": 4600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "vIwpS",
+      "name": "Desktop / TV overview: monitoring",
+      "bounds": {
+        "x": 920,
+        "y": 3400,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "iAVnz",
+      "name": "Desktop / TV overview: range select",
+      "bounds": {
+        "x": 2480,
+        "y": 3400,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "TrXNw",
+      "name": "Desktop / Manual import",
+      "bounds": {
+        "x": 920,
+        "y": 10600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "R1GOrH",
+      "name": "Desktop / Flagged",
+      "bounds": {
+        "x": 920,
+        "y": 7000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "GTb4E",
+      "name": "Desktop / Pick a release: override before grab",
+      "bounds": {
+        "x": 920,
+        "y": 11800,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "J1uFA4",
+      "name": "Desktop / Calendar: week",
+      "bounds": {
+        "x": 920,
+        "y": 8200,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "rSYPn",
+      "name": "Desktop / Delete second version",
+      "bounds": {
+        "x": 920,
+        "y": 13000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "oeZxo",
+      "name": "Desktop / Downloads: remove",
+      "bounds": {
+        "x": 2480,
+        "y": 4600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "Ulb14",
+      "name": "Desktop / Flagged: missing and below cutoff",
+      "bounds": {
+        "x": 2480,
+        "y": 7000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "fs0ud",
+      "name": "Desktop / Mark as failed",
+      "bounds": {
+        "x": 2480,
+        "y": 10600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "XX6W9",
+      "name": "Desktop / Delete movie",
+      "bounds": {
+        "x": 2480,
+        "y": 13000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "d6TYkb",
+      "name": "Desktop / Delete: torrent seeding history unknown",
+      "bounds": {
+        "x": 4040,
+        "y": 13000,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "g20KL",
+      "name": "Desktop / Calendar: month",
+      "bounds": {
+        "x": 2480,
+        "y": 8200,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "c9Z57",
+      "name": "Desktop / TV overview: episode details",
+      "bounds": {
+        "x": 2480,
+        "y": 11800,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "D1bufZ",
+      "name": "Desktop / Blocklist",
+      "bounds": {
+        "x": 4040,
+        "y": 10600,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "S8S9Ex",
+      "name": "Desktop / Calendar: forecast",
+      "bounds": {
+        "x": 4040,
+        "y": 8200,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "p9EDhk",
+      "name": "shadcn/ui · TanStack Table and custom media views",
+      "bounds": {
+        "x": 1500,
+        "y": -2000,
+        "width": 1400,
+        "height": 1800
+      }
+    },
+    {
+      "id": "NPTcm",
+      "name": "shadcn/ui · Selection and disclosure",
+      "bounds": {
+        "x": 3000,
+        "y": -2000,
+        "width": 1400,
+        "height": 1800
+      }
+    },
+    {
+      "id": "Le3r1",
+      "name": "Sidequest",
+      "bounds": {
+        "x": -5262,
+        "y": 16478,
+        "width": 8791,
+        "height": 5405
+      }
+    },
+    {
+      "id": "YIKOI",
+      "name": "AA-37 / Desktop / Initial",
+      "bounds": {
+        "x": -5262,
+        "y": 22043,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "enXfL",
+      "name": "AA-37 / Phone / Initial",
+      "bounds": {
+        "x": -3662,
+        "y": 22043,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "FEVzb",
+      "name": "AA-37 / Desktop / Opening Plex",
+      "bounds": {
+        "x": -5262,
+        "y": 23063,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "ncANJ",
+      "name": "AA-37 / Phone / Opening Plex",
+      "bounds": {
+        "x": -3662,
+        "y": 23063,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "my0AC",
+      "name": "AA-37 / Desktop / Checking Plex account",
+      "bounds": {
+        "x": -5262,
+        "y": 24083,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "dwTz8",
+      "name": "AA-37 / Phone / Checking Plex account",
+      "bounds": {
+        "x": -3662,
+        "y": 24083,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "g42xjJ",
+      "name": "AA-37 / Desktop / Pending",
+      "bounds": {
+        "x": -5262,
+        "y": 25103,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "O9LdN5",
+      "name": "AA-37 / Phone / Pending",
+      "bounds": {
+        "x": -3662,
+        "y": 25103,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "kU2e6",
+      "name": "AA-37 / Desktop / Wrong owner",
+      "bounds": {
+        "x": -5262,
+        "y": 26123,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "V2XImO",
+      "name": "AA-37 / Phone / Wrong owner",
+      "bounds": {
+        "x": -3662,
+        "y": 26123,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "JzkZu",
+      "name": "AA-37 / Desktop / Plex unavailable",
+      "bounds": {
+        "x": -5262,
+        "y": 27143,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "a9hn3M",
+      "name": "AA-37 / Phone / Plex unavailable",
+      "bounds": {
+        "x": -3662,
+        "y": 27143,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "VInOQ",
+      "name": "AA-37 / Desktop / Sign-in not configured",
+      "bounds": {
+        "x": -5262,
+        "y": 28163,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "KorRG",
+      "name": "AA-37 / Phone / Sign-in not configured",
+      "bounds": {
+        "x": -3662,
+        "y": 28163,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "q6A0O",
+      "name": "AA-37 / Desktop / Attempt expired",
+      "bounds": {
+        "x": -5262,
+        "y": 29183,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "PS6ye",
+      "name": "AA-37 / Phone / Attempt expired",
+      "bounds": {
+        "x": -3662,
+        "y": 29183,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "evJ01",
+      "name": "AA-37 / Desktop / Session expired",
+      "bounds": {
+        "x": -5262,
+        "y": 30203,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "VsIny",
+      "name": "AA-37 / Phone / Session expired",
+      "bounds": {
+        "x": -3662,
+        "y": 30203,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "hoMhL",
+      "name": "AA-37 / Desktop / Signed in",
+      "bounds": {
+        "x": -5262,
+        "y": 31223,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "tJYuo",
+      "name": "AA-37 / Phone / Signed in",
+      "bounds": {
+        "x": -3662,
+        "y": 31223,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "SubcH",
+      "name": "AA-37 / Desktop / Signing out",
+      "bounds": {
+        "x": -5262,
+        "y": 32243,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "Mb0uQ",
+      "name": "AA-37 / Phone / Signing out",
+      "bounds": {
+        "x": -3662,
+        "y": 32243,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "hP94U",
+      "name": "AA-37 / Desktop / Sign-out failed",
+      "bounds": {
+        "x": -5262,
+        "y": 33263,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "thFcr",
+      "name": "AA-37 / Phone / Sign-out failed",
+      "bounds": {
+        "x": -3662,
+        "y": 33263,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "N2fXn",
+      "name": "AA-37 / Desktop / Signed out",
+      "bounds": {
+        "x": -5262,
+        "y": 34283,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "HJiFu",
+      "name": "AA-37 / Phone / Signed out",
+      "bounds": {
+        "x": -3662,
+        "y": 34283,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "gnhck",
+      "name": "AA-37 / Desktop / Cancelling sign-in",
+      "bounds": {
+        "x": -5262,
+        "y": 35343,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "DOitu",
+      "name": "AA-37 / Phone / Cancelling sign-in",
+      "bounds": {
+        "x": -3662,
+        "y": 35343,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "jgOax",
+      "name": "AA-37 / Desktop / Cancellation failed",
+      "bounds": {
+        "x": -5262,
+        "y": 36403,
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "id": "c8KhZ",
+      "name": "AA-37 / Phone / Cancellation failed",
+      "bounds": {
+        "x": -3662,
+        "y": 36403,
+        "width": 390,
+        "height": 844
+      }
+    }
+  ],
+  "changedExisting": []
+}

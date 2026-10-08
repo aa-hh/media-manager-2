@@ -28,6 +28,35 @@ functions.
 
 The server prints its listening address after database initialization succeeds.
 
+## Plex owner sign-in
+
+Production sign-in requires both of these server environment variables:
+
+- `PLEX_OWNER_ID` is the canonical positive decimal account ID from the operator's own verified Plex account record. The first person to sign in never becomes the owner.
+- `APP_ORIGIN` is the public origin, such as `https://media.example`. HTTPS is required except for local HTTP development. Local HTTP requires a loopback origin and a loopback `HOST`, such as `127.0.0.1` or `::1`.
+
+`APP_ORIGIN` cannot contain credentials, a path, a query, or a fragment. Plex always returns to `/auth/callback` on this origin. A browser cannot select another return destination.
+
+The Hono production server implements sign-in. The Vite development server does not proxy or implement these routes:
+
+- `GET /auth/status` reports whether sign-in is configured and whether that browser has a pending attempt.
+- `POST /auth/start` creates a Plex sign-in attempt.
+- `GET /auth/callback` serves the application after Plex returns.
+- `POST /auth/complete` verifies the returned Plex account and creates an application session.
+- `POST /auth/cancel` cancels that browser's pending attempt.
+- `POST /auth/logout` revokes that browser's session and pending attempt.
+- `GET /api/session` verifies the current owner session.
+
+Application sessions expire 24 hours after creation. Activity does not extend them. Restarting the server signs out every browser because sessions and pending attempts live only in server memory. Signing out revokes only the current browser's session; another browser remains signed in. The server discards the Plex token after account verification and does not refresh it.
+
+Plex tokens, the owner ID, service credentials, and authentication keys remain on the server. Browser responses contain only the Plex handoff URL, sign-in state, session expiry, and public status fields.
+
+Every future browser route for settings, media and images, search, grabs, replaces, imports, deletion, download controls, flags, history, health, calendar, and updates belongs under the owner guard at `/api`. The [complete first-version feature map](.scratch/aa-37/work-order.md#verified-facts) records the agreed scope without assigning those features to sign-in.
+
+AA-41 must authorize an event-stream connection before sending its response headers, revalidate the owner session before every private event, and close the stream when the session expires or is revoked. This sign-in work does not implement an event stream or verify stream termination.
+
+Trusted server background jobs continue without a browser session. Future webhooks need a separate authenticated service contract. No webhook exists or bypasses owner authorization now.
+
 Use `npm run dev` for the Vite development server.
 Always build and test through `scripts/build.sh` and `scripts/test.sh`.
 `sh scripts/test.sh --production` checks an existing build without rebuilding.

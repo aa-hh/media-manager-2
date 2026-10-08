@@ -1,0 +1,24 @@
+{
+  "active": {
+    "tag": "BUTTON",
+    "text": "Simulate focus"
+  },
+  "announcement": "Plex sign-in isn’t finished.",
+  "busy": "false",
+  "buttons": [
+    {
+      "disabled": false,
+      "text": "Check again"
+    },
+    {
+      "disabled": false,
+      "text": "Try again"
+    },
+    {
+      "disabled": false,
+      "text": "Cancel"
+    }
+  ],
+  "heading": "Plex sign-in isn’t finished.",
+  "observations": "pageshow persisted=false | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | /auth/complete response 202 | explicit synthetic focus event | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"}"
+}
