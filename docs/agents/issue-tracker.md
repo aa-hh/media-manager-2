@@ -8,6 +8,7 @@ Issues and specs for this repo live in Linear: team **Aa-hh** (key `AA`), projec
 - A feature's spec is a parent issue; its implementation tickets are sub-issues of it, one per ticket. Never one combined tickets issue.
 - Triage state is a label on the issue (see `triage-labels.md` for the role strings). Linear's workflow status (Todo, In Progress, Done) tracks progress separately.
 - Comments and conversation history go in the issue's comments.
+- Every mention of a ticket carries its title on first use, in replies, commit messages, PR bodies, comments and docs: `AA-38 (Connect Sonarr, Radarr, rTorrent and Plex through saved settings)`, never a bare `AA-38`. The owner reads the number as noise without the name.
 
 ## When a skill says "publish to the issue tracker"
 
