@@ -30,6 +30,8 @@ const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
 const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
+const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.meta.url).href;
+const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
@@ -356,7 +358,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -369,6 +371,7 @@ const makeApp = async (input = {}) => {
     fetch: fetch ?? fixture.fetch,
     events,
     timers,
+    webhooks,
   });
   return { app, clock, fixture };
 };
@@ -1758,7 +1761,8 @@ test('rTorrent XML-RPC requests are encoded and responses parsed by hand', async
 test('rTorrent poll keeps a live torrent table and a seeding counter', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
-  const { createTorrentPoller, listTorrents, readDependency } = await import(torrentsModuleUrl);
+  const { createTorrentPoller, listTorrents } = await import(torrentsModuleUrl);
+  const { readDependency } = await import(dependenciesModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-torrents-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   let databaseCount = 0;
@@ -1908,6 +1912,150 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     assert.deepEqual(readDependency(database, 'rtorrent'), { name: 'rtorrent', state: 'ok', since: clock.value, detail: '' });
     assert.deepEqual(published.filter((event) => event.type === 'dependency').map((event) => event.data.state), ['ok', 'down', 'down', 'ok']);
     database.close();
+  });
+});
+
+test('Sonarr and Radarr grabs are matched to torrents and recorded once', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker, findGrab, listGrabs, listQueue } = await import(grabsModuleUrl);
+  const { readDependency } = await import(dependenciesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-grabs-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let databaseCount = 0;
+  const movieHash = 'aa'.repeat(20);
+  const episodeHash = 'Bb'.repeat(20);
+  const packHash = 'cc'.repeat(20);
+  const missedHash = 'dd'.repeat(20);
+
+  const setup = (databasePath) => {
+    databaseCount += 1;
+    const database = openDatabase(databasePath ?? join(root, `db-${databaseCount}`, 'media-manager.sqlite'));
+    const clock = { value: Date.parse('2026-10-08T12:00:00Z') };
+    const events = createEventHub();
+    const fake = {
+      sonarr: { queue: [], history: [], down: false, requests: [] },
+      radarr: { queue: [], history: [], down: false, requests: [] },
+    };
+    const service = (name) => ({
+      request: async (path) => {
+        fake[name].requests.push(path);
+        if (fake[name].down) throw new Error(`${name === 'sonarr' ? 'Sonarr' : 'Radarr'} is unreachable.`);
+        if (path.startsWith('/api/v3/queue')) {
+          return { status: 200, body: { page: 1, pageSize: 200, totalRecords: fake[name].queue.length, records: fake[name].queue } };
+        }
+        if (path.startsWith('/api/v3/history/since')) return { status: 200, body: fake[name].history };
+        return { status: 404, body: undefined };
+      },
+    });
+    const tracker = createGrabTracker({ database, arr: { sonarr: service('sonarr'), radarr: service('radarr') }, events, now: () => clock.value });
+    const heard = [];
+    tracker.onGrab((grab) => { heard.push(grab.hash); });
+    return { database, clock, fake, tracker, heard };
+  };
+
+  // Dropping the hash normalization, losing a pack's episodes, or splitting one grab into two records turns this red.
+  await t.test('webhooks and the history check record a movie, an episode, a multi-episode and a season pack as one record per hash', async () => {
+    const { database, clock, fake, tracker, heard } = setup();
+    assert.equal(tracker.receiveWebhook('radarr', {
+      eventType: 'Grab', movie: { id: 7 }, release: { releaseTitle: 'Movie.2024.2160p', indexer: 'Blutopia (API)' }, downloadId: movieHash,
+    }), 'ok');
+    assert.equal(tracker.receiveWebhook('sonarr', {
+      eventType: 'Grab', series: { id: 3 }, episodes: [{ id: 31 }, { id: 32 }],
+      release: { releaseTitle: 'Show.S01E01E02.1080p', indexer: 'BeyondHD' }, downloadId: episodeHash,
+    }), 'ok');
+    assert.equal(findGrab(database, movieHash.toLowerCase()).movieId, 7);
+    assert.deepEqual(findGrab(database, episodeHash).episodeIds, [31, 32]);
+    assert.equal(findGrab(database, episodeHash.toUpperCase()).indexer, 'BeyondHD');
+
+    clock.value += 60_000;
+    fake.sonarr.history = [
+      { downloadId: episodeHash.toUpperCase(), seriesId: 3, episodeId: 32, sourceTitle: 'Show.S01E01E02.1080p', date: '2026-10-08T11:59:00Z', data: { indexer: 'BeyondHD' } },
+      ...[41, 42, 43].map((episodeId) => ({
+        downloadId: packHash, seriesId: 4, episodeId, sourceTitle: 'Show.S02.1080p', date: '2026-10-08T11:30:00Z', data: { indexer: 'PrivateHD' },
+      })),
+    ];
+    await tracker.reconcile();
+    const grabs = listGrabs(database);
+    assert.equal(grabs.length, 3);
+    assert.deepEqual(findGrab(database, packHash).episodeIds, [41, 42, 43]);
+    assert.equal(findGrab(database, packHash).indexer, 'PrivateHD');
+    assert.equal(findGrab(database, episodeHash).grabbedAt, Date.parse('2026-10-08T11:59:00Z'));
+    assert.deepEqual(findGrab(database, episodeHash).episodeIds, [31, 32]);
+    assert.deepEqual([...heard].sort(), [movieHash.toUpperCase(), episodeHash.toUpperCase(), packHash.toUpperCase()].sort());
+    database.close();
+  });
+
+  // Losing the checkpoint, or reading history only from the moment of the restart, leaves grabs made while the server was down unmatched.
+  await t.test('after a restart the check fills grabs whose webhooks were missed', async () => {
+    const databasePath = join(root, 'restart', 'media-manager.sqlite');
+    const first = setup(databasePath);
+    await first.tracker.reconcile();
+    const firstSince = first.fake.radarr.requests.find((path) => path.startsWith('/api/v3/history/since'));
+    assert.match(decodeURIComponent(firstSince), /date=2026-09-24T12:00:00.000Z/);
+    const stoppedAt = first.clock.value;
+    first.database.close();
+
+    const second = setup(databasePath);
+    second.clock.value = stoppedAt + 3 * 60 * 60_000;
+    second.fake.radarr.history = [
+      { downloadId: missedHash, movieId: 9, sourceTitle: 'Missed.2025.1080p', date: new Date(stoppedAt + 60 * 60_000).toISOString(), data: { indexer: 'Blutopia' } },
+    ];
+    await second.tracker.reconcile();
+    const since = second.fake.radarr.requests.find((path) => path.startsWith('/api/v3/history/since'));
+    assert.match(decodeURIComponent(since), new RegExp(`date=${new Date(stoppedAt - 10 * 60_000).toISOString()}`));
+    assert.equal(findGrab(second.database, missedHash).movieId, 9);
+    second.database.close();
+  });
+
+  // Dropping delayed (pending) items, keeping a stale queue after a failed read, or not marking the service down turns this red.
+  await t.test('the queue snapshot keeps delayed releases and survives a failed read', async () => {
+    const { database, fake, tracker } = setup();
+    fake.sonarr.queue = [
+      { id: 1, downloadId: episodeHash, seriesId: 3, episodeId: 31, title: 'Show.S01E01E02.1080p', status: 'downloading',
+        trackedDownloadStatus: 'ok', trackedDownloadState: 'downloading', indexer: 'BeyondHD', protocol: 'torrent',
+        quality: { quality: { name: 'WEBDL-1080p' } }, customFormats: [{ name: 'DV' }], customFormatScore: 150, size: 1000, sizeleft: 250 },
+      { id: 2, seriesId: 3, episodeId: 33, title: 'Show.S01E03.1080p', status: 'delay', trackedDownloadStatus: 'ok',
+        trackedDownloadState: 'downloading', estimatedCompletionTime: '2026-10-08T13:00:00Z', statusMessages: [] },
+    ];
+    await tracker.reconcile();
+    const queue = listQueue(database);
+    assert.equal(queue.length, 2);
+    assert.equal(queue[0].downloadId, episodeHash.toUpperCase());
+    assert.deepEqual(queue[0].formats, ['DV']);
+    assert.equal(queue[1].status, 'delay');
+    assert.equal(queue[1].downloadId, null);
+    assert.equal(readDependency(database, 'sonarr').state, 'ok');
+
+    fake.sonarr.down = true;
+    await tracker.reconcile();
+    assert.equal(listQueue(database).length, 2);
+    assert.equal(readDependency(database, 'sonarr').state, 'down');
+    assert.equal(readDependency(database, 'radarr').state, 'ok');
+    database.close();
+  });
+
+  // Serving the webhook without a configured secret, accepting a wrong password, or putting it behind the owner sign-in turns this red.
+  await t.test('the webhook endpoint needs the saved secret and no sign-in', async () => {
+    const received = [];
+    const authorization = (password) => `Basic ${Buffer.from(`sonarr:${password}`).toString('base64')}`;
+    const post = (app, path, headers, body = '{"eventType":"Test"}') => app.request(path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body,
+    });
+    let secret;
+    const { app } = await makeApp({
+      webhooks: { secret: () => secret, receive: (service, payload) => { received.push([service, payload]); return 'ok'; } },
+    });
+    assert.equal((await post(app, '/webhooks/sonarr', { Authorization: authorization('anything') })).status, 503);
+    secret = `webhook-secret-${process.pid}`;
+    const missing = await post(app, '/webhooks/sonarr', {});
+    assert.equal(missing.status, 401);
+    assert.equal((await post(app, '/webhooks/sonarr', { Authorization: authorization('wrong') })).status, 401);
+    assert.equal((await post(app, '/webhooks/sonarr', { Authorization: authorization(secret) }, 'not json')).status, 400);
+    assert.equal((await post(app, '/webhooks/plex', { Authorization: authorization(secret) })).status, 404);
+    assert.equal(received.length, 0);
+    assert.equal((await post(app, '/webhooks/radarr', { Authorization: authorization(secret) })).status, 204);
+    assert.deepEqual(received, [['radarr', { eventType: 'Test' }]]);
   });
 });
 

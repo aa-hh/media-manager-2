@@ -60,6 +60,47 @@ const applicationMigrations = [
     since INTEGER NOT NULL,
     detail TEXT NOT NULL
   ) STRICT;`,
+  `CREATE TABLE grabs (
+    hash TEXT PRIMARY KEY,
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    movie_id INTEGER,
+    series_id INTEGER,
+    episode_ids TEXT NOT NULL,
+    release_title TEXT NOT NULL,
+    indexer TEXT NOT NULL,
+    grabbed_at INTEGER NOT NULL,
+    by_hand INTEGER NOT NULL CHECK (by_hand IN (0, 1)),
+    imported_at INTEGER,
+    failed_at INTEGER
+  ) STRICT;
+  CREATE TABLE arr_queue (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    queue_id INTEGER NOT NULL,
+    download_id TEXT,
+    movie_id INTEGER,
+    series_id INTEGER,
+    episode_id INTEGER,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL,
+    tracked_status TEXT NOT NULL,
+    tracked_state TEXT NOT NULL,
+    status_messages TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    indexer TEXT NOT NULL,
+    protocol TEXT NOT NULL,
+    quality TEXT NOT NULL,
+    formats TEXT NOT NULL,
+    format_score INTEGER NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    size_left_bytes INTEGER NOT NULL,
+    estimated_completion TEXT,
+    added TEXT,
+    PRIMARY KEY (service, queue_id)
+  ) STRICT;
+  CREATE TABLE grab_checkpoints (
+    service TEXT PRIMARY KEY CHECK (service IN ('sonarr', 'radarr')),
+    history_checked_at INTEGER NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

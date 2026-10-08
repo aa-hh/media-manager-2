@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 
 type XmlRpcCall = (method: string, params: readonly string[]) => Promise<unknown>;
@@ -25,8 +26,6 @@ export type Torrent = {
   goneAt: number | null;
   seedingSeconds: number;
 };
-
-export type DependencyStatus = { name: string; state: 'ok' | 'down'; since: number; detail: string };
 
 export const POLL_INTERVAL_MS = 30_000;
 // razor: at most this many tracker lookups per poll, so a first run against a full client stays one light call per torrent.
@@ -132,13 +131,6 @@ export const listTorrents = (database: DatabaseSync): Torrent[] => database
   .all()
   .map((row) => readRow(row as Record<string, unknown>));
 
-export const readDependency = (database: DatabaseSync, name: string): DependencyStatus | undefined => {
-  const row = database.prepare('SELECT name, state, since, detail FROM dependency_status WHERE name = ?').get(name);
-  if (row === undefined) return undefined;
-  const { state, since, detail } = row;
-  return { name, state: state as DependencyStatus['state'], since: Number(since), detail: String(detail) };
-};
-
 export const createTorrentPoller = (options: {
   database: DatabaseSync;
   rtorrent: { call: XmlRpcCall };
@@ -151,14 +143,7 @@ export const createTorrentPoller = (options: {
   const intervalMs = options.intervalMs ?? POLL_INTERVAL_MS;
 
   const setDependency = (state: 'ok' | 'down', at: number, detail: string) => {
-    const previous = readDependency(database, 'rtorrent');
-    if (previous?.state === state && previous.detail === detail) return;
-    const since = previous?.state === state ? previous.since : at;
-    database.prepare(`
-      INSERT INTO dependency_status (name, state, since, detail) VALUES ('rtorrent', ?, ?, ?)
-      ON CONFLICT (name) DO UPDATE SET state = excluded.state, since = excluded.since, detail = excluded.detail
-    `).run(state, since, detail);
-    events.publish('dependency', { name: 'rtorrent', state, since, detail });
+    writeDependency(database, events, 'rtorrent', state, at, detail);
   };
 
   const lookUpTrackers = async (hashes: string[]) => {
