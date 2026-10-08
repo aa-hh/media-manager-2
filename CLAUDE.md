@@ -26,7 +26,7 @@ sh scripts/test.sh --full         # full suite (what pre-push runs)
 The Claude hook in `.claude/hooks/guard-bash.sh` denies the bare commands.
 
 CI is GitHub Actions (`.github/workflows/tests.yml`). `main` takes changes
-only through GitHub's merge queue, and only once the `tests` check and the
+only through a pull request, and only once the `tests` check and the
 `review` status are green. The pre-push hook is the early local gate.
 
 ## Critical workflow rules
@@ -44,7 +44,7 @@ only through GitHub's merge queue, and only once the `tests` check and the
   `bash scripts/review-branch.sh` (run the passes it prints as subagents,
   then `bash scripts/review-branch.sh --continue`).
 - **Then stop and ask the owner before merging.** Only after a clear yes, run
-  `sh scripts/land.sh`, which queues the PR. The hook asks on any merge either way.
+  `sh scripts/land.sh`, which turns on auto-merge. The hook asks on any merge either way.
 - **Uncommitted edits in the `main` checkout: stop and ask.** Never stash,
   reset or discard them — they belong to another session.
 
