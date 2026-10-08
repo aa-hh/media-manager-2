@@ -4,3 +4,6 @@
 .review-pending/
 # Worktrees live here (CLAUDE.md, "Work in worktrees").
 .claude/worktrees/
+node_modules/
+dist/
+*.tsbuildinfo
