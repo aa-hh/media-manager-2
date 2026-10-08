@@ -44,7 +44,8 @@ only through a pull request, and only once the `tests` check and the
   `bash scripts/review-branch.sh` (run the passes it prints as subagents,
   then `bash scripts/review-branch.sh --continue`).
 - **Then stop and ask the owner before merging.** Only after a clear yes, run
-  `sh scripts/land.sh`, which turns on auto-merge. The hook asks on any merge either way.
+  `gh pr merge --merge --auto`. A user-level hook blocks any merge into `main`
+  without the owner's approval; merging `main` into a worktree branch needs none.
 - **Uncommitted edits in the `main` checkout: stop and ask.** Never stash,
   reset or discard them — they belong to another session.
 

@@ -143,7 +143,7 @@ bash scripts/review-branch.sh --continue
 ```
 
 Then **stop and ask the owner before merging.** Only after a clear yes, run
-`sh scripts/land.sh`, which turns on auto-merge for the PR. The main
+`gh pr merge --merge --auto`, which turns on auto-merge for the PR. The main
 ruleset holds it until the `tests` check (GitHub Actions) and the `review`
 status are green; GitHub then merges it. The pre-push hook is the early local gate.
 
