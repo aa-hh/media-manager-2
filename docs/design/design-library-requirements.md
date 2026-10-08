@@ -74,10 +74,17 @@ Calendar week, month and forecast grids; the timing-tower release table styling;
 
 ## Candidates to score
 
-- shadcn/ui (copied-in components on Radix or Base UI primitives) + TanStack Table
-- React Aria Components + Tailwind + TanStack Table
-- Base UI + Tailwind + TanStack Table
-- Ark UI (Park UI styles) + TanStack Table
-- HeroUI (has a pen.dev kit; built on React Aria and Tailwind)
-- Our own components on Radix Primitives + TanStack Table
-- Mantine and MUI only as a check against M2 (expected to fail it)
+Each candidate without its own table is paired with TanStack Table.
+
+1. shadcn/ui (copied-in components; foundations Base UI (default), Radix or React Aria since July 2026). Has a pen.dev kit.
+2. React Aria Components + our own Tailwind styles
+3. Base UI + our own Tailwind styles
+4. Ark UI + our own Tailwind styles (Park UI uses Panda CSS, not Tailwind)
+5. HeroUI (React Aria + Tailwind; a pen.dev kit was found in the installed Pen.app bundle, not on pen.dev's public docs)
+6. Our own components on Radix Primitives
+7. coss ui (copy-in kit on Base UI; component folders MIT, rest of repo AGPL)
+8. Intent UI (copy-in kit on React Aria + Tailwind, installed with the shadcn tool)
+9. Untitled UI React (large copy-in kit on React Aria + Tailwind v4; core MIT, PRO paid and excluded)
+10. Ariakit (unstyled primitives; no table or toast)
+
+Ruled out on a must-have (sources in the research notes of 8 Oct): Headless UI, JollyUI, Tremor, Flowbite React, Radix Themes, Glide Data Grid (not maintained); Catalyst, Preline (licence); Chakra UI v3, React Spectrum S2, Mantine, MUI (not Tailwind); daisyUI (no behaviour, screen reader); Reka UI, Kobalte (not React). AG Grid is the strongest table alternative to TanStack Table but brings its own theme system.
