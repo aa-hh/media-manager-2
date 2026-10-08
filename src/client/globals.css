@@ -1,2 +1,54 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
+
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/inter-variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --ground: #f6f8f7;
+  --control: #ffffff;
+  --control-hover: #f0f4f2;
+  --quiet-hover: #e8eeeb;
+  --ink: #152123;
+  --secondary-ink: #53605f;
+  --border: #dae2df;
+  --focus: #233b35;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 320px;
+    background: var(--ground);
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    overflow-x: hidden;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Inter", sans-serif;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: #c9d7d1;
+    color: var(--ink);
+  }
+}

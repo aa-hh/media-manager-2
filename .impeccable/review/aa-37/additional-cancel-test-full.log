@@ -1,0 +1,294 @@
+review script: Bash syntax and invalid argument checks passed
+
+> media-manager-2@0.0.0 build
+> tsc --project tsconfig.json && tsc --project tsconfig.server.json && vite build
+
+vite v8.3.3 building client environment for production...
+transforming...
+✓ 48 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/client/index.html                            0.40 kB │ gzip:  0.26 kB
+dist/client/assets/inter-variable-VF2RPR_K.ttf  876.57 kB
+dist/client/assets/index-BS_nBJaP.css            15.92 kB │ gzip:  4.15 kB
+dist/client/assets/index-ntkCSFu_.js            270.58 kB │ gzip: 84.10 kB
+
+✓ built in 230ms
+TAP version 13
+# (node:95163) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: production server serves the built browser application from another directory
+    # Subtest: creates the configured database before listening
+    ok 1 - creates the configured database before listening
+      ---
+      duration_ms: 0.569333
+      type: 'test'
+      ...
+    # Subtest: GET / returns HTML referencing built JavaScript and CSS
+    ok 2 - GET / returns HTML referencing built JavaScript and CSS
+      ---
+      duration_ms: 23.660667
+      type: 'test'
+      ...
+    # Subtest: referenced JavaScript and CSS return nonempty content with their content types
+    ok 3 - referenced JavaScript and CSS return nonempty content with their content types
+      ---
+      duration_ms: 6.918625
+      type: 'test'
+      ...
+    # Subtest: HEAD / succeeds without a body
+    ok 4 - HEAD / succeeds without a body
+      ---
+      duration_ms: 3.052375
+      type: 'test'
+      ...
+    # Subtest: HEAD /smoke/nested succeeds without a body
+    ok 5 - HEAD /smoke/nested succeeds without a body
+      ---
+      duration_ms: 2.813875
+      type: 'test'
+      ...
+    # Subtest: GET /smoke/nested accepting text/html returns the application document
+    ok 6 - GET /smoke/nested accepting text/html returns the application document
+      ---
+      duration_ms: 2.343791
+      type: 'test'
+      ...
+    # Subtest: GET /smoke/nested accepting text/html;q=0.5 returns the application document
+    ok 7 - GET /smoke/nested accepting text/html;q=0.5 returns the application document
+      ---
+      duration_ms: 2.046958
+      type: 'test'
+      ...
+    # Subtest: GET /assets/missing.js accepting */* returns 404
+    ok 8 - GET /assets/missing.js accepting */* returns 404
+      ---
+      duration_ms: 3.229417
+      type: 'test'
+      ...
+    # Subtest: GET /assets/missing.js accepting text/html returns 404
+    ok 9 - GET /assets/missing.js accepting text/html returns 404
+      ---
+      duration_ms: 2.795167
+      type: 'test'
+      ...
+    # Subtest: GET /package.json accepting */* returns 404
+    ok 10 - GET /package.json accepting */* returns 404
+      ---
+      duration_ms: 2.6065
+      type: 'test'
+      ...
+    # Subtest: GET /package.json accepting text/html returns 404
+    ok 11 - GET /package.json accepting text/html returns 404
+      ---
+      duration_ms: 2.933083
+      type: 'test'
+      ...
+    # Subtest: GET /smoke/nested accepting application/json returns 404
+    ok 12 - GET /smoke/nested accepting application/json returns 404
+      ---
+      duration_ms: 2.534292
+      type: 'test'
+      ...
+    # Subtest: GET /smoke/nested accepting application/json, text/html;q=0 returns 404
+    ok 13 - GET /smoke/nested accepting application/json, text/html;q=0 returns 404
+      ---
+      duration_ms: 2.205625
+      type: 'test'
+      ...
+    # Subtest: POST /smoke/nested returns 404
+    ok 14 - POST /smoke/nested returns 404
+      ---
+      duration_ms: 2.16225
+      type: 'test'
+      ...
+    # Subtest: GET /api/session without a cookie returns 401 JSON
+    ok 15 - GET /api/session without a cookie returns 401 JSON
+      ---
+      duration_ms: 2.797458
+      type: 'test'
+      ...
+    1..15
+ok 1 - production server serves the built browser application from another directory
+  ---
+  duration_ms: 139.75975
+  type: 'test'
+  ...
+# Subtest: Plex owner authentication
+    # Subtest: owner success uses signed Plex requests and protects the private prefix
+    ok 1 - owner success uses signed Plex requests and protects the private prefix
+      ---
+      duration_ms: 26.717291
+      type: 'test'
+      ...
+    # Subtest: invalid configuration keeps the public document available
+    ok 2 - invalid configuration keeps the public document available
+      ---
+      duration_ms: 11.606625
+      type: 'test'
+      ...
+    # Subtest: HTTP loopback uses local host-only cookie names
+    ok 3 - HTTP loopback uses local host-only cookie names
+      ---
+      duration_ms: 1.807041
+      type: 'test'
+      ...
+    # Subtest: origin, metadata, JSON, body, and return input checks run on authentication and private writes
+    ok 4 - origin, metadata, JSON, body, and return input checks run on authentication and private writes
+      ---
+      duration_ms: 1.465292
+      type: 'test'
+      ...
+    # Subtest: state, browser binding, malformed cookies, replay, and PIN expiry are rejected
+    ok 5 - state, browser binding, malformed cookies, replay, and PIN expiry are rejected
+      ---
+      duration_ms: 4.307875
+      type: 'test'
+      ...
+    # Subtest: pending and concurrent PIN completion retain the attempt
+    ok 6 - pending and concurrent PIN completion retain the attempt
+      ---
+      duration_ms: 1.660792
+      type: 'test'
+      ...
+    # Subtest: cancel, restart, and logout prevent late provider results from creating sessions
+    ok 7 - cancel, restart, and logout prevent late provider results from creating sessions
+      ---
+      duration_ms: 7.40675
+      type: 'test'
+      ...
+    # Subtest: owner identity must be a matching unrestricted Plex account ID
+    ok 8 - owner identity must be a matching unrestricted Plex account ID
+      ---
+      duration_ms: 7.970375
+      type: 'test'
+      ...
+    # Subtest: provider failures and malformed responses never create sessions or expose upstream data
+    ok 9 - provider failures and malformed responses never create sessions or expose upstream data
+      ---
+      duration_ms: 14.562208
+      type: 'test'
+      ...
+    # Subtest: sessions rotate, expire absolutely, do not slide, and vanish with a new factory
+    ok 10 - sessions rotate, expire absolutely, do not slide, and vanish with a new factory
+      ---
+      duration_ms: 2.711166
+      type: 'test'
+      ...
+    # Subtest: logout revokes one browser while another owner session remains valid
+    ok 11 - logout revokes one browser while another owner session remains valid
+      ---
+      duration_ms: 2.593375
+      type: 'test'
+      ...
+    # Subtest: cancel and logout reject ambiguous cookies before changing sessions or attempts
+    ok 12 - cancel and logout reject ambiguous cookies before changing sessions or attempts
+      ---
+      duration_ms: 50.783875
+      type: 'test'
+      ...
+    # Subtest: forged, malformed, and duplicate session cookies are rejected and cleared
+    ok 13 - forged, malformed, and duplicate session cookies are rejected and cleared
+      ---
+      duration_ms: 0.621833
+      type: 'test'
+      ...
+    # Subtest: rate limits starts at the boundary and accepts starts after one minute
+    ok 14 - rate limits starts at the boundary and accepts starts after one minute
+      ---
+      duration_ms: 3.888333
+      type: 'test'
+      ...
+    # Subtest: pending-attempt capacity refuses excess and removes expired attempts first
+    ok 15 - pending-attempt capacity refuses excess and removes expired attempts first
+      ---
+      duration_ms: 21.004542
+      type: 'test'
+      ...
+    # Subtest: session capacity refuses excess and removes expired sessions first
+    ok 16 - session capacity refuses excess and removes expired sessions first
+      ---
+      duration_ms: 84.61975
+      type: 'test'
+      ...
+    # Subtest: all public authentication methods reject unsupported shapes without effects
+    ok 17 - all public authentication methods reject unsupported shapes without effects
+      ---
+      duration_ms: 0.925541
+      type: 'test'
+      ...
+    # Subtest: authentication and application responses carry browser security headers
+    ok 18 - authentication and application responses carry browser security headers
+      ---
+      duration_ms: 0.468625
+      type: 'test'
+      ...
+    1..18
+ok 2 - Plex owner authentication
+  ---
+  duration_ms: 246.20925
+  type: 'test'
+  ...
+# Subtest: database initialization is repeatable and its default path is stable
+ok 3 - database initialization is repeatable and its default path is stable
+  ---
+  duration_ms: 80.871666
+  type: 'test'
+  ...
+# Subtest: settings persist across processes for every category
+ok 4 - settings persist across processes for every category
+  ---
+  duration_ms: 71.863459
+  type: 'test'
+  ...
+# Subtest: a successful later migration preserves existing settings
+ok 5 - a successful later migration preserves existing settings
+  ---
+  duration_ms: 2.691042
+  type: 'test'
+  ...
+# Subtest: a failing later migration leaves the previous database unchanged
+ok 6 - a failing later migration leaves the previous database unchanged
+  ---
+  duration_ms: 2.493166
+  type: 'test'
+  ...
+# Subtest: database initialization failures preserve existing files
+ok 7 - database initialization failures preserve existing files
+  ---
+  duration_ms: 5.411125
+  type: 'test'
+  ...
+# Subtest: database paths and permissions are restricted
+ok 8 - database paths and permissions are restricted
+  ---
+  duration_ms: 2.805958
+  type: 'test'
+  ...
+# Subtest: settings validate categories, keys, and values
+ok 9 - settings validate categories, keys, and values
+  ---
+  duration_ms: 1.442708
+  type: 'test'
+  ...
+# Subtest: production startup stops when database initialization fails
+ok 10 - production startup stops when database initialization fails
+  ---
+  duration_ms: 64.544625
+  type: 'test'
+  ...
+# Subtest: credential settings are never served to browsers
+ok 11 - credential settings are never served to browsers
+  ---
+  duration_ms: 258.7885
+  type: 'test'
+  ...
+1..11
+# tests 44
+# suites 0
+# pass 44
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 957.180041
