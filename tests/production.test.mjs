@@ -24,6 +24,8 @@ const serverPath = fileURLToPath(new URL('../dist/server/index.js', import.meta.
 const databaseModuleUrl = new URL('../dist/server/database.js', import.meta.url).href;
 const appModuleUrl = new URL('../dist/server/app.js', import.meta.url).href;
 const settingsModuleUrl = new URL('../dist/server/settings.js', import.meta.url).href;
+const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
+const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -168,6 +170,14 @@ test('production server serves the built browser application from another direct
     assert.equal(response.status, 401);
     assert.match(response.headers.get('content-type'), /application\/json/);
     assert.deepEqual(await response.json(), { error: 'unauthenticated' });
+  });
+
+  // Removing the signal handler or failing to close the HTTP server leaves SIGTERM exiting by signal instead of code 0.
+  await t.test('SIGTERM exits with code 0', async () => {
+    child.kill('SIGTERM');
+    const [code, signal] = await once(child, 'exit', { signal: AbortSignal.timeout(5_000) }); // real-time-ok: ceiling on process exit, not a fixed wait
+    assert.equal(code, 0);
+    assert.equal(signal, null);
   });
 });
 
@@ -327,7 +337,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions } = input;
+  const { fetch, fixtureOptions, events, timers } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -338,6 +348,8 @@ const makeApp = async (input = {}) => {
     publicOrigin,
     now,
     fetch: fetch ?? fixture.fetch,
+    events,
+    timers,
   });
   return { app, clock, fixture };
 };
@@ -357,6 +369,48 @@ const completeAuthentication = async (app, binding, state, { cookie, origin = 'h
   headers: { ...jsonHeaders(origin), Cookie: [binding, cookie].filter(Boolean).join('; ') },
   body: JSON.stringify({ state }),
 });
+
+const createFakeTimers = (clock) => {
+  const handles = new Set();
+  return {
+    setInterval: (callback, ms) => {
+      const handle = { callback, ms, remaining: ms };
+      handles.add(handle);
+      return handle;
+    },
+    clearInterval: (handle) => { handles.delete(handle); },
+    advance: (elapsed) => {
+      clock.value += elapsed;
+      for (const handle of [...handles]) {
+        handle.remaining -= elapsed;
+        while (handle.remaining <= 0 && handles.has(handle)) {
+          handle.remaining += handle.ms;
+          handle.callback();
+        }
+      }
+    },
+  };
+};
+
+const signIn = async (app) => {
+  const started = await startAuthentication(app);
+  const completed = await completeAuthentication(app, started.binding, plexStateFromUrl(started.json.url).state);
+  assert.equal(completed.status, 200);
+  return { session: cookieValue(completed, '__Host-mm_session'), expiresAt: (await completed.json()).expiresAt };
+};
+
+const openStream = async (app, session) => {
+  const response = await app.request('/api/events', { headers: { Cookie: session } });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const next = async () => {
+    const { done, value } = await reader.read();
+    return { done, text: value === undefined ? '' : decoder.decode(value) };
+  };
+  return { response, reader, next };
+};
+
+const drain = () => new Promise((resolve) => setImmediate(resolve));
 
 // Weakening provider verification, cookie binding, expiry, or private-prefix routing must turn at least one case red.
 test('Plex owner authentication', async (t) => {
@@ -863,6 +917,247 @@ test('Plex owner authentication', async (t) => {
       assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
       assert.equal(response.headers.get('x-frame-options'), 'DENY');
     }
+  });
+});
+
+test('event stream delivery', async (t) => {
+  const setup = async () => {
+    const clock = { value: 1_800_000_000_000 };
+    const events = (await import(eventsModuleUrl)).createEventHub();
+    const timers = createFakeTimers(clock);
+    const { app } = await makeApp({ clock, events, timers });
+    return { app, clock, events, timers };
+  };
+  const logout = (app, session) => app.request('/auth/logout', {
+    method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: '{}',
+  });
+
+  // Registering the stream route outside the owner guard, or letting HEAD open a stream, turns this red.
+  await t.test('unauthenticated, expired and revoked sessions get 401 JSON and HEAD gets 405 before any stream', async () => {
+    const { app, clock } = await setup();
+    const anonymous = await app.request('/api/events');
+    assert.equal(anonymous.status, 401);
+    assert.match(anonymous.headers.get('content-type'), /application\/json/);
+    assert.deepEqual(await anonymous.json(), { error: 'unauthenticated' });
+    const revoked = await signIn(app);
+    assert.equal((await logout(app, revoked.session)).status, 204);
+    const afterLogout = await app.request('/api/events', { headers: { Cookie: revoked.session } });
+    assert.equal(afterLogout.status, 401);
+    assert.deepEqual(await afterLogout.json(), { error: 'unauthenticated' });
+    const { session } = await signIn(app);
+    const head = await app.request('/api/events', { method: 'HEAD', headers: { Cookie: session } });
+    assert.equal(head.status, 405);
+    clock.value += 24 * 60 * 60_000;
+    const expired = await app.request('/api/events', { headers: { Cookie: session } });
+    assert.equal(expired.status, 401);
+    assert.deepEqual(await expired.json(), { error: 'session_expired' });
+  });
+
+  // Changing the event, data or id framing, or dropping the stream route, turns this red.
+  await t.test('an owner session receives published events with id, event and data framing', async () => {
+    const { app, events } = await setup();
+    const { session } = await signIn(app);
+    const { response, reader, next } = await openStream(app, session);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /^text\/event-stream/);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(events.publish('demo', { value: 1 }), 1);
+    assert.equal((await next()).text, 'event: demo\ndata: {"value":1}\nid: 1\n\n');
+    assert.equal(events.publish('demo', [2]), 2);
+    assert.equal((await next()).text, 'event: demo\ndata: [2]\nid: 2\n\n');
+    await reader.cancel();
+  });
+
+  // Letting unserializable data reach the stream write turns this red.
+  await t.test('publish refuses data that does not serialize and consumes no id', async () => {
+    const { events } = await setup();
+    assert.throws(() => events.publish('demo', undefined), TypeError);
+    assert.throws(() => events.publish('demo', 1n), TypeError);
+    assert.equal(events.publish('demo', 1), 1);
+  });
+
+  // Skipping session revalidation before an event write turns this red.
+  await t.test('logout ends the stream before the next event and later events are not delivered', async () => {
+    const { app, events } = await setup();
+    const { session } = await signIn(app);
+    const { next } = await openStream(app, session);
+    events.publish('demo', 1);
+    assert.match((await next()).text, /id: 1\n/);
+    assert.equal((await logout(app, session)).status, 204);
+    events.publish('demo', 2);
+    assert.equal((await next()).done, true);
+  });
+
+  // Removing the keepalive, changing its 25-second period, or skipping revalidation at the keepalive turns this red.
+  await t.test('keepalive comments are written every 25 seconds and expiry closes the stream at the next keepalive', async () => {
+    const { app, clock, timers } = await setup();
+    const { session, expiresAt } = await signIn(app);
+    const { next } = await openStream(app, session);
+    timers.advance(25_000);
+    assert.equal((await next()).text, ': keepalive\n\n');
+    timers.advance(25_000);
+    assert.equal((await next()).text, ': keepalive\n\n');
+    clock.value = expiresAt;
+    timers.advance(25_000);
+    assert.equal((await next()).done, true);
+  });
+
+  // Replaying earlier events to a new stream, or failing to deliver after a reconnect, turns this red.
+  await t.test('a reconnecting browser receives only events published after it reconnects', async () => {
+    const { app, events } = await setup();
+    const { session } = await signIn(app);
+    const first = await openStream(app, session);
+    events.publish('demo', 1);
+    assert.match((await first.next()).text, /id: 1\n/);
+    await first.reader.cancel();
+    const second = await openStream(app, session);
+    events.publish('demo', 2);
+    const { text } = await second.next();
+    assert.match(text, /id: 2\n/);
+    assert.doesNotMatch(text, /id: 1\n/);
+    await second.reader.cancel();
+  });
+
+  // Removing the stream cap, or failing to release a slot when a client disconnects, turns this red.
+  await t.test('the 21st concurrent stream is refused with 503 and a closed stream frees its slot', async () => {
+    const { app } = await setup();
+    const { session } = await signIn(app);
+    const readers = [];
+    for (let index = 0; index < 20; index += 1) {
+      const { response, reader } = await openStream(app, session);
+      assert.equal(response.status, 200, String(index));
+      readers.push(reader);
+    }
+    const refused = await app.request('/api/events', { headers: { Cookie: session } });
+    assert.equal(refused.status, 503);
+    assert.match(refused.headers.get('content-type'), /application\/json/);
+    assert.deepEqual(await refused.json(), { error: 'too_many_streams' });
+    await readers.shift().cancel();
+    const { response, reader } = await openStream(app, session);
+    assert.equal(response.status, 200);
+    readers.push(reader);
+    for (const open of readers) await open.cancel();
+  });
+});
+
+test('background job runner', async (t) => {
+  const { createJobRunner } = await import(jobsModuleUrl);
+  const setup = () => {
+    const timers = createFakeTimers({ value: 0 });
+    return { timers, runner: createJobRunner(timers) };
+  };
+  const gate = () => {
+    let open;
+    const wait = new Promise((resolve) => { open = resolve; });
+    return { wait, open };
+  };
+
+  // Running a job at start, or letting a second start add a second timer, turns this red.
+  await t.test('runs each job once per interval after start, with no immediate run and no duplicate timer from a second start', async () => {
+    const { timers, runner } = setup();
+    let runs = 0;
+    runner.register('a', 1000, () => { runs += 1; });
+    runner.start();
+    timers.advance(500);
+    await drain();
+    assert.equal(runs, 0);
+    runner.start();
+    timers.advance(500);
+    await drain();
+    assert.equal(runs, 1);
+    timers.advance(500);
+    await drain();
+    assert.equal(runs, 1);
+    timers.advance(500);
+    await drain();
+    assert.equal(runs, 2);
+  });
+
+  // Letting a tick start a run while the same job's previous run is unfinished turns this red.
+  await t.test('skips a tick while the previous run is in flight', async () => {
+    const { timers, runner } = setup();
+    const blocked = gate();
+    let runs = 0;
+    runner.register('a', 1000, async () => {
+      runs += 1;
+      await blocked.wait;
+    });
+    runner.start();
+    timers.advance(1000);
+    await drain();
+    assert.equal(runs, 1);
+    timers.advance(1000);
+    await drain();
+    assert.equal(runs, 1);
+    blocked.open();
+    await drain();
+    timers.advance(1000);
+    await drain();
+    assert.equal(runs, 2);
+  });
+
+  // Letting a job's exception escape the timer, or logging the error contents, turns this red.
+  await t.test('a failing job is logged by name only and keeps its schedule', async (t) => {
+    t.mock.method(console, 'error', () => {});
+    const failures = [
+      () => { throw new Error('secret-value'); },
+      async () => { throw new Error('secret-value'); },
+    ];
+    for (const fail of failures) {
+      const { timers, runner } = setup();
+      let runs = 0;
+      runner.register('risky', 1000, () => {
+        runs += 1;
+        return fail();
+      });
+      runner.start();
+      timers.advance(1000);
+      await drain();
+      timers.advance(1000);
+      await drain();
+      assert.equal(runs, 2);
+    }
+    assert.ok(console.error.mock.calls.length >= 1);
+    const logged = JSON.stringify(console.error.mock.calls.map((call) => call.arguments));
+    assert.match(logged, /risky/);
+    assert.doesNotMatch(logged, /secret-value/);
+  });
+
+  // Resolving stop before the in-flight run finishes, or leaving the old timer scheduled after stop, turns this red.
+  await t.test('stop awaits the in-flight run, fires nothing afterwards, and start resumes the schedule', async () => {
+    const { timers, runner } = setup();
+    const blocked = gate();
+    let runs = 0;
+    runner.register('a', 1000, async () => {
+      runs += 1;
+      await blocked.wait;
+    });
+    runner.start();
+    timers.advance(1000);
+    await drain();
+    assert.equal(runs, 1);
+    let stopped = false;
+    const stopping = runner.stop().then(() => { stopped = true; });
+    await drain();
+    assert.equal(stopped, false);
+    blocked.open();
+    await stopping;
+    timers.advance(5000);
+    await drain();
+    assert.equal(runs, 1);
+    runner.start();
+    timers.advance(1000);
+    await drain();
+    assert.equal(runs, 2);
+  });
+
+  // Silently accepting a duplicate or late registration turns this red.
+  await t.test('duplicate names and registering after start throw', () => {
+    const { runner } = setup();
+    runner.register('a', 1000, () => {});
+    assert.throws(() => runner.register('a', 1000, () => {}), { message: 'Duplicate job: a' });
+    runner.start();
+    assert.throws(() => runner.register('b', 1000, () => {}), { message: 'Register jobs before start.' });
   });
 });
 
