@@ -10,7 +10,7 @@ web
 
 TypeScript on Node.js. One Hono server runs the background jobs and serves a React single-page app built with Vite. SQLite database, continuously copied to Cloudflare R2. Live torrent status reaches the browser through server-sent events. Decided in Linear: [Choose the technology](https://linear.app/aa-hh/issue/AA-14).
 
-Undecided: the component library. Waits on the first prototype ([Choose the design library](https://linear.app/aa-hh/issue/AA-15)); pen.dev's built-in kits and code rules favour Tailwind, and shadcn/ui fits best if an open-source library is chosen.
+Component library: shadcn/ui on Base UI, with TanStack Table ([Choose the design library](https://linear.app/aa-hh/issue/AA-15)). Add TanStack Virtual when a list needs it. The decision and supporting evidence are in `docs/design/design-library-requirements.md`.
 
 ## Users
 

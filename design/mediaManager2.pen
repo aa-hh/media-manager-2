@@ -29770,10 +29770,10 @@
                       "name": "Second version of Episode 4",
                       "width": "fill_container",
                       "height": 30,
-                      "fill": "#2A303B",
-                      "stroke": "$ink",
+                      "fill": "$ground",
+                      "stroke": "$seam",
                       "strokeWidth": {
-                        "left": 3
+                        "bottom": 1
                       },
                       "gap": 10,
                       "padding": [
@@ -30147,10 +30147,10 @@
                       "name": "Second version of Episode 5",
                       "width": "fill_container",
                       "height": 30,
-                      "fill": "#2A303B",
-                      "stroke": "$ink",
+                      "fill": "$ground",
+                      "stroke": "$seam",
                       "strokeWidth": {
-                        "left": 3
+                        "bottom": 1
                       },
                       "gap": 10,
                       "padding": [
@@ -53624,18 +53624,7 @@
                               "stroke": "$ink",
                               "strokeWidth": 1,
                               "justifyContent": "center",
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "frame",
-                                  "id": "YHZhR",
-                                  "name": "Mark",
-                                  "width": 6,
-                                  "height": 6,
-                                  "fill": "$ink",
-                                  "cornerRadius": 100
-                                }
-                              ]
+                              "alignItems": "center"
                             },
                             {
                               "type": "text",
@@ -53645,7 +53634,7 @@
                               "content": "Keep it in Radarr, unmonitored",
                               "fontFamily": "$font-data",
                               "fontSize": 13,
-                              "fontWeight": "600"
+                              "fontWeight": "normal"
                             },
                             {
                               "type": "frame",
@@ -53699,7 +53688,18 @@
                               "stroke": "$ink",
                               "strokeWidth": 1,
                               "justifyContent": "center",
-                              "alignItems": "center"
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "YHZhR",
+                                  "name": "Mark",
+                                  "width": 6,
+                                  "height": 6,
+                                  "fill": "$ink",
+                                  "cornerRadius": 100
+                                }
+                              ]
                             },
                             {
                               "type": "text",
@@ -53709,7 +53709,7 @@
                               "content": "Remove the movie from Radarr",
                               "fontFamily": "$font-data",
                               "fontSize": 13,
-                              "fontWeight": "normal"
+                              "fontWeight": "600"
                             },
                             {
                               "type": "frame",

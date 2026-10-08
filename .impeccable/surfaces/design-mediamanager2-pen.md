@@ -11,7 +11,7 @@ Scope: one search box for movies and TV shows; the movie and TV overviews (the d
 
 Task: search a title, open it, compare releases on quality and source, size and seeders, tracker and its hit and run rule, group, audio and HDR; grab one. Quiet when healthy (owner decision after the 8 Oct critique): show what's unusual, everything else one keypress away. Normal states (monitored, meets profile, not aired yet, downloaded, ready) are not printed. Row actions and keys show on the selected row only; a "?" overlay lists keys. One inline panel at a time; decision panels dim the rest. Live downloads are a one-line bar on every screen, expanding on click. Never a raw spreadsheet. Keyboard shortcuts are a nice-to-have, not a requirement.
 
-Unresolved: component library (waits on this prototype's component list).
+Component library: shadcn/ui on Base UI, with TanStack Table. Add TanStack Virtual when a list needs it. Decision and evidence: docs/design/design-library-requirements.md.
 
 ## Direction contract
 

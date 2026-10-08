@@ -16,13 +16,13 @@ Library list; monitoring controls for show, season and episode (keyboard range s
 
 ## Per screen
 
-**Library list.** Poster grid. Keep: episode progress ("8 + 2 / 10": files, plus downloading, out of total), a totals footer (shows, movies, episodes, files, size), a column picker. Leave bulk select and edit for later.
+**Library list.** Poster grid. Opens sorted by Date added, newest first. Keep: episode progress ("8 + 2 / 10": files, plus downloading, out of total), a totals footer (shows, movies, episodes, files, size), a column picker. Leave bulk select and edit for later.
 
 **Search.** One box for movies and TV; also accepts IMDb, TMDB and TVDB ids. Adding a title is one key with saved defaults; a second key opens the options.
 
-**TV show overview.** Actions, each on a key: search monitored episodes automatically, history, series monitoring options, edit, delete (with hit and run advice for its torrents), refresh and rescan, rename. Header shows size on disk (and per season), continuing or ended, network and language, path, tags and links. Episode rows mark finale and premiere, repack and proper, and scene numbering mismatch. `[` and `]` jump to the previous and next show. Second versions sit under their episode.
+**TV show overview.** Actions, each on a key: search monitored episodes automatically, history, series monitoring options, edit, delete (with hit and run advice for its torrents), refresh and rescan, rename. Header shows size on disk (and per season), continuing or ended, network and language, path, tags and links. Episode rows mark finale and premiere, repack and proper, and scene numbering mismatch. `[` and `]` jump to the previous and next show. Second versions sit under their episode. Range selection includes episodes only; second versions are selected separately.
 
-**Movie overview.** Header shows one rating, certification and genres, studio and collection. One status word (queued, downloaded, missing, not available, deleted), driven by live rTorrent state. The versions list shows quality, size, group, HDR, audio, languages, custom format score and formats, and seeding against the hit and run rule.
+**Movie overview.** Header shows one rating, certification and genres, studio and collection. One status word (queued, downloaded, missing, not available, deleted), driven by live rTorrent state. The versions list shows quality, size, group, HDR, audio, languages, custom format score and formats, and seeding against the hit and run rule. Delete removes the movie from Radarr by default; keeping it unmonitored remains an option.
 
 **Episode details.** Expand inline on Enter: versions, history (with mark as failed), search buttons. Esc closes. No modal.
 
@@ -36,4 +36,4 @@ Library list; monitoring controls for show, season and episode (keyboard range s
 
 **Calendar.** Week, month and forecast (a rolling few days) views. States as words, colour only where the colour rules give it a meaning. Several episodes of one show on one day collapse into one entry.
 
-**Health.** One list merging Sonarr's, Radarr's and media-manager-2's checks, each labelled by source, with wiki link and test button. Health badge in the top bar, marked by the worst problem. Disk free space per drive.
+**Health.** One list merging Sonarr's, Radarr's and media-manager-2's checks, each labelled by source, with wiki link and test button. Health badge in the top bar, marked by the worst problem. Disk free space per drive. Health warnings cannot be snoozed in the first version.
