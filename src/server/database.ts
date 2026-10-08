@@ -32,6 +32,34 @@ const applicationMigrations = [
     value TEXT NOT NULL,
     PRIMARY KEY (category, key)
   ) STRICT;`,
+  `CREATE TABLE torrents (
+    hash TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    completed_bytes INTEGER NOT NULL,
+    down_rate INTEGER NOT NULL,
+    up_rate INTEGER NOT NULL,
+    started INTEGER NOT NULL CHECK (started IN (0, 1)),
+    open INTEGER NOT NULL CHECK (open IN (0, 1)),
+    active INTEGER NOT NULL CHECK (active IN (0, 1)),
+    complete INTEGER NOT NULL CHECK (complete IN (0, 1)),
+    message TEXT NOT NULL,
+    finished_at INTEGER NOT NULL,
+    ratio_thousandths INTEGER NOT NULL,
+    peers_connected INTEGER NOT NULL,
+    seeders_connected INTEGER NOT NULL,
+    tracker_host TEXT,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    gone_at INTEGER,
+    seeding_seconds INTEGER NOT NULL CHECK (seeding_seconds >= 0)
+  ) STRICT;
+  CREATE TABLE dependency_status (
+    name TEXT PRIMARY KEY,
+    state TEXT NOT NULL CHECK (state IN ('ok', 'down')),
+    since INTEGER NOT NULL,
+    detail TEXT NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

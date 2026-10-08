@@ -5,6 +5,8 @@ import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createJobRunner } from './jobs.js';
+import { createRtorrent } from './services/rtorrent.js';
+import { createTorrentPoller } from './torrents.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 const host = process.env.HOST ?? '127.0.0.1';
@@ -21,6 +23,8 @@ try {
 if (database !== undefined) {
   const events = createEventHub();
   const runner = createJobRunner();
+  const poller = createTorrentPoller({ database, rtorrent: createRtorrent(database), events });
+  runner.register('rtorrent-poll', poller.intervalMs, poller.poll);
   const app = createApp({
     clientDirectory,
     listeningHost: host,

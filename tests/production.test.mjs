@@ -30,6 +30,7 @@ const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
 const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
+const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -1187,10 +1188,11 @@ test('database initialization is repeatable and its default path is stable', asy
   const { openDatabase } = await import(databaseModuleUrl);
 
   const first = openDatabase(explicitPath);
-  assert.equal(readUserVersion(first), 1);
+  const initialized = readUserVersion(first);
+  assert.ok(initialized >= 1);
   first.close();
   const second = openDatabase(explicitPath);
-  assert.equal(readUserVersion(second), 1);
+  assert.equal(readUserVersion(second), initialized);
   second.close();
 
   const home = join(root, 'home');
@@ -1279,8 +1281,9 @@ test('a successful later migration preserves existing settings', async (t) => {
   const { getSetting, setSetting } = await import(settingsModuleUrl);
   const database = openDatabase(databasePath);
   setSetting(database, 'credentials', 'token', 'preserved');
-  migrateDatabase(database, ['SELECT 1;', 'CREATE TABLE later_record (id INTEGER PRIMARY KEY);']);
-  assert.equal(readUserVersion(database), 2);
+  const current = readUserVersion(database);
+  migrateDatabase(database, [...Array(current).fill('SELECT 1;'), 'CREATE TABLE later_record (id INTEGER PRIMARY KEY);']);
+  assert.equal(readUserVersion(database), current + 1);
   assert.equal(getSetting(database, 'credentials', 'token'), 'preserved');
   assert.equal(database.prepare("SELECT name FROM sqlite_schema WHERE name = 'later_record'").get().name, 'later_record');
   database.close();
@@ -1295,9 +1298,10 @@ test('a failing later migration leaves the previous database unchanged', async (
   const { getSetting, setSetting } = await import(settingsModuleUrl);
   const database = openDatabase(databasePath);
   setSetting(database, 'credentials', 'token', 'original');
+  const current = readUserVersion(database);
   assert.throws(
     () => migrateDatabase(database, [
-      'SELECT 1;',
+      ...Array(current).fill('SELECT 1;'),
       "UPDATE settings SET value = 'changed'; CREATE TABLE partial_record (id INTEGER); INSERT INTO missing_table VALUES (1);",
     ]),
     { message: 'Database migration failed.' },
@@ -1305,7 +1309,7 @@ test('a failing later migration leaves the previous database unchanged', async (
   database.close();
 
   const reopened = openDatabase(databasePath);
-  assert.equal(readUserVersion(reopened), 1);
+  assert.equal(readUserVersion(reopened), current);
   assert.equal(getSetting(reopened, 'credentials', 'token'), 'original');
   assert.equal(reopened.prepare("SELECT name FROM sqlite_schema WHERE name = 'partial_record'").get(), undefined);
   reopened.close();
@@ -1347,6 +1351,7 @@ test('database initialization failures preserve existing files', async (t) => {
 
   const lockedPath = join(root, 'locked.sqlite');
   const initialized = openDatabase(lockedPath);
+  const lockedVersion = readUserVersion(initialized);
   initialized.close();
   const lock = new DatabaseSync(lockedPath);
   lock.exec('BEGIN IMMEDIATE;');
@@ -1354,7 +1359,7 @@ test('database initialization failures preserve existing files', async (t) => {
   lock.exec('ROLLBACK;');
   lock.close();
   const afterRelease = openDatabase(lockedPath);
-  assert.equal(readUserVersion(afterRelease), 1);
+  assert.equal(readUserVersion(afterRelease), lockedVersion);
   afterRelease.close();
 });
 
@@ -1748,6 +1753,158 @@ test('rTorrent XML-RPC requests are encoded and responses parsed by hand', async
     responseBody = body;
     await assert.rejects(rtorrent.call('system.client_version', []), { message: 'rTorrent is unreachable.' }, body);
   }
+});
+
+test('rTorrent poll keeps a live torrent table and a seeding counter', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createTorrentPoller, listTorrents, readDependency } = await import(torrentsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-torrents-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let databaseCount = 0;
+
+  const hashA = 'ab'.repeat(20);
+  const hashB = 'CD'.repeat(20);
+  // Field order matches the poller's d.multicall2 request.
+  const row = (hash, overrides = {}) => {
+    const torrent = {
+      hash, name: `Name ${hash.slice(0, 4)}`, size: 1000, completed: 1000, down: 0, up: 50,
+      state: 1, open: 1, active: 1, complete: 1, message: '', finished: 1_700_000_000, ratio: 1500, peers: 3, seeders: 1,
+      ...overrides,
+    };
+    return [torrent.hash, torrent.name, torrent.size, torrent.completed, torrent.down, torrent.up, torrent.state,
+      torrent.open, torrent.active, torrent.complete, torrent.message, torrent.finished, torrent.ratio, torrent.peers, torrent.seeders];
+  };
+
+  const setup = (databasePath) => {
+    databaseCount += 1;
+    const database = openDatabase(databasePath ?? join(root, `db-${databaseCount}`, 'media-manager.sqlite'));
+    const clock = { value: 1_000_000 };
+    const events = createEventHub();
+    const published = [];
+    events.subscribe((event) => published.push(event));
+    const fake = { rows: [], fail: undefined, calls: [] };
+    const rtorrent = {
+      call: async (method, params) => {
+        fake.calls.push([method, params]);
+        if (method === 't.multicall') return [[`https://tracker.example/announce/secret-passkey-${params[0]}?pk=1`]];
+        if (fake.fail !== undefined) throw new Error(fake.fail);
+        return fake.rows;
+      },
+    };
+    const poller = createTorrentPoller({ database, rtorrent, events, now: () => clock.value, intervalMs: 30_000 });
+    return { database, clock, published, fake, poller };
+  };
+
+  // Dropping the uppercase normalization, deleting gone torrents, keeping the announce passkey, or publishing unchanged polls turns this red.
+  await t.test('new, changed, gone and returning torrents are stored and published', async () => {
+    const { database, clock, published, fake, poller } = setup();
+    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 0 })];
+    await poller.poll();
+    let torrents = listTorrents(database);
+    assert.deepEqual(torrents.map((torrent) => torrent.hash), [hashA.toUpperCase(), hashB]);
+    assert.equal(torrents[0].trackerHost, 'tracker.example');
+    assert.equal(JSON.stringify(torrents).includes('passkey'), false);
+    assert.equal(torrents[1].complete, false);
+    const first = published.filter((event) => event.type === 'torrents');
+    assert.equal(first.length, 1);
+    assert.equal(first[0].data.changed.length, 2);
+
+    clock.value += 30_000;
+    await poller.poll();
+    assert.equal(published.filter((event) => event.type === 'torrents').length, 1);
+    assert.equal(fake.calls.filter(([method]) => method === 't.multicall').length, 2);
+
+    clock.value += 30_000;
+    fake.rows = [row(hashB, { complete: 0, completed: 400, down: 99 })];
+    await poller.poll();
+    torrents = listTorrents(database);
+    assert.equal(torrents.length, 2);
+    assert.equal(torrents.find((torrent) => torrent.hash === hashA.toUpperCase()).goneAt, clock.value);
+    assert.equal(torrents.find((torrent) => torrent.hash === hashB).completedBytes, 400);
+    const latest = published.at(-1);
+    assert.equal(latest.type, 'torrents');
+    assert.deepEqual(latest.data.gone, [hashA.toUpperCase()]);
+    assert.deepEqual(latest.data.changed.map((torrent) => torrent.hash), [hashB]);
+
+    clock.value += 30_000;
+    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 400, down: 99 })];
+    await poller.poll();
+    assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).goneAt, null);
+    database.close();
+  });
+
+  // Crediting a poll where either side was not cleanly seeding, or crediting a gap longer than two intervals, turns this red.
+  await t.test('the seeding counter credits only clean seeding across ordinary poll gaps and survives a restart', async () => {
+    const databasePath = join(root, 'counter', 'media-manager.sqlite');
+    const first = setup(databasePath);
+    const seconds = () => listTorrents(first.database)[0].seedingSeconds;
+    first.fake.rows = [row(hashB)];
+    await first.poller.poll();
+    assert.equal(seconds(), 0);
+    first.clock.value += 30_000;
+    await first.poller.poll();
+    assert.equal(seconds(), 30);
+    first.clock.value += 30_000;
+    first.fake.rows = [row(hashB, { message: 'Tracker: [Failure reason "Unregistered torrent"]' })];
+    await first.poller.poll();
+    assert.equal(seconds(), 30);
+    first.clock.value += 30_000;
+    first.fake.rows = [row(hashB)];
+    await first.poller.poll();
+    assert.equal(seconds(), 30);
+    first.clock.value += 30_000;
+    first.fake.rows = [row(hashB, { active: 0 })];
+    await first.poller.poll();
+    assert.equal(seconds(), 30);
+    first.clock.value += 30_000;
+    first.fake.rows = [row(hashB)];
+    await first.poller.poll();
+    first.clock.value += 45_000;
+    await first.poller.poll();
+    assert.equal(seconds(), 75);
+    const stoppedAt = first.clock.value;
+    first.database.close();
+
+    const second = setup(databasePath);
+    second.clock.value = stoppedAt + 61_000;
+    second.fake.rows = [row(hashB)];
+    await second.poller.poll();
+    assert.equal(listTorrents(second.database)[0].seedingSeconds, 75);
+    second.clock.value += 30_000;
+    await second.poller.poll();
+    assert.equal(listTorrents(second.database)[0].seedingSeconds, 105);
+    second.database.close();
+  });
+
+  // Clearing the table on a failed poll, or never recording rTorrent as down and back up, turns this red.
+  await t.test('an unreachable or malformed rTorrent keeps the last snapshot and marks the dependency down', async () => {
+    const { database, clock, published, fake, poller } = setup();
+    fake.rows = [row(hashA)];
+    await poller.poll();
+    assert.equal(readDependency(database, 'rtorrent').state, 'ok');
+    const failures = [
+      () => { fake.fail = 'rTorrent is unreachable.'; },
+      () => { fake.fail = undefined; fake.rows = [['not', 'a', 'row']]; },
+      () => { fake.rows = [row('xyz')]; },
+    ];
+    for (const fail of failures) {
+      clock.value += 30_000;
+      fail();
+      await poller.poll();
+      assert.equal(readDependency(database, 'rtorrent').state, 'down');
+      assert.equal(listTorrents(database).length, 1);
+      assert.equal(listTorrents(database)[0].goneAt, null);
+    }
+    const downSince = readDependency(database, 'rtorrent').since;
+    assert.equal(downSince, clock.value - 60_000);
+    clock.value += 30_000;
+    fake.rows = [row(hashA)];
+    await poller.poll();
+    assert.deepEqual(readDependency(database, 'rtorrent'), { name: 'rtorrent', state: 'ok', since: clock.value, detail: '' });
+    assert.deepEqual(published.filter((event) => event.type === 'dependency').map((event) => event.data.state), ['ok', 'down', 'down', 'ok']);
+    database.close();
+  });
 });
 
 // Echoing a stored value, keeping the trailing newline from stdin, or misreporting a 401 lets credentials leak or hides a broken connection.
