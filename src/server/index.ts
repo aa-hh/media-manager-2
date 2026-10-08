@@ -6,6 +6,7 @@ import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
+import { createImportFix } from './imports.js';
 import { createJobRunner } from './jobs.js';
 import { createProblems } from './problems.js';
 import { createGrabTracker } from './grabs.js';
@@ -48,6 +49,8 @@ if (database !== undefined) {
   // Two minutes keeps Radarr's whole-library read light while still searching close to each release time.
   const searches = createSearchScheduler({ database, arr: arrServices, problems });
   runner.register('search-schedule', 2 * 60_000, searches.check);
+  const imports = createImportFix({ database, arr: arrServices, problems, events });
+  runner.register('import-fix', 60_000, imports.check);
   const app = createApp({
     clientDirectory,
     listeningHost: host,

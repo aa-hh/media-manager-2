@@ -37,6 +37,7 @@ const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
+const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
@@ -2513,6 +2514,170 @@ test('missing movies and episodes are searched when they come out and every six 
     await scheduler.check();
     assert.equal(commands.some(([service], index) => index >= 3 && service === 'sonarr'), false);
     database.close();
+  });
+});
+
+test('blocked imports are cleared, forced, retried or flagged by reason', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(grabsModuleUrl);
+  const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
+  const { readDependency } = await import(dependenciesModuleUrl);
+  const { classifyImport, createImportFix } = await import(importsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-imports-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let count = 0;
+  const minute = 60_000;
+  const hash = 'EE'.repeat(20);
+
+  // Reordering the patterns so a setup or bad-release message reads as something milder turns this red.
+  await t.test('Sonarr and Radarr wording maps to the AA-13 groups', () => {
+    const cases = [
+      ['Not enough free space', 'setup'],
+      ['Caution: Found executable file with extension: .exe', 'bad_release'],
+      ['No audio tracks detected', 'bad_release'],
+      ['Episode file already imported at 2026-10-08', 'leftover'],
+      ['Not an upgrade for existing episode file(s)', 'not_better'],
+      ['File is locked by another process', 'temporary'],
+      ['Episode has a TBA title and recently aired', 'temporary'],
+      ['Failed to move file', 'file_move'],
+      ['Found matching series via grab history, but release was matched to series by ID. Automatic import is not possible.', 'matching'],
+      ['Series title mismatch, automatic import is not possible.', 'matching'],
+      ['Something new', 'unknown'],
+    ];
+    for (const [message, category] of cases) assert.equal(classifyImport([message]), category, message);
+  });
+
+  const setup = async ({ message, byHand = false, movie = false, files = [] }) => {
+    count += 1;
+    const database = openDatabase(join(root, `db-${count}`, 'media-manager.sqlite'));
+    const clock = { value: Date.parse('2026-10-08T12:00:00Z') };
+    const now = () => clock.value;
+    const events = createEventHub();
+    const requests = [];
+    const queue = [{
+      id: 9, downloadId: hash, ...(movie ? { movieId: 7 } : { seriesId: 3, episodeId: 31 }), title: 'Release.Title',
+      status: 'completed', trackedDownloadStatus: 'warning', trackedDownloadState: 'importBlocked',
+      statusMessages: [{ title: 'Release.Title.mkv', messages: [message] }],
+    }];
+    const service = (name) => ({
+      request: async (path, init = {}) => {
+        requests.push([name, init.method ?? 'GET', path, init.body]);
+        if (path.startsWith('/api/v3/queue?')) return { status: 200, body: { totalRecords: name === (movie ? 'radarr' : 'sonarr') ? 1 : 0, records: name === (movie ? 'radarr' : 'sonarr') ? queue : [] } };
+        if (path.startsWith('/api/v3/history/since')) return { status: 200, body: [] };
+        if (path.startsWith('/api/v3/manualimport')) return { status: 200, body: files };
+        return { status: 200, body: {} };
+      },
+    });
+    const arr = { sonarr: service('sonarr'), radarr: service('radarr') };
+    const grabs = createGrabTracker({ database, arr, events, now });
+    grabs.recordGrab({ hash, service: movie ? 'radarr' : 'sonarr', movieId: movie ? 7 : null, seriesId: movie ? null : 3, episodeIds: movie ? [] : [31, 32],
+      releaseTitle: 'Release.Title', indexer: 'Blutopia', grabbedAt: clock.value, publishedAt: null, byHand });
+    await grabs.reconcile();
+    requests.length = 0;
+    const problems = createProblems({ database, events, now });
+    const fix = createImportFix({ database, arr, problems, events, now });
+    const writes = () => requests.filter(([, method]) => method !== 'GET').map(([name, method, path, body]) => [name, method, path, body?.name]);
+    return { database, clock, fix, writes, requests, problems };
+  };
+
+  // Touching rTorrent from the queue, importing a not-better automatic grab, or handling a replace's own import here turns this red.
+  await t.test('leftovers and not-better automatic grabs leave the queue with rTorrent untouched; a replace is left alone', async () => {
+    for (const message of ['Episode file already imported', 'Not an upgrade for existing episode file(s)']) {
+      const run = await setup({ message });
+      await run.fix.check();
+      assert.deepEqual(run.writes(), [['sonarr', 'DELETE', '/api/v3/queue/9?removeFromClient=false&blocklist=false&skipRedownload=true', undefined]]);
+      await run.fix.check();
+      assert.equal(run.writes().length, 1);
+      run.database.close();
+    }
+    const replace = await setup({ message: 'Not an upgrade for existing episode file(s)', byHand: true });
+    await replace.fix.check();
+    assert.deepEqual(replace.writes(), []);
+    assert.deepEqual(listOpenProblems(replace.database), []);
+    replace.database.close();
+  });
+
+  // Importing a file onto an episode outside the grab record turns this red.
+  await t.test('matching doubts are forced only onto what was grabbed', async () => {
+    const good = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
+      { path: '/files/Sonarr/a.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }] },
+      { path: '/files/Sonarr/b.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 32 }] },
+    ] });
+    await good.fix.check();
+    const command = good.requests.find(([, method, path]) => method === 'POST' && path === '/api/v3/command');
+    assert.equal(command[3].name, 'ManualImport');
+    assert.equal(command[3].importMode, 'copy');
+    assert.deepEqual(command[3].files.map((file) => file.episodeIds), [[31], [32]]);
+    good.database.close();
+
+    const stray = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
+      { path: '/files/Sonarr/c.mkv', episodes: [{ id: 99 }] },
+    ] });
+    await stray.fix.check();
+    assert.deepEqual(stray.writes(), []);
+    const [flag] = listOpenProblems(stray.database);
+    assert.equal(flag.state, 'needs_you');
+    assert.match(flag.steps.at(-1).text, /doesn't match the episodes/);
+    stray.database.close();
+  });
+
+  // Not counting a bad release toward the limit, or searching again after the third, turns this red.
+  await t.test('a bad release is blocked and searched again until the third release', async () => {
+    const first = await setup({ message: 'No audio tracks detected', movie: true });
+    await first.fix.check();
+    assert.deepEqual(first.writes(), [['radarr', 'DELETE', '/api/v3/queue/9?removeFromClient=false&blocklist=true&skipRedownload=false', undefined]]);
+    first.database.close();
+
+    const third = await setup({ message: 'No audio tracks detected', movie: true });
+    third.problems.recordReleaseAttempt({ type: 'movie', service: 'radarr', id: '7' }, 'one');
+    third.problems.recordReleaseAttempt({ type: 'movie', service: 'radarr', id: '7' }, 'two');
+    await third.fix.check();
+    assert.deepEqual(third.writes(), [['radarr', 'DELETE', '/api/v3/queue/9?removeFromClient=false&blocklist=true&skipRedownload=true', undefined]]);
+    assert.equal(listOpenProblems(third.database)[0].state, 'needs_you');
+    third.database.close();
+  });
+
+  // Retrying sooner than the spacing, or never flagging, turns this red.
+  await t.test('temporary blocks retry every 15 minutes for 24 hours; failed moves retry at 5, 30 and 120 minutes', async () => {
+    const temporary = await setup({ message: 'File is locked by another process' });
+    await temporary.fix.check();
+    temporary.clock.value += 14 * minute;
+    await temporary.fix.check();
+    assert.equal(temporary.writes().length, 1);
+    temporary.clock.value += minute;
+    await temporary.fix.check();
+    assert.equal(temporary.writes().length, 2);
+    temporary.clock.value += 24 * 60 * minute;
+    await temporary.fix.check();
+    assert.equal(temporary.writes().length, 2);
+    assert.equal(listOpenProblems(temporary.database)[0].state, 'needs_you');
+    temporary.database.close();
+
+    const move = await setup({ message: 'Failed to move file' });
+    const retries = [];
+    for (let elapsed = 0; elapsed <= 274; elapsed += 1) {
+      await move.fix.check();
+      if (move.writes().length > retries.length) retries.push(elapsed);
+      move.clock.value += minute;
+    }
+    assert.deepEqual(retries, [5, 35, 155]);
+    assert.equal(listOpenProblems(move.database)[0].state, 'handling');
+    await move.fix.check();
+    assert.equal(listOpenProblems(move.database)[0].state, 'needs_you');
+    move.database.close();
+  });
+
+  // Letting import fixes run while setup is broken, or never resuming them, turns this red.
+  await t.test('a setup problem pauses import fixes until it is gone', async () => {
+    const run = await setup({ message: 'Not enough free space' });
+    await run.fix.check();
+    assert.equal(readDependency(run.database, 'imports').state, 'down');
+    assert.equal(listOpenProblems(run.database)[0].state, 'needs_you');
+    run.database.prepare('DELETE FROM arr_queue').run();
+    await run.fix.check();
+    assert.equal(readDependency(run.database, 'imports').state, 'ok');
+    run.database.close();
   });
 });
 

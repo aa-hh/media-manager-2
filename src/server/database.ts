@@ -163,6 +163,16 @@ const applicationMigrations = [
     subject TEXT PRIMARY KEY,
     seen_at INTEGER NOT NULL
   ) STRICT;`,
+  `CREATE TABLE import_handling (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    download_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    first_seen_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL,
+    last_attempt_at INTEGER,
+    done INTEGER NOT NULL CHECK (done IN (0, 1)),
+    PRIMARY KEY (service, download_id)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
