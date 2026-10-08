@@ -41,6 +41,25 @@ export const applicationMigrations = [
     fetched_at INTEGER NOT NULL,
     releases TEXT NOT NULL
   ) STRICT;`,
+  `CREATE TABLE grabs (
+    id INTEGER PRIMARY KEY,
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    target TEXT NOT NULL,
+    target_key TEXT NOT NULL,
+    searched_for TEXT NOT NULL,
+    searched_for_key TEXT NOT NULL,
+    guid TEXT NOT NULL,
+    release_title TEXT NOT NULL,
+    intent TEXT NOT NULL CHECK (intent IN ('grab', 'replace')),
+    state TEXT NOT NULL CHECK (state IN ('sending', 'sent', 'failed', 'completed')),
+    failure TEXT,
+    download_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE INDEX grabs_target ON grabs (target_key);
+  CREATE INDEX grabs_searched_for ON grabs (searched_for_key);
+  CREATE INDEX grabs_state ON grabs (state);`,
 ] as const;
 
 class DatabaseError extends Error {}

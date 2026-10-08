@@ -5,6 +5,7 @@ import { createAdd } from './add.js';
 import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
+import { createGrabs } from './grabs.js';
 import { createJobRunner } from './jobs.js';
 import { createReleases } from './releases.js';
 import { createSearch } from './search.js';
@@ -26,6 +27,14 @@ if (database !== undefined) {
   const arr = { sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) };
   const events = createEventHub();
   const runner = createJobRunner();
+  const releases = createReleases(database, arr);
+  const grabs = createGrabs(database, arr, releases, { onChange: (grab) => events.publish('grab', grab) });
+  runner.register('grab-download-ids', 30_000, async () => {
+    // A grab that never shows up in history within an hour is left for the owner to see, not polled forever.
+    for (const grab of grabs.pending()) {
+      if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
+    }
+  });
   const app = createApp({
     clientDirectory,
     listeningHost: host,
@@ -34,7 +43,8 @@ if (database !== undefined) {
     events,
     search: createSearch(arr),
     add: createAdd(database, arr),
-    releases: createReleases(database, arr),
+    releases,
+    grabs,
   });
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {

@@ -33,6 +33,7 @@ const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
 const searchModuleUrl = new URL('../dist/server/search.js', import.meta.url).href;
 const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
 const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
+const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -2123,4 +2124,84 @@ test('interactive searches are kept with their age and refreshed only on request
   const movie = await releases.get({ service: 'radarr', kind: 'movie', movieId: 9 });
   assert.deepEqual(movie.search.releases[0].flags, ['Freeleech 75%', 'Nuked']);
   assert.equal(releases.find({ service: 'radarr', kind: 'movie', movieId: 9 }, 'm1').title, 'Movie.2021.2160p');
+});
+
+// Grabbing through /release/push or without the stored release, reporting a refused grab as sent, losing the downloadId, or recording the searched target instead of an override breaks hand grabs and the replace that follows them.
+test('a hand grab is recorded before it is sent and keeps what it is for', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createReleases } = await import(releasesModuleUrl);
+  const { createGrabs, parseOverrides } = await import(grabsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-grabs-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65041');
+  setSetting(database, 'credentials', 'sonarr.apiKey', 'sonarr-key');
+  const quality = { quality: { id: 3, name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: false } };
+  const posts = [];
+  let grabResponse = () => new Response('{}', { status: 200 });
+  const fetch = async (url, init = {}) => {
+    const { pathname } = new URL(String(url));
+    if (init.method === 'POST') {
+      posts.push({ pathname, body: JSON.parse(init.body) });
+      return grabResponse();
+    }
+    if (pathname === '/api/v3/release') {
+      return new Response(JSON.stringify([{
+        guid: 'g-rejected', indexerId: 3, title: 'Show.S01E02.720p', approved: false, quality, languages: [{ id: 1, name: 'English' }],
+        rejections: ['Not an upgrade for existing episode file(s)'],
+      }]), { status: 200 });
+    }
+    if (pathname === '/api/v3/history') {
+      return new Response(JSON.stringify({ records: [
+        { downloadId: 'OTHER', data: { guid: 'g-other' } },
+        { downloadId: 'ABC123HASH', data: { guid: 'g-rejected' } },
+      ] }), { status: 200 });
+    }
+    if (pathname === '/api/v3/qualitydefinition') {
+      return new Response(JSON.stringify([{ quality: { id: 3, name: 'WEBDL-1080p' } }, { quality: { id: 4, name: 'HDTV-720p', resolution: 720 } }]), { status: 200 });
+    }
+    return new Response('[]', { status: 200 });
+  };
+  const sonarr = createArr('sonarr', database, { fetch });
+  const releases = createReleases(database, { sonarr, radarr: sonarr });
+  const changes = [];
+  const grabs = createGrabs(database, { sonarr, radarr: sonarr }, releases, { onChange: (record) => changes.push(record.state) });
+  const target = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
+
+  assert.deepEqual(await grabs.grab(target, 'g-rejected', 'replace'), { kind: 'unknown_release' });
+  await releases.get(target);
+
+  const sent = await grabs.grab(target, 'g-rejected', 'replace');
+  assert.equal(sent.kind, 'sent');
+  assert.deepEqual(posts.at(-1), { pathname: '/api/v3/release', body: { guid: 'g-rejected', indexerId: 3, downloadAllowed: true } });
+  assert.deepEqual(changes, ['sending', 'sent', 'sent']);
+  assert.equal(sent.record.downloadId, 'ABC123HASH');
+  assert.equal(sent.record.intent, 'replace');
+  assert.deepEqual(grabs.pending('replace').map((record) => record.id), [sent.record.id]);
+
+  const overrides = parseOverrides({ seriesId: 5, episodeIds: [51, 52], qualityId: 4 }, 'sonarr');
+  const overridden = await grabs.grab(target, 'g-rejected', 'grab', overrides);
+  assert.deepEqual(posts.at(-1).body, {
+    guid: 'g-rejected', indexerId: 3, downloadAllowed: true, shouldOverride: true,
+    quality: { quality: { id: 4, name: 'HDTV-720p', resolution: 720 }, revision: { version: 2, real: 0, isRepack: false } },
+    languages: [{ id: 1, name: 'English' }], seriesId: 5, episodeIds: [51, 52],
+  });
+  assert.deepEqual(overridden.record.target, { service: 'sonarr', kind: 'episodes', seriesId: 5, episodeIds: [51, 52] });
+  assert.deepEqual(overridden.record.searchedFor, target);
+
+  grabResponse = () => new Response(JSON.stringify({ message: "Couldn't find requested release in cache, try searching again" }), { status: 404 });
+  const refused = await grabs.grab(target, 'g-rejected', 'grab');
+  assert.equal(refused.kind, 'failed');
+  assert.equal(refused.record.state, 'failed');
+  assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
+  assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent']);
+
+  assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
+  assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
+  assert.deepEqual(parseOverrides(undefined, 'radarr'), {});
 });

@@ -28,6 +28,9 @@ export type Release = {
   flags: string[];
   protocol: string | null;
   past: PastEvent[];
+  // Sent back unchanged when a grab overrides what the release counts as.
+  qualityModel: unknown;
+  languages: unknown;
 };
 
 export type StoredSearch = { fetchedAt: number; releases: Release[] };
@@ -124,6 +127,8 @@ const toRelease = (value: unknown): Release | undefined => {
     flags: readFlags(value.indexerFlags),
     protocol: text(value.protocol),
     past: [],
+    qualityModel: isRecord(value.quality) ? value.quality : null,
+    languages: Array.isArray(value.languages) ? value.languages : [],
   };
 };
 
