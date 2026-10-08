@@ -34,6 +34,7 @@ const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.m
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const problemsModuleUrl = new URL('../dist/server/problems.js', import.meta.url).href;
 const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
+const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
@@ -2143,6 +2144,131 @@ test('problems record each fix attempt and its result', async (t) => {
     const downloads = await app.request('/api/downloads', { headers: { Cookie: session } });
     assert.deepEqual(Object.keys(await downloads.json()).sort(), ['grabs', 'problems', 'queue', 'torrents']);
     assert.equal((await app.request('/api/problems/history?type=nope&id=1', { headers: { Cookie: session } })).status, 400);
+    database.close();
+  });
+});
+
+test('tracker messages become cooldowns, retries, rechecks and replacement requests', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTorrentPoller } = await import(torrentsModuleUrl);
+  const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
+  const { writeDependency } = await import(dependenciesModuleUrl);
+  const { classifyMessage, createTrackerWatch, listCooldowns, listIssues } = await import(trackersModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-trackers-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let count = 0;
+  const hash = (n) => String(n).repeat(40).slice(0, 40).toUpperCase();
+  const row = (h, overrides = {}) => {
+    const value = { name: h, size: 1000, completed: 100, state: 1, active: 1, complete: 0, message: '', ...overrides };
+    return [h, value.name, value.size, value.completed, 0, 0, value.state, 1, value.active, value.complete, value.message, 0, 0, 0, 0];
+  };
+  const setup = () => {
+    count += 1;
+    const database = openDatabase(join(root, `db-${count}`, 'media-manager.sqlite'));
+    const clock = { value: 10_000_000 };
+    const events = createEventHub();
+    const fake = { rows: [], calls: [] };
+    const rtorrent = {
+      call: async (method, params) => {
+        if (method === 't.multicall') return [['https://tracker.example/announce/passkey']];
+        if (method === 'd.multicall2') return fake.rows;
+        fake.calls.push([method, params[0]]);
+        return 0;
+      },
+    };
+    const now = () => clock.value;
+    const poller = createTorrentPoller({ database, rtorrent, events, now });
+    const problems = createProblems({ database, events, now });
+    const watch = createTrackerWatch({ database, rtorrent, problems, events, now });
+    const step = async (rows, elapsed = 60_000) => {
+      clock.value += elapsed;
+      fake.rows = rows;
+      await poller.poll();
+      await watch.check();
+    };
+    return { database, clock, events, fake, watch, step, poller };
+  };
+
+  // Treating a refusal as a tracker outage, or missing rTorrent's failure wrapper, turns this red.
+  await t.test('messages are classified from rTorrent wording', () => {
+    assert.deepEqual(classifyMessage(''), { kind: 'clean', text: '' });
+    assert.deepEqual(classifyMessage('Tracker: [Failure reason "Your downloading privileges have been disabled! (Read the rules)"]'),
+      { kind: 'refusal', text: 'Your downloading privileges have been disabled! (Read the rules)' });
+    assert.equal(classifyMessage('Tracker: [Failure reason "Unregistered torrent"]').kind, 'unregistered');
+    assert.equal(classifyMessage('Tracker: [Timeout was reached]').kind, 'tracker_down');
+    assert.equal(classifyMessage('Tracker: [Couldn\'t resolve host name]').kind, 'tracker_down');
+    assert.equal(classifyMessage('Hash check on download completion found bad chunks, consider using "safe_sync".').kind, 'damaged');
+    assert.equal(classifyMessage('Something else entirely').kind, 'other');
+  });
+
+  // Ignoring a known or unknown refusal, flagging a known one as needing the owner, or never ending the cooldown turns this red.
+  await t.test('a refusal on an unfinished torrent starts a cooldown that a clean check-in ends', async () => {
+    const { database, step } = setup();
+    setSetting(database, 'trackerConfiguration', 'refusalTexts', 'Download rights revoked\n');
+    await step([row(hash(1), { message: 'Tracker: [Failure reason "Your downloading privileges have been disabled."]' })]);
+    assert.deepEqual(listCooldowns(database).map((cooldown) => [cooldown.host, cooldown.known]), [['tracker.example', true]]);
+    assert.equal(listOpenProblems(database)[0].state, 'handling');
+    await step([row(hash(1))]);
+    assert.deepEqual(listCooldowns(database), []);
+    assert.deepEqual(listOpenProblems(database), []);
+
+    await step([row(hash(1), { message: 'Tracker: [Failure reason "Ratio too low, go away"]' })]);
+    const [unknown] = listCooldowns(database);
+    assert.equal(unknown.known, false);
+    assert.equal(unknown.text, 'Ratio too low, go away');
+    const [flag] = listOpenProblems(database);
+    assert.equal(flag.state, 'needs_you');
+    assert.match(flag.summary, /Ratio too low, go away/);
+
+    await step([row(hash(2), { complete: 1, completed: 1000, message: 'Tracker: [Failure reason "Download rights revoked"]' })]);
+    assert.equal(listCooldowns(database).length, 1);
+    database.close();
+  });
+
+  // Retrying more often than every 15 minutes, giving up before six hours, or never handing over turns this red.
+  await t.test('a down tracker is asked again every 15 minutes and handed to the stall fix at six hours', async () => {
+    const { database, fake, watch, step } = setup();
+    const down = row(hash(3), { message: 'Tracker: [Timeout was reached]' });
+    await step([down]);
+    for (let minute = 1; minute < 360; minute += 1) await step([down], 60_000);
+    const announces = fake.calls.filter(([method]) => method === 'd.tracker_announce');
+    assert.equal(announces.length, 24);
+    assert.equal(watch.replacementRequests().length, 0);
+    await step([down], 60_000);
+    assert.deepEqual(watch.replacementRequests().map((issue) => [issue.hash, issue.kind]), [[hash(3), 'tracker_down']]);
+    database.close();
+  });
+
+  // Searching again without the one recheck, rechecking twice, or keeping an issue open after a clean answer turns this red.
+  await t.test('unregistered asks for a replacement at once, damaged data is rechecked once first', async () => {
+    const { database, fake, watch, step } = setup();
+    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })]);
+    assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash), [hash(4)]);
+    assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
+    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })], 31 * 60_000);
+    assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
+    assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash).sort(), [hash(4), hash(5)].sort());
+    watch.replacementHandled(hash(4), 'Grabbed another release.');
+    assert.deepEqual(listIssues(database).map((issue) => issue.hash), [hash(5)]);
+
+    const recovering = row(hash(6), { message: 'Tracker: [Timeout was reached]' });
+    await step([recovering]);
+    await step([row(hash(6))]);
+    assert.equal(listIssues(database).some((issue) => issue.hash === hash(6)), false);
+    database.close();
+  });
+
+  // Acting on stale torrent rows while rTorrent is down turns this red.
+  await t.test('nothing is acted on while rTorrent is down', async () => {
+    const { database, events, fake, watch, poller } = setup();
+    fake.rows = [row(hash(7), { message: 'Tracker: [Timeout was reached]' })];
+    await poller.poll();
+    writeDependency(database, events, 'rtorrent', 'down', 1, 'rTorrent is unreachable.');
+    await watch.check();
+    assert.deepEqual(fake.calls, []);
+    assert.deepEqual(listIssues(database), []);
     database.close();
   });
 });

@@ -13,6 +13,7 @@ import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTorrentPoller } from './torrents.js';
+import { createTrackerWatch } from './trackers.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 const host = process.env.HOST ?? '127.0.0.1';
@@ -40,6 +41,9 @@ if (database !== undefined) {
   runner.register('arr-reconcile', grabs.intervalMs, grabs.reconcile);
   const problems = createProblems({ database, events });
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
+  const rtorrent = createRtorrent(database);
+  const trackers = createTrackerWatch({ database, rtorrent, problems, events });
+  runner.register('tracker-watch', 30_000, trackers.check);
   const app = createApp({
     clientDirectory,
     listeningHost: host,

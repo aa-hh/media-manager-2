@@ -132,6 +132,21 @@ const applicationMigrations = [
     tried_at INTEGER NOT NULL,
     PRIMARY KEY (subject_type, service, subject_id, release_key)
   ) STRICT;`,
+  `CREATE TABLE tracker_cooldowns (
+    host TEXT PRIMARY KEY,
+    since INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    known INTEGER NOT NULL CHECK (known IN (0, 1)),
+    trigger_hash TEXT NOT NULL
+  ) STRICT;
+  CREATE TABLE torrent_issues (
+    hash TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('unregistered', 'tracker_down', 'damaged')),
+    since INTEGER NOT NULL,
+    last_retry_at INTEGER,
+    rechecked_at INTEGER,
+    replace INTEGER NOT NULL CHECK (replace IN (0, 1))
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
