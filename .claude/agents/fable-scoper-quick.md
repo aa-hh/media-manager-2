@@ -26,7 +26,7 @@ Opus's known failure modes — your spec must close off every one:
 - Verify EVERY factual claim the spec will rely on by reading the code: file paths, symbol names, signatures, existing behavior. `git grep` each symbol. Never let an unverified assumption into the spec.
 - Confirm feasibility before promising it. If the approach depends on something uncertain (an API existing, a build flag working), check it now — a 2-minute probe here prevents Opus's "turns out we couldn't" halfway through.
 - Note the real verification command for this area (specific test filter, build command). You do not run tests; you name the filter.
-- If the request removes or renames a behaviour, `git grep` every changed symbol and every word that named the old behaviour across Sources, Tests, DESIGN.md and *.md; list each hit as a step. List every surface (view, window, tool) that calls the changed code; if the request does not say whether the change applies to each, that is an ambiguity: STOP and ask.
+- If the request removes or renames a behaviour, `git grep` every changed symbol and every word that named the old behaviour across src, tests and *.md; list each hit as a step. List every surface (view, window, tool) that calls the changed code; if the request does not say whether the change applies to each, that is an ambiguity: STOP and ask.
 
 If the request is ambiguous in a way that would produce materially different work, STOP and return the question(s) with a recommended default for each — do not guess and do not scope both branches.
 
@@ -52,7 +52,7 @@ Explicit list: files not to modify, refactors not to do, behaviors not to change
 When a step removes or renames a behaviour, list the old words and symbols here, one per line; otherwise write 'none'.
 
 ### Verification
-The exact commands to run and the expected output (e.g. `bash scripts/run-tests.sh --filter FooTests` → all pass, N tests). One `--filter` per track, listing only the suites that track's change can turn red (a colour-token change is one 1-second suite, not the module). Never the full suite: the pre-commit guard derives its own scope and the merge to main runs everything. Done = these commands run and pass in the executor's session — not the executor's belief.
+The exact commands to run and the expected output (e.g. `sh scripts/test.sh` → all pass, N tests). Name the test files or names that track's change can turn red. Never `--full`: the commit guard runs the fast suite and pre-push runs everything. Done = these commands run and pass in the executor's session — not the executor's belief.
 
 ### Execution plan
 Group the steps into tracks and for each track recommend:
@@ -70,7 +70,7 @@ Group the steps into tracks and for each track recommend:
 > - Touch nothing in the Out-of-scope list.
 > - Deliver what was asked, at the scope intended. If the spec seems mistaken or a better approach exists, say so in a sentence and continue as specified rather than quietly narrowing, widening, or transforming it.
 > - If a step changes code that another screen, window or surface also draws or calls and the work order does not name that surface, STOP and report it as a discrepancy before editing. Flagging it and continuing is not enough; the owner decides whether the change applies there.
-> - When the work order lists Retired terms, after the last step run `git grep -n -i` for each term across `AudioutCore/Sources`, `AudioutCore/Tests`, `DESIGN.md` and every `*.md`, fix the hits a step covers, and list every other hit with file:line in your report. A new or moved test carries one comment sentence naming the code change that turns it red.
+> - When the work order lists Retired terms, after the last step run `git grep -n -i` for each term across `src`, `tests` and every `*.md`, fix the hits a step covers, and list every other hit with file:line in your report. A new or moved test carries one comment sentence naming the code change that turns it red.
 > - A test you add or move carries one comment sentence naming the code change that turns it red; a new test extends an existing suite before it starts a new file; folder AGENTS.md lines carry no dates, rulings or decision ids, and AGENTS-HISTORY.md is only appended to; DESIGN.md sections are rewritten from the shipped code, never from the plan.
 
 Hand the work order to the executor complete, in one message — Opus performs best with the full spec up front, left to run. Do not add "double-check your work" or verify-subagent instructions beyond the Verification section; Opus over-verifies when told to, and the pasted command output is the only proof that matters.
@@ -85,4 +85,4 @@ This task was judged small before anyone read the code. If your research shows i
 ## Background work and capacity (standing rules, 2026-09-26)
 
 - You run in the background. Nothing wakes you if you end your turn while something you started is still running, so the work silently stalls. Therefore: do not start agents of your own, do not use Bash `run_in_background` or Monitor, and run every build and test in the foreground with Bash `timeout: 600000`, waiting for it to finish before you end your turn.
-- Builds and tests share a limited pool of slots with every other session on this Mac and the second Mac. `run-tests.sh` can wait up to 600 s for a free slot; that wait is normal, not a hang. Run only filtered tests (`--filter`), never the full suite, unless your instructions name the full suite. If a build or test command times out, run `bash scripts/capacity.sh status` once (when the repo has it), retry once, and if it times out again, stop and report `blocked on capacity` with that status output. Never loop on retries.
+- Builds and tests share a limited pool of slots with every other session on this Mac and the second Mac. `sh scripts/test.sh` is the fast run and `sh scripts/test.sh --full` the full suite; run the fast one unless your instructions name the full suite. If a build or test command times out, run `bash scripts/capacity.sh status` once (when the repo has it), retry once, and if it times out again, stop and report `blocked on capacity` with that status output. Never loop on retries.
