@@ -88,3 +88,22 @@ Each candidate without its own table is paired with TanStack Table.
 10. Ariakit (unstyled primitives; no table or toast)
 
 Ruled out on a must-have (sources in the research notes of 8 Oct): Headless UI, JollyUI, Tremor, Flowbite React, Radix Themes, Glide Data Grid (not maintained); Catalyst, Preline (licence); Chakra UI v3, React Spectrum S2, Mantine, MUI (not Tailwind); daisyUI (no behaviour, screen reader); Reka UI, Kobalte (not React). AG Grid is the strongest table alternative to TanStack Table but brings its own theme system.
+
+## Scores from docs and source (8 Oct 2026)
+
+All ten pass the must-haves. Full scoring with sources per candidate in `library-scores/`.
+
+| Rank | Candidate | Score / 165 | Main strength | Main weakness |
+|---|---|---|---|---|
+| 1 | shadcn/ui + TanStack Table (Base UI default) | 140 (React Aria foundation about 145) | Every control exists, code is ours, pen.dev kit | Table has no keyboard support on Base UI |
+| 2 | React Aria Components | 139 | Own table with range select, virtualising, keyboard | No pen.dev kit; toast still unstable |
+| 3 | HeroUI | 138 | React Aria underneath, every control, pen.dev kit in the app | Default look to undo (44px rows, card wrappers) |
+| 4 | Base UI + TanStack Table | 135 | Covers nearly every control, no styles | No table or list part at all |
+| 4 | Own on Radix + TanStack Table | 135 | Code ours, agents know it well | No combobox; 10-month release gap in 2025-26 |
+| 6 | Intent UI | 134 | Nearly every control, code ours | One person wrote ~97% of it |
+| 6 | coss ui + TanStack Table | 134 | Nearly every control, code ours (MIT folders only) | Rounded corners and shadows built into every component |
+| 8 | Ark UI + TanStack Table | 133 | Nearly every control, no look | Table all ours; v6 breaking changes in pre-release |
+| 9 | Untitled UI React | 127 | React Aria underneath, code ours | Strongest house look to strip; free table lacks grouping |
+| 10 | Ariakit + TanStack Table | 122 | Excellent keyboard patterns, small | Many parts missing; still 0.x |
+
+Shared finding: React Aria based tables jump to a matching row when a letter key is typed and this can't be turned off, so app-level letter shortcuts must run first.
