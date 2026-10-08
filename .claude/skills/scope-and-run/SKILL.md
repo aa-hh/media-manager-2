@@ -1,6 +1,6 @@
 ---
 name: scope-and-run
-description: Automated Fable-scopes → Opus-executes pipeline. Use when the user invokes /scope-and-run <request>, or asks to "scope and run", "scope then build", or wants a task scoped by Fable and executed by Opus without manual handoff.
+description: Automated Fable-scopes → Opus-executes pipeline. Use when the user invokes /scope-and-run [request], or asks to "scope and run", "scope then build", or wants a task scoped by Fable and executed by Opus without manual handoff.
 ---
 
 Run the full scope→execute pipeline for the request in $ARGUMENTS.
@@ -15,11 +15,11 @@ Every Agent call in this pipeline uses `run_in_background: true` and a `name` (e
 
 Two causes produced the stalls that used to force foreground runs: a subagent that starts background work and ends its turn is never woken, and builds and tests queue for up to 600 s behind other sessions for a shared slot. The rules that block both live in the "Background work and capacity" section of every agent definition this pipeline uses (`~/.claude/agents/` or the repo's `.claude/agents/`), so they load whatever the prompt says. Only use those agent types here; a `general-purpose` agent does not carry the rules.
 
-**Size the fan-out to capacity.** Before Step 2, when the repo has `scripts/capacity.sh`, run `bash scripts/capacity.sh status`. Launch at most as many parallel tracks as there are free permits on both machines combined (minimum 1). Hold the remaining independent tracks and launch each one as a running track returns. Tell the user in one line if you are holding tracks back and why.
+**Size the fan-out to capacity.** Before Step 2, when the repo has `scripts/capacity.sh`, run `bash scripts/capacity.sh status`. Launch at most as many parallel tracks as there are free permits (minimum 1). Hold the remaining independent tracks and launch each one as a running track returns. Tell the user in one line if you are holding tracks back and why.
 
 **Start the stall timer after every launch.** Each background Agent launch returns an `output_file` path. Right after launching, start `python3 <skill-dir>/watch-helpers.py <output_file> ...`, every running helper's path, where `<skill-dir>` is the directory holding this SKILL.md with Bash `run_in_background: true`. It exits, and so wakes you, when all listed helpers have finished (`ALL FINISHED`, nothing to do) or one has written nothing for 20 minutes (`STALE`). On `STALE`, follow the next paragraph; to restart a stuck helper, stop it with `TaskStop` first. Restart the timer whenever you launch more helpers. Each agent file also sets `maxTurns`, so a helper stuck in a loop stops on its own and reports partial work.
 
-**When an agent is silent.** If the user asks about an agent, or one has run far past what its track should take, check its worktree yourself (`git -C <worktree> status --short`, `git -C <worktree> diff --stat`) and `capacity.sh status` before sending it a message. Queued for a permit → keep waiting. No file changes and no permit held → ask it for status by SendMessage once, then relaunch that one track fresh.
+**When an agent is silent.** If the user asks about an agent, or one has run far past what its track should take, check its worktree yourself (`git -C <worktree> status --short`, `git -C <worktree> diff --stat`) and `capacity.sh status` before sending it a message. Queued for a permit → say who holds it, do other work, and check again later. No file changes and no permit held → ask it for status by SendMessage once, then relaunch that one track fresh.
 
 **Opus mode:** if the user says "opus mode" / "no fable", or any Fable agent call fails for quota/availability reasons, run the whole pipeline on Opus: use `opus-scoper` as the Step 0 scoper choice (Opus mode has no quick tier), and the Opus reviewer variant in Step 4. Tell the user in one line which mode is running. Everything else is identical.
 
@@ -87,6 +87,6 @@ Wait for ALL tracks to return before judging. Waiting means ending your turn unt
 Launch a fresh `work-order-reviewer` agent in the background (named `reviewer`) with the work order and the executor's report as its prompt. Normal mode: default model (fable). Its effort is pinned to `high` in its own frontmatter — the Agent tool has no effort parameter, so never try to pass one. **Opus mode:** pass `model: "opus"` as an Agent-call override — then YOU filter its findings: keep spec violations, out-of-scope changes, and defects with a concrete failure scenario; drop hedged maybes with no scenario (Opus is told to report everything; filtering is your job).
 
 - APPROVED (or review skipped) → report to the user: outcome first, what changed, pasted verification output, and either "Fable-reviewed"/"Opus-reviewed" or the skip reason.
-- In a repo that has `scripts/review-branch.sh`: the final report tells the user the branch is pushed and that landing it is `gh pr create --fill`, then `bash scripts/review-branch.sh` (the session runs the printed passes as subagents, then `--continue`, which posts the PR comment and the `review` status; HIGH findings block, two rounds max), then — only after the user's explicit yes, never unasked — `sh scripts/land.sh`.
+- In a repo that has `scripts/review-branch.sh`: the final report tells the user the work is uncommitted and that landing it is commit, `git push -u origin HEAD`, `gh pr create --fill`, then `bash scripts/review-branch.sh` (the session runs the printed passes as subagents, then `--continue`, which posts the PR comment and the `review` status; HIGH findings block, two rounds max), then — only after the user's explicit yes, never unasked — `sh scripts/land.sh`.
 - Problems → send them to a FRESH Opus executor as a fix-list appendix to the work order, then re-run Step 3 and Step 4 once. If it fails review twice, stop and surface everything to the user.
 

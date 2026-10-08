@@ -27,7 +27,7 @@ while True:
     if not running:
         print('ALL FINISHED'); sys.exit(0)
     for p in running:
-        idle = (time.time() - os.path.getmtime(p)) / 60 if os.path.exists(p) else 0
+        idle = (time.time() - (os.path.getmtime(p) if os.path.exists(p) else start)) / 60
         if idle >= STALE_MIN:
             print(f'STALE {idle:.0f} min: {p}'); sys.exit(0)
     if time.time() - start > MAX_HOURS * 3600:
