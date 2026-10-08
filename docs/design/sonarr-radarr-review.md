@@ -4,6 +4,8 @@ The owner went through Sonarr's and Radarr's screens (read from their frontend s
 
 ## Across every screen
 
+- Revised 8 Oct after critiquing all 26 screens (`docs/design/critiques/`): quiet when healthy (only unusual states shown; the rest one keypress away), colour only the best passing release (purple) and problems (red), live downloads as a one-line bar, row actions on the selected row only, one inline panel at a time with the rest dimmed. These override the points below where they conflict.
+
 - Sonarr and Radarr hide much of their status behind hover and click. media-manager-2 shows it inline, as words.
 - They reuse colours across meanings (purple is downloading in one place and 50+ seeders in another). media-manager-2 gives each colour one meaning: purple best on the board, green better than your file, yellow not better than your file, red any risk (hit and run risk, 0 seeders, tracker cooldown).
 - Opening a movie or show lands on its overview. Picking a release by hand (Sonarr's and Radarr's Interactive Search) is a detail view that opens on the last cached results with their age; a fresh search (about 20 seconds) runs only on request.
