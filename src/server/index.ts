@@ -14,6 +14,7 @@ import { readSetting } from './services/connection.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTorrentPoller } from './torrents.js';
 import { createTrackerWatch } from './trackers.js';
+import { createStallFix } from './stalls.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 const host = process.env.HOST ?? '127.0.0.1';
@@ -33,17 +34,16 @@ if (database !== undefined) {
   const runner = createJobRunner();
   const poller = createTorrentPoller({ database, rtorrent: createRtorrent(database), events });
   runner.register('rtorrent-poll', poller.intervalMs, poller.poll);
-  const grabs = createGrabTracker({
-    database,
-    arr: { sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) },
-    events,
-  });
+  const arrServices = { sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) };
+  const grabs = createGrabTracker({ database, arr: arrServices, events });
   runner.register('arr-reconcile', grabs.intervalMs, grabs.reconcile);
   const problems = createProblems({ database, events });
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
   const rtorrent = createRtorrent(database);
   const trackers = createTrackerWatch({ database, rtorrent, problems, events });
   runner.register('tracker-watch', 30_000, trackers.check);
+  const stalls = createStallFix({ database, rtorrent, arr: arrServices, problems, trackers });
+  runner.register('stall-fix', 60_000, stalls.check);
   const app = createApp({
     clientDirectory,
     listeningHost: host,

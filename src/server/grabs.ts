@@ -15,6 +15,7 @@ export type Grab = {
   releaseTitle: string;
   indexer: string;
   grabbedAt: number;
+  publishedAt: number | null;
   byHand: boolean;
   importedAt: number | null;
   failedAt: number | null;
@@ -73,6 +74,7 @@ const readGrab = (row: Record<string, unknown>): Grab => ({
   releaseTitle: String(row.release_title),
   indexer: String(row.indexer),
   grabbedAt: Number(row.grabbed_at),
+  publishedAt: row.published_at === null ? null : Number(row.published_at),
   byHand: row.by_hand === 1,
   importedAt: row.imported_at === null ? null : Number(row.imported_at),
   failedAt: row.failed_at === null ? null : Number(row.failed_at),
@@ -193,17 +195,19 @@ export const createGrabTracker = (options: {
         releaseTitle: previous.releaseTitle || input.releaseTitle,
         indexer: previous.indexer || input.indexer,
         grabbedAt: Math.min(previous.grabbedAt, input.grabbedAt),
+        publishedAt: previous.publishedAt ?? input.publishedAt,
         byHand: previous.byHand || input.byHand,
       };
     if (previous !== undefined && JSON.stringify(previous) === JSON.stringify(merged)) return previous;
     database.prepare(`
-      INSERT INTO grabs (hash, service, movie_id, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand, imported_at, failed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO grabs (hash, service, movie_id, series_id, episode_ids, release_title, indexer, grabbed_at, published_at, by_hand,
+        imported_at, failed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (hash) DO UPDATE SET movie_id = excluded.movie_id, series_id = excluded.series_id,
         episode_ids = excluded.episode_ids, release_title = excluded.release_title, indexer = excluded.indexer,
-        grabbed_at = excluded.grabbed_at, by_hand = excluded.by_hand
+        grabbed_at = excluded.grabbed_at, published_at = excluded.published_at, by_hand = excluded.by_hand
     `).run(merged.hash, merged.service, merged.movieId, merged.seriesId, JSON.stringify(merged.episodeIds),
-      merged.releaseTitle, merged.indexer, merged.grabbedAt, Number(merged.byHand), merged.importedAt, merged.failedAt);
+      merged.releaseTitle, merged.indexer, merged.grabbedAt, merged.publishedAt, Number(merged.byHand), merged.importedAt, merged.failedAt);
     events.publish('grab', merged);
     if (previous === undefined) notify(merged);
     return merged;
@@ -287,6 +291,7 @@ export const createGrabTracker = (options: {
         releaseTitle: existing?.releaseTitle || text(record.sourceTitle),
         indexer: existing?.indexer || text(data.indexer),
         grabbedAt: Math.min(existing?.grabbedAt ?? grabbedAt, grabbedAt),
+        publishedAt: existing?.publishedAt ?? (Number.isNaN(Date.parse(text(data.publishedDate))) ? null : Date.parse(text(data.publishedDate))),
         byHand: false,
       });
     }
@@ -357,6 +362,7 @@ export const createGrabTracker = (options: {
           releaseTitle: text(release.releaseTitle),
           indexer: text(release.indexer),
           grabbedAt: at,
+          publishedAt: Number.isNaN(Date.parse(text(release.publishDate))) ? null : Date.parse(text(release.publishDate)),
           byHand: false,
         });
         void reconcileService(service);

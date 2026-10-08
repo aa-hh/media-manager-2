@@ -35,6 +35,7 @@ const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const problemsModuleUrl = new URL('../dist/server/problems.js', import.meta.url).href;
 const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
+const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
@@ -1719,6 +1720,11 @@ test('rTorrent XML-RPC requests are encoded and responses parsed by hand', async
   });
   const wrap = (value) => `<methodResponse><params><param><value>${value}</value></param></params></methodResponse>`;
 
+  responseBody = wrap('<i8>0</i8>');
+  await rtorrent.call('f.priority.set', ['ABC:f0', 0]);
+  assert.match(requestBodies.pop(), /<param><value><string>ABC:f0<\/string><\/value><\/param><param><value><i8>0<\/i8><\/value><\/param>/);
+  await assert.rejects(rtorrent.call('f.priority.set', ['ABC:f0', 0.5]), TypeError);
+
   responseBody = wrap('<string>done</string>');
   await rtorrent.call('d.multicall2', ['', 'main', 'd.hash=', 'a&b<c>']);
   assert.equal(
@@ -2270,6 +2276,166 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
     assert.deepEqual(fake.calls, []);
     assert.deepEqual(listIssues(database), []);
     database.close();
+  });
+});
+
+test('a stalled torrent is replaced without risking a hit and run', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createTorrentPoller } = await import(torrentsModuleUrl);
+  const { createGrabTracker } = await import(grabsModuleUrl);
+  const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
+  const { createTrackerWatch } = await import(trackersModuleUrl);
+  const { createStallFix, indexerMatchesHost } = await import(stallsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-stalls-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let count = 0;
+  const minute = 60_000;
+  const hash = 'AB'.repeat(20);
+  const start = Date.parse('2026-10-08T12:00:00Z');
+
+  const setup = async ({ publishedAgoMs = 48 * 60 * minute, completed = 0, files = [[0]], releases, manual = false } = {}) => {
+    count += 1;
+    const database = openDatabase(join(root, `db-${count}`, 'media-manager.sqlite'));
+    const clock = { value: start };
+    const now = () => clock.value;
+    const events = createEventHub();
+    const torrent = { completed, down: 0, seeders: 0, scrape: 0 };
+    const calls = [];
+    const rtorrent = {
+      call: async (method, params) => {
+        if (method === 'd.multicall2') {
+          return [[hash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, '', 0, 0, torrent.seeders, torrent.seeders]];
+        }
+        if (method === 't.multicall') return params[2] === 't.url=' ? [['https://tracker.blutopia.cc/announce/key']] : [[torrent.scrape]];
+        if (method === 'f.multicall') return files;
+        calls.push([method, ...params]);
+        return 0;
+      },
+    };
+    const requests = [];
+    const radarr = {
+      request: async (path, init = {}) => {
+        requests.push([init.method ?? 'GET', path, init.body]);
+        if (path.startsWith('/api/v3/queue?')) {
+          return { status: 200, body: { totalRecords: 1, records: [{ id: 55, downloadId: hash.toLowerCase(), movieId: 7, title: 'Movie.2024.1080p', status: 'downloading' }] } };
+        }
+        if (path.startsWith('/api/v3/history/since')) {
+          return { status: 200, body: [{ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - minute).toISOString(),
+            data: { indexer: 'Blutopia (API)', publishedDate: new Date(start - publishedAgoMs).toISOString() } }] };
+        }
+        if (path.startsWith('/api/v3/release?')) return { status: 200, body: releases };
+        return { status: 200, body: {} };
+      },
+    };
+    const sonarr = { request: async () => ({ status: 200, body: { totalRecords: 0, records: [] } }) };
+    const arr = { sonarr: { request: async (path) => (path.startsWith('/api/v3/history') ? { status: 200, body: [] } : sonarr.request(path)) }, radarr };
+    const poller = createTorrentPoller({ database, rtorrent, events, now });
+    const grabs = createGrabTracker({ database, arr, events, now });
+    const problems = createProblems({ database, events, now });
+    const trackers = createTrackerWatch({ database, rtorrent, problems, events, now });
+    const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, now, isManualDownload: () => manual });
+    await grabs.reconcile();
+    const tick = async (minutes = 1) => {
+      for (let i = 0; i < minutes; i += 1) {
+        clock.value += minute;
+        await poller.poll();
+        await stalls.check();
+      }
+    };
+    return { database, torrent, calls, requests, tick, problems };
+  };
+  const release = (title, indexer, overrides = {}) => ({ guid: `guid-${title}`, indexerId: title.length, indexer, title, approved: true, ...overrides });
+  const grabbedTitles = (requests) => requests.filter(([method, path]) => method === 'POST' && path === '/api/v3/release').map(([, , body]) => body.guid);
+
+  // Matching the wrong host label to an indexer name sends a grab to a tracker on a cooldown.
+  await t.test('tracker hosts match indexer names by site label', () => {
+    assert.equal(indexerMatchesHost('BeyondHD (API)', 'beyond-hd.me'), true);
+    assert.equal(indexerMatchesHost('Blutopia (Prowlarr)', 'tracker.blutopia.cc'), true);
+    assert.equal(indexerMatchesHost('PrivateHD', 'blutopia.cc'), false);
+  });
+
+  // Moving the one-hour boundary, or applying it to a release under 24 hours old, turns this red.
+  await t.test('no seeders is stalled after one hour, or three hours for a new release', async () => {
+    const old = await setup({ releases: [] });
+    await old.tick(60);
+    assert.equal(old.requests.some(([method]) => method === 'DELETE'), false);
+    await old.tick(1);
+    assert.equal(old.requests.filter(([method]) => method === 'DELETE').length, 1);
+    old.database.close();
+
+    const fresh = await setup({ publishedAgoMs: 2 * 60 * minute, releases: [] });
+    await fresh.tick(180);
+    assert.equal(fresh.requests.some(([method]) => method === 'DELETE'), false);
+    await fresh.tick(1);
+    assert.equal(fresh.requests.filter(([method]) => method === 'DELETE').length, 1);
+    fresh.database.close();
+  });
+
+  // Skipping the fresh-peers request, or calling it stalled before 30 minutes after it, turns this red.
+  await t.test('seeders with zero speed ask for fresh peers, then stall 30 minutes later', async () => {
+    const run = await setup({ releases: [] });
+    run.torrent.seeders = 2;
+    await run.tick(11);
+    assert.deepEqual(run.calls.filter(([method]) => method === 'd.tracker_announce').length, 1);
+    await run.tick(29);
+    assert.equal(run.requests.some(([method]) => method === 'DELETE'), false);
+    await run.tick(1);
+    assert.equal(run.requests.filter(([method]) => method === 'DELETE').length, 1);
+    run.database.close();
+  });
+
+  // Removing the torrent from rTorrent through the queue, picking the same tracker over another, or picking a cooldown tracker turns this red.
+  await t.test('the replacement blocks with rTorrent untouched and prefers another tracker off cooldown', async () => {
+    const run = await setup({
+      releases: [
+        release('Same.Tracker', 'Blutopia (API)'),
+        release('Rejected', 'PrivateHD', { approved: false, rejected: true }),
+        release('Other.Tracker', 'BeyondHD (API)'),
+      ],
+    });
+    run.database.prepare("INSERT INTO tracker_cooldowns VALUES ('privatehd.to', 0, 'x', 1, ?)").run(hash);
+    await run.tick(61);
+    const [deleted] = run.requests.filter(([method]) => method === 'DELETE');
+    assert.equal(deleted[1], '/api/v3/queue/55?removeFromClient=false&blocklist=true&skipRedownload=true');
+    assert.deepEqual(grabbedTitles(run.requests), ['guid-Other.Tracker']);
+    assert.deepEqual(run.calls.filter(([method]) => method === 'd.erase'), [['d.erase', hash]]);
+    await run.tick(120);
+    assert.equal(grabbedTitles(run.requests).length, 1);
+    run.database.close();
+
+    const onlySame = await setup({ releases: [release('Same.Tracker.2', 'Blutopia (API)'), release('Cooled', 'BeyondHD')] });
+    onlySame.database.prepare("INSERT INTO tracker_cooldowns VALUES ('beyond-hd.me', 0, 'x', 1, ?)").run(hash);
+    await onlySame.tick(61);
+    assert.deepEqual(grabbedTitles(onlySame.requests), ['guid-Same.Tracker.2']);
+    onlySame.database.close();
+  });
+
+  // Erasing a torrent with any downloaded data, or stopping files that already have data, turns this red.
+  await t.test('a partly downloaded torrent stays and only its files at 0% stop', async () => {
+    const run = await setup({ completed: 400, files: [[12], [0], [3], [0]], releases: [] });
+    await run.tick(61);
+    assert.deepEqual(run.calls.filter(([method]) => method === 'd.erase'), []);
+    assert.deepEqual(run.calls.filter(([method]) => method === 'f.priority.set'), [['f.priority.set', `${hash}:f1`, 0], ['f.priority.set', `${hash}:f3`, 0]]);
+    assert.deepEqual(run.calls.filter(([method]) => method === 'd.update_priorities'), [['d.update_priorities', hash]]);
+    run.database.close();
+  });
+
+  // Searching after the third release, or grabbing for a manual download, turns this red.
+  await t.test('the third failed release and manual downloads stop at needing the owner', async () => {
+    const limited = await setup({ releases: [release('Another', 'BeyondHD')] });
+    limited.problems.recordReleaseAttempt({ type: 'movie', service: 'radarr', id: '7' }, 'first');
+    limited.problems.recordReleaseAttempt({ type: 'movie', service: 'radarr', id: '7' }, 'second');
+    await limited.tick(61);
+    assert.deepEqual(grabbedTitles(limited.requests), []);
+    assert.match(listOpenProblems(limited.database).find((problem) => problem.kind === 'stalled').steps.at(-1).text, /Gave up after 3/);
+    limited.database.close();
+
+    const manual = await setup({ manual: true, releases: [release('Another', 'BeyondHD')] });
+    await manual.tick(61);
+    assert.deepEqual(grabbedTitles(manual.requests), []);
+    assert.equal(listOpenProblems(manual.database).find((problem) => problem.kind === 'stalled').state, 'needs_you');
+    manual.database.close();
   });
 });
 

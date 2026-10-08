@@ -147,6 +147,14 @@ const applicationMigrations = [
     rechecked_at INTEGER,
     replace INTEGER NOT NULL CHECK (replace IN (0, 1))
   ) STRICT;`,
+  `ALTER TABLE grabs ADD COLUMN published_at INTEGER;
+  CREATE TABLE stall_watch (
+    hash TEXT PRIMARY KEY,
+    no_seeders_since INTEGER,
+    zero_speed_since INTEGER,
+    announced_at INTEGER,
+    replaced_at INTEGER
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
