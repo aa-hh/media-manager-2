@@ -2,10 +2,12 @@ import type { Server } from 'node:http';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
+import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createJobRunner } from './jobs.js';
+import { createProblems } from './problems.js';
 import { createGrabTracker } from './grabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -36,12 +38,15 @@ if (database !== undefined) {
     events,
   });
   runner.register('arr-reconcile', grabs.intervalMs, grabs.reconcile);
+  const problems = createProblems({ database, events });
+  runner.register('dependency-problems', 30_000, problems.syncDependencies);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
+    api: createApiRoutes(database),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
       receive: grabs.receiveWebhook,

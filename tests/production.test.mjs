@@ -32,6 +32,8 @@ const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).hre
 const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
 const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
+const problemsModuleUrl = new URL('../dist/server/problems.js', import.meta.url).href;
+const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
@@ -358,7 +360,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks, api } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -372,6 +374,7 @@ const makeApp = async (input = {}) => {
     events,
     timers,
     webhooks,
+    api,
   });
   return { app, clock, fixture };
 };
@@ -2056,6 +2059,91 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     assert.equal(received.length, 0);
     assert.equal((await post(app, '/webhooks/radarr', { Authorization: authorization(secret) })).status, 204);
     assert.deepEqual(received, [['radarr', { eventType: 'Test' }]]);
+  });
+});
+
+test('problems record each fix attempt and its result', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems, listOpenProblems, subjectHistory, countReleaseAttempts } = await import(problemsModuleUrl);
+  const { writeDependency } = await import(dependenciesModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-problems-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const episode = { type: 'episode', service: 'sonarr', id: '31' };
+
+  // Opening a second record for a problem already open, losing a step, or forgetting tried releases across a restart turns this red.
+  await t.test('a problem moves through being handled, needs you and resolved, and tried releases survive a restart', async () => {
+    const databasePath = join(root, 'lifecycle', 'media-manager.sqlite');
+    let database = openDatabase(databasePath);
+    const clock = { value: 1_000 };
+    const events = createEventHub();
+    const published = [];
+    events.subscribe((event) => published.push(event));
+    let problems = createProblems({ database, events, now: () => clock.value });
+    const first = problems.open({ kind: 'stalled', subject: episode, summary: 'No seeders for an hour.', hash: 'AB'.repeat(20) });
+    assert.equal(first.state, 'handling');
+    assert.equal(problems.open({ kind: 'stalled', subject: episode, summary: 'again' }).id, first.id);
+    clock.value += 1;
+    problems.step(first.id, 'fix', 'Blocked the release and grabbed one from Beyond-HD.');
+    assert.equal(problems.recordReleaseAttempt(episode, 'release-one'), 1);
+    assert.equal(problems.recordReleaseAttempt(episode, 'release-one'), 1);
+    assert.equal(problems.recordReleaseAttempt(episode, 'release-two'), 2);
+    clock.value += 1;
+    problems.setState(first.id, 'needs_you', 'Gave up after three releases.');
+    assert.deepEqual(listOpenProblems(database).map((problem) => problem.state), ['needs_you']);
+    database.close();
+
+    database = openDatabase(databasePath);
+    problems = createProblems({ database, events, now: () => clock.value });
+    assert.equal(countReleaseAttempts(database, episode), 2);
+    clock.value += 1;
+    problems.setState(first.id, 'resolved', 'Imported by hand.');
+    assert.throws(() => problems.step(first.id, 'fix', 'late'), { message: 'Problem is not open.' });
+    assert.deepEqual(listOpenProblems(database), []);
+    const [history] = subjectHistory(database, episode);
+    assert.deepEqual(history.steps.map((step) => [step.at, step.kind]), [[1000, 'problem'], [1001, 'fix'], [1002, 'result'], [1003, 'result']]);
+    assert.equal(history.resolvedAt, 1003);
+    const reopened = problems.open({ kind: 'stalled', subject: episode, summary: 'Stalled again.' });
+    assert.notEqual(reopened.id, first.id);
+    assert.equal(published.filter((event) => event.type === 'problem').length, 5);
+    database.close();
+  });
+
+  // Leaving a down dependency without a needs-you problem, or never resolving it on recovery, turns this red.
+  await t.test('a down dependency pauses the fixes that need it and resolves when it recovers', async () => {
+    const database = openDatabase(join(root, 'dependencies', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const problems = createProblems({ database, events, now: () => 5_000 });
+    writeDependency(database, events, 'rtorrent', 'down', 5_000, 'rTorrent is unreachable.');
+    writeDependency(database, events, 'sonarr', 'ok', 5_000, '');
+    assert.deepEqual(problems.pausedBy(['rtorrent', 'sonarr', 'never-seen']), ['rtorrent']);
+    problems.syncDependencies();
+    problems.syncDependencies();
+    let open = listOpenProblems(database);
+    assert.equal(open.length, 1);
+    assert.deepEqual([open[0].state, open[0].subject.id, open[0].summary], ['needs_you', 'rtorrent', 'rTorrent is unreachable.']);
+    writeDependency(database, events, 'rtorrent', 'ok', 6_000, '');
+    problems.syncDependencies();
+    assert.deepEqual(problems.pausedBy(['rtorrent']), []);
+    assert.deepEqual(listOpenProblems(database), []);
+    database.close();
+  });
+
+  // Mounting the read routes outside the owner guard turns this red.
+  await t.test('problem and download routes need the owner session', async () => {
+    const database = openDatabase(join(root, 'api', 'media-manager.sqlite'));
+    const { app } = await makeApp({ api: createApiRoutes(database) });
+    assert.equal((await app.request('/api/problems')).status, 401);
+    assert.equal((await app.request('/api/downloads')).status, 401);
+    const { session } = await signIn(app);
+    const problems = await app.request('/api/problems', { headers: { Cookie: session } });
+    assert.equal(problems.status, 200);
+    assert.deepEqual(await problems.json(), []);
+    const downloads = await app.request('/api/downloads', { headers: { Cookie: session } });
+    assert.deepEqual(Object.keys(await downloads.json()).sort(), ['grabs', 'problems', 'queue', 'torrents']);
+    assert.equal((await app.request('/api/problems/history?type=nope&id=1', { headers: { Cookie: session } })).status, 400);
+    database.close();
   });
 });
 

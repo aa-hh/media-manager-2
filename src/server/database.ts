@@ -101,6 +101,37 @@ const applicationMigrations = [
     service TEXT PRIMARY KEY CHECK (service IN ('sonarr', 'radarr')),
     history_checked_at INTEGER NOT NULL
   ) STRICT;`,
+  `CREATE TABLE problems (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,
+    subject_type TEXT NOT NULL CHECK (subject_type IN ('movie', 'episode', 'torrent', 'tracker', 'dependency')),
+    service TEXT NOT NULL CHECK (service IN ('', 'sonarr', 'radarr')),
+    subject_id TEXT NOT NULL,
+    hash TEXT,
+    state TEXT NOT NULL CHECK (state IN ('handling', 'needs_you', 'resolved')),
+    summary TEXT NOT NULL,
+    opened_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    resolved_at INTEGER
+  ) STRICT;
+  CREATE UNIQUE INDEX problems_one_open ON problems (kind, subject_type, service, subject_id) WHERE state != 'resolved';
+  CREATE INDEX problems_subject ON problems (subject_type, service, subject_id);
+  CREATE TABLE problem_steps (
+    id INTEGER PRIMARY KEY,
+    problem_id INTEGER NOT NULL REFERENCES problems (id),
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('problem', 'fix', 'result')),
+    text TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX problem_steps_problem ON problem_steps (problem_id);
+  CREATE TABLE release_attempts (
+    subject_type TEXT NOT NULL,
+    service TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    release_key TEXT NOT NULL,
+    tried_at INTEGER NOT NULL,
+    PRIMARY KEY (subject_type, service, subject_id, release_key)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

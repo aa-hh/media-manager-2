@@ -18,6 +18,7 @@ export type CreateAppOptions = {
   fetch?: typeof globalThis.fetch;
   events?: EventHub;
   timers?: Timers;
+  api?: Hono;
   webhooks?: {
     secret(): string | undefined;
     receive(service: 'sonarr' | 'radarr', payload: unknown): 'ok' | 'ignored' | 'invalid';
@@ -327,6 +328,7 @@ export const createApp = (options: CreateAppOptions) => {
       await done;
     });
   });
+  if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));
 
