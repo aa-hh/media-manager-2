@@ -4,6 +4,9 @@
 .review-pending/
 # Worktrees live here (CLAUDE.md, "Work in worktrees").
 .claude/worktrees/
+# Platform binary for the vendored impeccable skill; its launcher downloads it.
+.claude/skills/impeccable/scripts/bin/
+__pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
