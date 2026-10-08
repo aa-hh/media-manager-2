@@ -9,6 +9,7 @@ import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
 import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
+import { createOwnedRoutes, type Owned } from './owned.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
 import { createSearchRoutes, type Search } from './search.js';
 
@@ -25,6 +26,7 @@ export type CreateAppOptions = {
   add?: Add;
   releases?: Releases;
   grabs?: Grabs;
+  owned?: Owned;
 };
 
 type AppEnvironment = {
@@ -298,6 +300,9 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.add !== undefined) app.route('/api/add', createAddRoutes(options.add));
   if (options.releases !== undefined) app.route('/api/releases', createReleaseRoutes(options.releases));
   if (options.grabs !== undefined) app.route('/api/grabs', createGrabRoutes(options.grabs));
+  if (options.owned !== undefined && options.grabs !== undefined) {
+    app.route('/api/owned', createOwnedRoutes(options.owned, options.grabs.qualities));
+  }
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));
 

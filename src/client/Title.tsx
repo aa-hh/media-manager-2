@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from './components/ui/button';
+import { OwnedTitle } from './Owned';
 import { Chip, Poster, statusLabel, type SearchResult } from './Search';
 
 type QualityProfile = { id: number; name: string };
@@ -345,22 +346,25 @@ export function TitleView({ result, onBack, onAdded, onUnauthenticated }: {
             {result.inLibrary && <Chip tone="filled">✓ In library</Chip>}
           </div>
           {result.overview !== null && <p className="mt-4 line-clamp-3 text-[var(--secondary-ink)]">{result.overview}</p>}
-          <div className="mt-6">
-            {result.inLibrary && !justAdded
-              ? <p className="text-[var(--secondary-ink)]">Already in {result.type === 'tv' ? 'Sonarr' : 'Radarr'}.</p>
-              : (
-                <AddControls
-                  result={result}
-                  onAdded={(libraryId) => {
-                    setJustAdded(true);
-                    onAdded(libraryId);
-                  }}
-                  onUnauthenticated={onUnauthenticated}
-                />
-              )}
-          </div>
+          {!(result.inLibrary && !justAdded) && (
+            <div className="mt-6">
+              <AddControls
+                result={result}
+                onAdded={(libraryId) => {
+                  setJustAdded(true);
+                  onAdded(libraryId);
+                }}
+                onUnauthenticated={onUnauthenticated}
+              />
+            </div>
+          )}
         </div>
       </div>
+      {result.inLibrary && !justAdded && (
+        <div className="mt-6">
+          <OwnedTitle result={result} onUnauthenticated={onUnauthenticated} />
+        </div>
+      )}
     </article>
   );
 }

@@ -7,6 +7,7 @@ import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createGrabs } from './grabs.js';
 import { createJobRunner } from './jobs.js';
+import { createOwned } from './owned.js';
 import { createReleases } from './releases.js';
 import { createSearch } from './search.js';
 import { createArr } from './services/arr.js';
@@ -45,6 +46,7 @@ if (database !== undefined) {
     add: createAdd(database, arr),
     releases,
     grabs,
+    owned: createOwned(arr),
   });
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
