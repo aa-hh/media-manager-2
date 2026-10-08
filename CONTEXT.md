@@ -48,6 +48,10 @@ _Avoid_: copy, edition, duplicate
 rTorrent continuing to upload a finished torrent. Required by the private trackers in use, so a torrent's downloaded files are never deleted when its library copy is replaced. When the user deletes a version, media-manager-2 asks whether to also remove its torrent, recommending an answer based on whether the tracker's hit and run rules are met.
 _Avoid_: sharing
 
+**Stalled**:
+A started, unfinished torrent that has made no progress for long enough that media-manager-2 stops waiting on it and looks for another release. rTorrent has no such status; media-manager-2 decides it.
+_Avoid_: stuck, dead, hung
+
 **Tracker**:
 A private torrent site that a release comes from, with its own hit and run rules.
 _Avoid_: indexer (the search source Sonarr and Radarr query, which may or may not be the same site), site
