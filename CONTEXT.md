@@ -16,6 +16,10 @@ _Avoid_: radar, the movie backend
 The download client that Sonarr and Radarr hand torrents to. It does the downloading; they only check on it. media-manager-2 reads torrent status from it directly.
 _Avoid_: the downloader, the torrent client
 
+**Monitored**:
+Whether Sonarr or Radarr is watching for a movie or episode, searching for it and grabbing upgrades. Sonarr's and Radarr's own term.
+_Avoid_: wanted, tracked, followed
+
 **Release**:
 One specific torrent an indexer offers for a movie or episode, before it is downloaded. Sonarr's and Radarr's own term.
 _Avoid_: result, file, torrent (for something not yet grabbed)
