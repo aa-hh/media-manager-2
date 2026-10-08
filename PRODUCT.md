@@ -49,6 +49,12 @@ First version, as agreed on the Linear map ([Map: first version of media-manager
 8. Health checks for Sonarr, Radarr, rTorrent, Plex, each tracker account and its own housekeeping.
 9. A view-only calendar of upcoming monitored episodes and movies.
 10. Flags and warnings appear in the app only: a flagged page, a history on each movie and episode, and a global activity log.
+11. The app opens on the library, with search one action away from every screen.
+12. One search box finds library matches first, then Sonarr and Radarr lookup results. Results carry enough to tell titles apart before opening one: poster, title, year, TV or movie, network or studio, continuing or ended, rating, a one-line overview, and whether it is already in the library. All of it comes from the Sonarr and Radarr lookup.
+13. A title not yet added opens on the same overview as an owned one: large poster, description, rating, status, and every season with whether it has fully aired, is airing or is upcoming, with episode counts.
+14. Adding a title is the monitor decision. For a show: what to monitor, mirroring Sonarr's choices (all, future, missing, existing, recent, pilot, first season, last season, none; specials on or off), the quality profile, and whether to search on add. For a movie: Radarr's monitor choice, minimum availability, quality profile and search on add. Confirming with search on add starts the automatic search for everything monitored that has aired, and the same page becomes the title's overview with that search's progress per season and episode.
+15. Monitored state is visible on every show, season and episode row, with a mixed state for a season that is partly monitored, and can be toggled on the row.
+16. Episode and movie rows carry Search automatically and Pick a release directly. Versions and history open on request; nothing in the grab path needs a side panel.
 
 Images and descriptions come only from Sonarr and Radarr: one poster and one backdrop per title, plus season posters and episode images.
 
