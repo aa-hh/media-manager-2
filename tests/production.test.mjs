@@ -339,7 +339,7 @@ test('database initialization failures preserve existing files', async (t) => {
   afterRelease.close();
 });
 
-// Weak, relative, in-memory, symlinked, and application-owned locations must be rejected without changing permissions.
+// Empty, relative, in-memory, publicly accessible, symlinked database-file, and application-owned locations must be rejected without changing permissions.
 test('database paths and permissions are restricted', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-permissions-'));
   t.after(() => rm(root, { recursive: true, force: true }));
