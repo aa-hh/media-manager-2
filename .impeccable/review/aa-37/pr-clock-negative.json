@@ -1,0 +1,16 @@
+{
+  "phase": "before production repair",
+  "sourceHead": "b1233bb9ae1266f9c01323a3613155e34a912fbe",
+  "fixture": "compiled application, signed Plex provider fixture, real session routes and cookies",
+  "event": "one explicitly labelled synthetic focus after arming fourth-response hold",
+  "expiresAt": 1791560024445,
+  "serverNow": 1791559994445,
+  "browserNow": 1791560054445,
+  "sessionRequestsBefore": 2,
+  "sessionRequestsAfter": 6,
+  "sessionStatuses": [401,401,200,200,200,200],
+  "immediateTimeoutDelays": [0,0,0],
+  "heldSessionDelivery": 1,
+  "visibleState": "Checking session; no private shell",
+  "focus": "Simulate focus fixture button"
+}

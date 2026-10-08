@@ -1,0 +1,6 @@
+{
+  "announcement": "Plex sign-in couldn’t be verified.",
+  "heading": "Plex sign-in couldn’t be verified.",
+  "observations": "pageshow persisted=false | session 401 {\"error\":\"unauthenticated\"} | fixture requested real logout 204 | session 401 {\"error\":\"unauthenticated\"}",
+  "url": "http://127.0.0.1:4317/auth/callback"
+}

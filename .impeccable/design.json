@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-08T08:04:13.899184+00:00",
+  "title": "Design System: media-manager-2",
+  "extensions": {
+    "colorMeta": {
+      "best": {
+        "role": "primary",
+        "displayName": "Best passing release"
+      },
+      "risk": {
+        "role": "error",
+        "displayName": "Problem or risk"
+      }
+    },
+    "typographyMeta": {
+      "button": {
+        "purpose": "Shared action labels."
+      },
+      "navigation": {
+        "purpose": "Page navigation labels."
+      },
+      "body": {
+        "purpose": "Release data and download counts."
+      },
+      "key": {
+        "purpose": "Visual keyboard hints."
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "Button/default",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Static shared button style. Interactive behavior is not implemented.",
+      "html": "<button class=\"ds-button-default\">Search automatically</button>",
+      "css": ".ds-button-default { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: #EEF0F2; color: #0E0F12; border: none; border-radius: 0; font: 600 14px Barlow; }"
+    },
+    {
+      "name": "Button/outline",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Static shared button style. Interactive behavior is not implemented.",
+      "html": "<button class=\"ds-button-outline\">Pick a release</button>",
+      "css": ".ds-button-outline { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: transparent; color: #EEF0F2; border: 1px solid #69707B; border-radius: 0; font: 600 14px Barlow; }"
+    },
+    {
+      "name": "Button/ghost",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Static shared button style. Interactive behavior is not implemented.",
+      "html": "<button class=\"ds-button-ghost\">Details</button>",
+      "css": ".ds-button-ghost { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: transparent; color: #EEF0F2; border: none; border-radius: 0; font: 600 14px Barlow; }"
+    },
+    {
+      "name": "Input/Search",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Desktop search field style; app search is not connected.",
+      "html": "<input class=\"ds-input-search\" aria-label=\"Search movies and TV\" value=\"dune\">",
+      "css": ".ds-input-search { height: 32px; width: 420px; padding: 0 10px; background: #0E0F12; color: #EEF0F2; border: 1px solid #69707B; border-radius: 0; font: 400 14px \"Barlow Semi Condensed\"; }"
+    },
+    {
+      "name": "NavigationMenu/List",
+      "kind": "nav",
+      "description": "Static navigation labels; the current page uses brighter, heavier text.",
+      "html": "<nav class=\"ds-navigation\"><span class=\"ds-navigation-current\">Search</span><span>Downloads 3</span><span>Calendar</span><span>Flagged 5</span><span>Health</span></nav>",
+      "css": ".ds-navigation { display: flex; align-items: center; gap: 20px; color: #9AA1AB; font: 500 13px Barlow; } .ds-navigation-current { color: #EEF0F2; font-weight: 600; }"
+    },
+    {
+      "name": "Kbd",
+      "kind": "chip",
+      "refersTo": "keyboard-key",
+      "description": "A visual key hint; this sample registers no keyboard shortcut.",
+      "html": "<kbd class=\"ds-key\">D</kbd>",
+      "css": ".ds-key { display: inline-block; padding: 0 5px; color: #9AA1AB; border: 1px solid #69707B; border-radius: 0; font: 400 11px \"Barlow Semi Condensed\"; }"
+    },
+    {
+      "name": "Table/Row",
+      "kind": "custom",
+      "refersTo": "table-row",
+      "description": "Shared row background, divider and spacing. Selection and sorting remain implementation work.",
+      "html": "<div class=\"ds-table-row\"><span>Title</span><span>Quality</span><span>Tracker</span></div>",
+      "css": ".ds-table-row { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 20px; color: #EEF0F2; background: #15171C; border-bottom: 1px solid #262A33; font: 400 13px \"Barlow Semi Condensed\"; } .ds-table-row span { flex: 1; } .ds-table-row:hover { background: #22262E; }"
+    },
+    {
+      "name": "Downloads/Live bar",
+      "kind": "custom",
+      "refersTo": "downloads-live-bar",
+      "description": "Static example of the product-specific one-line download summary. Values are prototype copy.",
+      "html": "<div class=\"ds-live-bar\"><strong>3 downloading</strong><span>41.6 MB/s down \u00b7 12.3 MB/s up</span><span class=\"ds-live-items\">Severance S02E07 64% \u00b7 The Bear S03 23% \u00b7 Andor S02E09 91%</span><span class=\"ds-live-expand\">D expand</span></div>",
+      "css": ".ds-live-bar { display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 20px; background: #15171C; color: #9AA1AB; border-top: 1px solid #262A33; font: 400 13px \"Barlow Semi Condensed\"; } .ds-live-bar strong { color: #EEF0F2; font-weight: 600; } .ds-live-items, .ds-live-expand { color: #9AA1AB; font-size: 12px; } .ds-live-expand { margin-left: auto; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Formula 1 live timing tower",
+    "overview": "The approved reference is the Formula 1 live timing tower: dense release rows, stepped graphite backgrounds and precise comparisons. The owner searches, compares and chooses a release without routine status labels competing for attention.\n\nThis records the 26 static screens in `design/mediaManager2.pen`. Shared components were rebuilt from the existing design as shadcn/ui counterparts; they were not imported from a kit. Base UI controls and TanStack Table behavior are not implemented here. Static review does not prove runtime behavior or accessibility.",
+    "dos": [
+      "Do keep normal monitored, downloaded, ready and not-aired states quiet.",
+      "Do show actions and key hints on the selected row only.",
+      "Do open one inline decision at a time and dim surrounding content.",
+      "Do keep the one-line live-download bar on every screen.",
+      "Do preserve the owner's chosen release and show tracker risks in words."
+    ],
+    "donts": [
+      "Don't add green or yellow comparison fills.",
+      "Don't hide release tables in a modal or make risk explanations hover-only.",
+      "Don't add shadows, rounded controls or decorative cards.",
+      "Don't describe static components as working keyboard controls or tested accessibility."
+    ]
+  }
+}

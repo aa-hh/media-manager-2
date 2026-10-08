@@ -7,3 +7,6 @@
 # Platform binary for the vendored impeccable skill; its launcher downloads it.
 .claude/skills/impeccable/scripts/bin/
 __pycache__/
+node_modules/
+dist/
+*.tsbuildinfo

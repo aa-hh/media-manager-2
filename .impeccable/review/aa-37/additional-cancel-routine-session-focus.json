@@ -1,0 +1,16 @@
+{
+  "active": {
+    "tag": "BUTTON",
+    "text": "Simulate focus"
+  },
+  "announcement": "",
+  "busy": null,
+  "buttons": [
+    {
+      "disabled": false,
+      "text": "Sign out"
+    }
+  ],
+  "heading": "media-manager-2",
+  "observations": "pageshow persisted=false | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | /auth/complete response 202 | explicit synthetic focus event | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | {\"action\":\"success\",\"clock\":1791472103852,\"providerSuccess\":true,\"cancelHeld\":false,\"waiting\":0,\"calls\":{\"/api/session\":13,\"/auth/status\":11,\"/auth/start\":6,\"/auth/cancel\":6,\"/auth/logout\":3,\"/auth/callback\":2,\"/auth/complete\":3},\"responseStatuses\":{\"/\":[200,200,200,200],\"/assets/index-DC9T7iYe.js\":[200,200],\"/assets/index-BS_nBJaP.css\":[200,200,200,200,200,200],\"/assets/inter-variable-VF2RPR_K.ttf\":[200,200,200,200,200,200],\"/api/session\":[401,401,401,401,401,401,401,401,401,401,401,401,401],\"/auth/status\":[200,200,200,200,200,200,200,200,200,200,200],\"/auth/start\":[201,201,201,201,201,201],\"/auth/cancel\":[204,204,204,400,204,400],\"/auth/logout\":[204,204,204],\"/assets/index-ntkCSFu_.js\":[200,200,200,200],\"/auth/callback\":[200,200],\"/auth/complete\":[202,202,202]},\"callbackUrl\":\"http://127.0.0.1:4312/auth/callback?state=TLEKTHq3iujii6XxMEW8QZOQ5oGmKQUHgTBqY8ZKghI\"} | /auth/complete response 200 | explicit synthetic focus event | /api/session response 200 | session 200 {\"expiresAt\":1791558503852}"
+}

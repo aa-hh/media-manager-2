@@ -1,0 +1,16 @@
+{
+  "active": {
+    "tag": "BUTTON",
+    "text": "Read observations"
+  },
+  "announcement": "Signed out.",
+  "busy": "true",
+  "buttons": [
+    {
+      "disabled": false,
+      "text": "Sign in with Plex"
+    }
+  ],
+  "heading": "Sign in",
+  "observations": "pageshow persisted=false | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | /auth/status response 200 | status body {\"configured\":true,\"pending\":false} | hold start delivery enabled | real start 201 delivered binding cookie; response held | explicit synthetic persisted PageTransitionEvent | pageshow persisted=true | /api/session response 401 | /auth/status response 200 | session 401 {\"error\":\"unauthenticated\"} | status body {\"configured\":true,\"pending\":true} | hold actual cancellation delivery enabled | /auth/cancel response 204 | real cancel 204 held delivery id=1 | /auth/status response 200 | status body {\"configured\":true,\"pending\":false} | {\"action\":\"read\",\"clock\":1791472103852,\"providerSuccess\":false,\"cancelHeld\":false,\"waiting\":0,\"calls\":{\"/api/session\":4,\"/auth/status\":5,\"/auth/start\":1,\"/auth/cancel\":1,\"/auth/logout\":1},\"responseStatuses\":{\"/\":[200,200],\"/assets/index-DC9T7iYe.js\":[200,200],\"/assets/index-BS_nBJaP.css\":[200,200],\"/assets/inter-variable-VF2RPR_K.ttf\":[200,200],\"/api/session\":[401,401,401,401],\"/auth/status\":[200,200,200,200,200],\"/auth/start\":[201],\"/auth/cancel\":[204],\"/auth/logout\":[204]},\"callbackUrl\":\"http://127.0.0.1:4312/auth/callback?state=4Vvv2_q7TQfvhnFdeYui-HqXQhhCEb-Lqd1w7y8KU1E\"} | {\"action\":\"read\",\"clock\":1791472103852,\"providerSuccess\":false,\"cancelHeld\":false,\"waiting\":0,\"calls\":{\"/api/session\":4,\"/auth/status\":5,\"/auth/start\":1,\"/auth/cancel\":1,\"/auth/logout\":1},\"responseStatuses\":{\"/\":[200,200],\"/assets/index-DC9T7iYe.js\":[200,200],\"/assets/index-BS_nBJaP.css\":[200,200],\"/assets/inter-variable-VF2RPR_K.ttf\":[200,200],\"/api/session\":[401,401,401,401],\"/auth/status\":[200,200,200,200,200],\"/auth/start\":[201],\"/auth/cancel\":[204],\"/auth/logout\":[204]},\"callbackUrl\":\"http://127.0.0.1:4312/auth/callback?state=4Vvv2_q7TQfvhnFdeYui-HqXQhhCEb-Lqd1w7y8KU1E\"}"
+}

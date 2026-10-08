@@ -1,0 +1,16 @@
+{
+  "active": {
+    "tag": "H1",
+    "text": "Sign in"
+  },
+  "announcement": "Signed out.",
+  "busy": "false",
+  "buttons": [
+    {
+      "disabled": false,
+      "text": "Sign in with Plex"
+    }
+  ],
+  "heading": "Sign in",
+  "observations": "pageshow persisted=false | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | /auth/status response 200 | status body {\"configured\":true,\"pending\":false} | hold start delivery enabled | real start 201 delivered binding cookie; response held | explicit synthetic persisted PageTransitionEvent | pageshow persisted=true | /api/session response 401 | /auth/status response 200 | session 401 {\"error\":\"unauthenticated\"} | status body {\"configured\":true,\"pending\":true} | hold actual cancellation delivery enabled | /auth/cancel response 204 | real cancel 204 held delivery id=1 | /auth/status response 200 | status body {\"configured\":true,\"pending\":false}"
+}
