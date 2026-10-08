@@ -58,7 +58,7 @@ Every future browser route for settings, media and images, search, grabs, replac
 
 Trusted server background jobs continue without a browser session. Future webhooks need a separate authenticated service contract. No webhook exists or bypasses owner authorization now.
 
-Later features add background jobs to the job runner under these rules. Every job is registered before the runner starts. A job never overlaps its own previous run; a tick that arrives while the previous run is unfinished is skipped. A failing job is logged by name only and stays scheduled. Jobs run with no session and no request. The first run happens one interval after start. SIGTERM or SIGINT stops the runner, waits for runs in progress, closes open streams and the server, and exits with code 0. The schedule lives only in memory, so a restart starts from an empty schedule.
+Later features add background jobs to the job runner under these rules. Every job is registered before the runner starts. A job never overlaps its own previous run; a tick that arrives while the previous run is unfinished is skipped. A failing job is logged by name only and stays scheduled. Jobs run with no session and no request. The first run happens one interval after start. SIGTERM or SIGINT stops the runner, waits for runs in progress, closes open streams and the server, and exits with code 0. A second signal during shutdown exits immediately with code 1. The schedule lives only in memory, so a restart starts from an empty schedule.
 
 Use `npm run dev` for the Vite development server.
 Always build and test through `scripts/build.sh` and `scripts/test.sh`.

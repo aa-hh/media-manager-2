@@ -34,7 +34,7 @@ if (database !== undefined) {
   }) as Server;
   let stopping = false;
   const shutdown = async () => {
-    if (stopping) return;
+    if (stopping) process.exit(1);
     stopping = true;
     await runner.stop();
     server.close(() => process.exit(0));
