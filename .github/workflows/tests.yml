@@ -1,0 +1,28 @@
+name: Tests
+
+# The full suite, once per PR and once on every push to main. No path filter
+# on purpose: a required check that does not run leaves the PR stuck at
+# "expected". The job is named `tests` to match the required check in the
+# repo ruleset. It runs the same wrapper as the local pre-push hook.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full suite
+        run: sh scripts/test.sh --full
