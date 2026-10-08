@@ -3,7 +3,10 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { streamSSE } from 'hono/streaming';
 import { createAuthentication } from './auth.js';
+import { createEventHub, type EventHub } from './events.js';
+import { globalTimers, type Timers } from './jobs.js';
 
 export type CreateAppOptions = {
   clientDirectory: string;
@@ -12,13 +15,19 @@ export type CreateAppOptions = {
   publicOrigin?: string;
   now?: () => number;
   fetch?: typeof globalThis.fetch;
+  events?: EventHub;
+  timers?: Timers;
 };
 
 type AppEnvironment = {
   Variables: {
     sessionExpiresAt: number;
+    sessionToken: string;
   };
 };
+
+const MAX_STREAMS = 20;
+const KEEPALIVE_MS = 25_000;
 
 type CookieRead =
   | { kind: 'missing' | 'invalid' | 'duplicate' }
@@ -69,6 +78,8 @@ const acceptsHtml = (header: string | undefined) => header?.split(',').some(
 export const createApp = (options: CreateAppOptions) => {
   if (!isAbsolute(options.clientDirectory)) throw new TypeError('clientDirectory must be absolute.');
   const now = options.now ?? Date.now;
+  const events = options.events ?? createEventHub();
+  const timers = options.timers ?? globalTimers;
   const authentication = createAuthentication({
     listeningHost: options.listeningHost,
     ownerPlexId: options.ownerPlexId,
@@ -233,6 +244,7 @@ export const createApp = (options: CreateAppOptions) => {
       return context.json({ error: validated.kind === 'expired' ? 'session_expired' : 'unauthenticated' }, 401);
     }
     context.set('sessionExpiresAt', validated.expiresAt);
+    context.set('sessionToken', session.value);
     if (!['GET', 'HEAD', 'OPTIONS'].includes(context.req.method)) return requireBrowserPost(context, next);
     return next();
   };
@@ -240,6 +252,40 @@ export const createApp = (options: CreateAppOptions) => {
   app.use('/api', privateGuard);
   app.use('/api/*', privateGuard);
   app.get('/api/session', (context) => context.json({ expiresAt: context.get('sessionExpiresAt'), serverNow: now() }));
+  let openStreams = 0;
+  app.get('/api/events', (context) => {
+    if (context.req.method !== 'GET') return context.json({ error: 'method_not_allowed' }, 405);
+    if (openStreams >= MAX_STREAMS) return context.json({ error: 'too_many_streams' }, 503);
+    openStreams += 1;
+    return streamSSE(context, async (stream) => {
+      const token = context.get('sessionToken');
+      let finished = false;
+      let closed!: () => void;
+      const done = new Promise<void>((resolve) => { closed = resolve; });
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        unsubscribe();
+        timers.clearInterval(keepalive);
+        openStreams -= 1;
+        closed();
+      };
+      const valid = () => {
+        if (authentication.validateSession(token).kind === 'success') return true;
+        finish();
+        return false;
+      };
+      stream.onAbort(finish);
+      const unsubscribe = events.subscribe((event) => {
+        if (!valid()) return;
+        void stream.writeSSE({ id: String(event.id), event: event.type, data: JSON.stringify(event.data) });
+      });
+      const keepalive = timers.setInterval(() => {
+        if (valid()) void stream.write(': keepalive\n\n');
+      }, KEEPALIVE_MS);
+      await done;
+    });
+  });
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));
 
