@@ -20,6 +20,14 @@ _Avoid_: the downloader, the torrent client
 Whether Sonarr or Radarr is watching for a movie or episode, searching for it and grabbing upgrades. Sonarr's and Radarr's own term.
 _Avoid_: wanted, tracked, followed
 
+**Automatic search**:
+Asking Sonarr or Radarr to search every tracker for a movie or episode and grab the best release that meets its quality profile. The usual way things get downloaded. Sonarr's and Radarr's own term; the app's button says "Search automatically".
+_Avoid_: quick search, auto-grab
+
+**Interactive search**:
+Searching every tracker for a movie or episode and listing all releases so the user picks one by hand. Slow (about 20 seconds), so media-manager-2 shows the last results first. Sonarr's and Radarr's own term; the app's screen is called "Pick a release".
+_Avoid_: manual search, release search
+
 **Release**:
 One specific torrent an indexer offers for a movie or episode, before it is downloaded. Sonarr's and Radarr's own term.
 _Avoid_: result, file, torrent (for something not yet grabbed)
