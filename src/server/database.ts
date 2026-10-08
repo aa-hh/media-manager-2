@@ -60,6 +60,15 @@ export const applicationMigrations = [
   CREATE INDEX grabs_target ON grabs (target_key);
   CREATE INDEX grabs_searched_for ON grabs (searched_for_key);
   CREATE INDEX grabs_state ON grabs (state);`,
+  `CREATE TABLE protected_items (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    item_id INTEGER NOT NULL,
+    series_id INTEGER,
+    season_number INTEGER,
+    episode_number INTEGER,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (service, item_id)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

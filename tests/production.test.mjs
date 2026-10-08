@@ -35,6 +35,7 @@ const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
 const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
+const protectionModuleUrl = new URL('../dist/server/protection.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -2257,7 +2258,7 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   const releases = createReleases(database, services);
   let clock = 1_000_000;
   const grabs = createGrabs(database, services, releases, { now: () => clock });
-  const replaces = createReplaces(services, grabs, () => clock);
+  const replaces = createReplaces(services, grabs, { now: () => clock });
   const start = async (target, downloadId) => {
     await releases.get(target);
     const guid = (await releases.get(target)).search.releases[0].guid;
@@ -2315,4 +2316,148 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   assert.equal(grabs.read(episode).state, 'completed');
   assert.equal(grabs.read(movie).state, 'failed', 'a forced import still blocked after the grace period has failed');
   assert.equal(commands.length, 2);
+});
+
+// An ignored term that misses a naming of the protected episode lets Sonarr upgrade over a manual download; one that also matches a neighbouring episode stops that episode upgrading.
+test('manual-download patterns refuse every naming of one episode and no other', async () => {
+  const { episodePatterns, numberRange } = await import(protectionModuleUrl);
+  const toRegExp = (term) => {
+    const [, source, flags] = /^\/(.*)\/([a-z]*)$/.exec(term);
+    return new RegExp(source, flags);
+  };
+  for (const [min, max] of [[1, 1], [1, 9], [1, 12], [2, 999], [7, 103], [10, 99], [19, 200]]) {
+    const range = new RegExp(`^${numberRange(min, max)}$`);
+    for (let value = 0; value <= 1000; value += 1) {
+      assert.equal(range.test(String(value)), value >= min && value <= max, `${value} in ${min}..${max}`);
+    }
+    assert.equal(range.test(`00${min}`), true);
+  }
+  const blocks = (season, episode, title) => episodePatterns(season, episode).map(toRegExp).some((pattern) => pattern.test(title));
+  for (const title of [
+    'Spike.Show.S01E02.2160p.WEB-DL', 'Spike.Show.S01E02E03.2160p', 'Spike.Show.S01E01E02.2160p', 'Spike.Show.S01E01-E03.2160p',
+    'Spike.Show.1x02.2160p', 'Spike Show - S01E02 - Episode 2 [WEBDL-2160p]', 'Spike.Show.S01.2160p.WEB-DL', 'Spike.Show.Season.1.2160p',
+    'Spike.Show.S01-S02.2160p', 'Spike.Show.s1e2.720p', 'Spike.Show.S01E02-04.1080p',
+  ]) assert.equal(blocks(1, 2, title), true, title);
+  for (const title of [
+    'Spike.Show.S01E03.2160p', 'Spike.Show.S01E05.2160p', 'Spike.Show.S01E12.2160p', 'Spike.Show.S01E20.2160p', 'Spike.Show.S11E02.2160p',
+    'Spike.Show.S10E02.2160p', 'Spike.Show.S02E02.2160p', 'Spike.Show.S01E03-E05.2160p', 'Spike.Show.S02.2160p', 'Spike.Show.11x02',
+    'Spike.Show.Season.11.1080p',
+  ]) assert.equal(blocks(1, 2, title), false, title);
+  assert.equal(blocks(3, 12, 'Show.S03E10-E14.1080p'), true);
+  assert.equal(blocks(3, 12, 'Show.S03E13-E14.1080p'), false);
+  assert.equal(blocks(3, 12, 'Show.S03E01E02.1080p'), false);
+});
+
+// Unprotecting by unmonitoring, leaving a tag or profile behind when protection ends, vetoing media-manager-2's own grab, or letting another grab of a protected item through breaks manual-download protection.
+test('manual downloads are protected with tags, release profiles and a grab veto', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createApp } = await import(appModuleUrl);
+  const { createProtection } = await import(protectionModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-protection-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const [service, port] of [['sonarr', 65061], ['radarr', 65062]]) {
+    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
+    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
+  }
+  const fake = () => ({ tags: [], profiles: [], records: {}, notifications: [], queue: [], deleted: [], nextId: 1 });
+  const state = { sonarr: fake(), radarr: fake() };
+  state.radarr.records['/api/v3/movie/9'] = { id: 9, title: 'Dune', monitored: true, qualityProfileId: 4, hasFile: true, tags: [] };
+  state.radarr.records['/api/v3/movie/10'] = { id: 10, title: 'Other', monitored: true, hasFile: true, tags: [] };
+  state.sonarr.records['/api/v3/series/5'] = { id: 5, title: 'Show', monitored: true, tags: [7] };
+  state.sonarr.records['/api/v3/episode/50'] = { id: 50, seriesId: 5, seasonNumber: 1, episodeNumber: 2, hasFile: true, monitored: true };
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    const fakeState = state[parsed.port === '65061' ? 'sonarr' : 'radarr'];
+    const path = parsed.pathname;
+    const method = init.method ?? 'GET';
+    const body = init.body === undefined ? undefined : JSON.parse(init.body);
+    const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
+    const collection = path === '/api/v3/tag' ? 'tags' : path.startsWith('/api/v3/releaseprofile') ? 'profiles' : path.startsWith('/api/v3/notification') ? 'notifications' : undefined;
+    if (collection !== undefined) {
+      const id = Number(path.split('/')[4]);
+      if (method === 'GET') return json(fakeState[collection]);
+      if (method === 'POST') {
+        const created = { ...body, id: fakeState.nextId++ };
+        fakeState[collection].push(created);
+        return json(created, 201);
+      }
+      if (method === 'PUT') {
+        fakeState[collection] = fakeState[collection].map((item) => (item.id === id ? { ...body, id } : item));
+        return json(body, 202);
+      }
+      fakeState[collection] = fakeState[collection].filter((item) => item.id !== id);
+      return json({});
+    }
+    if (path === '/api/v3/movie' && method === 'GET') return json(Object.entries(fakeState.records).filter(([key]) => key.startsWith('/api/v3/movie/')).map(([, value]) => value));
+    if (path === '/api/v3/queue') return json({ records: fakeState.queue });
+    if (path.startsWith('/api/v3/queue/') && method === 'DELETE') {
+      fakeState.deleted.push(`${path}${parsed.search}`);
+      return json({});
+    }
+    if (path in fakeState.records) {
+      if (method === 'PUT') fakeState.records[path] = body;
+      return json(fakeState.records[path]);
+    }
+    return json({}, 404);
+  };
+  const services = { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) };
+  let ownTitles = [];
+  const protection = createProtection(database, services, { recentGrabTitles: () => ownTitles });
+  const replaceOf = (target) => ({ target, service: target.service, state: 'completed' });
+
+  await protection.protect(replaceOf({ service: 'radarr', kind: 'movie', movieId: 9 }));
+  const radarrTag = state.radarr.tags.find((tag) => tag.label === 'mm2-manual');
+  assert.ok(radarrTag);
+  assert.deepEqual(state.radarr.profiles.map(({ name, enabled, ignored, required, tags }) => ({ name, enabled, ignored, required, tags })), [
+    { name: 'mm2 manual downloads', enabled: true, ignored: ['/./'], required: [], tags: [radarrTag.id] },
+  ]);
+  assert.deepEqual(state.radarr.records['/api/v3/movie/9'], { id: 9, title: 'Dune', monitored: true, qualityProfileId: 4, hasFile: true, tags: [radarrTag.id] });
+  assert.deepEqual(state.radarr.records['/api/v3/movie/10'].tags, []);
+
+  await protection.protect(replaceOf({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 }));
+  const seriesTag = state.sonarr.tags.find((tag) => tag.label === 'mm2-manual-5');
+  assert.ok(seriesTag);
+  assert.deepEqual(state.sonarr.records['/api/v3/series/5'].tags, [7, seriesTag.id]);
+  assert.equal(state.sonarr.records['/api/v3/series/5'].monitored, true);
+  assert.equal(state.sonarr.profiles.length, 1);
+  assert.equal(state.sonarr.profiles[0].ignored.length, 5);
+  assert.deepEqual(state.sonarr.profiles[0].tags, [seriesTag.id]);
+  assert.deepEqual(protection.list().map((item) => item.kind), ['movie', 'episode']);
+
+  state.sonarr.profiles = [];
+  await protection.reconcile();
+  assert.equal(state.sonarr.profiles.length, 1, 'a profile removed by hand comes back');
+
+  state.sonarr.queue = [{ id: 31, downloadId: 'ABCDEF' }];
+  const grab = { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 49 }, { id: 50 }], downloadId: 'abcdef', release: { releaseTitle: 'Show.S01.1080p' } };
+  assert.equal(await protection.veto('sonarr', { ...grab, episodes: [{ id: 49 }] }), 'ignored');
+  ownTitles = ['show.s01.1080p'];
+  assert.equal(await protection.veto('sonarr', grab), 'allowed');
+  ownTitles = [];
+  assert.equal(await protection.veto('sonarr', grab), 'vetoed');
+  assert.deepEqual(state.sonarr.deleted, ['/api/v3/queue/31?removeFromClient=true&blocklist=true']);
+  assert.equal(await protection.veto('sonarr', { eventType: 'Test' }), 'ignored');
+
+  const app = createApp({ clientDirectory: root, listeningHost: '127.0.0.1', protection });
+  const hook = (token, body = { eventType: 'Test' }) => app.request(`/hooks/grab/sonarr?token=${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  assert.equal((await hook('wrong')).status, 401);
+  assert.equal((await hook(protection.hookToken())).status, 204);
+
+  state.radarr.records['/api/v3/movie/9'].hasFile = false;
+  await protection.unprotect(protection.list().find((item) => item.kind === 'episode'));
+  await protection.reconcile();
+  assert.deepEqual(protection.list(), []);
+  assert.deepEqual(state.radarr.records['/api/v3/movie/9'].tags, []);
+  assert.deepEqual(state.sonarr.profiles, []);
+  assert.deepEqual(state.sonarr.records['/api/v3/series/5'].tags, [7]);
 });

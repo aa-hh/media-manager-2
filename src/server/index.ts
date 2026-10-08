@@ -8,6 +8,7 @@ import { createEventHub } from './events.js';
 import { createGrabs } from './grabs.js';
 import { createJobRunner } from './jobs.js';
 import { createOwned } from './owned.js';
+import { createProtection } from './protection.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
@@ -31,7 +32,12 @@ if (database !== undefined) {
   const runner = createJobRunner();
   const releases = createReleases(database, arr);
   const grabs = createGrabs(database, arr, releases, { onChange: (grab) => events.publish('grab', grab) });
-  const replaces = createReplaces(arr, grabs);
+  const protection = createProtection(database, arr, { recentGrabTitles: (service, since) => grabs.recentTitles(service, since) });
+  const replaces = createReplaces(arr, grabs, { onCompleted: (grab) => protection.protect(grab) });
+  runner.register('manual-download-protection', 10 * 60_000, async () => {
+    await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr')]);
+    await protection.reconcile();
+  });
   runner.register('replace-completion', 60_000, () => replaces.run());
   runner.register('grab-download-ids', 30_000, async () => {
     // A grab that never shows up in history within an hour is left for the owner to see, not polled forever.
@@ -50,6 +56,7 @@ if (database !== undefined) {
     releases,
     grabs,
     owned: createOwned(arr),
+    protection,
   });
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {

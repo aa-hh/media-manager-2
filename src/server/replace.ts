@@ -36,7 +36,12 @@ export type ReplaceStep =
 // A ManualImport normally finishes within seconds; one still blocked after this long did not run.
 const IMPORT_GRACE_MS = 30 * 60_000;
 
-export const createReplaces = (services: { sonarr: Arr; radarr: Arr }, grabs: Grabs, now: () => number = Date.now) => {
+export const createReplaces = (
+  services: { sonarr: Arr; radarr: Arr },
+  grabs: Grabs,
+  options: { now?: () => number; onCompleted?: (record: GrabRecord) => Promise<void> } = {},
+) => {
+  const now = options.now ?? Date.now;
   const get = async (service: Arr, path: string) => {
     const response = await service.request(path);
     if (response.status < 200 || response.status > 299) throw new Error(`HTTP ${response.status}`);
@@ -134,7 +139,15 @@ export const createReplaces = (services: { sonarr: Arr; radarr: Arr }, grabs: Gr
           continue;
         }
         if (next.kind === 'forced') grabs.update(record.id, { state: 'importing' });
-        else if (next.kind === 'completed') grabs.update(record.id, { state: 'completed', failure: null });
+        else if (next.kind === 'completed') {
+          const completed = grabs.update(record.id, { state: 'completed', failure: null });
+          try {
+            await options.onCompleted?.(completed);
+          } catch {
+            // Protection is re-applied by its own reconcile job; the replace itself is done.
+            console.error('Protecting a completed replace failed; the next reconcile retries it.');
+          }
+        }
         else if (next.kind === 'failed') grabs.update(record.id, { state: 'failed', failure: next.reason });
       }
     },

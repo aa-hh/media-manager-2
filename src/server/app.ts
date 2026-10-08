@@ -10,6 +10,7 @@ import { globalTimers, type Timers } from './jobs.js';
 import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
 import { createOwnedRoutes, type Owned } from './owned.js';
+import { createHookRoutes, createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
 import { createSearchRoutes, type Search } from './search.js';
 
@@ -27,6 +28,7 @@ export type CreateAppOptions = {
   releases?: Releases;
   grabs?: Grabs;
   owned?: Owned;
+  protection?: Protection;
 };
 
 type AppEnvironment = {
@@ -140,6 +142,9 @@ export const createApp = (options: CreateAppOptions) => {
     ) return context.json({ error: 'invalid_origin' }, 403);
     return requestLimit(context, next);
   };
+
+  // Sonarr and Radarr call these with a shared token instead of a browser session.
+  if (options.protection !== undefined) app.route('/hooks', createHookRoutes(options.protection));
 
   app.get('/auth/status', (context) => {
     const binding = readCookie(context.req.header('Cookie'), bindingCookieName);
@@ -303,6 +308,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.owned !== undefined && options.grabs !== undefined) {
     app.route('/api/owned', createOwnedRoutes(options.owned, options.grabs.qualities));
   }
+  if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));
 

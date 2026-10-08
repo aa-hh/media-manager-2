@@ -187,6 +187,11 @@ export const createGrabs = (
         .all(intent ?? null, intent ?? null)
         .map((row) => rowToRecord(row as Record<string, unknown>));
     },
+    recentTitles(service: 'sonarr' | 'radarr', since: number) {
+      return database.prepare("SELECT release_title FROM grabs WHERE service = ? AND created_at >= ? AND state != 'failed'")
+        .all(service, since)
+        .map((row) => row.release_title as string);
+    },
     importing() {
       return database.prepare("SELECT * FROM grabs WHERE state = 'importing' ORDER BY id")
         .all()
