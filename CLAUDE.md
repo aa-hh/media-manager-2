@@ -1,6 +1,6 @@
-# {{PROJECT_NAME}} — Claude Code orientation
+# media-manager-2 — Claude Code orientation
 
-{{ONE_LINE_DESCRIPTION}}.
+A power-user web app that runs Sonarr and Radarr through one interface and keeps their torrent downloads on track.
 
 **Read [`AGENTS.md`](AGENTS.md) before doing anything.** It holds the
 architectural rules, constraints and traps the code alone cannot convey. Each
@@ -49,7 +49,7 @@ There is **no CI**. The pre-push hook is the full-suite gate, and
 
 ## Agent skills
 
-- **Issue tracker:** local markdown under `.scratch/<feature-slug>/` — see
+- **Issue tracker:** Linear, team Aa-hh (`AA`), project media-manager-2 (`P-AA-1`) — see
   `docs/agents/issue-tracker.md`.
 - **Triage labels:** `docs/agents/triage-labels.md`.
 - **Domain docs:** `CONTEXT.md` plus `docs/adr/` — see `docs/agents/domain.md`.
