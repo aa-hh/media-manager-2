@@ -46,6 +46,7 @@ The Hono production server implements sign-in. The Vite development server does 
 - `POST /auth/cancel` cancels that browser's pending attempt.
 - `POST /auth/logout` revokes that browser's session and pending attempt.
 - `GET /api/session` verifies the current owner session.
+- `GET /api/events` streams server events to the signed-in owner's browser.
 
 Application sessions expire 24 hours after creation. Activity does not extend them. Restarting the server signs out every browser because sessions and pending attempts live only in server memory. Signing out revokes only the current browser's session; another browser remains signed in. The server discards the Plex token after account verification and does not refresh it.
 
@@ -53,9 +54,11 @@ Plex tokens, the owner ID, service credentials, and authentication keys remain o
 
 Every future browser route for settings, media and images, search, grabs, replaces, imports, deletion, download controls, flags, history, health, calendar, and updates belongs under the owner guard at `/api`. The [complete first-version feature map](.scratch/aa-37/work-order.md#verified-facts) records the agreed scope without assigning those features to sign-in.
 
-AA-41 must authorize an event-stream connection before sending its response headers, revalidate the owner session before every private event, and close the stream when the session expires or is revoked. This sign-in work does not implement an event stream or verify stream termination.
+`GET /api/events` is a server-sent event stream behind the `/api` owner guard, so a missing, expired or signed-out session gets a 401 JSON response before any stream header is sent. Each event arrives as `event: <type>`, `data: <JSON>` and `id: <integer>`, with ids increasing for the life of the server process. A `: keepalive` comment every 25 seconds keeps the connection open through proxies such as Whatbox and Cloudflare. The server re-checks the owner session before every event and every keepalive, and closes the stream once the session has expired or been signed out. One server process holds at most 20 open streams; the next request gets 503 `too_many_streams`. Nothing is replayed, so a reconnecting browser receives only events published after it reconnects.
 
 Trusted server background jobs continue without a browser session. Future webhooks need a separate authenticated service contract. No webhook exists or bypasses owner authorization now.
+
+Later features add background jobs to the job runner under these rules. Every job is registered before the runner starts. A job never overlaps its own previous run; a tick that arrives while the previous run is unfinished is skipped. A failing job is logged by name only and stays scheduled. Jobs run with no session and no request. The first run happens one interval after start. SIGTERM or SIGINT stops the runner, waits for runs in progress, closes open streams and the server, and exits with code 0. A second signal during shutdown exits immediately with code 1. The schedule lives only in memory, so a restart starts from an empty schedule.
 
 Use `npm run dev` for the Vite development server.
 Always build and test through `scripts/build.sh` and `scripts/test.sh`.
