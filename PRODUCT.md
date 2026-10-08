@@ -37,7 +37,7 @@ Sonarr and Radarr only see rTorrent through a slow, vague summary, never retry a
 
 ## Capabilities and Constraints
 
-First version, as agreed on the Linear map ([Map: first version of media-manager-2](https://linear.app/aa-hh/issue/AA-5)):
+First version, as agreed on the Linear map ([Map: first version of media-manager-2](https://linear.app/aa-hh/issue/AA-5)). Numbers match the map.
 
 1. Search movies and TV shows, routed to Radarr or Sonarr.
 2. List releases and grab one by hand; for something already in the library, choose replace or second version.
@@ -48,7 +48,24 @@ First version, as agreed on the Linear map ([Map: first version of media-manager
 7. Automatic fixes for missed searches, stalled torrents, tracker problems and blocked imports; anything it gives up on is flagged.
 8. Health checks for Sonarr, Radarr, rTorrent, Plex, each tracker account and its own housekeeping.
 9. A view-only calendar of upcoming monitored episodes and movies.
-10. Flags and warnings appear in the app only: a flagged page, a history on each movie and episode, and a global activity log.
+10. One user, behind a Plex sign-in limited to the owner's account.
+11. A movie or show opens on its overview: monitored state, profile and cutoff, files and versions, seeding, history, and Search automatically. Picking a release by hand is a detail view that opens on cached results.
+12. A library list of everything owned.
+13. Monitoring controls for show, season and episode, with keyboard range select.
+14. Missing and below-cutoff lists (manual downloads excluded), with when each was last searched.
+15. A global history page with event details.
+16. Mark a past grab as failed, and a blocklist page.
+17. Manual import, to finish an import by hand.
+18. Override which movie, episode or quality a release counts as before grabbing it.
+19. Releases Sonarr or Radarr are holding back (delay profiles) shown in live downloads.
+20. The app opens on the library, with search one action away from every screen.
+21. One search box finds library matches first, then Sonarr and Radarr lookup results. Each result shows poster, title, year, TV or movie, network or studio, continuing or ended, rating, a one-line overview, and whether it is already in the library.
+22. Adding a title is the monitor decision. A show takes Sonarr's monitor choice (all, future, missing, existing, recent, pilot, first season, last season, none; specials on or off), quality profile and search on add. A movie takes Radarr's monitor choice, minimum availability, quality profile and search on add. With search on add, the page becomes the title's overview showing that search's progress per season and episode.
+23. A title not yet added opens on the same overview as an owned one: large poster, description, rating, status, and every season with whether it has fully aired, is airing or is upcoming, with episode counts.
+24. Monitored state shows on every show, season and episode row, with a mixed state for a partly monitored season, and toggles on the row.
+25. Episode and movie rows carry Search automatically and Pick a release directly. Versions and history open on request; nothing in the grab path needs a side panel.
+
+Flags and warnings appear in the app only: a flagged page, a history on each movie and episode, and a global activity log.
 
 Images and descriptions come only from Sonarr and Radarr: one poster and one backdrop per title, plus season posters and episode images.
 
