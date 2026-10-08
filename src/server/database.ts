@@ -51,7 +51,7 @@ export const applicationMigrations = [
     guid TEXT NOT NULL,
     release_title TEXT NOT NULL,
     intent TEXT NOT NULL CHECK (intent IN ('grab', 'replace')),
-    state TEXT NOT NULL CHECK (state IN ('sending', 'sent', 'failed', 'completed')),
+    state TEXT NOT NULL CHECK (state IN ('sending', 'sent', 'importing', 'failed', 'completed')),
     failure TEXT,
     download_id TEXT,
     created_at INTEGER NOT NULL,

@@ -9,6 +9,7 @@ import { createGrabs } from './grabs.js';
 import { createJobRunner } from './jobs.js';
 import { createOwned } from './owned.js';
 import { createReleases } from './releases.js';
+import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
 import { createArr } from './services/arr.js';
 
@@ -30,6 +31,8 @@ if (database !== undefined) {
   const runner = createJobRunner();
   const releases = createReleases(database, arr);
   const grabs = createGrabs(database, arr, releases, { onChange: (grab) => events.publish('grab', grab) });
+  const replaces = createReplaces(arr, grabs);
+  runner.register('replace-completion', 60_000, () => replaces.run());
   runner.register('grab-download-ids', 30_000, async () => {
     // A grab that never shows up in history within an hour is left for the owner to see, not polled forever.
     for (const grab of grabs.pending()) {

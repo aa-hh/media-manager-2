@@ -6,7 +6,7 @@ import type { createArr } from './services/arr.js';
 type Arr = Pick<ReturnType<typeof createArr>, 'request' | 'configured'>;
 
 export type GrabIntent = 'grab' | 'replace';
-export type GrabState = 'sending' | 'sent' | 'failed' | 'completed';
+export type GrabState = 'sending' | 'sent' | 'importing' | 'failed' | 'completed';
 
 export type Overrides = {
   movieId?: number;
@@ -185,6 +185,11 @@ export const createGrabs = (
     pending(intent?: GrabIntent) {
       return database.prepare("SELECT * FROM grabs WHERE state = 'sent' AND (? IS NULL OR intent = ?) ORDER BY id")
         .all(intent ?? null, intent ?? null)
+        .map((row) => rowToRecord(row as Record<string, unknown>));
+    },
+    importing() {
+      return database.prepare("SELECT * FROM grabs WHERE state = 'importing' ORDER BY id")
+        .all()
         .map((row) => rowToRecord(row as Record<string, unknown>));
     },
     update,

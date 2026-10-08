@@ -34,6 +34,7 @@ const searchModuleUrl = new URL('../dist/server/search.js', import.meta.url).hre
 const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
 const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
+const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -2204,4 +2205,114 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
   assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
   assert.deepEqual(parseOverrides(undefined, 'radarr'), {});
+});
+
+// Forcing an import blocked for any reason but "Not an upgrade", using a move instead of a hardlink-or-copy import, forcing the same download twice, or calling a replace complete without an import breaks the replace guarantee.
+test('a replace is forced only past "Not an upgrade" and completes only on import', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createReleases } = await import(releasesModuleUrl);
+  const { createGrabs } = await import(grabsModuleUrl);
+  const { createReplaces } = await import(replaceModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-replace-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const [service, port] of [['sonarr', 65051], ['radarr', 65052]]) {
+    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
+    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
+  }
+  const notUpgrade = { sonarr: 'Not an upgrade for existing episode file(s)', radarr: 'Not an upgrade for existing movie file' };
+  const queue = {};
+  const history = {};
+  const manual = {};
+  const commands = [];
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    const service = parsed.port === '65051' ? 'sonarr' : 'radarr';
+    const json = (body) => new Response(JSON.stringify(body), { status: 200 });
+    const id = parsed.searchParams.get('downloadId');
+    if (init.method === 'POST' && parsed.pathname === '/api/v3/command') {
+      commands.push({ service, body: JSON.parse(init.body) });
+      return json({ id: 1 });
+    }
+    if (init.method === 'POST') return json({});
+    if (parsed.pathname === '/api/v3/release') {
+      return json([{ guid: `${service}-${parsed.searchParams.toString()}`, indexerId: 1, title: `Release ${parsed.searchParams.toString()}`, approved: false, rejections: [notUpgrade[service]] }]);
+    }
+    if (parsed.pathname === '/api/v3/queue') return json({ records: Object.values(queue).filter((item) => item.service === service) });
+    if (parsed.pathname === '/api/v3/history') {
+      if (id === null) {
+        return json({ records: Object.entries(history).flatMap(([downloadId, events]) => events.map((event) => ({ ...event, downloadId }))) });
+      }
+      return json({ records: (history[id] ?? []).map((event) => ({ ...event, downloadId: id })) });
+    }
+    if (parsed.pathname === '/api/v3/manualimport') return json(manual[id] ?? []);
+    return json([]);
+  };
+  const services = { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) };
+  const releases = createReleases(database, services);
+  let clock = 1_000_000;
+  const grabs = createGrabs(database, services, releases, { now: () => clock });
+  const replaces = createReplaces(services, grabs, () => clock);
+  const start = async (target, downloadId) => {
+    await releases.get(target);
+    const guid = (await releases.get(target)).search.releases[0].guid;
+    history[downloadId] = [{ eventType: 'grabbed', data: { guid } }];
+    const result = await grabs.grab(target, guid, 'replace');
+    assert.equal(result.record.downloadId, downloadId);
+    return result.record.id;
+  };
+  const blocked = (service, messages) => ({ service, status: 'completed', trackedDownloadStatus: 'warning', trackedDownloadState: 'importBlocked', statusMessages: [{ title: 'file.mkv', messages }] });
+  const episodeFile = (path, rejections, episodes = [{ id: 50 }]) => ({ path, folderName: 'Show.S01E02', quality: { quality: { id: 4 } }, languages: [{ id: 1 }], releaseGroup: 'GRP', episodes, rejections: rejections.map((reason) => ({ reason, type: 'permanent' })) });
+
+  const episode = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 }, 'HASH-EPISODE');
+  const dangerous = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 51 }, 'HASH-DANGEROUS');
+  const movie = await start({ service: 'radarr', kind: 'movie', movieId: 9 }, 'HASH-MOVIE');
+  const vanished = await start({ service: 'radarr', kind: 'movie', movieId: 10 }, 'HASH-VANISHED');
+
+  queue.e = { ...blocked('sonarr', []), downloadId: 'hash-episode', trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
+  queue.d = { ...blocked('sonarr', ['Dangerous file extension .exe']), downloadId: 'HASH-DANGEROUS' };
+  queue.m = { ...blocked('radarr', [notUpgrade.radarr]), downloadId: 'HASH-MOVIE' };
+  queue.v = { ...blocked('radarr', []), downloadId: 'HASH-VANISHED', trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
+  manual['HASH-MOVIE'] = [{ path: '/dl/Movie.mkv', quality: { quality: { id: 7 } }, languages: [], rejections: [{ reason: notUpgrade.radarr }] }];
+  await replaces.run();
+  assert.equal(commands.length, 1);
+  assert.deepEqual(commands[0], {
+    service: 'radarr',
+    body: { name: 'ManualImport', importMode: 'auto', files: [{ path: '/dl/Movie.mkv', quality: { quality: { id: 7 } }, languages: [], downloadId: 'HASH-MOVIE', movieId: 9 }] },
+  });
+  assert.equal(grabs.read(episode).state, 'sent');
+  assert.equal(grabs.read(dangerous).state, 'failed');
+  assert.equal(grabs.read(dangerous).failure, 'Import blocked: Dangerous file extension .exe');
+  assert.equal(grabs.read(movie).state, 'importing');
+
+  queue.e = { ...blocked('sonarr', [notUpgrade.sonarr]), downloadId: 'hash-episode' };
+  manual['HASH-EPISODE'] = [
+    episodeFile('/dl/Show.S01E02/ep.mkv', [notUpgrade.sonarr]),
+    episodeFile('/dl/Show.S01E02/sample.mkv', ['Sample']),
+    episodeFile('/dl/Show.S01E02/other.mkv', [], []),
+  ];
+  delete queue.v;
+  await replaces.run();
+  assert.equal(commands.length, 2, 'the movie already forced is not forced again');
+  assert.equal(commands[1].service, 'sonarr');
+  assert.equal(commands[1].body.importMode, 'auto');
+  assert.deepEqual(commands[1].body.files.map((file) => [file.path, file.seriesId, file.episodeIds]), [
+    ['/dl/Show.S01E02/ep.mkv', 5, [50]],
+    ['/dl/Show.S01E02/other.mkv', 5, [50]],
+  ]);
+  assert.equal(grabs.read(vanished).state, 'failed');
+  assert.equal(grabs.read(vanished).failure, 'The download left the queue without being imported.');
+
+  delete queue.e;
+  history['HASH-EPISODE'].push({ eventType: 'downloadFolderImported' });
+  clock += 31 * 60_000;
+  await replaces.run();
+  assert.equal(grabs.read(episode).state, 'completed');
+  assert.equal(grabs.read(movie).state, 'failed', 'a forced import still blocked after the grace period has failed');
+  assert.equal(commands.length, 2);
 });
