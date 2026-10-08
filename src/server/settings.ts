@@ -34,6 +34,17 @@ export const getSetting = (database: DatabaseSync, category: string, key: string
   }
 };
 
+export const listSettingKeys = (database: DatabaseSync): Array<{ category: string; key: string }> => {
+  try {
+    return database.prepare('SELECT category, key FROM settings ORDER BY category, key').all().map((row) => {
+      if (typeof row.category !== 'string' || typeof row.key !== 'string') throw new Error();
+      return { category: row.category, key: row.key };
+    });
+  } catch {
+    throw new Error('Could not list settings.');
+  }
+};
+
 export const setSetting = (
   database: DatabaseSync,
   category: string,
