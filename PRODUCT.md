@@ -74,4 +74,4 @@ None. There are no screenshots, users, testimonials or data to show; future work
 
 ## Accessibility & Inclusion
 
-Keyboard-first: every action reachable and fast from the keyboard. No other product-specific requirement.
+Keyboard shortcuts are a nice-to-have, not a requirement: common actions should have a key where it costs little. No other product-specific requirement.

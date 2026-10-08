@@ -16,10 +16,9 @@ What media-manager-2 needs from a component library, so candidates can be scored
 | M1 | Works in a React + TypeScript single-page app built with Vite; no dependency on Next.js or server components | Our stack (AA-14) |
 | M2 | Styled with Tailwind CSS classes and CSS custom properties; no runtime theme object or CSS-in-JS needed | pen.dev's design-to-code rules: Tailwind only, design variables in CSS custom properties |
 | M3 | Fully restylable: square corners, no shadows, 32-36px rows, our colour variables, with no default look we have to fight | The timing-tower look and "colour only what matters" |
-| M4 | Keyboard-operable components that follow the WAI-ARIA patterns: arrow keys in lists, tabs, radio groups and menus; Esc closes; focus returns to where it came from | Keyboard-first is in PRODUCT.md |
-| M5 | Screen-reader correct: proper roles, names and announcements | Accessibility floor |
-| M6 | Licence that allows open-sourcing the repo (MIT, Apache 2.0 or similar) | The owner may open-source it |
-| M7 | Actively maintained: a release in the last 6 months, supports the current React major version | Long-lived project |
+| M4 | Screen-reader correct: proper roles, names and announcements | Accessibility floor |
+| M5 | Licence that allows open-sourcing the repo (MIT, Apache 2.0 or similar) | The owner may open-source it |
+| M6 | Actively maintained: a release in the last 6 months, supports the current React major version | Long-lived project |
 
 ## Weighted requirements
 
@@ -32,14 +31,15 @@ What media-manager-2 needs from a component library, so candidates can be scored
 | W3 | Well known to coding agents: large user base, clear docs, consistent API, so agent-written code comes out right first time | 3 |
 | W4 | Tree-shakable, small bundle: only the components used ship to the browser (served from a shared seedbox) | 2 |
 
-### Keyboard depth (weight 3)
+### Keyboard (a nice-to-have, per the owner; weight 2)
 
 | # | Requirement | Weight |
 |---|---|---|
-| W5 | Components never claim single-letter keys, so the app can map its own per-screen shortcuts (A search, I pick a release, G grab, R replace, S second version, F mark as failed, D expand downloads, [ ] previous and next) | 3 |
-| W6 | Range selection with Shift + arrow keys in lists and tables | 3 |
-| W7 | Roving focus in dense lists and grids (one Tab stop, arrows move inside) | 3 |
-| W8 | Visible, themeable focus indicator on every component | 2 |
+| W0 | Keyboard-operable components following the WAI-ARIA patterns: arrow keys in lists, tabs, radio groups and menus; Esc closes; focus returns to where it came from | 2 |
+| W5 | Components never claim single-letter keys, so the app can map its own per-screen shortcuts (A search, I pick a release, G grab, R replace, S second version, F mark as failed, D expand downloads, [ ] previous and next) | 2 |
+| W6 | Range selection with Shift + arrow keys in lists and tables | 2 |
+| W7 | Roving focus in dense lists and grids (one Tab stop, arrows move inside) | 2 |
+| W8 | Visible, themeable focus indicator on every component | 1 |
 
 ### Data-heavy screens (weight 3): release lists, episode tables, downloads, history, blocklist, flagged, manual import, library
 
