@@ -1,7 +1,7 @@
 #!/bin/bash
 # Code review for one branch's pull request. The result goes to the PR as one
-# comment and as the `review` commit status on HEAD, which scripts/land.sh
-# requires before it merges.
+# comment and as the `review` commit status on HEAD, which the main ruleset
+# requires before the PR can merge.
 #
 # Picks a level from the committed diff against origin/main (fetched first;
 # local main is never used, since nothing updates it any more): skip (no model), cheap
