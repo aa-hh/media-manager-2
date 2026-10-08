@@ -107,3 +107,24 @@ All ten pass the must-haves. Full scoring with sources per candidate in `library
 | 10 | Ariakit + TanStack Table | 122 | Excellent keyboard patterns, small | Many parts missing; still 0.x |
 
 Shared finding: React Aria based tables jump to a matching row when a letter key is typed and this can't be turned off, so app-level letter shortcuts must run first.
+
+## Test builds (8 Oct 2026)
+
+The top three were each built as the same one-page app: a release table with the best row in purple and Seeders sorting, an inline panel that Enter opens and Esc closes, an episode list with second-version sub-rows and Shift + arrow range select, rows updating every 2 seconds, a toast with Undo, a filtering episode picker, and G and R shortcuts inside the table. All on React 19.3, Vite 8.3, Tailwind 4.3. Build and test results below were re-run by hand after the agents finished.
+
+| | shadcn/ui on Base UI + TanStack Table | shadcn/ui on React Aria | HeroUI 3.2 |
+|---|---|---|---|
+| Tests | 7 of 7 pass | 9 of 9 pass | 9 of 9 pass |
+| JS, gzipped | 152.7 kB | 183.6 kB | 190.6 kB |
+| CSS, gzipped | 9.0 kB | 7.6 kB | 40.6 kB |
+| Our lines / copied-in lines | ~340 / 894 | 282 / 852 | 334 (+133 CSS) / 0 |
+| G and R shortcuts | Work as is (plain HTML table, no type-to-jump) | Need a key handler that runs before the table | Need a key handler that runs before the table |
+| Range select and arrow keys | Written by us, about 33 lines | Built in | Built in |
+| Restyling | Theme variables only | Theme variables plus three table settings | 23 settings remapped, 13 rule overrides |
+| Fight rating (1-10) | 3 | 4 | 4 |
+
+All three kept focus, the selection range and the open panel through live updates. On both React Aria builds a single click only selects a row; opening takes a double-click or Enter. `shadcn init` fails under the `allow-scripts` line in `~/.npmrc`; install the packages by hand or run init with that file ignored. Test apps were left in the session scratch folder, not the repo.
+
+## Decision
+
+**shadcn/ui on Base UI, with TanStack Table.** Chosen by the owner on 8 Oct 2026: smallest bundle, least fighting, letter shortcuts work without a workaround, the component code lives in our repo, and pen.dev has a shadcn/ui kit. We write range select and arrow-key movement in tables ourselves, and add TanStack Virtual when a list needs virtualising.
