@@ -35,6 +35,8 @@ export type ReplaceStep =
 
 // A ManualImport normally finishes within seconds; one still blocked after this long did not run.
 const IMPORT_GRACE_MS = 30 * 60_000;
+// A sent grab normally shows in the queue within a couple of minutes.
+const QUEUE_GRACE_MS = 15 * 60_000;
 
 export const createReplaces = (
   services: { sonarr: Arr; radarr: Arr },
@@ -48,13 +50,16 @@ export const createReplaces = (
     return response.body;
   };
 
-  const historyOutcome = async (service: Arr, downloadId: string): Promise<ReplaceStep> => {
+  const historyOutcome = async (record: GrabRecord, service: Arr, downloadId: string): Promise<ReplaceStep> => {
     const body = await get(service, `/api/v3/history?page=1&pageSize=50&downloadId=${encodeURIComponent(downloadId)}`);
     const records = isRecord(body) && Array.isArray(body.records) ? body.records : [];
     const events = records.filter((record): record is Record<string, unknown> => isRecord(record) && sameDownload(record.downloadId, downloadId));
     if (events.some((event) => event.eventType === 'downloadFolderImported')) return { kind: 'completed' };
     if (events.some((event) => event.eventType === 'downloadFailed')) return { kind: 'failed', reason: 'The download failed.' };
     if (events.some((event) => event.eventType === 'downloadIgnored')) return { kind: 'failed', reason: 'The download was ignored in Sonarr or Radarr.' };
+    // History names the download before the queue shows it (the queue reads rTorrent on its
+    // own schedule), so only a download missing from both for a while has really left.
+    if (now() - record.updatedAt <= QUEUE_GRACE_MS) return { kind: 'waiting' };
     return { kind: 'failed', reason: 'The download left the queue without being imported.' };
   };
 
@@ -107,7 +112,7 @@ export const createReplaces = (
     const queue = await get(service, '/api/v3/queue?page=1&pageSize=500&includeUnknownSeriesItems=true&includeUnknownMovieItems=true');
     const items = isRecord(queue) && Array.isArray(queue.records) ? queue.records : [];
     const item = items.find((entry): entry is Record<string, unknown> => isRecord(entry) && sameDownload(entry.downloadId, record.downloadId!));
-    if (item === undefined) return historyOutcome(service, record.downloadId);
+    if (item === undefined) return historyOutcome(record, service, record.downloadId);
     const state = item.trackedDownloadState;
     if (state === 'failed' || state === 'failedPending' || item.trackedDownloadStatus === 'error') {
       return { kind: 'failed', reason: messagesOf(item).join(' ') || 'The download failed.' };

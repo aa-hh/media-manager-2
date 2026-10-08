@@ -127,6 +127,12 @@ export const createApp = (options: CreateAppOptions) => {
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
   });
 
+  // A grab names its release by guid, which is often a long magnet or download URL.
+  const grabRequestLimit = bodyLimit({
+    maxSize: 16_384,
+    onError: (context) => context.json({ error: 'request_too_large' }, 413),
+  });
+
   const requireBrowserPost: MiddlewareHandler<AppEnvironment> = async (context, next) => {
     const origin = context.req.header('Origin');
     const contentType = context.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
@@ -140,7 +146,7 @@ export const createApp = (options: CreateAppOptions) => {
       || contentType !== 'application/json'
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
-    return requestLimit(context, next);
+    return (context.req.path === '/api/grabs' ? grabRequestLimit : requestLimit)(context, next);
   };
 
   // Sonarr and Radarr call these with a shared token instead of a browser session.

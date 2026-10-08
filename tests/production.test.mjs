@@ -2196,12 +2196,16 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.deepEqual(overridden.record.target, { service: 'sonarr', kind: 'episodes', seriesId: 5, episodeIds: [51, 52] });
   assert.deepEqual(overridden.record.searchedFor, target);
 
+  // The services require the title with every override, so a quality-only one names the searched target.
+  await grabs.grab(target, 'g-rejected', 'grab', parseOverrides({ qualityId: 4 }, 'sonarr'));
+  assert.deepEqual([posts.at(-1).body.seriesId, posts.at(-1).body.episodeIds], [5, [50]]);
+
   grabResponse = () => new Response(JSON.stringify({ message: "Couldn't find requested release in cache, try searching again" }), { status: 404 });
   const refused = await grabs.grab(target, 'g-rejected', 'grab');
   assert.equal(refused.kind, 'failed');
   assert.equal(refused.record.state, 'failed');
   assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
-  assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent']);
+  assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent', 'sent']);
 
   assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
   assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
@@ -2306,13 +2310,14 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
     ['/dl/Show.S01E02/ep.mkv', 5, [50]],
     ['/dl/Show.S01E02/other.mkv', 5, [50]],
   ]);
-  assert.equal(grabs.read(vanished).state, 'failed');
-  assert.equal(grabs.read(vanished).failure, 'The download left the queue without being imported.');
+  assert.equal(grabs.read(vanished).state, 'sent', 'history can name a download before the queue shows it');
 
   delete queue.e;
   history['HASH-EPISODE'].push({ eventType: 'downloadFolderImported' });
   clock += 31 * 60_000;
   await replaces.run();
+  assert.equal(grabs.read(vanished).state, 'failed');
+  assert.equal(grabs.read(vanished).failure, 'The download left the queue without being imported.');
   assert.equal(grabs.read(episode).state, 'completed');
   assert.equal(grabs.read(movie).state, 'failed', 'a forced import still blocked after the grace period has failed');
   assert.equal(commands.length, 2);
@@ -2325,7 +2330,7 @@ test('manual-download patterns refuse every naming of one episode and no other',
     const [, source, flags] = /^\/(.*)\/([a-z]*)$/.exec(term);
     return new RegExp(source, flags);
   };
-  for (const [min, max] of [[1, 1], [1, 9], [1, 12], [2, 999], [7, 103], [10, 99], [19, 200]]) {
+  for (const [min, max] of [[0, 0], [0, 999], [1, 1], [1, 9], [1, 12], [2, 999], [7, 103], [10, 99], [19, 200]]) {
     const range = new RegExp(`^${numberRange(min, max)}$`);
     for (let value = 0; value <= 1000; value += 1) {
       assert.equal(range.test(String(value)), value >= min && value <= max, `${value} in ${min}..${max}`);
@@ -2346,6 +2351,10 @@ test('manual-download patterns refuse every naming of one episode and no other',
   assert.equal(blocks(3, 12, 'Show.S03E10-E14.1080p'), true);
   assert.equal(blocks(3, 12, 'Show.S03E13-E14.1080p'), false);
   assert.equal(blocks(3, 12, 'Show.S03E01E02.1080p'), false);
+  // Specials are season 0, and their episode numbers can be 0.
+  assert.equal(blocks(0, 0, 'Show.S00E00.1080p'), true);
+  assert.equal(blocks(0, 0, 'Show.S00E00-E02.1080p'), true);
+  assert.equal(blocks(0, 0, 'Show.S00E01.1080p'), false);
 });
 
 // Unprotecting by unmonitoring, leaving a tag or profile behind when protection ends, vetoing media-manager-2's own grab, or letting another grab of a protected item through breaks manual-download protection.

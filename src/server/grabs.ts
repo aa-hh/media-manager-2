@@ -155,6 +155,18 @@ export const createGrabs = (
     return record;
   };
 
+  const seasonEpisodeIds = async (seriesId: number, seasonNumber: number) => {
+    try {
+      const response = await services.sonarr.request(`/api/v3/episode?seriesId=${seriesId}&seasonNumber=${seasonNumber}`);
+      if (response.status < 200 || response.status > 299 || !Array.isArray(response.body)) return undefined;
+      return response.body.flatMap((episode) => (
+        isRecord(episode) && episode.seasonNumber === seasonNumber && positiveInteger(episode.id) ? [episode.id] : []
+      ));
+    } catch {
+      return undefined;
+    }
+  };
+
   const qualities = async (service: 'sonarr' | 'radarr') => {
     try {
       const response = await services[service].request('/api/v3/qualitydefinition');
@@ -232,9 +244,17 @@ export const createGrabs = (
         const quality = overrides.qualityId === undefined ? release.qualityModel : await qualityFor(searchedFor.service, overrides.qualityId, release.qualityModel);
         if (quality === undefined) return { kind: 'failed', record: update(id, { state: 'failed', failure: 'That quality is not one this service knows.' }) } as const;
         Object.assign(body, { shouldOverride: true, quality, languages: release.languages });
-        if (overrides.movieId !== undefined) body.movieId = overrides.movieId;
-        if (overrides.seriesId !== undefined) body.seriesId = overrides.seriesId;
-        if (overrides.episodeIds !== undefined) body.episodeIds = overrides.episodeIds;
+        // The services require the title with every override, so a quality-only one names the searched target.
+        if (target.kind === 'movie') body.movieId = target.movieId;
+        else {
+          const episodeIds = target.kind === 'episode' ? [target.episodeId]
+            : target.kind === 'episodes' ? target.episodeIds
+              : await seasonEpisodeIds(target.seriesId, target.seasonNumber);
+          if (episodeIds === undefined || episodeIds.length === 0) {
+            return { kind: 'failed', record: update(id, { state: 'failed', failure: "Sonarr didn't list this season's episodes." }) } as const;
+          }
+          Object.assign(body, { seriesId: target.seriesId, episodeIds });
+        }
       }
 
       let response: { status: number; body: unknown };

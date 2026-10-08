@@ -31,7 +31,7 @@ const positiveInteger = (value: unknown): value is number => (
   typeof value === 'number' && Number.isInteger(value) && value > 0
 );
 
-// Regex alternation matching every whole number from min to max (both at least 1), the
+// Regex alternation matching every whole number from min to max (0 <= min <= max), the
 // way release names write them: any number of leading zeros, no other digit either side.
 export const numberRange = (min: number, max: number): string => {
   const stops = new Set<number>();
@@ -72,7 +72,7 @@ export const episodePatterns = (seasonNumber: number, episodeNumber: number) => 
   const episode = `0*${episodeNumber}`;
   return [
     `/\\bS${season}(?:[ ._-]?E\\d{1,3})*[ ._-]?E${episode}(?!\\d)/i`,
-    `/\\bS${season}[ ._-]?E${numberRange(1, episodeNumber)}[ ._-]*-[ ._-]*E?${numberRange(episodeNumber, Math.max(episodeNumber, 999))}(?!\\d)/i`,
+    `/\\bS${season}[ ._-]?E${numberRange(Math.min(1, episodeNumber), episodeNumber)}[ ._-]*-[ ._-]*E?${numberRange(episodeNumber, Math.max(episodeNumber, 999))}(?!\\d)/i`,
     `/\\b${season}x${episode}\\b/i`,
     `/\\bS${season}\\b(?![ ._-]?E\\d)/i`,
     `/\\bSeason[ ._-]?${season}\\b/i`,
