@@ -24,6 +24,10 @@ const serverPath = fileURLToPath(new URL('../dist/server/index.js', import.meta.
 const databaseModuleUrl = new URL('../dist/server/database.js', import.meta.url).href;
 const appModuleUrl = new URL('../dist/server/app.js', import.meta.url).href;
 const settingsModuleUrl = new URL('../dist/server/settings.js', import.meta.url).href;
+const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).href;
+const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
+const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
+const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -38,6 +42,20 @@ const runNode = async (source, options = {}) => {
   child.stdout.on('data', (chunk) => { stdout += chunk; });
   child.stderr.on('data', (chunk) => { stderr += chunk; });
   const [code, signal] = await once(child, 'exit');
+  return { code, signal, stdout, stderr };
+};
+
+const runCli = async (args, options = {}) => {
+  const child = spawn(process.execPath, [cliPath, ...args], {
+    env: options.env ?? process.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => { stdout += chunk; });
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  child.stdin.end(options.stdin);
+  const [code, signal] = await once(child, 'close');
   return { code, signal, stdout, stderr };
 };
 
@@ -1224,4 +1242,300 @@ test('credential settings are never served to browsers', async (t) => {
   });
   assert.notEqual(viteResponse.status, 200);
   assert.doesNotMatch(await viteResponse.text(), new RegExp(credential.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+// Treating a missing setting, a 401 or 403, a timeout or a malformed body as any other outcome, or putting a credential in a status or error, breaks the connection checks.
+test('service connections read saved settings and classify each outcome', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { deleteSetting, setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createRtorrent } = await import(rtorrentModuleUrl);
+  const { createPlex } = await import(plexModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-connections-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const pid = process.pid;
+  const rtorrentUser = `rtorrent-user-${pid}-distinctive`;
+  const rtorrentPassword = `rtorrent-password-${pid}-distinctive`;
+  const xmlString = (value) => `<methodResponse><params><param><value><string>${value}</string></value></param></params></methodResponse>`;
+  const arr = (name, port) => ({
+    name,
+    create: (fetch) => createArr(name, database, { fetch }),
+    url: `http://127.0.0.1:${port}`,
+    credentials: { [`${name}.apiKey`]: `${name}-key-${pid}-distinctive` },
+    method: 'GET',
+    probeUrl: `http://127.0.0.1:${port}/api/v3/system/status`,
+    headers: { 'x-api-key': `${name}-key-${pid}-distinctive`, accept: 'application/json' },
+    okBody: JSON.stringify({ version: '4.0.10.2544' }),
+    version: '4.0.10.2544',
+    malformedBody: '{}',
+    usePrimitive: (service) => service.request('/api/v3/system/status'),
+    primitiveResult: { status: 200, body: { version: '4.0.10.2544' } },
+  });
+  const services = [
+    arr('sonarr', 65001),
+    arr('radarr', 65002),
+    {
+      name: 'rtorrent',
+      create: (fetch) => createRtorrent(database, { fetch }),
+      url: 'http://127.0.0.1:65003/xmlrpc',
+      credentials: { 'rtorrent.username': rtorrentUser, 'rtorrent.password': rtorrentPassword },
+      method: 'POST',
+      probeUrl: 'http://127.0.0.1:65003/xmlrpc',
+      headers: {
+        authorization: `Basic ${Buffer.from(`${rtorrentUser}:${rtorrentPassword}`).toString('base64')}`,
+        'content-type': 'text/xml',
+      },
+      bodyIncludes: '<methodName>system.client_version</methodName>',
+      okBody: xmlString('0.9.8'),
+      version: '0.9.8',
+      malformedBody: '<html>not xml</html>',
+      faultBody: '<methodResponse><fault><value><struct><member><name>faultCode</name><value><int>-501</int></value></member><member><name>faultString</name><value><string>Access denied: unauthorized</string></value></member></struct></value></fault></methodResponse>',
+      usePrimitive: (service) => service.call('system.client_version', []),
+      primitiveResult: '0.9.8',
+    },
+    {
+      name: 'plex',
+      create: (fetch) => createPlex(database, { fetch }),
+      url: 'http://127.0.0.1:65004',
+      credentials: { 'plex.token': `plex-token-${pid}-distinctive` },
+      method: 'GET',
+      probeUrl: 'http://127.0.0.1:65004/',
+      headers: { 'x-plex-token': `plex-token-${pid}-distinctive`, accept: 'application/json' },
+      okBody: JSON.stringify({ MediaContainer: { version: '1.41.0.8994' } }),
+      version: '1.41.0.8994',
+      malformedBody: '{}',
+      usePrimitive: (service) => service.request('/'),
+      primitiveResult: { status: 200, body: { MediaContainer: { version: '1.41.0.8994' } } },
+    },
+  ];
+
+  for (const service of services) {
+    const urlEntry = ['serviceAddresses', `${service.name}.url`, service.url];
+    const credentialEntries = Object.entries(service.credentials).map(([key, value]) => ['credentials', key, value]);
+    const save = (entries) => {
+      for (const [category, key] of [urlEntry, ...credentialEntries]) deleteSetting(database, category, key);
+      for (const [category, key, value] of entries) setSetting(database, category, key, value);
+    };
+    const run = async (respond, use = (connection) => connection.check()) => {
+      const calls = [];
+      const fetch = async (url, init = {}) => {
+        calls.push({ url: String(url), init, headers: new Headers(init.headers) });
+        return respond();
+      };
+      const result = await use(service.create(fetch));
+      for (const call of calls) {
+        assert.equal(call.init.redirect, 'error', service.name);
+        assert.ok(call.init.signal instanceof AbortSignal, service.name);
+      }
+      return { result, calls };
+    };
+
+    const incomplete = [
+      [],
+      [urlEntry],
+      credentialEntries,
+      ...(credentialEntries.length > 1 ? credentialEntries.map((entry) => [urlEntry, entry]) : []),
+    ];
+    for (const entries of incomplete) {
+      save(entries);
+      const { result, calls } = await run(() => { throw new Error('unexpected request'); });
+      const label = `${service.name} with ${entries.map(([, key]) => key).join(', ') || 'nothing'}`;
+      assert.deepEqual(result, { kind: 'not_configured' }, label);
+      assert.equal(calls.length, 0, label);
+    }
+
+    save([urlEntry, ...credentialEntries]);
+    const ok = await run(() => new Response(service.okBody, { status: 200 }));
+    assert.deepEqual(ok.result, { kind: 'ok', version: service.version }, service.name);
+    assert.equal(ok.calls.length, 1, service.name);
+    const [request] = ok.calls;
+    assert.equal(request.init.method ?? 'GET', service.method, service.name);
+    assert.equal(request.url, service.probeUrl, service.name);
+    for (const [name, value] of Object.entries(service.headers)) {
+      assert.equal(request.headers.get(name), value, `${service.name} ${name}`);
+    }
+    if (service.bodyIncludes) assert.ok(String(request.init.body).includes(service.bodyIncludes), service.name);
+    const primitive = await run(() => new Response(service.okBody, { status: 200 }), service.usePrimitive);
+    assert.deepEqual(primitive.result, service.primitiveResult, service.name);
+
+    const failures = [
+      ['401', 'rejected', () => new Response('', { status: 401 })],
+      ['403', 'rejected', () => new Response('', { status: 403 })],
+      ['500', 'unreachable', () => new Response('', { status: 500 })],
+      ['network failure', 'unreachable', () => { throw new TypeError('fetch failed'); }],
+      ['timeout', 'unreachable', () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); }],
+      ['malformed body', 'unreachable', () => new Response(service.malformedBody, { status: 200 })],
+      ...(service.faultBody ? [['fault', 'rejected', () => new Response(service.faultBody, { status: 200 })]] : []),
+    ];
+    for (const [label, kind, respond] of failures) {
+      const { result } = await run(respond);
+      assert.deepEqual(result, { kind }, `${service.name} ${label}`);
+    }
+
+    const failed = await run(
+      () => { throw new TypeError('fetch failed'); },
+      (connection) => service.usePrimitive(connection).then(() => assert.fail(`${service.name} resolved`), (error) => error),
+    );
+    const errorText = String(failed.result);
+    for (const value of [...Object.values(service.credentials), '127.0.0.1']) {
+      assert.equal(errorText.includes(value), false, `${service.name} error mentions ${value}`);
+    }
+  }
+});
+
+// Dropping an escape, mis-reading a scalar, or resolving a fault or malformed response corrupts every rTorrent call.
+test('rTorrent XML-RPC requests are encoded and responses parsed by hand', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createRtorrent } = await import(rtorrentModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-xmlrpc-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const password = `rtorrent-password-${process.pid}-distinctive`;
+  setSetting(database, 'serviceAddresses', 'rtorrent.url', 'http://127.0.0.1:65003/xmlrpc');
+  setSetting(database, 'credentials', 'rtorrent.username', `rtorrent-user-${process.pid}`);
+  setSetting(database, 'credentials', 'rtorrent.password', password);
+  const requestBodies = [];
+  let responseBody = '';
+  const rtorrent = createRtorrent(database, {
+    fetch: async (url, init) => {
+      requestBodies.push(init.body);
+      return new Response(responseBody, { status: 200 });
+    },
+  });
+  const wrap = (value) => `<methodResponse><params><param><value>${value}</value></param></params></methodResponse>`;
+
+  responseBody = wrap('<string>done</string>');
+  await rtorrent.call('d.multicall2', ['', 'main', 'd.hash=', 'a&b<c>']);
+  assert.equal(
+    requestBodies[0],
+    '<?xml version="1.0"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>a&amp;b&lt;c&gt;</string></value></param></params></methodCall>',
+  );
+
+  const torrent = (hash, size) => `<value><struct><member><name>hash</name><value><string>${hash}</string></value></member><member><name>size</name><value><i8>${size}</i8></value></member></struct></value>`;
+  const parsed = [
+    [wrap('<string>abc</string>'), 'abc'],
+    [wrap('bare'), 'bare'],
+    [wrap('<string>a &amp; b &lt;c&gt; &quot;q&quot; &apos;s&apos; &#65;&#x42;</string>'), 'a & b <c> "q" \'s\' AB'],
+    [wrap('<int>7</int>'), 7],
+    [wrap('<i4>-3</i4>'), -3],
+    [wrap('<i8>1234567890123</i8>'), 1234567890123],
+    [wrap(`<array><data>${torrent('H1', 10)}${torrent('H2', 20)}</data></array>`), [{ hash: 'H1', size: 10 }, { hash: 'H2', size: 20 }]],
+    [wrap('<array><data></data></array>'), []],
+  ];
+  for (const [body, expected] of parsed) {
+    responseBody = body;
+    assert.deepEqual(await rtorrent.call('system.client_version', []), expected, body);
+  }
+
+  responseBody = '<methodResponse><fault><value><struct><member><name>faultCode</name><value><int>-501</int></value></member><member><name>faultString</name><value><string>Could not find method</string></value></member></struct></value></fault></methodResponse>';
+  await assert.rejects(rtorrent.call('system.missing', []), (error) => {
+    assert.match(error.message, /-501/);
+    assert.match(error.message, /Could not find method/);
+    assert.equal(error.message.includes(password), false);
+    return true;
+  });
+
+  const malformed = [
+    'not xml at all',
+    '<methodResponse><params></params></methodResponse>',
+    '<methodResponse><params><param><value><double>1.5</double></value></param></params></methodResponse>',
+    '<methodResponse><params><param><value><string>abc</str',
+  ];
+  for (const body of malformed) {
+    responseBody = body;
+    await assert.rejects(rtorrent.call('system.client_version', []), { message: 'rTorrent is unreachable.' }, body);
+  }
+});
+
+// Echoing a stored value, keeping the trailing newline from stdin, or misreporting a 401 lets credentials leak or hides a broken connection.
+test('operator command stores settings from stdin and checks connections without printing secrets', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { getSetting } = await import(settingsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-cli-'));
+  const databasePath = join(root, 'media-manager.sqlite');
+  const database = openDatabase(databasePath);
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const env = { ...process.env, DB_PATH: databasePath, NODE_NO_WARNINGS: '1' };
+  const cli = (args, stdin) => runCli(args, { env, stdin });
+  const pid = process.pid;
+  const credentials = {
+    'sonarr.apiKey': `sonarr-key-${pid}-distinctive`,
+    'radarr.apiKey': `radarr-key-${pid}-distinctive`,
+    'rtorrent.username': `rtorrent-user-${pid}-distinctive`,
+    'rtorrent.password': `rtorrent-password-${pid}-distinctive`,
+    'plex.token': `plex-token-${pid}-distinctive`,
+  };
+
+  const usage = await cli([]);
+  assert.equal(usage.code, 2);
+  assert.match(usage.stderr, /usage:/);
+
+  const saved = await cli(['settings', 'set', 'credentials', 'sonarr.apiKey'], `${credentials['sonarr.apiKey']}\n`);
+  assert.equal(saved.code, 0, saved.stderr);
+  assert.equal(getSetting(database, 'credentials', 'sonarr.apiKey'), credentials['sonarr.apiKey']);
+
+  const invalid = await cli(['settings', 'set', 'nope', 'k'], 'value');
+  assert.notEqual(invalid.code, 0);
+  assert.match(invalid.stderr, /Invalid settings category\./);
+
+  const listed = await cli(['settings', 'list']);
+  assert.equal(listed.code, 0, listed.stderr);
+  assert.ok(listed.stdout.split('\n').includes('credentials sonarr.apiKey'), listed.stdout);
+  assert.equal(listed.stdout.includes(credentials['sonarr.apiKey']), false);
+
+  const unconfigured = await cli(['connections', 'check']);
+  assert.equal(unconfigured.code, 1, unconfigured.stderr);
+  assert.equal(unconfigured.stdout, 'sonarr: not_configured\nradarr: not_configured\nrtorrent: not_configured\nplex: not_configured\n');
+
+  const { createServer } = await import('node:http');
+  const requests = [];
+  const server = createServer((request, response) => {
+    requests.push({ method: request.method, url: request.url, headers: request.headers });
+    response.writeHead(401).end();
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const urls = { 'sonarr.url': base, 'radarr.url': base, 'rtorrent.url': `${base}/xmlrpc`, 'plex.url': base };
+  for (const [category, entries] of [['serviceAddresses', urls], ['credentials', credentials]]) {
+    for (const [key, value] of Object.entries(entries)) {
+      const result = await cli(['settings', 'set', category, key], value);
+      assert.equal(result.code, 0, result.stderr);
+    }
+  }
+
+  const rejected = await cli(['connections', 'check']);
+  assert.equal(rejected.code, 1, rejected.stderr);
+  assert.equal(rejected.stdout, 'sonarr: rejected\nradarr: rejected\nrtorrent: rejected\nplex: rejected\n');
+  for (const value of Object.values(credentials)) {
+    assert.equal(rejected.stdout.includes(value), false);
+    assert.equal(rejected.stderr.includes(value), false);
+  }
+  const sent = (header) => requests.map((request) => request.headers[header]);
+  assert.ok(sent('x-api-key').includes(credentials['sonarr.apiKey']));
+  assert.ok(sent('x-api-key').includes(credentials['radarr.apiKey']));
+  const basic = Buffer.from(`${credentials['rtorrent.username']}:${credentials['rtorrent.password']}`).toString('base64');
+  assert.ok(sent('authorization').includes(`Basic ${basic}`));
+  assert.ok(sent('x-plex-token').includes(credentials['plex.token']));
+
+  const deleted = await cli(['settings', 'delete', 'credentials', 'plex.token']);
+  assert.equal(deleted.code, 0, deleted.stderr);
+  const relisted = await cli(['settings', 'list']);
+  assert.equal(relisted.code, 0, relisted.stderr);
+  assert.equal(relisted.stdout.split('\n').includes('credentials plex.token'), false);
 });
