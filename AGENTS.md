@@ -143,9 +143,9 @@ bash scripts/review-branch.sh --continue
 ```
 
 Then **stop and ask the owner before merging.** Only after a clear yes, run
-`sh scripts/land.sh`, which refuses unless the full suite passed on the PR's
-head and the `review` status there is green. This repo has no CI: the
-pre-push hook is the test gate and `land.sh` is the merge queue.
+`gh pr merge --merge --auto`, which turns on auto-merge for the PR. The main
+ruleset holds it until the `tests` check (GitHub Actions) and the `review`
+status are green; GitHub then merges it. The pre-push hook is the early local gate.
 
 **Do not work in the `main` checkout at all.** Merely *editing* it starts the
 accident: another agent that cannot merge past loose edits commits them to

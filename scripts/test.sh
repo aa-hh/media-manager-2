@@ -4,7 +4,7 @@
 #
 # Usage: sh scripts/test.sh [--full] [extra args passed to the test runner]
 #   (no flag)  the fast run Guard 4 uses at commit
-#   --full     the full suite; pre-push runs it (this repo has no CI)
+#   --full     the full suite; pre-push and CI run it
 #
 # Fill in the two commands below for your stack.
 set -eu

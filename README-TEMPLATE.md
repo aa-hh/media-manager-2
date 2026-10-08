@@ -2,9 +2,11 @@
 
 The workflow scaffolding from Audiout — git guards, the multi-pass branch
 review, AGENTS.md discipline, Claude Code hooks and skills — with every
-Audiout-specific rule removed, and adapted for a **private repo with no
-GitHub Actions**: the pre-push hook is the test gate and `scripts/land.sh`
-is the merge queue.
+Audiout-specific rule removed. CI is GitHub Actions
+(`.github/workflows/tests.yml`, one job named `tests`). A ruleset on `main`
+requires that check and the `review` status before a PR can merge, and
+`gh pr merge --merge --auto` merges it once both are green. The pre-push hook
+is the early local gate.
 
 Delete this file once the project is set up.
 
@@ -39,11 +41,12 @@ Delete this file once the project is set up.
 | Comment-slop screen (Guard 7) | `.githooks/guard-self-review.sh` | Swift-only → any `COMMENT_EXTS` |
 | AGENTS.md budget / history (Guard 12) | `.githooks/guard-agents-docs.sh` | same, self-test uses its own fixture |
 | Tests at commit (Guard 4) | `.githooks/pre-commit` → `scripts/test.sh` | SwiftPM scoping dropped |
-| Full suite + no push to main | `.githooks/pre-push` | replaces the `tests` workflow |
-| Merge gate | `scripts/land.sh` | replaces merge queue + required checks |
+| Full suite + no push to main | `.githooks/pre-push` | early local gate; CI is the real one |
+| CI | `.github/workflows/tests.yml` | runs `scripts/test.sh --full`; no Swift shards or caches |
+| Merge gate | ruleset "Main via PR checks" | requires `tests` + `review`; no merge queue (personal accounts cannot have one) |
 | Branch review (skip/cheap/full, scorer, 2 rounds) | `scripts/review-branch.sh`, `docs/review/` | repo auto-detected, risk paths blank |
 | Local main mirror | `scripts/sync-main.sh`, `scripts/launchd/` | plist generated per clone |
-| Bare-command deny + merge ask | `.claude/hooks/guard-bash.sh`, `.claude/settings.json` | were user-level hooks, now in-repo |
+| Bare-command deny | `.claude/hooks/guard-bash.sh`, `.claude/settings.json` | in-repo; merge approval stays in the user-level `require-merge-approval.py` |
 | `/pr-review` skill | `.claude/skills/pr-review/` | generic attention list |
 | Issue tracker, triage, domain docs | `docs/agents/`, `.scratch/`, `CONTEXT.md`, `docs/adr/` | same |
 | Readability rubric | `docs/REVIEW-RUBRIC.md` | generic |
@@ -55,11 +58,10 @@ isolation, XCTest, AirPlayEngine, shared-package leaks, headless windows, Swift
 test discipline), housekeeping, and the impeccable design skill (install it
 per project if a project has UI).
 
-## Private-repo notes
+## Repo settings to turn on
 
-- Commit statuses work on private repos without Actions, so
-  `review-branch.sh` still posts `review`; nothing enforces it except
-  `land.sh`. If the plan supports branch protection, you can also mark
-  `review` required.
-- The test pass `land.sh` checks is local (`.git/tests-passed`), so land
-  from the clone that pushed.
+- Allow auto-merge (Settings → General), so `gh pr merge --auto` waits for
+  the required checks.
+- A ruleset on `main` requiring a pull request and the `tests` and `review`
+  checks. `review-branch.sh` posts `review` as a commit status; the status is
+  per commit, so a new push needs a new review.
