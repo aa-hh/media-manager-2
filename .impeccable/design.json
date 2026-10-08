@@ -90,7 +90,7 @@
       "refersTo": "downloads-live-bar",
       "description": "Static example of the product-specific one-line download summary. Values are prototype copy.",
       "html": "<div class=\"ds-live-bar\"><strong>3 downloading</strong><span>41.6 MB/s down \u00b7 12.3 MB/s up</span><span class=\"ds-live-items\">Severance S02E07 64% \u00b7 The Bear S03 23% \u00b7 Andor S02E09 91%</span><span class=\"ds-live-expand\">D expand</span></div>",
-      "css": ".ds-live-bar { display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 20px; background: #15171C; color: #9AA1AB; border-top: 1px solid #262A33; font: 400 13px \"Barlow Semi Condensed\"; } .ds-live-bar strong { color: #EEF0F2; font-weight: 600; } .ds-live-items, .ds-live-expand { color: #69707B; font-size: 12px; } .ds-live-expand { margin-left: auto; }"
+      "css": ".ds-live-bar { display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 20px; background: #15171C; color: #9AA1AB; border-top: 1px solid #262A33; font: 400 13px \"Barlow Semi Condensed\"; } .ds-live-bar strong { color: #EEF0F2; font-weight: 600; } .ds-live-items, .ds-live-expand { color: #9AA1AB; font-size: 12px; } .ds-live-expand { margin-left: auto; }"
     }
   ],
   "narrative": {

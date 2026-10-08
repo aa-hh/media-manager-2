@@ -10,8 +10,8 @@ colors:
   ink: "#EEF0F2"
   ink-2: "#9AA1AB"
   ink-3: "#69707B"
-  best: "#A24BF0"
-  risk: "#FF3B30"
+  best: "#B46AF5"
+  risk: "#FF534A"
   on-cell: "#0E0F12"
 typography:
   button: {fontFamily: "Barlow", fontSize: "14px", fontWeight: 600}
@@ -47,7 +47,7 @@ This records the 26 static screens in `design/mediaManager2.pen`. Shared compone
 
 ## Colors
 
-`ground`, `row`, `row-alt` and `row-hover` separate surfaces and rows. `seam` divides them. `ink` carries primary content; `ink-2` and `ink-3` carry secondary content and hints. `on-cell` supplies dark text on a filled control.
+`ground`, `row`, `row-alt` and `row-hover` separate surfaces and rows. `seam` divides them. `ink` carries primary content; `ink-2` carries readable secondary text; `ink-3` serves muted borders, decoration and disabled treatment. `on-cell` supplies dark text on a filled control.
 
 Use `best` only for the single best release that passes the quality profile in each release table. Use `risk` for problems and risks, with explanatory text. Better or not better than the owned file is a text mark. The legacy `better` and `same` Pen variables are excluded from the active palette.
 
@@ -57,7 +57,7 @@ Barlow carries interface labels and navigation. Barlow Semi Condensed carries re
 
 ## Layout
 
-The prototype has desktop frames (1440 × 900px) and one phone frame (390 × 844px). These are examples, not implemented responsive breakpoints. Desktop top bars are 48px high; the phone top bar is 40px. Shared table rows are 34px high, with existing 32–36px variations retained by screen. Live-download bars are 32px high on every screen.
+The prototype has desktop frames (1440 × 900px) and one phone frame (390 × 844px). These are examples, not implemented responsive breakpoints. Desktop top bars are 48px high; the phone top bar is 44px. Shared table rows are 34px high, with existing 32–36px variations retained by screen. Visible live-download bars are 32px high on every screen; the phone bar sits inside a 44px-high control.
 
 Keep release lists inline with the title. Show row actions and their keys on the selected row only. Open one inline decision panel at a time and dim the surrounding content. The phone uses a bottom sheet for the release choice.
 
@@ -72,6 +72,8 @@ Controls and cells have square corners. Search fields, outlined buttons and key 
 ## Components
 
 The shared library contains Button default, outline and ghost variants; Input/Search; Tabs triggers; NavigationMenu links; Kbd; Checkbox; RadioGroup; Switch; Select; Collapsible; Sheet; Badge; Progress; and Table, Row and Cell parts. Table styling follows TanStack Table's row and cell structure; table behavior remains implementation work.
+
+The galleries show static focus and disabled states for buttons, search, select and disclosure; unchecked, mixed and unselected choices; the switch off state; and expanded disclosure.
 
 Default buttons use light fill and dark text. Outline buttons use a thin border; ghost buttons keep the surrounding background. Preserve each existing action's size, icon, key and state. Tabs use light text and a bottom line for the active item. Navigation uses text weight and colour for the current page.
 
