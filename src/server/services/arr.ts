@@ -15,7 +15,7 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
 
   const request = async (
     path: string,
-    init: { method?: 'GET' | 'POST'; body?: unknown } = {},
+    init: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown; timeoutMs?: number } = {},
   ): Promise<{ status: number; body: unknown }> => {
     const configuration = readConfiguration();
     if (configuration === undefined) throw new Error(`${label} is not configured.`);
@@ -28,7 +28,7 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
         method,
         headers,
         body: method === 'POST' ? JSON.stringify(init.body) : undefined,
-      });
+      }, init.timeoutMs);
     } catch {
       throw new Error(`${label} is unreachable.`);
     }

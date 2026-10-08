@@ -36,6 +36,11 @@ export const applicationMigrations = [
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   ) STRICT;`,
+  `CREATE TABLE release_searches (
+    target TEXT PRIMARY KEY,
+    fetched_at INTEGER NOT NULL,
+    releases TEXT NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

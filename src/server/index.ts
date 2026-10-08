@@ -6,6 +6,7 @@ import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createJobRunner } from './jobs.js';
+import { createReleases } from './releases.js';
 import { createSearch } from './search.js';
 import { createArr } from './services/arr.js';
 
@@ -33,6 +34,7 @@ if (database !== undefined) {
     events,
     search: createSearch(arr),
     add: createAdd(database, arr),
+    releases: createReleases(database, arr),
   });
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {

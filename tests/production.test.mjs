@@ -32,6 +32,7 @@ const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).hre
 const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
 const searchModuleUrl = new URL('../dist/server/search.js', import.meta.url).href;
 const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
+const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -2019,4 +2020,107 @@ test('adding a title sends the monitor decision and remembers it as the next def
   assert.equal(parseSeriesChoices({ ...series, monitor: 'everything' }), undefined);
   assert.equal(parseSeriesChoices({ ...series, qualityProfileId: '6' }), undefined);
   assert.equal(parseMovieChoices({ ...movie, minimumAvailability: 'tba' }), undefined);
+});
+
+// Searching again when results are stored, losing stored results on a failed refresh, dropping rejected releases, misreading either service's indexer flags, or running two searches for one target at once breaks Pick a release.
+test('interactive searches are kept with their age and refreshed only on request', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createReleases } = await import(releasesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-releases-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const [service, port] of [['sonarr', 65031], ['radarr', 65032]]) {
+    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
+    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
+  }
+  const sonarrReleases = [
+    {
+      guid: 'g1', indexerId: 3, indexer: 'Blutopia', title: 'Show.S01E02.1080p.WEB-DL', quality: { quality: { name: 'WEBDL-1080p' } },
+      size: 2_000_000_000, ageHours: 5.5, seeders: 40, leechers: 2, approved: true, rejections: [], customFormatScore: 1200,
+      customFormats: [{ name: 'HQ' }], indexerFlags: 1 | 32, protocol: 'torrent',
+    },
+    {
+      guid: 'g2', indexerId: 3, title: 'Show.S01E02.720p.HDTV', quality: { quality: { name: 'HDTV-720p' } }, approved: false,
+      rejections: [{ reason: 'Not an upgrade for existing episode file(s)' }], indexerFlags: 0, seeders: 0,
+    },
+    { guid: '', indexerId: 3, title: 'broken' },
+  ];
+  let sonarr = () => new Response(JSON.stringify(sonarrReleases), { status: 200 });
+  const paths = [];
+  let releaseCalls = 0;
+  let release;
+  const fetch = async (url) => {
+    const parsed = new URL(String(url));
+    paths.push(`${parsed.port}${parsed.pathname}${parsed.search}`);
+    if (parsed.pathname === '/api/v3/release') {
+      releaseCalls += 1;
+      if (parsed.port === '65032') {
+        return new Response(JSON.stringify([{ guid: 'm1', indexerId: 7, title: 'Movie.2021.2160p', approved: true, rejections: [], indexerFlags: ['G_Freeleech75', 'Nuked'] }]), { status: 200 });
+      }
+      await release;
+      return sonarr();
+    }
+    if (parsed.pathname === '/api/v3/history/series') {
+      return new Response(JSON.stringify([
+        { eventType: 'grabbed', sourceTitle: 'show.s01e02.720p.hdtv', date: '2026-10-01T10:00:00Z' },
+        { eventType: 'downloadFolderImported', sourceTitle: 'Show.S01E02.720p.HDTV' },
+      ]), { status: 200 });
+    }
+    if (parsed.pathname === '/api/v3/blocklist') {
+      return new Response(JSON.stringify({ records: [{ sourceTitle: 'Show.S01E02.720p.HDTV', date: '2026-10-02T10:00:00Z' }] }), { status: 200 });
+    }
+    return new Response('', { status: 500 });
+  };
+  let clock = 1_000;
+  const releases = createReleases(database, { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) }, () => clock);
+  const episode = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
+
+  const first = await releases.get(episode);
+  assert.equal(first.kind, 'ok');
+  assert.equal(first.search.fetchedAt, 1_000);
+  assert.ok(paths.includes('65031/api/v3/release?episodeId=50'), paths.join());
+  assert.deepEqual(first.search.releases.map((item) => [item.guid, item.approved, item.flags, item.rejections]), [
+    ['g1', true, ['Freeleech', 'Internal'], []],
+    ['g2', false, [], ['Not an upgrade for existing episode file(s)']],
+  ]);
+  assert.deepEqual(first.search.releases[0].past, []);
+  assert.deepEqual(first.search.releases[1].past, [
+    { kind: 'grabbed', at: '2026-10-01T10:00:00Z' },
+    { kind: 'blocklisted', at: '2026-10-02T10:00:00Z' },
+  ]);
+  assert.equal(first.search.releases[0].quality, 'WEBDL-1080p');
+  assert.deepEqual(first.search.releases[0].customFormats, ['HQ']);
+
+  clock = 5_000;
+  const stored = await releases.get(episode);
+  assert.equal(releaseCalls, 1);
+  assert.equal(stored.search.fetchedAt, 1_000);
+
+  let unblock;
+  release = new Promise((resolve) => { unblock = resolve; });
+  sonarrReleases.splice(1, 1);
+  const refreshes = [releases.refresh(episode), releases.refresh(episode)];
+  assert.equal((await releases.get(episode)).refreshing, true);
+  unblock();
+  const [refreshedA, refreshedB] = await Promise.all(refreshes);
+  assert.equal(releaseCalls, 2);
+  assert.equal(refreshedA, refreshedB);
+  assert.equal(refreshedA.search.fetchedAt, 5_000);
+  assert.deepEqual(refreshedA.search.releases.map((item) => item.guid), ['g1']);
+  release = undefined;
+
+  sonarr = () => new Response('', { status: 503 });
+  const failed = await releases.refresh(episode);
+  assert.equal(failed.kind, 'unreachable');
+  assert.equal(failed.stored.fetchedAt, 5_000);
+  assert.deepEqual((await releases.get(episode)).search.releases.map((item) => item.guid), ['g1']);
+
+  const movie = await releases.get({ service: 'radarr', kind: 'movie', movieId: 9 });
+  assert.deepEqual(movie.search.releases[0].flags, ['Freeleech 75%', 'Nuked']);
+  assert.equal(releases.find({ service: 'radarr', kind: 'movie', movieId: 9 }, 'm1').title, 'Movie.2021.2160p');
 });
