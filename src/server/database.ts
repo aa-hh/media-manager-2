@@ -60,7 +60,7 @@ const applicationMigrations = [
     since INTEGER NOT NULL,
     detail TEXT NOT NULL
   ) STRICT;`,
-  `CREATE TABLE grabs (
+  `CREATE TABLE torrent_grabs (
     hash TEXT PRIMARY KEY,
     service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
     movie_id INTEGER,
@@ -147,7 +147,7 @@ const applicationMigrations = [
     rechecked_at INTEGER,
     replace INTEGER NOT NULL CHECK (replace IN (0, 1))
   ) STRICT;`,
-  `ALTER TABLE grabs ADD COLUMN published_at INTEGER;
+  `ALTER TABLE torrent_grabs ADD COLUMN published_at INTEGER;
   CREATE TABLE stall_watch (
     hash TEXT PRIMARY KEY,
     no_seeders_since INTEGER,

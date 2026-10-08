@@ -10,7 +10,7 @@ import { createImportFix } from './imports.js';
 import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
 import { createProblems } from './problems.js';
-import { createGrabTracker } from './grabs.js';
+import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createRtorrent } from './services/rtorrent.js';

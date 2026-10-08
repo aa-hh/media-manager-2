@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
-import { findGrab, type Grab, listQueue, type QueueItem, type Service } from './grabs.js';
+import { findGrab, type Grab, listQueue, type QueueItem, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
 import { RELEASE_LIMIT } from './problems.js';
 

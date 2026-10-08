@@ -83,12 +83,12 @@ const readGrab = (row: Record<string, unknown>): Grab => ({
 });
 
 export const findGrab = (database: DatabaseSync, hash: string): Grab | undefined => {
-  const row = database.prepare('SELECT * FROM grabs WHERE hash = ?').get(hash.toUpperCase());
+  const row = database.prepare('SELECT * FROM torrent_grabs WHERE hash = ?').get(hash.toUpperCase());
   return row === undefined ? undefined : readGrab(row as Record<string, unknown>);
 };
 
 export const listGrabs = (database: DatabaseSync): Grab[] => database
-  .prepare('SELECT * FROM grabs ORDER BY grabbed_at, hash')
+  .prepare('SELECT * FROM torrent_grabs ORDER BY grabbed_at, hash')
   .all()
   .map((row) => readGrab(row as Record<string, unknown>));
 
@@ -222,7 +222,7 @@ export const createGrabTracker = (options: {
       };
     if (previous !== undefined && JSON.stringify(previous) === JSON.stringify(merged)) return previous;
     database.prepare(`
-      INSERT INTO grabs (hash, service, movie_id, series_id, episode_ids, release_title, indexer, grabbed_at, published_at, by_hand,
+      INSERT INTO torrent_grabs (hash, service, movie_id, series_id, episode_ids, release_title, indexer, grabbed_at, published_at, by_hand,
         imported_at, failed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (hash) DO UPDATE SET movie_id = excluded.movie_id, series_id = excluded.series_id,
@@ -236,7 +236,7 @@ export const createGrabTracker = (options: {
   };
 
   const markOutcome = (hash: string, column: 'imported_at' | 'failed_at', at: number) => {
-    const result = database.prepare(`UPDATE grabs SET ${column} = ? WHERE hash = ? AND ${column} IS NULL`).run(at, hash);
+    const result = database.prepare(`UPDATE torrent_grabs SET ${column} = ? WHERE hash = ? AND ${column} IS NULL`).run(at, hash);
     if (result.changes > 0) events.publish('grab', findGrab(database, hash));
   };
 

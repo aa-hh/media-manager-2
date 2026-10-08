@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type Assignment, type AssignmentTarget, checkAssignments } from './assignments.js';
-import { findGrab, listQueue, type Service } from './grabs.js';
+import { findGrab, listQueue, type Service } from './torrentGrabs.js';
 import { listOpenProblems, type createProblems } from './problems.js';
 
 type Problems = ReturnType<typeof createProblems>;

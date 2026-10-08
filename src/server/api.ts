@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import type { Assignment } from './assignments.js';
-import { listGrabs, listQueue, type Service } from './grabs.js';
+import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import type { createManualImport } from './manualImport.js';
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';

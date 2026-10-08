@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { findGrab, type Grab, listQueue, type Service } from './grabs.js';
+import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
 import { RELEASE_LIMIT } from './problems.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
