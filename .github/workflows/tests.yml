@@ -1,12 +1,13 @@
 name: Tests
 
-# The full suite, once per PR and once on every push to main. No path filter
-# on purpose: a required check that does not run leaves the PR stuck at
-# "expected". The job is named `tests` to match the required check in the
-# repo ruleset. It runs the same wrapper as the local pre-push hook.
+# The full suite, once per PR and once more in the merge queue. No path
+# filter on purpose: a required check that does not run leaves the PR stuck
+# at "expected". The job is named `tests` to match the required check in the
+# main ruleset. It runs the same wrapper as the local pre-push hook.
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
@@ -17,6 +18,8 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
+  statuses: write
 
 jobs:
   tests:
@@ -26,3 +29,38 @@ jobs:
       - uses: actions/checkout@v4
       - name: Full suite
         run: sh scripts/test.sh --full
+
+  # The ruleset requires a `review` commit status, which
+  # scripts/review-branch.sh posts on the PR head. A merge-queue run checks
+  # its own temporary merge commit, where that status never appears, so copy
+  # the PR head's verdict onto it.
+  review-relay:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'merge_group'
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      QUEUE_REF: ${{ github.ref }}
+      QUEUE_SHA: ${{ github.sha }}
+    steps:
+      - name: Relay the review status from the PR head
+        run: |
+          set -eu
+          # refs/heads/gh-readonly-queue/main/pr-255-<sha>
+          pr=$(printf '%s\n' "$QUEUE_REF" | sed -n 's|.*/pr-\([0-9][0-9]*\)-[0-9a-f]*$|\1|p')
+          if [ -z "$pr" ]; then
+            echo "could not read a PR number from $QUEUE_REF" >&2
+            exit 1
+          fi
+          head=$(gh api "repos/$REPO/pulls/$pr" -q .head.sha)
+          short=$(printf '%s' "$head" | cut -c1-8)
+          state=$(gh api "repos/$REPO/commits/$head/status" -q '[.statuses[] | select(.context == "review")][0].state // ""')
+          echo "review state on pr head $short: ${state:-<none>}"
+          if [ "$state" = success ]; then
+            gh api "repos/$REPO/statuses/$QUEUE_SHA" -f context=review -f state=success \
+              -f description="relayed from PR head $short" >/dev/null
+          else
+            gh api "repos/$REPO/statuses/$QUEUE_SHA" -f context=review -f state=failure \
+              -f description="no passing review on PR head $short" >/dev/null
+            exit 1
+          fi

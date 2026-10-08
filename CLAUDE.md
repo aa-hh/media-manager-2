@@ -25,8 +25,9 @@ sh scripts/test.sh --full         # full suite (what pre-push runs)
 **Always go through these wrappers, never the bare build or test command.**
 The Claude hook in `.claude/hooks/guard-bash.sh` denies the bare commands.
 
-There is **no CI**. The pre-push hook is the full-suite gate, and
-`scripts/land.sh` is the merge queue.
+CI is GitHub Actions (`.github/workflows/tests.yml`). `main` takes changes
+only through GitHub's merge queue, and only once the `tests` check and the
+`review` status are green. The pre-push hook is the early local gate.
 
 ## Critical workflow rules
 
@@ -43,7 +44,7 @@ There is **no CI**. The pre-push hook is the full-suite gate, and
   `bash scripts/review-branch.sh` (run the passes it prints as subagents,
   then `bash scripts/review-branch.sh --continue`).
 - **Then stop and ask the owner before merging.** Only after a clear yes, run
-  `sh scripts/land.sh`. The hook asks on any merge either way.
+  `sh scripts/land.sh`, which queues the PR. The hook asks on any merge either way.
 - **Uncommitted edits in the `main` checkout: stop and ask.** Never stash,
   reset or discard them — they belong to another session.
 
