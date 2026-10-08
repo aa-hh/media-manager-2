@@ -99,6 +99,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
       if (!isCurrent(request.version)) return;
       if (response.status === 200 && typeof body.expiresAt === 'number' && Number.isFinite(body.expiresAt)) {
         callbackStateRef.current = undefined;
+        window.history.replaceState(window.history.state, '', '/');
         onSignedIn(body.expiresAt);
         return;
       }
