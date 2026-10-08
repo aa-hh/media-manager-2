@@ -14,6 +14,7 @@ import { readSetting } from './services/connection.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTorrentPoller } from './torrents.js';
 import { createTrackerWatch } from './trackers.js';
+import { createSearchScheduler } from './searches.js';
 import { createStallFix } from './stalls.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
@@ -44,6 +45,9 @@ if (database !== undefined) {
   runner.register('tracker-watch', 30_000, trackers.check);
   const stalls = createStallFix({ database, rtorrent, arr: arrServices, problems, trackers });
   runner.register('stall-fix', 60_000, stalls.check);
+  // Two minutes keeps Radarr's whole-library read light while still searching close to each release time.
+  const searches = createSearchScheduler({ database, arr: arrServices, problems });
+  runner.register('search-schedule', 2 * 60_000, searches.check);
   const app = createApp({
     clientDirectory,
     listeningHost: host,

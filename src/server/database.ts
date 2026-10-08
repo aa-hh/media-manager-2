@@ -155,6 +155,14 @@ const applicationMigrations = [
     announced_at INTEGER,
     replaced_at INTEGER
   ) STRICT;`,
+  `CREATE TABLE search_log (
+    subject TEXT PRIMARY KEY,
+    searched_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE TABLE availability_seen (
+    subject TEXT PRIMARY KEY,
+    seen_at INTEGER NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

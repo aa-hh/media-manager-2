@@ -36,6 +36,7 @@ const problemsModuleUrl = new URL('../dist/server/problems.js', import.meta.url)
 const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
+const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
@@ -2436,6 +2437,82 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.deepEqual(grabbedTitles(manual.requests), []);
     assert.equal(listOpenProblems(manual.database).find((problem) => problem.kind === 'stalled').state, 'needs_you');
     manual.database.close();
+  });
+});
+
+test('missing movies and episodes are searched when they come out and every six hours after', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems, subjectHistory } = await import(problemsModuleUrl);
+  const { writeDependency } = await import(dependenciesModuleUrl);
+  const { createSearchScheduler, searchDueAt } = await import(searchesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-searches-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const minute = 60_000;
+  const hour = 60 * minute;
+
+  // Searching before availability, before the 15-minute grace after adding, or more often than six hours turns this red.
+  await t.test('the due time follows availability, the add grace and the six-hour repeat', () => {
+    assert.equal(searchDueAt({ availableAt: 10 * hour, addedAt: 0, lastSearchAt: null }), 10 * hour);
+    assert.equal(searchDueAt({ availableAt: 10 * hour, addedAt: 10 * hour - minute, lastSearchAt: null }), 10 * hour + 14 * minute);
+    assert.equal(searchDueAt({ availableAt: 10 * hour, addedAt: 0, lastSearchAt: 9 * hour }), 10 * hour);
+    assert.equal(searchDueAt({ availableAt: 10 * hour, addedAt: 0, lastSearchAt: 11 * hour }), 17 * hour);
+  });
+
+  // Sending a second search before Sonarr updates its last-search time, searching a queued item, or searching while Sonarr is down turns this red.
+  await t.test('the scheduler searches each due item once, skips queued ones and pauses with the service', async () => {
+    const database = openDatabase(join(root, 'scheduler', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const commands = [];
+    const episodes = [
+      { id: 1, monitored: true, hasFile: false, airDateUtc: '2026-10-08T20:00:00Z', seasonNumber: 1, episodeNumber: 1, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
+      { id: 2, monitored: true, hasFile: false, airDateUtc: '2026-10-08T14:00:00Z', lastSearchTime: '2026-10-08T15:00:00Z', seasonNumber: 1, episodeNumber: 2, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
+      { id: 3, monitored: true, hasFile: false, airDateUtc: '2026-10-01T00:00:00Z', seasonNumber: 1, episodeNumber: 3, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
+    ];
+    const movies = [
+      { id: 7, title: 'Movie', monitored: true, hasFile: false, isAvailable: true, added: '2026-10-08T19:55:00Z' },
+      { id: 8, title: 'Later', monitored: true, hasFile: false, isAvailable: false, added: '2026-01-01T00:00:00Z' },
+    ];
+    const arr = {
+      sonarr: { request: async (path, init = {}) => {
+        if (init.method === 'POST') { commands.push(['sonarr', init.body]); return { status: 201, body: {} }; }
+        return { status: 200, body: { totalRecords: episodes.length, records: episodes } };
+      } },
+      radarr: { request: async (path, init = {}) => {
+        if (init.method === 'POST') { commands.push(['radarr', init.body]); return { status: 201, body: {} }; }
+        return { status: 200, body: movies };
+      } },
+    };
+    database.prepare(`INSERT INTO arr_queue (service, queue_id, download_id, movie_id, series_id, episode_id, title, status, tracked_status,
+      tracked_state, status_messages, error_message, indexer, protocol, quality, formats, format_score, size_bytes, size_left_bytes)
+      VALUES ('sonarr', 1, NULL, NULL, 1, 3, 'x', 'delay', 'ok', 'downloading', '[]', '', '', 'torrent', '', '[]', 0, 0, 0)`).run();
+    const problems = createProblems({ database, events, now });
+    const scheduler = createSearchScheduler({ database, arr, problems, now });
+
+    await scheduler.check();
+    assert.deepEqual(commands, [['sonarr', { name: 'EpisodeSearch', episodeIds: [1] }]]);
+    assert.equal(subjectHistory(database, { type: 'episode', service: 'sonarr', id: '1' })[0].state, 'resolved');
+
+    clock.value += 2 * minute;
+    await scheduler.check();
+    assert.equal(commands.length, 1);
+
+    clock.value = Date.parse('2026-10-08T20:10:00Z');
+    await scheduler.check();
+    assert.deepEqual(commands.at(-1), ['radarr', { name: 'MoviesSearch', movieIds: [7] }]);
+
+    clock.value = Date.parse('2026-10-08T21:00:00Z');
+    await scheduler.check();
+    assert.deepEqual(commands.at(-1), ['sonarr', { name: 'EpisodeSearch', episodeIds: [2] }]);
+    assert.equal(commands.length, 3);
+
+    writeDependency(database, events, 'sonarr', 'down', 0, 'Sonarr is unreachable.');
+    clock.value = Date.parse('2026-10-09T03:00:00Z');
+    await scheduler.check();
+    assert.equal(commands.some(([service], index) => index >= 3 && service === 'sonarr'), false);
+    database.close();
   });
 });
 
