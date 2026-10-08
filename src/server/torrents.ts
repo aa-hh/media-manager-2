@@ -15,7 +15,7 @@ export type Torrent = {
   active: boolean;
   complete: boolean;
   message: string;
-  finishedAt: number;
+  finishedAtSeconds: number;
   ratioThousandths: number;
   peersConnected: number;
   seedersConnected: number;
@@ -44,7 +44,7 @@ const fields = [
   ['active', 'd.is_active=', 'flag'],
   ['complete', 'd.complete=', 'flag'],
   ['message', 'd.message=', 'string'],
-  ['finishedAt', 'd.timestamp.finished=', 'number'],
+  ['finishedAtSeconds', 'd.timestamp.finished=', 'number'],
   ['ratioThousandths', 'd.ratio=', 'number'],
   ['peersConnected', 'd.peers_connected=', 'number'],
   ['seedersConnected', 'd.peers_complete=', 'number'],
@@ -64,7 +64,7 @@ const columns: Record<keyof Torrent, string> = {
   active: 'active',
   complete: 'complete',
   message: 'message',
-  finishedAt: 'finished_at',
+  finishedAtSeconds: 'finished_at',
   ratioThousandths: 'ratio_thousandths',
   peersConnected: 'peers_connected',
   seedersConnected: 'seeders_connected',
@@ -103,8 +103,9 @@ const isSeeding = (torrent: Pick<Torrent, 'complete' | 'started' | 'active' | 'm
 );
 
 // Announce URLs carry the passkey in their path or query, so only the host is ever kept.
-const trackerHostFrom = (value: unknown): string | null => {
-  if (!Array.isArray(value)) return null;
+// '' means looked up and none found (trackerless or DHT-only), so the torrent is not queued again.
+const trackerHostFrom = (value: unknown): string => {
+  if (!Array.isArray(value)) return '';
   for (const row of value) {
     if (!Array.isArray(row) || typeof row[0] !== 'string') continue;
     try {
@@ -114,7 +115,7 @@ const trackerHostFrom = (value: unknown): string | null => {
       continue;
     }
   }
-  return null;
+  return '';
 };
 
 const readRow = (row: Record<string, unknown>): Torrent => {
@@ -164,8 +165,7 @@ export const createTorrentPoller = (options: {
     const hosts = new Map<string, string>();
     for (const hash of hashes.slice(0, TRACKER_LOOKUPS_PER_POLL)) {
       try {
-        const host = trackerHostFrom(await rtorrent.call('t.multicall', [hash, '', 't.url=']));
-        if (host !== null) hosts.set(hash, host);
+        hosts.set(hash, trackerHostFrom(await rtorrent.call('t.multicall', [hash, '', 't.url='])));
       } catch {
         continue;
       }

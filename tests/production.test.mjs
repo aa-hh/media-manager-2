@@ -1765,6 +1765,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
 
   const hashA = 'ab'.repeat(20);
   const hashB = 'CD'.repeat(20);
+  const hashC = 'EF'.repeat(20);
   // Field order matches the poller's d.multicall2 request.
   const row = (hash, overrides = {}) => {
     const torrent = {
@@ -1787,7 +1788,9 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     const rtorrent = {
       call: async (method, params) => {
         fake.calls.push([method, params]);
-        if (method === 't.multicall') return [[`https://tracker.example/announce/secret-passkey-${params[0]}?pk=1`]];
+        if (method === 't.multicall') {
+          return params[0] === hashC ? [] : [[`https://tracker.example/announce/secret-passkey-${params[0]}?pk=1`]];
+        }
         if (fake.fail !== undefined) throw new Error(fake.fail);
         return fake.rows;
       },
@@ -1796,30 +1799,31 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     return { database, clock, published, fake, poller };
   };
 
-  // Dropping the uppercase normalization, deleting gone torrents, keeping the announce passkey, or publishing unchanged polls turns this red.
+  // Dropping the uppercase normalization, deleting gone torrents, keeping the announce passkey, re-querying a trackerless torrent, or publishing unchanged polls turns this red.
   await t.test('new, changed, gone and returning torrents are stored and published', async () => {
     const { database, clock, published, fake, poller } = setup();
-    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 0 })];
+    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 0 }), row(hashC)];
     await poller.poll();
     let torrents = listTorrents(database);
-    assert.deepEqual(torrents.map((torrent) => torrent.hash), [hashA.toUpperCase(), hashB]);
+    assert.deepEqual(torrents.map((torrent) => torrent.hash), [hashA.toUpperCase(), hashB, hashC]);
+    assert.equal(torrents[2].trackerHost, '');
     assert.equal(torrents[0].trackerHost, 'tracker.example');
     assert.equal(JSON.stringify(torrents).includes('passkey'), false);
     assert.equal(torrents[1].complete, false);
     const first = published.filter((event) => event.type === 'torrents');
     assert.equal(first.length, 1);
-    assert.equal(first[0].data.changed.length, 2);
+    assert.equal(first[0].data.changed.length, 3);
 
     clock.value += 30_000;
     await poller.poll();
     assert.equal(published.filter((event) => event.type === 'torrents').length, 1);
-    assert.equal(fake.calls.filter(([method]) => method === 't.multicall').length, 2);
+    assert.equal(fake.calls.filter(([method]) => method === 't.multicall').length, 3);
 
     clock.value += 30_000;
-    fake.rows = [row(hashB, { complete: 0, completed: 400, down: 99 })];
+    fake.rows = [row(hashB, { complete: 0, completed: 400, down: 99 }), row(hashC)];
     await poller.poll();
     torrents = listTorrents(database);
-    assert.equal(torrents.length, 2);
+    assert.equal(torrents.length, 3);
     assert.equal(torrents.find((torrent) => torrent.hash === hashA.toUpperCase()).goneAt, clock.value);
     assert.equal(torrents.find((torrent) => torrent.hash === hashB).completedBytes, 400);
     const latest = published.at(-1);
@@ -1828,7 +1832,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     assert.deepEqual(latest.data.changed.map((torrent) => torrent.hash), [hashB]);
 
     clock.value += 30_000;
-    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 400, down: 99 })];
+    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 400, down: 99 }), row(hashC)];
     await poller.poll();
     assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).goneAt, null);
     database.close();

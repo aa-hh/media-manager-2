@@ -192,7 +192,8 @@ export const openDatabase = (path?: string): DatabaseSync => {
   prepareDatabaseFile(selectedPath);
   let database: DatabaseSync;
   try {
-    database = new DatabaseSync(selectedPath);
+    // The rTorrent poll writes every 30 seconds; without a busy timeout a CLI run landing inside it fails at once.
+    database = new DatabaseSync(selectedPath, { timeout: 5_000 });
   } catch {
     throw new DatabaseError('Database could not be opened.');
   }
