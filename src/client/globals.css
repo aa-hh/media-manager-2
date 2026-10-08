@@ -19,6 +19,27 @@
   --secondary-ink: #53605f;
   --border: #dae2df;
   --focus: #233b35;
+  /* The signed-in app follows DESIGN.md; the sign-in page keeps the light tokens above. */
+  --mm-ground: #0e0f12;
+  --mm-row: #15171c;
+  --mm-row-alt: #1b1e24;
+  --mm-row-hover: #22262e;
+  --mm-seam: #262a33;
+  --mm-ink: #eef0f2;
+  --mm-ink-2: #9aa1ab;
+  --mm-ink-3: #69707b;
+  --mm-best: #b46af5;
+  --mm-risk: #ff534a;
+  --mm-on-cell: #0e0f12;
+}
+
+/* Barlow is not bundled yet, so these fall back to the closest system faces. */
+@utility font-ui {
+  font-family: "Barlow", "Inter", sans-serif;
+}
+
+@utility font-data {
+  font-family: "Barlow Semi Condensed", "Arial Narrow", "Inter", sans-serif;
 }
 
 @layer base {

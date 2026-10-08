@@ -173,6 +173,7 @@ const applicationMigrations = [
     done INTEGER NOT NULL CHECK (done IN (0, 1)),
     PRIMARY KEY (service, download_id)
   ) STRICT;`,
+  `ALTER TABLE arr_queue ADD COLUMN label TEXT NOT NULL DEFAULT '';`,
 ] as const;
 
 class DatabaseError extends Error {}

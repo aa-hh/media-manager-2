@@ -29,6 +29,8 @@ export type QueueItem = {
   seriesId: number | null;
   episodeId: number | null;
   title: string;
+  // The movie or episode in words, such as "Andor S02E09" or "Dune: Part Two (2024)".
+  label: string;
   status: string;
   trackedStatus: string;
   trackedState: string;
@@ -103,6 +105,7 @@ export const listQueue = (database: DatabaseSync): QueueItem[] => database
       seriesId: row.series_id === null ? null : Number(row.series_id),
       episodeId: row.episode_id === null ? null : Number(row.episode_id),
       title: String(row.title),
+      label: String(row.label),
       status: String(row.status),
       trackedStatus: String(row.tracked_status),
       trackedState: String(row.tracked_state),
@@ -119,6 +122,24 @@ export const listQueue = (database: DatabaseSync): QueueItem[] => database
       added: row.added === null ? null : String(row.added),
     };
   });
+
+const episodeCode = (season: unknown, episode: unknown) => (
+  typeof season === 'number' && typeof episode === 'number'
+    ? `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+    : ''
+);
+
+const queueLabel = (value: Record<string, unknown>) => {
+  if (isRecord(value.movie)) {
+    const year = integer(value.movie.year);
+    return `${text(value.movie.title)}${year === null || year === 0 ? '' : ` (${year})`}`.trim();
+  }
+  if (isRecord(value.series)) {
+    const episode = isRecord(value.episode) ? episodeCode(value.episode.seasonNumber, value.episode.episodeNumber) : '';
+    return `${text(value.series.title)} ${episode}`.trim();
+  }
+  return '';
+};
 
 const parseQueueItem = (service: Service, value: unknown): QueueItem | null => {
   if (!isRecord(value)) return null;
@@ -139,6 +160,7 @@ const parseQueueItem = (service: Service, value: unknown): QueueItem | null => {
   return {
     service,
     queueId,
+    label: queueLabel(value),
     downloadId: normalizeHash(value.downloadId),
     movieId: integer(value.movieId),
     seriesId: integer(value.seriesId),
@@ -222,7 +244,7 @@ export const createGrabTracker = (options: {
     const items: QueueItem[] = [];
     for (let page = 1; ; page += 1) {
       const { status, body } = await arr[service].request(
-        `/api/v3/queue?page=${page}&pageSize=${QUEUE_PAGE_SIZE}&includeUnknownSeriesItems=true&includeUnknownMovieItems=true`,
+        `/api/v3/queue?page=${page}&pageSize=${QUEUE_PAGE_SIZE}&includeUnknownSeriesItems=true&includeUnknownMovieItems=true&includeSeries=true&includeEpisode=true&includeMovie=true`,
       );
       if (status < 200 || status > 299 || !isRecord(body) || !Array.isArray(body.records)) {
         throw new Error(`${service === 'sonarr' ? 'Sonarr' : 'Radarr'} queue could not be read.`);
@@ -244,14 +266,14 @@ export const createGrabTracker = (options: {
       const insert = database.prepare(`
         INSERT INTO arr_queue (service, queue_id, download_id, movie_id, series_id, episode_id, title, status, tracked_status,
           tracked_state, status_messages, error_message, indexer, protocol, quality, formats, format_score, size_bytes,
-          size_left_bytes, estimated_completion, added)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          size_left_bytes, estimated_completion, added, label)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const item of items) {
         insert.run(item.service, item.queueId, item.downloadId, item.movieId, item.seriesId, item.episodeId, item.title,
           item.status, item.trackedStatus, item.trackedState, JSON.stringify(item.statusMessages), item.errorMessage,
           item.indexer, item.protocol, item.quality, JSON.stringify(item.formats), item.formatScore, item.sizeBytes,
-          item.sizeLeftBytes, item.estimatedCompletion, item.added);
+          item.sizeLeftBytes, item.estimatedCompletion, item.added, item.label);
       }
       database.exec('COMMIT;');
     } catch (error) {
@@ -385,6 +407,8 @@ export const createGrabTracker = (options: {
 
   return {
     reconcile,
+    // Re-reads one service now, for example after the owner changed its queue.
+    refresh: reconcileService,
     receiveWebhook,
     recordGrab,
     intervalMs: RECONCILE_INTERVAL_MS,

@@ -57,7 +57,7 @@ if (database !== undefined) {
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
-    api: createApiRoutes(database),
+    api: createApiRoutes(database, { arr: arrServices, refresh: grabs.refresh }),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
       receive: grabs.receiveWebhook,

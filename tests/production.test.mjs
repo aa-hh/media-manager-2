@@ -2156,6 +2156,65 @@ test('problems record each fix attempt and its result', async (t) => {
   });
 });
 
+test('queue actions grab delayed releases and remove items without touching rTorrent', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker, listQueue } = await import(grabsModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-queue-actions-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const queue = {
+    sonarr: [{
+      id: -51234, status: 'delay', title: 'Andor.S02E09.2160p.WEB-DL', series: { title: 'Andor' }, episode: { seasonNumber: 2, episodeNumber: 9 },
+    }],
+    radarr: [{ id: 8, status: 'downloading', downloadId: 'ee'.repeat(20), title: 'Dune.Part.Two.2024', movie: { title: 'Dune: Part Two', year: 2024 } }],
+  };
+  const sent = [];
+  const service = (name) => ({
+    request: async (path, init = {}) => {
+      if (init.method === undefined && path.startsWith('/api/v3/queue')) {
+        return { status: 200, body: { page: 1, pageSize: 200, totalRecords: queue[name].length, records: queue[name] } };
+      }
+      if (init.method === undefined) return { status: 200, body: [] };
+      sent.push(`${name} ${init.method} ${path}`);
+      return { status: path.includes('/queue/8?') ? 500 : 200, body: undefined };
+    },
+  });
+  const arr = { sonarr: service('sonarr'), radarr: service('radarr') };
+  const tracker = createGrabTracker({ database, arr, events: createEventHub() });
+  await tracker.reconcile();
+  // Dropping the movie year or the episode code from the queue label turns this red.
+  assert.deepEqual(listQueue(database).map((item) => item.label), ['Dune: Part Two (2024)', 'Andor S02E09']);
+  const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: tracker.refresh }) });
+  const { session } = await signIn(app);
+  const post = (path, body = {}, headers = jsonHeaders('https://media.example')) => app.request(path, {
+    method: 'POST', headers: { ...headers, Cookie: session }, body: JSON.stringify(body),
+  });
+
+  // Letting a cross-site form reach Sonarr, acting on an id never seen in the queue, or grabbing an item that isn't delayed turns this red.
+  assert.equal((await post('/api/queue/sonarr/-51234/grab', {}, { 'Content-Type': 'application/json' })).status, 403);
+  assert.equal((await post('/api/queue/sonarr/999/grab')).status, 404);
+  assert.equal((await post('/api/queue/radarr/8/grab')).status, 409);
+  assert.equal((await post('/api/queue/sonarr/-51234/grab')).status, 204);
+  assert.deepEqual(sent, ['sonarr POST /api/v3/queue/grab/-51234']);
+
+  // Removing from rTorrent, or mapping a removal choice to the wrong blocklist and search flags, turns this red.
+  sent.length = 0;
+  assert.equal((await post('/api/queue/sonarr/-51234/remove', { release: 'everything' })).status, 400);
+  for (const release of ['keep', 'blocklist', 'blocklist_search']) {
+    assert.equal((await post('/api/queue/sonarr/-51234/remove', { release })).status, 204);
+  }
+  assert.equal((await post('/api/queue/radarr/8/remove', { release: 'keep' })).status, 502);
+  assert.deepEqual(sent, [
+    'sonarr DELETE /api/v3/queue/-51234?removeFromClient=false&blocklist=false&skipRedownload=true',
+    'sonarr DELETE /api/v3/queue/-51234?removeFromClient=false&blocklist=true&skipRedownload=true',
+    'sonarr DELETE /api/v3/queue/-51234?removeFromClient=false&blocklist=true&skipRedownload=false',
+    'radarr DELETE /api/v3/queue/8?removeFromClient=false&blocklist=false&skipRedownload=true',
+  ]);
+});
+
 test('tracker messages become cooldowns, retries, rechecks and replacement requests', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
