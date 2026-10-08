@@ -90,3 +90,34 @@ Commands ran locally from `/Users/alechenderson/Projects/media-manager-2/.claude
 An initial test-command wrapper exited 1 because its zsh variable `status` is read-only; no source test failure was reported. The exact suite command was then rerun successfully as recorded above.
 
 Genuine 200% browser zoom, live Plex owner sign-in and the earlier Pen save-status limitation remain unverified. This additional repair changed no Pen document, visual state, handover file, server contract, callback validation or expiry handling.
+
+
+## PR #7 session timing repair
+
+The [repair work order](../../../.scratch/aa-37/pr-clock-fix.work-order.md) changes only server timing metadata, client session timing and the existing server assertions. The server still owns authorization and the fixed 24-hour expiry. `/api/session` now returns current server time alongside the unchanged expiry. The client measures elapsed time with `performance.now()`, retains that deadline through checks and sign-out failure, and verifies the session after callback completion before showing or focusing the shell.
+
+Fresh negative proof came before production edits. The focused authentication command failed because both updated assertions received an expiry without `serverNow`; [pr-clock-red.log](pr-clock-red.log) retains the output. In the pre-fix compiled browser, server time was 1791559994445, expiry 1791560024445 and browser time 1791560054445. One labelled synthetic focus caused four real session 200 responses and three zero-delay timers. The fixture held the fourth response, leaving Checking session and hiding the shell. Counts rose from two to six session requests. [pr-clock-negative.json](pr-clock-negative.json) records this separately from the repaired checks.
+
+The rebuilt application passed the required matrix. [pr-clock-browser-results.json](pr-clock-browser-results.json) records response statuses, counts, clocks, delays, visible states and focus:
+
+- Browser offsets of +60 and −60 seconds each produced one real session 200 per explicit check, with positive delays of 29977.2ms and 29966ms. Neither produced expiry copy or immediate repeated requests. Fresh callbacks under each offset kept the shell hidden while the subsequent session 200 was held; releasing it showed the shell and focused its heading.
+- A ticking server with three seconds remaining scheduled a 2973.4ms timeout. Its next automatic request returned 401 `session_expired`, without another focus event. Removing the cookie before a separate retained deadline produced automatic 401 `unauthenticated` and the same expiry copy.
+- A real session 200 reporting 2940ms remaining was held from an elapsed-clock reading of 532.9ms until 7241.3ms. Releasing it showed ordinary Sign in, with no expiry claim, invalid-callback copy or Signed out announcement. All recorded timers were inactive. Session count stayed at 15 through a later read; a subsequent explicit focus retried through the real route.
+- A held session 200 could not restore the shell after the actual application Sign out control in another same-origin tab returned 204 and sent its normal BroadcastChannel notification. Both sides retained Sign in and the Signed out announcement. Failed sign-out returned real 400 and retained its retry action; retry returned 204.
+- Unexpired revocation and fixture network loss after verification returned ordinary Sign in on the scrubbed `/auth/callback`, without false expiry, invalid-callback or successful sign-out copy. A fixture network failure in the new callback session check also left Checking session and returned ordinary Sign in with no private shell.
+- Genuine pending callback state survived labelled focus and visibility events with real session 401 responses. Keyboard Check again completed the original attempt, then the guarded session check succeeded. Focus reached the product heading; Tab reached Sign out. Routine successful checks retained focus on the fixture control.
+- Current cancellation kept all three actions disabled and blocked repeated input: start/complete/cancel counts stayed 2/3/1. Real cancellation 400 displayed the failure heading and retry controls; retry 204 returned initial copy. Mounted cancellation replacement through a second tab's real logout and labelled fixture notification cleared busy state and allowed a new start 201. Releasing obsolete cancellation 204 preserved Opening Plex and its announcement.
+
+All provider results, time controls, delivery holds and simulated focus/visibility/persisted events came from the labelled temporary fixture. The stale-session check used the application's actual second-tab Sign out control and notification. Mounted cancellation replacement used a fixture-generated notification after real logout. Browser evaluation only read state; CUA keyboard and mouse input operated the controls. One mouse batch hit other fixture controls when the long output moved the panel; subsequent actions used keyboard Enter and the recorded observations identify the extra request and control changes. No production route or authentication bypass was added.
+
+Final cumulative route counts on port 4317 were session 32, status 11, start 9, callback 9, complete 9 and logout 6. On port 4312 they were session 10, status 7, start 4, callback 2, complete 3, logout 2 and cancel 4. Their exact status arrays are saved in the JSON evidence. The fixture was stopped with SIGINT, and only this repair's browser tabs were closed; the resulting browser tab inventory was empty.
+
+Commands ran from `/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-aa37-plex-sign-in` with `/Users/alechenderson/.nvm/versions/node/v22.23.2/bin` first in PATH. The parent had confirmed the second Mac's Space drive unavailable; these are local fallback results.
+
+| Command | Result | Evidence |
+| --- | --- | --- |
+| `sh scripts/test.sh --test-name-pattern 'Plex owner authentication'` before production edits | exit 1; two assertions missing serverNow; 19 tests including parent, 16 passed and 3 failed | [red output](pr-clock-red.log) |
+| `sh scripts/test.sh --full` after production edits | exit 0; 44 passed, zero failed/skipped/cancelled | [full output](pr-clock-full.log) |
+| `/Users/alechenderson/.agents/skills/impeccable/scripts/impeccable detect --json --no-design-system src/client/SignIn.tsx src/client/main.tsx src/client/globals.css src/client/components/ui/button.tsx` | exit 2; only required Inter warnings at globals.css lines 5 and 41 | [detector output](pr-clock-detector.json) |
+
+The earlier limitations remain: live owner Plex sign-in/sign-out, genuine 200% browser zoom, actual retained-page restoration and Pen on-disk saving are unverified. This repair changed no design frames or visible screens.

@@ -26,6 +26,7 @@ function App() {
   const [session, setSession] = useState<SessionState>({ kind: 'checking' });
   const sessionRef = useRef(session);
   const verifiedExpiryRef = useRef<number | undefined>(undefined);
+  const verifiedDeadlineRef = useRef<number | undefined>(undefined);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusAfterSignInRef = useRef(false);
   const requestRef = useRef<AbortController | undefined>(undefined);
@@ -42,12 +43,13 @@ function App() {
     };
   }, []);
 
-  const checkSession = useCallback(async () => {
+  const checkSession = useCallback(async (completedSignIn = false) => {
     if (sessionRef.current.kind === 'signing-out') return;
     const previous = sessionRef.current;
     const request = beginRequest();
-    if (previous.kind !== 'signed-out') setSession({ kind: 'checking' });
+    if (completedSignIn || previous.kind !== 'signed-out') setSession({ kind: 'checking' });
     try {
+      const requestStartedAt = performance.now();
       const response = await fetch('/api/session', {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
@@ -55,23 +57,39 @@ function App() {
       });
       const body = await readJson(response);
       if (request.version !== requestVersionRef.current) return;
-      if (response.status === 200 && typeof body.expiresAt === 'number' && Number.isFinite(body.expiresAt)) {
-        verifiedExpiryRef.current = body.expiresAt;
-        setSession({ kind: 'signed-in', expiresAt: body.expiresAt });
-      } else if (previous.kind !== 'signed-out') {
+      if (response.status === 200) {
+        const deadline = typeof body.expiresAt === 'number' && Number.isFinite(body.expiresAt)
+          && typeof body.serverNow === 'number' && Number.isFinite(body.serverNow)
+          ? requestStartedAt + (body.expiresAt - body.serverNow)
+          : undefined;
+        if (deadline === undefined || deadline <= performance.now()) {
+          verifiedExpiryRef.current = undefined;
+          verifiedDeadlineRef.current = undefined;
+          focusAfterSignInRef.current = false;
+          setSession({ kind: 'signed-out', reason: 'session-unavailable' });
+          return;
+        }
+        verifiedExpiryRef.current = body.expiresAt as number;
+        verifiedDeadlineRef.current = deadline;
+        setSession({ kind: 'signed-in', expiresAt: body.expiresAt as number });
+      } else if (completedSignIn || previous.kind !== 'signed-out') {
         const hadVerifiedSession = verifiedExpiryRef.current !== undefined;
         const expired = response.status === 401 && (body.error === 'session_expired'
-          || (verifiedExpiryRef.current !== undefined && verifiedExpiryRef.current <= Date.now()));
+          || (verifiedDeadlineRef.current !== undefined && verifiedDeadlineRef.current <= performance.now()));
         verifiedExpiryRef.current = undefined;
-        setSession({ kind: 'signed-out', reason: expired ? 'session-expired' : hadVerifiedSession ? 'session-unavailable' : undefined });
+        verifiedDeadlineRef.current = undefined;
+        focusAfterSignInRef.current = false;
+        setSession({ kind: 'signed-out', reason: completedSignIn ? 'session-unavailable' : expired ? 'session-expired' : hadVerifiedSession ? 'session-unavailable' : undefined });
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       if (request.version !== requestVersionRef.current) return;
-      if (previous.kind !== 'signed-out') {
+      if (completedSignIn || previous.kind !== 'signed-out') {
         const hadVerifiedSession = verifiedExpiryRef.current !== undefined;
         verifiedExpiryRef.current = undefined;
-        setSession({ kind: 'signed-out', reason: hadVerifiedSession ? 'session-unavailable' : undefined });
+        verifiedDeadlineRef.current = undefined;
+        focusAfterSignInRef.current = false;
+        setSession({ kind: 'signed-out', reason: completedSignIn || hadVerifiedSession ? 'session-unavailable' : undefined });
       }
     }
   }, [beginRequest]);
@@ -104,6 +122,7 @@ function App() {
       requestRef.current?.abort();
       requestVersionRef.current += 1;
       verifiedExpiryRef.current = undefined;
+      verifiedDeadlineRef.current = undefined;
       focusAfterSignInRef.current = false;
       setSession({ kind: 'signed-out', reason: 'signed-out' });
     });
@@ -115,7 +134,8 @@ function App() {
 
   useEffect(() => {
     if (session.kind !== 'signed-in' && session.kind !== 'sign-out-failed') return;
-    const delay = Math.max(0, Math.min(session.expiresAt - Date.now(), 2_147_483_647));
+    if (verifiedDeadlineRef.current === undefined) return;
+    const delay = Math.max(0, Math.min(verifiedDeadlineRef.current - performance.now(), 2_147_483_647));
     const timeout = window.setTimeout(() => void checkSession(), delay);
     return () => window.clearTimeout(timeout);
   }, [checkSession, session]);
@@ -125,8 +145,10 @@ function App() {
     requestVersionRef.current += 1;
     verifiedExpiryRef.current = expiresAt;
     focusAfterSignInRef.current = true;
-    setSession({ kind: 'signed-in', expiresAt });
-  }, []);
+    verifiedDeadlineRef.current = undefined;
+    setSession({ kind: 'checking' });
+    void checkSession(true);
+  }, [checkSession]);
 
   useEffect(() => {
     if (session.kind !== 'signed-in' || !focusAfterSignInRef.current) return;
@@ -154,6 +176,7 @@ function App() {
       if (request.version !== requestVersionRef.current) return;
       if (response.status === 204) {
         verifiedExpiryRef.current = undefined;
+        verifiedDeadlineRef.current = undefined;
         channelRef.current?.postMessage('signed-out');
         setSession({ kind: 'signed-out', reason: 'signed-out' });
       } else {

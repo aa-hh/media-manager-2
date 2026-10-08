@@ -1,0 +1,198 @@
+
+> media-manager-2@0.0.0 build
+> tsc --project tsconfig.json && tsc --project tsconfig.server.json && vite build
+
+vite v8.3.3 building client environment for production...
+transforming...
+✓ 48 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/client/index.html                            0.40 kB │ gzip:  0.27 kB
+dist/client/assets/inter-variable-VF2RPR_K.ttf  876.57 kB
+dist/client/assets/index-BKMThkcD.css            16.40 kB │ gzip:  4.21 kB
+dist/client/assets/index-AvvX-HC4.js            270.58 kB │ gzip: 84.10 kB
+
+✓ built in 235ms
+TAP version 13
+# (node:5797) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Plex owner authentication
+    # Subtest: owner success uses signed Plex requests and protects the private prefix
+    not ok 1 - owner success uses signed Plex requests and protects the private prefix
+      ---
+      duration_ms: 51.472792
+      type: 'test'
+      location: '/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-aa37-plex-sign-in/tests/production.test.mjs:363:11'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+
+          {
+            expiresAt: 1800086400000,
+        -   serverNow: 1800000000000
+          }
+
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        expiresAt: 1800086400000
+        serverNow: 1800000000000
+      actual:
+        expiresAt: 1800086400000
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-aa37-plex-sign-in/tests/production.test.mjs:401:12)
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async TestContext.<anonymous> (file:///Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-aa37-plex-sign-in/tests/production.test.mjs:363:3)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+      ...
+    # Subtest: invalid configuration keeps the public document available
+    ok 2 - invalid configuration keeps the public document available
+      ---
+      duration_ms: 13.53775
+      type: 'test'
+      ...
+    # Subtest: HTTP loopback uses local host-only cookie names
+    ok 3 - HTTP loopback uses local host-only cookie names
+      ---
+      duration_ms: 2.7775
+      type: 'test'
+      ...
+    # Subtest: origin, metadata, JSON, body, and return input checks run on authentication and private writes
+    ok 4 - origin, metadata, JSON, body, and return input checks run on authentication and private writes
+      ---
+      duration_ms: 1.677208
+      type: 'test'
+      ...
+    # Subtest: state, browser binding, malformed cookies, replay, and PIN expiry are rejected
+    ok 5 - state, browser binding, malformed cookies, replay, and PIN expiry are rejected
+      ---
+      duration_ms: 4.511375
+      type: 'test'
+      ...
+    # Subtest: pending and concurrent PIN completion retain the attempt
+    ok 6 - pending and concurrent PIN completion retain the attempt
+      ---
+      duration_ms: 2.95775
+      type: 'test'
+      ...
+    # Subtest: cancel, restart, and logout prevent late provider results from creating sessions
+    ok 7 - cancel, restart, and logout prevent late provider results from creating sessions
+      ---
+      duration_ms: 7.702417
+      type: 'test'
+      ...
+    # Subtest: owner identity must be a matching unrestricted Plex account ID
+    ok 8 - owner identity must be a matching unrestricted Plex account ID
+      ---
+      duration_ms: 9.10875
+      type: 'test'
+      ...
+    # Subtest: provider failures and malformed responses never create sessions or expose upstream data
+    ok 9 - provider failures and malformed responses never create sessions or expose upstream data
+      ---
+      duration_ms: 15.124167
+      type: 'test'
+      ...
+    # Subtest: sessions rotate, expire absolutely, do not slide, and vanish with a new factory
+    not ok 10 - sessions rotate, expire absolutely, do not slide, and vanish with a new factory
+      ---
+      duration_ms: 2.671375
+      type: 'test'
+      location: '/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-aa37-plex-sign-in/tests/production.test.mjs:652:11'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly deep-equal:
+        + actual - expected
+
+          {
+            expiresAt: 1800086460000,
+        -   serverNow: 1800086400000
+          }
+
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected:
+        expiresAt: 1800086460000
+        serverNow: 1800086400000
+      actual:
+        expiresAt: 1800086460000
+      operator: 'deepStrictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-aa37-plex-sign-in/tests/production.test.mjs:675:14)
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async TestContext.<anonymous> (file:///Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-aa37-plex-sign-in/tests/production.test.mjs:652:3)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+      ...
+    # Subtest: logout revokes one browser while another owner session remains valid
+    ok 11 - logout revokes one browser while another owner session remains valid
+      ---
+      duration_ms: 3.460792
+      type: 'test'
+      ...
+    # Subtest: cancel and logout reject ambiguous cookies before changing sessions or attempts
+    ok 12 - cancel and logout reject ambiguous cookies before changing sessions or attempts
+      ---
+      duration_ms: 60.580833
+      type: 'test'
+      ...
+    # Subtest: forged, malformed, and duplicate session cookies are rejected and cleared
+    ok 13 - forged, malformed, and duplicate session cookies are rejected and cleared
+      ---
+      duration_ms: 0.765291
+      type: 'test'
+      ...
+    # Subtest: rate limits starts at the boundary and accepts starts after one minute
+    ok 14 - rate limits starts at the boundary and accepts starts after one minute
+      ---
+      duration_ms: 3.26575
+      type: 'test'
+      ...
+    # Subtest: pending-attempt capacity refuses excess and removes expired attempts first
+    ok 15 - pending-attempt capacity refuses excess and removes expired attempts first
+      ---
+      duration_ms: 22.91625
+      type: 'test'
+      ...
+    # Subtest: session capacity refuses excess and removes expired sessions first
+    ok 16 - session capacity refuses excess and removes expired sessions first
+      ---
+      duration_ms: 90.524584
+      type: 'test'
+      ...
+    # Subtest: all public authentication methods reject unsupported shapes without effects
+    ok 17 - all public authentication methods reject unsupported shapes without effects
+      ---
+      duration_ms: 0.882459
+      type: 'test'
+      ...
+    # Subtest: authentication and application responses carry browser security headers
+    ok 18 - authentication and application responses carry browser security headers
+      ---
+      duration_ms: 0.480875
+      type: 'test'
+      ...
+    1..18
+not ok 1 - Plex owner authentication
+  ---
+  duration_ms: 296.304333
+  type: 'test'
+  location: '/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-aa37-plex-sign-in/tests/production.test.mjs:362:1'
+  failureType: 'subtestsFailed'
+  error: '2 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 19
+# suites 0
+# pass 16
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 364.330459

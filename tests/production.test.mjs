@@ -397,7 +397,8 @@ test('Plex owner authentication', async (t) => {
     assert.doesNotMatch(await callback.text(), /plex-secret-token|"42"/);
     const privateResponse = await app.request('/api/session', { headers: { Cookie: session, Accept: 'text/html' } });
     assert.equal(privateResponse.status, 200);
-    assert.deepEqual(await privateResponse.json(), { expiresAt: clock.value + 24 * 60 * 60_000 });
+    // Omitting current server time prevents expiry scheduling independent of the browser clock.
+    assert.deepEqual(await privateResponse.json(), { expiresAt: clock.value + 24 * 60 * 60_000, serverNow: clock.value });
     for (const path of ['/api', '/api/missing']) {
       const denied = await app.request(path, { headers: { Accept: 'text/event-stream' } });
       assert.equal(denied.status, 401);
@@ -666,10 +667,13 @@ test('Plex owner authentication', async (t) => {
     assert.notEqual(replacementSession, firstSession);
     assert.equal((await setup.app.request('/api/session', { headers: { Cookie: firstSession } })).status, 401);
     const expiry = setup.clock.value + 24 * 60 * 60_000;
-    setup.clock.value = expiry - 1;
-    const before = await setup.app.request('/api/session', { headers: { Cookie: replacementSession } });
-    assert.equal(before.status, 200);
-    assert.deepEqual(await before.json(), { expiresAt: expiry });
+    // Omitting current server time prevents expiry scheduling independent of the browser clock.
+    for (const serverNow of [expiry - 60_000, expiry - 1]) {
+      setup.clock.value = serverNow;
+      const before = await setup.app.request('/api/session', { headers: { Cookie: replacementSession } });
+      assert.equal(before.status, 200);
+      assert.deepEqual(await before.json(), { expiresAt: expiry, serverNow });
+    }
     setup.clock.value = expiry;
     const expired = await setup.app.request('/api/session', { headers: { Cookie: replacementSession } });
     assert.equal(expired.status, 401);

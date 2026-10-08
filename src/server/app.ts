@@ -239,7 +239,7 @@ export const createApp = (options: CreateAppOptions) => {
 
   app.use('/api', privateGuard);
   app.use('/api/*', privateGuard);
-  app.get('/api/session', (context) => context.json({ expiresAt: context.get('sessionExpiresAt') }));
+  app.get('/api/session', (context) => context.json({ expiresAt: context.get('sessionExpiresAt'), serverNow: now() }));
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));
 
