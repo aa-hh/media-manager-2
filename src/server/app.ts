@@ -134,6 +134,12 @@ export const createApp = (options: CreateAppOptions) => {
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
   });
 
+  // A manual import lists every file of a season pack, so it gets more room than the other private writes.
+  const importRequestLimit = bodyLimit({
+    maxSize: 64 * 1_024,
+    onError: (context) => context.json({ error: 'request_too_large' }, 413),
+  });
+
   const requireBrowserPost: MiddlewareHandler<AppEnvironment> = async (context, next) => {
     const origin = context.req.header('Origin');
     const contentType = context.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
@@ -147,6 +153,7 @@ export const createApp = (options: CreateAppOptions) => {
       || contentType !== 'application/json'
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
+    if (context.req.path.startsWith('/api/imports/')) return importRequestLimit(context, next);
     return requestLimit(context, next);
   };
 

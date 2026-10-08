@@ -81,6 +81,8 @@ export type Row = {
   queueItem: QueueItem | null;
   delayedUntil: number | null;
   byHand: boolean;
+  // Set when Sonarr or Radarr stopped the import, so the owner can finish it by hand.
+  importable: { service: Service; downloadId: string } | null;
   downRate: number;
   upRate: number;
   downloading: boolean;
@@ -202,6 +204,7 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
     const described = describeQueue(items, grab);
     const remaining = torrent.sizeBytes - torrent.completedBytes;
     const problems = claim(torrent.hash, service === undefined ? new Set() : problemKeysFor(service, items, grab));
+    const status = torrentStatus(torrent, items, problems);
     rows.push({
       key: `torrent:${torrent.hash}`,
       label: labelFor(items, torrent.name),
@@ -210,7 +213,7 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
       tracker: torrent.trackerHost ?? '',
       progress: torrent.sizeBytes > 0 ? Math.floor((torrent.completedBytes / torrent.sizeBytes) * 100) : 0,
       timeLeft: torrent.complete ? '' : torrent.downRate > 0 ? formatDuration((remaining / torrent.downRate) * 1000) : '–',
-      status: torrentStatus(torrent, items, problems),
+      status,
       seeders: torrent.seedersConnected,
       ratio: (torrent.ratioThousandths / 1000).toFixed(2),
       formats: described.formats,
@@ -219,6 +222,9 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
       queueItem: items[0] ?? null,
       delayedUntil: null,
       byHand: grab?.byHand ?? false,
+      importable: service !== undefined && (status.word === 'import blocked' || problems.some((problem) => problem.kind.startsWith('import_')))
+        ? { service, downloadId: torrent.hash }
+        : null,
       downRate: torrent.downRate,
       upRate: torrent.upRate,
       downloading: !torrent.complete && torrent.started,
@@ -250,6 +256,7 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
       queueItem: item,
       delayedUntil: delayedUntil === null || Number.isNaN(delayedUntil) ? null : delayedUntil,
       byHand: grab?.byHand ?? false,
+      importable: null,
       downRate: 0,
       upRate: 0,
       downloading: false,
@@ -275,6 +282,7 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
       queueItem: null,
       delayedUntil: null,
       byHand: false,
+      importable: null,
       downRate: 0,
       upRate: 0,
       downloading: false,

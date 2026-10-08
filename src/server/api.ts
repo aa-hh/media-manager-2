@@ -1,6 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import type { Assignment } from './assignments.js';
 import { listGrabs, listQueue, type Service } from './grabs.js';
+import type { createManualImport } from './manualImport.js';
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
 
@@ -9,6 +11,7 @@ type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; bo
 export type ApiActions = {
   arr: Record<Service, { request: ArrRequest }>;
   refresh(service: Service): Promise<void>;
+  manualImport: ReturnType<typeof createManualImport>;
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -24,6 +27,26 @@ const removals = {
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
+const isIdList = (value: unknown): value is number[] => Array.isArray(value) && value.every((id) => Number.isSafeInteger(id));
+const nullableId = (value: unknown) => value === null || Number.isSafeInteger(value);
+
+const readAssignments = (body: unknown): Assignment[] | undefined => {
+  if (!isRecord(body) || !Array.isArray(body.files) || body.files.length > 500) return undefined;
+  const assignments: Assignment[] = [];
+  for (const file of body.files) {
+    if (!isRecord(file) || typeof file.path !== 'string' || !isIdList(file.episodeIds) || !isIdList(file.languageIds)
+      || !nullableId(file.movieId) || !nullableId(file.qualityId)) return undefined;
+    assignments.push({
+      path: file.path,
+      episodeIds: file.episodeIds,
+      movieId: file.movieId as number | null,
+      qualityId: file.qualityId as number | null,
+      languageIds: file.languageIds,
+    });
+  }
+  return assignments;
+};
+const downloadPattern = /^[0-9A-F]{40}$/;
 
 // How far each movie and episode has downloaded, for title views and the calendar; finished imports drop out.
 export const listProgress = (database: DatabaseSync) => {
@@ -104,6 +127,39 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     const query = removals[release as keyof typeof removals];
     const result = await send(item.service, `/api/v3/queue/${item.queueId}?removeFromClient=false&${query}`, 'DELETE');
     return result === 'ok' ? context.body(null, 204) : context.json({ error: `service_${result}` }, 502);
+  });
+  const importTarget = (service: string, downloadId: string) => (
+    (service === 'sonarr' || service === 'radarr') && downloadPattern.test(downloadId) ? service as Service : undefined
+  );
+
+  api.get('/imports/:service/:downloadId', async (context) => {
+    const service = importTarget(context.req.param('service'), context.req.param('downloadId'));
+    if (service === undefined || actions === undefined) return context.json({ error: 'not_found' }, 404);
+    try {
+      const view = await actions.manualImport.read(service, context.req.param('downloadId'));
+      return view === undefined ? context.json({ error: 'not_found' }, 404) : context.json(view);
+    } catch (error) {
+      return context.json({ error: 'service_unavailable', reason: error instanceof Error ? error.message : '' }, 502);
+    }
+  });
+
+  api.post('/imports/:service/:downloadId', async (context) => {
+    const service = importTarget(context.req.param('service'), context.req.param('downloadId'));
+    if (service === undefined || actions === undefined) return context.json({ error: 'not_found' }, 404);
+    let body: unknown;
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    const assignments = readAssignments(body);
+    if (assignments === undefined) return context.json({ error: 'invalid_request' }, 400);
+    const result = await actions.manualImport.submit(service, context.req.param('downloadId'), assignments);
+    if (result.kind === 'not_found') return context.json({ error: 'not_found' }, 404);
+    if (result.kind === 'invalid') return context.json({ error: 'invalid_assignment', reasons: result.reasons }, 400);
+    if (result.kind === 'failed') return context.json({ error: 'import_failed', reason: result.reason }, 502);
+    await actions.refresh(service);
+    return context.body(null, 204);
   });
   return api;
 };

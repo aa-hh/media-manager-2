@@ -39,6 +39,7 @@ const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).hre
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
+const manualImportModuleUrl = new URL('../dist/server/manualImport.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -2213,6 +2214,87 @@ test('queue actions grab delayed releases and remove items without touching rTor
     'sonarr DELETE /api/v3/queue/-51234?removeFromClient=false&blocklist=true&skipRedownload=false',
     'radarr DELETE /api/v3/queue/8?removeFromClient=false&blocklist=false&skipRedownload=true',
   ]);
+});
+
+test('an import is finished by hand only with a complete, conflict-free assignment and hardlinks', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(grabsModuleUrl);
+  const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
+  const { createManualImport } = await import(manualImportModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-manual-import-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const hash = 'AB'.repeat(20);
+  const events = createEventHub();
+  const problems = createProblems({ database, events });
+  const fake = { hardlinks: true, commands: [] };
+  const files = [
+    { path: '/downloads/Pack/S01E01.mkv', relativePath: 'S01E01.mkv', size: 1, quality: { quality: { id: 3 }, revision: { version: 2, real: 0 } }, languages: [{ id: 1 }], episodes: [{ id: 101 }], rejections: [{ reason: 'Episode unexpected' }] },
+    { path: '/downloads/Pack/S01E02.mkv', relativePath: 'S01E02.mkv', size: 1, quality: { quality: { id: 3 } }, languages: [], episodes: [] },
+  ];
+  const sonarr = {
+    request: async (path, init = {}) => {
+      if (init.method === 'POST') {
+        fake.commands.push(init.body);
+        return { status: 201, body: {} };
+      }
+      if (path.startsWith('/api/v3/manualimport')) return { status: 200, body: files };
+      if (path === '/api/v3/qualitydefinition') return { status: 200, body: [{ quality: { id: 3, name: 'WEBDL-1080p' }, title: 'WEBDL-1080p' }] };
+      if (path === '/api/v3/language') return { status: 200, body: [{ id: 1, name: 'English' }] };
+      if (path === '/api/v3/episode?seriesId=9') {
+        return { status: 200, body: [{ id: 101, seasonNumber: 1, episodeNumber: 1 }, { id: 102, seasonNumber: 1, episodeNumber: 2 }] };
+      }
+      if (path === '/api/v3/config/mediamanagement') return { status: 200, body: { copyUsingHardlinks: fake.hardlinks } };
+      return { status: 200, body: { page: 1, totalRecords: 0, records: [] } };
+    },
+  };
+  const arr = { sonarr, radarr: sonarr };
+  const tracker = createGrabTracker({ database, arr, events });
+  tracker.recordGrab({ hash, service: 'sonarr', movieId: null, seriesId: 9, episodeIds: [101, 102], releaseTitle: 'Show.S01', indexer: 'BHD', grabbedAt: 1, publishedAt: null, byHand: false });
+  const flagged = problems.open({ kind: 'import_matching', subject: { type: 'torrent', service: null, id: hash }, hash, summary: 'Show.S01: Episode unexpected', state: 'needs_you' });
+  const manualImport = createManualImport({ database, arr, problems });
+  const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: tracker.refresh, manualImport }) });
+  const { session } = await signIn(app);
+  const submit = (assignments) => app.request(`/api/imports/sonarr/${hash}`, {
+    method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: JSON.stringify({ files: assignments }),
+  });
+  const file = (path, episodeIds, extra = {}) => ({ path, episodeIds, movieId: null, qualityId: 3, languageIds: [1], ...extra });
+
+  // Losing the original reason or the title's episodes from the view turns this red.
+  const view = await (await app.request(`/api/imports/sonarr/${hash}`, { headers: { Cookie: session } })).json();
+  assert.deepEqual(view.reasons, ['Show.S01: Episode unexpected']);
+  assert.deepEqual(view.target.episodes.map((episode) => episode.code), ['S01E01', 'S01E02']);
+  assert.deepEqual(view.files.map((entry) => entry.rejections), [['Episode unexpected'], []]);
+
+  // Accepting two files on one episode, an episode outside the series, a missing language or a file not in the download turns this red.
+  for (const [assignments, reason] of [
+    [[file(files[0].path, [101]), file(files[1].path, [101])], 'S01E01.mkv and S01E02.mkv are assigned to the same episode.'],
+    [[file(files[0].path, [999])], 'S01E01.mkv is assigned to an episode outside this series.'],
+    [[file(files[0].path, [101], { languageIds: [] })], 'S01E01.mkv has no language.'],
+    [[file(files[0].path, [])], 'S01E01.mkv has no episode.'],
+    [[file('/etc/passwd', [101])], 'passwd is not in this download.'],
+  ]) {
+    const response = await submit(assignments);
+    assert.equal(response.status, 400);
+    assert.ok((await response.json()).reasons.includes(reason), reason);
+  }
+
+  // Importing while Sonarr would copy instead of hardlink turns this red.
+  fake.hardlinks = false;
+  assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 502);
+  assert.deepEqual(fake.commands, []);
+
+  // Moving instead of hardlinking, dropping the chosen episode, or leaving the problem open turns this red.
+  fake.hardlinks = true;
+  assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 204);
+  assert.equal(fake.commands.length, 1);
+  const [command] = fake.commands;
+  assert.equal(command.importMode, 'copy');
+  assert.deepEqual(command.files.map((entry) => [entry.seriesId, entry.episodeIds, entry.quality.quality.id, entry.quality.revision.version]), [[9, [101], 3, 2], [9, [102], 3, 1]]);
+  assert.equal(listOpenProblems(database).some((problem) => problem.id === flagged.id), false);
 });
 
 test('tracker messages become cooldowns, retries, rechecks and replacement requests', async (t) => {

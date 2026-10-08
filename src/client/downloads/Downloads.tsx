@@ -1,5 +1,6 @@
 import { type ReactNode, type RefObject, useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { ImportPanel } from './ImportPanel';
 import { buildRows, formatDuration, formatSpeed, groupRows, latestStep, type Group, type Row } from './model';
 import { postAction, type DownloadsState } from './useDownloads';
 
@@ -102,9 +103,11 @@ function RemovePanel({ row, onDone, onCancel }: { row: Row; onDone: () => void; 
   );
 }
 
-function DownloadRow({ row, index, now, selected, dimmed, removing, onSelect, onRemove, onCancelRemove, onChanged }: {
-  row: Row; index: number; now: number; selected: boolean; dimmed: boolean; removing: boolean;
-  onSelect: () => void; onRemove: () => void; onCancelRemove: () => void; onChanged: () => void;
+type Panel = 'remove' | 'import';
+
+function DownloadRow({ row, index, now, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged }: {
+  row: Row; index: number; now: number; selected: boolean; dimmed: boolean; panel: Panel | null;
+  onSelect: () => void; onOpen: (panel: Panel) => void; onClose: () => void; onChanged: () => void;
 }) {
   const [grabbing, setGrabbing] = useState(false);
   const [grabFailed, setGrabFailed] = useState(false);
@@ -165,14 +168,24 @@ function DownloadRow({ row, index, now, selected, dimmed, removing, onSelect, on
       {row.status.tone === 'risk' && row.status.detail !== '' && row.problems.length === 0 && (
         <p className="px-5 pb-2 md:pl-[88px] text-[var(--mm-ink-2)]">{row.status.detail}</p>
       )}
-      {selected && !removing && item !== null && (
+      {selected && panel === null && (item !== null || row.importable !== null) && (
         <div className="flex flex-wrap items-center gap-3 px-5 pb-3 md:pl-[88px]">
           {delayed && <ActionButton disabled={grabbing} onClick={() => void grabNow()}>{grabbing ? 'Grabbing…' : 'Grab now'}</ActionButton>}
-          <ActionButton onClick={onRemove}>Remove from downloads</ActionButton>
-          {grabFailed && <span role="alert" className="text-[var(--mm-risk)]">{item.service === 'sonarr' ? 'Sonarr' : 'Radarr'} did not grab it. Try again.</span>}
+          {row.importable !== null && <ActionButton onClick={() => onOpen('import')}>Import by hand</ActionButton>}
+          {item !== null && <ActionButton onClick={() => onOpen('remove')}>Remove from downloads</ActionButton>}
+          {grabFailed && item !== null && <span role="alert" className="text-[var(--mm-risk)]">{item.service === 'sonarr' ? 'Sonarr' : 'Radarr'} did not grab it. Try again.</span>}
         </div>
       )}
-      {removing && <RemovePanel row={row} onDone={onChanged} onCancel={onCancelRemove} />}
+      {panel === 'remove' && <RemovePanel row={row} onDone={onChanged} onCancel={onClose} />}
+      {panel === 'import' && row.importable !== null && (
+        <ImportPanel
+          service={row.importable.service}
+          downloadId={row.importable.downloadId}
+          onDone={onChanged}
+          onCancel={onClose}
+          button={({ children, ...props }) => <ActionButton {...props}>{children}</ActionButton>}
+        />
+      )}
     </div>
   );
 }
@@ -189,17 +202,17 @@ export function DownloadsScreen({ state, reload, headingRef }: {
   const rows = useMemo(() => (state.kind === 'ready' ? buildRows(state.snapshot) : []), [state]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [removing, setRemoving] = useState<string | null>(null);
+  const [open, setOpen] = useState<{ key: string; panel: Panel } | null>(null);
 
   useEffect(() => {
-    if (removing === null) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setRemoving(null); };
+    if (open === null) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [removing]);
+  }, [open]);
 
   const changed = () => {
-    setRemoving(null);
+    setOpen(null);
     setSelected(null);
     void reload();
   };
@@ -242,11 +255,11 @@ export function DownloadsScreen({ state, reload, headingRef }: {
                 index={index}
                 now={now}
                 selected={selected === row.key}
-                dimmed={removing !== null && removing !== row.key}
-                removing={removing === row.key}
-                onSelect={() => { if (removing === null) setSelected(row.key); }}
-                onRemove={() => setRemoving(row.key)}
-                onCancelRemove={() => setRemoving(null)}
+                dimmed={open !== null && open.key !== row.key}
+                panel={open?.key === row.key ? open.panel : null}
+                onSelect={() => { if (open === null) setSelected(row.key); }}
+                onOpen={(panel) => setOpen({ key: row.key, panel })}
+                onClose={() => setOpen(null)}
                 onChanged={changed}
               />
             ))}

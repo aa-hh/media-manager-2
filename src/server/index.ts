@@ -7,6 +7,7 @@ import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createImportFix } from './imports.js';
+import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
 import { createProblems } from './problems.js';
 import { createGrabTracker } from './grabs.js';
@@ -57,7 +58,11 @@ if (database !== undefined) {
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
-    api: createApiRoutes(database, { arr: arrServices, refresh: grabs.refresh }),
+    api: createApiRoutes(database, {
+      arr: arrServices,
+      refresh: grabs.refresh,
+      manualImport: createManualImport({ database, arr: arrServices, problems }),
+    }),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
       receive: grabs.receiveWebhook,
