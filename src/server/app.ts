@@ -19,6 +19,7 @@ import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersionRoutes, type SecondVersions } from './secondVersions.js';
 import type { SetupEnvironment } from './setup.js';
 import { createTitleDeleteRoutes, type TitleDelete } from './titleDelete.js';
+import { createTmdbTitleRoutes, type TmdbTitles } from './tmdbTitles.js';
 
 export type CreateAppOptions = {
   clientDirectory: string;
@@ -39,6 +40,7 @@ export type CreateAppOptions = {
   protection?: Protection;
   library?: Library;
   titleDelete?: TitleDelete;
+  tmdbTitles?: TmdbTitles;
   setup?: Hono<SetupEnvironment>;
   api?: Hono;
   images?: Hono;
@@ -382,6 +384,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
+  if (options.tmdbTitles !== undefined) app.route('/api/library', createTmdbTitleRoutes(options.tmdbTitles));
   if (options.images !== undefined) app.route('/api/images', options.images);
   if (options.setup !== undefined) app.route('/api/setup', options.setup);
   if (options.api !== undefined) app.route('/api', options.api);
