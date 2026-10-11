@@ -5,6 +5,7 @@ import { serve } from '@hono/node-server';
 import { createAdd } from './add.js';
 import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
+import { createBackup } from './backup.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createGrabs, handGrab } from './grabs.js';
@@ -20,6 +21,7 @@ import { createSearch } from './search.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { createR2Store, readR2Config } from './services/r2.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTorrentPoller } from './torrents.js';
 import { createTrackerWatch } from './trackers.js';
@@ -46,6 +48,15 @@ if (database !== undefined) {
   const rtorrent = createRtorrent(database);
   const poller = createTorrentPoller({ database, rtorrent, events });
   runner.register('rtorrent-poll', poller.intervalMs, poller.poll);
+  const backup = createBackup({
+    database,
+    events,
+    store: () => {
+      const config = readR2Config(openedDatabase);
+      return config === undefined ? undefined : createR2Store(config);
+    },
+  });
+  runner.register('backup', 5 * 60_000, async () => { await backup.run(); });
   const torrentGrabs = createGrabTracker({ database, arr, events });
   runner.register('arr-reconcile', torrentGrabs.intervalMs, torrentGrabs.reconcile);
   const problems = createProblems({ database, events });
