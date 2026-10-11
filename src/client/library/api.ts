@@ -191,6 +191,8 @@ export type RemovalAdvice = {
   host: string | null;
   /** Includes the advice's margin; null when no seed time applies. */
   requiredHours: number | null;
+  /** The tracker's own seed-time rule, without the margin; null whenever `requiredHours` is. */
+  ruleHours: number | null;
   /** Null when the torrent is not in rTorrent. */
   seededHours: number | null;
   /** 0 once the rule is met; null when no seed time applies or the torrent is incomplete. */

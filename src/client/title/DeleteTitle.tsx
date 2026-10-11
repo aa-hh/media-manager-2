@@ -190,7 +190,7 @@ export function DeleteTitle({ target, name, codeOf = () => null, onClose, onUnau
         size={formatBytes(torrent.sizeBytes)}
         holds={torrentHoldsText(target, torrent)}
         label={torrent.label !== null && <Badge>{torrent.label}</Badge>}
-        advice={advice(torrent.advice)}
+        advice={advice(torrent.advice, torrent.advice.ruleHours)}
         locked={torrent.removal.allowed ? undefined : torrent.removal.reason}
         action={torrent.upgradedAway ? (
           <label className="flex shrink-0 items-center gap-2 px-1 font-ui text-[13px] font-medium text-foreground">

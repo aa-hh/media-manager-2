@@ -2099,6 +2099,9 @@ test('removal advice applies the hit and run rule with margins and proves time o
   ]) {
     assert.deepEqual(numbers(await advise(torrent(input))), expected, name);
   }
+  // ruleHours is the tracker's own rule without the margin; taking it from requiredHours turns this red.
+  assert.equal((await advise(torrent({ seconds: blutopiaNeeds - 1 }))).ruleHours, 168);
+  assert.equal((await advise(torrent({ host: 'tracker.opentrackr.org', seconds: 7 * hour }))).ruleHours, null);
   assert.equal((await advise('F'.repeat(40))).reason, 'Seeding time unknown (torrent not in rTorrent)');
 
   // Blutopia's minimum is 0.4, so anything under 0.5 keeps the torrent even when its rule is met.
@@ -3988,7 +3991,7 @@ test('tracker account connectors read UNIT3D, Gazelle and NexusPHP accounts and 
   const advice = await app.request(`/api/advice/${'a'.repeat(40)}`, { headers: { Cookie: session } });
   assert.deepEqual(await advice.json(), {
     recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null,
-    host: null, requiredHours: null, seededHours: null, hoursLeft: null, detail: 'Seeding time unknown (torrent not in rTorrent)',
+    host: null, requiredHours: null, ruleHours: null, seededHours: null, hoursLeft: null, detail: 'Seeding time unknown (torrent not in rTorrent)',
   });
   const posted = await app.request('/api/trackers', { method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: '{}' });
   assert.notEqual(posted.status, 200);
