@@ -5020,9 +5020,10 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   assert.equal(calls.length, 6, 'a send a restart left behind is never sent again');
 });
 
-// Letting a stray character, a {edition-} tag or a Plex extras ending into a name, or missing the 1x02 form, turns this red.
+// Letting a stray character, a {edition-} tag or a Plex extras ending into a name, missing the 1x02 form, or reading only
+// the first episode of a file holding several, turns this red.
 test('second version file names are cleaned and episodes read from file names', async () => {
-  const { cleanName, versionSuffix, episodeCode } = await import(versionImportModuleUrl);
+  const { cleanName, versionSuffix, episodeCodes } = await import(versionImportModuleUrl);
   for (const [input, expected] of [
     ['Mission: Impossible', 'Mission - Impossible'],
     ['AC/DC: Live? "Yes" <1> *|', 'ACDC - Live Yes 1'],
@@ -5037,13 +5038,16 @@ test('second version file names are cleaned and episodes read from file names', 
     ['Featurette', 'Movie.2020-OTHER', ''],
     ['{edition-x}', 'Movie.2020-GRP', 'edition-x GRP'],
   ]) assert.equal(versionSuffix(quality, title), expected, title);
-  for (const [name, expected] of [
-    ['Andor.S01E02.2160p.mkv', { season: 1, episode: 2 }],
-    ['andor_s1e10.mkv', { season: 1, episode: 10 }],
-    ['Andor - 1x03 - Reckoning.mkv', { season: 1, episode: 3 }],
-    ['Andor.2022.1920x1080.mkv', undefined],
-    ['ShowS01E02.mkv', undefined],
-  ]) assert.deepEqual(episodeCode(name), expected, name);
+  for (const [name, season, episodes] of [
+    ['Andor.S01E02.2160p.mkv', 1, [2]],
+    ['andor_s1e10.mkv', 1, [10]],
+    ['Andor - 1x03 - Reckoning.mkv', 1, [3]],
+    ['Andor.S01E01E02.mkv', 1, [1, 2]],
+    ['Andor.S02E01-E03.mkv', 2, [1, 2, 3]],
+    ['andor.1x01x02.mkv', 1, [1, 2]],
+    ['Andor.2022.1920x1080.mkv', 0, []],
+    ['ShowS01E02.mkv', 0, []],
+  ]) assert.deepEqual(episodeCodes(name), episodes.map((episode) => ({ season, episode })), name);
 });
 
 test('a finished second version is hardlinked into the versions folder and Plex is asked to scan it', async (t) => {
@@ -5051,7 +5055,7 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   const { setSetting } = await import(settingsModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems } = await import(problemsModuleUrl);
-  const { createVersionImport, IMPORT_PROBLEM_KIND, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
+  const { createVersionImport, FOLDER_PROBLEM_KIND, IMPORT_PROBLEM_KIND, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
   const root = await realpath(await mkdtemp(join(tmpdir(), 'media-manager-2-version-import-')));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -5073,7 +5077,7 @@ test('a finished second version is hardlinked into the versions folder and Plex 
     movieRecord({ id: 12, title: 'Alien', year: 1979 }),
   ];
   fake.sonarr.state.series = [seriesRecord({ id: 5, title: 'Andor' })];
-  fake.sonarr.state.episodes = [[101, 1, 1], [102, 1, 2], [103, 1, 3], [104, 2, 1], [105, 2, 2], [106, 2, 3]]
+  fake.sonarr.state.episodes = [[101, 1, 1], [102, 1, 2], [103, 1, 3], [104, 2, 1], [105, 2, 2], [106, 2, 3], [107, 3, 1], [108, 3, 2], [109, 3, 3]]
     .map(([id, seasonNumber, episodeNumber]) => episodeRecord({ id, seriesId: 5, seasonNumber, episodeNumber }));
 
   const torrents = new Map();
@@ -5189,8 +5193,12 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   addRows(packHash, [{ episodeId: 101 }, { episodeId: 102 }, { episodeId: 103 }], { quality: 'WEBDL-2160p' });
   await versionImport.run();
   assert.deepEqual(rows(packHash).map((row) => row.state), ['downloading', 'downloading', 'downloading']);
+  // Waiting on an unset folder without telling the owner, or never clearing that once imports work, turns this red.
+  const folderProblems = () => problemsFor(FOLDER_PROBLEM_KIND).map((problem) => [problem.subject_id, problem.summary]);
+  assert.deepEqual(folderProblems(), [['versions.sonarr', 'Set hostPaths versions.sonarr to an absolute folder: finished second versions are waiting to import.']]);
   setSetting(database, 'hostPaths', 'versions.sonarr', tv);
   await versionImport.run();
+  assert.deepEqual(folderProblems(), []);
   const season = join(tv, 'Andor', 'Season 01');
   assert.deepEqual(rows(packHash).map((row) => [row.state, row.file_path]), [1, 2, 3].map((episode) => ['imported', join(season, `Andor - S01E0${episode} - WEBDL-2160p GRP.mkv`)]));
   assert.equal((await stat(join(season, 'Andor - S01E01 - WEBDL-2160p GRP.mkv'))).ino, (await stat(join(downloads, packHash, 'Andor.S01/Andor.S01E01.mkv'))).ino);
@@ -5223,6 +5231,49 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   addRows(halfHash, [{ episodeId: 102 }], { quality: 'HDTV-720p', state: 'importing' });
   await versionImport.run();
   assert.deepEqual(rows(halfHash).map((row) => [row.state, row.file_path]), [['imported', null], ['imported', join(season, 'Andor - S01E02 - HDTV-720p GRP.mkv')]]);
+
+  // Naming only the first episode of a file holding two, linking it twice, or failing the second row, turns this red.
+  const doubleHash = 'B4'.repeat(20);
+  await addTorrent(doubleHash, ['Andor.S03E01E02.mkv', 'Andor.S03E03.mkv']);
+  addRows(doubleHash, [{ episodeId: 107 }, { episodeId: 108 }, { episodeId: 109 }], { quality: 'WEBDL-1080p' });
+  await versionImport.run();
+  const double = join(tv, 'Andor', 'Season 03', 'Andor - S03E01-E02 - WEBDL-1080p GRP.mkv');
+  assert.deepEqual(rows(doubleHash).map((row) => [row.state, row.file_path]), [
+    ['imported', double],
+    ['imported', double],
+    ['imported', join(tv, 'Andor', 'Season 03', 'Andor - S03E03 - WEBDL-1080p GRP.mkv')],
+  ]);
+  assert.equal((await stat(join(downloads, doubleHash, 'Andor.S03E01E02.mkv'))).nlink, 2);
+
+  // Failing a row for a missing or read-only versions folder, instead of waiting for the owner to fix it, turns this red.
+  const missing = join(root, 'versions', 'missing');
+  setSetting(database, 'hostPaths', 'versions.radarr', missing);
+  const waitHash = 'A7'.repeat(20);
+  await addTorrent(waitHash, ['Dune.Remux.mkv']);
+  addRows(waitHash, [{ movieId: 9 }], { quality: 'Remux-2160p' });
+  await versionImport.run();
+  assert.equal(rows(waitHash)[0].state, 'importing');
+  assert.deepEqual(folderProblems().map(([subject]) => subject), ['versions.radarr']);
+  assert.match(folderProblems()[0][1], new RegExp(`^Second versions cannot be imported into ${missing} \\(hostPaths versions\\.radarr\\): ENOENT`));
+  await mkdir(missing);
+  if (process.getuid?.() !== 0) {
+    await chmod(missing, 0o555);
+    await versionImport.run();
+    assert.equal(rows(waitHash)[0].state, 'importing', 'a read-only folder waits too');
+    await chmod(missing, 0o755);
+  }
+  await versionImport.run();
+  assert.equal(rows(waitHash)[0].state, 'imported');
+  assert.deepEqual(folderProblems(), []);
+
+  // Leaving the "not imported" problem open after a later second version of the same movie imports turns this red.
+  assert.equal(problemsFor(IMPORT_PROBLEM_KIND).some((problem) => problem.subject_id === '12'), true);
+  const alienHash = 'A8'.repeat(20);
+  await addTorrent(alienHash, ['Alien.mkv']);
+  addRows(alienHash, [{ movieId: 12 }]);
+  await versionImport.run();
+  assert.equal(rows(alienHash)[0].state, 'imported');
+  assert.equal(problemsFor(IMPORT_PROBLEM_KIND).some((problem) => problem.subject_id === '12'), false);
 });
 
 // Reading tracked paths with a bare prefix match, resolving a problem after a failed Sonarr or Radarr read, or touching

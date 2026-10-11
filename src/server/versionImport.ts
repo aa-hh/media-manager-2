@@ -22,11 +22,16 @@ type Row = {
   hash: string;
 };
 
-// Where a row's file goes, relative to the versions folder, the title its problems are reported under, and an episode's SxxEyy.
-type Place = { folder: string; stem: string; title: string; code?: string };
+// Where a row's file goes, relative to the versions folder, the title its problems are reported under, and an episode's
+// numbers. A file holding several episodes is named from the first to the last episode it holds.
+type Place = { folder: string; stem: (lastEpisode?: number) => string; title: string; season?: number; episode?: number };
 
 export const IMPORT_PROBLEM_KIND = 'second_version_import';
 export const PLEX_PROBLEM_KIND = 'second_version_plex';
+export const FOLDER_PROBLEM_KIND = 'second_version_folder';
+// Errors on the versions folder side that the owner can fix; the rows wait for the next poll instead of failing.
+const RETRYABLE_CODES = new Set(['EACCES', 'EPERM', 'ENOENT', 'EROFS']);
+class FolderError extends Error {}
 
 const VIDEO_EXTENSIONS = new Set(['.mkv', '.mp4', '.avi', '.m2ts', '.ts']);
 // Plex files a name ending in one of these after a separator as an extra, never as a version.
@@ -53,10 +58,19 @@ export const versionSuffix = (quality: string, releaseTitle: string) => {
   return suffix;
 };
 
-// The first SxxEyy in a file name, or the 1x02 form when there is none.
-export const episodeCode = (fileName: string) => {
-  const match = /(?<![a-z0-9])s(\d{1,2})e(\d{1,3})(?!\d)/i.exec(fileName) ?? /(?<![a-z0-9])(\d{1,2})x(\d{2,3})(?!\d)/i.exec(fileName);
-  return match === null ? undefined : { season: Number(match[1]), episode: Number(match[2]) };
+// Every episode the first SxxEyy in a file name holds (S01E01E02 and S01E01-E03 hold several), or the 1x02 form's
+// (1x01x02) when there is none. A dash means a range, as Sonarr reads it.
+export const episodeCodes = (fileName: string) => {
+  const match = /(?<![a-z0-9])s(\d{1,2})((?:-?e\d{1,3})+)(?!\d)/i.exec(fileName) ?? /(?<![a-z0-9])(\d{1,2})((?:x\d{2,3})+)(?!\d)/i.exec(fileName);
+  if (match === null) return [];
+  const episodes: number[] = [];
+  for (const [, dash, digits] of match[2].matchAll(/(-?)[ex](\d+)/gi)) {
+    const episode = Number(digits);
+    const last = episodes.at(-1);
+    if (dash === '-' && last !== undefined) for (let between = last + 1; between < episode; between += 1) episodes.push(between);
+    episodes.push(episode);
+  }
+  return episodes.map((episode) => ({ season: Number(match[1]), episode }));
 };
 
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -87,6 +101,14 @@ export const createVersionImport = (options: {
     ? { type: 'movie', service: 'radarr', id: String(row.movieId) }
     : { type: 'episode', service: 'sonarr', id: String(row.episodeId) });
 
+  const resolveOpen = (kind: string, subject: Subject, text: string) => {
+    const open = listOpenProblems(database).find((problem) => problem.kind === kind && problem.subject.type === subject.type
+      && problem.subject.service === subject.service && problem.subject.id === subject.id);
+    if (open !== undefined) problems.setState(open.id, 'resolved', text);
+  };
+
+  const folderSubject = (service: Service): Subject => ({ type: 'dependency', service, id: `versions.${service}` });
+
   const fail = (row: Row, title: string, reason: string) => {
     const changed = database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, updated_at = ? WHERE id = ? AND state = 'importing'")
       .run(reason, now(), row.id).changes;
@@ -108,6 +130,8 @@ export const createVersionImport = (options: {
       database.exec('ROLLBACK;');
       throw error;
     }
+    resolveOpen(IMPORT_PROBLEM_KIND, subjectOf(row), 'A later second version imported.');
+    resolveOpen(FOLDER_PROBLEM_KIND, folderSubject(row.service), `Imported into hostPaths versions.${row.service}.`);
   };
 
   const torrentFiles = async (hash: string) => {
@@ -134,7 +158,7 @@ export const createVersionImport = (options: {
       if (result.kind !== 'ok') return undefined;
       const { title, year } = result.value;
       const name = cleanName(year === null ? title : `${title} (${year})`);
-      for (const row of rows) places.set(row.id, { folder: name, stem: `${name}${ending}`, title: name });
+      for (const row of rows) places.set(row.id, { folder: name, stem: () => `${name}${ending}`, title: name });
       return places;
     }
     const [series, episodes] = await Promise.all([arr.sonarr.series(Number(first.seriesId)), arr.sonarr.episodes(Number(first.seriesId))]);
@@ -150,8 +174,15 @@ export const createVersionImport = (options: {
         places.set(row.id, 'Sonarr no longer has this episode.');
         continue;
       }
-      const code = `S${pad(episode.seasonNumber)}E${pad(episode.episodeNumber)}`;
-      places.set(row.id, { folder: join(name, `Season ${pad(episode.seasonNumber)}`), stem: `${name} - ${code}${ending}`, title: `${name} ${code}`, code });
+      const { seasonNumber: season, episodeNumber } = episode;
+      const code = `S${pad(season)}E${pad(episodeNumber)}`;
+      places.set(row.id, {
+        folder: join(name, `Season ${pad(season)}`),
+        stem: (last = episodeNumber) => `${name} - ${code}${last === episodeNumber ? '' : `-E${pad(last)}`}${ending}`,
+        title: `${name} ${code}`,
+        season,
+        episode: episodeNumber,
+      });
     }
     return places;
   };
@@ -170,11 +201,9 @@ export const createVersionImport = (options: {
     for (const row of rows) {
       const place = places.get(row.id);
       if (typeof place !== 'object') continue;
-      const { code } = place;
-      const files = videos.filter((path) => {
-        const found = episodeCode(basename(path));
-        return found !== undefined && `S${pad(found.season)}E${pad(found.episode)}` === code;
-      });
+      const code = `S${pad(Number(place.season))}E${pad(Number(place.episode))}`;
+      // A file holding several episodes satisfies every row it names.
+      const files = videos.filter((path) => episodeCodes(basename(path)).some((found) => found.season === place.season && found.episode === place.episode));
       if (files.length === 1) matched.set(row.id, files[0]);
       else reasons.set(row.id, files.length === 0 ? `No video file in the pack is ${code}.` : `${files.length} video files in the pack are ${code}.`);
     }
@@ -182,21 +211,30 @@ export const createVersionImport = (options: {
   };
 
   // Returns the hardlink's path; a destination that already is this file (an import a restart interrupted) is kept as it is.
-  const link = (source: string, root: string, place: Place, service: Service) => {
+  // Errors on the versions folder side become a FolderError; errors on the download side stay permanent.
+  const link = (source: string, root: string, folderName: string, stem: string, service: Service) => {
     const original = statSync(source);
-    if (statSync(root).dev !== original.dev) {
+    const onFolder = <T>(step: () => T): T => {
+      try {
+        return step();
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        throw code !== undefined && RETRYABLE_CODES.has(code) ? new FolderError((error as Error).message) : error;
+      }
+    };
+    if (onFolder(() => statSync(root)).dev !== original.dev) {
       throw new Error(`The download and hostPaths versions.${service} are on different drives, so no hardlink can be made.`);
     }
-    const folder = join(root, place.folder);
-    mkdirSync(folder, { recursive: true });
+    const folder = join(root, folderName);
+    onFolder(() => mkdirSync(folder, { recursive: true }));
     for (let copy = 1; ; copy += 1) {
-      const destination = join(folder, `${place.stem}${copy === 1 ? '' : ` (${copy})`}${extname(source)}`);
-      const existing = statSync(destination, { throwIfNoEntry: false });
+      const destination = join(folder, `${stem}${copy === 1 ? '' : ` (${copy})`}${extname(source)}`);
+      const existing = onFolder(() => statSync(destination, { throwIfNoEntry: false }));
       if (existing !== undefined) {
         if (existing.dev === original.dev && existing.ino === original.ino) return destination;
         continue;
       }
-      linkSync(source, destination);
+      onFolder(() => linkSync(source, destination));
       if (statSync(destination).ino !== original.ino) throw new Error(`${destination} is not a hardlink of the download.`);
       return destination;
     }
@@ -218,12 +256,11 @@ export const createVersionImport = (options: {
     const section = sections.find((item) => item.type === type && Array.isArray(item.Location)
       && (item.Location as Array<Record<string, unknown>>).some((location) => typeof location.path === 'string' && isInside(location.path, root)));
     const subject: Subject = { type: 'dependency', service, id: root };
-    const open = listOpenProblems(database).find((problem) => problem.kind === PLEX_PROBLEM_KIND && problem.subject.id === root);
     if (section === undefined || (typeof section.key !== 'string' && typeof section.key !== 'number')) {
       problems.open({ kind: PLEX_PROBLEM_KIND, subject, state: 'needs_you', summary: `Add ${root} to the Plex ${service === 'radarr' ? 'Movies' : 'TV'} library.` });
       return;
     }
-    if (open !== undefined) problems.setState(open.id, 'resolved', `Plex reads ${root} now.`);
+    resolveOpen(PLEX_PROBLEM_KIND, subject, `Plex reads ${root} now.`);
     for (const folder of folders) {
       try {
         await plex.request(`/library/sections/${encodeURIComponent(String(section.key))}/refresh?path=${encodeURIComponent(folder)}`);
@@ -247,7 +284,8 @@ export const createVersionImport = (options: {
     if (places === undefined) return;
     const videos = files.filter(isVideo);
     const { matched, reasons } = matchFiles(rows, videos, places);
-    const folders = new Set<string>();
+    // Rows sharing one file (a file holding several episodes) get one hardlink between them.
+    const bySource = new Map<string, Array<{ row: Row; place: Place }>>();
     for (const row of rows) {
       const place = places.get(row.id);
       const fallbackTitle = `${serviceWords[service]} ${service === 'radarr' ? 'movie' : 'episode'} ${service === 'radarr' ? row.movieId : row.episodeId}`;
@@ -260,12 +298,27 @@ export const createVersionImport = (options: {
         fail(row, place.title, reasons.get(row.id) ?? 'No video file matched it.');
         continue;
       }
+      bySource.set(source, [...bySource.get(source) ?? [], { row, place }]);
+    }
+    const folders = new Set<string>();
+    for (const [source, sharing] of bySource) {
+      sharing.sort((a, b) => Number(a.place.episode) - Number(b.place.episode));
+      const { place } = sharing[0];
       try {
-        const destination = link(source, root, place, service);
-        markImported(row, destination);
+        const destination = link(source, root, place.folder, place.stem(sharing.at(-1)?.place.episode), service);
+        for (const { row } of sharing) markImported(row, destination);
         folders.add(dirname(destination));
       } catch (error) {
-        fail(row, place.title, error instanceof Error ? error.message : 'The hardlink failed.');
+        if (error instanceof FolderError) {
+          problems.open({
+            kind: FOLDER_PROBLEM_KIND,
+            subject: folderSubject(service),
+            state: 'needs_you',
+            summary: `Second versions cannot be imported into ${root} (hostPaths versions.${service}): ${error.message}`,
+          });
+          break;
+        }
+        for (const { row } of sharing) fail(row, place.title, error instanceof Error ? error.message : 'The hardlink failed.');
       }
     }
     if (folders.size > 0) await scan(service, root, folders);
@@ -274,13 +327,23 @@ export const createVersionImport = (options: {
   const run = async () => {
     const complete = new Set(listTorrents(database).filter((torrent) => torrent.goneAt === null && torrent.complete).map((torrent) => torrent.hash));
     const at = now();
-    // TV and movies each wait for their versions folder to be set before importing.
+    // TV and movies each wait for their versions folder to be set before importing, and say so once something is waiting.
     for (const service of ['radarr', 'sonarr'] as const) {
-      if (versionsFolder(service) === undefined) continue;
-      for (const row of database.prepare("SELECT id, hash FROM second_versions WHERE state = 'downloading' AND service = ?").all(service)) {
-        if (complete.has(String(row.hash))) {
-          database.prepare("UPDATE second_versions SET state = 'importing', updated_at = ? WHERE id = ? AND state = 'downloading'").run(at, row.id);
+      const finished = database.prepare("SELECT id, hash, state FROM second_versions WHERE state IN ('downloading', 'importing') AND service = ?").all(service)
+        .filter((row) => row.state === 'importing' || complete.has(String(row.hash)));
+      if (versionsFolder(service) === undefined) {
+        if (finished.length > 0) {
+          problems.open({
+            kind: FOLDER_PROBLEM_KIND,
+            subject: folderSubject(service),
+            state: 'needs_you',
+            summary: `Set hostPaths versions.${service} to an absolute folder: finished second versions are waiting to import.`,
+          });
         }
+        continue;
+      }
+      for (const row of finished) {
+        database.prepare("UPDATE second_versions SET state = 'importing', updated_at = ? WHERE id = ? AND state = 'downloading'").run(at, row.id);
       }
     }
     const rows = database.prepare(`
