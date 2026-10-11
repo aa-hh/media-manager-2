@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createCipheriv, createHash, createPublicKey, generateKeyPairSync, randomBytes, verify } from 'node:crypto';
 import { once } from 'node:events';
-import { existsSync } from 'node:fs';
+import fs, { existsSync } from 'node:fs';
 import {
   chmod,
   link,
@@ -18,6 +18,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -93,6 +94,17 @@ const ownerRules = {
 const saveOwnerRules = async (database) => {
   const { setSetting } = await import(settingsModuleUrl);
   for (const [host, rule] of Object.entries(ownerRules)) setSetting(database, 'trackerConfiguration', `rules.${host}`, JSON.stringify(rule));
+};
+
+// Makes every linkSync in the app throw `code`, as link() does across mounts, until the returned function restores it.
+const failLinks = (code) => {
+  const original = fs.linkSync;
+  fs.linkSync = () => { throw Object.assign(new Error(`${code}: link failed`), { code }); };
+  syncBuiltinESMExports();
+  return () => {
+    fs.linkSync = original;
+    syncBuiltinESMExports();
+  };
 };
 
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
@@ -5614,7 +5626,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
 
   const setup = async ({
     name = 'Movie.2024.mkv', files = [['Movie.2024.mkv', 1234]], library = [['Movie (2024).mkv', 1234]],
-    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false, startFails = false,
+    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false, startFails = false, linkError,
   } = {}) => {
     count += 1;
     const base = join(root, `case-${count}`);
@@ -5665,7 +5677,12 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     const relink = createRelinkFix({ database, rtorrent, arr, problems, now, sleep, isManualDownload: createProtection(database, arr).isProtected });
     await grabs.reconcile();
     await poller.poll();
-    await relink.check();
+    const restoreLinks = linkError === undefined ? () => {} : failLinks(linkError);
+    try {
+      await relink.check();
+    } finally {
+      restoreLinks();
+    }
     const writes = calls.filter(([method]) => writeMethods.includes(method));
     const found = database.prepare("SELECT id FROM problems WHERE kind = 'download_missing'").all().map((row) => getProblem(database, Number(row.id)));
     database.close();
@@ -5707,6 +5724,14 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     assert.deepEqual(run.writes.find(([method]) => method === 'd.directory.set'), ['d.directory.set', hash, run.downloadRoot]);
     assert.equal((await stat(join(run.downloadRoot, 'Movie.2024', 'a.mkv'))).nlink, 2);
     assert.equal((await stat(join(run.downloadRoot, 'Movie.2024', 'b.mkv'))).nlink, 2);
+  });
+
+  // Pre-checking device numbers instead of linking, or touching rTorrent before the links are made, turns this red.
+  await t.test('a library on another drive is reported and rTorrent is left alone', async () => {
+    const run = await setup({ linkError: 'EXDEV' });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal(run.problem.steps.at(-1).text, 'The download folder and the library are on different drives.');
+    assert.deepEqual(run.writes, []);
   });
 
   // Dropping the manual-download check turns this red.
@@ -6253,19 +6278,23 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     }
   });
 
-  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move.
-  await t.test('a block that changes kind before clearing resolves every import problem on the download', async () => {
+  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move;
+  // matching on anything wider than this download's import problems closes another download's or a stall's.
+  await t.test('a block that changes kind before clearing resolves every import problem on the download, and only those', async () => {
     const run = await setup({ message: 'File is locked by another process' });
+    const other = 'FF'.repeat(20);
+    run.problems.open({ kind: 'import_temporary', subject: { type: 'torrent', service: null, id: other }, hash: other, summary: 'Other.Release' });
+    run.problems.open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, hash, summary: 'Release.Title' });
     await run.fix.check();
     run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Failed to move file'] }];
     await run.grabs.reconcile();
     run.clock.value += 5 * minute;
     await run.fix.check();
-    assert.ok(listOpenProblems(run.database).length >= 1);
+    assert.ok(listOpenProblems(run.database).length >= 3);
     run.queue.length = 0;
     await run.grabs.reconcile();
     await run.fix.check();
-    assert.deepEqual(listOpenProblems(run.database), []);
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => [problem.kind, problem.subject.id]), [['import_temporary', other], ['stalled', hash]]);
     run.database.close();
   });
 
@@ -7464,17 +7493,23 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   assert.equal(rows(unfinishedHash)[0].state, 'downloading');
   database.prepare('DELETE FROM second_versions WHERE hash = ?').run(unfinishedHash);
 
-  // Checking the drive after making folders, or not at all, turns this red.
-  assert.notEqual((await stat('/dev')).dev, (await stat(root)).dev, 'this check needs /dev on its own file system');
-  setSetting(database, 'hostPaths', 'versions.radarr', '/dev');
+  // Pre-checking device numbers instead of linking, or leaving the folder made for a link that failed, turns this red.
+  const otherDrive = join(root, 'versions', 'other-drive');
+  await mkdir(otherDrive);
+  setSetting(database, 'hostPaths', 'versions.radarr', otherDrive);
   const otherDriveHash = 'A6'.repeat(20);
   await addTorrent(otherDriveHash, ['Heat.mkv']);
   addRows(otherDriveHash, [{ movieId: 11 }]);
-  await versionImport.run();
+  const restoreLinks = failLinks('EXDEV');
+  try {
+    await versionImport.run();
+  } finally {
+    restoreLinks();
+  }
   assert.equal(rows(otherDriveHash)[0].state, 'failed');
   assert.match(rows(otherDriveHash)[0].failure, /different drives/);
   assert.match(problemsFor(IMPORT_PROBLEM_KIND).at(-1).summary, /^Heat \(1995\) \(second version\): .*different drives/);
-  assert.equal(existsSync('/dev/Heat (1995)'), false);
+  assert.deepEqual(await readdir(otherDrive), []);
   setSetting(database, 'hostPaths', 'versions.radarr', movies);
 
   // Importing TV before its versions folder is set, matching pack files by order instead of SxxEyy, or importing the extra episode turns this red.
