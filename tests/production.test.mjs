@@ -2819,7 +2819,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
   const { createTrackerAccounts } = await import(trackerAccountsModuleUrl);
   const { listTrackerHosts } = await import(trackerRulesModuleUrl);
   const { backupsAreOff, setBackupsOff } = await import(backupModuleUrl);
-  const { createSetupRoutes, folderProblems, folderWarnings } = await import(setupModuleUrl);
+  const { createSetupRoutes, folderProblems, folderWarnings, testHardlink } = await import(setupModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-setup-'));
   const databases = [];
   t.after(async () => {
@@ -2999,6 +2999,8 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     for (const folder of Object.values(values)) {
       assert.deepEqual((await readdir(folder)).filter((name) => name.startsWith('.media-manager-2-link-test-')), []);
     }
+    // Giving the test link the same name as the test file turns this red: a library or versions folder that is the downloads folder itself must pass.
+    assert.equal(testHardlink(values.downloadsSonarr, values.downloadsSonarr), 'ok');
     assert.deepEqual(
       ['downloads.sonarr', 'downloads.radarr', 'library.sonarr', 'library.radarr', 'versions.sonarr', 'versions.radarr'].map((key) => getSetting(database, 'hostPaths', key)),
       [values.downloadsSonarr, values.downloadsRadarr, values.librarySonarr, values.libraryRadarr, values.versionsSonarr, values.versionsRadarr],

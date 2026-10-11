@@ -48,7 +48,7 @@ export type LinkTest = (fromFolder: string, toFolder: string) => 'ok' | string;
 export const testHardlink: LinkTest = (fromFolder, toFolder) => {
   const name = `.media-manager-2-link-test-${randomBytes(6).toString('hex')}`;
   const from = join(fromFolder, name);
-  const to = join(toFolder, name);
+  const to = join(toFolder, `${name}.link`);
   try {
     writeFileSync(from, 'x', { flag: 'wx' });
     linkSync(from, to);
