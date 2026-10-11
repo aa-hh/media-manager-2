@@ -1195,6 +1195,32 @@ test('background job runner', async (t) => {
     runner.start();
     assert.throws(() => runner.register('b', 1000, () => {}), { message: 'Register jobs before start.' });
   });
+
+  // Not recording a finished run's time or failure, or never marking a job late after three silent intervals, turns this red.
+  await t.test('status reports each job\'s last run, its failure and lateness', async (t) => {
+    t.mock.method(console, 'error', () => {});
+    const clock = { value: 0 };
+    const timers = createFakeTimers(clock);
+    const runner = createJobRunner(timers, () => clock.value);
+    let blocked = false;
+    runner.register('ok', 1000, () => {});
+    runner.register('risky', 1000, () => { throw new Error('boom'); });
+    runner.register('slow', 1000, () => (blocked ? new Promise(() => {}) : undefined));
+    assert.deepEqual(runner.status().map((job) => job.late), [false, false, false]);
+    runner.start();
+    timers.advance(1000);
+    await drain();
+    const byName = Object.fromEntries(runner.status().map((job) => [job.name, job]));
+    assert.equal(byName.ok.lastFinishedAt, 1000);
+    assert.equal(byName.ok.lastFailed, false);
+    assert.equal(byName.risky.lastFailed, true);
+    assert.equal(byName.risky.lastFinishedAt, 1000);
+    blocked = true;
+    timers.advance(3001);
+    await drain();
+    const late = Object.fromEntries(runner.status().map((job) => [job.name, job.late]));
+    assert.deepEqual(late, { ok: false, risky: false, slow: true });
+  });
 });
 
 // Removing initialization or deriving the default from the working directory loses durable storage.
@@ -3772,4 +3798,109 @@ test('subject labels come from Sonarr and Radarr once and fall back to ids', asy
   assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'ab'.repeat(20) }, database), 'Andor S02E09 + 1 more');
   assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'CD'.repeat(20) }, database), 'CD'.repeat(20));
   assert.equal(await labels.subject({ type: 'tracker', service: null, id: 'blutopia.cc' }, database), 'blutopia.cc');
+});
+
+test('health merges service, tracker, disk, job and backup checks and ranks the worst', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createHealth } = await import(new URL('../dist/server/health.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-health-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const now = 1_800_000_000_000;
+  const hour = 3_600_000;
+  const ok = { kind: 'ok', version: '4.0.0' };
+  const healthy = {
+    '/api/v3/health': [],
+    '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 2_000_000_000_000, totalSpace: 4_000_000_000_000 }],
+    '/api/v3/update': [],
+  };
+  let caseNumber = 0;
+  const run = async (input = {}) => {
+    caseNumber += 1;
+    const database = openDatabase(join(root, String(caseNumber), 'media-manager.sqlite'));
+    t.after(() => database.close());
+    // The backup work owns backup_runs; a recent ok row keeps the healthy baseline quiet.
+    if (input.backupAt !== null) {
+      database.exec('CREATE TABLE backup_runs (id INTEGER PRIMARY KEY, started_at INTEGER, finished_at INTEGER, outcome TEXT, detail TEXT, object_key TEXT, bytes INTEGER, sha256 TEXT)');
+      database.prepare("INSERT INTO backup_runs (started_at, finished_at, outcome) VALUES (?, ?, 'ok')").run(0, input.backupAt ?? now - hour);
+    }
+    if (input.cooldown !== undefined) {
+      database.prepare('INSERT INTO tracker_cooldowns VALUES (?, ?, ?, ?, ?)').run('blutopia.cc', now - hour, input.cooldown.text, input.cooldown.known ? 1 : 0, 'AB'.repeat(20));
+    }
+    const fake = (service) => ({
+      configured: () => true,
+      check: async () => input.statuses?.[service] ?? ok,
+      request: async (path) => ({ status: 200, body: { ...healthy, ...input.arr?.[service] }[path] }),
+    });
+    const published = [];
+    const health = createHealth({
+      database,
+      arr: { sonarr: fake('sonarr'), radarr: fake('radarr') },
+      rtorrent: { check: async () => ok },
+      plex: { check: async () => ok },
+      jobs: { status: () => input.jobs ?? [] },
+      events: { publish: (type, data) => { published.push({ type, data }); } },
+      now: () => now,
+    });
+    const snapshot = await health.check();
+    return { snapshot, badge: published.at(-1), health, database };
+  };
+
+  // Dropping a check, ranking a lower level above a higher one, or rewriting a service's own message turns this red.
+  const cases = [
+    { name: 'all ok', input: {}, level: 'ok', errors: 0, warnings: 0, message: undefined },
+    { name: 'Sonarr unreachable', input: { statuses: { sonarr: { kind: 'unreachable' } } }, level: 'error', errors: 1, warnings: 0, message: 'Sonarr is unreachable.' },
+    {
+      name: 'arr warning row with a string wikiUrl',
+      input: { arr: { radarr: { '/api/v3/health': [{ source: 'IndexerStatusCheck', type: 'warning', message: 'Indexers unavailable: Blutopia', wikiUrl: 'https://wiki.servarr.com/radarr/1' }] } } },
+      level: 'warning', errors: 0, warnings: 1, message: 'Indexers unavailable: Blutopia', docsUrl: 'https://wiki.servarr.com/radarr/1',
+    },
+    {
+      name: 'arr warning row with an object wikiUrl',
+      input: { arr: { sonarr: { '/api/v3/health': [{ source: 'DownloadClientCheck', type: 'warning', message: 'No download client', wikiUrl: { fullUri: 'https://wiki.servarr.com/sonarr/2' } }] } } },
+      level: 'warning', errors: 0, warnings: 1, message: 'No download client', docsUrl: 'https://wiki.servarr.com/sonarr/2',
+    },
+    {
+      name: 'unknown cooldown', input: { cooldown: { text: 'Ratio too low, sorry', known: false } }, level: 'error', errors: 1, warnings: 0,
+      message: 'blutopia.cc refused downloads with text media-manager-2 doesn\'t know: "Ratio too low, sorry"',
+    },
+    {
+      name: 'known cooldown', input: { cooldown: { text: 'Your downloading privileges have been disabled.', known: true } }, level: 'warning', errors: 0, warnings: 1,
+      message: `blutopia.cc refused downloads since ${new Date(now - hour).toISOString()}: "Your downloading privileges have been disabled."`,
+    },
+    {
+      name: 'disk with 20 GB free',
+      input: { arr: { sonarr: { '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 20_000_000_000, totalSpace: 100_000_000_000 }] } } },
+      level: 'warning', errors: 0, warnings: 1, message: 'Drive /data is 80% full · 20.0 GB free of 100 GB',
+    },
+    {
+      name: 'late job',
+      input: { jobs: [{ name: 'stall-fix', intervalMs: 60_000, lastStartedAt: now - hour, lastFinishedAt: now - hour, lastFailed: false, late: true }] },
+      level: 'warning', errors: 0, warnings: 1, message: 'Background job stall-fix hasn\'t finished for 1h 0m; expected every 1m',
+    },
+    { name: 'backup table absent', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Cloudflare R2 backups are not set up yet' },
+    { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last Cloudflare R2 backup finished 30h 0m ago' },
+  ];
+  for (const { name, input, level, errors, warnings, message, docsUrl } of cases) {
+    const { snapshot, badge } = await run(input);
+    assert.equal(snapshot.level, level, name);
+    assert.deepEqual(badge, { type: 'health', data: { checkedAt: now, level, errors, warnings } }, name);
+    if (message === undefined) {
+      assert.deepEqual(snapshot.problems, [], name);
+    } else {
+      assert.equal(snapshot.problems[0].message, message, name);
+      if (docsUrl !== undefined) assert.equal(snapshot.problems[0].docsUrl, docsUrl, name);
+    }
+  }
+
+  // Leaving the health routes outside the sign-in guard, or not running the checks on demand, turns this red.
+  await t.test('the health routes need the owner session and run the checks on demand', async () => {
+    const { health, database } = await run();
+    const { app } = await makeApp({ api: createApiRoutes(database, { arr: {}, refresh: async () => {}, manualImport: {}, health }) });
+    assert.equal((await app.request('/api/health')).status, 401);
+    const { session } = await signIn(app);
+    const response = await app.request('/api/health/check', { method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: '{}' });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).checkedAt, now);
+  });
 });

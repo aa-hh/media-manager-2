@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import type { Assignment } from './assignments.js';
 import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
+import { createHealthRoutes, type Health } from './health.js';
 import type { createManualImport } from './manualImport.js';
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
@@ -12,6 +13,7 @@ export type ApiActions = {
   arr: Record<Service, { request: ArrRequest }>;
   refresh(service: Service): Promise<void>;
   manualImport: ReturnType<typeof createManualImport>;
+  health?: Health;
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -161,5 +163,6 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     await actions.refresh(service);
     return context.body(null, 204);
   });
+  if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
   return api;
 };

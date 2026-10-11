@@ -8,6 +8,7 @@ import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createGrabs, handGrab } from './grabs.js';
+import { createHealth } from './health.js';
 import { createImportFix } from './imports.js';
 import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
@@ -20,6 +21,7 @@ import { createSearch } from './search.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTorrentPoller } from './torrents.js';
 import { createTrackerWatch } from './trackers.js';
@@ -73,6 +75,9 @@ if (database !== undefined) {
     await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr')]);
     await protection.reconcile();
   });
+  const plex = createPlex(database);
+  const health = createHealth({ database, arr, rtorrent, plex, jobs: runner, events });
+  runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
   runner.register('replace-completion', 60_000, () => replaces.run());
   runner.register('grab-download-ids', 30_000, async () => {
     // A grab that never shows up in history within an hour is left for the owner to see, not polled forever.
@@ -96,6 +101,7 @@ if (database !== undefined) {
       arr,
       refresh: torrentGrabs.refresh,
       manualImport: createManualImport({ database, arr, problems }),
+      health,
     }),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
