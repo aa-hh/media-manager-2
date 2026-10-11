@@ -4,11 +4,12 @@ import type { SearchResult } from './Search';
 
 /*
  * Screen changes. Every change of screen goes through changeScreen: link clicks (navigate, navigateFrom) and the browser's
- * back and forward buttons. It runs as one view transition: the old screen stays frozen on screen while the new one renders
- * and, if the new screen loads data (useScreenReady), until that data is in or HOLD_MS passes; then the two crossfade and a
- * poster card's poster morphs into the title page's poster (timing in globals.css). A fast load therefore never shows a
- * skeleton, and there is never a second whole-page transition when data arrives: content that comes later fades in by
- * itself (useLateArrival). Reduced motion, a hidden tab or a browser without view transitions get an instant change.
+ * back and forward buttons; replace() only rewrites the address within a screen, such as the search box. A screen change is
+ * one view transition: the old screen stays frozen on screen while the new one renders and, if the new screen loads data
+ * (useScreenReady), until that data is in or HOLD_MS passes; then the two crossfade and a poster card's poster morphs into
+ * the title page's poster (timing in globals.css). A fast load therefore never shows a skeleton, and there is never a second
+ * whole-page transition when data arrives: content that comes later crossfades over its skeleton (Arrival). Reduced motion,
+ * a hidden tab or a browser without view transitions change at once but keep the same hold and scroll rules.
  */
 
 // razor: one fixed wait for every screen; the new screen shows its skeleton after it. Upgrade path is a per-screen budget.
@@ -21,6 +22,8 @@ export const TITLE_POSTER = 'title-poster';
 window.history.scrollRestoration = 'manual';
 const scrollByAddress = new Map<string, number>();
 const address = () => `${window.location.pathname}${window.location.search}`;
+// The address of the screen on show; on back and forward the address has already changed when the event arrives.
+let shownAddress = address();
 
 let announcing = false;
 const announce = () => {
@@ -29,16 +32,24 @@ const announce = () => {
     window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
   } finally {
     announcing = false;
+    shownAddress = address();
   }
 };
 
 type Hold = { claimed: boolean; release: () => void };
 // The screen change waiting for its new screen to be ready, if any.
 let hold: Hold | undefined;
+// The screen change's crossfade while it plays; content arriving then waits for it (afterScreenChange).
+let playing: Promise<unknown> | undefined;
 // Where the new screen should scroll to once it is drawn; a screen still loading is too short to scroll yet.
 let pendingScroll: number | undefined;
-const applyScroll = () => {
+/**
+ * Applies the new screen's scroll. final: the screen's content is drawn now (Arrival, or a screen with no data), so it applies
+ * whatever the page height; otherwise it waits while the page is still too short to reach it, such as a skeleton.
+ */
+export const restoreScroll = (final: boolean) => {
   if (pendingScroll === undefined) return;
+  if (!final && document.documentElement.scrollHeight - window.innerHeight < pendingScroll) return;
   window.scrollTo({ top: pendingScroll, behavior: 'instant' });
   pendingScroll = undefined;
 };
@@ -49,38 +60,57 @@ const animate = () => typeof document.startViewTransition === 'function'
 
 const changeScreen = (update: () => void, scrollTop: number, morph?: HTMLElement) => {
   pendingScroll = scrollTop;
-  if (!animate()) {
-    update();
-    // Applied again by useScreenReady if the screen is still loading and too short.
-    window.scrollTo({ top: scrollTop, behavior: 'instant' });
-    return;
-  }
-  if (morph !== undefined) morph.style.viewTransitionName = TITLE_POSTER;
-  document.startViewTransition(async () => {
+  const run = async () => {
     // The old screen is captured; only the new screen may carry the poster's name now.
     if (morph !== undefined) morph.style.viewTransitionName = '';
     let release = () => {};
-    const ready = new Promise<void>((resolve) => { release = resolve; });
+    const ready = new Promise<boolean>((resolve) => { release = () => resolve(true); });
     const current: Hold = { claimed: false, release };
     hold = current;
     flushSync(update);
     // A screen that loads data claimed the hold while it rendered; any other screen is ready now.
     if (!current.claimed) release();
-    await Promise.race([ready, new Promise((resolve) => setTimeout(resolve, HOLD_MS))]);
-    if (hold === current) hold = undefined;
-    applyScroll();
-  });
+    const drawn = await Promise.race([ready, new Promise<boolean>((resolve) => setTimeout(() => resolve(false), HOLD_MS))]);
+    // A newer screen change owns the hold and the scroll now.
+    if (hold !== current) return;
+    hold = undefined;
+    // A screen still loading keeps its scroll until its content is drawn (useScreenReady, Arrival).
+    if (drawn) restoreScroll(!current.claimed);
+  };
+  if (!animate()) {
+    void run();
+    return;
+  }
+  if (morph !== undefined) morph.style.viewTransitionName = TITLE_POSTER;
+  const transition = document.startViewTransition(run);
+  const finished = transition.finished.catch(() => undefined);
+  void transition.updateCallbackDone.then(() => {
+    playing = finished;
+    void finished.then(() => {
+      if (playing === finished) playing = undefined;
+    });
+  }, () => undefined);
 };
+
+/** Runs now, or once the screen change's crossfade has finished, so new content never replaces an element mid-morph. */
+export const afterScreenChange = (run: () => void) => {
+  if (playing === undefined) run();
+  else void playing.then(run);
+};
+
+/** Whether a screen change is holding or playing; a view swap outside one (the search box) fades by itself. */
+export const inScreenChange = () => hold !== undefined || playing !== undefined;
 
 // The browser's back and forward buttons: stop the raw event, then replay it inside a screen change.
 window.addEventListener('popstate', (event) => {
   if (announcing) return;
   event.stopImmediatePropagation();
+  scrollByAddress.set(shownAddress, window.scrollY);
   changeScreen(announce, scrollByAddress.get(address()) ?? 0);
 });
 
 const push = (path: string, state?: unknown) => {
-  scrollByAddress.set(address(), window.scrollY);
+  scrollByAddress.set(shownAddress, window.scrollY);
   window.history.pushState(state ?? null, '', path);
 };
 
@@ -132,9 +162,9 @@ export function useScreenReady(ready: boolean): boolean {
   }, [entry]);
   useLayoutEffect(() => {
     if (!ready) return;
+    // Within the hold the screen change applies the scroll; after it, the screen is drawn now, so its scroll applies here.
     if (entry !== undefined && hold === entry) entry.release();
-    // Without a screen change in flight (no view transitions) the screen is drawn now, so its scroll can apply.
-    else applyScroll();
+    else if (entry === undefined || hold === undefined) restoreScroll(false);
   }, [ready, entry]);
   return useLateArrival(ready);
 }
@@ -150,6 +180,7 @@ export const preloadImages = (urls: Array<string | null | undefined>, maxWaitMs:
   new Promise((resolve) => setTimeout(resolve, maxWaitMs)),
 ]);
 
+// Rewrites the address within a screen (the search box, filters); it is not a screen change and keeps the scroll.
 export const replace = (path: string, state?: unknown) => {
   window.history.replaceState(state ?? null, '', path);
   announce();

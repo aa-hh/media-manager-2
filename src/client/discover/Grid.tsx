@@ -10,7 +10,8 @@ import { cn } from '@/lib/utils';
 import { StatusInline } from '@/components/ui/status-inline';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { getJson } from '../library/api';
-import { navigate, replace, useLateArrival, useLocation, useScreenReady } from '../navigation';
+import { Arrival } from '../Arrival';
+import { navigate, replace, useLocation, useScreenReady } from '../navigation';
 import { Attribution } from './Attribution';
 import { Card, openLink } from './Card';
 import { FilterBar } from './FilterBar';
@@ -85,10 +86,11 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
   const [got, setGot] = useState<Got>();
   const current = got?.base === base ? got : undefined;
   const loading = current === undefined || (current.status === 'ok' && current.loadedPage < page);
-  // The screen change holds for the first page; later pages simply append below.
+  // The screen change holds for the first page; cards from later pages fade in as they append.
   const firstPage = current !== undefined && (current.status !== 'ok' || current.loadedPage >= 1);
   useScreenReady(firstPage);
-  const late = useLateArrival(firstPage);
+  const firstCount = useRef<number | undefined>(undefined);
+  if (firstPage && firstCount.current === undefined) firstCount.current = current?.results.length ?? 0;
   const [attempt, setAttempt] = useState(0);
   const sentinel = useRef<HTMLDivElement>(null);
   const options = useOptions(kind === 'trending' ? 'both' : kind === 'movies' ? 'movie' : 'tv', kind === 'tv' ? 'tv' : 'movie', onUnauthenticated);
@@ -200,9 +202,17 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
           Try fewer genres, a wider year range or a lower rating.
         </EmptyState>
       ) : (
-        <ul className={cn('flex flex-wrap gap-x-(--poster-gutter) gap-y-8 pt-6', late && 'animate-content-in')}>
-          {current?.results.map((result) => (
-            <li key={`${result.type}:${result.tmdbId}`}>
+        <Arrival
+          ready={firstPage}
+          skeleton={(
+            <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8 pt-6">
+              {Array.from({ length: SKELETONS }, (_, index) => <li key={index}><SkeletonPosterCard /></li>)}
+            </ul>
+          )}
+        >
+        <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8 pt-6">
+          {current?.results.map((result, index) => (
+            <li key={`${result.type}:${result.tmdbId}`} className={cn(index >= (firstCount.current ?? Infinity) && 'animate-content-in')}>
               <Card result={result} upcoming={state.sort === 'upcoming' && kind !== 'trending'} size="default" />
             </li>
           ))}
@@ -212,6 +222,7 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
             </li>
           ))}
         </ul>
+        </Arrival>
       )}
       {loading && page > 1 && (
         <div className="flex justify-center pt-6">

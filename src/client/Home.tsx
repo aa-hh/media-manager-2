@@ -7,7 +7,7 @@ import { Calendar } from './calendar/Calendar';
 import { Discover } from './discover/Discover';
 import type { DownloadsState } from './downloads/useDownloads';
 import { Library } from './library/Library';
-import { navigate, replace, routeFor, useLocation } from './navigation';
+import { inScreenChange, navigate, replace, routeFor, useLocation } from './navigation';
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
 import { Settings } from './settings/Settings';
 import { cn } from './lib/utils';
@@ -175,8 +175,9 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         )}
       />
       <main className="px-(--page-margin) pb-(--livebar)">
-        {/* Each title page counts as its own screen. Screen changes crossfade in navigation.ts, so this adds no fade of its own. */}
-        <div key={view === 'title' ? pathname : view}>
+        {/* Each title page counts as its own screen. Screen changes crossfade in navigation.ts; a view swap outside one, such
+            as typing in the search box, fades in here instead. */}
+        <div key={view === 'title' ? pathname : view} className={cn(!inScreenChange() && 'transition-opacity duration-(--duration-fast) ease-out starting:opacity-0')}>
         {view === 'search'
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'

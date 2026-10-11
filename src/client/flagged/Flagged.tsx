@@ -345,7 +345,7 @@ export function FlaggedScreen({ state, reload, headingRef, onUnauthenticated, on
           {tabs.map((item) => <TabsTrigger key={item.key} value={item.key} count={counts[item.key]}>{item.label}</TabsTrigger>)}
         </TabsList>
       </Tabs>
-      <div key={tab} className={cn('flex flex-col gap-6', (tab !== firstTab || late) && 'transition-opacity duration-(--duration-base) ease-out starting:opacity-0')}>
+      <div key={`${tab}:${load.kind}`} className={cn('flex flex-col gap-6', (tab !== firstTab || late) && 'transition-opacity duration-(--duration-base) ease-out starting:opacity-0')}>
         {load.kind === 'loading' && (
           <div className="flex flex-col gap-3">
             <StatusInline status="busy">Reading flagged items…</StatusInline>
