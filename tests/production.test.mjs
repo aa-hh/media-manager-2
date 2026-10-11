@@ -47,6 +47,7 @@ const torrentGrabsModuleUrl = new URL('../dist/server/torrentGrabs.js', import.m
 const problemsModuleUrl = new URL('../dist/server/problems.js', import.meta.url).href;
 const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
+const trackerRulesModuleUrl = new URL('../dist/server/trackerRules.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
@@ -1597,6 +1598,61 @@ test('settings validate categories, keys, and values', async (t) => {
   assert.throws(() => setSetting(database, 'credentials', '  ', 'value'), { message: 'Setting key must be a nonblank string.' });
   assert.throws(() => deleteSetting(database, 'credentials', ''), { message: 'Setting key must be a nonblank string.' });
   assert.throws(() => setSetting(database, 'credentials', 'key', 42), { message: 'Setting value must be a string.' });
+});
+
+// Changing a piece of the PrivateHD formula, the and/or combination, giving Blutopia a ratio side, letting the global
+// ratio flip a torrent's result, or matching indexer names by substring turns this red.
+test('hit and run rules come from settings with the confirmed defaults and an exact name match', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tracker-rules-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { checkHitAndRun, findTrackerRule } = await import(trackerRulesModuleUrl);
+  const database = openDatabase(join(root, 'database.sqlite'));
+  t.after(() => database.close());
+
+  const privatehd = findTrackerRule(database, 'PrivateHD').rule;
+  for (const [gb, hours] of [[1, 72.0], [49.99, 171.98], [50, 172.0], [100, 241.31]]) {
+    const { requiredHours } = checkHitAndRun(privatehd, { seedHours: 0, ratio: 0, sizeBytes: gb * 1000 ** 3 });
+    assert.equal(Math.round(requiredHours * 100) / 100, hours, `${gb} GB`);
+  }
+
+  const torrent = (seedHours, ratio) => ({ seedHours, ratio, sizeBytes: 10 * 1000 ** 3 });
+  const blutopia = findTrackerRule(database, 'blutopia.cc').rule;
+  const beyondhd = findTrackerRule(database, 'BeyondHD (Prowlarr)');
+  assert.equal(beyondhd.host, 'beyond-hd.me');
+  setSetting(database, 'trackerConfiguration', 'rules.example.org', JSON.stringify({ minHours: 10, minRatio: 2, logic: 'and' }));
+  const andRule = findTrackerRule(database, 'Example').rule;
+  assert.equal(findTrackerRule(database, 'Example').host, 'example.org');
+  // Blutopia has no ratio side, so a high ratio never clears it.
+  for (const [rule, seedHours, ratio, expected] of [
+    [blutopia, 100, 5.0, [false, null, false]], [blutopia, 168, 0, [true, null, true]],
+    [beyondhd.rule, 120, 0, [true, false, true]], [beyondhd.rule, 0, 1.0, [false, true, true]],
+    [beyondhd.rule, 120, 1.0, [true, true, true]], [beyondhd.rule, 119, 0.99, [false, false, false]],
+    [andRule, 10, 2, [true, true, true]], [andRule, 9, 2, [false, true, false]],
+    [andRule, 10, 1.99, [true, false, false]], [andRule, 0, 0, [false, false, false]],
+  ]) {
+    const result = checkHitAndRun(rule, torrent(seedHours, ratio));
+    assert.deepEqual([result.hours, result.ratio, result.met], expected, `${rule.logic} ${seedHours}h ${ratio}`);
+  }
+  const lowGlobal = checkHitAndRun(blutopia, torrent(168, 0), 0.1);
+  assert.deepEqual([lowGlobal.met, lowGlobal.globalRatio], [true, false]);
+  assert.deepEqual([checkHitAndRun(blutopia, torrent(0, 0), 5).met, checkHitAndRun(blutopia, torrent(0, 0), 5).globalRatio], [false, true]);
+  assert.equal(checkHitAndRun(privatehd, torrent(0, 0), 20).globalRatio, 'unknown');
+  assert.equal(checkHitAndRun(beyondhd.rule, torrent(0, 0)).globalRatio, 'unknown');
+
+  assert.equal(findTrackerRule(database, 'hd'), undefined);
+  assert.equal(findTrackerRule(database, 'Unknown (Prowlarr)'), undefined);
+
+  setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', JSON.stringify({ minHours: 200, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' }));
+  assert.deepEqual(findTrackerRule(database, 'Blutopia (API)').rule, { minHours: 200, minHoursFormula: null, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' });
+  for (const bad of [
+    'not json', '{"minHours":10,"minRatio":1,"logic":"xor"}', '{"minHours":10,"minRatio":1}',
+    '{"minRatio":1,"logic":"or"}', '{"minHours":-1}', '{"minHours":10,"minGlobalRatio":"high"}',
+  ]) {
+    setSetting(database, 'trackerConfiguration', 'rules.example.org', bad);
+    assert.throws(() => findTrackerRule(database, 'example.org'), { message: 'The saved hit and run rule for example.org is not valid.' });
+  }
 });
 
 // A startup storage failure must exit unsuccessfully with one fixed message and never begin listening.
