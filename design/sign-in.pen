@@ -12976,6 +12976,1101 @@
                       ]
                     }
                   ]
+                },
+                {
+                  "type": "frame",
+                  "id": "xTP3U",
+                  "name": "Layered build (matches the SVG)",
+                  "width": "fill_container",
+                  "fill": "#e2ddcf",
+                  "cornerRadius": 6,
+                  "layout": "vertical",
+                  "gap": 16,
+                  "padding": 24,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "umS6u",
+                      "name": "Section title",
+                      "fill": "#0b0d13",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Layered build: surface image + lighting layers",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "JI0YK",
+                      "name": "Note",
+                      "fill": "#3a4253",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Only the cloud surface is an image (app-logo/surface.png, rendered with no lighting). Night side, edge darkening, atmosphere, rim glow, lime edge and halo are editable gradient layers. Same build as app-logo/planet-logo-white.svg and planet-logo-dark.svg.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "I6pORw",
+                      "name": "Builds",
+                      "layout": "vertical",
+                      "gap": 16,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "f6Zl65",
+                          "name": "Globe / on white",
+                          "width": 320,
+                          "height": 320,
+                          "fill": "#ffffff",
+                          "cornerRadius": 8,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "ellipse",
+                              "id": "a1xDw",
+                              "x": -5.383504528783192,
+                              "y": -3.4181611789751685,
+                              "name": "Halo",
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "radial",
+                                "enabled": true,
+                                "rotation": 0,
+                                "size": {
+                                  "width": 1,
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.025
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.05
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.075
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.1
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.125
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.15
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.175
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.2
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.225
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.25
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.275
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.325
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.35
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.375
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.4
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.425
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.45
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.475
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.5
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.525
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.55
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.575
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.625
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.65
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.675
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.7
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.725
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.75
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.775
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.8
+                                  },
+                                  {
+                                    "color": "#5b7984ff",
+                                    "position": 0.825
+                                  },
+                                  {
+                                    "color": "#5b7984d6",
+                                    "position": 0.85
+                                  },
+                                  {
+                                    "color": "#5b79846d",
+                                    "position": 0.875
+                                  },
+                                  {
+                                    "color": "#5b798438",
+                                    "position": 0.9
+                                  },
+                                  {
+                                    "color": "#5b79841c",
+                                    "position": 0.925
+                                  },
+                                  {
+                                    "color": "#5b79840a",
+                                    "position": 0.95
+                                  },
+                                  {
+                                    "color": "#5b798402",
+                                    "position": 0.975
+                                  },
+                                  {
+                                    "color": "#5b798400",
+                                    "position": 1
+                                  }
+                                ]
+                              },
+                              "width": 325.39759117157325,
+                              "height": 325.39759117157325
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "w6lU1x",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Surface",
+                              "fill": {
+                                "type": "image",
+                                "enabled": true,
+                                "url": "app-logo/surface.png",
+                                "mode": "cover"
+                              },
+                              "width": 280,
+                              "height": 280
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "Id3A0",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Night side",
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "radial",
+                                "enabled": true,
+                                "rotation": 0,
+                                "size": {
+                                  "width": 1.95,
+                                  "height": 1.95
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.05
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.1
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.15
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.2
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.25
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.35
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.4
+                                  },
+                                  {
+                                    "color": "#00000008",
+                                    "position": 0.45
+                                  },
+                                  {
+                                    "color": "#00000033",
+                                    "position": 0.5
+                                  },
+                                  {
+                                    "color": "#00000068",
+                                    "position": 0.55
+                                  },
+                                  {
+                                    "color": "#00000098",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#000000b2",
+                                    "position": 0.65
+                                  },
+                                  {
+                                    "color": "#000000b3",
+                                    "position": 0.7
+                                  },
+                                  {
+                                    "color": "#000000b8",
+                                    "position": 0.75
+                                  },
+                                  {
+                                    "color": "#000000c0",
+                                    "position": 0.8
+                                  },
+                                  {
+                                    "color": "#000000c9",
+                                    "position": 0.85
+                                  },
+                                  {
+                                    "color": "#000000d4",
+                                    "position": 0.9
+                                  },
+                                  {
+                                    "color": "#000000e3",
+                                    "position": 0.95
+                                  },
+                                  {
+                                    "color": "#000000fc",
+                                    "position": 1
+                                  }
+                                ],
+                                "center": {
+                                  "x": 0.04465476914659666,
+                                  "y": 0.37799061311546733
+                                }
+                              },
+                              "width": 280,
+                              "height": 280
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "c4Uu7",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Limb darkening",
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "radial",
+                                "enabled": true,
+                                "rotation": 0,
+                                "size": {
+                                  "width": 1,
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.1
+                                  },
+                                  {
+                                    "color": "#00000001",
+                                    "position": 0.2
+                                  },
+                                  {
+                                    "color": "#00000003",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#00000005",
+                                    "position": 0.4
+                                  },
+                                  {
+                                    "color": "#00000008",
+                                    "position": 0.5
+                                  },
+                                  {
+                                    "color": "#0000000c",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#00000012",
+                                    "position": 0.7
+                                  },
+                                  {
+                                    "color": "#0000001a",
+                                    "position": 0.8
+                                  },
+                                  {
+                                    "color": "#00000028",
+                                    "position": 0.9
+                                  },
+                                  {
+                                    "color": "#00000080",
+                                    "position": 1
+                                  }
+                                ]
+                              },
+                              "width": 280,
+                              "height": 280
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "i0kYA",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Atmosphere",
+                              "opacity": 0.08,
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "radial",
+                                "enabled": true,
+                                "rotation": 0,
+                                "size": {
+                                  "width": 1,
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0.1
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0.2
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0.4
+                                  },
+                                  {
+                                    "color": "#93c4d401",
+                                    "position": 0.5
+                                  },
+                                  {
+                                    "color": "#93c4d402",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#93c4d405",
+                                    "position": 0.7
+                                  },
+                                  {
+                                    "color": "#93c4d40b",
+                                    "position": 0.8
+                                  },
+                                  {
+                                    "color": "#93c4d41b",
+                                    "position": 0.9
+                                  },
+                                  {
+                                    "color": "#93c4d470",
+                                    "position": 1
+                                  }
+                                ]
+                              },
+                              "width": 280,
+                              "height": 280
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "Wn3is",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Rim glow",
+                              "width": 280,
+                              "height": 280,
+                              "stroke": {
+                                "type": "gradient",
+                                "gradientType": "linear",
+                                "enabled": true,
+                                "rotation": 255,
+                                "size": {
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#d4ecf2ff",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#93c4d499",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#93c4d40f",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 1
+                                  }
+                                ]
+                              },
+                              "strokeWidth": 3,
+                              "strokeAlignment": "inner",
+                              "effect": {
+                                "type": "blur",
+                                "radius": 0.6
+                              }
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "kDR5y",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Lime edge",
+                              "width": 280,
+                              "height": 280,
+                              "stroke": {
+                                "type": "gradient",
+                                "gradientType": "linear",
+                                "enabled": true,
+                                "rotation": 255,
+                                "size": {
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#c6f13538",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#c6f13500",
+                                    "position": 0.3
+                                  }
+                                ]
+                              },
+                              "strokeWidth": 1.5,
+                              "strokeAlignment": "inner"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "n8DQBt",
+                          "name": "Globe / on dark",
+                          "width": 320,
+                          "height": 320,
+                          "fill": "#07080b",
+                          "cornerRadius": 8,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "ellipse",
+                              "id": "SOqVY",
+                              "x": 0.27670278184194785,
+                              "y": 4.3458175468218485,
+                              "name": "Halo",
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "radial",
+                                "enabled": true,
+                                "rotation": 0,
+                                "size": {
+                                  "width": 1,
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.025
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.05
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.075
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.1
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.125
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.15
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.175
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.2
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.225
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.25
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.275
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.325
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.35
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.375
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.4
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.425
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.45
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.475
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.5
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.525
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.55
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.575
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.625
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.65
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.675
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.7
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.725
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.75
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.775
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.8
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.825
+                                  },
+                                  {
+                                    "color": "#93c4d466",
+                                    "position": 0.85
+                                  },
+                                  {
+                                    "color": "#93c4d45c",
+                                    "position": 0.875
+                                  },
+                                  {
+                                    "color": "#93c4d431",
+                                    "position": 0.9
+                                  },
+                                  {
+                                    "color": "#93c4d419",
+                                    "position": 0.925
+                                  },
+                                  {
+                                    "color": "#93c4d409",
+                                    "position": 0.95
+                                  },
+                                  {
+                                    "color": "#93c4d402",
+                                    "position": 0.975
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 1
+                                  }
+                                ]
+                              },
+                              "width": 308.32956615656235,
+                              "height": 308.32956615656235
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "IdX2P",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Surface",
+                              "fill": {
+                                "type": "image",
+                                "enabled": true,
+                                "url": "app-logo/surface.png",
+                                "mode": "cover"
+                              },
+                              "width": 280,
+                              "height": 280
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "U1B7SD",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Night side",
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "radial",
+                                "enabled": true,
+                                "rotation": 0,
+                                "size": {
+                                  "width": 1.95,
+                                  "height": 1.95
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.05
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.1
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.15
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.2
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.25
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.35
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.4
+                                  },
+                                  {
+                                    "color": "#0000000f",
+                                    "position": 0.45
+                                  },
+                                  {
+                                    "color": "#00000048",
+                                    "position": 0.5
+                                  },
+                                  {
+                                    "color": "#00000090",
+                                    "position": 0.55
+                                  },
+                                  {
+                                    "color": "#000000d2",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#000000fa",
+                                    "position": 0.65
+                                  },
+                                  {
+                                    "color": "#000000fc",
+                                    "position": 0.7
+                                  },
+                                  {
+                                    "color": "#000000fc",
+                                    "position": 0.75
+                                  },
+                                  {
+                                    "color": "#000000fc",
+                                    "position": 0.8
+                                  },
+                                  {
+                                    "color": "#000000fc",
+                                    "position": 0.85
+                                  },
+                                  {
+                                    "color": "#000000fc",
+                                    "position": 0.9
+                                  },
+                                  {
+                                    "color": "#000000fc",
+                                    "position": 0.95
+                                  },
+                                  {
+                                    "color": "#000000fc",
+                                    "position": 1
+                                  }
+                                ],
+                                "center": {
+                                  "x": 0.04465476914659666,
+                                  "y": 0.37799061311546733
+                                }
+                              },
+                              "width": 280,
+                              "height": 280
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "hvdNF",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Limb darkening",
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "radial",
+                                "enabled": true,
+                                "rotation": 0,
+                                "size": {
+                                  "width": 1,
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#00000000",
+                                    "position": 0.1
+                                  },
+                                  {
+                                    "color": "#00000001",
+                                    "position": 0.2
+                                  },
+                                  {
+                                    "color": "#00000003",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#00000005",
+                                    "position": 0.4
+                                  },
+                                  {
+                                    "color": "#00000008",
+                                    "position": 0.5
+                                  },
+                                  {
+                                    "color": "#0000000c",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#00000012",
+                                    "position": 0.7
+                                  },
+                                  {
+                                    "color": "#0000001a",
+                                    "position": 0.8
+                                  },
+                                  {
+                                    "color": "#00000028",
+                                    "position": 0.9
+                                  },
+                                  {
+                                    "color": "#00000080",
+                                    "position": 1
+                                  }
+                                ]
+                              },
+                              "width": 280,
+                              "height": 280
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "q9Hny",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Atmosphere",
+                              "opacity": 0.08,
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "radial",
+                                "enabled": true,
+                                "rotation": 0,
+                                "size": {
+                                  "width": 1,
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0.1
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0.2
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 0.4
+                                  },
+                                  {
+                                    "color": "#93c4d401",
+                                    "position": 0.5
+                                  },
+                                  {
+                                    "color": "#93c4d402",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#93c4d405",
+                                    "position": 0.7
+                                  },
+                                  {
+                                    "color": "#93c4d40b",
+                                    "position": 0.8
+                                  },
+                                  {
+                                    "color": "#93c4d41b",
+                                    "position": 0.9
+                                  },
+                                  {
+                                    "color": "#93c4d470",
+                                    "position": 1
+                                  }
+                                ]
+                              },
+                              "width": 280,
+                              "height": 280
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "Ouy98",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Rim glow",
+                              "width": 280,
+                              "height": 280,
+                              "stroke": {
+                                "type": "gradient",
+                                "gradientType": "linear",
+                                "enabled": true,
+                                "rotation": 255,
+                                "size": {
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#d4ecf2ff",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#93c4d499",
+                                    "position": 0.3
+                                  },
+                                  {
+                                    "color": "#93c4d40f",
+                                    "position": 0.6
+                                  },
+                                  {
+                                    "color": "#93c4d400",
+                                    "position": 1
+                                  }
+                                ]
+                              },
+                              "strokeWidth": 3,
+                              "strokeAlignment": "inner",
+                              "effect": {
+                                "type": "blur",
+                                "radius": 0.6
+                              }
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "kLWhf",
+                              "x": 20,
+                              "y": 20,
+                              "name": "Lime edge",
+                              "width": 280,
+                              "height": 280,
+                              "stroke": {
+                                "type": "gradient",
+                                "gradientType": "linear",
+                                "enabled": true,
+                                "rotation": 255,
+                                "size": {
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#c6f13538",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#c6f13500",
+                                    "position": 0.3
+                                  }
+                                ]
+                              },
+                              "strokeWidth": 1.5,
+                              "strokeAlignment": "inner"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             },
@@ -13579,6 +14674,282 @@
                       ]
                     }
                   ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "z0H4ed",
+      "x": 20200,
+      "y": 22125,
+      "name": "DISCOVERY / Logo in the header bar (not approved)",
+      "fill": "#f4f1ea",
+      "layout": "vertical",
+      "gap": 40,
+      "padding": 80,
+      "children": [
+        {
+          "type": "text",
+          "id": "a5oED",
+          "name": "Title",
+          "fill": "#0b0d13",
+          "content": "Logo beside the name in the header bar",
+          "fontFamily": "JetBrains Mono",
+          "fontSize": 32,
+          "fontWeight": "700"
+        },
+        {
+          "type": "text",
+          "id": "Z4PU6",
+          "name": "Note",
+          "fill": "#3a4253",
+          "textGrowth": "fixed-width",
+          "width": 1100,
+          "content": "The app is light only, so the header uses the white-background logo. The same header is used by Home and the setup wizard. The phone top bar shows the page title, not the app name, so it is unchanged. Text stays 16 px, weight 800. Below 32 px the logo uses its small-size version (lit from the front, stronger bands, thicker rim): design/app-logo/small-on-light.png.",
+          "lineHeight": 1.5,
+          "fontFamily": "Inter",
+          "fontSize": 15,
+          "fontWeight": "normal"
+        },
+        {
+          "type": "frame",
+          "id": "NtSSr",
+          "name": "Option A",
+          "layout": "vertical",
+          "gap": 12,
+          "children": [
+            {
+              "type": "text",
+              "id": "G5yv2u",
+              "name": "Label",
+              "fill": "#0b0d13",
+              "content": "A  Logo 20 px, 8 px gap",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            },
+            {
+              "id": "WTTJu",
+              "type": "ref",
+              "ref": "5:F5qou",
+              "name": "App bar",
+              "width": 1440,
+              "descendants": {
+                "5:zLSZ8": {
+                  "type": "frame",
+                  "id": "QzGO1",
+                  "name": "Product name",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "M0cB8j",
+                      "name": "Logo",
+                      "width": 20,
+                      "height": 20,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "app-logo/small-on-light.png",
+                        "mode": "contain"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "id": "HriVq",
+                      "name": "Name",
+                      "fill": "$foreground",
+                      "content": "media-manager-2",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "800",
+                      "letterSpacing": -0.2
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "W6jXhM",
+          "name": "Option B",
+          "layout": "vertical",
+          "gap": 12,
+          "children": [
+            {
+              "type": "text",
+              "id": "ubXVK",
+              "name": "Label",
+              "fill": "#0b0d13",
+              "content": "B  Logo 24 px, 8 px gap",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            },
+            {
+              "id": "D7NFE6",
+              "type": "ref",
+              "ref": "5:F5qou",
+              "name": "App bar",
+              "width": 1440,
+              "descendants": {
+                "5:zLSZ8": {
+                  "type": "frame",
+                  "id": "g8EqpO",
+                  "name": "Product name",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "srkDv",
+                      "name": "Logo",
+                      "width": 24,
+                      "height": 24,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "app-logo/small-on-light.png",
+                        "mode": "contain"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "id": "HB6Xx",
+                      "name": "Name",
+                      "fill": "$foreground",
+                      "content": "media-manager-2",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "800",
+                      "letterSpacing": -0.2
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "QMMZj",
+          "name": "Option C",
+          "layout": "vertical",
+          "gap": 12,
+          "children": [
+            {
+              "type": "text",
+              "id": "GIvaZ",
+              "name": "Label",
+              "fill": "#0b0d13",
+              "content": "C  Logo 28 px, 10 px gap  (chosen; uses the small-size version D)",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            },
+            {
+              "id": "CXqw2",
+              "type": "ref",
+              "ref": "5:F5qou",
+              "name": "App bar",
+              "width": 1440,
+              "descendants": {
+                "5:zLSZ8": {
+                  "type": "frame",
+                  "id": "HboAr",
+                  "name": "Product name",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "eOuPG",
+                      "name": "Logo",
+                      "width": 28,
+                      "height": 28,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "app-logo/small-on-light.png",
+                        "mode": "contain"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "id": "pdfxT",
+                      "name": "Name",
+                      "fill": "$foreground",
+                      "content": "media-manager-2",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "800",
+                      "letterSpacing": -0.2
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "K1dEu7",
+          "name": "Zoom",
+          "layout": "vertical",
+          "gap": 12,
+          "children": [
+            {
+              "type": "text",
+              "id": "FZGAn",
+              "name": "Label",
+              "fill": "#0b0d13",
+              "content": "Option C at 4x",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "R0MDZ8",
+              "name": "Zoomed",
+              "fill": "#ffffff",
+              "gap": 32,
+              "padding": [
+                24,
+                40
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "fRuiX",
+                  "name": "Logo",
+                  "width": 112,
+                  "height": 112,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "app-logo/small-on-light.png",
+                    "mode": "contain"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "Z28wVA",
+                  "name": "Name",
+                  "fill": "#111111",
+                  "content": "media-manager-2",
+                  "fontFamily": "Barlow Semi Condensed",
+                  "fontSize": 64,
+                  "fontWeight": "800",
+                  "letterSpacing": -0.8
                 }
               ]
             }

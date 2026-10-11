@@ -54,6 +54,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 - `docs/adr/` → recorded architecture decisions.
 - `docs/review/` → instructions for each branch-review pass.
 - `design/` → the pen.dev design files.
+- `public/` → tab and home-screen icons and the web app manifest, copied into the build as-is.
 - `.scratch/` → local issue tracker (`docs/agents/issue-tracker.md`).
 
 ## Rules (all targets)

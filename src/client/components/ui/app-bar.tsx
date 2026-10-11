@@ -1,6 +1,7 @@
 // v2/AppBar/Nav item — design/design-system.lib.pen ACA2W
 // v2/AppBar/Desktop — design/design-system.lib.pen F5qou
 import type { ComponentProps, ReactNode } from 'react';
+import logo from '@/assets/logos/media-manager-2.png';
 import { cn } from '@/lib/utils';
 
 type AppBarNavItemProps = ComponentProps<'a'> & {
@@ -57,11 +58,14 @@ type AppBarDesktopProps = ComponentProps<'header'> & {
   signedOut?: boolean;
 };
 
-/** Top bar, 64 px, white with a line under, page-margin side padding. */
+/** Top bar, 64 px, white with a line under, page-margin side padding. The 28 px logo is the small-size render, design/app-logo/small-on-light.png. */
 function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, signedOut = false, className, ...props }: AppBarDesktopProps) {
   return (
     <header className={cn('flex h-(--topbar) w-full items-center gap-6 border-b border-border bg-card px-(--page-margin)', className)} {...props}>
-      <div className="shrink-0 font-ui text-base font-extrabold tracking-[-0.2px] text-foreground">{productName}</div>
+      <div className="flex shrink-0 items-center gap-2.5 font-ui text-base font-extrabold tracking-[-0.2px] text-foreground">
+        <img src={logo} alt="" width={28} height={28} className="size-7" />
+        {productName}
+      </div>
       {!signedOut && (
         <>
           <div className="flex min-w-0 flex-1">{search}</div>
