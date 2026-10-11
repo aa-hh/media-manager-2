@@ -201,7 +201,6 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           <div className="flex items-center gap-3">
             <ListChecks aria-hidden="true" className="size-6 shrink-0" />
             <h2 id="what-title" className="font-ui text-base font-bold text-foreground">What to set up</h2>
-            <span className="ml-auto font-data text-[13px] text-muted-foreground">About 10 minutes</span>
           </div>
           <div className="flex flex-col gap-2">
             <h3 className="font-ui text-sm font-semibold text-foreground">Required before the library opens. Have these ready:</h3>
@@ -211,22 +210,24 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
             </dl>
           </div>
           <div className="flex flex-col gap-2">
-            <h3 className="font-ui text-sm font-semibold text-foreground">Optional. Untick to skip, or add later in Settings:</h3>
+            <h3 className="font-ui text-sm font-semibold text-foreground">Optional, after the required steps:</h3>
             <div className="grid grid-cols-2 gap-4">
               <OptionRow
                 control={<Checkbox checked={wanted.trackers} onCheckedChange={(on) => setWanted((current) => ({ ...current, trackers: on }))} />}
                 title="Trackers"
                 description="Add each private tracker and its hit and run rule, so deleting a version never breaks one."
+                bordered
               />
               <OptionRow
                 control={<Checkbox checked={wanted.backup} onCheckedChange={(on) => setWanted((current) => ({ ...current, backup: on }))} />}
                 title="Backup"
                 description="Copy the database every few minutes to a folder or an S3-compatible bucket."
+                bordered
               />
             </div>
           </div>
           <BarBottomAction
-            summary="Anything unticked is skipped. Settings has every part later."
+            summary="Unticked parts are skipped. Settings has them later."
             action={(
               <Button size="large" icon={<ArrowRight />} loading={choosing} onClick={() => void saveChoices(wanted).then(async (ok) => { if (ok) await advance('what'); })}>
                 {first === 'done' ? 'Continue' : `Start with ${stepNames[first]}`}
@@ -266,7 +267,8 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
             onAdded={async (host, softwareSaved) => {
               setNewAddress('');
               await rereadTrackers();
-              setTrackerView(host);
+              // Back to the list, where "Add another tracker" sits under the one just added.
+              setTrackerView('list');
               void refresh();
               if (!softwareSaved) toasts.add({ title: `${trackerInfo(host).name} added as Other`, description: 'Its site software could not be saved. Remove it in Settings and add it again to pick the software.' });
             }}

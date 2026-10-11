@@ -50,15 +50,14 @@ export const firstStep = (status: SetupStatus, wanted: Record<OptionalPart, bool
 /** The step before `current`, for Back. */
 export const previousStep = (current: WizardStep): WizardStep => order[Math.max(0, order.indexOf(current) - 1)];
 
-/** The header words, such as "2 of 5 required steps done · about 6 minutes left". */
+/** The header words, such as "2 of 5 required steps done" or "5 of 5 required steps done · backup left". */
 export const wizardSummary = (status: SetupStatus, wanted: Record<OptionalPart, boolean>, finished: boolean) => {
   const done = requiredParts.filter((part) => status.required[part] === 'done').length;
   const optional = (['trackers', 'backup'] as const);
   if (finished) {
     return `Done · ${done} of 5 required, ${optional.filter((part) => status.optional[part].status === 'done').length} of 2 optional`;
   }
-  if (done === 0) return '0 of 5 required steps done · about 10 minutes';
-  if (done < 5) return `${done} of 5 required steps done · about ${(5 - done) * 2} minutes left`;
+  if (done < 5) return `${done} of 5 required steps done`;
   const left = optional.filter((part) => wanted[part] && status.optional[part].status === 'not_done');
   return `5 of 5 required steps done${left.length === 0 ? '' : ` · ${left.join(' and ')} left`}`;
 };

@@ -242,13 +242,13 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
           control={<Radio value="folder" />}
           title="A folder"
           description="On this server, or a drive or share mounted on it."
-          className="rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]"
+          bordered
         />
         <OptionRow
           control={<Radio value="s3" />}
           title="An S3-compatible bucket"
           description="Cloudflare R2, Backblaze B2, Amazon S3, Wasabi, MinIO or any other S3 API."
-          className="rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]"
+          bordered
         />
       </RadioGroup>
 

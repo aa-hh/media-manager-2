@@ -199,7 +199,7 @@ export function AddTracker({ address, onAddress, request, onCancel, cancelLabel 
               control={<Radio value={choice.software} />}
               title={softwareLabels[choice.software]}
               description={choice.description}
-              className="rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]"
+              bordered
             />
           ))}
         </RadioGroup>

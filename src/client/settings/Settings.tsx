@@ -541,13 +541,13 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
             control={<Radio value="signIn" disabled={testing} />}
             title="Use my sign-in token"
             description="The token from your Plex sign-in. Nothing to paste."
-            className="rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]"
+            bordered
           />
           <OptionRow
             control={<Radio value="paste" disabled={testing} />}
             title="Paste a token"
             description="The X-Plex-Token of your Plex server."
-            className="rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]"
+            bordered
           />
         </RadioGroup>
       )}
