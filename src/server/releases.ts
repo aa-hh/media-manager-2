@@ -30,6 +30,10 @@ export type Release = {
   // Sent back unchanged when a grab overrides what the release counts as.
   qualityModel: unknown;
   languages: unknown;
+  // Server only: the link carries the indexer's API key, so publicSearch strips it from every browser reply.
+  downloadUrl?: string | null;
+  // The episodes Sonarr maps the release to; a season pack lists every episode it covers.
+  episodeIds?: number[];
   // Sonarr's and Radarr's own rank for the release within the quality profile; searches stored before it was kept lack it.
   qualityWeight?: number | null;
 };
@@ -130,6 +134,10 @@ const toRelease = (value: unknown): Release | undefined => {
     past: [],
     qualityModel: isRecord(value.quality) ? value.quality : null,
     languages: Array.isArray(value.languages) ? value.languages : [],
+    downloadUrl: text(value.downloadUrl),
+    episodeIds: Array.isArray(value.mappedEpisodeInfo)
+      ? value.mappedEpisodeInfo.flatMap((episode) => (isRecord(episode) && positiveInteger(episode.id) ? [episode.id] : []))
+      : [],
     qualityWeight: typeof value.qualityWeight === 'number' && Number.isFinite(value.qualityWeight) ? value.qualityWeight : null,
   };
 };
@@ -257,13 +265,18 @@ export const createReleases = (
 
 export type Releases = ReturnType<typeof createReleases>;
 
+const publicSearch = (search: StoredSearch) => ({
+  ...search,
+  releases: search.releases.map(({ downloadUrl: _downloadUrl, ...release }) => release),
+});
+
 const respond = (result: ReleaseResult & { refreshing?: boolean }) => {
   if (result.kind === 'ok') {
-    return { status: 200 as const, body: { ...result.search, refreshing: result.refreshing ?? false } };
+    return { status: 200 as const, body: { ...publicSearch(result.search), refreshing: result.refreshing ?? false } };
   }
   return {
     status: (result.kind === 'not_configured' ? 503 : 502) as 503 | 502,
-    body: { error: result.kind, stored: result.stored },
+    body: { error: result.kind, stored: result.stored === null ? null : publicSearch(result.stored) },
   };
 };
 

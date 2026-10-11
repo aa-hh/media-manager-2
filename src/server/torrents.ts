@@ -191,7 +191,8 @@ export const createTorrentPoller = (options: {
     return lists;
   };
 
-  const poll = async () => {
+  // True when the torrents table now matches rTorrent.
+  const poll = async (): Promise<boolean> => {
     const startedAt = now();
     let observed: Observed[];
     try {
@@ -199,7 +200,7 @@ export const createTorrentPoller = (options: {
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'rTorrent is unreachable.';
       setDependency('down', startedAt, detail);
-      return;
+      return false;
     }
     const at = now();
     const existing = new Map(listTorrents(database).map((torrent) => [torrent.hash, torrent]));
@@ -261,6 +262,7 @@ export const createTorrentPoller = (options: {
     }
     setDependency('ok', at, '');
     if (changed.length > 0 || gone.length > 0) events.publish('torrents', { changed, gone });
+    return true;
   };
 
   return { poll, intervalMs };
