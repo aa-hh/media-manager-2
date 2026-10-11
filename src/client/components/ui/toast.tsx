@@ -16,7 +16,7 @@ type ToastData = {
 
 /**
  * Wraps the app so screens can call useToastManager().add({ title, description, type: 'error', actionProps, data }).
- * Toasts stay duration-toast, paused while hovered, and sit bottom left above the downloads bar.
+ * Toasts default to duration-toast (a screen may pass its own timeout), pause while hovered, and sit bottom left above the downloads bar.
  */
 function ToastProvider({ children }: { children: ReactNode }) {
   return (

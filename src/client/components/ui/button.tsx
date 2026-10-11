@@ -68,7 +68,8 @@ function Button({
     <ButtonPrimitive
       type={type}
       aria-busy={loading || undefined}
-      onClick={loading ? undefined : onClick}
+      // A loading submit button cancels its click, which also stops Enter's implicit form submission.
+      onClick={loading ? (event) => event.preventDefault() : onClick}
       className={cn(
         'group relative inline-flex shrink-0 items-center justify-center font-ui font-semibold whitespace-nowrap',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',

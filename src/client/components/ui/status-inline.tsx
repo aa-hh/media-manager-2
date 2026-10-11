@@ -10,7 +10,8 @@ type InlineStatus = 'sent' | 'failed' | 'busy';
 function StatusInline({ status, className, children, ...props }: ComponentProps<'span'> & { status: InlineStatus }) {
   return (
     <span
-      role="status"
+      // Failures interrupt; a caller's own role still wins because props spread after.
+      role={status === 'failed' ? 'alert' : 'status'}
       className={cn('inline-flex h-5 items-center gap-1.5 font-ui text-[13px] font-medium', status === 'failed' ? 'text-destructive' : 'text-muted-foreground', className)}
       {...props}
     >

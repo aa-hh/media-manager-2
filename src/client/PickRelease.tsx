@@ -572,6 +572,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
         onOpenChange={(open) => { if (!open) setPanel(undefined); }}
         title="This is already in your library"
         subject="The current file's torrent keeps seeding either way."
+        footerCallout={outcome === undefined || outcome.guid !== selected ? undefined : <Callout look={outcome.outOfDate ? 'warning' : 'risk'} title={outcome.message} />}
         actions={(
           <>
             <Button variant="outline" kbd="Esc" disabled={grabbing} onClick={() => setPanel(undefined)}>Cancel</Button>

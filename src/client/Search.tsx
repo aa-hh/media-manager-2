@@ -166,8 +166,17 @@ function ResultRow({ result, onOpen, onKeyDown }: {
         meta={meta}
         overview={result.overview ?? undefined}
         status={result.inLibrary ? <Badge variant="strong">In library</Badge> : undefined}
-        // The row already opens the title page, where adding happens; the button only shows the way and passes its click to the row.
-        action={result.inLibrary ? undefined : <Button variant="outline" icon={<Plus aria-hidden="true" />} tabIndex={-1} aria-hidden="true">Add</Button>}
+        // The row already opens the title page, where adding happens; this only looks like the outline Add button, so it is
+        // neither a button nor focusable, and its click falls through to the row.
+        action={result.inLibrary ? undefined : (
+          <span
+            aria-hidden="true"
+            className="inline-flex h-(--control-h-default) shrink-0 items-center justify-center gap-2 rounded-(--control-radius-default) border border-input bg-card px-(--control-px-default) font-ui text-(length:--control-text-default) font-semibold whitespace-nowrap text-foreground [&>svg]:size-(--control-icon-default)"
+          >
+            <Plus />
+            Add
+          </span>
+        )}
       />
     </li>
   );
