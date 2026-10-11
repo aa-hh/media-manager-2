@@ -294,7 +294,8 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const [panel, setPanel] = useState<'decision' | 'override' | undefined>(undefined);
   const [choice, setChoice] = useState<Choice>('replace');
-  const [overrides, setOverrides] = useState<Overrides>({});
+  // Overrides belong to the release they were set on; any other release is sent as released.
+  const [override, setOverride] = useState<{ guid: string; value: Overrides } | undefined>(undefined);
   const [qualityFilter, setQualityFilter] = useState<string>(ALL);
   const [qualities, setQualities] = useState<Quality[] | undefined>(undefined);
   const [grabbing, setGrabbing] = useState(false);
@@ -365,17 +366,21 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
   const qualitiesShown = useMemo(() => [...new Set(releases.map((release) => release.quality).filter((quality): quality is string => quality !== null))], [releases]);
   const visible = qualityFilter === ALL ? releases : releases.filter((release) => release.quality === qualityFilter);
 
-  const grabTargetHasFile = target.kind === 'movie'
+  const overridesFor = (guid: string | undefined): Overrides => (override !== undefined && override.guid === guid ? override.value : {});
+  const overrides = overridesFor(selected);
+
+  const grabTargetHasFile = (given: Overrides) => (target.kind === 'movie'
     ? movieHasFile
-    : overrides.episodeIds !== undefined
-      ? episodes.some((episode) => overrides.episodeIds!.includes(episode.id) && episode.hasFile)
+    : given.episodeIds !== undefined
+      ? episodes.some((episode) => given.episodeIds!.includes(episode.id) && episode.hasFile)
       : target.kind === 'episode'
         ? episodes.some((episode) => episode.id === target.episodeId && episode.hasFile)
-        : episodes.some((episode) => episode.seasonNumber === target.seasonNumber && episode.hasFile);
+        : episodes.some((episode) => episode.seasonNumber === target.seasonNumber && episode.hasFile));
 
   const sendGrab = async (guid: string, intent: 'grab' | 'replace') => {
     setGrabbing(true);
     setOutcome(undefined);
+    const overrides = overridesFor(guid);
     const overrideBody = Object.keys(overrides).length === 0 ? undefined : {
       ...(overrides.episodeIds === undefined || target.service !== 'sonarr' ? {} : { seriesId: target.seriesId, episodeIds: overrides.episodeIds }),
       ...(overrides.qualityId === undefined ? {} : { qualityId: overrides.qualityId }),
@@ -460,7 +465,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     if (grabbing || grabbed.has(guid)) return;
     if (onCooldown(releases.find((release) => release.guid === guid))) return;
     setSelected(guid);
-    if (grabTargetHasFile) {
+    if (grabTargetHasFile(overridesFor(guid))) {
       setChoice('replace');
       setPanel('decision');
     } else void sendGrab(guid, 'grab');
@@ -581,7 +586,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
             <span className="flex items-center gap-2 text-body text-foreground">
               Counting as {overrides.episodeIds !== undefined ? `${overrides.episodeIds.length} episode${overrides.episodeIds.length === 1 ? '' : 's'}` : 'released episodes'}
               {overrides.qualityId !== undefined && `, ${qualities?.find((quality) => quality.id === overrides.qualityId)?.name ?? 'chosen quality'}`}
-              <Button variant="ghost" size="row" onClick={() => setOverrides({})}>Reset</Button>
+              <Button variant="ghost" size="row" onClick={() => setOverride(undefined)}>Reset</Button>
             </span>
           )}
           <span aria-hidden="true" className="flex-1" />
@@ -745,7 +750,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
                         episodes={episodes}
                         qualities={qualities}
                         value={overrides}
-                        onApply={(value) => { setOverrides(value); setPanel(undefined); }}
+                        onApply={(value) => { setOverride({ guid: release.guid, value }); setPanel(undefined); }}
                         onCancel={() => setPanel(undefined)}
                       />
                     </div>
@@ -758,7 +763,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
       </PanelInline>
 
       <Dialog
-        open={panel === 'decision' && grabTargetHasFile}
+        open={panel === 'decision' && grabTargetHasFile(overrides)}
         onOpenChange={(open) => { if (!open) setPanel(undefined); }}
         title={target.kind === 'season'
           ? `${seasonName(target.seasonNumber)} ${target.seasonNumber === 0 ? 'are' : 'is'} already in your library`
