@@ -42,7 +42,7 @@ type RowSecondVersionProps = Omit<TableRowProps, 'progress'> & {
   detail?: ReactNode;
   size: ReactNode;
   tracker: string;
-  /** Seeding words, or a live Badge while downloading. */
+  /** Seeding words, or a progress bar while downloading. */
   seeding?: ReactNode;
   /** Delete (outline-destructive, row size); ignored for the tracked version. */
   actions?: ReactNode;

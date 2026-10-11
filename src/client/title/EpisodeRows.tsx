@@ -112,7 +112,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
     return episodes.length === 0 ? (season.monitored ? 'all' : 'none') : seasonMonitoredState(episodes);
   };
 
-  // The visible rows in screen order; version rows join once second versions are drawn.
+  // The visible rows in screen order. Second-version rows sit inside the episode details band and stay out of this list.
   const rows: RowRef[] = seasons.flatMap((season) => [
     { kind: 'season' as const, key: seasonKey(season.seasonNumber), episodeId: null },
     ...(open.has(season.seasonNumber)

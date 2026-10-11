@@ -69,7 +69,7 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
   } else if (advice?.kind === 'ready') {
     const { recommendation, reason, globalRatio } = advice.advice;
     const ruleMet = reason.startsWith('Hit and run rule met');
-    keep = recommendation === 'safe' ? 'The torrent keeps seeding in rTorrent.' : `Recommended: ${adviceReason(reason)}`;
+    keep = recommendation === 'safe' ? 'The torrent keeps seeding in rTorrent' : `Recommended: ${adviceReason(reason)}`;
     if (globalRatio !== null) keep = `${keep}. ${globalRatio}.`;
     if (recommendation === 'safe') remove = `Recommended: ${reason.replace(': ', ', ')}`;
     else if (recommendation === 'keep') remove = ruleMet && globalRatio !== null ? `${globalRatio}.` : `Breaks the ${name} rule`;
