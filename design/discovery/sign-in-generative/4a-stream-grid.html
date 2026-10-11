@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>media-manager-2 — sign in</title>
+<style>
+  :root {
+    --paper: #0C0D0A;
+    --ink: #D8D4C4;
+    --ink-2: #8E8B7C;
+    --lime: #C6F135;
+    --mono: "Berkeley Mono", "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--paper); color: var(--ink); overflow: hidden; }
+  body { font-family: var(--mono); -webkit-font-smoothing: antialiased; transition: background .6s; }
+  body.s-success { background: #000; }
+  canvas { position: fixed; left: 0; top: 0; display: block; }
+
+  .panel {
+    position: fixed; left: 7vw; top: 50%; transform: translateY(-50%);
+    width: min(440px, calc(100vw - 32px));
+    padding: 32px 0;
+  }
+  .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  h1 {
+    font-size: clamp(30px, 3.4vw, 44px); font-weight: 500; letter-spacing: -.02em;
+    line-height: 1.05; margin-top: 14px; white-space: nowrap;
+  }
+  .copy { margin-top: 22px; font-size: 14px; line-height: 1.6; color: var(--ink-2); max-width: 38ch; }
+  .copy p + p { margin-top: 8px; }
+  .copy strong { color: var(--ink); font-weight: 500; }
+
+  button {
+    margin-top: 30px; display: inline-flex; align-items: center; gap: 12px;
+    height: 52px; padding: 0 22px 0 18px; border: 0; border-radius: 2px;
+    background: var(--ink); color: #0C0D0A;
+    font: 600 15px/1 var(--mono); letter-spacing: .01em; cursor: pointer;
+    transition: background .3s, color .3s;
+  }
+  button svg { width: 16px; height: 16px; fill: currentColor; }
+  button:hover { background: #F2EFE3; }
+  button:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+  .status { margin-top: 16px; min-height: 20px; font-size: 13px; color: var(--ink); }
+  .s-checking button { background: #F2EFE3; }
+  .s-refused button { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px #4A4940; }
+  .s-success button { background: var(--lime); color: #0B1000; }
+  .s-success .status { color: var(--lime); }
+  .s-success h1 { color: #EEF7D8; }
+
+  @media (max-width: 640px) {
+    .panel { left: 16px; right: 16px; top: auto; bottom: 28px; transform: none; width: auto; padding: 24px 0 8px; }
+    h1 { font-size: 30px; }
+    .copy { font-size: 13px; }
+    button { width: 100%; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+
+<main class="panel" id="panel">
+  <div class="kicker">Owner sign-in</div>
+  <h1>media-manager-2</h1>
+  <div class="copy">
+    <p><strong>Only the owner's Plex account can open this app.</strong></p>
+    <p>Plex is used only to confirm it's you. This app never sees your password.</p>
+  </div>
+  <button id="go" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    Sign in with Plex
+  </button>
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+</main>
+
+<script>
+// ---- Tunable constants ---------------------------------------------------
+const FONT_PX       = 12;        // glyph size in CSS px; sets grid density
+const LINE          = 1.3;       // row height as a multiple of FONT_PX
+const PAPER         = '#0C0D0A'; // idle background: near-black with a faint olive cast
+const BLACK         = '#000000'; // success background
+const INK           = ['#34352D', '#7D7B6D', '#D8D4C4', '#F6F3E8']; // dim / mid / full / bright (arrival flash, playhead)
+const LIME          = ['#5F7A16', '#C6F135', '#ECFFB3']; // success: dim / lime / flash
+const RAMP          = ' .·:-=+*#%@'; // glyphs from empty to dense
+const EXTRA         = '│×';      // playhead bar, dropped-piece mark
+const PIECE_W       = 7;         // piece width in cells (last column is a gutter)
+const PIECE_H       = 4;         // piece height in cells (last row is a gutter)
+const REGION_DEPTH  = 4;         // how many times the map splits into files (up to 2^4 = 16)
+const PERIOD        = 44;        // seconds per file cycle: arrive, hold, play, rest (±20% per file)
+const ARRIVE_F      = 0.50;      // share of the cycle spent receiving pieces
+const HOLD_F        = 0.06;      // share spent complete before playback starts
+const PLAY_F        = 0.30;      // share spent with the playhead sweeping left to right
+const T_OFFSET      = 300;       // start the clock mid-story so the first frame is already lived-in
+const PIECE_FILL    = 1.4;       // seconds for one piece's cells to pop in
+const FLASH         = 0.45;      // seconds a new cell glows bright before settling
+const THIN_PX       = 70;        // how quickly cells thin out behind the playhead (px)
+const BG_LEVEL      = 0.03;      // floor brightness of the empty map
+const BG_NOISE      = 0.12;      // how much drifting noise adds to the empty map
+const NOISE_SCALE   = 0.05;      // noise frequency per cell
+const NOISE_DRIFT   = 0.04;      // noise drift speed (per second)
+const CHECK_SPEED   = 2.2;       // checking: the whole map's clock runs this much faster
+const CHECK_FRONT   = 150;       // checking: px per second the cluster grows out from the button
+const CHECK_REACH   = 560;       // checking: max cluster radius, px
+const CHECK_FILL    = 0.5;       // checking: seconds for a cluster piece to pop in
+const REFUSE_START  = 0.2;       // refused: seconds before pieces start dropping
+const REFUSE_DUR    = 4.3;       // refused: seconds for the map to empty edge to centre
+const SUCC_START    = 0.08;      // success: delay before the wave leaves the button
+const SUCC_SPAN     = 1.25;      // success: seconds for the wave to cross the screen
+const SUCC_JIT      = 0.22;      // success: per-piece arrival jitter, seconds
+const PANEL_CLEAR   = 40;        // px of soft clearance around the sign-in block
+const REDUCED_T     = 6;         // still frame time used for reduced motion
+const MAX_DPR       = 2;         // pixel density cap; 1 renders half resolution on retina
+
+// ---- Setup ---------------------------------------------------------------
+const q = new URLSearchParams(location.search);
+const STATES = ['idle', 'checking', 'refused', 'success'];
+let state = STATES.includes(q.get('state')) ? q.get('state') : 'idle';
+const fixedT = q.has('t') ? parseFloat(q.get('t')) || 0 : null;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono');
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const panel = document.getElementById('panel'), btn = document.getElementById('go');
+const statusEl = document.getElementById('status');
+const STATUS = { idle: '', checking: 'Waiting for Plex to confirm…', refused: '× That Plex account is not the owner. Nothing was opened.', success: 'Signed in. Opening media-manager-2…' };
+
+const CHARS = RAMP + EXTRA, G_BAR = RAMP.length, G_X = RAMP.length + 1, nRamp = RAMP.length - 1;
+const COLORS = [...INK, ...LIME];      // 0..3 ink on paper, 4..6 lime on black
+const rgb = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+const pack = (r, g, b) => (255 << 24 | b << 16 | g << 8 | r) >>> 0; // little-endian RGBA
+
+let W, H, dpr, cw, ch, cols, rows, gw, gh, stride, img, buf, glyphs, lut, paperPx, blackPx, panelR, btnC, maxD;
+let pcols, prows, cellPiece, cellH, cellH2, cellJ, cellClear;
+let pRegion, pArrive, pHash, pEdge, pBtn, regions;
+
+// ---- Maths ---------------------------------------------------------------
+function hash3(x, y, z) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1103515245); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+const fade = t => t * t * (3 - 2 * t);
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const u = fade(x - xi), v = fade(y - yi), w = fade(z - zi);
+  const L = (a, b, t) => a + (b - a) * t;
+  const c = (dx, dy, dz) => hash3(xi + dx, yi + dy, zi + dz);
+  return L(L(L(c(0,0,0), c(1,0,0), u), L(c(0,1,0), c(1,1,0), u), v),
+           L(L(c(0,0,1), c(1,0,1), u), L(c(0,1,1), c(1,1,1), u), v), w);
+}
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+// ---- Build: canvas, glyph atlas, piece map --------------------------------
+function build() {
+  dpr = Math.max(1, Math.min(MAX_DPR, Math.round(window.devicePixelRatio || 1)));
+  W = innerWidth; H = innerHeight; maxD = Math.hypot(W, H);
+  ctx.font = `${FONT_PX}px ${MONO}`;
+  cw = Math.max(6, Math.round(ctx.measureText('M').width));
+  ch = Math.round(FONT_PX * LINE);
+  cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+  gw = cw * dpr; gh = ch * dpr; stride = cols * gw;
+  cv.width = stride; cv.height = rows * gh;
+  cv.style.width = cols * cw + 'px'; cv.style.height = rows * ch + 'px';
+  img = ctx.createImageData(cv.width, cv.height); buf = new Uint32Array(img.data.buffer);
+
+  // glyph atlas: each glyph rendered once, kept as (pixel offset, alpha) lists
+  const a = document.createElement('canvas'); a.width = CHARS.length * gw; a.height = gh;
+  const ac = a.getContext('2d');
+  ac.scale(dpr, dpr); ac.font = `${FONT_PX}px ${MONO}`; ac.textAlign = 'center'; ac.textBaseline = 'middle'; ac.fillStyle = '#fff';
+  [...CHARS].forEach((g, i) => ac.fillText(g, i * cw + cw / 2, ch / 2 + 0.5));
+  const px = ac.getImageData(0, 0, a.width, a.height).data;
+  glyphs = [...CHARS].map((_, g) => {
+    const off = [], al = [];
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const v = px[(y * a.width + g * gw + x) * 4 + 3];
+      if (v > 8) { off.push(y * stride + x); al.push(v); }
+    }
+    return { off: Int32Array.from(off), al: Uint8Array.from(al) };
+  });
+
+  // colour lookup: background blended toward each colour by glyph alpha
+  const P = rgb(PAPER), K = rgb(BLACK); paperPx = pack(...P); blackPx = pack(...K);
+  lut = new Uint32Array(COLORS.length * 256);
+  COLORS.forEach((c, ci) => {
+    const C = rgb(c), B = ci < INK.length ? P : K;
+    for (let v = 0; v < 256; v++) lut[ci * 256 + v] = pack(...B.map((p, k) => Math.round(p + (C[k] - p) * v / 255)));
+  });
+
+  const p = panel.getBoundingClientRect(), b = btn.getBoundingClientRect();
+  panelR = { x0: p.left, y0: p.top, x1: p.right, y1: p.bottom };
+  // where checking and success start: just outside the panel, level with the button (above the panel on phone)
+  btnC = W <= 640 ? { x: (b.left + b.right) / 2, y: p.top - PANEL_CLEAR } : { x: p.right + PANEL_CLEAR, y: (b.top + b.bottom) / 2 };
+
+  // pieces: blocks of PIECE_W x PIECE_H cells
+  pcols = Math.ceil(cols / PIECE_W); prows = Math.ceil(rows / PIECE_H);
+  const np = pcols * prows;
+  pRegion = new Int16Array(np); pArrive = new Float32Array(np); pHash = new Float32Array(np);
+  pEdge = new Float32Array(np); pBtn = new Float32Array(np);
+
+  // files: split the piece grid into rectangles with a seeded recursive cut
+  regions = [];
+  (function split(x0, y0, x1, y1, d) {
+    const wpx = (x1 - x0) * PIECE_W * cw, hpx = (y1 - y0) * PIECE_H * ch;
+    const h = hash3(x0 * 31 + d, y0 * 17 + x1, y1 + 913);
+    if (d >= REGION_DEPTH || (d >= 2 && h < 0.2) || (x1 - x0) * (y1 - y0) < 16) {
+      const id = regions.length, r = hash3(id, 5, 77);
+      regions.push({ x0: x0 * PIECE_W * cw, x1: Math.min(W, (x1 * PIECE_W - 1) * cw), P: PERIOD * (0.8 + 0.4 * r), o: hash3(id, 9, 3) * 100 });
+      const ids = [];
+      for (let py = y0; py < y1; py++) for (let px2 = x0; px2 < x1; px2++) {
+        const k = py * pcols + px2; pRegion[k] = id; ids.push(k);
+        // out-of-order but clumped: half noise blob, half pure chance
+        pHash[k] = hash3(px2, py, 41);
+        pArrive[k] = 0.45 * pHash[k] + 0.55 * noise3(px2 * 0.28, py * 0.28, id * 3.1);
+      }
+      ids.sort((m, n) => pArrive[m] - pArrive[n]).forEach((k, rank) => { pArrive[k] = rank / ids.length; }); // even arrival rate
+      return;
+    }
+    const cut = 0.35 + 0.3 * hash3(d, x0 + y0, 5);
+    if (wpx > hpx) { const m = x0 + Math.max(1, Math.round((x1 - x0) * cut)); split(x0, y0, m, y1, d + 1); split(m, y0, x1, y1, d + 1); }
+    else { const m = y0 + Math.max(1, Math.round((y1 - y0) * cut)); split(x0, y0, x1, m, d + 1); split(x0, m, x1, y1, d + 1); }
+  })(0, 0, pcols, prows, 0);
+
+  for (let py = 0; py < prows; py++) for (let px2 = 0; px2 < pcols; px2++) {
+    const k = py * pcols + px2;
+    const cx = (px2 + 0.5) * PIECE_W * cw, cy = (py + 0.5) * PIECE_H * ch;
+    pEdge[k] = Math.min(cx, W - cx, cy, H - cy) / (Math.min(W, H) / 2) + 0.14 * (pHash[k] - 0.5);
+    pBtn[k] = Math.hypot(cx - btnC.x, cy - btnC.y);
+  }
+
+  const nc = cols * rows;
+  cellPiece = new Int32Array(nc); cellH = new Float32Array(nc); cellH2 = new Float32Array(nc);
+  cellJ = new Float32Array(nc); cellClear = new Float32Array(nc);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const c = j * cols + i;
+    const gut = (i % PIECE_W === PIECE_W - 1) || (j % PIECE_H === PIECE_H - 1);
+    cellPiece[c] = gut ? -1 : Math.floor(j / PIECE_H) * pcols + Math.floor(i / PIECE_W);
+    cellH[c] = hash3(i, j, 11); cellH2[c] = hash3(i, j, 23); cellJ[c] = hash3(i, j, 37) - 0.5;
+    const x = i * cw + cw / 2, y = j * ch + ch / 2;
+    const dx = Math.max(panelR.x0 - x, 0, x - panelR.x1), dy = Math.max(panelR.y0 - y, 0, y - panelR.y1);
+    cellClear[c] = smooth(0, PANEL_CLEAR, Math.hypot(dx, dy));
+  }
+}
+
+// ---- Frame ---------------------------------------------------------------
+// t: seconds since load; tau: seconds since the current state began; s0: load-time of that state change
+function frame(t, tau, s0) {
+  // the map's own clock: runs fast while checking, stops when refused
+  const Treg = T_OFFSET + (state === 'checking' ? s0 + tau * CHECK_SPEED : state === 'refused' ? s0 : t);
+  const nz = t * NOISE_DRIFT;
+  const succ = state === 'success', refused = state === 'refused', checking = state === 'checking';
+  const succDone = succ && tau > SUCC_START + SUCC_SPAN + SUCC_JIT + 0.2;
+  buf.fill(succDone ? blackPx : paperPx);
+
+  // per-file phase this frame
+  for (const r of regions) {
+    const u = (Treg + r.o) % r.P;
+    r.u = u; r.ps = (ARRIVE_F + HOLD_F) * r.P; r.arr = ARRIVE_F * r.P;
+    const span = (r.x1 - r.x0) + THIN_PX * 4;
+    r.xs = u >= r.ps ? r.x0 + (u - r.ps) / (PLAY_F * r.P) * span : -1e9;
+    r.done = u >= r.ps && r.xs > r.x1 + THIN_PX * 4;            // fully played and thinned: empty until next cycle
+    r.pulse = u >= r.arr ? 0.22 * Math.exp(-(u - r.arr) / 0.7) : 0; // brief brighten when the last piece lands
+  }
+  const F = refused ? 1.15 * fade(clamp((tau - REFUSE_START) / REFUSE_DUR, 0, 1)) : 0;
+
+  for (let j = 0; j < rows; j++) {
+    const y = j * ch + ch / 2, rowBase = j * gh * stride;
+    for (let i = 0; i < cols; i++) {
+      const c = j * cols + i, x = i * cw + cw / 2, pk = cellPiece[c];
+      const n = noise3(i * NOISE_SCALE, j * NOISE_SCALE * 1.6, nz);
+      let b = BG_LEVEL + BG_NOISE * n * n * 1.6, ci = -1, glyph = -1, lime = false;
+      if (i % PIECE_W === 0 && j % PIECE_H === 0) b = Math.max(b, 0.12); // one dot per piece: the empty map
+      const dense = 0.44 + 0.5 * n + 0.12 * cellJ[c];
+
+      if (pk >= 0) {
+        const r = regions[pRegion[pk]];
+        if (!r.done) {
+          if (r.u < r.ps) {
+            // arriving: each piece lands at its slot, its cells pop in a shuffled order
+            const age = r.u - pArrive[pk] * r.arr - cellH[c] * PIECE_FILL;
+            if (age >= 0) {
+              b = dense + r.pulse;
+              if (age < FLASH) { const f = 1 - age / FLASH; if (f > 0.35) { b = Math.max(b, 0.6 + 0.4 * f); ci = 3; } }
+            }
+          } else {
+            // playback: a playhead reads the file left to right, cells thin out behind it
+            const dx = r.xs - x;
+            if (dx < -cw * 0.5) b = dense;
+            else if (dx < cw * 0.5) { b = 1; ci = 3; glyph = G_BAR; }
+            else if (cellH2[c] < Math.exp(-dx / THIN_PX)) { b = dense * (0.55 + 0.45 * Math.exp(-dx / (THIN_PX * 0.4))); if (dx < cw * 3) ci = 2; }
+          }
+        }
+        // checking: a cluster of fresh pieces grows out from the button
+        if (checking && pBtn[pk] < CHECK_REACH) {
+          const age = tau - (0.15 + pBtn[pk] / CHECK_FRONT * (0.6 + 0.8 * pHash[pk])) - cellH[c] * CHECK_FILL;
+          if (age >= 0) {
+            const fall = 1 - pBtn[pk] / CHECK_REACH;
+            if (fall > 0.3 || cellH2[c] < fall / 0.3) {
+              let v = dense + 0.08;
+              if (age < FLASH) { const f = 1 - age / FLASH; if (f > 0.35) { v = Math.max(v, 0.6 + 0.4 * f); ci = 3; } }
+              if (v > b) { b = v; glyph = -1; }
+            }
+          }
+        }
+      }
+
+      // refused: pieces drop from the edges inward until the map is empty
+      if (refused) {
+        const e = pEdge[pk >= 0 ? pk : Math.min(pcols * prows - 1, Math.floor(j / PIECE_H) * pcols + Math.floor(i / PIECE_W))];
+        if (e < F) {
+          if (pk < 0 || F - e > 0.045) continue;
+          b = 0.5; ci = 0; glyph = G_X;
+        }
+      }
+
+      // success: the whole map completes in a wave from the button and turns lime on black
+      if (succ) {
+        const pkk = pk >= 0 ? pk : Math.min(pcols * prows - 1, Math.floor(j / PIECE_H) * pcols + Math.floor(i / PIECE_W));
+        const age = tau - SUCC_START - SUCC_SPAN * Math.pow(pBtn[pkk] / maxD, 0.85) - SUCC_JIT * pHash[pkk] - cellH[c] * 0.12;
+        if (age >= 0) {
+          lime = true; glyph = -1;
+          if (!succDone) { // paint this cell's background black as the wave reaches it
+            const base0 = rowBase + i * gw;
+            for (let yy = 0; yy < gh; yy++) buf.fill(blackPx, base0 + yy * stride, base0 + yy * stride + gw);
+          }
+          b = pk >= 0 ? 0.56 + 0.5 * n + 0.1 * cellJ[c] : b * 0.8;
+          ci = b > 0.7 ? 5 : 4;
+          if (pk >= 0 && age < 0.35) { b = Math.max(b, 0.7 + 0.3 * (1 - age / 0.35)); ci = 6; }
+        }
+      }
+
+      // keep the sign-in block on clean paper
+      const cl = cellClear[c];
+      if (cl < 1) { b *= cl; if (cl < 0.6) { glyph = -1; if (ci === 3 || ci === 6) ci = -1; } }
+
+      if (glyph < 0) {
+        b = clamp(b, 0, 1);
+        glyph = Math.min(nRamp, Math.floor(b * (nRamp + 0.999)));
+        if (glyph === 0) continue;
+      }
+      if (ci < 0) ci = lime ? (b > 0.7 ? 5 : 4) : b < 0.3 ? 0 : b < 0.72 ? 1 : 2;
+      const L0 = ci * 256, G = glyphs[glyph], off = G.off, al = G.al, base = rowBase + i * gw;
+      for (let k = 0; k < off.length; k++) buf[base + off[k]] = lut[L0 + al[k]];
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---- Loop ----------------------------------------------------------------
+let t0 = performance.now(), stateStart = 0;
+function setState(s, now) {
+  state = s; stateStart = now; statusEl.textContent = STATUS[s];
+  document.body.className = 's-' + s; btn.setAttribute('aria-busy', s === 'checking');
+}
+const draw = t => frame(t, t - stateStart, stateStart);
+
+function run() {
+  build();
+  setState(state, 0);
+  if (q.has('bench')) { // ?bench=N: time N frames, report the average in the title
+    const n = parseInt(q.get('bench')) || 120, s = performance.now();
+    for (let k = 0; k < n; k++) draw(k / 60);
+    document.title = 'ms/frame ' + ((performance.now() - s) / n).toFixed(2);
+    return;
+  }
+  if (fixedT !== null || reduced) { draw(fixedT ?? REDUCED_T); return; }
+  const tick = () => { draw((performance.now() - t0) / 1000); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  btn.addEventListener('click', () => { if (state === 'idle' || state === 'refused') setState('checking', (performance.now() - t0) / 1000); });
+}
+addEventListener('resize', () => { build(); if (fixedT !== null || reduced) draw(fixedT ?? REDUCED_T); });
+if (document.readyState === 'complete') run(); else addEventListener('load', run);
+</script>
+</body>
+</html>

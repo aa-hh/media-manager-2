@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · media-manager-2</title>
+<style>
+  :root { --ground: #07080b; --text: #f1ece2; --dim: #a59d90; --paper: #f1ece2; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--ground); color: var(--text); overflow: hidden; }
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .signin {
+    position: absolute; left: max(24px, 8vw); top: 50%; transform: translateY(-50%);
+    width: 360px; display: flex; flex-direction: column; gap: 16px;
+    text-shadow: 0 0 16px var(--ground), 0 0 4px var(--ground);
+  }
+  .mark { font: 500 12px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  h1 { font: 600 38px/1.05 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -.03em; margin-bottom: 6px; }
+  p { color: var(--dim); max-width: 34ch; }
+  p strong { color: var(--text); font-weight: 500; }
+  button.plex {
+    margin-top: 10px; align-self: flex-start; display: inline-flex; align-items: center; gap: 12px;
+    height: 48px; padding: 0 22px 0 18px; border: 0; border-radius: 2px; cursor: pointer;
+    background: var(--paper); color: var(--ground); font: 600 15px/1 inherit; font-family: inherit; text-shadow: none;
+  }
+  button.plex:hover { filter: brightness(1.06); }
+  button.plex:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+  button.plex svg { width: 14px; height: 14px; fill: currentColor; }
+  @media (max-width: 700px) {
+    .signin { left: 24px; right: 24px; width: auto; top: auto; bottom: 48px; transform: none; }
+    h1 { font-size: 30px; }
+  }
+  /* tweak panel */
+  #tweak { position: fixed; right: 16px; bottom: 16px; width: 260px; padding: 12px 14px; background: rgba(12,12,14,.88);
+    border: 1px solid #2a2824; border-radius: 4px; font: 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--dim); }
+  #tweak.closed .body { display: none; }
+  #tweak .head { display: flex; justify-content: space-between; cursor: pointer; color: var(--text); }
+  #tweak label { display: grid; grid-template-columns: 1fr 44px; margin-top: 8px; }
+  #tweak input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #c9a46a; }
+  #tweak pre { margin-top: 10px; white-space: pre-wrap; word-break: break-all; color: var(--text); font-size: 10px; }
+  #tweak .copy { margin-top: 8px; background: #2a2824; color: var(--text); border: 0; padding: 6px 10px; border-radius: 2px; cursor: pointer; font: inherit; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<main class="signin">
+  <div class="mark">Owner sign-in</div>
+  <h1>media-manager-2</h1>
+  <p><strong>Only the owner's Plex account can open this app.</strong></p>
+  <p>Plex is used only to confirm who you are.</p>
+  <button class="plex" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    <span>Sign in with Plex</span>
+  </button>
+</main>
+<aside id="tweak" class="closed">
+  <div class="head" id="tweak-head"><span>Tweak (T)</span><span id="tweak-arrow">+</span></div>
+  <div class="body" id="tweak-body"></div>
+</aside>
+<script>
+// ---- tunable values (the panel edits these) ----
+const P = {
+  jets: 11,        // number of zonal jets between pole and pole
+  jetSpeed: 0.14,  // peak jet speed, radians of longitude per second
+  turbulence: 1.0, // strength of the curl-noise eddies
+  vortex: 1.0,     // strength of the two storms
+  trail: 90,       // trail length in frames (half-life)
+  count: 40000,    // particles on the sphere
+  spin: 90,        // seconds per full turn of the globe
+  hue: 0,          // shift of the whole palette, degrees
+};
+const RANGES = {
+  jets: [3, 24, 1], jetSpeed: [0, 0.2, 0.005], turbulence: [0, 3, 0.05], vortex: [0, 3, 0.05],
+  trail: [4, 140, 1], count: [5000, 90000, 1000], spin: [40, 200, 1], hue: [-180, 180, 1],
+};
+const RES = 0.5, D = 5, TILT = 0.32, ROLL = 0.16;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---- seeded random + Perlin ----
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(11);
+const perm = new Uint8Array(512);
+{ const p = [...Array(256).keys()]; for (let i = 255; i > 0; i--) { const j = (rnd() * (i + 1)) | 0; [p[i], p[j]] = [p[j], p[i]]; } for (let i = 0; i < 512; i++) perm[i] = p[i & 255]; }
+const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+function grad(h, x, y, z) { h &= 15; const u = h < 8 ? x : y, v = h < 4 ? y : (h === 12 || h === 14 ? x : z); return ((h & 1) ? -u : u) + ((h & 2) ? -v : v); }
+function perlin(x, y, z) {
+  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+  x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+  const u = fade(x), v = fade(y), w = fade(z);
+  const A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z, B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z;
+  const l = (a, b, t) => a + t * (b - a);
+  return l(l(l(grad(perm[AA], x, y, z), grad(perm[BA], x - 1, y, z), u), l(grad(perm[AB], x, y - 1, z), grad(perm[BB], x - 1, y - 1, z), u), v),
+           l(l(grad(perm[AA + 1], x, y, z - 1), grad(perm[BA + 1], x - 1, y, z - 1), u), l(grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1), u), v), w);
+}
+
+// ---- palette: zones cream, belts ochre and rust, poles slate ----
+function hsl(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360;
+  const f = n => { const k = (n + h * 12) % 12, a = s * Math.min(l, 1 - l); return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return [f(0), f(8), f(4)];
+}
+let PAL;
+function buildPalette() {
+  const h = P.hue;
+  PAL = [hsl(40 + h, .45, .86), hsl(34 + h, .62, .58), hsl(16 + h, .68, .44), hsl(210 + h, .16, .52), hsl(10 + h, .8, .52)];
+}
+// 0 cream, 1 ochre, 2 rust, 3 slate, 4 storm red
+
+// ---- storms: lat, lon (radians), half-widths a (east-west) b (north-south), strength, colour ----
+const STORMS = [
+  { lat: -0.36, lon: 2.5, a: 0.3, b: 0.14, s: 0.05, col: 4, drift: -0.004 },
+  { lat: -0.58, lon: 2.6, a: 0.12, b: 0.07, s: 0.012, col: 0, drift: 0.006 },
+];
+
+// ---- wind grid: jets + curl noise, sampled bilinearly ----
+const GW = 192, GH = 96;
+const GU = new Float32Array(GW * GH), GV = new Float32Array(GW * GH), PSI = new Float32Array(GW * GH);
+function buildWind(t) {
+  for (let j = 0; j < GH; j++) {
+    const lat = -Math.PI / 2 + (j + .5) / GH * Math.PI, cl = Math.cos(lat), sl = Math.sin(lat);
+    for (let i = 0; i < GW; i++) {
+      const lon = i / GW * Math.PI * 2, x = cl * Math.cos(lon), z = cl * Math.sin(lon);
+      // stretched in latitude so eddies come out long and thin east-west
+      PSI[j * GW + i] = perlin(x * 3.2 + t * .05, sl * 9, z * 3.2) + .5 * perlin(x * 7 + 31, sl * 18 - t * .04, z * 7);
+    }
+  }
+  const dlat = Math.PI / GH, dlon = Math.PI * 2 / GW, amp = .0045 * P.turbulence;
+  for (let j = 0; j < GH; j++) {
+    const lat = -Math.PI / 2 + (j + .5) / GH * Math.PI, cl = Math.max(.2, Math.cos(lat));
+    const jn = Math.min(GH - 1, j + 1), jp = Math.max(0, j - 1);
+    // jets alternate east/west by band; the equatorial one runs east; weaker toward the poles
+    const jet = P.jetSpeed * Math.cos(P.jets * lat) * (.35 + .65 * Math.cos(lat));
+    // eddies strongest where neighbouring jets shear against each other
+    const shear = .4 + .6 * Math.abs(Math.sin(P.jets * lat));
+    for (let i = 0; i < GW; i++) {
+      const ie = (i + 1) % GW, iw = (i + GW - 1) % GW, k = j * GW + i;
+      GU[k] = jet - amp * shear * (PSI[jn * GW + i] - PSI[jp * GW + i]) / ((jn - jp) * dlat);
+      GV[k] = amp * shear * (PSI[j * GW + ie] - PSI[j * GW + iw]) / (2 * dlon * cl);
+    }
+  }
+}
+function sampleWind(lat, lon, out) {
+  let fx = lon / (Math.PI * 2) * GW, fy = (lat + Math.PI / 2) / Math.PI * GH - .5;
+  fx = ((fx % GW) + GW) % GW; fy = Math.max(0, Math.min(GH - 1.001, fy));
+  const i0 = fx | 0, j0 = fy | 0, i1 = (i0 + 1) % GW, tx = fx - i0, ty = fy - j0;
+  const a = j0 * GW, b = (j0 + 1) * GW;
+  out[0] = (GU[a + i0] * (1 - tx) + GU[a + i1] * tx) * (1 - ty) + (GU[b + i0] * (1 - tx) + GU[b + i1] * tx) * ty;
+  out[1] = (GV[a + i0] * (1 - tx) + GV[a + i1] * tx) * (1 - ty) + (GV[b + i0] * (1 - tx) + GV[b + i1] * tx) * ty;
+}
+
+// ---- particles ----
+let N = 0, LAT, LON, LIFE, COL, WGT;
+function spawn(k) {
+  const lat = Math.asin(2 * rnd() - 1), lon = rnd() * Math.PI * 2;
+  LAT[k] = lat; LON[k] = lon; LIFE[k] = 4 + rnd() * 10;
+  // colour from where it is born: storm, pole, zone or belt, with some mixing
+  let c = -1;
+  for (const s of STORMS) {
+    const dx = wrap(lon - s.lon) * Math.cos(s.lat) / s.a, dy = (lat - s.lat) / s.b;
+    if (dx * dx + dy * dy < 1.2) c = s.col;
+  }
+  if (c < 0) {
+    const band = Math.sin(P.jets * lat + perlin(lon * 1.5, lat * 4, 7) * 1.4);
+    if (Math.abs(lat) > 1.05 + .15 * rnd()) c = rnd() < .8 ? 3 : 1;
+    else if (band > .15) c = rnd() < .85 ? 0 : 1;
+    else c = rnd() < .55 ? 1 : (rnd() < .7 ? 2 : 0);
+  }
+  COL[k] = c; WGT[k] = .5 + rnd() * rnd() * 1.5;
+}
+function resize(n) {
+  const old = N; const L = LAT, O = LON, F = LIFE, C = COL, W = WGT;
+  N = n; LAT = new Float32Array(N); LON = new Float32Array(N); LIFE = new Float32Array(N); COL = new Uint8Array(N); WGT = new Float32Array(N);
+  for (let k = 0; k < N; k++) {
+    if (k < old) { LAT[k] = L[k]; LON[k] = O[k]; LIFE[k] = F[k]; COL[k] = C[k]; WGT[k] = W[k]; } else spawn(k);
+  }
+}
+const wrap = a => a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
+
+// ---- canvas + accumulation buffer ----
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W, H, ACC, img, STARS, cx, cy, R;
+function layout() {
+  const w = Math.ceil(innerWidth * RES), h = Math.ceil(innerHeight * RES);
+  if (w === W && h === H) return;
+  W = w; H = h;
+  cv.width = W; cv.height = H;
+  ACC = new Float32Array(W * H * 3); img = ctx.createImageData(W, H);
+  STARS = new Float32Array(W * H);
+  const r = mulberry32(5);
+  for (let k = 0; k < W * H * .0015; k++) STARS[(r() * W * H) | 0] = .03 + r() * r() * .25;
+  const narrow = innerWidth < 700;
+  R = Math.min(W, H) * (narrow ? .7 : .62);
+  cx = narrow ? W * .62 : W * .79; cy = narrow ? H * .32 : H * .53;
+}
+
+// light comes from the upper left, slightly in front
+const LX = -.55, LY = .5, LZ = .67;
+const wind = [0, 0];
+let simT = 0, frame = 0;
+
+function step(dt) {
+  if (frame % 4 === 0) buildWind(simT);
+  for (const s of STORMS) s.lon += s.drift * dt;
+  const spin = simT / P.spin * Math.PI * 2;
+  const ca = Math.cos(spin), sa = Math.sin(spin), cr = Math.cos(ROLL), sr = Math.sin(ROLL), ct = Math.cos(TILT), st = Math.sin(TILT);
+
+  // fade trails
+  // trail fade and deposit scale with elapsed time so frame rate does not change the look
+  const decay = Math.pow(.5, dt * 60 / P.trail);
+  for (let i = 0; i < ACC.length; i++) ACC[i] *= decay;
+  const dep = 17 / P.trail * Math.min(2.2, 40000 / N) * dt * 60;
+
+  for (let k = 0; k < N; k++) {
+    let lat = LAT[k], lon = LON[k];
+    sampleWind(lat, lon, wind);
+    let u = wind[0], v = wind[1];
+    for (const s of STORMS) {
+      const cs = Math.cos(s.lat), dx = wrap(lon - s.lon) * cs / s.a, dy = (lat - s.lat) / s.b, r2 = dx * dx + dy * dy;
+      if (r2 < 9) {
+        const g = Math.exp(-r2), str = s.s * P.vortex * 6;
+        u = u * (1 - .95 * g * Math.min(1, P.vortex)) + str * g * dy / s.b * s.a;
+        v = v * (1 - .95 * g * Math.min(1, P.vortex)) - str * g * dx / s.a * s.b;
+      }
+    }
+    lat += v * dt; lon += u / Math.max(.15, Math.cos(lat)) * dt;
+    if (lat > 1.52) lat = 1.52; else if (lat < -1.52) lat = -1.52;
+    LAT[k] = lat; LON[k] = lon;
+    if ((LIFE[k] -= dt) < 0) { spawn(k); continue; }
+
+    // body frame -> view: spin about the axis, roll, then tip the north pole toward the viewer
+    const cl = Math.cos(lat), x0 = cl * Math.cos(lon), y0 = Math.sin(lat), z0 = cl * Math.sin(lon);
+    const x1 = x0 * ca + z0 * sa, z1 = -x0 * sa + z0 * ca;
+    const x2 = x1 * cr - y0 * sr, y2 = x1 * sr + y0 * cr;
+    const y3 = y2 * ct - z1 * st, z3 = y2 * st + z1 * ct;
+    if (z3 < 1 / D) continue;
+    const pr = (D - 1) / (D - z3);
+    const px = (cx + x2 * R * pr) | 0, py = (cy - y3 * R * pr) | 0;
+    if (px < 0 || py < 0 || px >= W || py >= H) continue;
+    const lit = Math.max(0, x2 * LX + y3 * LY + z3 * LZ);
+    const shade = (.06 + .94 * lit) * Math.pow(z3, .9) * dep * WGT[k];
+    const c = PAL[COL[k]], o = (py * W + px) * 3;
+    ACC[o] += c[0] * shade; ACC[o + 1] += c[1] * shade; ACC[o + 2] += c[2] * shade;
+  }
+  simT += dt; frame++;
+}
+
+const BG = [7 / 255, 8 / 255, 11 / 255];
+function draw() {
+  const d = img.data;
+  for (let i = 0, j = 0, s = 0; i < ACC.length; i += 3, j += 4, s++) {
+    const st = STARS[s];
+    d[j]     = 255 * (BG[0] + (1 - BG[0]) * (1 - Math.exp(-ACC[i] - st)));
+    d[j + 1] = 255 * (BG[1] + (1 - BG[1]) * (1 - Math.exp(-ACC[i + 1] - st)));
+    d[j + 2] = 255 * (BG[2] + (1 - BG[2]) * (1 - Math.exp(-ACC[i + 2] - st * 1.1)));
+    d[j + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---- tweak panel ----
+const tw = document.getElementById('tweak'), body = document.getElementById('tweak-body');
+function toggle() { tw.classList.toggle('closed'); document.getElementById('tweak-arrow').textContent = tw.classList.contains('closed') ? '+' : '−'; }
+document.getElementById('tweak-head').onclick = toggle;
+addEventListener('keydown', e => { if ((e.key === 't' || e.key === 'T') && !e.target.closest('input')) toggle(); });
+const pre = document.createElement('pre');
+function showValues() { pre.textContent = JSON.stringify(P); }
+for (const key of Object.keys(P)) {
+  const [lo, hi, st] = RANGES[key];
+  const lab = document.createElement('label');
+  const name = document.createElement('span'), val = document.createElement('span');
+  const inp = document.createElement('input');
+  Object.assign(inp, { type: 'range', min: lo, max: hi, step: st, value: P[key] });
+  name.textContent = key; val.textContent = P[key];
+  inp.oninput = () => {
+    P[key] = +inp.value; val.textContent = inp.value; showValues();
+    if (key === 'count') resize(P.count);
+    if (key === 'hue') buildPalette();
+    if (key === 'jets') { for (let k = 0; k < N; k++) spawn(k); }
+    if (reduced) { for (let i = 0; i < 90; i++) step(1 / 60); draw(); }
+  };
+  lab.append(name, val, inp); body.append(lab);
+}
+const copy = document.createElement('button');
+copy.className = 'copy'; copy.textContent = 'Copy values';
+copy.onclick = () => navigator.clipboard?.writeText(JSON.stringify(P)).then(() => { copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy values', 1200); });
+body.append(copy, pre); showValues();
+
+// ---- run ----
+buildPalette(); layout(); resize(P.count); buildWind(0);
+addEventListener('resize', () => { const w = W, h = H; layout(); if (w !== W || h !== H) { for (let i = 0; i < 90; i++) step(1 / 60); draw(); } });
+// warm up so the first frame already has trails
+for (let i = 0; i < 360; i++) step(1 / 60);
+draw();
+if (!reduced) {
+  let last = performance.now();
+  (function loop(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    step(dt); draw();
+    requestAnimationFrame(loop);
+  })(last);
+}
+</script>
+</body>
+</html>
