@@ -77,8 +77,6 @@ const howFoundWords: Record<string, string> = {
 
 const stepWords: Record<StepKind, string> = { problem: 'Problem', fix: 'Fix', result: 'Result' };
 
-const record = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
 const integer = (value: unknown) => (typeof value === 'number' && Number.isSafeInteger(value) ? value : null);
 const code = (season: unknown, episode: unknown) => `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
@@ -167,13 +165,8 @@ export const createHistory = (options: {
 
   // Episode ids of one series, so problems on single episodes can join that series' history.
   const seriesEpisodes = async (seriesId: number) => {
-    try {
-      const { status, body } = await arr.sonarr.request(`/api/v3/episode?seriesId=${seriesId}`);
-      if (status < 200 || status > 299 || !Array.isArray(body)) return new Set<string>();
-      return new Set(body.flatMap((episode) => integer(record(episode)?.id) ?? []).map(String));
-    } catch {
-      return new Set<string>();
-    }
+    const result = await arr.sonarr.episodes(seriesId);
+    return result.kind === 'ok' ? new Set(result.value.map((episode) => String(episode.id))) : new Set<string>();
   };
 
   const titleMatcher = async (query: HistoryQuery) => {

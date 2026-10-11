@@ -163,15 +163,9 @@ export const createGrabs = (
   };
 
   const seasonEpisodeIds = async (seriesId: number, seasonNumber: number) => {
-    try {
-      const response = await services.sonarr.request(`/api/v3/episode?seriesId=${seriesId}&seasonNumber=${seasonNumber}`);
-      if (response.status < 200 || response.status > 299 || !Array.isArray(response.body)) return undefined;
-      return response.body.flatMap((episode) => (
-        isRecord(episode) && episode.seasonNumber === seasonNumber && positiveInteger(episode.id) ? [episode.id] : []
-      ));
-    } catch {
-      return undefined;
-    }
+    const result = await services.sonarr.episodes(seriesId, { seasonNumber });
+    if (result.kind !== 'ok') return undefined;
+    return result.value.flatMap((episode) => (episode.seasonNumber === seasonNumber ? [episode.id] : []));
   };
 
   const qualities = async (service: 'sonarr' | 'radarr') => {

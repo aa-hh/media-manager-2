@@ -1,7 +1,5 @@
 import { Hono } from 'hono';
-import type { createArr } from './services/arr.js';
-
-type Arr = Pick<ReturnType<typeof createArr>, 'request' | 'configured'>;
+import type { ArrServices, Result } from './services/arr.js';
 
 // What Pick a release needs to know about a title already in Sonarr or Radarr: which
 // episodes exist (for picking and overrides) and whether each target already has a file,
@@ -16,55 +14,26 @@ export type OwnedEpisode = {
   hasFile: boolean;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-const wholeNumber = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0;
-
-type Result<T> = { kind: 'ok'; value: T } | { kind: 'not_configured' | 'unreachable' | 'rejected' | 'not_found' };
-
-const read = async (service: Arr, path: string): Promise<Result<unknown>> => {
-  if (!service.configured()) return { kind: 'not_configured' };
-  let response: { status: number; body: unknown };
-  try {
-    response = await service.request(path);
-  } catch {
-    return { kind: 'unreachable' };
-  }
-  if (response.status === 401 || response.status === 403) return { kind: 'rejected' };
-  if (response.status === 404) return { kind: 'not_found' };
-  if (response.status < 200 || response.status > 299) return { kind: 'unreachable' };
-  return { kind: 'ok', value: response.body };
-};
-
-export const createOwned = (services: { sonarr: Arr; radarr: Arr }) => ({
+export const createOwned = (services: ArrServices) => ({
   async episodes(seriesId: number): Promise<Result<OwnedEpisode[]>> {
-    const result = await read(services.sonarr, `/api/v3/episode?seriesId=${seriesId}`);
+    const result = await services.sonarr.episodes(seriesId);
     if (result.kind !== 'ok') return result;
-    if (!Array.isArray(result.value)) return { kind: 'unreachable' };
-    const episodes = result.value.flatMap((episode): OwnedEpisode[] => {
-      if (!isRecord(episode) || !wholeNumber(episode.id) || !wholeNumber(episode.seasonNumber) || !wholeNumber(episode.episodeNumber)) return [];
-      return [{
-        id: episode.id,
-        seasonNumber: episode.seasonNumber,
-        episodeNumber: episode.episodeNumber,
-        title: typeof episode.title === 'string' ? episode.title : null,
-        airDate: typeof episode.airDateUtc === 'string' ? episode.airDateUtc : null,
-        monitored: episode.monitored === true,
-        hasFile: episode.hasFile === true,
-      }];
-    });
+    const episodes = result.value.map((episode): OwnedEpisode => ({
+      id: episode.id,
+      seasonNumber: episode.seasonNumber,
+      episodeNumber: episode.episodeNumber,
+      title: episode.title,
+      airDate: episode.airDateUtc,
+      monitored: episode.monitored,
+      hasFile: episode.hasFile,
+    }));
     episodes.sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
     return { kind: 'ok', value: episodes };
   },
   async movie(movieId: number): Promise<Result<{ id: number; title: string | null; hasFile: boolean }>> {
-    const result = await read(services.radarr, `/api/v3/movie/${movieId}`);
+    const result = await services.radarr.movie(movieId);
     if (result.kind !== 'ok') return result;
-    if (!isRecord(result.value)) return { kind: 'unreachable' };
-    return {
-      kind: 'ok',
-      value: { id: movieId, title: typeof result.value.title === 'string' ? result.value.title : null, hasFile: result.value.hasFile === true },
-    };
+    return { kind: 'ok', value: { id: movieId, title: result.value.title, hasFile: result.value.hasFile } };
   },
 });
 
