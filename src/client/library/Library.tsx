@@ -67,7 +67,7 @@ function statusBadge(title: LibraryTitle, live: SubjectProgress | undefined, dow
   const missing = title.tv === null ? 0 : title.tv.episodeCount - title.tv.episodeFileCount - downloading;
   if (missing > 0) return <Badge variant="warning">Missing {missing} {missing === 1 ? 'episode' : 'episodes'}</Badge>;
   if (word === 'missing') return <Badge variant="warning">Missing</Badge>;
-  if (word === 'not available') return <Badge variant="outline">Not out yet</Badge>;
+  if (word === 'not available') return <Badge variant="outline" className="bg-card">Not out yet</Badge>;
   return undefined;
 }
 
@@ -185,7 +185,7 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
       </div>
       <div key={state.kind} className="transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
         {state.kind === 'loading' && (
-          <div className="flex flex-wrap gap-x-(--poster-gutter) gap-y-6">
+          <div className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
             {Array.from({ length: SKELETON_CARDS }, (_, index) => <SkeletonPosterCard key={index} />)}
           </div>
         )}
@@ -224,7 +224,7 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
                   </div>
                 )
                 : (
-                  <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-6">
+                  <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
                     {shown.map((title) => (
                       <PosterCard key={`${title.service}:${title.id}`} title={title} fields={fields} progress={progress} downloading={perShow.get(title.id) ?? 0} />
                     ))}
