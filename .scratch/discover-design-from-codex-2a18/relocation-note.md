@@ -1,0 +1,1 @@
+The Discover handover, artwork and exports were copied from Codex worktree 2a18 before pruning. Text paths now point here. The design image references must also be updated and saved before the old checkout is archived. Historical progress in claude-handover.md is superseded by claude-completion-notes.md.

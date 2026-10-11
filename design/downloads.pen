@@ -14263,8 +14263,8 @@
                             "$5:control-px-row"
                           ],
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -14291,8 +14291,8 @@
                             "$5:control-px-row"
                           ],
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -14554,8 +14554,8 @@
                             "$5:control-px-row"
                           ],
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -14582,8 +14582,8 @@
                             "$5:control-px-row"
                           ],
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -14959,8 +14959,8 @@
                             "$5:control-px-row"
                           ],
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -14987,8 +14987,8 @@
                             "$5:control-px-row"
                           ],
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
