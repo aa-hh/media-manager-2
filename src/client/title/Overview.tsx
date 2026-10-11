@@ -48,7 +48,7 @@ const parseRoute = (pathname: string): Route | undefined => {
   return undefined;
 };
 
-const failureText = (service: 'Sonarr' | 'Radarr', error: unknown) => {
+const failureText = (service: string, error: unknown) => {
   const reason = error instanceof Error ? error.message : '';
   if (reason === 'not_configured') return `${service} isn't connected yet.`;
   if (reason === 'rejected') return `${service} refused the API key.`;
@@ -127,9 +127,9 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         const reason = error instanceof Error ? error.message : '';
+        // A preview by TMDB id fails the same ways whether TMDB or Sonarr failed, so the message names both.
         const message = 'byTmdb' in route && reason === 'not_found' ? "TMDB has no TVDB id for this show, so Sonarr can't look it up."
-          : 'byTmdb' in route && reason === 'not_configured' ? "TMDB or Sonarr isn't connected yet."
-            : failureText(service, error);
+          : failureText('byTmdb' in route ? 'TMDB or Sonarr' : service, error);
         setLoad({ kind: 'failed', message });
       });
     return () => controller.abort();
