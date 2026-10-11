@@ -13,7 +13,8 @@ export const createTitleStore = (database: DatabaseSync, options: { now?: () => 
   const keyOf = (title: TitleRef): string | undefined => {
     if (title.type === 'movie') return `movie:${title.tmdbId}`;
     if ('tvdbId' in title) return `tv:${title.tvdbId}`;
-    const row = database.prepare("SELECT key FROM title_store WHERE type = 'tv' AND tmdb_id = ?").get(title.tmdbId);
+    // razor: a show first saved by TMDB id keeps its own row once a TVDB-keyed row appears; the TVDB row wins here. Merge the two rows if a reader needs both.
+    const row = database.prepare("SELECT key FROM title_store WHERE type = 'tv' AND tmdb_id = ? ORDER BY tvdb_id IS NULL LIMIT 1").get(title.tmdbId);
     return row === undefined ? undefined : String(row.key);
   };
 
@@ -24,9 +25,10 @@ export const createTitleStore = (database: DatabaseSync, options: { now?: () => 
     return row === undefined ? undefined : { value: JSON.parse(String(row.json)) as T, fetchedAt: Number(row.fetched_at) };
   };
 
-  const put = (title: Title, part: string, value: unknown) => {
-    const key = keyOf(title) as string;
-    const tvdbId = title.type === 'tv' ? title.tvdbId : null;
+  // A show known only by its TMDB id gets a row of its own until a source names its TVDB id.
+  const put = (title: TitleRef, part: string, value: unknown) => {
+    const tvdbId = 'tvdbId' in title ? title.tvdbId : null;
+    const key = keyOf(title) ?? `tv-tmdb:${title.tmdbId}`;
     database.prepare(`INSERT INTO title_store (key, type, tmdb_id, tvdb_id) VALUES (?, ?, ?, ?)
       ON CONFLICT (key) DO UPDATE SET tmdb_id = COALESCE(excluded.tmdb_id, tmdb_id)`).run(key, title.type, title.tmdbId ?? null, tvdbId);
     database.prepare(`INSERT INTO title_store_parts (key, part, json, fetched_at) VALUES (?, ?, ?, ?)

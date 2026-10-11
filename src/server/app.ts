@@ -6,6 +6,7 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import { createAuthentication } from './auth.js';
+import { createDiscoverRoutes, type Discover } from './discover.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
 import { createAddRoutes, type Add } from './add.js';
@@ -38,6 +39,7 @@ export type CreateAppOptions = {
   owned?: Owned;
   protection?: Protection;
   library?: Library;
+  discover?: Discover;
   titleDelete?: TitleDelete;
   setup?: Hono<SetupEnvironment>;
   api?: Hono;
@@ -382,6 +384,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
+  if (options.discover !== undefined) app.route('/api/discover', createDiscoverRoutes(options.discover));
   if (options.images !== undefined) app.route('/api/images', options.images);
   if (options.setup !== undefined) app.route('/api/setup', options.setup);
   if (options.api !== undefined) app.route('/api', options.api);
