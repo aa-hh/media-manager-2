@@ -111,7 +111,13 @@ Later features add background jobs to the job runner under these rules. Every jo
 
 `sh scripts/deploy.sh` builds the current worktree and runs it on the Whatbox slot behind one fixed address, replacing whatever copy was running there. Set the slot up once:
 
-1. On Whatbox's Manage Links page, click "Add a custom app". Name it `mm2`, give it a port between 10000 and 32767, and leave WebSockets off; `/api/events` is plain HTTP.
+1. On Whatbox's Manage Links page, click "Add a custom app". Name it `mm2`, give it a port between 10000 and 32767, and leave WebSockets off; `/api/events` is plain HTTP. Whatbox refuses the port unless something already answers on it, so first start a placeholder on the slot that stops itself after 15 minutes:
+
+   ```sh
+   setsid timeout 900 node -e "require('http').createServer((q, s) => s.end('placeholder')).listen(PORT, '127.0.0.1')" > /dev/null 2>&1 &
+   ```
+
+   Replace `PORT` with the chosen port. Before the first deploy, stop the placeholder: `pgrep -af placeholder` shows its pid for `kill`.
 2. On the slot, create `~/.config/media-manager-2/env` with mode `0600`:
 
    ```sh
