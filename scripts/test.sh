@@ -9,6 +9,11 @@
 #   --production  check the already built production application
 set -eu
 cd "$(dirname "$0")/.."
+# The tests copy this environment into the servers they start, and the app
+# reads these names from it, so a shell that exports one changes the results.
+unset APP_ORIGIN BACKUP_ACCESS_KEY_ID BACKUP_BUCKET BACKUP_ENDPOINT BACKUP_FOLDER \
+    BACKUP_KEY BACKUP_REGION BACKUP_RESTORE_KEY BACKUP_SECRET_ACCESS_KEY DB_PATH \
+    HOST PLEX_OWNER_ID PORT TRACKER_RULES
 
 if [ "${1:-}" = --review-script ]; then
     # Restoring the heredoc command substitution breaks parsing on macOS Bash.
@@ -28,6 +33,7 @@ if [ "${1:-}" = --review-script ]; then
     fi
     echo "review script: Bash syntax and invalid argument checks passed"
     /bin/bash scripts/test-review-branch.sh
+    /bin/bash scripts/test-guard-agents-docs.sh
     exit 0
 fi
 

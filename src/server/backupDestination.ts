@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { BackupStore } from './backup.js';
@@ -68,9 +68,21 @@ export const createFolderStore = (folder: string): BackupStore => {
       const path = pathOf(key);
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       // Writing beside the target and renaming means a crash never leaves a half-written snapshot under its final name.
+      // Flushing before the rename keeps a power cut from leaving an empty file under the final name.
       const partial = `${path}.partial`;
-      writeFileSync(partial, body, { mode: 0o600 });
-      renameSync(partial, path);
+      try {
+        const handle = openSync(partial, 'w', 0o600);
+        try {
+          writeFileSync(handle, body);
+          fsyncSync(handle);
+        } finally {
+          closeSync(handle);
+        }
+        renameSync(partial, path);
+      } catch (error) {
+        rmSync(partial, { force: true });
+        throw error;
+      }
     },
     async get(key: string): Promise<Uint8Array | undefined> {
       requireRoot();

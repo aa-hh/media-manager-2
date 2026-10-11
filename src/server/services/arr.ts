@@ -93,8 +93,9 @@ export const createArr = <S extends Service>(service: S, database: DatabaseSync,
         headers,
         body: sendsBody ? JSON.stringify(init.body) : undefined,
       }, init.timeoutMs);
-    } catch {
-      throw new Error(`${label} is unreachable.`);
+    } catch (error) {
+      // The cause lets a caller tell a timeout, which the service may still have acted on, from a refused connection.
+      throw new Error(`${label} is unreachable.`, { cause: error });
     }
     let body: unknown;
     try {

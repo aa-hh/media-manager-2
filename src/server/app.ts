@@ -1,11 +1,12 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { extname, isAbsolute } from 'node:path';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import { createAuthentication } from './auth.js';
+import { createAuthentication, isLoopback } from './auth.js';
 import { createDiscoverRoutes, type Discover } from './discover/index.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
@@ -142,6 +143,18 @@ export const createApp = (options: CreateAppOptions) => {
   const staticFiles = serveStatic({ root: options.clientDirectory });
   const cookieOptions = { httpOnly: true, sameSite: 'Lax' as const, secure, path: '/' };
 
+  // A loopback listener sits behind the reverse proxy the README requires, so the socket is the proxy and the browser is
+  // the address the proxy appended last; anything earlier in the header is the browser's own claim.
+  const clientOf = (context: Context) => {
+    const forwarded = isLoopback(options.listeningHost) ? context.req.header('X-Forwarded-For')?.split(',').at(-1)?.trim() : undefined;
+    if (forwarded) return forwarded;
+    try {
+      return getConnInfo(context).remote.address ?? '';
+    } catch {
+      return '';
+    }
+  };
+
   const clearSessionCookie = (context: Context) => {
     deleteCookie(context, sessionCookieName, cookieOptions);
   };
@@ -213,7 +226,7 @@ export const createApp = (options: CreateAppOptions) => {
       clearBindingCookie(context);
       return context.json({ error: 'invalid_request' }, 400);
     }
-    const result = await authentication.start(binding.kind === 'value' ? binding.value : undefined);
+    const result = await authentication.start(binding.kind === 'value' ? binding.value : undefined, clientOf(context));
     if (result.kind === 'not_configured') return context.json({ error: 'not_configured' }, 503);
     if (result.kind === 'unavailable') return context.json({ error: 'plex_unavailable' }, 503);
     if (result.kind === 'rate_limited') {
