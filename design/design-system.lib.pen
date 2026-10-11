@@ -19,7 +19,7 @@
           "id": "li02P",
           "name": "Note",
           "fill": "$muted-foreground",
-          "content": "Service logos, 20x20. Copy into headings. Do not redraw.",
+          "content": "Service logos, 20x20. Copy into headings. Do not redraw. First in the row: Logo/media-manager-2, the app's own logo; the header bar uses it at 28x28.",
           "fontFamily": "$font-ui",
           "fontSize": 12,
           "fontWeight": "normal"
@@ -31,6 +31,21 @@
           "gap": 16,
           "alignItems": "center",
           "children": [
+            {
+              "type": "frame",
+              "id": "pVboN",
+              "name": "Logo/media-manager-2",
+              "context": "The app's own logo: the sign-in planet rendered by src/client/signInPlanet.ts, small-size version (lit from the front, stronger bands, thicker rim) for 32 px and below. Source: design/app-logo/small-on-light.png. In the app: src/client/assets/logos/media-manager-2.png, used by components/ui/app-bar.tsx. Do not redraw.",
+              "reusable": true,
+              "width": 20,
+              "height": 20,
+              "fill": {
+                "type": "image",
+                "enabled": true,
+                "url": "app-logo/small-on-light.png",
+                "mode": "contain"
+              }
+            },
             {
               "type": "frame",
               "id": "u3D0O5",
@@ -21212,15 +21227,32 @@
                       "alignItems": "center",
                       "children": [
                         {
-                          "type": "text",
-                          "id": "zLSZ8",
-                          "name": "Product name",
-                          "fill": "$foreground",
-                          "content": "media-manager-2",
-                          "fontFamily": "$font-ui",
-                          "fontSize": 16,
-                          "fontWeight": "800",
-                          "letterSpacing": -0.2
+                          "type": "frame",
+                          "id": "TleVz",
+                          "name": "Brand",
+                          "gap": 10,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "EXQNl",
+                              "type": "ref",
+                              "ref": "pVboN",
+                              "name": "Logo",
+                              "width": 28,
+                              "height": 28
+                            },
+                            {
+                              "type": "text",
+                              "id": "zLSZ8",
+                              "name": "Product name",
+                              "fill": "$foreground",
+                              "content": "media-manager-2",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 16,
+                              "fontWeight": "800",
+                              "letterSpacing": -0.2
+                            }
+                          ]
                         },
                         {
                           "id": "OIwjX",
