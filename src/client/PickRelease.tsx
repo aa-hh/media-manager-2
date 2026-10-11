@@ -304,6 +304,8 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
   const listRef = useRef<HTMLDivElement>(null);
   const toasts = useToastManager();
   const targetQuery = query(target);
+  // Callers may build a new target object on every render; searching again needs a different service or target.
+  const searchedTarget = useMemo(() => target, [target.service, targetQuery]);
   const service = serviceLabel(target);
 
   useEffect(() => {
@@ -316,7 +318,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     setOutcome(undefined);
     try {
       const response = refresh
-        ? await postJson('/api/releases/refresh', targetBody(target))
+        ? await postJson('/api/releases/refresh', targetBody(searchedTarget))
         : await fetch(`/api/releases?${targetQuery}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       if (response.status === 401) {
         onUnauthenticated();
@@ -329,14 +331,14 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
         return;
       }
       const stored = body.stored as Stored | null | undefined;
-      const problem = problemText(target, body.error);
+      const problem = problemText(searchedTarget, body.error);
       setList(stored ? { kind: 'ready', stored, refreshing: false, problem } : { kind: 'failed', problem });
     } catch {
       setList((current) => (current.kind === 'ready'
         ? { ...current, refreshing: false, problem: "The search didn't reach media-manager-2's server." }
         : { kind: 'failed', problem: "The search didn't reach media-manager-2's server." }));
     }
-  }, [targetQuery, target, onUnauthenticated]);
+  }, [targetQuery, searchedTarget, onUnauthenticated]);
 
   useEffect(() => {
     void load(false);
