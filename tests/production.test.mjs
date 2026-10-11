@@ -1674,7 +1674,7 @@ test('hit and run rules come from settings or TRACKER_RULES with an exact name m
   // The saved rule wins over the TRACKER_RULES one for the same host.
   setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', JSON.stringify({ minHours: 200, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' }));
   assert.deepEqual(findTrackerRule(database, 'Blutopia (API)').rule, {
-    minHours: 200, minHoursFormula: null, minRatio: 1, minGlobalRatio: 0.5, logic: 'or', partialExemptBelow: null, partialRatio: null, partialMaxHours: null,
+    seedHours: [{ hours: 200 }], ratio: 1, logic: 'or', minGlobalRatio: 0.5, partial: { exemptBelow: null, ratio: null, maxHours: null },
   });
   for (const bad of [
     'not json', '{"minHours":10,"minRatio":1,"logic":"xor"}', '{"minHours":10,"minRatio":1}',
@@ -1694,6 +1694,92 @@ test('hit and run rules come from settings or TRACKER_RULES with an exact name m
     ['{"blutopia.cc":{"minHours":"168"}}', 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
     ['{"Blutopia.cc":{"minHours":1},"blutopia.cc":{"minHours":2}}', 'TRACKER_RULES: blutopia.cc is listed twice.'],
   ]) assert.throws(() => trackerRulesFromEnvironment({ TRACKER_RULES: value }), { message }, value);
+});
+
+const privateHdTable = [{ upToGB: 1, hours: 72 }, { upToGB: 50, hours: 72, perGB: 2 }, { hours: -219.2023, lnGB: 100 }];
+// The owner's rules (above) written in the seed-hour table shape.
+const ownerRulesAsTables = {
+  'blutopia.cc': { seedHours: [{ hours: 168 }], minGlobalRatio: 0.4 },
+  'beyond-hd.me': { seedHours: [{ hours: 120 }], ratio: 1.0, logic: 'or', minGlobalRatio: 0.25 },
+  'privatehd.to': { seedHours: privateHdTable, ratio: 0.9, logic: 'or', partial: { exemptBelow: 0.1, ratio: 0.9, maxHours: 1440 } },
+};
+
+// Converting the old shape to a different table or partial rule, picking a table row by `<` instead of `<=`, using the
+// wrong row, or skipping any of the table checks (row order, final row, negative hours at either end or at the turning
+// point inside a row) turns this red.
+test('seed-hour tables: the old rule shape converts to the same hours and results, and bad tables are refused', async () => {
+  const { checkHitAndRun, parseRule, trackerRulesFromEnvironment } = await import(trackerRulesModuleUrl);
+  const gb = 1000 ** 3;
+
+  // The old shape in TRACKER_RULES still loads, and reads back as the table shape.
+  const fromEnv = trackerRulesFromEnvironment({ TRACKER_RULES: JSON.stringify(ownerRules) });
+  for (const [host, table] of Object.entries(ownerRulesAsTables)) assert.deepEqual(fromEnv.get(host), parseRule(table), host);
+  assert.deepEqual(fromEnv.get('privatehd.to'), {
+    seedHours: privateHdTable, ratio: 0.9, logic: 'or', minGlobalRatio: null, partial: { exemptBelow: 0.1, ratio: 0.9, maxHours: 1440 },
+  });
+
+  // Old and new shapes give the same check over a grid of sizes, seed times, ratios and amounts downloaded.
+  const pairs = [
+    ...Object.keys(ownerRules).map((host) => [ownerRules[host], ownerRulesAsTables[host]]),
+    [{ minHours: 10, minRatio: 2, logic: 'and' }, { seedHours: [{ hours: 10 }], ratio: 2, logic: 'and' }],
+    [{ minHours: 50, partialRatio: 1, partialMaxHours: 24 }, { seedHours: [{ hours: 50 }], partial: { ratio: 1, maxHours: 24 } }],
+  ];
+  const sizes = [0.5, 1, 1.0001, 10, 47.99, 48, 48.01, 49.99, 50, 50.01, 100, 1000, 5000];
+  for (const [oldShape, newShape] of pairs) {
+    const [before, after] = [parseRule(oldShape), parseRule(newShape)];
+    for (const size of sizes) {
+      for (const done of [0.05, 0.1, 0.5, 1]) {
+        for (const seedHours of [0, 9, 10, 24, 71.9, 72, 120, 168, 171.99, 172.01, 241.3, 241.32, 1439, 1440]) {
+          for (const ratio of [0, 0.89, 0.9, 1, 2]) {
+            const torrent = { seedHours, ratio, sizeBytes: size * gb, completedBytes: size * done * gb };
+            assert.deepEqual(checkHitAndRun(after, torrent, 0.3), checkHitAndRun(before, torrent, 0.3), `${JSON.stringify(oldShape)} ${size} GB ${done} ${seedHours} h ${ratio}`);
+          }
+        }
+      }
+    }
+  }
+
+  // The table reproduces the PrivateHD formula the code used before tables. At exactly 50 GB the old formula switched
+  // to its log branch (172.0000005 h) and the table keeps the straight line (172 h).
+  const required = (rule, size) => checkHitAndRun(parseRule(rule), { seedHours: 0, ratio: 0, sizeBytes: size * gb, completedBytes: size * gb }).requiredHours;
+  const oldFormula = (size) => (size <= 1 ? 72 : size < 50 ? 72 + 2 * size : 100 * Math.log(size) - 219.2023);
+  for (const size of [...sizes, 0.001, 2, 25, 75, 500, 9999]) assert.ok(Math.abs(required(ownerRulesAsTables['privatehd.to'], size) - oldFormula(size)) < 1e-6, `${size} GB`);
+  for (const [size, hours] of [[1, 72.0], [49.99, 171.98], [50, 172.0], [100, 241.31]]) {
+    assert.equal(Math.round(required(ownerRulesAsTables['privatehd.to'], size) * 100) / 100, hours, `${size} GB`);
+  }
+  const tiers = { seedHours: [{ upToGB: 48, hours: 72 }, { hours: 168 }] };
+  assert.deepEqual([47.99, 48, 48.01].map((size) => required(tiers, size)), [72, 72, 168]);
+
+  // Each bad table names the field at fault.
+  const row = (index, extra) => `seedHours[${index}]${extra ?? ''}`;
+  for (const [rule, field] of [
+    [{}, 'seedHours'],
+    [{ seedHours: [] }, 'seedHours'],
+    [{ seedHours: [5] }, row(0)],
+    [{ seedHours: [{ hours: '72' }] }, row(0, '.hours')],
+    [{ seedHours: [{ upto: 48, hours: 72 }, { hours: 168 }] }, row(0, '.upto')],
+    [{ seedHours: [{ upToGB: 1, hours: 72 }, { hours: 72, perGB: '2' }] }, row(1, '.perGB')],
+    [{ seedHours: [{ upToGB: -1, hours: 72 }, { hours: 168 }] }, row(0, '.upToGB')],
+    [{ seedHours: [{ hours: 72 }, { hours: 168 }] }, row(0, '.upToGB')],
+    [{ seedHours: [{ upToGB: 48, hours: 72 }] }, row(0, '.upToGB')],
+    [{ seedHours: [{ upToGB: 48, hours: 72 }, { upToGB: 48, hours: 100 }, { hours: 168 }] }, row(1, '.upToGB')],
+    [{ seedHours: [{ hours: -1 }] }, row(0)],
+    [{ seedHours: [{ upToGB: 1, hours: 72 }, { hours: 72, perGB: -1 }] }, row(1)],
+    [{ seedHours: [{ hours: -219.2023, lnGB: 100 }] }, row(0)],
+    [{ seedHours: [{ upToGB: 1, hours: 72 }, { upToGB: 50, hours: 72, perGB: 2 }, { hours: -400, lnGB: 100 }] }, row(2)],
+    // Above zero at 1 and 10 000 GB, but 10 + 100 - 100·ln(100) ≈ -350 at 100 GB.
+    [{ seedHours: [{ upToGB: 1, hours: 72 }, { hours: 10, perGB: 1, lnGB: -100 }] }, row(1)],
+    [{ seedHours: [{ hours: 1 }], ratio: 1 }, 'logic'],
+    [{ seedHours: [{ hours: 1 }], ratio: -1, logic: 'or' }, 'ratio'],
+    [{ seedHours: [{ hours: 1 }], partial: { exemptBelow: 2 } }, 'partial.exemptBelow'],
+    [{ seedHours: [{ hours: 1 }], partial: { maxHours: 'a' } }, 'partial.maxHours'],
+    [{ seedHours: [{ hours: 1 }], partial: { exempt: 0.1 } }, 'partial.exempt'],
+    [{ seedHours: [{ hours: 1 }], partial: 3 }, 'partial'],
+    [{ seedHours: [{ hours: 1 }], minHourz: 3 }, 'minHourz'],
+    [{ seedHours: [{ hours: 1 }], minHours: 3 }, 'minHours'],
+  ]) assert.equal(parseRule(rule).field, field, JSON.stringify(rule));
+  // A row whose lowest point, inside its range, stays above zero is accepted: 500 + 100 - 100·ln(100) ≈ 139 at 100 GB.
+  assert.equal(parseRule({ seedHours: [{ upToGB: 1, hours: 72 }, { hours: 500, perGB: 1, lnGB: -100 }] }).field, undefined);
 });
 
 // Dropping either margin, letting time since finishing prove a time rule, matching only the exact announce hostname
@@ -2172,7 +2258,7 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
 // rule, removing a tracker set in the env file, hiding the list behind one bad saved value, or skipping the browser write checks turns this red.
 test('the settings screen adds trackers and saves, clears and removes their hit and run rules', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
-  const { listSettingKeys, setSetting } = await import(settingsModuleUrl);
+  const { getSetting, listSettingKeys, setSetting } = await import(settingsModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
   const { createTrackerRoutes } = await import(trackerSettingsModuleUrl);
   const { findTrackerRule } = await import(trackerRulesModuleUrl);
@@ -2195,8 +2281,8 @@ test('the settings screen adds trackers and saves, clears and removes their hit 
   };
   const trackerKeys = () => listSettingKeys(database).filter((entry) => entry.category === 'trackerConfiguration');
   const defaultMargins = { timeFactor: 1.1, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 };
-  const unset = { minHoursFormula: null, minRatio: null, minGlobalRatio: null, logic: null, partialExemptBelow: null, partialRatio: null, partialMaxHours: null };
-  const blutopiaEnv = { ...unset, minHours: 168, minGlobalRatio: 0.4 };
+  const unset = { ratio: null, logic: null, minGlobalRatio: null, partial: { exemptBelow: null, ratio: null, maxHours: null } };
+  const blutopiaEnv = { ...unset, seedHours: [{ hours: 168 }], minGlobalRatio: 0.4 };
   const blutopia = (fields) => ({ host: 'blutopia.cc', margins: defaultMargins, problem: null, ...fields });
   const example = (fields) => ({ host: 'example.net', margins: defaultMargins, problem: null, ...fields });
 
@@ -2223,6 +2309,10 @@ test('the settings screen adds trackers and saves, clears and removes their hit 
     [{ rule: { minHours: -1 } }, 'invalid_rule', 'minHours', 'minHours must be a number of 0 or more'],
     [{ rule: { minHours: 1, partialExemptBelow: 2 } }, 'invalid_rule', 'partialExemptBelow', 'partialExemptBelow must be a fraction from 0 to 1'],
     [{ rule: [] }, 'invalid_rule', null, 'the rule must be a JSON object'],
+    [{ rule: { seedHours: [{ upToGB: 1, hours: 72 }, { hours: 72, perGB: 'x' }] } }, 'invalid_rule', 'seedHours[1].perGB', 'perGB must be a number'],
+    [{ rule: { seedHours: [{ upToGB: 1, hours: 72 }, { hours: 72, perGB: -1 }] } }, 'invalid_rule', 'seedHours[1]',
+      'seedHours[1] gives -9928 hours at 10000 GB; seed time must come out at 0 or more from 1 to 10000 GB'],
+    [{ rule: { seedHours: [{ hours: 1 }], partial: { exemptBelow: 2 } } }, 'invalid_rule', 'partial.exemptBelow', 'partial.exemptBelow must be a fraction from 0 to 1'],
     [{ rule: { minHours: 1 }, margins: { timeFactor: 0.9 } }, 'invalid_margins', 'timeFactor', 'timeFactor must be a number of 1 or more'],
   ]) {
     const response = await send('PUT', '/api/settings/trackers/example.net/rule', body);
@@ -2233,14 +2323,16 @@ test('the settings screen adds trackers and saves, clears and removes their hit 
   assert.equal((await send('PUT', '/api/settings/trackers/unknown.org/rule', { rule: { minHours: 1 } })).status, 404);
   assert.deepEqual(trackerKeys(), before);
 
-  // The saved rule is found through an announce subdomain, and wins over the TRACKER_RULES one.
-  const rule = { minHours: 100, minRatio: 1.5, logic: 'and' };
+  // The saved rule is found through an announce subdomain, and wins over the TRACKER_RULES one. A rule sent in the old
+  // shape is saved in the table shape.
+  const rule = { seedHours: [{ upToGB: 48, hours: 72 }, { hours: 100 }], ratio: 1.5, logic: 'and' };
   assert.equal((await send('PUT', '/api/settings/trackers/example.net/rule', { rule, margins: { timeFactor: 1.2 } })).status, 204);
   assert.equal((await send('PUT', '/api/settings/trackers/blutopia.cc/rule', { rule: { minHours: 200 } })).status, 204);
+  assert.deepEqual(JSON.parse(getSetting(database, 'trackerConfiguration', 'rules.blutopia.cc')), { ...unset, seedHours: [{ hours: 200 }] });
   const exampleRule = { ...unset, ...rule };
   assert.deepEqual(findTrackerRule(database, 'tracker.example.net', env), { host: 'example.net', rule: exampleRule });
   assert.deepEqual(await list(), [
-    blutopia({ status: 'configured', rule: { ...unset, minHours: 200 }, ruleSource: 'settings' }),
+    blutopia({ status: 'configured', rule: { ...unset, seedHours: [{ hours: 200 }] }, ruleSource: 'settings' }),
     example({ status: 'configured', rule: exampleRule, ruleSource: 'settings', margins: { ...defaultMargins, timeFactor: 1.2 } }),
   ]);
 

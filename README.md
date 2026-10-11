@@ -166,23 +166,35 @@ wins over the env file's rule for the same host:
 
 `TRACKER_RULES` in the env file holds rules as one JSON object keyed by
 hostname. A tracker listed there counts as added and can only be removed there.
-Each rule has these fields; any left out mean "none":
+Each rule has these fields. `seedHours` is required; any other left out means
+"none":
 
-- `minHours`: seed hours that clear a finished torrent.
-- `minHoursFormula`: `"privatehd"` to work the hours out from the size instead.
-- `minRatio`: the torrent ratio that clears it, combined with the hours by
+- `seedHours`: the seed time that clears a finished torrent, as a list of rows
+  `{ upToGB, hours, perGB, lnGB }`. The first row whose `upToGB` is at or above
+  the torrent's size applies, and needs `hours + perGB × GB + lnGB × ln(GB)`
+  hours, with GB as 1000³ bytes; `perGB` and `lnGB` may be left out. Every row
+  but the last has an `upToGB`, rising row by row; the last has none and covers
+  every larger size. One row is a fixed time. A row that would need less than
+  0 hours anywhere from 0 to 10 000 GB is refused.
+- `ratio`: the torrent ratio that clears it, combined with the seed time by
   `logic` (`"and"` or `"or"`).
 - `minGlobalRatio`: the account-wide ratio minimum.
-- `partialExemptBelow`, `partialRatio`, `partialMaxHours`: for a download left
-  incomplete, the fraction below which it owes nothing, and the ratio or
-  seeding hours that clear it otherwise.
+- `partial`: `{ exemptBelow, ratio, maxHours }` for a download left incomplete:
+  the fraction below which it owes nothing, and the ratio or seeding hours that
+  clear it otherwise.
 
 The owner's three trackers, as one line. Keep the single quotes: the env file
 is read by `sh`, which would strip the double quotes.
 
 ```sh
-TRACKER_RULES='{"blutopia.cc":{"minHours":168,"minGlobalRatio":0.4},"beyond-hd.me":{"minHours":120,"minRatio":1.0,"logic":"or","minGlobalRatio":0.25},"privatehd.to":{"minHoursFormula":"privatehd","minRatio":0.9,"logic":"or","partialExemptBelow":0.1,"partialRatio":0.9,"partialMaxHours":1440}}'
+TRACKER_RULES='{"blutopia.cc":{"seedHours":[{"hours":168}],"minGlobalRatio":0.4},"beyond-hd.me":{"seedHours":[{"hours":120}],"ratio":1.0,"logic":"or","minGlobalRatio":0.25},"privatehd.to":{"seedHours":[{"upToGB":1,"hours":72},{"upToGB":50,"hours":72,"perGB":2},{"hours":-219.2023,"lnGB":100}],"ratio":0.9,"logic":"or","partial":{"exemptBelow":0.1,"ratio":0.9,"maxHours":1440}}}'
 ```
+
+The older field names still work, in `TRACKER_RULES` and in saved rules, and
+are read as the matching table: `minHours` (one row), `minHoursFormula:
+"privatehd"` (the PrivateHD table above), `minRatio`, and `partialExemptBelow`,
+`partialRatio`, `partialMaxHours`. A rule can't mix old and new names. Saving
+a rule in settings always writes the new shape.
 
 The settings screen uses these routes under the owner guard:
 
@@ -193,7 +205,8 @@ The settings screen uses these routes under the owner guard:
 - `POST /api/settings/trackers` `{ host }` adds a tracker. A URL is cut down to
   its hostname; a duplicate gets 409, anything that is not a hostname 400.
 - `PUT /api/settings/trackers/<host>/rule` `{ rule, margins? }` saves a rule. An
-  invalid one gets 400 `{ error, field, reason }`.
+  invalid one gets 400 `{ error, field, reason }`; `field` is a path such as
+  `seedHours[1].perGB` or `partial.ratio`.
 - `DELETE /api/settings/trackers/<host>/rule` clears the saved rule and
   margins; the env file's rule, if any, applies again.
 - `DELETE /api/settings/trackers/<host>` removes the tracker and everything

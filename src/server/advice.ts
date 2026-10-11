@@ -66,21 +66,21 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
   if (base.case === 'under_buffer') {
     // A running download may still cross the exemption line.
     if (torrent.started && torrent.active) return { recommendation: 'keep', reason: 'Still downloading' };
-    return { recommendation: 'safe', reason: `Under ${Math.round((rule.partialExemptBelow ?? 0) * 100)}% downloaded; not a hit and run on ${host}` };
+    return { recommendation: 'safe', reason: `Under ${Math.round((rule.partial.exemptBelow ?? 0) * 100)}% downloaded; not a hit and run on ${host}` };
   }
 
   if (base.case === 'partial') {
-    if (rule.partialRatio === null && rule.partialMaxHours === null) {
+    if (rule.partial.ratio === null && rule.partial.maxHours === null) {
       return { recommendation: 'keep', reason: `Download not complete; ${host} counts seed time only at 100%` };
     }
-    const neededRatio = rule.partialRatio === null ? null : withMarginRatio(rule.partialRatio);
+    const neededRatio = rule.partial.ratio === null ? null : withMarginRatio(rule.partial.ratio);
     // The seeding counter never runs for an incomplete torrent, so only the ratio can make it safe.
-    if (neededRatio !== null && checkHitAndRun({ ...rule, partialRatio: neededRatio }, facts).ratio === true) {
+    if (neededRatio !== null && checkHitAndRun({ ...rule, partial: { ...rule.partial, ratio: neededRatio } }, facts).ratio === true) {
       return { recommendation: 'safe', reason: `Partly downloaded: ratio ${ratioText(facts.ratio)} of ${ratioText(neededRatio)} on the data downloaded` };
     }
     const ways = [
       neededRatio === null ? null : `at ratio ${ratioText(neededRatio)} of the data downloaded (now ${ratioText(facts.ratio)})`,
-      rule.partialMaxHours === null ? null : `after ${Math.ceil(withMarginHours(rule.partialMaxHours) / 24)} days seeding, which isn't measured yet`,
+      rule.partial.maxHours === null ? null : `after ${Math.ceil(withMarginHours(rule.partial.maxHours) / 24)} days seeding, which isn't measured yet`,
     ].filter((way) => way !== null);
     return { recommendation: 'keep', reason: `Partly downloaded: clears ${ways.join(' or ')}` };
   }
@@ -88,10 +88,10 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
   const { requiredHours } = base;
   if (requiredHours === null) return { recommendation: 'unconfirmed', reason: `Can't tell; keep seeding: the rule for ${host} sets no seed time` };
   const neededHours = withMarginHours(requiredHours);
-  const neededRatio = rule.minRatio === null ? null : withMarginRatio(rule.minRatio);
+  const neededRatio = rule.ratio === null ? null : withMarginRatio(rule.ratio);
   const strict: HitAndRunRule = neededRatio === null
-    ? { ...rule, minHours: neededHours, minHoursFormula: null, minRatio: null, logic: null }
-    : { ...rule, minHours: neededHours, minHoursFormula: null, minRatio: neededRatio, logic: rule.logic ?? 'or' };
+    ? { ...rule, seedHours: [{ hours: neededHours }], ratio: null, logic: null }
+    : { ...rule, seedHours: [{ hours: neededHours }], ratio: neededRatio, logic: rule.logic ?? 'or' };
   const result = checkHitAndRun(strict, facts);
   const ratioPart = neededRatio === null ? null : `ratio ${ratioText(facts.ratio)} of ${ratioText(neededRatio)}`;
 
