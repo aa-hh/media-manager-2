@@ -149,17 +149,19 @@ export const createMovies = ({ label, send }: { label: string; send: Send }) => 
     return parsed === null ? refusal(`${label} sent no record for ${operation}.`) : { kind: 'ok', value: parsed };
   };
 
-  const lookupMovies = (term: string) => list('the movie lookup', `/api/v3/movie/lookup?term=${encodeURIComponent(term)}`);
+  // Whole records, not parsed ones: an add posts the lookup's own record back, so unparsed fields must survive.
+  const lookupMovies = async (term: string): Promise<Result<Record<string, unknown>[]>> => {
+    const operation = 'the movie lookup';
+    const answer = await send(operation, `/api/v3/movie/lookup?term=${encodeURIComponent(term)}`);
+    if (answer.kind !== 'ok') return answer;
+    const { body } = answer.value;
+    return Array.isArray(body) ? { kind: 'ok', value: body.filter(isRecord) } : refusal(`${label} sent no list of records for ${operation}.`);
+  };
 
   // The add body must be the lookup's own record: Radarr takes the title and images from it.
-  const addMovie = async (tmdbId: number, fields: Record<string, unknown>): Promise<Result<{ id: number }>> => {
+  const addMovie = async (record: Record<string, unknown>, fields: Record<string, unknown>): Promise<Result<{ id: number }>> => {
     const operation = 'the movie add';
-    const found = await send(operation, `/api/v3/movie/lookup?term=${encodeURIComponent(`tmdb:${tmdbId}`)}`);
-    if (found.kind !== 'ok') return found;
-    if (!Array.isArray(found.value.body)) return refusal(`${label} sent no list of records for ${operation}.`);
-    const match = found.value.body.find((item) => isRecord(item) && item.tmdbId === tmdbId);
-    if (match === undefined) return { kind: 'not_found', message: `${label} has no such item for ${operation}.` };
-    const added = await send(operation, '/api/v3/movie', { method: 'POST', body: { ...match, ...fields } });
+    const added = await send(operation, '/api/v3/movie', { method: 'POST', body: { ...record, ...fields } });
     if (added.kind !== 'ok') return added;
     const id = isRecord(added.value.body) ? positiveInteger(added.value.body.id) : null;
     return id === null ? refusal(`${label} sent no id for ${operation}.`) : { kind: 'ok', value: { id } };
@@ -191,5 +193,14 @@ export const createMovies = ({ label, send }: { label: string; send: Send }) => 
     return { kind: 'ok', value: records(body).flatMap(parseCredit) };
   };
 
-  return { listMovies, movie, lookupMovies, addMovie, monitorMovie, setTag, credits };
+  // Radarr deletes the files in the background after it answers, and never adds an import list exclusion here.
+  const deleteMovie = async (movieId: number): Promise<Result<void>> => done(
+    await send('the movie delete', `/api/v3/movie/${movieId}?deleteFiles=true&addImportExclusion=false`, { method: 'DELETE' }),
+  );
+
+  const deleteMovieFile = async (fileId: number): Promise<Result<void>> => done(
+    await send('the movie file delete', `/api/v3/moviefile/${fileId}`, { method: 'DELETE' }),
+  );
+
+  return { listMovies, movie, lookupMovies, addMovie, monitorMovie, setTag, credits, deleteMovie, deleteMovieFile };
 };

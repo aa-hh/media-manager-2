@@ -27,6 +27,7 @@ import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
+import { createTitleStore } from './titleStore.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
@@ -45,6 +46,8 @@ import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
 import { createStallFix } from './stalls.js';
 import { createTorrentFiles } from './torrentFiles.js';
+import { createTitleDelete } from './titleDelete.js';
+import { adviseRemoval } from './advice.js';
 import { createImageRoutes, createTitleCache } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
@@ -145,8 +148,23 @@ if (database !== undefined) {
       if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
     }
   });
-  const search = createSearch(arr);
-  const add = createAdd(database, arr);
+  const secondVersionDelete = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan });
+  const titleDelete = createTitleDelete({
+    database,
+    arr,
+    torrentFiles,
+    deleteVersion: secondVersionDelete,
+    advise: (hash) => adviseRemoval(openedDatabase, hash, {
+      now: Date.now(),
+      accountStats: async (tracker) => {
+        const account = await trackerAccounts.connection(tracker);
+        return account.kind === 'ok' ? account.stats : null;
+      },
+    }),
+  });
+  const titleStore = createTitleStore(database);
+  const search = createSearch(database, arr, titleStore);
+  const add = createAdd(database, arr, titleStore);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
@@ -170,10 +188,11 @@ if (database !== undefined) {
     releases,
     grabs,
     secondVersions,
-    secondVersionDelete: createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan }),
+    secondVersionDelete,
+    titleDelete,
     owned: createOwned(arr),
     protection,
-    library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title)),
+    library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore),
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
       arr,

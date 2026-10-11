@@ -1,7 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { getPreference, setPreference } from './preferences.js';
+import { lookupTitle } from './search.js';
 import type { ArrServices, Result } from './services/arr.js';
+import type { TitleStore } from './titleStore.js';
 
 type Service = 'sonarr' | 'radarr';
 
@@ -87,7 +89,7 @@ const readDefaults = (database: DatabaseSync, service: Service) => {
   }
 };
 
-export const createAdd = (database: DatabaseSync, services: ArrServices) => {
+export const createAdd = (database: DatabaseSync, services: ArrServices, store: TitleStore) => {
   const get = async (service: Service, path: string): Promise<{ kind: 'ok'; body: unknown } | Failure> => {
     let response: { status: number; body: unknown };
     try {
@@ -124,7 +126,9 @@ export const createAdd = (database: DatabaseSync, services: ArrServices) => {
     options,
     async addSeries(tvdbId: number, choices: SeriesAddChoices) {
       if (!services.sonarr.configured()) return { kind: 'not_configured' } as const;
-      const result = added(await services.sonarr.addSeries(tvdbId, {
+      const record = await lookupTitle(services, store, 'sonarr', tvdbId);
+      if (record.kind !== 'ok') return added(record);
+      const result = added(await services.sonarr.addSeries(record.value, {
         qualityProfileId: choices.qualityProfileId,
         rootFolderPath: choices.rootFolderPath,
         seasonFolder: choices.seasonFolder,
@@ -143,7 +147,9 @@ export const createAdd = (database: DatabaseSync, services: ArrServices) => {
     },
     async addMovie(tmdbId: number, choices: MovieAddChoices) {
       if (!services.radarr.configured()) return { kind: 'not_configured' } as const;
-      const result = added(await services.radarr.addMovie(tmdbId, {
+      const record = await lookupTitle(services, store, 'radarr', tmdbId);
+      if (record.kind !== 'ok') return added(record);
+      const result = added(await services.radarr.addMovie(record.value, {
         qualityProfileId: choices.qualityProfileId,
         rootFolderPath: choices.rootFolderPath,
         minimumAvailability: choices.minimumAvailability,

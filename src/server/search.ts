@@ -1,5 +1,7 @@
+import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-import type { ArrServices, Image, Movie, Result, Series } from './services/arr.js';
+import { type ArrServices, type Image, type Movie, parseMovie, parseSeries, type Result, type Series } from './services/arr.js';
+import type { Title, TitleStore } from './titleStore.js';
 
 export type SearchQuery =
   | { kind: 'name'; term: string }
@@ -122,28 +124,73 @@ const lookupTerm = (query: SearchQuery, service: 'sonarr' | 'radarr'): string | 
   return service === 'radarr' ? `tmdb:${query.id}` : undefined;
 };
 
-const lookup = async <T>(
+type Service = 'sonarr' | 'radarr';
+type Found = { result: SearchResult; record: Record<string, unknown> };
+
+export const LOOKUP_CACHE_MS = 10 * 60_000;
+
+// Per service: the title store part its lookup records are saved under, the record's own id field, and the title
+// a record is saved as.
+const lookups = {
+  sonarr: {
+    part: 'sonarr-lookup',
+    idField: 'tvdbId',
+    title: (id: number, record?: Record<string, unknown>): Title => (
+      { type: 'tv', tvdbId: id, tmdbId: typeof record?.tmdbId === 'number' ? record.tmdbId : null }
+    ),
+    normalize: (record: Record<string, unknown>) => {
+      const parsed = parseSeries(record);
+      return parsed === null ? undefined : toSeries(parsed);
+    },
+  },
+  radarr: {
+    part: 'radarr-lookup',
+    idField: 'tmdbId',
+    title: (id: number): Title => ({ type: 'movie', tmdbId: id }),
+    normalize: (record: Record<string, unknown>) => {
+      const parsed = parseMovie(record);
+      return parsed === null ? undefined : toMovie(parsed);
+    },
+  },
+} as const;
+
+const read = (services: ArrServices, service: Service, term: string) => (
+  service === 'sonarr' ? services.sonarr.lookupSeries(term) : services.radarr.lookupMovies(term)
+);
+
+// One title outside the library, as Sonarr's or Radarr's own lookup record; the title page and add both read it here.
+export const lookupTitle = (services: ArrServices, store: TitleStore, service: Service, id: number) => {
+  const { part, idField, title } = lookups[service];
+  return store.fetch(title(id), part, LOOKUP_CACHE_MS, async (): Promise<Result<Record<string, unknown>>> => {
+    const found = await read(services, service, `${service === 'sonarr' ? 'tvdb' : 'tmdb'}:${id}`);
+    if (found.kind !== 'ok') return found;
+    const match = found.value.find((record) => record[idField] === id);
+    return match === undefined ? { kind: 'not_found', message: 'No such title.' } : { kind: 'ok', value: match };
+  });
+};
+
+const lookup = async (
+  services: ArrServices,
+  service: Service,
   term: string | undefined,
-  read: (term: string) => Promise<Result<T[]>>,
-  normalize: (record: T) => SearchResult | undefined,
-): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
-  if (term === undefined) return { outcome: { kind: 'skipped' }, results: [] };
-  const response = await read(term);
+): Promise<{ outcome: ServiceOutcome; found: Found[] }> => {
+  if (term === undefined) return { outcome: { kind: 'skipped' }, found: [] };
+  const response = await read(services, service, term);
   if (response.kind === 'not_configured' || response.kind === 'unreachable' || response.kind === 'rejected') {
-    return { outcome: { kind: response.kind }, results: [] };
+    return { outcome: { kind: response.kind }, found: [] };
   }
   // A non-2xx answer or a body that is not a list reads as unreachable, as it did before the adapter.
-  if (response.kind !== 'ok') return { outcome: { kind: 'unreachable' }, results: [] };
+  if (response.kind !== 'ok') return { outcome: { kind: 'unreachable' }, found: [] };
   const seen = new Set<string>();
-  const results: SearchResult[] = [];
-  for (const item of response.value) {
-    const result = normalize(item);
+  const found: Found[] = [];
+  for (const record of response.value) {
+    const result = lookups[service].normalize(record);
     if (result === undefined || seen.has(result.key)) continue;
     seen.add(result.key);
-    results.push(result);
-    if (results.length === MAX_RESULTS_PER_SERVICE) break;
+    found.push({ result, record });
+    if (found.length === MAX_RESULTS_PER_SERVICE) break;
   }
-  return { outcome: { kind: 'ok', count: results.length }, results };
+  return { outcome: { kind: 'ok', count: found.length }, found };
 };
 
 // Each service ranks its own results; interleaving by rank keeps both services' best
@@ -157,44 +204,45 @@ const merge = (shows: SearchResult[], movies: SearchResult[]) => {
   return [...interleaved.filter((result) => result.inLibrary), ...interleaved.filter((result) => !result.inLibrary)];
 };
 
-export const LOOKUP_CACHE_MS = 10 * 60_000;
+// A search term keeps only the ids it returned; each title's record lives in the title store, where the title page
+// and add reuse it. A term is answered from storage only while it and every one of its records are fresh.
+export const createSearch = (database: DatabaseSync, services: ArrServices, store: TitleStore) => {
+  const { now } = store;
 
-export const createSearch = (services: ArrServices, options: { now?: () => number } = {}) => {
-  const now = options.now ?? Date.now;
-  // razor: no size cap beyond purging stale entries after each successful lookup. Upgrade path: an LRU bound on entries.
-  const cache = new Map<string, { fetchedAt: number; results: SearchResult[]; count: number }>();
-
-  const cachedLookup = async <T>(
-    service: 'sonarr' | 'radarr',
-    term: string | undefined,
-    read: (term: string) => Promise<Result<T[]>>,
-    normalize: (record: T) => SearchResult | undefined,
-  ): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
-    const key = `${service}\n${term}`;
+  const cachedLookup = async (service: Service, term: string | undefined): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
+    const { part, idField, title, normalize } = lookups[service];
     if (term !== undefined && services[service].configured()) {
-      const entry = cache.get(key);
-      if (entry !== undefined && now() - entry.fetchedAt < LOOKUP_CACHE_MS) {
-        return { outcome: { kind: 'ok', count: entry.count }, results: entry.results };
+      const row = database.prepare('SELECT ids, fetched_at FROM search_lookups WHERE service = ? AND term = ?').get(service, term);
+      if (row !== undefined && now() - Number(row.fetched_at) < LOOKUP_CACHE_MS) {
+        const stored = (JSON.parse(String(row.ids)) as number[]).map((id) => store.get<Record<string, unknown>>(title(id), part));
+        if (stored.every((entry) => entry !== undefined && now() - entry.fetchedAt < LOOKUP_CACHE_MS)) {
+          const results = stored.flatMap((entry) => (entry === undefined ? [] : normalize(entry.value) ?? []));
+          return { outcome: { kind: 'ok', count: results.length }, results };
+        }
       }
     }
-    const result = await lookup(term, read, normalize);
-    if (result.outcome.kind === 'ok') {
-      const fetchedAt = now();
-      cache.set(key, { fetchedAt, results: result.results, count: result.outcome.count });
-      for (const [stored, entry] of cache) if (fetchedAt - entry.fetchedAt >= LOOKUP_CACHE_MS) cache.delete(stored);
+    const { outcome, found } = await lookup(services, service, term);
+    if (outcome.kind === 'ok' && term !== undefined) {
+      const ids = found.map(({ record }) => record[idField] as number);
+      found.forEach(({ record }, index) => store.put(title(ids[index], record), part, record));
+      // razor: stale terms are purged on each write; titles' parts are kept. Upgrade path: purge old parts on a timer.
+      database.prepare('DELETE FROM search_lookups WHERE fetched_at <= ?').run(now() - LOOKUP_CACHE_MS);
+      database.prepare('INSERT OR REPLACE INTO search_lookups (service, term, ids, fetched_at) VALUES (?, ?, ?, ?)')
+        .run(service, term, JSON.stringify(ids), now());
     }
-    return result;
+    return { outcome, results: found.map(({ result }) => result) };
   };
 
   return {
-    // An add changes which titles that service has, so its cached lookups would still offer Add.
-    forget(service: 'sonarr' | 'radarr') {
-      for (const key of cache.keys()) if (key.startsWith(`${service}\n`)) cache.delete(key);
+    // An add changes which titles that service has, so its stored lookups would still offer Add.
+    forget(service: Service) {
+      database.prepare('DELETE FROM search_lookups WHERE service = ?').run(service);
+      store.forget(lookups[service].part);
     },
     async search(query: SearchQuery): Promise<SearchResponse> {
       const [sonarr, radarr] = await Promise.all([
-        cachedLookup('sonarr', lookupTerm(query, 'sonarr'), services.sonarr.lookupSeries, toSeries),
-        cachedLookup('radarr', lookupTerm(query, 'radarr'), services.radarr.lookupMovies, toMovie),
+        cachedLookup('sonarr', lookupTerm(query, 'sonarr')),
+        cachedLookup('radarr', lookupTerm(query, 'radarr')),
       ]);
       return {
         results: merge(sonarr.results, radarr.results),

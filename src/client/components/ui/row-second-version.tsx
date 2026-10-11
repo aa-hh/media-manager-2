@@ -1,6 +1,6 @@
 // v2/Row/second-version — design/design-system.lib.pen c49N0
 import type { ReactNode } from 'react';
-import { Badge } from '@/components/ui/badge';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
@@ -30,24 +30,30 @@ type RowSecondVersionProps = Omit<TableRowProps, 'progress'> & {
   tracked?: boolean;
   /** Badge words; defaults to "Tracked version" or "Second version". */
   label?: ReactNode;
+  /** Badge look for a second version's state: live while downloading, risk when failed, warning when stalled and removed. */
+  labelVariant?: BadgeVariant;
+  /** A 12 px lucide icon before the badge words. */
+  labelIcon?: ReactNode;
+  /** Spinner before the badge words, while sending or importing. */
+  labelSpinner?: boolean;
   quality: ReactNode;
   release: ReactNode;
   /** Second line under the release name, such as HDR, audio, languages and custom formats; the row grows to fit. */
   detail?: ReactNode;
   size: ReactNode;
   tracker: string;
-  /** Seeding words, or a live Badge while downloading. */
+  /** Seeding words, or a progress bar while downloading. */
   seeding?: ReactNode;
   /** Delete (outline-destructive, row size); ignored for the tracked version. */
   actions?: ReactNode;
 };
 
-function RowSecondVersion({ indent = true, tracked = false, label, quality, release, detail, size, tracker, seeding, actions, className, ...props }: RowSecondVersionProps) {
+function RowSecondVersion({ indent = true, tracked = false, label, labelVariant, labelIcon, labelSpinner, quality, release, detail, size, tracker, seeding, actions, className, ...props }: RowSecondVersionProps) {
   return (
     <TableRow className={cn(detail !== undefined && 'h-auto min-h-(--row) py-2', className)} {...props}>
       {indent && <TableCell className={w.indent} />}
       <TableCell className={w.label}>
-        <Badge variant={tracked ? 'outline' : 'neutral'} className={cn(tracked && 'bg-card text-foreground')}>
+        <Badge variant={tracked ? 'outline' : labelVariant ?? 'neutral'} icon={labelIcon} spinner={labelSpinner} className={cn(tracked && 'bg-card text-foreground')}>
           {label ?? (tracked ? 'Tracked version' : 'Second version')}
         </Badge>
       </TableCell>

@@ -82,6 +82,11 @@ const versionWords: Record<string, string> = {
   torrent_removed: 'Torrent removed',
   torrent_kept: 'Torrent kept',
 };
+const titleWords: Record<string, string> = {
+  movie_deleted: 'Movie deleted',
+  movie_file_deleted: 'Movie file deleted',
+  series_deleted: 'Show deleted',
+};
 // Second version events that also show under Deletions.
 const deletionKinds: ReadonlySet<string> = new Set(['deleted', 'torrent_removed', 'torrent_kept']);
 
@@ -193,7 +198,8 @@ export const createHistory = (options: {
     };
   };
 
-  type OwnRecord = { at: number; subject: Subject; kind?: string; event: () => Promise<HistoryEvent> };
+  // A deleted show has no subject, because Subject has no series type.
+  type OwnRecord = { at: number; subject: Subject | null; kind?: string; event: () => Promise<HistoryEvent> };
 
   const ownEvent = async (subject: Subject, fields: Pick<HistoryEvent, 'id' | 'at' | 'event' | 'detail' | 'release' | 'quality' | 'eventType'>): Promise<HistoryEvent> => ({
     ...fields,
@@ -258,6 +264,37 @@ export const createHistory = (options: {
     };
   });
 
+  // Every title event is a deletion. A deleted show matches no title filter, so the service filter is applied here.
+  const readTitleEvents = (since: number, only: HistoryQuery['service']): OwnRecord[] => database.prepare(
+    "SELECT id, service, title_id, title, at, kind, detail FROM title_events WHERE at >= ? AND (? = 'all' OR service = ?) ORDER BY at DESC, id DESC",
+  ).all(since, only, only).map((row) => {
+    const service = row.service as Service;
+    const subject: Subject | null = service === 'radarr' ? { type: 'movie', service, id: String(row.title_id) } : null;
+    const at = Number(row.at);
+    const kind = String(row.kind);
+    return {
+      at,
+      subject,
+      kind,
+      event: async () => ({
+        id: `mm2-title:${Number(row.id)}`,
+        at,
+        service,
+        source: 'media-manager-2',
+        subject,
+        title: String(row.title),
+        event: titleWords[kind] ?? kind,
+        detail: String(row.detail),
+        release: null,
+        quality: null,
+        byHand: false,
+        eventType: `mm2_title_${kind}`,
+        details: emptyDetails,
+        markFailed: null,
+      }),
+    };
+  });
+
   const list = async (query: HistoryQuery): Promise<{ events: HistoryEvent[]; hasMore: boolean }> => {
     const { filter, page, movieId, seriesId, episodeId } = query;
     // A title filter belongs to one service, so the other one's whole history is never mixed in.
@@ -285,9 +322,11 @@ export const createHistory = (options: {
       const since = hasMore && times.length > 0 ? Math.min(...times) : 0;
       const matches = await titleMatcher(query);
       // Second version events are not fixes; deleting one also shows under Deletions.
-      const own = filter === 'all' ? [...readSteps(since), ...readVersionEvents(since)].sort((a, b) => b.at - a.at)
-        : filter === 'fixes' ? readSteps(since) : readVersionEvents(since).filter((record) => deletionKinds.has(record.kind ?? ''));
-      const matched = own.filter((record) => (query.before === undefined || record.at <= query.before) && matches(record.subject));
+      const own = filter === 'all' ? [...readSteps(since), ...readVersionEvents(since), ...readTitleEvents(since, query.service)].sort((a, b) => b.at - a.at)
+        : filter === 'fixes' ? readSteps(since)
+          : [...readVersionEvents(since).filter((record) => deletionKinds.has(record.kind ?? '')), ...readTitleEvents(since, query.service)].sort((a, b) => b.at - a.at);
+      const matched = own.filter((record) => (query.before === undefined || record.at <= query.before)
+        && (record.subject === null ? movieId === undefined && seriesId === undefined && episodeId === undefined : matches(record.subject)));
       moreSteps = matched.length > PAGE_SIZE;
       ownEvents = await Promise.all(matched.slice(0, PAGE_SIZE).map((record) => record.event()));
     }

@@ -197,6 +197,10 @@ export function SeriesOverview({ detail: loaded, protectedIds, downloads, progre
           progress={progress}
           problems={problems}
           onMonitor={(change, problemKey) => void monitor(change, problemKey)}
+          onSecondVersions={(next) => setDetail((current) => ({
+            ...current,
+            secondVersions: typeof next === 'function' ? next(current.secondVersions ?? []) : next,
+          }))}
           onUnauthenticated={onUnauthenticated}
         />
       </div>
