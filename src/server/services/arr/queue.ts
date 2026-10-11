@@ -150,7 +150,8 @@ export const createQueue = ({ service, label, send }: { service: Service; label:
     return answer;
   };
 
-  const removeFromQueueAndClient = (downloadId: string) => removeMatching(downloadId, 'removeFromClient=true&blocklist=true');
+  // Without skipRedownload the service searches again at once, and on a protected item the veto removes that grab too.
+  const removeFromQueueAndClient = (downloadId: string) => removeMatching(downloadId, 'removeFromClient=true&blocklist=true&skipRedownload=true');
 
   const grabFromQueue = async (queueId: number): Promise<Result<void>> => {
     const answer = await send('the queue grab', `/api/v3/queue/grab/${queueId}`, { method: 'POST' });

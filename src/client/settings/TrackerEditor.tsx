@@ -25,7 +25,7 @@ import {
   statFacts, trackerInfo, type TrackerRow,
 } from './trackers';
 
-/** Sends one request under /api/settings/trackers. Throws when media-manager-2 did not answer or the session ended. */
+/** Sends one request under the API path the caller picks (/api/settings/trackers or /api/setup). Throws when media-manager-2 did not answer or the session ended. */
 export type TrackerRequest = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown) => Promise<Response>;
 
 const noAnswer = 'media-manager-2 did not answer. Try again.';
@@ -75,10 +75,10 @@ export function TrackerPill({ row, edited, strip = false }: { row: TrackerRow; e
   return <StatusRulePill tone={pill.warning ? 'warning' : 'default'} leading={leading}>{pill.text}</StatusRulePill>;
 }
 
-type TrackerListRowProps = { host: string; title: ReactNode; subline: ReactNode; pill?: ReactNode; selected: boolean; adding?: boolean; onClick: () => void };
+type TrackerListRowProps = { host: string; title: ReactNode; subline: ReactNode; pill?: ReactNode; selected: boolean; adding?: boolean; icon?: ReactNode; onClick: () => void };
 
-/** A tracker in the settings list, 56 px, laid out as RowService. */
-export function TrackerListRow({ host, title, subline, pill, selected, adding = false, onClick }: TrackerListRowProps) {
+/** A tracker, or Folders and Backup with an icon in place of the tracker mark, in the settings list, 56 px, laid out as RowService. */
+export function TrackerListRow({ host, title, subline, pill, selected, adding = false, icon, onClick }: TrackerListRowProps) {
   return (
     <button
       type="button"
@@ -93,7 +93,9 @@ export function TrackerListRow({ host, title, subline, pill, selected, adding = 
       {selected && <span aria-hidden="true" className="h-10 w-0.75 shrink-0 rounded-[2px] bg-foreground" />}
       {adding
         ? <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-4"><Plus /></span>
-        : <TrackerMark host={host} size="row" />}
+        : icon !== undefined
+          ? <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-4">{icon}</span>
+          : <TrackerMark host={host} size="row" />}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate font-ui text-sm font-semibold text-foreground">{title}</span>
         <span className="truncate font-data text-[13px] font-normal text-muted-foreground">{subline}</span>

@@ -32,7 +32,7 @@ function Callout({ look = 'risk', title, action, className, children, ...props }
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
         <p className="font-ui text-sm font-semibold text-foreground">{title}</p>
         {children !== undefined && <p className="font-ui text-[13px] leading-[1.45] font-normal text-foreground">{children}</p>}
-        {action}
+        {action !== undefined && <div className="mt-3">{action}</div>}
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import {
   rm,
   stat,
   symlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -33,6 +34,7 @@ const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
 const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
+const traktModuleUrl = new URL('../dist/server/services/trakt.js', import.meta.url).href;
 const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
@@ -124,9 +126,10 @@ const readUserVersion = (database) => database.prepare('PRAGMA user_version').ge
 test('production server serves the built browser application from another directory', async (t) => {
   const workingDirectory = await mkdtemp(join(tmpdir(), 'media-manager-2-production-'));
   const databasePath = join(workingDirectory, 'data', 'media-manager.sqlite');
+  // An empty HOST listening on every interface instead of the default 127.0.0.1 turns this red.
   const child = spawn(process.execPath, [serverPath], {
     cwd: workingDirectory,
-    env: { ...process.env, DB_PATH: databasePath, HOST: '127.0.0.1', PORT: '0' },
+    env: { ...process.env, DB_PATH: databasePath, HOST: '', PORT: '0' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const exited = once(child, 'exit');
@@ -436,10 +439,10 @@ const makeApp = async (input = {}) => {
   return { app, clock, fixture };
 };
 
-const startAuthentication = async (app, { cookie, origin = 'https://media.example', body = {} } = {}) => {
+const startAuthentication = async (app, { cookie, origin = 'https://media.example', body = {}, headers = {} } = {}) => {
   const response = await app.request('/auth/start', {
     method: 'POST',
-    headers: { ...jsonHeaders(origin), ...(cookie ? { Cookie: cookie } : {}) },
+    headers: { ...jsonHeaders(origin), ...(cookie ? { Cookie: cookie } : {}), ...headers },
     body: JSON.stringify(body),
   });
   const json = await response.json();
@@ -915,6 +918,24 @@ test('Plex owner authentication', async (t) => {
     assert.ok(Number(limited.response.headers.get('retry-after')) >= 1);
     clock.value += 60_000;
     assert.equal((await startAuthentication(app)).response.status, 201);
+  });
+
+  // One shared start limit lets anyone who can reach the sign-in page lock the owner out; trusting the address a browser
+  // writes first in X-Forwarded-For, or the header at all without a proxy in front, lets one client escape its own limit.
+  await t.test('the start limit counts each client on its own, by the address the proxy added, under a ten-times backstop', async () => {
+    const from = (address) => ({ headers: { 'X-Forwarded-For': address } });
+    const { app } = await makeApp();
+    for (let index = 0; index < 10; index += 1) assert.equal((await startAuthentication(app, from(`10.0.0.${index}, 203.0.113.1`))).response.status, 201);
+    assert.equal((await startAuthentication(app, from('10.9.9.9, 203.0.113.1'))).response.status, 429);
+    assert.equal((await startAuthentication(app, from('203.0.113.2'))).response.status, 201);
+    for (let client = 3; client <= 11; client += 1) {
+      for (let index = 0; index < 10; index += 1) await startAuthentication(app, from(`203.0.113.${client}`));
+    }
+    assert.equal((await startAuthentication(app, from('203.0.113.12'))).response.status, 429);
+
+    const exposed = await makeApp({ listeningHost: '0.0.0.0' });
+    for (let index = 0; index < 10; index += 1) await startAuthentication(exposed.app, from(`203.0.113.${index}`));
+    assert.equal((await startAuthentication(exposed.app, from('203.0.113.99'))).response.status, 429);
   });
 
   await t.test('pending-attempt capacity refuses excess and removes expired attempts first', async () => {
@@ -1977,16 +1998,19 @@ test('incomplete torrents follow the tracker partial-download rules', async (t) 
 
 // A startup storage failure, or a TRACKER_RULES that would otherwise be dropped, must exit unsuccessfully with one
 // fixed message and never begin listening.
-test('production startup stops when database initialization fails or TRACKER_RULES is invalid', async (t) => {
+test('production startup stops when database initialization fails or TRACKER_RULES or PORT is invalid', async (t) => {
   const workingDirectory = await mkdtemp(join(tmpdir(), 'media-manager-2-startup-failure-'));
   t.after(() => rm(workingDirectory, { recursive: true, force: true }));
-  for (const [trackerRules, message] of [
-    [undefined, 'Database initialization failed.'],
-    ['{"blutopia.cc":{"minHours":-1}}', 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
+  for (const [overrides, message] of [
+    [{}, 'Database initialization failed.'],
+    [{ TRACKER_RULES: '{"blutopia.cc":{"minHours":-1}}' }, 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
+    // Passing a port that is not a whole number to the listener, which then fails with a stack trace or picks another port, turns these rows red.
+    [{ PORT: '3000x' }, 'PORT must be a whole number from 0 to 65535.'],
+    [{ PORT: '65536' }, 'PORT must be a whole number from 0 to 65535.'],
   ]) {
     const env = { ...process.env, DB_PATH: 'relative.sqlite', HOST: '127.0.0.1', NODE_NO_WARNINGS: '1', PORT: '0' };
     delete env.TRACKER_RULES;
-    if (trackerRules !== undefined) env.TRACKER_RULES = trackerRules;
+    Object.assign(env, overrides);
     const child = spawn(process.execPath, [serverPath], { cwd: workingDirectory, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', (chunk) => { output += chunk; });
@@ -2301,6 +2325,48 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
   });
 });
 
+test('the Trakt check sends the Client ID only to Trakt and classifies each answer', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTrakt } = await import(traktModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-trakt-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const clientId = `trakt-client-${process.pid}-distinctive`;
+  const check = async (respond) => {
+    const calls = [];
+    const status = await createTrakt(database, { fetch: async (url, init) => {
+      calls.push({ url: new URL(String(url)), init, headers: new Headers(init.headers) });
+      return respond();
+    } }).check();
+    return { status, calls };
+  };
+
+  // Asking Trakt before a Client ID is saved turns this red.
+  const unset = await check(() => assert.fail('unexpected request'));
+  assert.deepEqual(unset, { status: { kind: 'not_configured' }, calls: [] });
+
+  // Sending the Client ID anywhere but the trakt-api-key header to api.trakt.tv, or reading 403 as anything but rejected, turns this red.
+  setSetting(database, 'credentials', 'trakt.clientId', clientId);
+  const ok = await check(() => new Response('[]', { status: 200 }));
+  assert.deepEqual(ok.status, { kind: 'ok', version: 'key accepted' });
+  assert.equal(ok.calls[0].url.origin, 'https://api.trakt.tv');
+  assert.equal(ok.calls[0].url.href.includes(clientId), false);
+  assert.equal(ok.calls[0].headers.get('trakt-api-key'), clientId);
+  assert.equal(ok.calls[0].headers.get('trakt-api-version'), '2');
+  assert.equal(ok.calls[0].init.redirect, 'error');
+  const cases = [
+    [() => new Response('', { status: 403 }), 'rejected'],
+    [() => new Response('', { status: 401 }), 'rejected'],
+    [() => new Response('', { status: 500 }), 'unreachable'],
+    [() => { throw new TypeError(`fetch failed for ${clientId}`); }, 'unreachable'],
+  ];
+  for (const [respond, kind] of cases) assert.deepEqual((await check(respond)).status, { kind });
+});
+
 test('MDBList ratings fill the show page by site, are saved for a week and never fail the page', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -2555,7 +2621,7 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   for (const secret of [...secrets, 'test-key']) assert.equal(text.includes(secret), false, secret);
   const { services } = JSON.parse(text);
   // Tracker accounts live with their trackers; listing the old Blutopia, PrivateHD or Beyond-HD sign-ins here turns this red.
-  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist']);
+  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist', 'trakt']);
   assert.deepEqual(services[0], { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65201' }, credentials: { 'sonarr.apiKey': true } });
   assert.deepEqual(services[2].credentials, { 'rtorrent.username': false, 'rtorrent.password': true });
   assert.deepEqual(services[3].credentials, { 'plex.token': false });
@@ -2563,6 +2629,8 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   assert.deepEqual(services[4], { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } });
   // Asking for an MDBList address, which is fixed, turns this red.
   assert.deepEqual(services[5], { service: 'mdblist', serviceAddresses: {}, credentials: { 'mdblist.apiKey': false } });
+  // Asking for a Trakt address, which is fixed, turns this red.
+  assert.deepEqual(services[6], { service: 'trakt', serviceAddresses: {}, credentials: { 'trakt.clientId': false } });
 
   // Saving a blank credential over the stored one, or accepting a key no service reads, turns this red.
   const before = listSettingKeys(database);
@@ -4302,7 +4370,7 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     const { session } = await signIn(app);
     const get = (path) => app.request(path, { headers: { Cookie: session } });
     const rows = () => database.prepare('SELECT size, path FROM tmdb_images').all().map(({ size, path }) => `${size}/${path}`);
-    return { app, clock, fetched, get, remote, rows };
+    return { app, clock, fetched, get, remote, rows, tmdb, images: join(directory, 'images') };
   };
 
   // Fetching from TMDB on every request instead of serving the saved copy, or not sharing one fetch between concurrent misses, turns this red.
@@ -4363,6 +4431,27 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     assert.equal(response.status, 502);
     assert.deepEqual(await response.json(), { error: 'tmdb_unreachable' });
     assert.deepEqual(rows(), []);
+  });
+
+  // Expiring a copy only when it is asked for again, or leaving the partial file a failed write made, grows the images folder forever.
+  await t.test('the sweep removes copies past six months and partial files older than a day, and a failed save leaves no partial file', async () => {
+    const { clock, get, rows, tmdb, images } = await setup();
+    const day = 24 * 60 * 60_000;
+    await get('/api/images/tmdb/w342/old.jpg');
+    clock.value += 181 * day;
+    await get('/api/images/tmdb/w342/fresh.jpg');
+    const at = (ms) => new Date(ms);
+    await writeFile(join(images, 'stale.jpg.1.tmp'), 'partial');
+    await utimes(join(images, 'stale.jpg.1.tmp'), at(clock.value - 2 * day), at(clock.value - 2 * day));
+    await writeFile(join(images, 'busy.jpg.2.tmp'), 'partial');
+    await utimes(join(images, 'busy.jpg.2.tmp'), at(clock.value), at(clock.value));
+    tmdb.sweep();
+    assert.deepEqual(rows(), ['w342/fresh.jpg']);
+    assert.deepEqual((await readdir(images)).sort(), ['busy.jpg.2.tmp', 'tmdb-w342-fresh.jpg']);
+
+    await mkdir(join(images, 'tmdb-w342-blocked.jpg', 'inside'), { recursive: true });
+    assert.equal((await get('/api/images/tmdb/w342/blocked.jpg')).status, 500);
+    assert.deepEqual((await readdir(images)).filter((name) => name.startsWith('tmdb-w342-blocked.jpg.')), []);
   });
 });
 
@@ -4519,6 +4608,7 @@ test('an import is finished by hand only with a complete, conflict-free assignme
   const { createGrabTracker } = await import(torrentGrabsModuleUrl);
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createManualImport } = await import(manualImportModuleUrl);
+  const { createImportFix } = await import(importsModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-manual-import-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -4576,14 +4666,30 @@ test('an import is finished by hand only with a complete, conflict-free assignme
   assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 502);
   assert.deepEqual(state.commands, []);
 
-  // Moving instead of hardlinking, dropping the chosen episode, or leaving the problem open turns this red.
+  // Moving instead of hardlinking or dropping the chosen episode turns this red.
   state.copyUsingHardlinks = true;
   assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 204);
   assert.equal(state.commands.length, 1);
   const [command] = state.commands;
   assert.equal(command.importMode, 'copy');
   assert.deepEqual(command.files.map((entry) => [entry.seriesId, entry.episodeIds, entry.quality.quality.id, entry.quality.revision.version]), [[9, [101], 3, 2], [9, [102], 3, 1]]);
-  assert.equal(listOpenProblems(database).some((problem) => problem.id === flagged.id), false);
+
+  // Resolving on Sonarr's acceptance alone, or forcing an automatic import over the hand one, hides an import that then fails inside Sonarr.
+  assert.equal(listOpenProblems(database).find((problem) => problem.id === flagged.id).state, 'handling');
+  state.queue = [queueItem({ downloadId: hash, seriesId: 9, episodeId: 101, status: 'completed', trackedDownloadStatus: 'warning',
+    trackedDownloadState: 'importBlocked', statusMessages: [{ title: 'S01E01.mkv', messages: ['Series title mismatch, automatic import is not possible.'] }] })];
+  await tracker.reconcile();
+  const clock = { value: Date.now() };
+  const fix = createImportFix({ database, arr, problems, events, now: () => clock.value });
+  clock.value += 29 * 60_000;
+  await fix.check();
+  assert.equal(listOpenProblems(database).find((problem) => problem.id === flagged.id).state, 'handling');
+  clock.value += 60_000;
+  await fix.check();
+  const [stuck] = listOpenProblems(database);
+  assert.equal(stuck.state, 'needs_you');
+  assert.match(stuck.steps.at(-1).text, /still blocked/);
+  assert.equal(state.commands.length, 1);
 });
 
 test('tracker messages become cooldowns, retries, rechecks and replacement requests', async (t) => {
@@ -4682,11 +4788,20 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
 
   // Searching again without the one recheck, rechecking twice, or keeping an issue open after a clean answer turns this red.
   await t.test('unregistered asks for a replacement at once, damaged data is rechecked once first', async () => {
-    const { database, fake, watch, step } = setup();
-    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })]);
+    const { database, events, fake, watch, step } = setup();
+    const replacements = [];
+    events.subscribe((event) => { if (event.type === 'replacement') replacements.push(event.data.hash); });
+    // Asking for a replacement on a finished torrent turns this red: the stall fix then grabs a release nobody asked for.
+    const finished = row(hash(9), { complete: 1, completed: 1000, message: 'Tracker: [Failure reason "Unregistered torrent"]' });
+    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' }), finished]);
     assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash), [hash(4)]);
+    assert.deepEqual(replacements, [hash(4)]);
+    // Opening the finished torrent's problem as handling turns this red: nothing handles it, so it waits on the owner unseen.
+    const flagged = listOpenProblems(database).find((problem) => problem.kind === 'unregistered' && problem.hash === hash(9));
+    assert.equal(flagged?.state, 'needs_you');
     assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
-    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })], 31 * 60_000);
+    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' }), row(hash(9), { complete: 1, completed: 1000 })], 31 * 60_000);
+    assert.equal(listOpenProblems(database).some((problem) => problem.id === flagged.id), false, 'a clean message ends the finished torrent\'s problem');
     assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
     assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash).sort(), [hash(4), hash(5)].sort());
     watch.replacementHandled(hash(4), 'Grabbed another release.');
@@ -5553,17 +5668,18 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     replace.database.close();
   });
 
-  // Importing a file onto an episode outside the grab record turns this red.
+  // Importing a file onto an episode outside the grab record, or forcing in a file Sonarr rejected as a sample, turns this red.
   await t.test('matching doubts are forced only onto what was grabbed', async () => {
     const good = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
       { path: '/files/Sonarr/a.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }] },
       { path: '/files/Sonarr/b.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 32 }] },
+      { path: '/files/Sonarr/a.sample.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }], rejections: [{ reason: 'Sample', type: 'permanent' }] },
     ] });
     await good.fix.check();
     const [command] = good.fake.sonarr.state.commands;
     assert.equal(command.name, 'ManualImport');
     assert.equal(command.importMode, 'copy');
-    assert.deepEqual(command.files.map((file) => file.episodeIds), [[31], [32]]);
+    assert.deepEqual(command.files.map((file) => [file.path, file.episodeIds]), [['/files/Sonarr/a.mkv', [31]], ['/files/Sonarr/b.mkv', [32]]]);
     good.database.close();
 
     const stray = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
@@ -5603,6 +5719,10 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     assert.match(problem.steps.at(-1).text, /was not blocked/);
     assert.deepEqual(run.fake.radarr.state.removals, []);
     assert.deepEqual(run.fake.radarr.state.commands, []);
+    // Leaving the failed fix out of the sweep keeps both problems open after the download has left the queue.
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
     run.database.close();
   });
 
@@ -5667,6 +5787,50 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     await run.fix.check();
     assert.deepEqual(listOpenProblems(run.database), []);
     run.database.close();
+  });
+
+  // Resolving only the problem of the latest block kind leaves the earlier one open forever once the download is finished with.
+  await t.test('a fix that finishes a download resolves its earlier import problems, and a later working try resolves the failed fix', async () => {
+    const run = await setup({ message: 'File is locked by another process' });
+    run.fake.sonarr.state.down = true;
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.kind).sort(), ['import_fix_failed', 'import_temporary']);
+    run.fake.sonarr.state.down = false;
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.kind), ['import_temporary']);
+    run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Episode file already imported'] }];
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
+  // Resolving on Sonarr's acceptance alone, or sending the import again, hides an import that then fails inside Sonarr.
+  await t.test('a forced import waits 30 minutes for the download to clear, then is flagged and never sent again', async () => {
+    const files = [{ path: '/files/Sonarr/a.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }] }];
+    const stuck = await setup({ message: 'Series title mismatch, automatic import is not possible.', files });
+    await stuck.fix.check();
+    assert.equal(listOpenProblems(stuck.database)[0].state, 'handling');
+    stuck.clock.value += 29 * minute;
+    await stuck.fix.check();
+    assert.equal(listOpenProblems(stuck.database)[0].state, 'handling');
+    stuck.clock.value += minute;
+    await stuck.fix.check();
+    const [flag] = listOpenProblems(stuck.database);
+    assert.equal(flag.state, 'needs_you');
+    assert.match(flag.steps.at(-1).text, /still blocked/);
+    stuck.clock.value += 60 * minute;
+    await stuck.fix.check();
+    assert.equal(stuck.fake.sonarr.state.commands.length, 1);
+    stuck.database.close();
+
+    const cleared = await setup({ message: 'Series title mismatch, automatic import is not possible.', files });
+    await cleared.fix.check();
+    cleared.queue.length = 0;
+    await cleared.grabs.reconcile();
+    await cleared.fix.check();
+    assert.deepEqual(listOpenProblems(cleared.database), []);
+    cleared.database.close();
   });
 
   // Letting import fixes run while setup is broken, or never resuming them, turns this red.
@@ -6331,7 +6495,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const { setSetting } = await import(settingsModuleUrl);
   const { createArr } = await import(arrModuleUrl);
   const { createReleases } = await import(releasesModuleUrl);
-  const { createGrabs, parseOverrides } = await import(grabsModuleUrl);
+  const { createGrabRoutes, createGrabs, parseOverrides } = await import(grabsModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-grabs-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -6343,6 +6507,8 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const quality = { quality: { id: 3, name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: false } };
   const posts = [];
   let grabResponse = () => new Response('{}', { status: 200 });
+  const grabbedHistory = [{ downloadId: 'OTHER', data: { guid: 'g-other' } }, { downloadId: 'ABC123HASH', data: { guid: 'g-rejected' } }];
+  let history = grabbedHistory;
   const fetch = async (url, init = {}) => {
     const { pathname } = new URL(String(url));
     if (init.method === 'POST') {
@@ -6355,12 +6521,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
         rejections: ['Not an upgrade for existing episode file(s)'],
       }]), { status: 200 });
     }
-    if (pathname === '/api/v3/history') {
-      return new Response(JSON.stringify({ records: [
-        { downloadId: 'OTHER', data: { guid: 'g-other' } },
-        { downloadId: 'ABC123HASH', data: { guid: 'g-rejected' } },
-      ] }), { status: 200 });
-    }
+    if (pathname === '/api/v3/history') return new Response(JSON.stringify({ records: history }), { status: 200 });
     if (pathname === '/api/v3/qualitydefinition') {
       return new Response(JSON.stringify([{ quality: { id: 3, name: 'WEBDL-1080p' } }, { quality: { id: 4, name: 'HDTV-720p', resolution: 720 } }]), { status: 200 });
     }
@@ -6403,6 +6564,53 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.equal(refused.record.state, 'failed');
   assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
   assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent', 'sent']);
+
+  // Recording every thrown grab request alike turns a row red: a timed-out grab may have reached Sonarr and the veto would remove it, while an unreachable one left sent makes a replace wait forever.
+  const ownTitles = grabs.recentTitles('sonarr', 0).length;
+  history = [];
+  let unanswered;
+  for (const [error, state, failure] of [
+    [new TypeError('fetch failed'), 'failed', "Sonarr didn't answer the grab."],
+    [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', "Sonarr didn't answer the grab, so it may still have gone through."],
+  ]) {
+    grabResponse = () => { throw error; };
+    unanswered = await grabs.grab(target, 'g-rejected', 'replace');
+    assert.deepEqual([unanswered.kind, unanswered.record.state, unanswered.record.failure], [state, state, failure], error.name);
+    assert.equal(grabs.pending('replace').some((record) => record.id === unanswered.record.id), state === 'sent', error.name);
+  }
+  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 1);
+  history = grabbedHistory;
+  const confirmed = await grabs.resolveDownloadId(unanswered.record);
+  assert.deepEqual([confirmed.state, confirmed.downloadId, confirmed.failure], ['sent', 'ABC123HASH', null], 'history confirms the grab and clears the doubt');
+
+  // Mapping a route outcome to the wrong status turns the matching row red, and the screen then shows the wrong message.
+  const routes = createGrabRoutes(grabs);
+  const call = async (path, init) => (await routes.request(path, init)).status;
+  const post = (body) => call('/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  const cases = [
+    ['bad JSON', () => post('{'), 400],
+    ['unknown body key', () => post({ target, guid: 'g-rejected', intent: 'grab', extra: 1 }), 400],
+    ['bad intent', () => post({ target, guid: 'g-rejected', intent: 'upgrade' }), 400],
+    ['bad overrides', () => post({ target, guid: 'g-rejected', intent: 'grab', overrides: { movieId: 9 } }), 400],
+    ['unknown release', () => post({ target, guid: 'g-missing', intent: 'grab' }), 404],
+    ['refused grab', () => {
+      grabResponse = () => new Response(JSON.stringify({ message: 'Release rejected' }), { status: 400 });
+      return post({ target, guid: 'g-rejected', intent: 'grab' });
+    }, 409],
+    ['sent grab', () => {
+      grabResponse = () => new Response('{}', { status: 200 });
+      return post({ target, guid: 'g-rejected', intent: 'grab' });
+    }, 201],
+    ['not configured', async () => {
+      setSetting(database, 'serviceAddresses', 'sonarr.url', '');
+      const status = await post({ target, guid: 'g-rejected', intent: 'grab' });
+      setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65041');
+      return status;
+    }, 503],
+    ['list for a bad target', () => call('/?kind=episode&seriesId=5'), 400],
+    ['list', () => call('/?kind=episode&seriesId=5&episodeId=50'), 200],
+  ];
+  for (const [name, run, status] of cases) assert.equal(await run(), status, name);
 
   assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
   assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
@@ -6860,6 +7068,20 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   await versionImport.run();
   assert.deepEqual(rows(roninHash).map((row) => [row.state, row.failure]), [['failed', 'Radarr no longer has this movie.']]);
   assert.deepEqual(folderProblems(), []);
+
+  // Leaving a row whose torrent left rTorrent as downloading, which no import ever moves on and a delete refuses, turns this red.
+  const { createSecondVersionRoutes } = await import(secondVersionsModuleUrl);
+  const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
+  const lostHash = 'B0'.repeat(20);
+  await addTorrent(lostHash, ['Lost.mkv'], { complete: 0 });
+  addRows(lostHash, [{ movieId: 10 }]);
+  database.prepare('UPDATE torrents SET gone_at = 1 WHERE hash = ?').run(lostHash);
+  await versionImport.run();
+  assert.deepEqual([rows(lostHash)[0].state, failureCode(lostHash)], ['failed', 'torrent_gone']);
+  const deletes = createSecondVersionRoutes({}, createSecondVersionDelete({ database, removeTorrent: async () => assert.fail('not asked'), scan: async () => {} }));
+  const lostId = database.prepare('SELECT id FROM second_versions WHERE hash = ?').get(lostHash).id;
+  const deleted = await deletes.request(`/${lostId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removeTorrent: false }) });
+  assert.equal(deleted.status, 200);
 });
 
 test('deleting a second version removes only its own file, and its torrent only when asked and nothing else uses it', async (t) => {
@@ -7211,7 +7433,7 @@ test('second versions are served under their movie and series, and a check flags
 test('second versions that failed before failure codes get the code their text maps to', async () => {
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const database = new DatabaseSync(':memory:');
-  migrateDatabase(database, applicationMigrations.slice(0, -1));
+  migrateDatabase(database, applicationMigrations.slice(0, applicationMigrations.findIndex((migration) => migration.includes('ADD COLUMN failure_code'))));
   const insert = database.prepare(`
     INSERT INTO second_versions (service, movie_id, release_title, guid, indexer, quality, state, failure, created_at, updated_at)
     VALUES ('radarr', 1, 'x', 'g', 'i', 'q', ?, ?, 0, 0)
@@ -7281,7 +7503,8 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   const releases = createReleases(database, services);
   let clock = 1_000_000;
   const grabs = createGrabs(database, services, releases, { now: () => clock });
-  const replaces = createReplaces(services, grabs, { now: () => clock });
+  let onCompleted = async () => {};
+  const replaces = createReplaces(services, grabs, { now: () => clock, onCompleted: (record) => onCompleted(record) });
   const start = async (target, downloadId) => {
     await releases.get(target);
     const guid = (await releases.get(target)).search.releases[0].guid;
@@ -7338,12 +7561,36 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   delete queue.e;
   history[hashEpisode].push({ eventType: 'downloadFolderImported' });
   clock += 31 * 60_000;
+  // Marking the replace completed before protecting it turns this red: one failed protect then leaves the manual download unprotected for good.
+  const protectedIds = [];
+  let protectFails = true;
+  onCompleted = async (record) => {
+    if (protectFails) {
+      protectFails = false;
+      throw new Error('Sonarr is unreachable.');
+    }
+    protectedIds.push(record.id);
+  };
   await replaces.run();
   assert.equal(grabs.read(vanished).state, 'failed');
   assert.equal(grabs.read(vanished).failure, 'The download left the queue without being imported.');
-  assert.equal(grabs.read(episode).state, 'completed');
+  assert.equal(grabs.read(episode).state, 'importing', 'a replace whose protection failed is not completed yet');
   assert.equal(grabs.read(movie).state, 'failed', 'a forced import still blocked after the grace period has failed');
   assert.equal(commands.length, 2);
+  await replaces.run();
+  await replaces.run();
+  assert.equal(grabs.read(episode).state, 'completed');
+  assert.deepEqual(protectedIds, [episode], 'the next pass protects it once');
+
+  // Overriding only "Not an upgrade" turns this red: a same-quality replace with a lower custom format score then fails.
+  const notFormatUpgrade = 'Not a Custom Format upgrade for existing episode file(s). New: [] (0) do not improve on Existing: [x264] (10)';
+  const hashFormat = '34'.repeat(20);
+  const format = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 52 }, hashFormat);
+  queue.f = { ...blocked('sonarr', [notFormatUpgrade]), id: 5, downloadId: hashFormat };
+  manual[hashFormat] = [episodeFile('/dl/Show.S01E03/ep.mkv', [notFormatUpgrade], [{ id: 52 }])];
+  await replaces.run();
+  assert.equal(grabs.read(format).state, 'importing');
+  assert.deepEqual(commands[2].body.files.map((file) => [file.path, file.episodeIds]), [['/dl/Show.S01E03/ep.mkv', [52]]]);
 });
 
 // An ignored term that misses a naming of the protected episode lets Sonarr upgrade over a manual download; one that also matches a neighbouring episode stops that episode upgrading.
@@ -7548,6 +7795,10 @@ test('the veto and the replace find a queue item past the first 500', async (t) 
   const grab = { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 50 }], downloadId: 'ab'.repeat(20), release: { releaseTitle: 'Show.S01E02.1080p' } };
   assert.equal(await createProtection(database, services).veto('sonarr', grab), 'vetoed');
   assert.deepEqual(fake.sonarr.state.erasedFromClient, ['AB'.repeat(20)]);
+  // Dropping skipRedownload from the veto's removal turns this red: Sonarr then searches again and the veto removes that grab too, round after round.
+  assert.deepEqual(fake.sonarr.state.removals.map(({ removeFromClient, blocklist, skipRedownload }) => ({ removeFromClient, blocklist, skipRedownload })), [
+    { removeFromClient: true, blocklist: true, skipRedownload: true },
+  ]);
 
   fake.radarr.state.queue = [...fillers(), queueItem({ downloadId: 'CD'.repeat(20), movieId: 9, trackedDownloadState: 'downloading' })];
   const now = () => 10 * 60 * 60_000;
@@ -7731,6 +7982,12 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     '/api/v3/health': [],
     '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 2_000_000_000_000, totalSpace: 4_000_000_000_000 }],
     '/api/v3/update': [],
+    // Usenet clients remove completed downloads by default and seed nothing, so theirs never counts.
+    '/api/v3/downloadclient': [
+      { name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: false, removeFailedDownloads: true },
+      { name: 'SABnzbd', enable: true, protocol: 'usenet', removeCompletedDownloads: true, removeFailedDownloads: true },
+    ],
+    '/api/v3/config/mediamanagement': { copyUsingHardlinks: true },
   };
   const accountStats = (host, fields) => ({
     host,
@@ -7818,6 +8075,20 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       name: 'late job',
       input: { jobs: [{ name: 'stall-fix', intervalMs: 60_000, lastStartedAt: now - hour, lastFinishedAt: now - hour, lastFailed: false, late: true }] },
       level: 'warning', errors: 0, warnings: 1, message: 'Background job stall-fix hasn\'t finished for 1h 0m; expected every 1m',
+    },
+    // Not reading the two Sonarr and Radarr settings that keep torrents seeding after import turns these rows red.
+    {
+      name: 'Remove Completed on and hardlinks off',
+      input: { arr: { radarr: {
+        '/api/v3/downloadclient': [{ name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: true, removeFailedDownloads: true }],
+        '/api/v3/config/mediamanagement': { copyUsingHardlinks: false },
+      } } },
+      level: 'error', errors: 1, warnings: 1,
+      message: 'Radarr\'s download client rTorrent removes each torrent once it is imported, which ends its seeding. Turn off Remove Completed in Radarr\'s Settings > Download Clients.',
+    },
+    {
+      name: 'hardlinks off', input: { arr: { sonarr: { '/api/v3/config/mediamanagement': { copyUsingHardlinks: false } } } }, level: 'warning', errors: 0, warnings: 1,
+      message: 'Sonarr copies imports instead of hardlinking them, so each import uses the disk space twice and hand imports are refused. Turn on Use Hardlinks instead of Copy in Sonarr\'s Settings > Media Management.',
     },
     { name: 'no ok backup yet', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Backups are not set up' },
     { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last backup finished 30h 0m ago' },
@@ -8904,6 +9175,10 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   await store.delete('backups/a.enc');
   assert.equal(await store.get('backups/a.enc'), undefined);
   await assert.rejects(store.get('../outside'), /outside the backup folder/);
+  // Leaving the partial file behind when the save fails fills the backup folder with dead copies.
+  await mkdir(join(folder, 'backups', 'blocked.enc', 'inside'), { recursive: true });
+  await assert.rejects(store.put('backups/blocked.enc', new Uint8Array([1]), 'application/octet-stream'));
+  assert.equal(existsSync(join(folder, 'backups', 'blocked.enc.partial')), false);
 });
 
 // Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
@@ -9219,7 +9494,7 @@ test('the settings screen sends only changed fields and ranks each service state
   // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
-  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const { changes, pillFor, linkTone, services, stripSummary } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
   const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
 
   // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
@@ -9230,6 +9505,21 @@ test('the settings screen sends only changed fields and ranks each service state
       [{ address: 'http://localhost:8989', secrets: { 'sonarr.apiKey': 'new' } }, { credentials: { 'sonarr.apiKey': 'new' } }],
     ];
     for (const [draft, expected] of cases) assert.deepEqual(changes('sonarr', saved, draft), expected);
+  });
+
+  // Showing an Address field for TMDB, MDBList or Trakt, or sending an address for one, turns this red: the server refuses any key it does not expect.
+  await t.test('a service with a fixed address has no Address field and a save sends only its key', () => {
+    assert.deepEqual(services.filter((info) => info.addressPlaceholder === undefined).map((info) => info.name), ['tmdb', 'mdblist', 'trakt']);
+    const tmdb = { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } };
+    assert.deepEqual(changes('tmdb', tmdb, { address: 'https://api.themoviedb.org', secrets: { 'tmdb.apiKey': 'new' } }), { credentials: { 'tmdb.apiKey': 'new' } });
+    assert.deepEqual(changes('trakt', undefined, { address: '', secrets: {} }), {});
+  });
+
+  // Counting a metadata service in the strip turns this red: the strip shows only the chain from Sonarr and Radarr to Plex.
+  await t.test('the strip sentence ignores metadata services', () => {
+    const ok = { kind: 'ok', at: 0, ofSaved: true };
+    const checks = Object.fromEntries(services.map((info) => [info.name, info.group === 'Services' ? ok : { kind: 'idle' }]));
+    assert.match(stripSummary(checks), /^Every link answers\./);
   });
 
   // Letting unsaved edits hide a running test or a failure turns this red.
@@ -9254,6 +9544,75 @@ test('the settings screen sends only changed fields and ranks each service state
     assert.equal(linkTone([ok, { kind: 'idle' }], [{ kind: 'idle' }]), 'idle');
     assert.equal(linkTone([ok, down], [down]), 'risk');
     assert.equal(linkTone([ok, down], [ok]), 'ok');
+  });
+
+  const setupSource = await readFile(new URL('../src/client/settings/setup.ts', import.meta.url), 'utf8');
+  const { folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
+
+  // Letting a suggestion replace a saved folder, or leaving a field null when nothing is known, turns this red.
+  await t.test('a saved folder beats a suggestion, a suggestion fills a gap, and nothing known is blank', () => {
+    const none = { downloadsSonarr: null, downloadsRadarr: null, librarySonarr: null, libraryRadarr: null, versionsSonarr: null, versionsRadarr: null };
+    const draft = folderDraft({
+      saved: { ...none, downloadsSonarr: '/data/tv-saved' },
+      suggested: { ...none, downloadsSonarr: '/data/tv-suggested', downloadsRadarr: '/data/movies-suggested' },
+    });
+    assert.deepEqual(draft, {
+      downloadsSonarr: '/data/tv-saved', downloadsRadarr: '/data/movies-suggested', librarySonarr: '', libraryRadarr: '', versionsSonarr: '', versionsRadarr: '',
+    });
+  });
+
+  // Sending bucket fields with a folder, an empty region, or untrimmed values turns this red: the server refuses any field it does not expect, and an empty region is needless.
+  await t.test('the backup body holds only the chosen destination, trimmed, with the region only when typed', () => {
+    const draft = { kind: 'folder', folder: ' /backups ', endpoint: 'https://s3.example', bucket: 'b', region: 'r', accessKeyId: 'a', secretAccessKey: 's' };
+    assert.deepEqual(backupBody(draft), { folder: '/backups' });
+    const bucket = { ...draft, kind: 's3', endpoint: ' https://s3.example ', bucket: ' media ', region: ' ', accessKeyId: ' id ', secretAccessKey: ' secret ' };
+    assert.deepEqual(backupBody(bucket), { endpoint: 'https://s3.example', bucket: 'media', accessKeyId: 'id', secretAccessKey: 'secret' });
+    assert.equal(backupBody({ ...bucket, region: ' us-west-004 ' }).region, 'us-west-004');
+  });
+
+  // Ignoring a switched kind or a key typed over a saved bucket turns this red: Confirm would stay off for a real change.
+  await t.test('backup edits count a switched kind and a typed key, not an unchanged folder', () => {
+    const blank = { endpoint: '', bucket: '', region: '', accessKeyId: '', secretAccessKey: '' };
+    assert.equal(backupEdited({ ...blank, kind: 'folder', folder: '/backups ' }, { kind: 'folder', folder: '/backups' }), false);
+    assert.equal(backupEdited({ ...blank, kind: 's3', folder: '/backups' }, { kind: 'folder', folder: '/backups' }), true);
+    const savedBucket = { kind: 's3', endpoint: 'https://s3.example', bucket: 'media', region: 'auto' };
+    assert.equal(backupEdited({ ...blank, ...savedBucket, folder: '', accessKeyId: 'new' }, savedBucket), true);
+    assert.equal(backupEdited({ ...blank, ...savedBucket, folder: '' }, savedBucket), false);
+    // Comparing a blank region to the saved 'auto' without the server's 'auto' default turns this red.
+    assert.equal(backupEdited({ ...blank, ...savedBucket, folder: '', region: '' }, savedBucket), false);
+  });
+
+  // Keeping the sent keys in the form after a save turns this red: the same bucket would still read as unsaved edits.
+  await t.test('a saved bucket reads as unedited once its sent keys are cleared', () => {
+    const savedBucket = { kind: 's3', endpoint: 'https://s3.example', bucket: 'media', region: 'auto' };
+    const sent = { ...savedBucket, folder: '', accessKeyId: 'id', secretAccessKey: 'secret' };
+    assert.equal(backupEdited(clearSentKeys(sent), savedBucket), false);
+  });
+
+  // Ignoring the owner's pick, or defaulting to the sign-in token when a Plex token is already saved, turns this red.
+  await t.test('Plex uses the sign-in token by the owner\'s pick, else only while no token is saved', () => {
+    assert.equal(usesSignInToken(false, true, false), false);
+    assert.equal(usesSignInToken(true, undefined, false), true);
+    assert.equal(usesSignInToken(true, undefined, true), false);
+    assert.equal(usesSignInToken(true, false, false), false);
+    assert.equal(usesSignInToken(true, true, true), true);
+  });
+
+  // Reading a key pair or BACKUP_KEY as missing, or letting a missing key outrank a bad destination, turns this red.
+  await t.test('the backup pill ranks a bad destination, then no destination, then a missing key', () => {
+    const folder = { kind: 'folder', folder: '/backups' };
+    const cases = [
+      [{ destination: null, problem: null, key: 'missing', keyCreatedAt: null }, 'not-set-up'],
+      // The server reports no destination when the saved one is bad, so checking the destination first turns this row red.
+      [{ destination: null, problem: 'A folder and a bucket are both set.', key: 'missing', keyCreatedAt: null }, 'failed'],
+      [{ destination: folder, problem: 'The folder is gone.', key: 'missing', keyCreatedAt: null }, 'failed'],
+      [{ destination: folder, problem: null, key: 'missing', keyCreatedAt: null }, 'failed'],
+      [{ destination: folder, problem: null, key: 'env', keyCreatedAt: null }, 'connected'],
+      [{ destination: folder, problem: null, key: 'pair', keyCreatedAt: 0 }, 'connected'],
+    ];
+    for (const [backup, state] of cases) assert.equal(backupPill(backup).state, state);
+    assert.equal(backupPill(cases[2][0]).text, 'Can\'t run: bad destination');
+    assert.equal(backupPill(cases[3][0]).text, 'Can\'t run: no key yet');
   });
 });
 
