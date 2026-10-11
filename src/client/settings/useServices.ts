@@ -132,10 +132,12 @@ export function useServices(onUnauthenticated: () => void) {
       }));
       setChecks((current) => ({ ...current, [name]: { ...result, at: Date.now(), ofSaved: true } }));
       clearForm(name);
-      const ok = services.filter((other) => other.name === name || checksRef.current[other.name].kind === 'ok').length;
+      // Counts saved services only, so the total does not depend on which optional services the owner chose.
+      const savedNames = services.filter((other) => other.name === name || isConfigured(saved[other.name]));
+      const ok = savedNames.filter((other) => other.name === name || checksRef.current[other.name].kind === 'ok').length;
       toasts.add({
         title: `${info.label} connected${result.version === undefined ? '' : ` · ${result.version}`}`,
-        description: `Tested, then saved. ${ok === services.length ? `All ${ok} connections answer.` : `${ok} of ${services.length} connections answer.`}`,
+        description: `Tested, then saved. ${ok === savedNames.length ? 'All saved connections answer.' : `${ok} of ${savedNames.length} saved connections answer.`}`,
       });
       return true;
     } finally {
