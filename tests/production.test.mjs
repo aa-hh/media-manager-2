@@ -8463,6 +8463,9 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   const series = await history.list({ filter: 'all', service: 'sonarr', page: 1, seriesId: 3 });
   assert.equal(series.events[0].title, 'Andor S02E09');
   assert.deepEqual(series.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
+  // Letting a Radarr problem through the Sonarr service filter turns this red.
+  assert.deepEqual((await history.list({ filter: 'all', service: 'sonarr', page: 1 })).events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
+  assert.deepEqual((await history.list({ filter: 'all', service: 'radarr', page: 1 })).events.map((event) => event.id), ['mm2:1', 'mm2:2']);
 
   database.prepare(`
     INSERT INTO second_versions (id, service, series_id, episode_id, release_title, guid, indexer, quality, hash, state, created_at, updated_at)
@@ -8494,14 +8497,14 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   // A full Sonarr page of 100 grabs, one a minute from 10:00 back to 08:21, leaves the 07:00 step for a later page.
   const fullPage = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
   fake.sonarr.state.history = fullPage;
-  const full = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
+  const full = await history.list({ filter: 'all', service: 'all', page: 1 });
   // Reading steps from the start of time instead of from the oldest record on a full Sonarr page turns this red.
   assert.deepEqual(full.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:1']);
   assert.equal(full.hasMore, true);
   // Page 2 is Sonarr's last, with one grab at 08:10; the 07:00 step is older than everything on page 1.
   fake.sonarr.state.history = [...fullPage, { ...grabbed, id: 300, date: '2026-10-10T08:10:00Z' }];
   const fullOldest = Math.min(...full.events.map((event) => event.at));
-  const afterFull = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: fullOldest });
+  const afterFull = await history.list({ filter: 'all', service: 'all', page: 2, before: fullOldest });
   // Paging steps by offset on Sonarr's last page, instead of from the oldest event already shown, turns this red.
   assert.deepEqual(afterFull.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:2']);
   assert.equal(afterFull.hasMore, false);
@@ -8525,12 +8528,12 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   }
   fake.sonarr.state.history = fullPage;
   const newer = (events) => events.filter((event) => event.detail.startsWith('Newer step ')).map((event) => event.detail);
-  const crowded = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
+  const crowded = await history.list({ filter: 'all', service: 'all', page: 1 });
   // Returning every step newer than the oldest Sonarr record on one page, instead of the newest 100, turns this red.
   assert.deepEqual([newer(crowded.events), crowded.hasMore], [Array.from({ length: 100 }, (_, index) => `Newer step ${149 - index}`), true]);
   fake.sonarr.state.history = [];
   const crowdedOldestStep = Math.min(...crowded.events.filter((event) => event.source === 'media-manager-2').map((event) => event.at));
-  const afterCrowded = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: crowdedOldestStep });
+  const afterCrowded = await history.list({ filter: 'all', service: 'all', page: 2, before: crowdedOldestStep });
   // Ignoring before on page 2, or cutting the newest steps instead of the oldest, turns this red.
   assert.deepEqual(newer(afterCrowded.events), Array.from({ length: 51 }, (_, index) => `Newer step ${50 - index}`));
   // A full Sonarr page whose every grab is newer than every step.
