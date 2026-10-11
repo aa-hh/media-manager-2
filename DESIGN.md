@@ -271,7 +271,7 @@ The library's sixth sheet holds the motion tokens and a transition table; each s
 
 | Trigger | What changes | Duration | Easing |
 |---|---|---|---|
-| Page change (links, back, forward) | one view transition per change: the old screen holds up to 350ms while the new one loads, then the old fades out and the new fades in; a new screen opens at the top, back and forward return to their scroll | fast out / base in | in / out |
+| Page change (links, back, forward) | one view transition per change: the old screen holds up to 350ms while the new one loads, then the old fades out as the new fades in, both on the same timing so the page never washes out; a new screen opens at the top, back and forward return to their scroll | base | out |
 | Open a title from a poster card | the card's poster morphs into the title page's large poster during the page change; a title page still loading shows that poster in place | slow | out |
 | Hover (rows, buttons, nav, posters, calendar entries, cards) | fill to the hover token; poster brightness to 92% | fast | out |
 | Press, focus ring | instant | 0 | — |
