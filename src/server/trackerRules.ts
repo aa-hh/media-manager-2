@@ -68,13 +68,14 @@ const knownHosts = (database: DatabaseSync) => new Set([
     .map((entry) => entry.key.slice(PREFIX.length)),
 ]);
 
-// Matches a tracker hostname exactly, or a Sonarr/Radarr indexer name whose normalised form equals exactly one
-// hostname's normalised form. Substring matches never count, so "hd" matches nothing.
+// Matches a tracker hostname exactly or as its subdomain (an announce host such as "tracker.privatehd.to"), or a
+// Sonarr/Radarr indexer name whose normalised form equals exactly one hostname's normalised form. Other substring
+// matches never count, so "hd" matches nothing.
 export const findTrackerRule = (database: DatabaseSync, hostOrIndexer: string): { host: string; rule: HitAndRunRule } | undefined => {
   const hosts = [...knownHosts(database)];
   const lowered = hostOrIndexer.trim().toLowerCase();
   const name = normalise(hostOrIndexer);
-  const exact = hosts.find((host) => host === lowered);
+  const exact = hosts.find((host) => host === lowered) ?? hosts.find((host) => lowered.endsWith(`.${host}`));
   const byName = hosts.filter((host) => name !== '' && hostName(host) === name);
   const host = exact ?? (byName.length === 1 ? byName[0] : undefined);
   if (host === undefined) return undefined;

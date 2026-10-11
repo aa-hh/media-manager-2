@@ -38,6 +38,7 @@ const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
 const searchModuleUrl = new URL('../dist/server/search.js', import.meta.url).href;
 const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
 const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
+const releaseDetailsModuleUrl = new URL('../dist/server/releaseDetails.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
 const libraryModuleUrl = new URL('../dist/server/library.js', import.meta.url).href;
@@ -1602,7 +1603,7 @@ test('settings validate categories, keys, and values', async (t) => {
 });
 
 // Changing a piece of the PrivateHD formula, the and/or combination, giving Blutopia a ratio side, letting the global
-// ratio flip a torrent's result, or matching indexer names by substring turns this red.
+// ratio flip a torrent's result, matching indexer names by substring, or missing an announce subdomain turns this red.
 test('hit and run rules come from settings with the confirmed defaults and an exact name match', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tracker-rules-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -1643,6 +1644,8 @@ test('hit and run rules come from settings with the confirmed defaults and an ex
   assert.equal(checkHitAndRun(beyondhd.rule, torrent(0, 0)).globalRatio, 'unknown');
 
   assert.equal(findTrackerRule(database, 'hd'), undefined);
+  assert.equal(findTrackerRule(database, 'tracker.privatehd.to').host, 'privatehd.to');
+  assert.equal(findTrackerRule(database, 'notprivatehd.to'), undefined);
   assert.equal(findTrackerRule(database, 'Unknown (Prowlarr)'), undefined);
 
   setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', JSON.stringify({ minHours: 200, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' }));
@@ -4379,14 +4382,19 @@ test('interactive searches are kept with their age and refreshed only on request
     {
       guid: 'g1', indexerId: 3, indexer: 'Blutopia', title: 'Show.S01E02.1080p.WEB-DL', quality: { quality: { name: 'WEBDL-1080p' } },
       size: 2_000_000_000, ageHours: 5.5, seeders: 40, leechers: 2, approved: true, rejections: [], customFormatScore: 1200,
-      customFormats: [{ name: 'HQ' }], indexerFlags: 1 | 32, protocol: 'torrent',
+      customFormats: [{ name: 'HQ' }], indexerFlags: 1 | 32, protocol: 'torrent', qualityWeight: 304,
     },
     {
       guid: 'g2', indexerId: 3, title: 'Show.S01E02.720p.HDTV', quality: { quality: { name: 'HDTV-720p' } }, approved: false,
       rejections: [{ reason: 'Not an upgrade for existing episode file(s)' }], indexerFlags: 0, seeders: 0,
     },
     { guid: '', indexerId: 3, title: 'broken' },
+    {
+      guid: 'g3', indexerId: 4, indexer: 'PrivateHD', title: 'Show.S01E02.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10', size: 4_250_000_000,
+      approved: true, rejections: [], indexerFlags: 0,
+    },
   ];
+  database.prepare('INSERT INTO tracker_cooldowns VALUES (?, ?, ?, ?, ?)').run('blutopia.cc', 900, 'refused', 1, 'AB'.repeat(20));
   let sonarr = () => new Response(JSON.stringify(sonarrReleases), { status: 200 });
   const paths = [];
   let releaseCalls = 0;
@@ -4424,7 +4432,19 @@ test('interactive searches are kept with their age and refreshed only on request
   assert.deepEqual(first.search.releases.map((item) => [item.guid, item.approved, item.flags, item.rejections]), [
     ['g1', true, ['Freeleech', 'Internal'], []],
     ['g2', false, [], ['Not an upgrade for existing episode file(s)']],
+    ['g3', true, [], []],
   ]);
+  // Reading PrivateHD's hours without the size, giving Blutopia a ratio side, or missing an active cooldown turns these red.
+  assert.deepEqual(first.search.releases.map((item) => [item.guid, item.hitAndRun]), [
+    ['g1', { host: 'blutopia.cc', hours: 168, ratio: null, logic: null, cooldown: true, cooldownSince: 900 }],
+    ['g2', null],
+    ['g3', { host: 'privatehd.to', hours: 81, ratio: 0.9, logic: 'or', cooldown: false, cooldownSince: null }],
+  ]);
+  assert.deepEqual(first.search.releases.map((item) => [item.qualityWeight, item.compared, item.audio, item.hdr]), [
+    [304, null, null, null], [null, null, null, null], [null, null, 'Atmos 5.1', 'DV HDR10'],
+  ]);
+  // Sonarr answers nothing for the series here, so there is no owned file to compare with.
+  assert.equal(first.search.owned, null);
   assert.deepEqual(first.search.releases[0].past, []);
   assert.deepEqual(first.search.releases[1].past, [
     { kind: 'grabbed', at: '2026-10-01T10:00:00Z' },
@@ -4448,18 +4468,137 @@ test('interactive searches are kept with their age and refreshed only on request
   assert.equal(releaseCalls, 2);
   assert.equal(refreshedA, refreshedB);
   assert.equal(refreshedA.search.fetchedAt, 5_000);
-  assert.deepEqual(refreshedA.search.releases.map((item) => item.guid), ['g1']);
+  assert.deepEqual(refreshedA.search.releases.map((item) => item.guid), ['g1', 'g3']);
   release = undefined;
 
   sonarr = () => new Response('', { status: 503 });
   const failed = await releases.refresh(episode);
   assert.equal(failed.kind, 'unreachable');
   assert.equal(failed.stored.fetchedAt, 5_000);
-  assert.deepEqual((await releases.get(episode)).search.releases.map((item) => item.guid), ['g1']);
+  assert.deepEqual((await releases.get(episode)).search.releases.map((item) => item.guid), ['g1', 'g3']);
 
   const movie = await releases.get({ service: 'radarr', kind: 'movie', movieId: 9 });
   assert.deepEqual(movie.search.releases[0].flags, ['Freeleech 75%', 'Nuked']);
   assert.equal(releases.find({ service: 'radarr', kind: 'movie', movieId: 9 }, 'm1').title, 'Movie.2021.2160p');
+});
+
+// Reading the wrong codec, keeping the codec name beside Atmos, losing the channels, listing HDR beside HDR10, or ranking
+// a quality inside a profile group by its own position instead of the group's turns this red.
+test('releases read audio and HDR from their titles and compare with the owned file', async () => {
+  const { audioHdrFromTitle, audioHdrFromMediaInfo, compareToOwned, qualityWeightOf } = await import(releaseDetailsModuleUrl);
+  for (const [title, audio, hdr] of [
+    ['Movie.2021.2160p.UHD.BluRay.DDP5.1.Atmos.DV.HDR10.x265-GRP', 'Atmos 5.1', 'DV HDR10'],
+    ['Show.S01E02.1080p.WEB-DL.DDP5.1.H.264-GRP', 'DDP 5.1', null],
+    ['Movie.2021.1080p.BluRay.TrueHD.x264-GRP', 'TrueHD', null],
+    ['Movie.2021.2160p.WEB-DL.DTS-HD.MA.7.1.HDR10+.HEVC-GRP', 'DTS-HD 7.1', 'HDR10+'],
+    ['Movie.2021.2160p.BluRay.TrueHD.Atmos.7.1.DoVi.x265', 'Atmos 7.1', 'DV'],
+    ['Movie.2021.2160p.WEB-DL.AAC2.0.HDR.HLG.x265', 'AAC 2.0', 'HDR HLG'],
+    ['Show.S01E02.720p.HDTV.x264', null, null],
+  ]) assert.deepEqual(audioHdrFromTitle(title), { audio, hdr }, title);
+  for (const [audioCodec, audioChannels, videoDynamicRangeType, audio, hdr] of [
+    ['EAC3 Atmos', 5.1, 'DV HDR10', 'Atmos 5.1', 'DV HDR10'],
+    ['DTS-HD MA', 7.1, 'HDR10Plus', 'DTS-HD 7.1', 'HDR10+'],
+    ['AC3', 2, 'DV SDR', 'DD 2.0', 'DV'],
+  ]) assert.deepEqual(audioHdrFromMediaInfo({ audioCodec, audioChannels, videoDynamicRangeType }), { audio, hdr }, audioCodec);
+
+  const items = [
+    { quality: { name: 'SDTV' }, items: [] },
+    { name: 'WEB 720p', items: [{ quality: { name: 'WEBDL-720p' } }, { quality: { name: 'WEBRip-720p' } }] },
+    { quality: { name: 'Bluray-1080p' }, items: [] },
+  ];
+  assert.equal(qualityWeightOf(items, 'WEBRip-720p', { real: 0, version: 1 }), 101);
+  assert.equal(qualityWeightOf(items, 'Bluray-1080p', { real: 1, version: 2 }), 212);
+  assert.equal(qualityWeightOf(items, 'Remux-2160p', { real: 0, version: 1 }), null);
+  const owned = { qualityWeight: 101, customFormatScore: 500 };
+  for (const [release, against, expected] of [
+    [{ qualityWeight: 201, customFormatScore: 0 }, owned, 'better'],
+    [{ qualityWeight: 101, customFormatScore: 600 }, owned, 'better'],
+    [{ qualityWeight: 101, customFormatScore: 500 }, owned, 'same'],
+    [{ qualityWeight: 1, customFormatScore: 9000 }, owned, 'worse'],
+    [{ qualityWeight: 101, customFormatScore: -50 }, { qualityWeight: 101, customFormatScore: null }, 'same'],
+    [{ qualityWeight: null, customFormatScore: 0 }, owned, null],
+    [{ customFormatScore: 0 }, owned, null],
+    [{ qualityWeight: 101, customFormatScore: 0 }, { qualityWeight: null, customFormatScore: 0 }, null],
+  ]) assert.equal(compareToOwned(release, against), expected, JSON.stringify([release, against]));
+});
+
+// Comparing a search stored before quality weights were kept, matching the torrent by anything but the latest imported
+// grab's hash, missing the announce host's subdomain, or letting a failed upstream call fail the search turns this red.
+test('pick a release shows the owned file with its seeding and compares each release with it', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createReleases } = await import(releasesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-owned-release-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65033');
+  setSetting(database, 'credentials', 'sonarr.apiKey', 'sonarr-key');
+  const hash = 'CD'.repeat(20);
+  const insertGrab = database.prepare(`INSERT INTO torrent_grabs (hash, service, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand, imported_at)
+    VALUES (?, 'sonarr', 5, '[50]', ?, 'PrivateHD', ?, 0, ?)`);
+  insertGrab.run('EF'.repeat(20), 'Show.S01E02.720p.HDTV-OLD', 1, 2);
+  insertGrab.run(hash, 'Show.S01E02.1080p.WEB-DL.DDP5.1-OWN', 3, 4);
+  database.prepare(`INSERT INTO torrents VALUES (?, 'Show.S01E02', 10000000000, 10000000000, 0, 0, 1, 1, 1, 1, '', 0, 450, 0, 0,
+    'tracker.privatehd.to', 1, 1, NULL, ?)`).run(hash, 31 * 3600 + 100);
+  database.prepare('INSERT INTO release_searches (target, fetched_at, releases) VALUES (?, ?, ?)').run('sonarr:episode:5:50', 500, JSON.stringify([{
+    guid: 'old', indexerId: 3, indexer: null, title: 'Show.S01E02.2160p', quality: null, size: null, ageHours: null, seeders: null, leechers: null,
+    approved: true, rejections: [], customFormatScore: 0, customFormats: [], flags: [], protocol: null, past: [], qualityModel: null, languages: [],
+  }]));
+  let profileStatus = 200;
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+  const fetch = async (url) => {
+    const { pathname } = new URL(String(url));
+    if (pathname === '/api/v3/series/5') return json({ id: 5, title: 'Show', qualityProfileId: 1 });
+    if (pathname === '/api/v3/episode') {
+      return json([{
+        id: 50, seasonNumber: 1, episodeNumber: 2, hasFile: true,
+        episodeFile: {
+          id: 9, relativePath: 'Season 1/Show.S01E02.mkv', size: 10_000_000_000, releaseGroup: 'OWN', customFormatScore: 100, qualityCutoffNotMet: true,
+          quality: { quality: { name: 'WEBDL-1080p' }, revision: { version: 1, real: 0 } },
+          mediaInfo: { audioCodec: 'EAC3', audioChannels: 5.1, videoDynamicRangeType: '' },
+        },
+      }]);
+    }
+    if (pathname === '/api/v3/qualityprofile/1') {
+      return json({ items: [
+        { quality: { name: 'HDTV-720p' }, items: [] },
+        { name: 'WEB 1080p', items: [{ quality: { name: 'WEBDL-1080p' } }] },
+        { quality: { name: 'Bluray-2160p' }, items: [] },
+      ] }, profileStatus);
+    }
+    if (pathname === '/api/v3/release') {
+      return json([
+        { guid: 'up', indexerId: 3, title: 'Show.S01E02.2160p.BluRay', approved: true, rejections: [], qualityWeight: 201, customFormatScore: 0 },
+        { guid: 'same', indexerId: 3, title: 'Show.S01E02.1080p.WEB-DL', approved: true, rejections: [], qualityWeight: 101, customFormatScore: 100 },
+        { guid: 'down', indexerId: 3, title: 'Show.S01E02.720p.HDTV', approved: true, rejections: [], qualityWeight: 1, customFormatScore: 2000 },
+      ]);
+    }
+    return new Response('', { status: 500 });
+  };
+  const releases = createReleases(database, { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) }, () => 1_000);
+  const episode = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
+
+  const stored = await releases.get(episode);
+  assert.deepEqual(stored.search.releases.map((item) => [item.guid, item.compared]), [['old', null]]);
+  assert.deepEqual(stored.search.owned, {
+    quality: 'WEBDL-1080p', releaseTitle: 'Show.S01E02.1080p.WEB-DL.DDP5.1-OWN', releaseGroup: 'OWN', size: 10_000_000_000,
+    customFormatScore: 100, qualityCutoffNotMet: true, audio: 'DDP 5.1', hdr: null,
+    hitAndRun: { host: 'privatehd.to', hours: 92, ratio: 0.9, logic: 'or', seededHours: 31, currentRatio: 0.45, met: false },
+  });
+
+  const fresh = await releases.refresh(episode);
+  assert.deepEqual(fresh.search.releases.map((item) => [item.guid, item.compared]), [['up', 'better'], ['same', 'same'], ['down', 'worse']]);
+  assert.equal(database.prepare('SELECT releases FROM release_searches').get().releases.includes('compared'), false);
+
+  profileStatus = 500;
+  const failed = await releases.refresh(episode);
+  assert.equal(failed.kind, 'ok');
+  assert.equal(failed.search.owned, null);
+  assert.deepEqual(failed.search.releases.map((item) => item.compared), [null, null, null]);
 });
 
 // Grabbing through /release/push or without the stored release, reporting a refused grab as sent, losing the downloadId, or recording the searched target instead of an override breaks hand grabs and the replace that follows them.
