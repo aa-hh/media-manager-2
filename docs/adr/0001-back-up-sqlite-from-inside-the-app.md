@@ -4,7 +4,7 @@ Status: accepted
 
 ## Context
 
-The app keeps all of its state in one SQLite file on a Whatbox slot. A disk failure on the slot, or a move to another host, loses that file unless a copy lives elsewhere. Whatbox gives no root access and no service manager for extra processes; whether the slot can run containers is still open (AA-67), so a sidecar such as Litestream has nowhere reliable to run. The app requires Node 22.13, and `node:sqlite`'s `backup()` arrived in 22.14, so it cannot be used. `VACUUM INTO` works on 22.13, accepts a bound path, and produces a consistent copy while another connection holds a write lock.
+The app keeps all of its state in one SQLite file on a Whatbox slot. A disk failure on the slot, or a move to another host, loses that file unless a copy lives elsewhere. Whatbox gives no root access and no service manager for extra processes; whether the slot can run containers is still open (AA-67), so a sidecar such as Litestream has nowhere reliable to run. The app requires Node 22.13, and `node:sqlite`'s `backup()` arrived in 22.16, so it cannot be used. `VACUUM INTO` works on 22.13, accepts a bound path, and produces a consistent copy while another connection holds a write lock.
 
 ## Decision
 

@@ -318,7 +318,7 @@ node dist/server/cli.js backup off   # no backups, no reminder
 node dist/server/cli.js backup on    # back on; a destination and key are then needed
 ```
 
-Once set up, every 5 minutes the server copies its database with SQLite's `VACUUM INTO`, gzips the
+Once set up, every 5 minutes the server copies its database with `node:sqlite`'s `backup()`, gzips the
 copy, encrypts it with AES-256-GCM under the restore key made in the app (or,
 until one exists, under `BACKUP_KEY`), and writes it to the destination you
 chose. The database holds every saved credential, so backups
