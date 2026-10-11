@@ -13,10 +13,11 @@ export const requestWithTimeout = (
   fetchImpl: typeof globalThis.fetch,
   url: string,
   init: RequestInit,
+  timeoutMs = 10_000,
 ) => fetchImpl(url, {
   ...init,
   redirect: 'error',
-  signal: AbortSignal.timeout(10_000),
+  signal: AbortSignal.timeout(timeoutMs),
 });
 
 export const readSetting = (database: DatabaseSync, category: string, key: string): string | undefined => {

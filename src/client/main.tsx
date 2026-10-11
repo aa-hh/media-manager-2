@@ -1,6 +1,7 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
+import { Home } from './Home';
 import { DownloadsScreen, LiveBar } from './downloads/Downloads';
 import { useDownloads } from './downloads/useDownloads';
 import './globals.css';
@@ -190,6 +191,8 @@ function App() {
     }
   }, [beginRequest]);
 
+  const recheckSession = useCallback(() => void checkSession(), [checkSession]);
+
   if (session.kind === 'checking') {
     return (
       <main className="min-h-screen bg-[var(--ground)]">
@@ -205,45 +208,53 @@ function App() {
   return (
     <SignedIn
       headingRef={headingRef}
-      signOutState={session.kind}
+      signOutLabel={session.kind === 'signing-out'
+        ? 'Signing out…'
+        : session.kind === 'sign-out-failed'
+          ? 'Try sign out again'
+          : 'Sign out'}
+      signOutDisabled={session.kind === 'signing-out'}
+      signOutProblem={(
+        <>
+          {session.kind === 'sign-out-failed' && (
+            <p role="alert" className="text-sm text-[var(--secondary-ink)]">
+              Sign-out failed. Your session may still be active.
+            </p>
+          )}
+          <p className="sr-only" aria-live="polite">
+            {session.kind === 'signing-out' ? 'Signing out…' : ''}
+          </p>
+        </>
+      )}
       onSignOut={() => void signOut(session.expiresAt)}
-      onUnauthorized={() => void checkSession()}
+      onUnauthenticated={recheckSession}
     />
   );
 }
 
-function SignedIn({ headingRef, signOutState, onSignOut, onUnauthorized }: {
-  headingRef: RefObject<HTMLHeadingElement | null>;
-  signOutState: 'signed-in' | 'signing-out' | 'sign-out-failed';
-  onSignOut: () => void;
-  onUnauthorized: () => void;
-}) {
-  const { state, reload } = useDownloads(onUnauthorized);
+// Search and the title view come from Home; the Downloads screen fills Home while the search box is empty.
+function SignedIn(props: ComponentProps<typeof Home>) {
+  const { state, reload } = useDownloads(props.onUnauthenticated);
+  const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
   return (
-    <div className="min-h-screen bg-[var(--mm-ground)] pb-8 text-[var(--mm-ink)]">
-      <header className="flex h-12 items-center gap-6 border-b border-[var(--mm-seam)] bg-[var(--mm-row)] px-5 font-ui">
-        <span className="text-[14px] font-semibold">media-manager-2</span>
-        <nav aria-label="Main">
-          <a href="#downloads" aria-current="page" className="text-[13px] font-semibold text-[var(--mm-ink)]">Downloads</a>
-        </nav>
-        <span className="flex-1" />
-        {signOutState === 'sign-out-failed' && (
-          <p role="alert" className="text-[13px] text-[var(--mm-risk)]">Sign-out failed. Your session may still be active.</p>
+    <div className="pb-8">
+      <Home
+        {...props}
+        downloads={(
+          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
+            <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
+          </div>
         )}
-        <button
-          type="button"
-          onClick={onSignOut}
-          disabled={signOutState === 'signing-out'}
-          className="h-8 px-3 text-[14px] font-semibold text-[var(--mm-ink)] hover:bg-[var(--mm-row-hover)] focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)] disabled:opacity-50"
-        >
-          {signOutState === 'signing-out' ? 'Signing out…' : signOutState === 'sign-out-failed' ? 'Try sign out again' : 'Sign out'}
-        </button>
-        <p className="sr-only" aria-live="polite">{signOutState === 'signing-out' ? 'Signing out…' : ''}</p>
-      </header>
-      <main id="downloads">
-        <DownloadsScreen state={state} reload={reload} headingRef={headingRef} />
-      </main>
-      <LiveBar state={state} onOpen={() => headingRef.current?.focus()} />
+        renderBar={(showDownloads) => (
+          <LiveBar
+            state={state}
+            onOpen={() => {
+              showDownloads();
+              window.requestAnimationFrame(() => downloadsHeadingRef.current?.focus());
+            }}
+          />
+        )}
+      />
     </div>
   );
 }

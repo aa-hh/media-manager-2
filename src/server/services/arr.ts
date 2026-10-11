@@ -15,20 +15,21 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
 
   const request = async (
     path: string,
-    init: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown } = {},
+    init: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; timeoutMs?: number } = {},
   ): Promise<{ status: number; body: unknown }> => {
     const configuration = readConfiguration();
     if (configuration === undefined) throw new Error(`${label} is not configured.`);
     const method = init.method ?? 'GET';
     const headers: Record<string, string> = { 'X-Api-Key': configuration.apiKey, Accept: 'application/json' };
-    if (method === 'POST') headers['Content-Type'] = 'application/json';
+    const sendsBody = method === 'POST' || method === 'PUT';
+    if (sendsBody) headers['Content-Type'] = 'application/json';
     let response: Response;
     try {
       response = await requestWithTimeout(fetchImpl, configuration.url.replace(/\/+$/, '') + path, {
         method,
         headers,
-        body: method === 'POST' ? JSON.stringify(init.body) : undefined,
-      });
+        body: sendsBody ? JSON.stringify(init.body) : undefined,
+      }, init.timeoutMs);
     } catch {
       throw new Error(`${label} is unreachable.`);
     }
@@ -58,5 +59,5 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
     return { kind: 'ok', version };
   };
 
-  return { check, request };
+  return { check, request, configured: () => readConfiguration() !== undefined };
 };

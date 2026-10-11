@@ -25,7 +25,7 @@ const databasePathMessage = 'Database path must be an absolute file path outside
 const directoryMessage = 'Database directory must be private and owned by the current user.';
 const fileMessage = 'Database file must be a private regular file owned by the current user.';
 
-const applicationMigrations = [
+export const applicationMigrations = [
   `CREATE TABLE settings (
     category TEXT NOT NULL CHECK (category IN ('hostPaths', 'serviceAddresses', 'trackerConfiguration', 'credentials')),
     key TEXT NOT NULL,
@@ -174,6 +174,43 @@ const applicationMigrations = [
     PRIMARY KEY (service, download_id)
   ) STRICT;`,
   `ALTER TABLE arr_queue ADD COLUMN label TEXT NOT NULL DEFAULT '';`,
+  `CREATE TABLE preferences (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  ) STRICT;`,
+  `CREATE TABLE release_searches (
+    target TEXT PRIMARY KEY,
+    fetched_at INTEGER NOT NULL,
+    releases TEXT NOT NULL
+  ) STRICT;`,
+  `CREATE TABLE grabs (
+    id INTEGER PRIMARY KEY,
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    target TEXT NOT NULL,
+    target_key TEXT NOT NULL,
+    searched_for TEXT NOT NULL,
+    searched_for_key TEXT NOT NULL,
+    guid TEXT NOT NULL,
+    release_title TEXT NOT NULL,
+    intent TEXT NOT NULL CHECK (intent IN ('grab', 'replace')),
+    state TEXT NOT NULL CHECK (state IN ('sending', 'sent', 'importing', 'failed', 'completed')),
+    failure TEXT,
+    download_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE INDEX grabs_target ON grabs (target_key);
+  CREATE INDEX grabs_searched_for ON grabs (searched_for_key);
+  CREATE INDEX grabs_state ON grabs (state);`,
+  `CREATE TABLE protected_items (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    item_id INTEGER NOT NULL,
+    series_id INTEGER,
+    season_number INTEGER,
+    episode_number INTEGER,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (service, item_id)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

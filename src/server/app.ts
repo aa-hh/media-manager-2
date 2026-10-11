@@ -8,6 +8,12 @@ import { streamSSE } from 'hono/streaming';
 import { createAuthentication } from './auth.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
+import { createAddRoutes, type Add } from './add.js';
+import { createGrabRoutes, type Grabs } from './grabs.js';
+import { createOwnedRoutes, type Owned } from './owned.js';
+import { createHookRoutes, createProtectionRoutes, type Protection } from './protection.js';
+import { createReleaseRoutes, type Releases } from './releases.js';
+import { createSearchRoutes, type Search } from './search.js';
 
 export type CreateAppOptions = {
   clientDirectory: string;
@@ -18,6 +24,12 @@ export type CreateAppOptions = {
   fetch?: typeof globalThis.fetch;
   events?: EventHub;
   timers?: Timers;
+  search?: Search;
+  add?: Add;
+  releases?: Releases;
+  grabs?: Grabs;
+  owned?: Owned;
+  protection?: Protection;
   api?: Hono;
   webhooks?: {
     secret(): string | undefined;
@@ -134,6 +146,12 @@ export const createApp = (options: CreateAppOptions) => {
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
   });
 
+  // A grab names its release by guid, which is often a long magnet or download URL.
+  const grabRequestLimit = bodyLimit({
+    maxSize: 16_384,
+    onError: (context) => context.json({ error: 'request_too_large' }, 413),
+  });
+
   // A manual import lists every file of a season pack, so it gets more room than the other private writes.
   const importRequestLimit = bodyLimit({
     maxSize: 64 * 1_024,
@@ -153,9 +171,13 @@ export const createApp = (options: CreateAppOptions) => {
       || contentType !== 'application/json'
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
+    if (context.req.path === '/api/grabs') return grabRequestLimit(context, next);
     if (context.req.path.startsWith('/api/imports/')) return importRequestLimit(context, next);
     return requestLimit(context, next);
   };
+
+  // Sonarr and Radarr call these with a shared token instead of a browser session.
+  if (options.protection !== undefined) app.route('/hooks', createHookRoutes(options.protection));
 
   app.get('/auth/status', (context) => {
     const binding = readCookie(context.req.header('Cookie'), bindingCookieName);
@@ -335,6 +357,14 @@ export const createApp = (options: CreateAppOptions) => {
       await done;
     });
   });
+  if (options.search !== undefined) app.route('/api/search', createSearchRoutes(options.search));
+  if (options.add !== undefined) app.route('/api/add', createAddRoutes(options.add));
+  if (options.releases !== undefined) app.route('/api/releases', createReleaseRoutes(options.releases));
+  if (options.grabs !== undefined) app.route('/api/grabs', createGrabRoutes(options.grabs));
+  if (options.owned !== undefined && options.grabs !== undefined) {
+    app.route('/api/owned', createOwnedRoutes(options.owned, options.grabs.qualities));
+  }
+  if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));

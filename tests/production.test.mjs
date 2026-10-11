@@ -30,8 +30,14 @@ const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
 const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
+const searchModuleUrl = new URL('../dist/server/search.js', import.meta.url).href;
+const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
+const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
+const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
+const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
+const protectionModuleUrl = new URL('../dist/server/protection.js', import.meta.url).href;
 const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.meta.url).href;
-const grabsModuleUrl = new URL('../dist/server/torrentGrabs.js', import.meta.url).href;
+const torrentGrabsModuleUrl = new URL('../dist/server/torrentGrabs.js', import.meta.url).href;
 const problemsModuleUrl = new URL('../dist/server/problems.js', import.meta.url).href;
 const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
@@ -1196,11 +1202,12 @@ test('database initialization is repeatable and its default path is stable', asy
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-database-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const explicitPath = join(root, 'explicit', 'media-manager.sqlite');
-  const { openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, openDatabase } = await import(databaseModuleUrl);
 
   const first = openDatabase(explicitPath);
   const initialized = readUserVersion(first);
   assert.ok(initialized >= 1);
+  assert.equal(initialized, applicationMigrations.length);
   first.close();
   const second = openDatabase(explicitPath);
   assert.equal(readUserVersion(second), initialized);
@@ -1288,7 +1295,7 @@ test('a successful later migration preserves existing settings', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-migration-success-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const databasePath = join(root, 'media-manager.sqlite');
-  const { migrateDatabase, openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, migrateDatabase, openDatabase } = await import(databaseModuleUrl);
   const { getSetting, setSetting } = await import(settingsModuleUrl);
   const database = openDatabase(databasePath);
   setSetting(database, 'credentials', 'token', 'preserved');
@@ -1305,7 +1312,7 @@ test('a failing later migration leaves the previous database unchanged', async (
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-migration-failure-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const databasePath = join(root, 'media-manager.sqlite');
-  const { migrateDatabase, openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, migrateDatabase, openDatabase } = await import(databaseModuleUrl);
   const { getSetting, setSetting } = await import(settingsModuleUrl);
   const database = openDatabase(databasePath);
   setSetting(database, 'credentials', 'token', 'original');
@@ -1330,7 +1337,7 @@ test('a failing later migration leaves the previous database unchanged', async (
 test('database initialization failures preserve existing files', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-preserve-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const { openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, openDatabase } = await import(databaseModuleUrl);
 
   const futurePath = join(root, 'future.sqlite');
   const future = new DatabaseSync(futurePath);
@@ -1931,7 +1938,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
 test('Sonarr and Radarr grabs are matched to torrents and recorded once', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
-  const { createGrabTracker, findGrab, listGrabs, listQueue } = await import(grabsModuleUrl);
+  const { createGrabTracker, findGrab, listGrabs, listQueue } = await import(torrentGrabsModuleUrl);
   const { readDependency } = await import(dependenciesModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-grabs-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -2160,7 +2167,7 @@ test('problems record each fix attempt and its result', async (t) => {
 test('queue actions grab delayed releases and remove items without touching rTorrent', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
-  const { createGrabTracker, listQueue } = await import(grabsModuleUrl);
+  const { createGrabTracker, listQueue } = await import(torrentGrabsModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-queue-actions-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -2219,7 +2226,7 @@ test('queue actions grab delayed releases and remove items without touching rTor
 test('an import is finished by hand only with a complete, conflict-free assignment and hardlinks', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
-  const { createGrabTracker } = await import(grabsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createManualImport } = await import(manualImportModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
@@ -2426,7 +2433,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
   const { createTorrentPoller } = await import(torrentsModuleUrl);
-  const { createGrabTracker } = await import(grabsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createTrackerWatch } = await import(trackersModuleUrl);
   const { createStallFix, indexerMatchesHost } = await import(stallsModuleUrl);
@@ -2671,7 +2678,7 @@ test('missing movies and episodes are searched when they come out and every six 
 test('blocked imports are cleared, forced, retried or flagged by reason', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
-  const { createGrabTracker } = await import(grabsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { readDependency } = await import(dependenciesModuleUrl);
   const { classifyImport, createImportFix } = await import(importsModuleUrl);
@@ -2950,6 +2957,636 @@ test('operator command stores settings from stdin and checks connections without
   assert.equal(relisted.stdout.split('\n').includes('credentials plex.token'), false);
 });
 
+// Routing an identifier to the wrong service, letting one failed service hide the other's results, sorting library matches after new ones, or passing a service-local image URL to the browser breaks search.
+test('one search routes to Sonarr and Radarr and reports each outcome', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { deleteSetting, setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createSearch, parseSearchQuery } = await import(searchModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-search-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const sonarrKey = `sonarr-key-${process.pid}-distinctive`;
+  const radarrKey = `radarr-key-${process.pid}-distinctive`;
+  const configure = () => {
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65011');
+    setSetting(database, 'serviceAddresses', 'radarr.url', 'http://127.0.0.1:65012/');
+    setSetting(database, 'credentials', 'sonarr.apiKey', sonarrKey);
+    setSetting(database, 'credentials', 'radarr.apiKey', radarrKey);
+  };
+  configure();
+  const poster = (remoteUrl) => [
+    { coverType: 'banner', remoteUrl: 'https://artworks.example/banner.jpg' },
+    { coverType: 'poster', url: `/MediaCover/1/poster.jpg?apikey=${sonarrKey}`, remoteUrl },
+  ];
+  const shows = [
+    { title: 'Dune: Prophecy', year: 2024, tvdbId: 1, network: 'HBO', status: 'continuing', ratings: { value: 7.4 }, overview: 'Sisters.', images: poster('https://artworks.example/1.jpg') },
+    { title: 'Dune', year: 2000, tvdbId: 2, id: 9, network: 'Sci Fi', status: 'ended', images: poster(`/MediaCover/2/poster.jpg?apikey=${sonarrKey}`) },
+    { title: 'Dune', tvdbId: 2 },
+    { title: '', tvdbId: 3 },
+  ];
+  const movies = [
+    { title: 'Dune', year: 2021, tmdbId: 438631, imdbId: 'tt1160419', studio: 'Legendary', status: 'released', ratings: { imdb: { value: 8 }, tmdb: { value: 7.8 } }, images: poster('https://image.tmdb.example/dune.jpg') },
+    { title: 'Dune', year: 1984, tmdbId: 841, id: 4, ratings: { tmdb: { value: 0 }, imdb: { value: 6.3 } } },
+  ];
+  let responders;
+  const calls = [];
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    const service = parsed.port === '65011' ? 'sonarr' : 'radarr';
+    calls.push({ service, path: parsed.pathname, term: parsed.searchParams.get('term'), key: new Headers(init.headers).get('x-api-key') });
+    return responders[service]();
+  };
+  const ok = (body) => () => new Response(JSON.stringify(body), { status: 200 });
+  const search = createSearch({ sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) });
+  const run = async (text) => {
+    calls.length = 0;
+    return search.search(parseSearchQuery(text));
+  };
+
+  responders = { sonarr: ok(shows), radarr: ok(movies) };
+  const both = await run('  Dune ');
+  assert.deepEqual(calls.map(({ service, path, term, key }) => [service, path, term, key]), [
+    ['sonarr', '/api/v3/series/lookup', 'Dune', sonarrKey],
+    ['radarr', '/api/v3/movie/lookup', 'Dune', radarrKey],
+  ]);
+  assert.deepEqual(both.services, { sonarr: { kind: 'ok', count: 2 }, radarr: { kind: 'ok', count: 2 } });
+  assert.deepEqual(both.results.map((result) => [result.key, result.inLibrary]), [
+    ['tvdb:2', true], ['tmdb:841', true], ['tvdb:1', false], ['tmdb:438631', false],
+  ]);
+  const [libraryShow, libraryMovie, show, movie] = both.results;
+  assert.deepEqual(show, {
+    type: 'tv', service: 'sonarr', key: 'tvdb:1', title: 'Dune: Prophecy', year: 2024, network: 'HBO', status: 'continuing',
+    rating: 7.4, overview: 'Sisters.', posterUrl: 'https://artworks.example/1.jpg', inLibrary: false, libraryId: null,
+    tvdbId: 1, tmdbId: null, imdbId: null,
+  });
+  assert.equal(libraryShow.libraryId, 9);
+  assert.equal(libraryShow.posterUrl, null);
+  assert.equal(movie.network, 'Legendary');
+  assert.equal(movie.rating, 7.8);
+  assert.equal(libraryMovie.rating, 6.3);
+  assert.equal(JSON.stringify(both).includes('apikey'), false);
+
+  for (const [text, expected] of [
+    ['tvdb:81189', [['sonarr', 'tvdb:81189']]],
+    ['TMDB: 0438631', [['radarr', 'tmdb:438631']]],
+    ['tt1160419', [['sonarr', 'imdb:tt1160419'], ['radarr', 'imdb:tt1160419']]],
+    ['imdb:TT1160419', [['sonarr', 'imdb:tt1160419'], ['radarr', 'imdb:tt1160419']]],
+    ['tvdb 81189', [['sonarr', 'tvdb 81189'], ['radarr', 'tvdb 81189']]],
+  ]) {
+    const result = await run(text);
+    assert.deepEqual(calls.map(({ service, term }) => [service, term]), expected, text);
+    if (expected.length === 1) assert.deepEqual(result.services[expected[0][0] === 'sonarr' ? 'radarr' : 'sonarr'], { kind: 'skipped' }, text);
+  }
+
+  for (const [label, sonarr, kind] of [
+    ['401', () => new Response('', { status: 401 }), 'rejected'],
+    ['network failure', () => { throw new TypeError('fetch failed'); }, 'unreachable'],
+    ['500', () => new Response('', { status: 500 }), 'unreachable'],
+    ['not a list', ok({ title: 'Dune' }), 'unreachable'],
+  ]) {
+    responders = { sonarr, radarr: ok(movies) };
+    const partial = await run('Dune');
+    assert.deepEqual(partial.services, { sonarr: { kind }, radarr: { kind: 'ok', count: 2 } }, label);
+    assert.deepEqual(partial.results.map((result) => result.service), ['radarr', 'radarr'], label);
+  }
+
+  responders = { sonarr: ok([]), radarr: ok([]) };
+  assert.deepEqual(await run('zzzz'), { results: [], services: { sonarr: { kind: 'ok', count: 0 }, radarr: { kind: 'ok', count: 0 } } });
+
+  deleteSetting(database, 'credentials', 'radarr.apiKey');
+  responders = { sonarr: ok(shows), radarr: () => assert.fail('unconfigured Radarr was called') };
+  assert.deepEqual((await run('Dune')).services.radarr, { kind: 'not_configured' });
+  configure();
+
+  for (const text of ['', '   ', 'x'.repeat(201)]) assert.equal(parseSearchQuery(text), undefined, JSON.stringify(text));
+});
+
+// Sending the owner's choices under the wrong fields, dropping the lookup record, saving defaults from a refused add, or offering defaults whose profile is gone breaks adding a title.
+test('adding a title sends the monitor decision and remembers it as the next default', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createAdd, parseMovieChoices, parseSeriesChoices } = await import(addModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-add-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const [service, port] of [['sonarr', 65021], ['radarr', 65022]]) {
+    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
+    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
+  }
+  let profiles = [{ id: 4, name: 'HD-1080p' }, { id: 6, name: 'Ultra-HD' }];
+  const folders = [{ path: '/home/owner/TV', freeSpace: 10 }];
+  let addResponse = { status: 201, body: { id: 77 } };
+  const posts = [];
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    const path = parsed.pathname;
+    if (init.method === 'POST') {
+      posts.push({ path, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify(addResponse.body), { status: addResponse.status });
+    }
+    const body = path.endsWith('/qualityprofile') ? profiles
+      : path.endsWith('/rootfolder') ? folders
+        : path.endsWith('/series/lookup') ? [{ title: 'Other', tvdbId: 1 }, { title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }] }]
+          : [{ title: 'Dune', tmdbId: 438631, images: [] }];
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+  const add = createAdd(database, { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) });
+  const series = {
+    monitor: 'none', monitorNewSeasons: true, qualityProfileId: 6, rootFolderPath: '/home/owner/TV',
+    seasonFolder: true, seriesType: 'standard', searchOnAdd: false,
+  };
+
+  assert.deepEqual(await add.options('sonarr'), { kind: 'ok', qualityProfiles: profiles, rootFolders: folders, defaults: null });
+
+  assert.deepEqual(await add.addSeries(371980, series), { kind: 'added', libraryId: 77 });
+  assert.deepEqual(posts.at(-1), {
+    path: '/api/v3/series',
+    body: {
+      title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }],
+      qualityProfileId: 6, rootFolderPath: '/home/owner/TV', seasonFolder: true, seriesType: 'standard',
+      monitored: true, monitorNewItems: 'all',
+      addOptions: { monitor: 'none', searchForMissingEpisodes: false, searchForCutoffUnmetEpisodes: false },
+    },
+  });
+  assert.deepEqual((await add.options('sonarr')).defaults, series);
+
+  addResponse = { status: 400, body: [{ propertyName: 'TvdbId', errorMessage: 'This series has already been added' }] };
+  assert.deepEqual(await add.addSeries(371980, { ...series, qualityProfileId: 4 }), { kind: 'refused', reason: 'This series has already been added' });
+  assert.deepEqual((await add.options('sonarr')).defaults, series);
+  assert.deepEqual(await add.addSeries(5, series), { kind: 'not_found' });
+
+  profiles = [{ id: 4, name: 'HD-1080p' }];
+  assert.equal((await add.options('sonarr')).defaults, null);
+
+  addResponse = { status: 201, body: { id: 12 } };
+  const movie = { monitor: 'none', minimumAvailability: 'inCinemas', qualityProfileId: 4, rootFolderPath: '/home/owner/TV', searchOnAdd: true };
+  assert.deepEqual(await add.addMovie(438631, movie), { kind: 'added', libraryId: 12 });
+  const { body } = posts.at(-1);
+  assert.equal(posts.at(-1).path, '/api/v3/movie');
+  assert.equal(body.title, 'Dune');
+  assert.equal(body.monitored, false);
+  assert.equal(body.minimumAvailability, 'inCinemas');
+  assert.deepEqual(body.addOptions, { monitor: 'none', searchForMovie: true });
+
+  assert.equal(parseSeriesChoices({ ...series, monitor: 'everything' }), undefined);
+  assert.equal(parseSeriesChoices({ ...series, qualityProfileId: '6' }), undefined);
+  assert.equal(parseMovieChoices({ ...movie, minimumAvailability: 'tba' }), undefined);
+});
+
+// Searching again when results are stored, losing stored results on a failed refresh, dropping rejected releases, misreading either service's indexer flags, or running two searches for one target at once breaks Pick a release.
+test('interactive searches are kept with their age and refreshed only on request', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createReleases } = await import(releasesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-releases-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const [service, port] of [['sonarr', 65031], ['radarr', 65032]]) {
+    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
+    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
+  }
+  const sonarrReleases = [
+    {
+      guid: 'g1', indexerId: 3, indexer: 'Blutopia', title: 'Show.S01E02.1080p.WEB-DL', quality: { quality: { name: 'WEBDL-1080p' } },
+      size: 2_000_000_000, ageHours: 5.5, seeders: 40, leechers: 2, approved: true, rejections: [], customFormatScore: 1200,
+      customFormats: [{ name: 'HQ' }], indexerFlags: 1 | 32, protocol: 'torrent',
+    },
+    {
+      guid: 'g2', indexerId: 3, title: 'Show.S01E02.720p.HDTV', quality: { quality: { name: 'HDTV-720p' } }, approved: false,
+      rejections: [{ reason: 'Not an upgrade for existing episode file(s)' }], indexerFlags: 0, seeders: 0,
+    },
+    { guid: '', indexerId: 3, title: 'broken' },
+  ];
+  let sonarr = () => new Response(JSON.stringify(sonarrReleases), { status: 200 });
+  const paths = [];
+  let releaseCalls = 0;
+  let release;
+  const fetch = async (url) => {
+    const parsed = new URL(String(url));
+    paths.push(`${parsed.port}${parsed.pathname}${parsed.search}`);
+    if (parsed.pathname === '/api/v3/release') {
+      releaseCalls += 1;
+      if (parsed.port === '65032') {
+        return new Response(JSON.stringify([{ guid: 'm1', indexerId: 7, title: 'Movie.2021.2160p', approved: true, rejections: [], indexerFlags: ['G_Freeleech75', 'Nuked'] }]), { status: 200 });
+      }
+      await release;
+      return sonarr();
+    }
+    if (parsed.pathname === '/api/v3/history/series') {
+      return new Response(JSON.stringify([
+        { eventType: 'grabbed', sourceTitle: 'show.s01e02.720p.hdtv', date: '2026-10-01T10:00:00Z' },
+        { eventType: 'downloadFolderImported', sourceTitle: 'Show.S01E02.720p.HDTV' },
+      ]), { status: 200 });
+    }
+    if (parsed.pathname === '/api/v3/blocklist') {
+      return new Response(JSON.stringify({ records: [{ sourceTitle: 'Show.S01E02.720p.HDTV', date: '2026-10-02T10:00:00Z' }] }), { status: 200 });
+    }
+    return new Response('', { status: 500 });
+  };
+  let clock = 1_000;
+  const releases = createReleases(database, { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) }, () => clock);
+  const episode = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
+
+  const first = await releases.get(episode);
+  assert.equal(first.kind, 'ok');
+  assert.equal(first.search.fetchedAt, 1_000);
+  assert.ok(paths.includes('65031/api/v3/release?episodeId=50'), paths.join());
+  assert.deepEqual(first.search.releases.map((item) => [item.guid, item.approved, item.flags, item.rejections]), [
+    ['g1', true, ['Freeleech', 'Internal'], []],
+    ['g2', false, [], ['Not an upgrade for existing episode file(s)']],
+  ]);
+  assert.deepEqual(first.search.releases[0].past, []);
+  assert.deepEqual(first.search.releases[1].past, [
+    { kind: 'grabbed', at: '2026-10-01T10:00:00Z' },
+    { kind: 'blocklisted', at: '2026-10-02T10:00:00Z' },
+  ]);
+  assert.equal(first.search.releases[0].quality, 'WEBDL-1080p');
+  assert.deepEqual(first.search.releases[0].customFormats, ['HQ']);
+
+  clock = 5_000;
+  const stored = await releases.get(episode);
+  assert.equal(releaseCalls, 1);
+  assert.equal(stored.search.fetchedAt, 1_000);
+
+  let unblock;
+  release = new Promise((resolve) => { unblock = resolve; });
+  sonarrReleases.splice(1, 1);
+  const refreshes = [releases.refresh(episode), releases.refresh(episode)];
+  assert.equal((await releases.get(episode)).refreshing, true);
+  unblock();
+  const [refreshedA, refreshedB] = await Promise.all(refreshes);
+  assert.equal(releaseCalls, 2);
+  assert.equal(refreshedA, refreshedB);
+  assert.equal(refreshedA.search.fetchedAt, 5_000);
+  assert.deepEqual(refreshedA.search.releases.map((item) => item.guid), ['g1']);
+  release = undefined;
+
+  sonarr = () => new Response('', { status: 503 });
+  const failed = await releases.refresh(episode);
+  assert.equal(failed.kind, 'unreachable');
+  assert.equal(failed.stored.fetchedAt, 5_000);
+  assert.deepEqual((await releases.get(episode)).search.releases.map((item) => item.guid), ['g1']);
+
+  const movie = await releases.get({ service: 'radarr', kind: 'movie', movieId: 9 });
+  assert.deepEqual(movie.search.releases[0].flags, ['Freeleech 75%', 'Nuked']);
+  assert.equal(releases.find({ service: 'radarr', kind: 'movie', movieId: 9 }, 'm1').title, 'Movie.2021.2160p');
+});
+
+// Grabbing through /release/push or without the stored release, reporting a refused grab as sent, losing the downloadId, or recording the searched target instead of an override breaks hand grabs and the replace that follows them.
+test('a hand grab is recorded before it is sent and keeps what it is for', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createReleases } = await import(releasesModuleUrl);
+  const { createGrabs, parseOverrides } = await import(grabsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-grabs-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65041');
+  setSetting(database, 'credentials', 'sonarr.apiKey', 'sonarr-key');
+  const quality = { quality: { id: 3, name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: false } };
+  const posts = [];
+  let grabResponse = () => new Response('{}', { status: 200 });
+  const fetch = async (url, init = {}) => {
+    const { pathname } = new URL(String(url));
+    if (init.method === 'POST') {
+      posts.push({ pathname, body: JSON.parse(init.body) });
+      return grabResponse();
+    }
+    if (pathname === '/api/v3/release') {
+      return new Response(JSON.stringify([{
+        guid: 'g-rejected', indexerId: 3, title: 'Show.S01E02.720p', approved: false, quality, languages: [{ id: 1, name: 'English' }],
+        rejections: ['Not an upgrade for existing episode file(s)'],
+      }]), { status: 200 });
+    }
+    if (pathname === '/api/v3/history') {
+      return new Response(JSON.stringify({ records: [
+        { downloadId: 'OTHER', data: { guid: 'g-other' } },
+        { downloadId: 'ABC123HASH', data: { guid: 'g-rejected' } },
+      ] }), { status: 200 });
+    }
+    if (pathname === '/api/v3/qualitydefinition') {
+      return new Response(JSON.stringify([{ quality: { id: 3, name: 'WEBDL-1080p' } }, { quality: { id: 4, name: 'HDTV-720p', resolution: 720 } }]), { status: 200 });
+    }
+    return new Response('[]', { status: 200 });
+  };
+  const sonarr = createArr('sonarr', database, { fetch });
+  const releases = createReleases(database, { sonarr, radarr: sonarr });
+  const changes = [];
+  const grabs = createGrabs(database, { sonarr, radarr: sonarr }, releases, { onChange: (record) => changes.push(record.state) });
+  const target = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
+
+  assert.deepEqual(await grabs.grab(target, 'g-rejected', 'replace'), { kind: 'unknown_release' });
+  await releases.get(target);
+
+  const sent = await grabs.grab(target, 'g-rejected', 'replace');
+  assert.equal(sent.kind, 'sent');
+  assert.deepEqual(posts.at(-1), { pathname: '/api/v3/release', body: { guid: 'g-rejected', indexerId: 3, downloadAllowed: true } });
+  assert.deepEqual(changes, ['sending', 'sent', 'sent']);
+  assert.equal(sent.record.downloadId, 'ABC123HASH');
+  assert.equal(sent.record.intent, 'replace');
+  assert.deepEqual(grabs.pending('replace').map((record) => record.id), [sent.record.id]);
+
+  const overrides = parseOverrides({ seriesId: 5, episodeIds: [51, 52], qualityId: 4 }, 'sonarr');
+  const overridden = await grabs.grab(target, 'g-rejected', 'grab', overrides);
+  assert.deepEqual(posts.at(-1).body, {
+    guid: 'g-rejected', indexerId: 3, downloadAllowed: true, shouldOverride: true,
+    quality: { quality: { id: 4, name: 'HDTV-720p', resolution: 720 }, revision: { version: 2, real: 0, isRepack: false } },
+    languages: [{ id: 1, name: 'English' }], seriesId: 5, episodeIds: [51, 52],
+  });
+  assert.deepEqual(overridden.record.target, { service: 'sonarr', kind: 'episodes', seriesId: 5, episodeIds: [51, 52] });
+  assert.deepEqual(overridden.record.searchedFor, target);
+
+  // The services require the title with every override, so a quality-only one names the searched target.
+  await grabs.grab(target, 'g-rejected', 'grab', parseOverrides({ qualityId: 4 }, 'sonarr'));
+  assert.deepEqual([posts.at(-1).body.seriesId, posts.at(-1).body.episodeIds], [5, [50]]);
+
+  grabResponse = () => new Response(JSON.stringify({ message: "Couldn't find requested release in cache, try searching again" }), { status: 404 });
+  const refused = await grabs.grab(target, 'g-rejected', 'grab');
+  assert.equal(refused.kind, 'failed');
+  assert.equal(refused.record.state, 'failed');
+  assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
+  assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent', 'sent']);
+
+  assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
+  assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
+  assert.deepEqual(parseOverrides(undefined, 'radarr'), {});
+});
+
+// Forcing an import blocked for any reason but "Not an upgrade", using a move instead of a hardlink-or-copy import, forcing the same download twice, or calling a replace complete without an import breaks the replace guarantee.
+test('a replace is forced only past "Not an upgrade" and completes only on import', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createReleases } = await import(releasesModuleUrl);
+  const { createGrabs } = await import(grabsModuleUrl);
+  const { createReplaces } = await import(replaceModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-replace-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const [service, port] of [['sonarr', 65051], ['radarr', 65052]]) {
+    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
+    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
+  }
+  const notUpgrade = { sonarr: 'Not an upgrade for existing episode file(s)', radarr: 'Not an upgrade for existing movie file' };
+  const queue = {};
+  const history = {};
+  const manual = {};
+  const commands = [];
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    const service = parsed.port === '65051' ? 'sonarr' : 'radarr';
+    const json = (body) => new Response(JSON.stringify(body), { status: 200 });
+    const id = parsed.searchParams.get('downloadId');
+    if (init.method === 'POST' && parsed.pathname === '/api/v3/command') {
+      commands.push({ service, body: JSON.parse(init.body) });
+      return json({ id: 1 });
+    }
+    if (init.method === 'POST') return json({});
+    if (parsed.pathname === '/api/v3/release') {
+      return json([{ guid: `${service}-${parsed.searchParams.toString()}`, indexerId: 1, title: `Release ${parsed.searchParams.toString()}`, approved: false, rejections: [notUpgrade[service]] }]);
+    }
+    if (parsed.pathname === '/api/v3/queue') return json({ records: Object.values(queue).filter((item) => item.service === service) });
+    if (parsed.pathname === '/api/v3/history') {
+      if (id === null) {
+        return json({ records: Object.entries(history).flatMap(([downloadId, events]) => events.map((event) => ({ ...event, downloadId }))) });
+      }
+      return json({ records: (history[id] ?? []).map((event) => ({ ...event, downloadId: id })) });
+    }
+    if (parsed.pathname === '/api/v3/manualimport') return json(manual[id] ?? []);
+    return json([]);
+  };
+  const services = { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) };
+  const releases = createReleases(database, services);
+  let clock = 1_000_000;
+  const grabs = createGrabs(database, services, releases, { now: () => clock });
+  const replaces = createReplaces(services, grabs, { now: () => clock });
+  const start = async (target, downloadId) => {
+    await releases.get(target);
+    const guid = (await releases.get(target)).search.releases[0].guid;
+    history[downloadId] = [{ eventType: 'grabbed', data: { guid } }];
+    const result = await grabs.grab(target, guid, 'replace');
+    assert.equal(result.record.downloadId, downloadId);
+    return result.record.id;
+  };
+  const blocked = (service, messages) => ({ service, status: 'completed', trackedDownloadStatus: 'warning', trackedDownloadState: 'importBlocked', statusMessages: [{ title: 'file.mkv', messages }] });
+  const episodeFile = (path, rejections, episodes = [{ id: 50 }]) => ({ path, folderName: 'Show.S01E02', quality: { quality: { id: 4 } }, languages: [{ id: 1 }], releaseGroup: 'GRP', episodes, rejections: rejections.map((reason) => ({ reason, type: 'permanent' })) });
+
+  const episode = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 }, 'HASH-EPISODE');
+  const dangerous = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 51 }, 'HASH-DANGEROUS');
+  const movie = await start({ service: 'radarr', kind: 'movie', movieId: 9 }, 'HASH-MOVIE');
+  const vanished = await start({ service: 'radarr', kind: 'movie', movieId: 10 }, 'HASH-VANISHED');
+
+  queue.e = { ...blocked('sonarr', []), downloadId: 'hash-episode', trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
+  queue.d = { ...blocked('sonarr', ['Dangerous file extension .exe']), downloadId: 'HASH-DANGEROUS' };
+  queue.m = { ...blocked('radarr', [notUpgrade.radarr]), downloadId: 'HASH-MOVIE' };
+  queue.v = { ...blocked('radarr', []), downloadId: 'HASH-VANISHED', trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
+  manual['HASH-MOVIE'] = [{ path: '/dl/Movie.mkv', quality: { quality: { id: 7 } }, languages: [], rejections: [{ reason: notUpgrade.radarr }] }];
+  await replaces.run();
+  assert.equal(commands.length, 1);
+  assert.deepEqual(commands[0], {
+    service: 'radarr',
+    body: { name: 'ManualImport', importMode: 'auto', files: [{ path: '/dl/Movie.mkv', quality: { quality: { id: 7 } }, languages: [], downloadId: 'HASH-MOVIE', movieId: 9 }] },
+  });
+  assert.equal(grabs.read(episode).state, 'sent');
+  assert.equal(grabs.read(dangerous).state, 'failed');
+  assert.equal(grabs.read(dangerous).failure, 'Import blocked: Dangerous file extension .exe');
+  assert.equal(grabs.read(movie).state, 'importing');
+
+  queue.e = { ...blocked('sonarr', [notUpgrade.sonarr]), downloadId: 'hash-episode' };
+  manual['HASH-EPISODE'] = [
+    episodeFile('/dl/Show.S01E02/ep.mkv', [notUpgrade.sonarr]),
+    episodeFile('/dl/Show.S01E02/sample.mkv', ['Sample']),
+    episodeFile('/dl/Show.S01E02/other.mkv', [], []),
+  ];
+  delete queue.v;
+  await replaces.run();
+  assert.equal(commands.length, 2, 'the movie already forced is not forced again');
+  assert.equal(commands[1].service, 'sonarr');
+  assert.equal(commands[1].body.importMode, 'auto');
+  assert.deepEqual(commands[1].body.files.map((file) => [file.path, file.seriesId, file.episodeIds]), [
+    ['/dl/Show.S01E02/ep.mkv', 5, [50]],
+    ['/dl/Show.S01E02/other.mkv', 5, [50]],
+  ]);
+  assert.equal(grabs.read(vanished).state, 'sent', 'history can name a download before the queue shows it');
+
+  delete queue.e;
+  history['HASH-EPISODE'].push({ eventType: 'downloadFolderImported' });
+  clock += 31 * 60_000;
+  await replaces.run();
+  assert.equal(grabs.read(vanished).state, 'failed');
+  assert.equal(grabs.read(vanished).failure, 'The download left the queue without being imported.');
+  assert.equal(grabs.read(episode).state, 'completed');
+  assert.equal(grabs.read(movie).state, 'failed', 'a forced import still blocked after the grace period has failed');
+  assert.equal(commands.length, 2);
+});
+
+// An ignored term that misses a naming of the protected episode lets Sonarr upgrade over a manual download; one that also matches a neighbouring episode stops that episode upgrading.
+test('manual-download patterns refuse every naming of one episode and no other', async () => {
+  const { episodePatterns, numberRange } = await import(protectionModuleUrl);
+  const toRegExp = (term) => {
+    const [, source, flags] = /^\/(.*)\/([a-z]*)$/.exec(term);
+    return new RegExp(source, flags);
+  };
+  for (const [min, max] of [[0, 0], [0, 999], [1, 1], [1, 9], [1, 12], [2, 999], [7, 103], [10, 99], [19, 200]]) {
+    const range = new RegExp(`^${numberRange(min, max)}$`);
+    for (let value = 0; value <= 1000; value += 1) {
+      assert.equal(range.test(String(value)), value >= min && value <= max, `${value} in ${min}..${max}`);
+    }
+    assert.equal(range.test(`00${min}`), true);
+  }
+  const blocks = (season, episode, title) => episodePatterns(season, episode).map(toRegExp).some((pattern) => pattern.test(title));
+  for (const title of [
+    'Spike.Show.S01E02.2160p.WEB-DL', 'Spike.Show.S01E02E03.2160p', 'Spike.Show.S01E01E02.2160p', 'Spike.Show.S01E01-E03.2160p',
+    'Spike.Show.1x02.2160p', 'Spike Show - S01E02 - Episode 2 [WEBDL-2160p]', 'Spike.Show.S01.2160p.WEB-DL', 'Spike.Show.Season.1.2160p',
+    'Spike.Show.S01-S02.2160p', 'Spike.Show.s1e2.720p', 'Spike.Show.S01E02-04.1080p',
+  ]) assert.equal(blocks(1, 2, title), true, title);
+  for (const title of [
+    'Spike.Show.S01E03.2160p', 'Spike.Show.S01E05.2160p', 'Spike.Show.S01E12.2160p', 'Spike.Show.S01E20.2160p', 'Spike.Show.S11E02.2160p',
+    'Spike.Show.S10E02.2160p', 'Spike.Show.S02E02.2160p', 'Spike.Show.S01E03-E05.2160p', 'Spike.Show.S02.2160p', 'Spike.Show.11x02',
+    'Spike.Show.Season.11.1080p',
+  ]) assert.equal(blocks(1, 2, title), false, title);
+  assert.equal(blocks(3, 12, 'Show.S03E10-E14.1080p'), true);
+  assert.equal(blocks(3, 12, 'Show.S03E13-E14.1080p'), false);
+  assert.equal(blocks(3, 12, 'Show.S03E01E02.1080p'), false);
+  // Specials are season 0, and their episode numbers can be 0.
+  assert.equal(blocks(0, 0, 'Show.S00E00.1080p'), true);
+  assert.equal(blocks(0, 0, 'Show.S00E00-E02.1080p'), true);
+  assert.equal(blocks(0, 0, 'Show.S00E01.1080p'), false);
+});
+
+// Unprotecting by unmonitoring, leaving a tag or profile behind when protection ends, vetoing media-manager-2's own grab, or letting another grab of a protected item through breaks manual-download protection.
+test('manual downloads are protected with tags, release profiles and a grab veto', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createApp } = await import(appModuleUrl);
+  const { createProtection } = await import(protectionModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-protection-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const [service, port] of [['sonarr', 65061], ['radarr', 65062]]) {
+    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
+    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
+  }
+  const fake = () => ({ tags: [], profiles: [], records: {}, notifications: [], queue: [], deleted: [], nextId: 1 });
+  const state = { sonarr: fake(), radarr: fake() };
+  state.radarr.records['/api/v3/movie/9'] = { id: 9, title: 'Dune', monitored: true, qualityProfileId: 4, hasFile: true, tags: [] };
+  state.radarr.records['/api/v3/movie/10'] = { id: 10, title: 'Other', monitored: true, hasFile: true, tags: [] };
+  state.sonarr.records['/api/v3/series/5'] = { id: 5, title: 'Show', monitored: true, tags: [7] };
+  state.sonarr.records['/api/v3/episode/50'] = { id: 50, seriesId: 5, seasonNumber: 1, episodeNumber: 2, hasFile: true, monitored: true };
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    const fakeState = state[parsed.port === '65061' ? 'sonarr' : 'radarr'];
+    const path = parsed.pathname;
+    const method = init.method ?? 'GET';
+    const body = init.body === undefined ? undefined : JSON.parse(init.body);
+    const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
+    const collection = path === '/api/v3/tag' ? 'tags' : path.startsWith('/api/v3/releaseprofile') ? 'profiles' : path.startsWith('/api/v3/notification') ? 'notifications' : undefined;
+    if (collection !== undefined) {
+      const id = Number(path.split('/')[4]);
+      if (method === 'GET') return json(fakeState[collection]);
+      if (method === 'POST') {
+        const created = { ...body, id: fakeState.nextId++ };
+        fakeState[collection].push(created);
+        return json(created, 201);
+      }
+      if (method === 'PUT') {
+        fakeState[collection] = fakeState[collection].map((item) => (item.id === id ? { ...body, id } : item));
+        return json(body, 202);
+      }
+      fakeState[collection] = fakeState[collection].filter((item) => item.id !== id);
+      return json({});
+    }
+    if (path === '/api/v3/movie' && method === 'GET') return json(Object.entries(fakeState.records).filter(([key]) => key.startsWith('/api/v3/movie/')).map(([, value]) => value));
+    if (path === '/api/v3/queue') return json({ records: fakeState.queue });
+    if (path.startsWith('/api/v3/queue/') && method === 'DELETE') {
+      fakeState.deleted.push(`${path}${parsed.search}`);
+      return json({});
+    }
+    if (path in fakeState.records) {
+      if (method === 'PUT') fakeState.records[path] = body;
+      return json(fakeState.records[path]);
+    }
+    return json({}, 404);
+  };
+  const services = { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) };
+  let ownTitles = [];
+  const protection = createProtection(database, services, { recentGrabTitles: () => ownTitles });
+  const replaceOf = (target) => ({ target, service: target.service, state: 'completed' });
+
+  await protection.protect(replaceOf({ service: 'radarr', kind: 'movie', movieId: 9 }));
+  const radarrTag = state.radarr.tags.find((tag) => tag.label === 'mm2-manual');
+  assert.ok(radarrTag);
+  assert.deepEqual(state.radarr.profiles.map(({ name, enabled, ignored, required, tags }) => ({ name, enabled, ignored, required, tags })), [
+    { name: 'mm2 manual downloads', enabled: true, ignored: ['/./'], required: [], tags: [radarrTag.id] },
+  ]);
+  assert.deepEqual(state.radarr.records['/api/v3/movie/9'], { id: 9, title: 'Dune', monitored: true, qualityProfileId: 4, hasFile: true, tags: [radarrTag.id] });
+  assert.deepEqual(state.radarr.records['/api/v3/movie/10'].tags, []);
+
+  await protection.protect(replaceOf({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 }));
+  const seriesTag = state.sonarr.tags.find((tag) => tag.label === 'mm2-manual-5');
+  assert.ok(seriesTag);
+  assert.deepEqual(state.sonarr.records['/api/v3/series/5'].tags, [7, seriesTag.id]);
+  assert.equal(state.sonarr.records['/api/v3/series/5'].monitored, true);
+  assert.equal(state.sonarr.profiles.length, 1);
+  assert.equal(state.sonarr.profiles[0].ignored.length, 5);
+  assert.deepEqual(state.sonarr.profiles[0].tags, [seriesTag.id]);
+  assert.deepEqual(protection.list().map((item) => item.kind), ['movie', 'episode']);
+
+  state.sonarr.profiles = [];
+  await protection.reconcile();
+  assert.equal(state.sonarr.profiles.length, 1, 'a profile removed by hand comes back');
+
+  state.sonarr.queue = [{ id: 31, downloadId: 'ABCDEF' }];
+  const grab = { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 49 }, { id: 50 }], downloadId: 'abcdef', release: { releaseTitle: 'Show.S01.1080p' } };
+  assert.equal(await protection.veto('sonarr', { ...grab, episodes: [{ id: 49 }] }), 'ignored');
+  ownTitles = ['show.s01.1080p'];
+  assert.equal(await protection.veto('sonarr', grab), 'allowed');
+  ownTitles = [];
+  assert.equal(await protection.veto('sonarr', grab), 'vetoed');
+  assert.deepEqual(state.sonarr.deleted, ['/api/v3/queue/31?removeFromClient=true&blocklist=true']);
+  assert.equal(await protection.veto('sonarr', { eventType: 'Test' }), 'ignored');
+
+  const app = createApp({ clientDirectory: root, listeningHost: '127.0.0.1', protection });
+  const hook = (token, body = { eventType: 'Test' }) => app.request(`/hooks/grab/sonarr?token=${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  assert.equal((await hook('wrong')).status, 401);
+  assert.equal((await hook(protection.hookToken())).status, 204);
+
+  state.radarr.records['/api/v3/movie/9'].hasFile = false;
+  await protection.unprotect(protection.list().find((item) => item.kind === 'episode'));
+  await protection.reconcile();
+  assert.deepEqual(protection.list(), []);
+  assert.deepEqual(state.radarr.records['/api/v3/movie/9'].tags, []);
+  assert.deepEqual(state.sonarr.profiles, []);
+  assert.deepEqual(state.sonarr.records['/api/v3/series/5'].tags, [7]);
+});
+
 test('the downloads screen joins torrents, queue items and problems into rows', async (t) => {
   // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
@@ -3029,4 +3666,34 @@ test('the downloads screen joins torrents, queue items and problems into rows', 
     assert.deepEqual(applyEvent(snapshot, 'problem', problem({ state: 'resolved' })).problems, []);
     assert.equal(applyEvent(snapshot, 'unknown', {}), snapshot);
   });
+});
+
+test('a hand grab marks its torrent grab record as by hand, whichever record arrives first', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker, findGrab } = await import(torrentGrabsModuleUrl);
+  const { handGrab } = await import(grabsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-hand-grab-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const service = { request: async () => ({ status: 404, body: undefined }) };
+  const hand = handGrab({
+    id: 1, service: 'sonarr', target: { service: 'sonarr', kind: 'episode', seriesId: 3, episodeId: 31 },
+    searchedFor: { service: 'sonarr', kind: 'episode', seriesId: 3, episodeId: 31 }, guid: 'g', releaseTitle: 'Show.S01E01',
+    intent: 'replace', state: 'sent', failure: null, downloadId: 'ab'.repeat(20), createdAt: 1_000, updatedAt: 1_000,
+  });
+  const webhook = { ...hand, indexer: 'Blutopia', grabbedAt: 2_000, byHand: false };
+
+  // Dropping byHand from handGrab, or recording the hand grab only when no webhook record exists, turns this red:
+  // the import fix then clears a replace's "Not an upgrade" download from the queue.
+  for (const [first, second] of [[webhook, hand], [hand, webhook]]) {
+    const database = openDatabase(join(root, `db-${first === hand ? 'hand' : 'webhook'}-first`, 'media-manager.sqlite'));
+    const tracker = createGrabTracker({ database, arr: { sonarr: service, radarr: service }, events: createEventHub() });
+    tracker.recordGrab(first);
+    tracker.recordGrab(second);
+    const grab = findGrab(database, 'ab'.repeat(20));
+    assert.equal(grab.byHand, true);
+    assert.equal(grab.indexer, 'Blutopia');
+    assert.deepEqual([grab.seriesId, grab.episodeIds, grab.grabbedAt], [3, [31], 1_000]);
+    database.close();
+  }
 });
