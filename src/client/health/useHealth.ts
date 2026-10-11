@@ -20,7 +20,7 @@ export type HealthSnapshot = {
   checkedAt: number;
   level: HealthLevel;
   problems: HealthProblem[];
-  services: { name: 'sonarr' | 'radarr' | 'rtorrent' | 'plex'; label: string; status: ConnectionStatus; update: string | null }[];
+  services: { name: 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'tmdb'; label: string; status: ConnectionStatus; update: string | null }[];
   trackers: {
     host: string;
     reachable: boolean;

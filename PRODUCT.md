@@ -56,7 +56,7 @@ First version, as agreed on the Linear map ([Map: first version of media-manager
 15. Monitored state is visible on every show, season and episode row, with a mixed state for a season that is partly monitored, and can be toggled on the row.
 16. Episode and movie rows carry Search automatically and Pick a release directly. Versions and history open on request; nothing in the grab path needs a side panel.
 
-Images and descriptions come only from Sonarr and Radarr: one poster and one backdrop per title, plus season posters and episode images.
+Images and descriptions come only from Sonarr and Radarr: one poster and one backdrop per title, plus season posters and episode images. The one exception is TMDB, which may supply them for Discover and title pages.
 
 Terminology: use the words in `CONTEXT.md` exactly. "Release" always means a torrent, never a release date.
 
