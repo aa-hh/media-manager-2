@@ -1,11 +1,11 @@
 #!/bin/sh
-# Pre-push: this repo has no CI, so this hook is the full-suite gate that a
-# `tests` workflow would otherwise be.
+# Pre-push: the early local gate. The `tests` workflow in GitHub Actions is
+# the one that blocks the merge.
 #
-#   1. Refuses any push to main (main moves only via scripts/land.sh after
-#      the owner says yes).
+#   1. Refuses any push to main (main moves only through a PR that the
+#      ruleset gates; `gh pr merge --auto` after the owner says yes).
 #   2. Runs the full suite (scripts/test.sh --full) on the commit being
-#      pushed, and records the pass so scripts/land.sh can see it.
+#      pushed, and records the pass so an unchanged commit is not re-run.
 #
 # Override once: git push --no-verify
 
@@ -22,7 +22,7 @@ while read -r local_ref local_sha remote_ref _remote_sha; do
     [ "$local_sha" = "$zero" ] && continue          # a delete
     if [ "$remote_ref" = "refs/heads/main" ] && [ "${ALLOW_PUSH_MAIN:-0}" != 1 ]; then
         echo "" >&2
-        echo "  REFUSED: push to main. Land through scripts/land.sh after review." >&2
+        echo "  REFUSED: push to main. Open a PR and auto-merge it with gh pr merge --auto after review." >&2
         echo "" >&2
         exit 1
     fi

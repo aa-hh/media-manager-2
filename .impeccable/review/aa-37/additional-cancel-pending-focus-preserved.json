@@ -1,0 +1,24 @@
+{
+  "active": {
+    "tag": "BUTTON",
+    "text": "Read observations"
+  },
+  "announcement": "Plex sign-in isn’t finished.",
+  "busy": "false",
+  "buttons": [
+    {
+      "disabled": false,
+      "text": "Check again"
+    },
+    {
+      "disabled": false,
+      "text": "Try again"
+    },
+    {
+      "disabled": false,
+      "text": "Cancel"
+    }
+  ],
+  "heading": "Plex sign-in isn’t finished.",
+  "observations": "/api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | /auth/complete response 202 | pageshow persisted=false | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | explicit synthetic focus event | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | /auth/complete response 202 | {\"action\":\"read\",\"clock\":1791472103852,\"providerSuccess\":false,\"cancelHeld\":false,\"waiting\":0,\"calls\":{\"/api/session\":11,\"/auth/status\":11,\"/auth/start\":5,\"/auth/cancel\":5,\"/auth/logout\":3,\"/auth/callback\":1,\"/auth/complete\":2},\"responseStatuses\":{\"/\":[200,200,200,200],\"/assets/index-DC9T7iYe.js\":[200,200],\"/assets/index-BS_nBJaP.css\":[200,200,200,200,200],\"/assets/inter-variable-VF2RPR_K.ttf\":[200,200,200,200,200],\"/api/session\":[401,401,401,401,401,401,401,401,401,401,401],\"/auth/status\":[200,200,200,200,200,200,200,200,200,200,200],\"/auth/start\":[201,201,201,201,201],\"/auth/cancel\":[204,204,204,400,204],\"/auth/logout\":[204,204,204],\"/assets/index-ntkCSFu_.js\":[200,200,200],\"/auth/callback\":[200],\"/auth/complete\":[202,202]},\"callbackUrl\":\"http://127.0.0.1:4312/auth/callback?state=pzG1gOUIl29iA0w-mw2orkZgHA2yvqkqgWhnFYxLzts\"}"
+}

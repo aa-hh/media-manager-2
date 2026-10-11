@@ -1,6 +1,6 @@
 #!/bin/sh
 # Keeps local main a fast-forward mirror of origin/main. Main takes changes
-# only through GitHub's merge queue, so nothing local ever needs to commit on
+# only through pull requests, so nothing local ever needs to commit on
 # it; this runs every 2 minutes from launchd
 # (scripts/launchd/sync-main.plist.template, installed by scripts/setup.sh) so main follows a merge
 # within minutes, with no session involved.

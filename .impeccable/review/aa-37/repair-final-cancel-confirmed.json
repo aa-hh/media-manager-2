@@ -1,0 +1,4 @@
+{
+  "dom": "- main:\n  - paragraph: media-manager-2\n  - heading \"Sign in\" [active] [level=1]\n  - paragraph: Only the owner’s Plex account can open this app.\n  - paragraph: You’ll sign in on Plex, then return here. This app never receives your Plex password.\n  - button \"Sign in with Plex\":\n    - text: Sign in with Plex\n  - paragraph: Plex sign-in cancelled.\n- complementary \"Temporary browser fixture controls\":\n  - generic \"Temporary browser fixture controls\"",
+  "url": "http://127.0.0.1:4312/auth/callback"
+}

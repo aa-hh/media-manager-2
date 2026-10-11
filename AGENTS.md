@@ -44,7 +44,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 
 <!-- One line per top-level folder: path → what it is. Each folder with
      rules of its own gets an AGENTS.md. -->
-- `scripts/` → the only sanctioned way to build, test, review and land.
+- `scripts/` → the only sanctioned way to build, test, review, land and deploy.
 - `.githooks/` → commit and push guards; settings in `project.conf`.
 - `docs/review/` → instructions for each branch-review pass.
 - `.scratch/` → local issue tracker (`docs/agents/issue-tracker.md`).
@@ -72,6 +72,8 @@ symbol you cannot find in source, believe the source and fix the doc.
   app's own data directory, and (c) be removable by a purge script updated in
   the same change. Unlabelled tooling dropped onto a machine runs unnoticed
   for days.
+- **Never give a Podman container on the deploy host a name containing
+  `media-manager`.** An older cron script there removes every such container.
 - **A busy shared resource is reported, not waited on.** When a lock, slot or
   device another agent holds blocks you, say who holds it, go do other work,
   and retry later. Never sit in a wait loop.
@@ -143,9 +145,9 @@ bash scripts/review-branch.sh --continue
 ```
 
 Then **stop and ask the owner before merging.** Only after a clear yes, run
-`sh scripts/land.sh`, which refuses unless the full suite passed on the PR's
-head and the `review` status there is green. This repo has no CI: the
-pre-push hook is the test gate and `land.sh` is the merge queue.
+`gh pr merge --merge --auto`, which turns on auto-merge for the PR. The main
+ruleset holds it until the `tests` check (GitHub Actions) and the `review`
+status are green; GitHub then merges it. The pre-push hook is the early local gate.
 
 **Do not work in the `main` checkout at all.** Merely *editing* it starts the
 accident: another agent that cannot merge past loose edits commits them to

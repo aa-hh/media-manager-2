@@ -1,0 +1,20 @@
+{
+  "active": {
+    "tag": "BUTTON",
+    "text": "Release oldest cancellation delivery"
+  },
+  "announcement": "Cancelling sign-in…",
+  "busy": "true",
+  "buttons": [
+    {
+      "disabled": true,
+      "text": "Try again"
+    },
+    {
+      "disabled": true,
+      "text": "Cancelling…"
+    }
+  ],
+  "heading": "Plex sign-in was interrupted.",
+  "observations": "pageshow persisted=false | /api/session response 401 | session 401 {\"error\":\"unauthenticated\"} | /auth/status response 200 | status body {\"configured\":true,\"pending\":true} | hold actual cancellation delivery enabled | /auth/cancel response 204 | real cancel 204 held delivery id=1 | /auth/status response 200 | status body {\"configured\":true,\"pending\":false} | hold start delivery enabled | real start 201 delivered binding cookie; response held | explicit synthetic persisted PageTransitionEvent | pageshow persisted=true | /api/session response 401 | /auth/status response 200 | session 401 {\"error\":\"unauthenticated\"} | status body {\"configured\":true,\"pending\":true} | {\"action\":\"reject-next-cancel\",\"clock\":1791472103852,\"providerSuccess\":false,\"cancelHeld\":false,\"waiting\":0,\"calls\":{\"/api/session\":8,\"/auth/status\":11,\"/auth/start\":4,\"/auth/cancel\":3,\"/auth/logout\":3},\"responseStatuses\":{\"/\":[200,200,200,200],\"/assets/index-DC9T7iYe.js\":[200,200],\"/assets/index-BS_nBJaP.css\":[200,200,200,200],\"/assets/inter-variable-VF2RPR_K.ttf\":[200,200,200,200],\"/api/session\":[401,401,401,401,401,401,401,401],\"/auth/status\":[200,200,200,200,200,200,200,200,200,200,200],\"/auth/start\":[201,201,201,201],\"/auth/cancel\":[204,204,204],\"/auth/logout\":[204,204,204],\"/assets/index-ntkCSFu_.js\":[200,200]},\"callbackUrl\":\"http://127.0.0.1:4312/auth/callback?state=bRGbP38sXs3-nQZOX9boFilN6EUkgrb8WPqrLS3KIac\"} | /auth/cancel response 400 | real cancel 400 held delivery id=2 | {\"action\":\"read\",\"clock\":1791472103852,\"providerSuccess\":false,\"cancelHeld\":false,\"waiting\":0,\"calls\":{\"/api/session\":8,\"/auth/status\":11,\"/auth/start\":4,\"/auth/cancel\":4,\"/auth/logout\":3},\"responseStatuses\":{\"/\":[200,200,200,200],\"/assets/index-DC9T7iYe.js\":[200,200],\"/assets/index-BS_nBJaP.css\":[200,200,200,200],\"/assets/inter-variable-VF2RPR_K.ttf\":[200,200,200,200],\"/api/session\":[401,401,401,401,401,401,401,401],\"/auth/status\":[200,200,200,200,200,200,200,200,200,200,200],\"/auth/start\":[201,201,201,201],\"/auth/cancel\":[204,204,204,400],\"/auth/logout\":[204,204,204],\"/assets/index-ntkCSFu_.js\":[200,200]},\"callbackUrl\":\"http://127.0.0.1:4312/auth/callback?state=bRGbP38sXs3-nQZOX9boFilN6EUkgrb8WPqrLS3KIac\"} | released cancellation delivery id=1"
+}

@@ -1,0 +1,75 @@
+@import "tailwindcss";
+@import "shadcn/tailwind.css";
+
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/inter-variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --ground: #f6f8f7;
+  --control: #ffffff;
+  --control-hover: #f0f4f2;
+  --quiet-hover: #e8eeeb;
+  --ink: #152123;
+  --secondary-ink: #53605f;
+  --border: #dae2df;
+  --focus: #233b35;
+  /* The signed-in app follows DESIGN.md; the sign-in page keeps the light tokens above. */
+  --mm-ground: #0e0f12;
+  --mm-row: #15171c;
+  --mm-row-alt: #1b1e24;
+  --mm-row-hover: #22262e;
+  --mm-seam: #262a33;
+  --mm-ink: #eef0f2;
+  --mm-ink-2: #9aa1ab;
+  --mm-ink-3: #69707b;
+  --mm-best: #b46af5;
+  --mm-risk: #ff534a;
+  --mm-on-cell: #0e0f12;
+}
+
+/* Barlow is not bundled yet, so these fall back to the closest system faces. */
+@utility font-ui {
+  font-family: "Barlow", "Inter", sans-serif;
+}
+
+@utility font-data {
+  font-family: "Barlow Semi Condensed", "Arial Narrow", "Inter", sans-serif;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 320px;
+    background: var(--ground);
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    overflow-x: hidden;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Inter", sans-serif;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: #c9d7d1;
+    color: var(--ink);
+  }
+}
