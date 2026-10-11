@@ -214,18 +214,16 @@
 }
 
 /*
- * View transitions (navigation.ts changeScreen). The old page leaves fast, the new page arrives at base speed,
- * and a poster card's poster morphs into the title page's large poster. Reduced motion never starts one.
+ * View transitions (navigation.ts changeScreen). The old page fades out while the new page fades in, and a poster
+ * card's poster morphs into the title page's large poster. Reduced motion never starts one. Old and new pages must
+ * share one duration and easing: the browser adds the two layers together, so at every frame their opacities have
+ * to sum to 1, or the page overshoots towards white mid-fade.
  */
 .title-poster {
   view-transition-name: title-poster;
 }
 
-::view-transition-old(root) {
-  animation-duration: var(--duration-fast);
-  animation-timing-function: var(--ease-in);
-}
-
+::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: var(--duration-base);
   animation-timing-function: var(--ease-out);
