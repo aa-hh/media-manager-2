@@ -102,7 +102,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
 
   // The rTorrent form starts filled in from Sonarr's download client: asked once, and only while the form is untouched.
   const rtorrentAsked = useRef(false);
-  const [rtorrentHints, setRtorrentHints] = useState(false);
+  const [rtorrentSuggestion, setRtorrentSuggestion] = useState<RtorrentSuggestion>();
   const editedOfRef = useRef(editedOf);
   editedOfRef.current = editedOf;
   useEffect(() => {
@@ -115,7 +115,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
         const { address, username } = await response.json() as RtorrentSuggestion;
         if (editedOfRef.current('rtorrent') !== 0 || (address === null && username === null)) return;
         connections.setDraft('rtorrent', { address: address ?? '', secrets: username === null ? {} : { 'rtorrent.username': username } });
-        setRtorrentHints(true);
+        setRtorrentSuggestion({ address, username });
       } catch {
         // Nothing to suggest; the owner types the form.
       }
@@ -374,6 +374,8 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
     if (step === 'metadata') {
       const typed = metadataServices.filter((info) => (draftOf(info.name).secrets[info.credentials[0].key] ?? '').trim() !== '');
       const anyTesting = metadataServices.some((info) => checks[info.name].kind === 'testing');
+      // A Check still running would make Save and continue connect the same service a second time alongside it.
+      const anyBusy = anyTesting || metadataServices.some((info) => connections.pending[info.name] !== undefined);
       // Each Check already saves a passing key, so this connects only what is typed and still unsaved.
       const saveMetadata = async () => {
         setSavingMetadata(true);
@@ -450,7 +452,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
             summary="Check tests each key. Leave any blank to add it later in Settings."
             secondary={<Button variant="outline" onClick={() => void skip('metadata')}>Skip posters and ratings</Button>}
             action={(
-              <Button size="large" loading={savingMetadata} disabled={typed.length === 0 && connected.length === 0} onClick={() => void saveMetadata()}>
+              <Button size="large" loading={savingMetadata} disabled={(typed.length === 0 && connected.length === 0) || anyBusy} onClick={() => void saveMetadata()}>
                 Save and continue
               </Button>
             )}
@@ -527,10 +529,15 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           step: requiredStep(step),
           next: stepNames[nextStep(step, status, wanted)],
           onBack: back,
-          hints: step === 'rtorrent' && rtorrentHints ? {
-            address: { label: 'XML-RPC address', help: 'Read from Sonarr\'s download client.' },
-            'rtorrent.username': { help: 'Read from Sonarr\'s download client.' },
-            'rtorrent.password': { placeholder: 'Type the password', help: 'Sonarr hides the password, so type it here.' },
+          // Each prefill hint stays only while its field still holds the suggested value.
+          hints: step === 'rtorrent' && rtorrentSuggestion !== undefined ? {
+            ...(rtorrentSuggestion.address !== null && draftOf('rtorrent').address === rtorrentSuggestion.address
+              ? { address: { label: 'XML-RPC address', help: 'Read from Sonarr\'s download client.' } } : {}),
+            credentials: {
+              ...(rtorrentSuggestion.username !== null && draftOf('rtorrent').secrets['rtorrent.username'] === rtorrentSuggestion.username
+                ? { 'rtorrent.username': { help: 'Read from Sonarr\'s download client.' } } : {}),
+              'rtorrent.password': { placeholder: 'Type the password', help: 'Sonarr hides the password, so type it here.' },
+            },
           } : undefined,
         }}
       />

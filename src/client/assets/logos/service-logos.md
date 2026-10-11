@@ -1,6 +1,6 @@
 # Service logos
 
-Each file is the service's own published logo, unchanged, fetched 11 Oct 2026. rTorrent has no logo, so its slot uses ruTorrent's icon. The `.png` twins of the `.svg` files are rasters for the design files, and `plex-icon-gold.svg` is `plex-icon.svg` refilled `#E5A00D` for the black Plex button.
+Each file is the service's own published logo, unchanged, fetched 11 Oct 2026. rTorrent has no logo, so its slot uses ruTorrent's icon. The `.png` twins of the `.svg` files, where a PNG exists, are rasters for the design files, and `plex-icon-gold.svg` is `plex-icon.svg` refilled `#E5A00D` for the black Plex button.
 
 | File | Service | Source | SHA-256 |
 | --- | --- | --- | --- |

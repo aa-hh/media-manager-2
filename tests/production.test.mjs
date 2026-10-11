@@ -3294,6 +3294,12 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     assert.equal((await send('PUT', '/choices', { trackers: { wanted: true, skipped: false }, backup: { wanted: true, skipped: false } })).status, 400);
     setSetting(database, 'credentials', 'mdblist.apiKey', 'value');
     assert.equal((await status()).optional.metadata.status, 'done');
+
+    // Dropping the metadata default that readChoices lays under choices saved before the posters and ratings step turns this red.
+    const older = await build();
+    older.database.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)')
+      .run('setup.choices', JSON.stringify({ trackers: { wanted: true, skipped: false }, backup: { wanted: false, skipped: true } }));
+    assert.deepEqual((await older.status()).optional.metadata, { status: 'skipped', wanted: false });
   });
 
   // Returning the masked password, using a disabled or non-rTorrent client, or keeping a localhost host turns this red.

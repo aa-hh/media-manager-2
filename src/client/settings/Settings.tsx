@@ -471,8 +471,8 @@ type EditorProps = {
   onCheck: () => void;
   onDiscard: () => void;
   signInToken?: { on: boolean; onChange: (on: boolean) => void };
-  /** The setup wizard's step: its heading and count, the step Connect moves on to, Back in place of Discard and Check now, and wording that replaces the address's or a credential's (keyed by 'address' or the credential key). */
-  wizard?: { title: string; step: string; next: string; onBack: () => void; hints?: Record<string, { label?: string; placeholder?: string; help?: string }> };
+  /** The setup wizard's step: its heading and count, the step Connect moves on to, Back in place of Discard and Check now, and wording that replaces the address's label and help or a credential's placeholder and help (keyed by the credential key). */
+  wizard?: { title: string; step: string; next: string; onBack: () => void; hints?: { address?: { label?: string; help?: string }; credentials?: Record<string, { placeholder?: string; help?: string }> } };
 };
 
 /** The pane for the selected service. Switching services crossfades it (duration-base, ease-out). */
@@ -568,7 +568,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
           const locked = isSaved && !replacing[credential.key];
           const typed = (draft.secrets[credential.key] ?? '').trim() !== '';
           const refused = check.kind === 'rejected' && index === 0;
-          const hint = wizard?.hints?.[credential.key];
+          const hint = wizard?.hints?.credentials?.[credential.key];
           const help = hint?.help ?? credential.help;
           return (
             <FieldLabelled
