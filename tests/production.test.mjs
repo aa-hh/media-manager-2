@@ -9871,7 +9871,7 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   assert.equal(existsSync(join(folder, 'backups', 'blocked.enc.partial')), false);
 });
 
-// Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
+// Snapshotting with a plain file copy during a write, letting an unfinished transaction on the app's connection into the snapshot, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
 test('backups snapshot a changing database and restore it consistently', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -9979,6 +9979,18 @@ test('backups snapshot a changing database and restore it consistently', async (
   assert.ok(Number(preferences.counter) >= 1);
   assert.equal(preferences['counter-copy'], preferences.counter);
   assert.deepEqual(restoredResult.counts.find(({ table }) => table === 'settings'), { table: 'settings', count: 3 });
+
+  database.exec('BEGIN IMMEDIATE');
+  database.prepare("INSERT INTO preferences (key, value) VALUES ('unfinished', 'yes')").run();
+  clock += 60_000;
+  const duringTransaction = await backup.run({ force: true });
+  database.exec('COMMIT');
+  assert.deepEqual(outcome(duringTransaction), ['ok', '']);
+  const isolatedPath = join(root, 'isolated', 'media-manager.sqlite');
+  await restoreBackup({ store, target: isolatedPath, key: backupKey });
+  const isolated = new DatabaseSync(isolatedPath, { readOnly: true });
+  t.after(() => isolated.close());
+  assert.equal(isolated.prepare("SELECT value FROM preferences WHERE key = 'unfinished'").get(), undefined);
 
   clock += 5 * 60_000;
   assert.deepEqual(outcome(await backup.run({ force: true })), ['ok', '']);
