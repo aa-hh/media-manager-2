@@ -13,7 +13,8 @@ type XmlRpcCall = (method: string, params: readonly XmlRpcParam[]) => Promise<un
 export type SecondVersionState = 'sending' | 'downloading' | 'importing' | 'imported' | 'failed' | 'deleted';
 // One per place that writes a failure. send_unconfirmed sits on a row still sending, until the next poll settles it.
 export type FailureCode = 'download_link_failed' | 'not_a_torrent' | 'already_in_rtorrent' | 'rtorrent_refused' | 'send_unconfirmed'
-  | 'grabbed_by_arr' | 'never_received' | 'stalled_removed' | 'import_no_name' | 'import_no_match' | 'import_link_failed';
+  | 'grabbed_by_arr' | 'never_received' | 'stalled_removed' | 'import_no_name' | 'import_no_match' | 'import_link_failed'
+  | 'torrent_gone';
 
 export type SecondVersion = {
   id: number;

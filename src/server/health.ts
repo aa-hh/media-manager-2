@@ -129,11 +129,12 @@ export const createHealth = (options: {
   // Kept in memory only: the first check after a restart records the count without warning.
   const lastHitAndRuns = new Map<string, number>();
 
-  const read = async (service: Service, path: string) => {
+  const readBody = async (service: Service, path: string) => {
     const { status, body } = await arr[service].request(path);
     if (status < 200 || status > 299) throw new Error(`${labels[service]} refused ${path}.`);
-    return records(body);
+    return body;
   };
+  const read = async (service: Service, path: string) => records(await readBody(service, path));
   const settled = <T>(result: PromiseSettledResult<T>, fallback: T) => (result.status === 'fulfilled' ? result.value : fallback);
 
   const check = async (): Promise<HealthSnapshot> => {
@@ -142,12 +143,22 @@ export const createHealth = (options: {
     const [statuses, arrReads, accountStats] = await Promise.all([
       Promise.allSettled([arr.sonarr.check(), arr.radarr.check(), rtorrent.check(), plex.check(), tmdb.check(), mdblist.check()]),
       Promise.all(configured.map(async (service) => {
-        const [health, disks, updates] = await Promise.allSettled([
+        const [health, disks, updates, clients, media] = await Promise.allSettled([
           read(service, '/api/v3/health'),
           read(service, '/api/v3/diskspace'),
           read(service, '/api/v3/update'),
+          // Remove Completed is set on each download client, not in the shared download client settings.
+          read(service, '/api/v3/downloadclient'),
+          readBody(service, '/api/v3/config/mediamanagement'),
         ]);
-        return { service, health: settled(health, []), disks: settled(disks, []), updates: settled(updates, []) };
+        return {
+          service,
+          health: settled(health, []),
+          disks: settled(disks, []),
+          updates: settled(updates, []),
+          clients: settled(clients, []),
+          media: settled<unknown>(media, undefined),
+        };
       })),
       Promise.allSettled([trackerAccounts.stats()]).then(([result]) => settled(result, [])),
     ]);
@@ -169,6 +180,19 @@ export const createHealth = (options: {
       if (update !== null) ours(`update:${name}`, 'notice', 'update', `${label} ${update} is available`);
       return { name, label, status, update };
     });
+
+    // The two Sonarr and Radarr settings that keep a torrent seeding, and its disk use single, after an import.
+    for (const { service, clients, media } of arrReads) {
+      const label = labels[service];
+      const removing = clients.filter((client) => client.enable === true && client.protocol !== 'usenet' && client.removeCompletedDownloads === true)
+        .map((client) => String(client.name));
+      if (removing.length > 0) {
+        ours(`setting:${service}:removeCompletedDownloads`, 'error', 'settings', `${label}'s download client ${removing.join(', ')} removes each torrent once it is imported, which ends its seeding. Turn off Remove Completed in ${label}'s Settings > Download Clients.`);
+      }
+      if (isRecord(media) && media.copyUsingHardlinks === false) {
+        ours(`setting:${service}:copyUsingHardlinks`, 'warning', 'settings', `${label} copies imports instead of hardlinking them, so each import uses the disk space twice and hand imports are refused. Turn on Use Hardlinks instead of Copy in ${label}'s Settings > Media Management.`);
+      }
+    }
 
     const disks = new Map<string, HealthSnapshot['disks'][number]>();
     for (const { service, health, disks: drives } of arrReads) {

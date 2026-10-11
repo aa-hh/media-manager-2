@@ -15,6 +15,7 @@ import {
   rm,
   stat,
   symlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -125,9 +126,10 @@ const readUserVersion = (database) => database.prepare('PRAGMA user_version').ge
 test('production server serves the built browser application from another directory', async (t) => {
   const workingDirectory = await mkdtemp(join(tmpdir(), 'media-manager-2-production-'));
   const databasePath = join(workingDirectory, 'data', 'media-manager.sqlite');
+  // An empty HOST listening on every interface instead of the default 127.0.0.1 turns this red.
   const child = spawn(process.execPath, [serverPath], {
     cwd: workingDirectory,
-    env: { ...process.env, DB_PATH: databasePath, HOST: '127.0.0.1', PORT: '0' },
+    env: { ...process.env, DB_PATH: databasePath, HOST: '', PORT: '0' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const exited = once(child, 'exit');
@@ -437,10 +439,10 @@ const makeApp = async (input = {}) => {
   return { app, clock, fixture };
 };
 
-const startAuthentication = async (app, { cookie, origin = 'https://media.example', body = {} } = {}) => {
+const startAuthentication = async (app, { cookie, origin = 'https://media.example', body = {}, headers = {} } = {}) => {
   const response = await app.request('/auth/start', {
     method: 'POST',
-    headers: { ...jsonHeaders(origin), ...(cookie ? { Cookie: cookie } : {}) },
+    headers: { ...jsonHeaders(origin), ...(cookie ? { Cookie: cookie } : {}), ...headers },
     body: JSON.stringify(body),
   });
   const json = await response.json();
@@ -916,6 +918,24 @@ test('Plex owner authentication', async (t) => {
     assert.ok(Number(limited.response.headers.get('retry-after')) >= 1);
     clock.value += 60_000;
     assert.equal((await startAuthentication(app)).response.status, 201);
+  });
+
+  // One shared start limit lets anyone who can reach the sign-in page lock the owner out; trusting the address a browser
+  // writes first in X-Forwarded-For, or the header at all without a proxy in front, lets one client escape its own limit.
+  await t.test('the start limit counts each client on its own, by the address the proxy added, under a ten-times backstop', async () => {
+    const from = (address) => ({ headers: { 'X-Forwarded-For': address } });
+    const { app } = await makeApp();
+    for (let index = 0; index < 10; index += 1) assert.equal((await startAuthentication(app, from(`10.0.0.${index}, 203.0.113.1`))).response.status, 201);
+    assert.equal((await startAuthentication(app, from('10.9.9.9, 203.0.113.1'))).response.status, 429);
+    assert.equal((await startAuthentication(app, from('203.0.113.2'))).response.status, 201);
+    for (let client = 3; client <= 11; client += 1) {
+      for (let index = 0; index < 10; index += 1) await startAuthentication(app, from(`203.0.113.${client}`));
+    }
+    assert.equal((await startAuthentication(app, from('203.0.113.12'))).response.status, 429);
+
+    const exposed = await makeApp({ listeningHost: '0.0.0.0' });
+    for (let index = 0; index < 10; index += 1) await startAuthentication(exposed.app, from(`203.0.113.${index}`));
+    assert.equal((await startAuthentication(exposed.app, from('203.0.113.99'))).response.status, 429);
   });
 
   await t.test('pending-attempt capacity refuses excess and removes expired attempts first', async () => {
@@ -1978,16 +1998,19 @@ test('incomplete torrents follow the tracker partial-download rules', async (t) 
 
 // A startup storage failure, or a TRACKER_RULES that would otherwise be dropped, must exit unsuccessfully with one
 // fixed message and never begin listening.
-test('production startup stops when database initialization fails or TRACKER_RULES is invalid', async (t) => {
+test('production startup stops when database initialization fails or TRACKER_RULES or PORT is invalid', async (t) => {
   const workingDirectory = await mkdtemp(join(tmpdir(), 'media-manager-2-startup-failure-'));
   t.after(() => rm(workingDirectory, { recursive: true, force: true }));
-  for (const [trackerRules, message] of [
-    [undefined, 'Database initialization failed.'],
-    ['{"blutopia.cc":{"minHours":-1}}', 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
+  for (const [overrides, message] of [
+    [{}, 'Database initialization failed.'],
+    [{ TRACKER_RULES: '{"blutopia.cc":{"minHours":-1}}' }, 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
+    // Passing a port that is not a whole number to the listener, which then fails with a stack trace or picks another port, turns these rows red.
+    [{ PORT: '3000x' }, 'PORT must be a whole number from 0 to 65535.'],
+    [{ PORT: '65536' }, 'PORT must be a whole number from 0 to 65535.'],
   ]) {
     const env = { ...process.env, DB_PATH: 'relative.sqlite', HOST: '127.0.0.1', NODE_NO_WARNINGS: '1', PORT: '0' };
     delete env.TRACKER_RULES;
-    if (trackerRules !== undefined) env.TRACKER_RULES = trackerRules;
+    Object.assign(env, overrides);
     const child = spawn(process.execPath, [serverPath], { cwd: workingDirectory, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', (chunk) => { output += chunk; });
@@ -4347,7 +4370,7 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     const { session } = await signIn(app);
     const get = (path) => app.request(path, { headers: { Cookie: session } });
     const rows = () => database.prepare('SELECT size, path FROM tmdb_images').all().map(({ size, path }) => `${size}/${path}`);
-    return { app, clock, fetched, get, remote, rows };
+    return { app, clock, fetched, get, remote, rows, tmdb, images: join(directory, 'images') };
   };
 
   // Fetching from TMDB on every request instead of serving the saved copy, or not sharing one fetch between concurrent misses, turns this red.
@@ -4408,6 +4431,27 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     assert.equal(response.status, 502);
     assert.deepEqual(await response.json(), { error: 'tmdb_unreachable' });
     assert.deepEqual(rows(), []);
+  });
+
+  // Expiring a copy only when it is asked for again, or leaving the partial file a failed write made, grows the images folder forever.
+  await t.test('the sweep removes copies past six months and partial files older than a day, and a failed save leaves no partial file', async () => {
+    const { clock, get, rows, tmdb, images } = await setup();
+    const day = 24 * 60 * 60_000;
+    await get('/api/images/tmdb/w342/old.jpg');
+    clock.value += 181 * day;
+    await get('/api/images/tmdb/w342/fresh.jpg');
+    const at = (ms) => new Date(ms);
+    await writeFile(join(images, 'stale.jpg.1.tmp'), 'partial');
+    await utimes(join(images, 'stale.jpg.1.tmp'), at(clock.value - 2 * day), at(clock.value - 2 * day));
+    await writeFile(join(images, 'busy.jpg.2.tmp'), 'partial');
+    await utimes(join(images, 'busy.jpg.2.tmp'), at(clock.value), at(clock.value));
+    tmdb.sweep();
+    assert.deepEqual(rows(), ['w342/fresh.jpg']);
+    assert.deepEqual((await readdir(images)).sort(), ['busy.jpg.2.tmp', 'tmdb-w342-fresh.jpg']);
+
+    await mkdir(join(images, 'tmdb-w342-blocked.jpg', 'inside'), { recursive: true });
+    assert.equal((await get('/api/images/tmdb/w342/blocked.jpg')).status, 500);
+    assert.deepEqual((await readdir(images)).filter((name) => name.startsWith('tmdb-w342-blocked.jpg.')), []);
   });
 });
 
@@ -4564,6 +4608,7 @@ test('an import is finished by hand only with a complete, conflict-free assignme
   const { createGrabTracker } = await import(torrentGrabsModuleUrl);
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createManualImport } = await import(manualImportModuleUrl);
+  const { createImportFix } = await import(importsModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-manual-import-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -4621,14 +4666,30 @@ test('an import is finished by hand only with a complete, conflict-free assignme
   assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 502);
   assert.deepEqual(state.commands, []);
 
-  // Moving instead of hardlinking, dropping the chosen episode, or leaving the problem open turns this red.
+  // Moving instead of hardlinking or dropping the chosen episode turns this red.
   state.copyUsingHardlinks = true;
   assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 204);
   assert.equal(state.commands.length, 1);
   const [command] = state.commands;
   assert.equal(command.importMode, 'copy');
   assert.deepEqual(command.files.map((entry) => [entry.seriesId, entry.episodeIds, entry.quality.quality.id, entry.quality.revision.version]), [[9, [101], 3, 2], [9, [102], 3, 1]]);
-  assert.equal(listOpenProblems(database).some((problem) => problem.id === flagged.id), false);
+
+  // Resolving on Sonarr's acceptance alone, or forcing an automatic import over the hand one, hides an import that then fails inside Sonarr.
+  assert.equal(listOpenProblems(database).find((problem) => problem.id === flagged.id).state, 'handling');
+  state.queue = [queueItem({ downloadId: hash, seriesId: 9, episodeId: 101, status: 'completed', trackedDownloadStatus: 'warning',
+    trackedDownloadState: 'importBlocked', statusMessages: [{ title: 'S01E01.mkv', messages: ['Series title mismatch, automatic import is not possible.'] }] })];
+  await tracker.reconcile();
+  const clock = { value: Date.now() };
+  const fix = createImportFix({ database, arr, problems, events, now: () => clock.value });
+  clock.value += 29 * 60_000;
+  await fix.check();
+  assert.equal(listOpenProblems(database).find((problem) => problem.id === flagged.id).state, 'handling');
+  clock.value += 60_000;
+  await fix.check();
+  const [stuck] = listOpenProblems(database);
+  assert.equal(stuck.state, 'needs_you');
+  assert.match(stuck.steps.at(-1).text, /still blocked/);
+  assert.equal(state.commands.length, 1);
 });
 
 test('tracker messages become cooldowns, retries, rechecks and replacement requests', async (t) => {
@@ -5658,6 +5719,10 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     assert.match(problem.steps.at(-1).text, /was not blocked/);
     assert.deepEqual(run.fake.radarr.state.removals, []);
     assert.deepEqual(run.fake.radarr.state.commands, []);
+    // Leaving the failed fix out of the sweep keeps both problems open after the download has left the queue.
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
     run.database.close();
   });
 
@@ -5722,6 +5787,50 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     await run.fix.check();
     assert.deepEqual(listOpenProblems(run.database), []);
     run.database.close();
+  });
+
+  // Resolving only the problem of the latest block kind leaves the earlier one open forever once the download is finished with.
+  await t.test('a fix that finishes a download resolves its earlier import problems, and a later working try resolves the failed fix', async () => {
+    const run = await setup({ message: 'File is locked by another process' });
+    run.fake.sonarr.state.down = true;
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.kind).sort(), ['import_fix_failed', 'import_temporary']);
+    run.fake.sonarr.state.down = false;
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.kind), ['import_temporary']);
+    run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Episode file already imported'] }];
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
+  // Resolving on Sonarr's acceptance alone, or sending the import again, hides an import that then fails inside Sonarr.
+  await t.test('a forced import waits 30 minutes for the download to clear, then is flagged and never sent again', async () => {
+    const files = [{ path: '/files/Sonarr/a.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }] }];
+    const stuck = await setup({ message: 'Series title mismatch, automatic import is not possible.', files });
+    await stuck.fix.check();
+    assert.equal(listOpenProblems(stuck.database)[0].state, 'handling');
+    stuck.clock.value += 29 * minute;
+    await stuck.fix.check();
+    assert.equal(listOpenProblems(stuck.database)[0].state, 'handling');
+    stuck.clock.value += minute;
+    await stuck.fix.check();
+    const [flag] = listOpenProblems(stuck.database);
+    assert.equal(flag.state, 'needs_you');
+    assert.match(flag.steps.at(-1).text, /still blocked/);
+    stuck.clock.value += 60 * minute;
+    await stuck.fix.check();
+    assert.equal(stuck.fake.sonarr.state.commands.length, 1);
+    stuck.database.close();
+
+    const cleared = await setup({ message: 'Series title mismatch, automatic import is not possible.', files });
+    await cleared.fix.check();
+    cleared.queue.length = 0;
+    await cleared.grabs.reconcile();
+    await cleared.fix.check();
+    assert.deepEqual(listOpenProblems(cleared.database), []);
+    cleared.database.close();
   });
 
   // Letting import fixes run while setup is broken, or never resuming them, turns this red.
@@ -6959,6 +7068,20 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   await versionImport.run();
   assert.deepEqual(rows(roninHash).map((row) => [row.state, row.failure]), [['failed', 'Radarr no longer has this movie.']]);
   assert.deepEqual(folderProblems(), []);
+
+  // Leaving a row whose torrent left rTorrent as downloading, which no import ever moves on and a delete refuses, turns this red.
+  const { createSecondVersionRoutes } = await import(secondVersionsModuleUrl);
+  const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
+  const lostHash = 'B0'.repeat(20);
+  await addTorrent(lostHash, ['Lost.mkv'], { complete: 0 });
+  addRows(lostHash, [{ movieId: 10 }]);
+  database.prepare('UPDATE torrents SET gone_at = 1 WHERE hash = ?').run(lostHash);
+  await versionImport.run();
+  assert.deepEqual([rows(lostHash)[0].state, failureCode(lostHash)], ['failed', 'torrent_gone']);
+  const deletes = createSecondVersionRoutes({}, createSecondVersionDelete({ database, removeTorrent: async () => assert.fail('not asked'), scan: async () => {} }));
+  const lostId = database.prepare('SELECT id FROM second_versions WHERE hash = ?').get(lostHash).id;
+  const deleted = await deletes.request(`/${lostId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removeTorrent: false }) });
+  assert.equal(deleted.status, 200);
 });
 
 test('deleting a second version removes only its own file, and its torrent only when asked and nothing else uses it', async (t) => {
@@ -7859,6 +7982,12 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     '/api/v3/health': [],
     '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 2_000_000_000_000, totalSpace: 4_000_000_000_000 }],
     '/api/v3/update': [],
+    // Usenet clients remove completed downloads by default and seed nothing, so theirs never counts.
+    '/api/v3/downloadclient': [
+      { name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: false, removeFailedDownloads: true },
+      { name: 'SABnzbd', enable: true, protocol: 'usenet', removeCompletedDownloads: true, removeFailedDownloads: true },
+    ],
+    '/api/v3/config/mediamanagement': { copyUsingHardlinks: true },
   };
   const accountStats = (host, fields) => ({
     host,
@@ -7946,6 +8075,20 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       name: 'late job',
       input: { jobs: [{ name: 'stall-fix', intervalMs: 60_000, lastStartedAt: now - hour, lastFinishedAt: now - hour, lastFailed: false, late: true }] },
       level: 'warning', errors: 0, warnings: 1, message: 'Background job stall-fix hasn\'t finished for 1h 0m; expected every 1m',
+    },
+    // Not reading the two Sonarr and Radarr settings that keep torrents seeding after import turns these rows red.
+    {
+      name: 'Remove Completed on and hardlinks off',
+      input: { arr: { radarr: {
+        '/api/v3/downloadclient': [{ name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: true, removeFailedDownloads: true }],
+        '/api/v3/config/mediamanagement': { copyUsingHardlinks: false },
+      } } },
+      level: 'error', errors: 1, warnings: 1,
+      message: 'Radarr\'s download client rTorrent removes each torrent once it is imported, which ends its seeding. Turn off Remove Completed in Radarr\'s Settings > Download Clients.',
+    },
+    {
+      name: 'hardlinks off', input: { arr: { sonarr: { '/api/v3/config/mediamanagement': { copyUsingHardlinks: false } } } }, level: 'warning', errors: 0, warnings: 1,
+      message: 'Sonarr copies imports instead of hardlinking them, so each import uses the disk space twice and hand imports are refused. Turn on Use Hardlinks instead of Copy in Sonarr\'s Settings > Media Management.',
     },
     { name: 'no ok backup yet', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Backups are not set up' },
     { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last backup finished 30h 0m ago' },
@@ -9032,6 +9175,10 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   await store.delete('backups/a.enc');
   assert.equal(await store.get('backups/a.enc'), undefined);
   await assert.rejects(store.get('../outside'), /outside the backup folder/);
+  // Leaving the partial file behind when the save fails fills the backup folder with dead copies.
+  await mkdir(join(folder, 'backups', 'blocked.enc', 'inside'), { recursive: true });
+  await assert.rejects(store.put('backups/blocked.enc', new Uint8Array([1]), 'application/octet-stream'));
+  assert.equal(existsSync(join(folder, 'backups', 'blocked.enc.partial')), false);
 });
 
 // Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.

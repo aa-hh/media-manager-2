@@ -3,12 +3,13 @@ import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import { type ArrServices, type QueueItem, valueOrThrow } from './services/arr.js';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
-import type { createProblems, Subject } from './problems.js';
+import type { createProblems, Problem, Subject } from './problems.js';
 import { listOpenProblems, RELEASE_LIMIT } from './problems.js';
 
 type Problems = ReturnType<typeof createProblems>;
 
-export type ImportCategory = 'replace' | 'matching' | 'not_better' | 'bad_release' | 'leftover' | 'temporary' | 'file_move' | 'setup' | 'unknown';
+// 'manual' is never read from the queue: it marks an import the owner finished by hand.
+export type ImportCategory = 'replace' | 'matching' | 'not_better' | 'bad_release' | 'leftover' | 'temporary' | 'file_move' | 'setup' | 'unknown' | 'manual';
 
 // Every way Sonarr and Radarr refuse an import for not being better than the file in place. A replace overrides exactly
 // these, so the import fix's hand-off and the replace flow must read the same wording.
@@ -28,6 +29,8 @@ const patterns: [ImportCategory, RegExp][] = [
 export const TEMPORARY_RETRY_MS = 15 * 60_000;
 export const TEMPORARY_LIMIT_MS = 24 * 60 * 60_000;
 export const FILE_MOVE_RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000, 120 * 60_000] as const;
+// Sonarr and Radarr accept an import command before running it; this is how long the download may stay blocked afterwards.
+export const FORCED_IMPORT_SETTLE_MS = 30 * 60_000;
 
 export const classifyImport = (messages: string[]): ImportCategory => {
   for (const [category, pattern] of patterns) if (messages.some((message) => pattern.test(message))) return category;
@@ -39,6 +42,19 @@ type Handling = { service: Service; downloadId: string; category: ImportCategory
 const messagesOf = (items: QueueItem[]) => items
   .flatMap((item) => [item.errorMessage, ...item.statusMessages.flatMap((message) => [message.title, ...message.messages])])
   .filter((message) => message !== '');
+
+const saveHandling = (database: DatabaseSync, handling: Handling) => {
+  database.prepare(`
+    INSERT INTO import_handling (service, download_id, category, first_seen_at, attempts, last_attempt_at, done) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (service, download_id) DO UPDATE SET category = excluded.category, first_seen_at = excluded.first_seen_at,
+      attempts = excluded.attempts, last_attempt_at = excluded.last_attempt_at, done = excluded.done
+  `).run(handling.service, handling.downloadId, handling.category, handling.firstSeenAt, handling.attempts, handling.lastAttemptAt, Number(handling.done));
+};
+
+// The import fix leaves the download alone until the command settles, then closes its problems or hands them to the owner.
+export const recordHandImport = (database: DatabaseSync, service: Service, downloadId: string, at: number) => {
+  saveHandling(database, { service, downloadId, category: 'manual', firstSeenAt: at, attempts: 1, lastAttemptAt: at, done: false });
+};
 
 const subjectsOf = (grab: Grab): Subject[] => (grab.movieId !== null
   ? [{ type: 'movie', service: grab.service, id: String(grab.movieId) }]
@@ -68,12 +84,14 @@ export const createImportFix = (options: {
     };
   };
 
-  const saveHandling = (handling: Handling) => {
-    database.prepare(`
-      INSERT INTO import_handling (service, download_id, category, first_seen_at, attempts, last_attempt_at, done) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (service, download_id) DO UPDATE SET category = excluded.category, first_seen_at = excluded.first_seen_at,
-        attempts = excluded.attempts, last_attempt_at = excluded.last_attempt_at, done = excluded.done
-    `).run(handling.service, handling.downloadId, handling.category, handling.firstSeenAt, handling.attempts, handling.lastAttemptAt, Number(handling.done));
+  const save = (handling: Handling) => saveHandling(database, handling);
+
+  // A block can change kind between checks (locked, then a failed move), so a download's import problems close together.
+  const closeImportProblems = (downloadId: string, text: string, skip: (problem: Problem) => boolean = () => false) => {
+    for (const problem of listOpenProblems(database)) {
+      if (!problem.kind.startsWith('import_') || problem.subject.type !== 'torrent' || problem.subject.id !== downloadId || skip(problem)) continue;
+      problems.setState(problem.id, 'resolved', text);
+    }
   };
 
   const handle = async (service: Service, downloadId: string, items: QueueItem[], at: number) => {
@@ -82,6 +100,11 @@ export const createImportFix = (options: {
     let category = classifyImport(messages);
     if (category === 'not_better' && grab?.byHand === true) category = 'replace';
     const previous = readHandling(service, downloadId);
+    // An accepted import command is never sent again; until it settles, whatever the queue now says waits.
+    if (previous !== undefined && (previous.category === 'matching' || previous.category === 'manual') && previous.lastAttemptAt !== null) {
+      if (previous.done || at - previous.lastAttemptAt < FORCED_IMPORT_SETTLE_MS) return;
+      category = previous.category;
+    }
     if (previous?.done === true && previous.category === category) return;
     const handling: Handling = previous?.category === category
       ? previous
@@ -93,13 +116,15 @@ export const createImportFix = (options: {
     const reason = messages[0] ?? 'Import blocked.';
     const problem = problems.open({ kind: `import_${category}`, subject, hash: downloadId, summary: `${items[0].title}: ${reason}` });
     const finish = (state: 'resolved' | 'needs_you', text: string) => {
-      saveHandling({ ...handling, done: true });
+      save({ ...handling, done: true });
       problems.setState(problem.id, state, text);
+      closeImportProblems(downloadId, state === 'resolved' ? text : 'Replaced by a newer problem with this download.', (item) => item.id === problem.id);
     };
+    const label = service === 'sonarr' ? 'Sonarr' : 'Radarr';
     // A queue that no longer lists the download removes nothing; that is reported as a failure, never as a block.
     const removeFromQueue = async (choice: 'nothing' | 'block' | 'block_and_search') => {
       const { removed } = valueOrThrow(await arr[service].removeFromQueue({ downloadId }, choice));
-      if (removed === 0) throw new Error(`${service === 'sonarr' ? 'Sonarr' : 'Radarr'} no longer lists this download in its queue, so ${choice === 'nothing' ? 'it could not be cleared' : 'the release was not blocked'}.`);
+      if (removed === 0) throw new Error(`${label} no longer lists this download in its queue, so ${choice === 'nothing' ? 'it could not be cleared' : 'the release was not blocked'}.`);
     };
 
     switch (category) {
@@ -118,14 +143,21 @@ export const createImportFix = (options: {
         await removeFromQueue('nothing');
         finish('resolved', 'Not better than the current file, so it was not imported; removed from the queue, torrent left seeding.');
         return;
+      case 'manual':
       case 'matching': {
+        if (handling.lastAttemptAt !== null) {
+          finish('needs_you', `${label} accepted the import, but the download is still blocked ${FORCED_IMPORT_SETTLE_MS / 60_000} minutes later. Finish this import by hand.`);
+          return;
+        }
         if (grab === undefined) {
           finish('needs_you', 'No grab record to check the match against; finish this import by hand.');
           return;
         }
         const result = await arr[service].forceImport(grab);
-        if (result.kind === 'ok') finish('resolved', 'Imported to what was grabbed.');
-        else if (result.kind === 'refused') finish('needs_you', `${result.message} Finish this import by hand.`);
+        if (result.kind === 'ok') {
+          save({ ...handling, attempts: handling.attempts + 1, lastAttemptAt: at });
+          problems.step(problem.id, 'fix', 'Forced the import onto what was grabbed; waiting for it to finish.');
+        } else if (result.kind === 'refused') finish('needs_you', `${result.message} Finish this import by hand.`);
         else valueOrThrow(result);
         return;
       }
@@ -144,11 +176,11 @@ export const createImportFix = (options: {
           return;
         }
         if (handling.lastAttemptAt !== null && at - handling.lastAttemptAt < TEMPORARY_RETRY_MS) {
-          saveHandling(handling);
+          save(handling);
           return;
         }
         valueOrThrow(await arr[service].refreshMonitoredDownloads());
-        saveHandling({ ...handling, attempts: handling.attempts + 1, lastAttemptAt: at });
+        save({ ...handling, attempts: handling.attempts + 1, lastAttemptAt: at });
         problems.step(problem.id, 'fix', 'Asked to try the import again.');
         return;
       }
@@ -158,15 +190,15 @@ export const createImportFix = (options: {
           // The last retry gets as long as the spacing before it to show up in the queue before this gives up.
           const settle = FILE_MOVE_RETRY_DELAYS_MS[FILE_MOVE_RETRY_DELAYS_MS.length - 1];
           if (at - (handling.lastAttemptAt ?? at) >= settle) finish('needs_you', `The file move still failed after ${FILE_MOVE_RETRY_DELAYS_MS.length} retries.`);
-          else saveHandling(handling);
+          else save(handling);
           return;
         }
         if (at - (handling.lastAttemptAt ?? handling.firstSeenAt) < delay) {
-          saveHandling(handling);
+          save(handling);
           return;
         }
         valueOrThrow(await arr[service].refreshMonitoredDownloads());
-        saveHandling({ ...handling, attempts: handling.attempts + 1, lastAttemptAt: at });
+        save({ ...handling, attempts: handling.attempts + 1, lastAttemptAt: at });
         problems.step(problem.id, 'fix', `Retried the file move (${handling.attempts + 1} of ${FILE_MOVE_RETRY_DELAYS_MS.length}).`);
         return;
       }
@@ -190,24 +222,23 @@ export const createImportFix = (options: {
       for (const [downloadId, items] of groups) {
         try {
           await handle(service, downloadId, items, at);
+          closeImportProblems(downloadId, 'The import fix worked on a later try.', (item) => item.kind !== 'import_fix_failed');
         } catch (error) {
           const problem = problems.open({ kind: 'import_fix_failed', subject: { type: 'torrent', service: null, id: downloadId }, hash: downloadId, summary: items[0].title });
           if (problem.state !== 'needs_you') problems.setState(problem.id, 'needs_you', error instanceof Error ? error.message : 'The import fix failed.');
+          // An unfinished row hands the download to the sweep below, so its problems close once it leaves the queue.
+          const previous = readHandling(service, downloadId)
+            ?? { service, downloadId, category: classifyImport(messagesOf(items)), firstSeenAt: at, attempts: 0, lastAttemptAt: null, done: false };
+          save({ ...previous, done: false });
         }
       }
-      // Only retries leave a handling row unfinished; once its download is no longer blocked, the retry worked.
+      // Retries, failed fixes and accepted import commands leave a handling row unfinished; once its download is no longer blocked, it went through.
       const cleared = database.prepare('SELECT download_id FROM import_handling WHERE service = ? AND done = 0').all(service)
         .map((row) => String(row.download_id))
         .filter((downloadId) => !groups.has(downloadId));
-      if (cleared.length === 0) continue;
-      const open = listOpenProblems(database);
       for (const downloadId of cleared) {
-        const handling = readHandling(service, downloadId) as Handling;
-        saveHandling({ ...handling, done: true });
-        // A block can change kind between retries (locked, then a failed move), so every import problem on the download closes.
-        for (const problem of open.filter((item) => item.kind.startsWith('import_') && item.subject.type === 'torrent' && item.subject.id === downloadId)) {
-          problems.setState(problem.id, 'resolved', 'The import went through after the retry.');
-        }
+        save({ ...readHandling(service, downloadId) as Handling, done: true });
+        closeImportProblems(downloadId, 'The download is no longer blocked in the queue.');
       }
     }
   };
