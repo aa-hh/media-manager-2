@@ -15,10 +15,17 @@ const escapeText = (value: string) => value
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;');
 
-// razor: params are strings only; add integer encoding when a caller needs to send one.
-const encodeMethodCall = (method: string, params: readonly string[]) => (
+export type XmlRpcParam = string | number;
+
+const encodeParam = (param: XmlRpcParam) => {
+  if (typeof param === 'string') return `<string>${escapeText(param)}</string>`;
+  if (!Number.isSafeInteger(param)) throw new TypeError('XML-RPC integers must be safe integers.');
+  return `<i8>${param}</i8>`;
+};
+
+const encodeMethodCall = (method: string, params: readonly XmlRpcParam[]) => (
   `<?xml version="1.0"?><methodCall><methodName>${escapeText(method)}</methodName><params>${
-    params.map((param) => `<param><value><string>${escapeText(param)}</string></value></param>`).join('')
+    params.map((param) => `<param><value>${encodeParam(param)}</value></param>`).join('')
   }</params></methodCall>`
 );
 
@@ -145,11 +152,12 @@ const parseMethodResponse = (text: string): { value: XmlRpcValue } | { faultCode
 export const createRtorrent = (database: DatabaseSync, options: ServiceOptions = {}) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  const send = async (method: string, params: readonly string[]): Promise<Outcome> => {
+  const send = async (method: string, params: readonly XmlRpcParam[]): Promise<Outcome> => {
     const url = readSetting(database, 'serviceAddresses', 'rtorrent.url');
     const username = readSetting(database, 'credentials', 'rtorrent.username');
     const password = readSetting(database, 'credentials', 'rtorrent.password');
     if (url === undefined || username === undefined || password === undefined) return { kind: 'not_configured' };
+    const body = encodeMethodCall(method, params);
     let response: Response;
     try {
       response = await requestWithTimeout(fetchImpl, url, {
@@ -158,7 +166,7 @@ export const createRtorrent = (database: DatabaseSync, options: ServiceOptions =
           'Content-Type': 'text/xml',
           Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
         },
-        body: encodeMethodCall(method, params),
+        body,
       });
     } catch {
       return { kind: 'unreachable' };
@@ -173,7 +181,7 @@ export const createRtorrent = (database: DatabaseSync, options: ServiceOptions =
     }
   };
 
-  const call = async (method: string, params: readonly string[]): Promise<XmlRpcValue> => {
+  const call = async (method: string, params: readonly XmlRpcParam[]): Promise<XmlRpcValue> => {
     const outcome = await send(method, params);
     switch (outcome.kind) {
       case 'value': return outcome.value;

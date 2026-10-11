@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
-import { Button } from './components/ui/button';
+import { DownloadsScreen, LiveBar } from './downloads/Downloads';
+import { useDownloads } from './downloads/useDownloads';
 import './globals.css';
 
 type SessionState =
@@ -202,30 +203,48 @@ function App() {
   }
 
   return (
-    <main className="flex min-h-screen items-center px-6 py-16 sm:px-12 lg:px-24">
-      <section className="w-full max-w-[25rem] text-left">
-        <h1 ref={headingRef} tabIndex={-1} className="text-[2rem] font-semibold leading-[1.15] tracking-[-0.035em] text-[var(--ink)] sm:text-[2.25rem]">
-          media-manager-2
-        </h1>
-        <div className="mt-8">
-          {session.kind === 'sign-out-failed' && (
-            <p role="alert" className="mb-5 text-base leading-7 text-[var(--secondary-ink)]">
-              Sign-out failed. Your session may still be active.
-            </p>
-          )}
-          <Button onClick={() => void signOut(session.expiresAt)} disabled={session.kind === 'signing-out'}>
-            {session.kind === 'signing-out'
-              ? 'Signing out…'
-              : session.kind === 'sign-out-failed'
-                ? 'Try sign out again'
-                : 'Sign out'}
-          </Button>
-        </div>
-        <p className="sr-only" aria-live="polite">
-          {session.kind === 'signing-out' ? 'Signing out…' : ''}
-        </p>
-      </section>
-    </main>
+    <SignedIn
+      headingRef={headingRef}
+      signOutState={session.kind}
+      onSignOut={() => void signOut(session.expiresAt)}
+      onUnauthorized={() => void checkSession()}
+    />
+  );
+}
+
+function SignedIn({ headingRef, signOutState, onSignOut, onUnauthorized }: {
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  signOutState: 'signed-in' | 'signing-out' | 'sign-out-failed';
+  onSignOut: () => void;
+  onUnauthorized: () => void;
+}) {
+  const { state, reload } = useDownloads(onUnauthorized);
+  return (
+    <div className="min-h-screen bg-[var(--mm-ground)] pb-8 text-[var(--mm-ink)]">
+      <header className="flex h-12 items-center gap-6 border-b border-[var(--mm-seam)] bg-[var(--mm-row)] px-5 font-ui">
+        <span className="text-[14px] font-semibold">media-manager-2</span>
+        <nav aria-label="Main">
+          <a href="#downloads" aria-current="page" className="text-[13px] font-semibold text-[var(--mm-ink)]">Downloads</a>
+        </nav>
+        <span className="flex-1" />
+        {signOutState === 'sign-out-failed' && (
+          <p role="alert" className="text-[13px] text-[var(--mm-risk)]">Sign-out failed. Your session may still be active.</p>
+        )}
+        <button
+          type="button"
+          onClick={onSignOut}
+          disabled={signOutState === 'signing-out'}
+          className="h-8 px-3 text-[14px] font-semibold text-[var(--mm-ink)] hover:bg-[var(--mm-row-hover)] focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)] disabled:opacity-50"
+        >
+          {signOutState === 'signing-out' ? 'Signing out…' : signOutState === 'sign-out-failed' ? 'Try sign out again' : 'Sign out'}
+        </button>
+        <p className="sr-only" aria-live="polite">{signOutState === 'signing-out' ? 'Signing out…' : ''}</p>
+      </header>
+      <main id="downloads">
+        <DownloadsScreen state={state} reload={reload} headingRef={headingRef} />
+      </main>
+      <LiveBar state={state} onOpen={() => headingRef.current?.focus()} />
+    </div>
   );
 }
 

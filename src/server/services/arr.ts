@@ -15,7 +15,7 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
 
   const request = async (
     path: string,
-    init: { method?: 'GET' | 'POST'; body?: unknown } = {},
+    init: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown } = {},
   ): Promise<{ status: number; body: unknown }> => {
     const configuration = readConfiguration();
     if (configuration === undefined) throw new Error(`${label} is not configured.`);
