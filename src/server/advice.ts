@@ -36,8 +36,8 @@ const ratioText = (value: number) => (Math.floor(value * 100 + 1e-9) / 100).toFi
 
 type Verdict = { recommendation: Recommendation; reason: string };
 
-// "Safe" is only ever proven by media-manager-2's own seeding counter (which can only undercount) or by the ratio;
-// time since the download finished can only overcount, so it can rule removal out but never in.
+// "Safe" is only ever proven by media-manager-2's own seeding counter (which can only undercount), by the ratio, or by
+// the tracker's exemption for a torrent stopped under its partial-download line; time since the download finished can only overcount, so it can rule removal out but never in.
 const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Margins, now: number): Verdict => {
   const facts = {
     seedHours: torrent.seedingSeconds / 3600,
@@ -117,6 +117,10 @@ export const adviseRemoval = async (
   const torrent = listTorrents(database).find((row) => row.hash === hash);
   if (torrent === undefined || torrent.goneAt !== null) {
     return { recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null };
+  }
+  // A magnet still fetching its metadata reports size 0, which every rule would read as complete.
+  if (torrent.sizeBytes === 0) {
+    return { recommendation: 'keep', reason: "Waiting for the torrent's metadata; nothing downloaded yet", globalRatio: null };
   }
   const found = torrent.trackerHost === null || torrent.trackerHost === '' ? undefined : findTrackerRule(database, torrent.trackerHost);
   if (found === undefined) {

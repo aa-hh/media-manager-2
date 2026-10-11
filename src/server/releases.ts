@@ -250,7 +250,7 @@ export const createReleases = (
   };
 
   return {
-    // Stored results come back at once with their age; a search runs only when nothing is stored.
+    // Stored results come back with their age after only the owned-file lookup; a search runs only when nothing is stored.
     async get(target: ReleaseTarget): Promise<ReleaseResult & { refreshing: boolean }> {
       const stored = readStored(database, targetKey(target));
       if (stored !== null) return { ...(await describe(target, { kind: 'ok', search: stored })), refreshing: running.has(targetKey(target)) };

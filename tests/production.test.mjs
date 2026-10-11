@@ -1712,6 +1712,9 @@ test('removal advice applies the hit and run rule with margins and proves time o
     ['no history, ratio proves it', { host: 'tracker.beyond-hd.me', firstSeenAt: now - hour * 1000, ratio: 1100 }, 'safe',
       'Hit and run rule met: ratio 1.10 of 1.05', unknownRatio('beyond-hd.me')],
     ['gone from rTorrent', { seconds: blutopiaNeeds, goneAt: now - 1000 }, 'keep', 'Seeding time unknown (torrent not in rTorrent)'],
+    // Judging a size-0 torrent by its rule reads it as complete and finished in 1970.
+    ['waiting for metadata', { sizeBytes: 0, completedBytes: 0, finishedAt: 0, firstSeenAt: now - hour * 1000 }, 'keep',
+      "Waiting for the torrent's metadata; nothing downloaded yet"],
     ['no rule', { host: 'tracker.opentrackr.org', seconds: blutopiaNeeds }, 'unconfirmed', "Can't tell; keep seeding: no hit and run rule for tracker.opentrackr.org"],
     ['no tracker', { host: null }, 'unconfirmed', "Can't tell; keep seeding: its tracker is not known"],
     // Incomplete torrents: judging them by the complete rule, letting the counter prove PrivateHD's 60 days, dropping the
@@ -4842,7 +4845,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.deepEqual(parseOverrides(undefined, 'radarr'), {});
 });
 
-// Sending a second version through Sonarr or Radarr, sending before recording, hashing re-encoded info bytes instead of the file's own, sending a magnet, a web page, an oversized file or a refused download to rTorrent, one row for a whole pack, leaving a refused send pending, or settling a pending send by anything but the torrent list and this app's label breaks second versions.
+// Sending a second version through Sonarr or Radarr, moving it to downloading on rTorrent's 0 reply, sending before recording, hashing re-encoded info bytes instead of the file's own, sending a magnet, a web page, an oversized file or a refused download to rTorrent, one row for a whole pack, leaving a refused send pending, or settling a pending send by anything but the torrent list and this app's label breaks second versions.
 test('a second version is recorded, then sent straight to rTorrent with its folder and label', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -4909,11 +4912,16 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
     return new Response(files[pathname].bytes, { status: 200 });
   };
   const calls = [];
-  let rtorrentAnswer = () => 0;
+  // A poll can start while load.raw_start is in flight, so each send moves the clock on.
+  let rtorrentAnswer = () => { clock += 1; return 0; };
   const labels = new Map();
+  let labelFails = false;
   const rtorrent = {
     call: async (method, params) => {
-      if (method === 'd.custom1') return labels.get(params[0]) ?? '';
+      if (method === 'd.custom1') {
+        if (labelFails) throw new Error('rTorrent is unreachable.');
+        return labels.get(params[0]) ?? '';
+      }
       calls.push({ method, params, rows: database.prepare('SELECT hash, state FROM second_versions WHERE hash = ?').all(infoHash(params[1])).map((row) => ({ ...row })) });
       return rtorrentAnswer();
     },
@@ -4928,6 +4936,8 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
     return { status: response.status, body: JSON.parse(text) };
   };
   const rowCount = () => database.prepare('SELECT COUNT(*) AS n FROM second_versions').get().n;
+  const states = (path) => secondVersions.byHash(files[path].hash).map((row) => [row.state, row.failure]);
+  const addTorrent = (path) => database.prepare("INSERT INTO torrents VALUES (?, 'down', 100, 0, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0)").run(files[path].hash);
 
   const unset = await post(movie, 'm/movie');
   assert.equal(unset.status, 409);
@@ -4940,13 +4950,16 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   const sent = await post(movie, 'm/movie');
   assert.equal(sent.status, 201);
   assert.deepEqual(sent.body.secondVersions.map((row) => [row.service, row.movieId, row.hash, row.state, row.quality, row.indexer]), [
-    ['radarr', 9, files['/movie'].hash, 'downloading', 'Bluray-2160p', 'Blutopia'],
+    ['radarr', 9, files['/movie'].hash, 'sending', 'Bluray-2160p', 'Blutopia'],
   ]);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].method, 'load.raw_start');
   assert.deepEqual([calls[0].params[0], ...calls[0].params.slice(2)], ['', 'd.directory.set="/data/versions"', 'd.custom1.set=mm2-second-version']);
   assert.equal(Buffer.compare(calls[0].params[1], files['/movie'].bytes), 0);
   assert.deepEqual(calls[0].rows, [{ hash: files['/movie'].hash, state: 'sending' }]);
+  // rTorrent drops a hash it already has after answering 0, so only a poll that began after the reply may judge it.
+  await secondVersions.reconcile(clock);
+  assert.deepEqual(states('/movie'), [['sending', null]]);
 
   const again = await post(movie, 'm/movie');
   assert.deepEqual([again.status, again.body.reason], [409, 'That torrent is already in rTorrent.']);
@@ -4963,11 +4976,24 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
 
   const pack = await post(season, 's/pack');
   assert.equal(pack.status, 201);
-  assert.deepEqual(pack.body.secondVersions.map((row) => [row.seriesId, row.episodeId, row.hash, row.state]), [101, 102, 103].map((id) => [5, id, files['/pack'].hash, 'downloading']));
+  assert.deepEqual(pack.body.secondVersions.map((row) => [row.seriesId, row.episodeId, row.hash, row.state]), [101, 102, 103].map((id) => [5, id, files['/pack'].hash, 'sending']));
   assert.equal(calls.length, 2);
   assert.equal(arrRequests, arrRequestsBefore);
 
-  const states = (path) => secondVersions.byHash(files[path].hash).map((row) => [row.state, row.failure]);
+  // Once the hash shows up, its label settles it; a failed label read leaves it for the next poll.
+  addTorrent('/movie');
+  addTorrent('/pack');
+  labels.set(files['/movie'].hash, 'mm2-second-version');
+  labels.set(files['/pack'].hash, 'sonarr');
+  labelFails = true;
+  clock += 1;
+  await secondVersions.reconcile(clock);
+  assert.deepEqual([...states('/movie'), ...states('/pack')], Array(4).fill(['sending', null]));
+  labelFails = false;
+  await secondVersions.reconcile(clock);
+  assert.deepEqual(states('/movie'), [['downloading', null]]);
+  assert.deepEqual(states('/pack'), Array(3).fill(['failed', 'Sonarr or Radarr grabbed the same torrent.']));
+
   rtorrentAnswer = () => { throw new RtorrentFault('rTorrent fault -503: Could not create download.'); };
   const fault = await post(movie, 'm/fault');
   assert.deepEqual([fault.status, fault.body.reason], [409, 'rTorrent fault -503: Could not create download.']);
@@ -4980,9 +5006,7 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   await secondVersions.reconcile(clock);
   assert.deepEqual(states('/down'), [['sending', 'rTorrent is unreachable.']]);
   const restarted = createSecondVersions({ database, releases, rtorrent, fetch: indexer, now: () => clock });
-  for (const path of ['/down', '/sonarr']) {
-    database.prepare("INSERT INTO torrents VALUES (?, 'down', 100, 0, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0)").run(files[path].hash);
-  }
+  for (const path of ['/down', '/sonarr']) addTorrent(path);
   labels.set(files['/down'].hash, 'mm2-second-version');
   labels.set(files['/sonarr'].hash, 'radarr');
   clock += 1;
