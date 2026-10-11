@@ -5262,7 +5262,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
 
   const setup = async ({
     name = 'Movie.2024.mkv', files = [['Movie.2024.mkv', 1234]], library = [['Movie (2024).mkv', 1234]],
-    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false,
+    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false, startFails = false,
   } = {}) => {
     count += 1;
     const base = join(root, `case-${count}`);
@@ -5298,6 +5298,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
         if (method === 'd.hashing') return fake.hashing > 0 ? 3 : 0;
         if (method === 'd.complete') return fake.complete;
         calls.push([method, ...params]);
+        if (method === 'd.start' && startFails) throw new Error('rTorrent is unreachable.');
         return 0;
       },
     };
@@ -5399,6 +5400,15 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     const run = await setup({ linked: true, complete: 0 });
     assert.equal(run.problem.state, 'needs_you');
     assert.equal((await stat(join(run.downloadRoot, 'Movie.2024.mkv'))).nlink, 2);
+  });
+
+  // Removing the links when the start call throws turns this red: rTorrent may have started the torrent and be seeding from them.
+  await t.test('a start that throws after a complete recheck leaves the hardlinks in place', async () => {
+    const run = await setup({ startFails: true });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal(run.problem.steps.at(-1).text, 'rTorrent is unreachable.');
+    assert.equal((await stat(join(run.downloadRoot, 'Movie.2024.mkv'))).nlink, 2);
+    assert.equal(run.problem.steps.some((step) => step.text.startsWith('Removed the')), false);
   });
 });
 
@@ -6698,6 +6708,9 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
     [new TypeError('fetch failed', { cause: Object.assign(new AggregateError([systemError('x', 'ECONNREFUSED')], 'aggregate'), { code: 'ECONNREFUSED' }) }), 'failed', unreached],
     [new TypeError('fetch failed', { cause: systemError('getaddrinfo ENOTFOUND', 'ENOTFOUND') }), 'failed', unreached],
     [new TypeError('fetch failed', { cause: systemError('getaddrinfo EAI_AGAIN', 'EAI_AGAIN') }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: systemError('connect EHOSTUNREACH', 'EHOSTUNREACH') }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: systemError('connect ENETUNREACH', 'ENETUNREACH') }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: systemError('Connect Timeout Error', 'UND_ERR_CONNECT_TIMEOUT') }), 'failed', unreached],
     [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', doubt],
   ]) {
     const row = `${error.name}:${error.cause?.code ?? 'none'}`;
