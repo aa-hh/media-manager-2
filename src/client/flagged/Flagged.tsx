@@ -17,6 +17,7 @@ import { ImportPanel } from '../downloads/ImportPanel';
 import { formatDuration, type Service } from '../downloads/model';
 import { postAction } from '../downloads/useDownloads';
 import { PickRelease, type OwnedEpisode, type ReleaseTarget } from '../PickRelease';
+import { useScreenReady } from '../navigation';
 import type { FlaggedAction, FlaggedItem, FlaggedState, Wanted } from './useFlagged';
 
 type Tab = 'needs_you' | 'missing' | 'cutoff';
@@ -330,6 +331,9 @@ export function FlaggedScreen({ state, reload, headingRef, onUnauthenticated, on
   const words: Record<Tab, string> = { needs_you: 'need you', missing: 'missing', cutoff: 'below cutoff' };
   const summary = tabs.flatMap(({ key }) => (counts[key] === undefined ? [] : [`${counts[key]} ${words[key]}`])).join(' · ');
   const load = tab === 'needs_you' ? state.needsYou : state.wanted;
+  const late = useScreenReady(load.kind !== 'loading');
+  // Switching tabs crossfades; the screen's first draw is already part of the screen change.
+  const [firstTab] = useState(tab);
 
   return (
     <section aria-label="Flagged" className="flex flex-col gap-6 pt-2 pb-6">
@@ -341,7 +345,7 @@ export function FlaggedScreen({ state, reload, headingRef, onUnauthenticated, on
           {tabs.map((item) => <TabsTrigger key={item.key} value={item.key} count={counts[item.key]}>{item.label}</TabsTrigger>)}
         </TabsList>
       </Tabs>
-      <div key={tab} className="flex flex-col gap-6 transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
+      <div key={`${tab}:${load.kind}`} className={cn('flex flex-col gap-6', (tab !== firstTab || late) && 'transition-opacity duration-(--duration-base) ease-out starting:opacity-0')}>
         {load.kind === 'loading' && (
           <div className="flex flex-col gap-3">
             <StatusInline status="busy">Reading flagged items…</StatusInline>

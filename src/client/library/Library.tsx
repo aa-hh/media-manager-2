@@ -19,10 +19,12 @@ import { LibraryPosterCard } from '@/components/ui/library-poster-card';
 import { LineTotals } from '@/components/ui/line-totals';
 import { Select, SelectTrigger } from '@/components/ui/select-trigger';
 import { SkeletonPosterCard } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { buildRows, formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import { navigateFrom } from '../navigation';
+import { Arrival } from '../Arrival';
+import { navigateFrom, useScreenReady } from '../navigation';
 import { getJson, type LibraryTitle, type Outcome } from './api';
 import { FIELDS, missingCount, movieWord, progressText, readFields, totals, writeFields, type Field } from './grid';
 import { downloadingByShow, subjectProgress, type SubjectProgress } from './progress';
@@ -113,6 +115,7 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
       .catch(() => setState({ kind: 'failed' }));
   }, [onUnauthenticated]);
   useEffect(load, [load]);
+  useScreenReady(state.kind !== 'loading');
 
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
   const progress = useMemo(
@@ -183,12 +186,14 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div key={state.kind} className="transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
-        {state.kind === 'loading' && (
+      <Arrival
+        ready={state.kind !== 'loading'}
+        skeleton={(
           <div className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
             {Array.from({ length: SKELETON_CARDS }, (_, index) => <SkeletonPosterCard key={index} />)}
           </div>
         )}
+      >
         {state.kind === 'failed' && (
           <Callout className="w-130" title="The library could not be read." action={<Button variant="outline" onClick={load}>Retry</Button>} />
         )}
@@ -233,7 +238,7 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
             </>
           );
         })()}
-      </div>
+      </Arrival>
     </div>
   );
 }

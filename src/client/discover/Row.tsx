@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { Button } from '@/components/ui/button';
 import { SkeletonPosterCard } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { Arrival } from '../Arrival';
 import { Card, openLink } from './Card';
 import { visibleCards, type Row as RowData } from './model';
 
@@ -105,48 +106,55 @@ export function Row({ heading, intro, control, row, size, seeAll, ranked = false
           <p className="font-ui text-sm font-semibold text-foreground">Couldn't load these titles</p>
           <Button variant="outline" icon={<RotateCw />} onClick={onRetry}>Try again</Button>
         </div>
-      ) : results === undefined ? (
-        <ul aria-label={`Loading ${heading}`} className={stripClass}>
-          {Array.from({ length: SKELETONS }, (_, index) => (
-            <li key={index} className="shrink-0">
-              <SkeletonPosterCard className="w-55 [&>:first-child]:h-82.5 [&>:first-child]:w-55" />
-            </li>
-          ))}
-        </ul>
       ) : (
-        <ul ref={strip} onScroll={measure} className={stripClass}>
-          {results.map((result, index) => (
-            <li key={`${result.type}:${result.tmdbId}`} className="shrink-0">
-              <Card result={result} rank={ranked ? index + 1 : undefined} upcoming={upcoming} size={size} />
-            </li>
-          ))}
-          {seeAll !== undefined && (
-            <li className="shrink-0">
-              <a
-                href={seeAll.path}
-                onClick={openLink(seeAll.path)}
-                className="flex h-82.5 w-55 flex-col items-center justify-center gap-3.5 rounded-lg bg-muted p-5 focus-ring"
-              >
-                {minis.length > 0 && (
-                  <span className="grid grid-cols-2 gap-1.5">
-                    {minis.map((result) => (
-                      <img
-                        key={`${result.type}:${result.tmdbId}`}
-                        src={result.posterUrl ?? undefined}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="h-24 w-16 rounded-md object-cover opacity-85"
-                      />
-                    ))}
-                  </span>
-                )}
-                <span className="font-ui text-[15px] font-bold text-foreground">See all {seeAll.label.toLowerCase()}</span>
-                <ArrowRight aria-hidden="true" className="size-4.5 text-foreground" />
-              </a>
-            </li>
+        <Arrival
+          ready={results !== undefined}
+          skeleton={(
+            <ul aria-label={`Loading ${heading}`} className={stripClass}>
+              {Array.from({ length: SKELETONS }, (_, index) => (
+                <li key={index} className="shrink-0">
+                  <SkeletonPosterCard className="w-55 [&>:first-child]:h-82.5 [&>:first-child]:w-55" />
+                </li>
+              ))}
+            </ul>
           )}
-        </ul>
+        >
+          {results !== undefined && (
+          <ul ref={strip} onScroll={measure} className={stripClass}>
+            {results.map((result, index) => (
+              <li key={`${result.type}:${result.tmdbId}`} className="shrink-0">
+                <Card result={result} rank={ranked ? index + 1 : undefined} upcoming={upcoming} size={size} />
+              </li>
+            ))}
+            {seeAll !== undefined && (
+              <li className="shrink-0">
+                <a
+                  href={seeAll.path}
+                  onClick={openLink(seeAll.path)}
+                  className="flex h-82.5 w-55 flex-col items-center justify-center gap-3.5 rounded-lg bg-muted p-5 focus-ring"
+                >
+                  {minis.length > 0 && (
+                    <span className="grid grid-cols-2 gap-1.5">
+                      {minis.map((result) => (
+                        <img
+                          key={`${result.type}:${result.tmdbId}`}
+                          src={result.posterUrl ?? undefined}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-24 w-16 rounded-md object-cover opacity-85"
+                        />
+                      ))}
+                    </span>
+                  )}
+                  <span className="font-ui text-[15px] font-bold text-foreground">See all {seeAll.label.toLowerCase()}</span>
+                  <ArrowRight aria-hidden="true" className="size-4.5 text-foreground" />
+                </a>
+              </li>
+            )}
+          </ul>
+          )}
+        </Arrival>
       )}
     </section>
   );

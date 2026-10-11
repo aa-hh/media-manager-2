@@ -6,7 +6,7 @@ import { HeaderPage } from '@/components/ui/header-page';
 import { StatusInline } from '@/components/ui/status-inline';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { getJson } from '../library/api';
-import { replace, useLocation } from '../navigation';
+import { replace, useLocation, useScreenReady } from '../navigation';
 import { Attribution } from './Attribution';
 import { openLink } from './Card';
 import { FilterBar } from './FilterBar';
@@ -69,6 +69,8 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const options = useOptions('both', 'movie', onUnauthenticated);
+  // The screen change holds until the rows are in; each row fades its own titles in if they come later.
+  useScreenReady(load.kind !== 'loading');
 
   // The address catches up right after the render; stored defaults give a bare address again, so the check stops a loop.
   useEffect(() => {

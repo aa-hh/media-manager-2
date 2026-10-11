@@ -214,7 +214,7 @@
 }
 
 /*
- * View transitions (navigation.ts withViewTransition). The old page leaves fast, the new page arrives at base speed,
+ * View transitions (navigation.ts changeScreen). The old page leaves fast, the new page arrives at base speed,
  * and a poster card's poster morphs into the title page's large poster. Reduced motion never starts one.
  */
 .title-poster {
@@ -252,6 +252,17 @@
 
 @utility animate-content-in {
   animation: content-in var(--duration-base) var(--ease-out) both;
+}
+
+/* The skeleton under arriving content leaves on the matching ease-in, so the pair never dips below full cover. */
+@keyframes content-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@utility animate-content-out {
+  animation: content-out var(--duration-base) var(--ease-in) both;
 }
 
 @theme inline {

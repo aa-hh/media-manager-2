@@ -36,8 +36,8 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
 /**
  * Library grid card, 152 by 228 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
  * pressed 84 %; focus rings the poster; selected adds a 2 px black edge and a 700 title.
- * The card crossfades in when it takes a skeleton's place; its poster block keeps the skeleton shimmer until
- * the image has loaded, then the image fades in. An image that fails to load shows the no-poster fallback.
+ * Its poster block keeps the skeleton shimmer until the image has loaded, then the image fades in (the screen around
+ * the card decides whether the card itself fades in, so a card does not fade on every screen change). An image that fails to load shows the no-poster fallback.
  */
 function LibraryPosterCard({
   poster, title, meta, status, progress, imported = false, importedLabel = 'Imported', selected = false,
@@ -48,7 +48,7 @@ function LibraryPosterCard({
   const [image, setImage] = useState<'loading' | 'loaded' | 'failed'>('loading');
   const showPoster = poster !== undefined && image !== 'failed';
   return (
-    <a className={cn('group flex flex-col gap-2 outline-none animate-content-in', large ? 'w-55' : 'w-(--poster-width)', className)} {...props}>
+    <a className={cn('group flex flex-col gap-2 outline-none', large ? 'w-55' : 'w-(--poster-width)', className)} {...props}>
       <span
         data-poster
         className={cn(

@@ -4,13 +4,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { HeaderBackdrop } from '@/components/ui/header-title';
+import { Arrival } from '../Arrival';
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { buildRows } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
 import { getJson, type MovieDetail, type OwnedMovieDetail, type SeriesDetail } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
-import { passedPosterUrl, preloadImages, replace, useLocation, withViewTransition } from '../navigation';
+import { passedPosterUrl, preloadImages, replace, useLocation, useScreenReady } from '../navigation';
 import { AddControls } from './AddControls';
 import { MovieOverview } from './MovieOverview';
 import { SeriesOverview } from './SeriesOverview';
@@ -122,17 +123,14 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       return { kind: 'movie', detail, protectedIds: new Set(items.flatMap((item) => (item.kind === 'movie' ? [item.movieId] : []))) };
     };
     read()
-      // razor: waits at most 600 ms for the header's poster and backdrop, so the page usually arrives with both drawn; a slower image fades in on its own.
+      // razor: waits at most 300 ms for the header's poster, so the page usually arrives with it drawn. The backdrop is not
+      // waited for: the band behind the header shows a blurred poster until it settles in.
       .then(async (loaded) => {
-        if ('detail' in loaded) await preloadImages([loaded.detail.posterUrl, 'backdropUrl' in loaded.detail ? loaded.detail.backdropUrl : null], 600);
+        if ('detail' in loaded) await preloadImages([loaded.detail.posterUrl], 300);
         return loaded;
       })
       .then((loaded) => {
-        if (controller.signal.aborted) return;
-        // The skeleton crossfades into the page; the poster stays put because both carry title-poster.
-        withViewTransition(() => {
-          if (!controller.signal.aborted) setLoad(loaded);
-        });
+        if (!controller.signal.aborted) setLoad(loaded);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -152,10 +150,13 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
   const onAdded = (libraryId: number) => replace(`/${route?.type === 'tv' ? 'series' : 'movie'}/${libraryId}`);
 
   const service = route?.type === 'movie' ? 'Radarr' : 'Sonarr';
+  // The screen change holds the previous screen until the page and its poster are in, so it usually arrives drawn.
+  useScreenReady(load.kind !== 'loading');
 
   return (
-    <div>
-      {load.kind === 'loading' && (
+    <Arrival
+      ready={load.kind !== 'loading'}
+      skeleton={(
         // The poster sits where the loaded header puts it (owned pages start higher), so nothing jumps when the page arrives.
         <div role="status" aria-label="Loading" className={cn('relative flex flex-col gap-8 pb-10', route?.owned === true ? 'pt-10' : 'pt-25')}>
           {/* The owned header is 336 px tall: 40 above the poster, the 264 px poster, 32 below. */}
@@ -181,6 +182,7 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
           </div>
         </div>
       )}
+    >
       {load.kind === 'failed' && (
         <div className="pt-8 pb-10">
           <Callout
@@ -229,6 +231,6 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
           onUnauthenticated={onUnauthenticated}
         />
       )}
-    </div>
+    </Arrival>
   );
 }

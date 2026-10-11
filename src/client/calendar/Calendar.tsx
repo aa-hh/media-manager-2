@@ -13,7 +13,7 @@ import { buildRows } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
 import { getJson, type CalendarEntry, type Outcome } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
-import { navigate, replace, useLocation } from '../navigation';
+import { navigate, replace, useLocation, useScreenReady } from '../navigation';
 import { groupByDay, entryWord, rangeLabel, shiftAnchor, stillMissing, windowFor, type CalendarGroup, type CalendarWindow, type View } from './model';
 
 type Loaded = { entries: CalendarEntry[]; services: { sonarr: Outcome; radarr: Outcome } };
@@ -268,6 +268,10 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
   const now = Date.now();
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const loading = state.kind === 'loading';
+  const late = useScreenReady(!loading);
+  // Stepping weeks or switching views crossfades; the screen's first draw is already part of the screen change.
+  const shown = `${view}:${isoDay(window.start)}`;
+  const [firstShown] = useState(shown);
   const entries = state.kind === 'ready' ? state.data.entries : [];
   const missing = stillMissing(entries, progress, now).length;
   const grid = { window, entries, progress, now, loading };
@@ -295,7 +299,7 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
         : (
           <div
             key={`${view}:${isoDay(window.start)}:${state.kind}`}
-            className={cn('flex flex-col transition-opacity duration-(--duration-base) ease-out starting:opacity-0', view === 'week' ? 'gap-6' : view === 'month' && 'gap-4')}
+            className={cn('flex flex-col', (shown !== firstShown || late) && 'transition-opacity duration-(--duration-base) ease-out starting:opacity-0', view === 'week' ? 'gap-6' : view === 'month' && 'gap-4')}
           >
             {state.kind === 'ready' && [serviceProblem('Sonarr', state.data.services.sonarr), serviceProblem('Radarr', state.data.services.radarr)]
               .filter((line) => line !== undefined)

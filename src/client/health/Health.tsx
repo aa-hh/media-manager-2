@@ -14,6 +14,7 @@ import { type ServiceState, StatusServicePill } from '@/components/ui/status-ser
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { formatBytes, formatDuration } from '../downloads/model';
+import { useScreenReady } from '../navigation';
 import type { ConnectionStatus, HealthProblem, HealthSnapshot, HealthState } from './useHealth';
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -211,6 +212,7 @@ export function HealthScreen({ state, runChecks, headingRef }: {
   headingRef: RefObject<HTMLDivElement | null>;
 }) {
   const [running, setRunning] = useState(false);
+  useScreenReady(state.kind !== 'loading');
   const run = () => {
     setRunning(true);
     void runChecks().finally(() => setRunning(false));
