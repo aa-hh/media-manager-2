@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import { describeSearch } from './releaseDetails.js';
 import type { ArrServices, HistoryRecord } from './services/arr.js';
 
 export type ReleaseTarget =
@@ -33,6 +34,8 @@ export type Release = {
   downloadUrl?: string | null;
   // The episodes Sonarr maps the release to; a season pack lists every episode it covers.
   episodeIds?: number[];
+  // Sonarr's and Radarr's own rank for the release within the quality profile; searches stored before it was kept lack it.
+  qualityWeight?: number | null;
 };
 
 export type StoredSearch = { fetchedAt: number; releases: Release[] };
@@ -135,6 +138,7 @@ const toRelease = (value: unknown): Release | undefined => {
     episodeIds: Array.isArray(value.mappedEpisodeInfo)
       ? value.mappedEpisodeInfo.flatMap((episode) => (isRecord(episode) && positiveInteger(episode.id) ? [episode.id] : []))
       : [],
+    qualityWeight: typeof value.qualityWeight === 'number' && Number.isFinite(value.qualityWeight) ? value.qualityWeight : null,
   };
 };
 
@@ -232,11 +236,15 @@ export const createReleases = (
     return { kind: 'ok', search };
   };
 
+  const describe = async (target: ReleaseTarget, result: ReleaseResult): Promise<ReleaseResult> => (result.kind === 'ok'
+    ? { ...result, search: await describeSearch(database, services, target, result.search) }
+    : { ...result, stored: result.stored === null ? null : await describeSearch(database, services, target, result.stored) });
+
   const refresh = (target: ReleaseTarget) => {
     const key = targetKey(target);
     const existing = running.get(key);
     if (existing !== undefined) return existing;
-    const started = fresh(target).finally(() => running.delete(key));
+    const started = fresh(target).then((result) => describe(target, result)).finally(() => running.delete(key));
     running.set(key, started);
     return started;
   };
@@ -245,7 +253,7 @@ export const createReleases = (
     // Stored results come back at once with their age; a search runs only when nothing is stored.
     async get(target: ReleaseTarget): Promise<ReleaseResult & { refreshing: boolean }> {
       const stored = readStored(database, targetKey(target));
-      if (stored !== null) return { kind: 'ok', search: stored, refreshing: running.has(targetKey(target)) };
+      if (stored !== null) return { ...(await describe(target, { kind: 'ok', search: stored })), refreshing: running.has(targetKey(target)) };
       return { ...(await refresh(target)), refreshing: false };
     },
     refresh,
