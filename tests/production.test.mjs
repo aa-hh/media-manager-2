@@ -3205,7 +3205,9 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     const fresh = await status();
     assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', plex: 'not_done', folders: 'not_done' });
     assert.equal(fresh.requiredComplete, false);
-    assert.deepEqual(fresh.optional, { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false } });
+    assert.deepEqual(fresh.optional, {
+      trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false },
+    });
     assert.deepEqual(fresh.backup, { destination: null, problem: null, key: 'missing', keyCreatedAt: null });
     assert.equal(fresh.plexSignInTokenAvailable, true);
     assert.equal((await (await build({ env: { BACKUP_KEY: 'ab'.repeat(32) } })).status()).backup.key, 'env');
@@ -3265,14 +3267,58 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
   // Dropping a stored choice, leaving backups on after the owner skipped them, or turning them on from a tick alone, turns this red.
   await t.test('the owner\'s choices round-trip and a skipped backup turns backups off', async () => {
     const { database, send, status } = await build();
-    const choose = (trackers, backup) => send('PUT', '/choices', { trackers, backup });
-    assert.equal((await choose({ wanted: false, skipped: false }, { wanted: true, skipped: true })).status, 204);
-    assert.deepEqual((await status()).optional, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'skipped', wanted: true } });
+    const choose = (trackers, metadata, backup) => send('PUT', '/choices', { trackers, metadata, backup });
+    assert.equal((await choose({ wanted: false, skipped: false }, { wanted: false, skipped: false }, { wanted: true, skipped: true })).status, 204);
+    assert.deepEqual((await status()).optional, {
+      trackers: { status: 'skipped', wanted: false }, metadata: { status: 'skipped', wanted: false }, backup: { status: 'skipped', wanted: true },
+    });
     assert.equal(backupsAreOff(database), true);
-    assert.equal((await choose({ wanted: true, skipped: false }, { wanted: true, skipped: false })).status, 204);
-    assert.deepEqual((await status()).optional, { trackers: { status: 'not_done', wanted: true }, backup: { status: 'not_done', wanted: true } });
+    assert.equal((await choose({ wanted: true, skipped: false }, { wanted: true, skipped: false }, { wanted: true, skipped: false })).status, 204);
+    assert.deepEqual((await status()).optional, {
+      trackers: { status: 'not_done', wanted: true }, metadata: { status: 'not_done', wanted: true }, backup: { status: 'not_done', wanted: true },
+    });
     assert.equal(backupsAreOff(database), true);
-    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, backup: { wanted: true, skipped: false } })).status, 400);
+    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, metadata: { wanted: true, skipped: false }, backup: { wanted: true, skipped: false } })).status, 400);
+    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true, skipped: false }, backup: { wanted: true, skipped: false } })).status, 400);
+    setSetting(database, 'credentials', 'mdblist.apiKey', 'value');
+    assert.equal((await status()).optional.metadata.status, 'done');
+  });
+
+  // Returning the masked password, using a disabled or non-rTorrent client, or keeping a localhost host turns this red.
+  await t.test('rTorrent is suggested from the first enabled rTorrent download client, never its password', async () => {
+    const { database, fake, send } = await build({ which: { sonarr: {}, radarr: {} } });
+    const client = (implementation, enable, values) => ({
+      implementation, enable, fields: Object.entries(values).map(([name, value]) => ({ name, value })),
+    });
+    const clients = {
+      sonarr: [
+        client('QBittorrent', true, { host: 'qbit.example', port: 8080 }),
+        client('RTorrent', false, { host: 'off.example', port: 80, username: 'off' }),
+        client('RTorrent', true, { host: 'localhost', port: 443, useSsl: true, urlBase: 'xmlrpc', username: 'alec', password: '****' }),
+      ],
+      radarr: [client('RTorrent', true, { host: 'box.example', port: 8080, useSsl: false, urlBase: '/rtorrent/' })],
+    };
+    for (const service of ['sonarr', 'radarr']) {
+      fake[service].routes.push((method, url) => (
+        method === 'GET' && url.pathname === '/api/v3/downloadclient' ? { status: 200, body: clients[service] } : undefined
+      ));
+    }
+    const suggestion = async () => {
+      const response = await send('GET', '/rtorrent');
+      assert.equal(response.status, 200);
+      return response.text();
+    };
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://seedbox.example:8989');
+    const remote = await suggestion();
+    assert.deepEqual(JSON.parse(remote), { address: 'https://seedbox.example/xmlrpc', username: 'alec' });
+    assert.equal(remote.includes('****') || remote.includes('password'), false);
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65201');
+    assert.deepEqual(JSON.parse(await suggestion()), { address: null, username: 'alec' });
+    fake.sonarr.state.down = true;
+    assert.deepEqual(JSON.parse(await suggestion()), { address: 'http://box.example:8080/rtorrent', username: null });
+    const unconfigured = await (await build()).send('GET', '/rtorrent');
+    assert.equal(unconfigured.status, 200);
+    assert.deepEqual(await unconfigured.json(), { address: null, username: null });
   });
 
   // Suggesting a blank root folder or a disabled download client's folder, failing the whole read when one service is down, mixing up
