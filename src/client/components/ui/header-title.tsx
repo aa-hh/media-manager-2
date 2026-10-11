@@ -1,5 +1,5 @@
 // v2/Header/title — design/design-system.lib.pen NaDkI
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ToggleBookmark, type BookmarkState } from '@/components/ui/toggle-bookmark';
 import { cn } from '@/lib/utils';
 
@@ -36,10 +36,51 @@ type HeaderTitleProps = {
 // A 1 px inner edge over a poster image (foreground at 10%).
 const innerEdge = 'after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-foreground/10';
 
+/**
+ * An image that is drawn at once when the browser already has it, and otherwise fades in when it arrives.
+ * settle: a large image also eases from 103 % to full size over twice duration-slow, so a late arrival reads as deliberate.
+ */
+function FadeImage({ src, settle = false, className }: { src: string; settle?: boolean; className?: string }) {
+  const [loaded, setLoaded] = useState(() => {
+    const probe = new Image();
+    probe.src = src;
+    return probe.complete && probe.naturalWidth > 0;
+  });
+  return (
+    <img
+      src={src}
+      alt=""
+      onLoad={() => setLoaded(true)}
+      className={cn(
+        'object-cover ease-out',
+        settle ? 'transition-[opacity,scale] duration-[calc(var(--duration-slow)*2)]' : 'transition-opacity duration-(--duration-slow)',
+        loaded ? 'opacity-100' : cn('opacity-0', settle && 'scale-103'),
+        className,
+      )}
+    />
+  );
+}
+
 function Poster({ url, className }: { url?: string; className: string }) {
   return (
     <div className={cn('relative shrink-0 overflow-hidden bg-muted', innerEdge, className)}>
-      {url !== undefined && <img src={url} alt="" className="size-full object-cover" />}
+      {url !== undefined && <FadeImage key={url} src={url} className="size-full" />}
+    </div>
+  );
+}
+
+/**
+ * The band behind the hero. A heavily blurred copy of the poster fills it at once, from the poster the browser already
+ * has, and the backdrop settles in over it, so the band never jumps from white to a photo. tall: the owned layout,
+ * where the band covers the whole header; otherwise it is 220 px. The loading title page draws the same band.
+ */
+function HeaderBackdrop({ posterUrl, backdropUrl, tall, className }: { posterUrl?: string; backdropUrl?: string; tall: boolean; className?: string }) {
+  if (posterUrl === undefined && backdropUrl === undefined) return null;
+  return (
+    <div aria-hidden="true" className={cn('absolute top-0 overflow-hidden', tall ? 'bottom-0' : 'h-55', className)}>
+      {posterUrl !== undefined && <img src={posterUrl} alt="" className="absolute inset-0 size-full scale-125 object-cover opacity-70 blur-3xl saturate-150" />}
+      {backdropUrl !== undefined && <FadeImage key={backdropUrl} src={backdropUrl} settle className="absolute inset-0 size-full" />}
+      <div className={cn('relative size-full bg-linear-to-b', tall ? 'from-background/20 via-background/70 via-45% to-background' : 'from-transparent via-background/55 via-55% to-background')} />
     </div>
   );
 }
@@ -87,11 +128,7 @@ function HeaderTitle({
 
   return (
     <header className={cn('relative flex w-full flex-col overflow-hidden bg-background px-10', actionsRight ? 'pt-10 pb-8' : 'pt-25 pb-6', className)}>
-      {backdropUrl !== undefined && (
-        <div aria-hidden="true" className={cn('absolute inset-x-0 top-0 bg-cover bg-center', actionsRight ? 'bottom-0' : 'h-55')} style={{ backgroundImage: `url(${JSON.stringify(backdropUrl)})` }}>
-          <div className={cn('size-full bg-linear-to-b', actionsRight ? 'from-background/20 via-background/70 via-45% to-background' : 'from-transparent via-background/55 via-55% to-background')} />
-        </div>
-      )}
+      <HeaderBackdrop posterUrl={posterUrl} backdropUrl={backdropUrl} tall={actionsRight} className="inset-x-0" />
       <div className={cn('relative flex w-full gap-8', actionsRight && 'items-end')}>
         {/* title-poster: a poster card opening this page morphs into it (globals.css). */}
         <Poster url={posterUrl} className="title-poster h-66 w-44 rounded-md" />
@@ -114,4 +151,4 @@ function HeaderTitle({
   );
 }
 
-export { HeaderTitle };
+export { HeaderBackdrop, HeaderTitle };
