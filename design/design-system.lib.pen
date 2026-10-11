@@ -4302,6 +4302,397 @@
             },
             {
               "type": "frame",
+              "id": "K1vVa",
+              "name": "Row plex",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "BaKc2",
+                  "name": "Row label",
+                  "width": 150,
+                  "height": 36,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "HlHqw",
+                      "name": "Variant name",
+                      "fill": "$foreground",
+                      "content": "plex",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "tOEdZ",
+                  "name": "State default",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ovs9Z",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "default",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "uU6DO",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex default",
+                      "fill": "$plex",
+                      "stroke": "$plex",
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "XSaWu",
+                          "name": "Plex mark",
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$plex-foreground",
+                          "content": "Log in with Plex"
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "EUEXA",
+                  "name": "State hover",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "OvtiJ",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "hover",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "T3cAf",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex hover",
+                      "fill": "$plex-hover",
+                      "stroke": "$plex-hover",
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "tFwDQ",
+                          "name": "Plex mark",
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$plex-foreground",
+                          "content": "Log in with Plex"
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Mm5Ea",
+                  "name": "State pressed",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "UbMl3",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "pressed",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "lwRyN",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex pressed",
+                      "fill": "$plex-pressed",
+                      "stroke": "$plex-pressed",
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "EgAem",
+                          "name": "Plex mark",
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$plex-foreground",
+                          "content": "Log in with Plex"
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "bvViS",
+                  "name": "State focus",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ui1VE",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "focus",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "fhEUO",
+                      "type": "ref",
+                      "ref": "v1tSkC",
+                      "name": "Focus wrap",
+                      "children": [
+                        {
+                          "id": "swFoO",
+                          "type": "ref",
+                          "ref": "ht3RN",
+                          "name": "Button plex default",
+                          "fill": "$plex",
+                          "stroke": "$plex",
+                          "descendants": {
+                            "HQLEf": {
+                              "type": "frame",
+                              "id": "iV1R3",
+                              "name": "Plex mark",
+                              "width": 16,
+                              "height": 16,
+                              "fill": {
+                                "type": "image",
+                                "enabled": true,
+                                "url": "logos/plex-icon.png",
+                                "mode": "contain"
+                              }
+                            },
+                            "OXVvv": {
+                              "fill": "$plex-foreground",
+                              "content": "Log in with Plex"
+                            },
+                            "T1Pftv": {
+                              "enabled": false
+                            },
+                            "T1Pftv/BvVhW": {
+                              "content": "D"
+                            },
+                            "iwvSz": {
+                              "enabled": false,
+                              "fill": "$primary-foreground"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Ug8BG",
+                  "name": "State disabled",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "EnWEz",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "disabled",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "AMbC4",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex disabled",
+                      "fill": "$muted",
+                      "stroke": "$muted",
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "KPhav",
+                          "name": "Plex mark",
+                          "opacity": 0.35,
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$faint-foreground",
+                          "content": "Log in with Plex"
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$faint-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "gGs99",
+                  "name": "State busy",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "BDlMo",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "busy",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "SZD68",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex busy",
+                      "fill": "$plex",
+                      "stroke": "$plex",
+                      "opacity": 0.78,
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "baVEu",
+                          "name": "Plex mark",
+                          "opacity": 0,
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$plex-foreground",
+                          "content": "Log in with Plex",
+                          "opacity": 0
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    },
+                    {
+                      "type": "icon",
+                      "id": "V1kEzY",
+                      "layoutPosition": "absolute",
+                      "x": 72,
+                      "y": 34,
+                      "name": "Spinner overlay",
+                      "width": 16,
+                      "height": 16,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "$plex-foreground"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "ZYte6",
               "name": "Row outline-destructive",
               "width": "fill_container",
@@ -11553,8 +11944,8 @@
                               "name": "Action",
                               "enabled": false,
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "height": 40,
                               "padding": [
                                 0,
@@ -11978,8 +12369,8 @@
                               "name": "Action",
                               "enabled": false,
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "height": 40,
                               "padding": [
                                 0,
@@ -14301,8 +14692,8 @@
                               "type": "ref",
                               "ref": "ht3RN",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "name": "Action",
                               "enabled": false,
                               "height": 40,
@@ -14552,8 +14943,8 @@
                               "type": "ref",
                               "ref": "ht3RN",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "name": "Action",
                               "enabled": false,
                               "height": 40,
@@ -15711,8 +16102,8 @@
                           "type": "ref",
                           "ref": "ht3RN",
                           "fill": "$card",
-                          "stroke": "$input",
-                          "strokeWidth": 1,
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
                           "name": "Action",
                           "height": 40,
                           "padding": [
@@ -16343,8 +16734,8 @@
                           "height": 48,
                           "cornerRadius": "$control-radius-large",
                           "fill": "$card",
-                          "stroke": "$input",
-                          "strokeWidth": 1,
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
                           "padding": [
                             0,
                             "$control-px-large"
@@ -16655,8 +17046,8 @@
                               "ref": "ht3RN",
                               "name": "Secondary",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "enabled": false
@@ -17237,8 +17628,8 @@
                           "name": "Secondary",
                           "enabled": false,
                           "fill": "$card",
-                          "stroke": "$input",
-                          "strokeWidth": 1,
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "HQLEf": {
                               "fill": "$foreground",
@@ -18037,8 +18428,8 @@
                               "ref": "ht3RN",
                               "name": "Cancel",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "enabled": false
@@ -21632,8 +22023,8 @@
                               "name": "Action",
                               "enabled": false,
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "icon": "history",
@@ -22900,8 +23291,8 @@
                                       "ref": "ht3RN",
                                       "name": "Secondary",
                                       "fill": "$card",
-                                      "stroke": "$input",
-                                      "strokeWidth": 1,
+                                      "stroke": "$foreground",
+                                      "strokeWidth": 1.5,
                                       "height": 48,
                                       "padding": [
                                         0,
@@ -23162,8 +23553,8 @@
                                   "ref": "ht3RN",
                                   "name": "Secondary",
                                   "fill": "$card",
-                                  "stroke": "$input",
-                                  "strokeWidth": 1,
+                                  "stroke": "$foreground",
+                                  "strokeWidth": 1.5,
                                   "height": 48,
                                   "padding": [
                                     0,
@@ -23582,8 +23973,8 @@
                                   "ref": "ht3RN",
                                   "name": "More choices",
                                   "fill": "$card",
-                                  "stroke": "$input",
-                                  "strokeWidth": 1,
+                                  "stroke": "$foreground",
+                                  "strokeWidth": 1.5,
                                   "descendants": {
                                     "HQLEf": {
                                       "enabled": false
@@ -23713,8 +24104,8 @@
                               "ref": "ht3RN",
                               "name": "Secondary",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "enabled": false
@@ -34227,8 +34618,8 @@
                           "name": "Add",
                           "enabled": false,
                           "fill": "$card",
-                          "stroke": "$input",
-                          "strokeWidth": 1,
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
                           "height": 40,
                           "padding": [
                             0,
@@ -35746,8 +36137,8 @@
                               "ref": "ht3RN",
                               "name": "Previous",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "width": 40,
                               "height": 40,
                               "padding": 0,
@@ -35770,8 +36161,8 @@
                               "ref": "ht3RN",
                               "name": "Today",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "enabled": false
@@ -35802,8 +36193,8 @@
                               "ref": "ht3RN",
                               "name": "Next",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "width": 40,
                               "height": 40,
                               "padding": 0,
@@ -39007,6 +39398,22 @@
     "ease-linear": {
       "type": "string",
       "value": "linear"
+    },
+    "plex": {
+      "type": "color",
+      "value": "#E5A00D"
+    },
+    "plex-hover": {
+      "type": "color",
+      "value": "#F3AA0E"
+    },
+    "plex-pressed": {
+      "type": "color",
+      "value": "#D19209"
+    },
+    "plex-foreground": {
+      "type": "color",
+      "value": "#111111"
     }
   },
   "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"

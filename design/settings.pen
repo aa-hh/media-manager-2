@@ -4169,7 +4169,7 @@
                         "5:xDbxM": {
                           "enabled": true,
                           "fill": "$5:muted",
-                          "strokeWidth": 0,
+                          "strokeWidth": 1.5,
                           "stroke": "$5:border"
                         },
                         "5:xDbxM/5:HQLEf": {
@@ -5259,8 +5259,8 @@
                         "5:xDbxM": {
                           "enabled": true,
                           "fill": "$5:card",
-                          "strokeWidth": 1,
-                          "stroke": "$5:input"
+                          "strokeWidth": 1.5,
+                          "stroke": "$5:foreground"
                         },
                         "5:xDbxM/5:HQLEf": {
                           "icon": "refresh-cw",
@@ -37602,8 +37602,8 @@
                               "ref": "5:ht3RN",
                               "name": "Create new key",
                               "fill": "$5:card",
-                              "stroke": "$5:input",
-                              "strokeWidth": 1,
+                              "stroke": "$5:foreground",
+                              "strokeWidth": 1.5,
                               "padding": [
                                 0,
                                 "$5:control-px-row"
@@ -38819,8 +38819,8 @@
                               "ref": "5:ht3RN",
                               "name": "Create new key",
                               "fill": "$5:card",
-                              "stroke": "$5:input",
-                              "strokeWidth": 1,
+                              "stroke": "$5:foreground",
+                              "strokeWidth": 1.5,
                               "padding": [
                                 0,
                                 "$5:control-px-row"

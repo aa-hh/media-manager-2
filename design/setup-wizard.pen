@@ -13827,8 +13827,8 @@
                                     10
                                   ],
                                   "fill": "$o:card",
-                                  "stroke": "$o:input",
-                                  "strokeWidth": 1,
+                                  "stroke": "$o:foreground",
+                                  "strokeWidth": 1.5,
                                   "descendants": {
                                     "o:HQLEf": {
                                       "icon": "timer",
@@ -13856,8 +13856,8 @@
                           "ref": "o:ht3RN",
                           "name": "Add another button",
                           "fill": "$o:card",
-                          "stroke": "$o:input",
-                          "strokeWidth": 1,
+                          "stroke": "$o:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "o:HQLEf": {
                               "icon": "plus",
@@ -17813,8 +17813,8 @@
                         "o:xDbxM": {
                           "enabled": false,
                           "fill": "$o:card",
-                          "strokeWidth": 1,
-                          "stroke": "$o:input",
+                          "strokeWidth": 1.5,
+                          "stroke": "$o:foreground",
                           "height": 48,
                           "padding": [
                             0,
@@ -17830,8 +17830,8 @@
                         },
                         "o:H9zIOH": {
                           "fill": "$o:card",
-                          "stroke": "$o:input",
-                          "strokeWidth": 1
+                          "stroke": "$o:foreground",
+                          "strokeWidth": 1.5
                         },
                         "o:H9zIOH/o:HQLEf": {
                           "icon": "arrow-right",
@@ -27991,8 +27991,8 @@
                                     10
                                   ],
                                   "fill": "$o:card",
-                                  "stroke": "$o:input",
-                                  "strokeWidth": 1,
+                                  "stroke": "$o:foreground",
+                                  "strokeWidth": 1.5,
                                   "descendants": {
                                     "o:HQLEf": {
                                       "icon": "timer",
@@ -28020,8 +28020,8 @@
                           "ref": "o:ht3RN",
                           "name": "Add another button",
                           "fill": "$o:card",
-                          "stroke": "$o:input",
-                          "strokeWidth": 1,
+                          "stroke": "$o:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "o:HQLEf": {
                               "icon": "plus",
@@ -30685,8 +30685,8 @@
                         "o:xDbxM": {
                           "enabled": false,
                           "fill": "$o:card",
-                          "strokeWidth": 1,
-                          "stroke": "$o:input",
+                          "strokeWidth": 1.5,
+                          "stroke": "$o:foreground",
                           "height": 48,
                           "padding": [
                             0,
@@ -30702,8 +30702,8 @@
                         },
                         "o:H9zIOH": {
                           "fill": "$o:card",
-                          "stroke": "$o:input",
-                          "strokeWidth": 1
+                          "stroke": "$o:foreground",
+                          "strokeWidth": 1.5
                         },
                         "o:H9zIOH/o:HQLEf": {
                           "icon": "arrow-right",
@@ -44837,8 +44837,8 @@
                         "o:xDbxM": {
                           "enabled": false,
                           "fill": "$o:card",
-                          "strokeWidth": 1,
-                          "stroke": "$o:input",
+                          "strokeWidth": 1.5,
+                          "stroke": "$o:foreground",
                           "height": 48,
                           "padding": [
                             0,
@@ -44854,8 +44854,8 @@
                         },
                         "o:H9zIOH": {
                           "fill": "$o:card",
-                          "stroke": "$o:input",
-                          "strokeWidth": 1
+                          "stroke": "$o:foreground",
+                          "strokeWidth": 1.5
                         },
                         "o:H9zIOH/o:HQLEf": {
                           "icon": "arrow-right",
@@ -46208,8 +46208,8 @@
                         "o:xDbxM": {
                           "enabled": false,
                           "fill": "$o:card",
-                          "strokeWidth": 1,
-                          "stroke": "$o:input",
+                          "strokeWidth": 1.5,
+                          "stroke": "$o:foreground",
                           "height": 48,
                           "padding": [
                             0,
@@ -46225,8 +46225,8 @@
                         },
                         "o:H9zIOH": {
                           "fill": "$o:card",
-                          "stroke": "$o:input",
-                          "strokeWidth": 1
+                          "stroke": "$o:foreground",
+                          "strokeWidth": 1.5
                         },
                         "o:H9zIOH/o:HQLEf": {
                           "icon": "arrow-right",
