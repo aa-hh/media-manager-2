@@ -68,6 +68,22 @@ export const folderProblems = (
   return fields;
 };
 
+// A library on another drive still saves (a network library is fine), but a deleted download can't be re-linked from it.
+export const folderWarnings = (
+  values: FolderValues,
+  stat: FolderStat = (path) => statSync(path, { throwIfNoEntry: false }),
+): Partial<Record<FolderField, string>> => {
+  const downloads = stat(values.downloads);
+  const warnings: Partial<Record<FolderField, string>> = {};
+  for (const field of ['librarySonarr', 'libraryRadarr'] as const) {
+    const library = stat(values[field]);
+    if (downloads !== undefined && library !== undefined && library.dev !== downloads.dev) {
+      warnings[field] = 'On a different drive from the downloads folder, so a deleted download can\'t be re-linked from this library.';
+    }
+  }
+  return warnings;
+};
+
 type Part = 'trackers' | 'backup';
 type Choices = Record<Part, { wanted: boolean; skipped: boolean }>;
 const CHOICES_KEY = 'setup.choices';
@@ -209,7 +225,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
     setSetting(database, 'hostPaths', 'library.radarr', values.libraryRadarr);
     setSetting(database, 'hostPaths', 'versions.sonarr', values.versionsSonarr);
     setSetting(database, 'hostPaths', 'versions.radarr', values.versionsRadarr);
-    return context.body(null, 204);
+    return context.json({ warnings: folderWarnings(values) });
   });
 
   // Connects Plex with the token the owner signed in with, checked in a throwaway in-memory database first so a

@@ -2492,7 +2492,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
   const { createTrackerAccounts } = await import(trackerAccountsModuleUrl);
   const { listTrackerHosts } = await import(trackerRulesModuleUrl);
   const { backupsAreOff, setBackupsOff } = await import(backupModuleUrl);
-  const { createSetupRoutes, folderProblems } = await import(setupModuleUrl);
+  const { createSetupRoutes, folderProblems, folderWarnings } = await import(setupModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-setup-'));
   const databases = [];
   t.after(async () => {
@@ -2601,7 +2601,13 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     });
     assert.equal((await send('POST', '/folders', { ...values, extra: '/data' })).status, 400);
 
-    assert.equal((await send('POST', '/folders', values)).status, 204);
+    // Refusing a library on another drive, or dropping its warning, turns this red.
+    assert.deepEqual(folderWarnings(values, (path) => ({ isDirectory: () => true, dev: path === values.libraryRadarr ? 2 : 1 })), {
+      libraryRadarr: 'On a different drive from the downloads folder, so a deleted download can\'t be re-linked from this library.',
+    });
+    const saved = await send('POST', '/folders', values);
+    assert.equal(saved.status, 200);
+    assert.deepEqual(await saved.json(), { warnings: {} });
     for (const key of ['downloads.sonarr', 'downloads.radarr', 'downloads.versions']) assert.equal(getSetting(database, 'hostPaths', key), values.downloads);
     assert.deepEqual(
       ['library.sonarr', 'library.radarr', 'versions.sonarr', 'versions.radarr'].map((key) => getSetting(database, 'hostPaths', key)),
