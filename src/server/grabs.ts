@@ -57,6 +57,8 @@ export const handGrab = (record: GrabRecord & { downloadId: string }) => {
 };
 
 const GRAB_TIMEOUT_MS = 60_000;
+// A grab that never shows up in history within an hour is failed for the owner to see, not polled forever.
+const UNREPORTED_GRAB_LIMIT_MS = 3_600_000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -64,6 +66,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 const positiveInteger = (value: unknown): value is number => (
   typeof value === 'number' && Number.isInteger(value) && value > 0
 );
+
+const connectionNeverOpened = (error: unknown): boolean => {
+  const first = error instanceof Error ? error.cause : undefined;
+  const second = first instanceof Error ? first.cause : undefined;
+  const codes = [first, second]
+    .flatMap((item) => (item instanceof AggregateError ? [item, ...item.errors] : [item]))
+    .map((item) => (isRecord(item) ? item.code : undefined));
+  return codes.some((code) => code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EAI_AGAIN');
+};
 
 const refusal = (body: unknown): string | undefined => {
   const messages = (Array.isArray(body) ? body : [body]).flatMap((item) => {
@@ -131,6 +142,11 @@ export const createGrabs = (
     return row === undefined ? undefined : rowToRecord(row as Record<string, unknown>);
   };
 
+  const pending = (intent?: GrabIntent) => database
+    .prepare("SELECT * FROM grabs WHERE state = 'sent' AND (? IS NULL OR intent = ?) ORDER BY id")
+    .all(intent ?? null, intent ?? null)
+    .map((row) => rowToRecord(row as Record<string, unknown>));
+
   const update = (id: number, fields: { state?: GrabState; failure?: string | null; downloadId?: string }) => {
     database.prepare(`
       UPDATE grabs SET
@@ -195,11 +211,7 @@ export const createGrabs = (
         .all(targetKey(target), targetKey(target))
         .map((row) => rowToRecord(row as Record<string, unknown>));
     },
-    pending(intent?: GrabIntent) {
-      return database.prepare("SELECT * FROM grabs WHERE state = 'sent' AND (? IS NULL OR intent = ?) ORDER BY id")
-        .all(intent ?? null, intent ?? null)
-        .map((row) => rowToRecord(row as Record<string, unknown>));
-    },
+    pending,
     recentTitles(service: 'sonarr' | 'radarr', since: number) {
       return database.prepare("SELECT release_title FROM grabs WHERE service = ? AND created_at >= ? AND state != 'failed'")
         .all(service, since)
@@ -212,6 +224,14 @@ export const createGrabs = (
     },
     update,
     resolveDownloadId,
+
+    async resolvePending() {
+      for (const record of pending()) {
+        if (record.downloadId !== null) continue;
+        if (record.createdAt > now() - UNREPORTED_GRAB_LIMIT_MS) await resolveDownloadId(record);
+        else update(record.id, { state: 'failed', failure: 'Sonarr or Radarr never reported this grab.' });
+      }
+    },
 
     async grab(searchedFor: ReleaseTarget, guid: string, intent: GrabIntent, overrides: Overrides = {}) {
       const release = releases.find(searchedFor, guid);
@@ -264,10 +284,10 @@ export const createGrabs = (
         // POST /release ignores the search's rejections; /release/push would drop rejected releases.
         response = await service.request('/api/v3/release', { method: 'POST', body, timeoutMs: GRAB_TIMEOUT_MS });
       } catch (error) {
-        if (!(error instanceof Error && error.cause instanceof DOMException && error.cause.name === 'TimeoutError')) {
+        if (connectionNeverOpened(error)) {
           return { kind: 'failed', record: update(id, { state: 'failed', failure: `${label} didn't answer the grab.` }) } as const;
         }
-        // A timed-out grab may still have reached the indexer, so it stays sent: the veto then spares it and history settles it.
+        // Any failure once the connection may have opened could still have reached the indexer, so it stays sent: the veto then spares it and history settles it.
         const unanswered = update(id, { state: 'sent', failure: `${label} didn't answer the grab, so it may still have gone through.` });
         return { kind: 'sent', record: await resolveDownloadId(unanswered) } as const;
       }

@@ -163,7 +163,28 @@ export const createTorrentFiles = (options: { database: DatabaseSync; rtorrent: 
     return { files: mapped, torrents: holding };
   };
 
-  const canRemoveTorrent = (hash: string, options: { after?: string[] } = {}): RemovalCheck => {
+  // One walk of every library and versions folder, so a delete plan checks all its torrents against a single read.
+  const readLibraryInodes = (after: string[]): { inodes: Map<string, string>; blocked: string | null } => {
+    const inodes = new Map<string, string>();
+    const gone = new Set(after.map((path) => resolve(path)));
+    try {
+      for (const root of [...hostPaths('library.'), ...hostPaths('versions.')]) {
+        for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
+          const path = join(entry.parentPath, entry.name);
+          if (gone.has(resolve(path)) || !(entry.isFile() || entry.isSymbolicLink())) continue;
+          const stats = statIfPresent(path);
+          if (stats === undefined) continue;
+          if (stats.isDirectory()) return { inodes, blocked: `${path} links to a folder, so the files under it cannot be checked.` };
+          if (!inodes.has(inodeOf(stats))) inodes.set(inodeOf(stats), path);
+        }
+      }
+    } catch (error) {
+      return { inodes, blocked: `Could not check the files: ${messageOf(error)}` };
+    }
+    return { inodes, blocked: null };
+  };
+
+  const canRemoveTorrent = (hash: string, options: { after?: string[]; library?: ReturnType<typeof readLibraryInodes> } = {}): RemovalCheck => {
     const refuse = (reason: string): RemovalCheck => ({ allowed: false, reason });
     const torrents = liveTorrents();
     const torrent = torrents.find((candidate) => candidate.hash === hash.toUpperCase());
@@ -178,7 +199,6 @@ export const createTorrentFiles = (options: { database: DatabaseSync; rtorrent: 
     const libraryRoots = hostPaths('library.');
     if (libraryRoots.length === 0) return refuse('No hostPaths library folder is set.');
     const roots = downloads.flatMap((root) => [resolve(root), realOrResolved(root)]);
-    const gone = new Set((options.after ?? []).map((path) => resolve(path)));
 
     try {
       for (const file of torrent.files) {
@@ -205,16 +225,11 @@ export const createTorrentFiles = (options: { database: DatabaseSync; rtorrent: 
         }
       }
 
-      for (const root of [...libraryRoots, ...hostPaths('versions.')]) {
-        for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
-          const path = join(entry.parentPath, entry.name);
-          if (gone.has(resolve(path)) || !(entry.isFile() || entry.isSymbolicLink())) continue;
-          const stats = statIfPresent(path);
-          if (stats === undefined) continue;
-          if (stats.isDirectory()) return refuse(`${path} links to a folder, so the files under it cannot be checked.`);
-          const shared = own.get(inodeOf(stats));
-          if (shared !== undefined) return refuse(`${shared} shares its data with the library file ${path}.`);
-        }
+      const library = options.library ?? readLibraryInodes(options.after ?? []);
+      if (library.blocked !== null) return refuse(library.blocked);
+      for (const [inode, shared] of own) {
+        const path = library.inodes.get(inode);
+        if (path !== undefined) return refuse(`${shared} shares its data with the library file ${path}.`);
       }
     } catch (error) {
       return refuse(`Could not check the files: ${messageOf(error)}`);
@@ -310,5 +325,5 @@ export const createTorrentFiles = (options: { database: DatabaseSync; rtorrent: 
     return { removed: true, deleted, left };
   };
 
-  return { mapFiles, canRemoveTorrent, removeTorrent };
+  return { mapFiles, readLibraryInodes, canRemoveTorrent, removeTorrent };
 };

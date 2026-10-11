@@ -399,9 +399,12 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
       const body = await readBody(response);
       if (response.status === 201) {
         setGrabbed((current) => new Set(current).add(guid));
+        // A grab kept as sent in doubt (the service never answered) carries that doubt in failure; it beats the replace note.
+        const grab = body.grab as { failure?: unknown } | undefined;
+        const doubt = typeof grab?.failure === 'string' ? grab.failure : undefined;
         toasts.add({
           title: `Sent to ${service}.`,
-          description: intent === 'replace' ? 'media-manager-2 will finish the replace when the download completes.' : undefined,
+          description: doubt ?? (intent === 'replace' ? 'media-manager-2 will finish the replace when the download completes.' : undefined),
         });
         setPanel(undefined);
       } else {

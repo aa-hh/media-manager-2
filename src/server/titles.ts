@@ -12,6 +12,9 @@ export type Service = 'sonarr' | 'radarr';
 export type ImageKind = 'poster' | 'fanart';
 export const TITLE_REFRESH_INTERVAL_MS = 5 * 60_000;
 
+const imageContentType = (header: string, extension: string) =>
+  header.split(';')[0].trim().toLowerCase().startsWith('image/') ? header : `image/${extension === 'jpg' ? 'jpeg' : extension}`;
+
 export type CachedTitle = {
   service: Service;
   id: number;
@@ -200,7 +203,7 @@ export const createTitleCache = (options: {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (service, id, kind) DO UPDATE SET source = excluded.source, content_type = excluded.content_type,
             etag = excluded.etag, file = excluded.file, fetched_at = excluded.fetched_at`)
-          .run(service, id, kind, source, response.contentType || `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+          .run(service, id, kind, source, imageContentType(response.contentType, extension),
             sha256(response.bytes), file, startedAt);
       } catch {
         continue;

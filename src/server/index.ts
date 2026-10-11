@@ -149,12 +149,7 @@ if (database !== undefined) {
   const health = createHealth({ database, arr, rtorrent, plex, tmdb, mdblist, jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
   runner.register('replace-completion', 60_000, () => replaces.run());
-  runner.register('grab-download-ids', 30_000, async () => {
-    // A grab that never shows up in history within an hour is left for the owner to see, not polled forever.
-    for (const grab of grabs.pending()) {
-      if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
-    }
-  });
+  runner.register('grab-download-ids', 30_000, () => grabs.resolvePending());
   const secondVersionDelete = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan });
   const titleStore = createTitleStore(database);
   const search = createSearch(database, arr, titleStore);

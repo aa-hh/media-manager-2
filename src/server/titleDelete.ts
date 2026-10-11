@@ -7,7 +7,8 @@ import { listSecondVersionRows, type SecondVersionRow } from './secondVersionRow
 import type { ArrServices, FileDetail, Result } from './services/arr.js';
 import type { createTorrentFiles, LibraryFileState, RemovalCheck } from './torrentFiles.js';
 
-type TorrentFiles = Pick<ReturnType<typeof createTorrentFiles>, 'mapFiles' | 'canRemoveTorrent' | 'removeTorrent'>;
+type Library = ReturnType<ReturnType<typeof createTorrentFiles>['readLibraryInodes']>;
+type TorrentFiles = Pick<ReturnType<typeof createTorrentFiles>, 'mapFiles' | 'readLibraryInodes' | 'canRemoveTorrent' | 'removeTorrent'>;
 type Failure = Exclude<Result<never>, { kind: 'ok' }>;
 
 // A Sonarr target with a seasonNumber deletes that season's files and keeps the show.
@@ -180,8 +181,8 @@ export const createTitleDelete = (options: {
   };
 
   // A torrent that still holds another season's file is never offered, even when that file is a copy no link check would see.
-  const removalOf = (hash: string, after: string[], otherSeasons: Set<string>): RemovalCheck => (
-    otherSeasons.has(hash.toUpperCase()) ? { allowed: false, reason: OTHER_SEASONS } : torrentFiles.canRemoveTorrent(hash, { after })
+  const removalOf = (hash: string, after: string[], library: Library, otherSeasons: Set<string>): RemovalCheck => (
+    otherSeasons.has(hash.toUpperCase()) ? { allowed: false, reason: OTHER_SEASONS } : torrentFiles.canRemoveTorrent(hash, { after, library })
   );
 
   const plan = async (target: DeleteTarget): Promise<Result<DeletePlan>> => {
@@ -191,6 +192,7 @@ export const createTitleDelete = (options: {
     const seasonNumber = target.service === 'sonarr' ? target.seasonNumber ?? null : null;
     // Second versions start ticked, so their files count as gone when checking whether a torrent is still needed.
     const after = [...files.map((file) => file.path), ...secondVersions.flatMap((row) => row.path ?? [])];
+    const library = torrentFiles.readLibraryInodes(after);
     const recycleBin = await arr[target.service].recycleBin();
     return {
       kind: 'ok',
@@ -205,7 +207,7 @@ export const createTitleDelete = (options: {
         torrents: await Promise.all(torrents.map(async (torrent) => ({
           ...torrent,
           advice: await advise(torrent.hash),
-          removal: removalOf(torrent.hash, after, otherSeasons),
+          removal: removalOf(torrent.hash, after, library, otherSeasons),
           ticked: false as const,
         }))),
         secondVersions: await Promise.all(secondVersions.map(async (row) => {
@@ -213,7 +215,7 @@ export const createTitleDelete = (options: {
           return {
             ...row,
             ticked: true as const,
-            torrent: hash === undefined ? null : { hash, advice: await advise(hash), removal: removalOf(hash, after, otherSeasons) },
+            torrent: hash === undefined ? null : { hash, advice: await advise(hash), removal: removalOf(hash, after, library, otherSeasons) },
           };
         })),
       },
@@ -245,10 +247,11 @@ export const createTitleDelete = (options: {
       for (const choice of choices.secondVersions) if (!rows.has(choice.id)) return changed(`Second version ${choice.id} is no longer listed for ${title}.`);
       const ticked = choices.secondVersions.map((choice) => ({ choice, row: rows.get(choice.id) as SecondVersionRow }));
       const after = [...files.map((file) => file.path), ...ticked.flatMap(({ row }) => row.path ?? [])];
+      const library = torrentFiles.readLibraryInodes(after);
       for (const hash of choices.removeTorrents) {
         const torrent = torrents.find((candidate) => candidate.hash === hash);
         if (torrent === undefined) return changed(`The torrent ${hash} is no longer listed for ${title}.`);
-        const check = removalOf(hash, after, otherSeasons);
+        const check = removalOf(hash, after, library, otherSeasons);
         if (!check.allowed) return changed(`${torrent.name} can no longer be removed: ${check.reason}`);
       }
       for (const { choice, row } of ticked) {
@@ -256,7 +259,7 @@ export const createTitleDelete = (options: {
         if (row.hash === null) return changed(`The second version ${row.releaseTitle} has no torrent to remove.`);
         // An unticked second version still uses this torrent: the delete keeps it and says why, so the request is not stale.
         if (secondVersions.some((other) => other.hash === row.hash && !choices.secondVersions.some((picked) => picked.id === other.id))) continue;
-        const check = removalOf(row.hash, after, otherSeasons);
+        const check = removalOf(row.hash, after, library, otherSeasons);
         if (!check.allowed) return changed(`The torrent of ${row.releaseTitle} can no longer be removed: ${check.reason}`);
       }
 

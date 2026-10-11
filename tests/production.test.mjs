@@ -3717,6 +3717,31 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     database.close();
   });
 
+  // Keeping gone rows forever, or pruning one a grab or second version still names, turns this red.
+  await t.test('gone torrents are pruned after 30 days unless a grab or second version still names them', async () => {
+    const { database, clock, fake, poller } = setup();
+    const stored = () => database.prepare('SELECT hash FROM torrents ORDER BY hash').all().map((torrent) => torrent.hash);
+    fake.rows = [row(hashA), row(hashB), row(hashC)];
+    await poller.poll();
+    clock.value += 30_000;
+    fake.rows = [];
+    await poller.poll();
+    const goneAt = clock.value;
+    database.prepare(`INSERT INTO torrent_grabs (hash, service, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand, imported_at)
+      VALUES (?, 'sonarr', 5, '[50]', 'Show.S01E02', 'Blutopia', 1, 0, 2)`).run(hashB);
+    database.prepare(`INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, created_at, updated_at)
+      VALUES ('radarr', 7, NULL, NULL, 'Release', 'g', 'Blutopia', 'WEBDL-2160p', ?, 'downloading', 1, 1)`).run(hashC);
+    const all = [hashA.toUpperCase(), hashB, hashC];
+    clock.value = goneAt + 30 * 24 * 60 * 60_000 - 1;
+    await poller.poll();
+    assert.deepEqual(stored(), all);
+    clock.value = goneAt + 30 * 24 * 60 * 60_000 + 1;
+    await poller.poll();
+    assert.deepEqual(stored(), [hashB, hashC]);
+    assert.equal(listTorrents(database).every((torrent) => torrent.goneAt === goneAt), true);
+    database.close();
+  });
+
   // Crediting a poll where either side was not cleanly seeding, or crediting a gap longer than two intervals, turns this red.
   await t.test('the seeding counter credits only clean seeding across ordinary poll gaps and survives a restart', async () => {
     const databasePath = join(root, 'counter', 'media-manager.sqlite');
@@ -4042,6 +4067,7 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
         'radarr/7/poster.jpg': new Uint8Array([7, 7, 7]),
         'radarr/8/poster.jpg': new Uint8Array([8, 8, 8]),
       },
+      contentTypes: {},
       down: false,
       throws: false,
       gate: null,
@@ -4052,8 +4078,9 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     const answer = async (service, url, init) => {
       const image = /^\/api\/v3\/mediacover\/(\d+)\/([^/]+)$/.exec(new URL(String(url)).pathname);
       if (!image) return fake[service].fetch(url, init);
-      const bytes = state.images[`${service}/${image[1]}/${image[2]}`];
-      return bytes === undefined ? json({}, 404) : new Response(bytes.slice(), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+      const key = `${service}/${image[1]}/${image[2]}`;
+      const bytes = state.images[key];
+      return bytes === undefined ? json({}, 404) : new Response(bytes.slice(), { status: 200, headers: { 'Content-Type': state.contentTypes[key] ?? 'image/jpeg' } });
     };
     const wrap = (service) => async (url, init = {}) => {
       const parsed = new URL(String(url));
@@ -4276,6 +4303,24 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     clock.value += 60_000;
     await cache.reconcile();
     assert.deepEqual(downloads(), []);
+  });
+
+  // Storing whatever Content-Type the service sent, instead of only an image type, turns this red.
+  await t.test('a non-image Content-Type from the service is replaced by the type of the file extension', async () => {
+    const { cache, database, fake, state } = setup();
+    fake.sonarr.state.series[1].images = [{ coverType: 'poster', url: '/MediaCover/2/poster.png?lastWrite=1' }];
+    state.images['sonarr/2/poster.png'] = new Uint8Array([2, 2, 3]);
+    state.contentTypes['sonarr/1/poster.jpg'] = 'text/html; charset=utf-8';
+    state.contentTypes['sonarr/2/poster.png'] = 'IMAGE/PNG; charset=binary';
+    await cache.reconcile();
+    const stored = (id) => database.prepare("SELECT content_type FROM title_images WHERE service = 'sonarr' AND id = ? AND kind = 'poster'").get(id)?.content_type;
+    assert.equal(stored(1), 'image/jpeg');
+    assert.equal(stored(2), 'IMAGE/PNG; charset=binary');
+    const { app } = await makeApp({ images: createImageRoutes(cache) });
+    const { session } = await signIn(app);
+    const served = await app.request('/api/images/sonarr/1/poster', { headers: { Cookie: session } });
+    assert.equal(served.status, 200);
+    assert.equal(served.headers.get('content-type'), 'image/jpeg');
   });
 
   // Writing episodes without checking the series still exists, or publishing 'updated' for a deleted title, turns this red.
@@ -5240,7 +5285,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
 
   const setup = async ({
     name = 'Movie.2024.mkv', files = [['Movie.2024.mkv', 1234]], library = [['Movie (2024).mkv', 1234]],
-    multi = 0, hashing = 3, manual = false, present = false,
+    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false,
   } = {}) => {
     count += 1;
     const base = join(root, `case-${count}`);
@@ -5255,12 +5300,13 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
       await mkdir(directory, { recursive: true });
       await writeFile(join(directory, files[0][0]), Buffer.alloc(files[0][1]));
     }
+    if (linked) await link(join(movieFolder, library[0][0]), join(downloadRoot, files[0][0]));
     const database = openDatabase(join(base, 'db', 'media-manager.sqlite'));
     setSetting(database, 'hostPaths', 'downloads.radarr', downloadRoot);
     setSetting(database, 'hostPaths', 'library.radarr', libraryRoot);
     const clock = { value: start };
     const now = () => clock.value;
-    const fake = { hashing, complete: 1 };
+    const fake = { hashing, complete };
     const sleep = async (ms) => { clock.value += ms; fake.hashing -= 1; };
     const size = files.reduce((total, [, bytes]) => total + bytes, 0);
     const message = 'Download registered as completed, but hash check returned unfinished chunks.';
@@ -5356,6 +5402,26 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     assert.equal(run.writes.some(([method]) => method === 'd.start'), false);
     assert.equal(run.writes.some(([method]) => method === 'd.check_hash'), true);
     assert.ok(run.clock.value - start >= HASH_WAIT_LIMIT_MS);
+    assert.deepEqual(await readdir(run.downloadRoot), []);
+    assert.equal((await stat(join(run.movieFolder, 'Movie (2024).mkv'))).nlink, 1);
+  });
+
+  // Leaving the hardlinks in the download root after a failed recheck turns this red.
+  await t.test('an incomplete recheck removes the hardlinks it made and leaves the library file alone', async () => {
+    const run = await setup({ complete: 0 });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal(run.problem.steps.at(-1).text, 'The recheck found the data incomplete, so the torrent stays stopped.');
+    assert.equal(run.problem.steps.at(-2).text, 'Removed the 1 hardlink again.');
+    assert.deepEqual(await readdir(run.downloadRoot), []);
+    assert.equal((await stat(join(run.movieFolder, 'Movie (2024).mkv'))).nlink, 1);
+    assert.equal(run.writes.some(([method]) => method === 'd.start'), false);
+  });
+
+  // Removing every link at the torrent's file paths, not only the ones this run made, turns this red.
+  await t.test('a hardlink that was already in the download root survives an incomplete recheck', async () => {
+    const run = await setup({ linked: true, complete: 0 });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal((await stat(join(run.downloadRoot, 'Movie.2024.mkv'))).nlink, 2);
   });
 });
 
@@ -5535,6 +5601,20 @@ test('library files are traced to the torrents holding them, and a torrent is re
     for (const n of [1, 2, 5]) assert.equal((await world.removeTorrent(hashOf(n))).removed, false);
     assert.deepEqual(world.fake.erased, []);
     for (const path of ['downloads/A.mkv', 'downloads/Shared.mkv', 'elsewhere/E.mkv']) assert.equal(await exists(world.at(path)), true);
+  });
+
+  // Walking the library inside every removal check instead of using the read it was given turns this red.
+  await t.test('a plan reads the library once and every removal check uses that read', async () => {
+    const world = await setup([{ n: 1, directory: 'downloads', files: [['A.mkv', 10]] }]);
+    const kept = world.at('library', 'Show', 'e1.mkv');
+    await link(world.at('downloads', 'A.mkv'), kept);
+    assert.deepEqual(world.canRemoveTorrent(hashOf(1), { after: [], library: { inodes: new Map(), blocked: null } }), { allowed: true });
+    const blocked = 'x links to a folder, so the files under it cannot be checked.';
+    assert.deepEqual(world.canRemoveTorrent(hashOf(1), { after: [], library: { inodes: new Map(), blocked } }), { allowed: false, reason: blocked });
+    const library = world.readLibraryInodes([]);
+    const stats = await stat(kept, { bigint: true });
+    assert.equal(library.inodes.get(`${stats.dev}:${stats.ino}`), kept);
+    assert.equal(library.blocked, null);
   });
 
   // Removing a single-file torrent's folder, or a file the torrent does not list, turns this red.
@@ -6591,7 +6671,8 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const sonarr = createArr('sonarr', database, { fetch });
   const releases = createReleases(database, { sonarr, radarr: sonarr });
   const changes = [];
-  const grabs = createGrabs(database, { sonarr, radarr: sonarr }, releases, { onChange: (record) => changes.push(record.state) });
+  let clock = 1_000_000;
+  const grabs = createGrabs(database, { sonarr, radarr: sonarr }, releases, { now: () => clock, onChange: (record) => changes.push(record) });
   const target = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
 
   assert.deepEqual(await grabs.grab(target, 'g-rejected', 'replace'), { kind: 'unknown_release' });
@@ -6600,7 +6681,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const sent = await grabs.grab(target, 'g-rejected', 'replace');
   assert.equal(sent.kind, 'sent');
   assert.deepEqual(posts.at(-1), { pathname: '/api/v3/release', body: { guid: 'g-rejected', indexerId: 3, downloadAllowed: true } });
-  assert.deepEqual(changes, ['sending', 'sent', 'sent']);
+  assert.deepEqual(changes.map((record) => record.state), ['sending', 'sent', 'sent']);
   assert.equal(sent.record.downloadId, 'ABC123HASH');
   assert.equal(sent.record.intent, 'replace');
   assert.deepEqual(grabs.pending('replace').map((record) => record.id), [sent.record.id]);
@@ -6626,20 +6707,29 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
   assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent', 'sent']);
 
-  // Recording every thrown grab request alike turns a row red: a timed-out grab may have reached Sonarr and the veto would remove it, while an unreachable one left sent makes a replace wait forever.
+  // Recording every thrown grab request alike turns a row red: a refused connection or failed name lookup means nothing was sent, so left sent it makes a replace wait forever, while any other failure may have reached Sonarr and the veto would remove it.
   const ownTitles = grabs.recentTitles('sonarr', 0).length;
   history = [];
   let unanswered;
+  const systemError = (message, code) => Object.assign(new Error(message), { code });
+  const doubt = "Sonarr didn't answer the grab, so it may still have gone through.";
+  const unreached = "Sonarr didn't answer the grab.";
   for (const [error, state, failure] of [
-    [new TypeError('fetch failed'), 'failed', "Sonarr didn't answer the grab."],
-    [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', "Sonarr didn't answer the grab, so it may still have gone through."],
+    [new TypeError('fetch failed'), 'sent', doubt],
+    [new TypeError('fetch failed', { cause: systemError('read ECONNRESET', 'ECONNRESET') }), 'sent', doubt],
+    [new TypeError('fetch failed', { cause: systemError('connect ECONNREFUSED', 'ECONNREFUSED') }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: Object.assign(new AggregateError([systemError('x', 'ECONNREFUSED')], 'aggregate'), { code: 'ECONNREFUSED' }) }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: systemError('getaddrinfo ENOTFOUND', 'ENOTFOUND') }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: systemError('getaddrinfo EAI_AGAIN', 'EAI_AGAIN') }), 'failed', unreached],
+    [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', doubt],
   ]) {
+    const row = `${error.name}:${error.cause?.code ?? 'none'}`;
     grabResponse = () => { throw error; };
     unanswered = await grabs.grab(target, 'g-rejected', 'replace');
-    assert.deepEqual([unanswered.kind, unanswered.record.state, unanswered.record.failure], [state, state, failure], error.name);
-    assert.equal(grabs.pending('replace').some((record) => record.id === unanswered.record.id), state === 'sent', error.name);
+    assert.deepEqual([unanswered.kind, unanswered.record.state, unanswered.record.failure], [state, state, failure], row);
+    assert.equal(grabs.pending('replace').some((record) => record.id === unanswered.record.id), state === 'sent', row);
   }
-  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 1);
+  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 3);
   history = grabbedHistory;
   const confirmed = await grabs.resolveDownloadId(unanswered.record);
   assert.deepEqual([confirmed.state, confirmed.downloadId, confirmed.failure], ['sent', 'ABC123HASH', null], 'history confirms the grab and clears the doubt');
@@ -6672,6 +6762,25 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
     ['list', () => call('/?kind=episode&seriesId=5&episodeId=50'), 200],
   ];
   for (const [name, run, status] of cases) assert.equal(await run(), status, name);
+
+  // Leaving a never-reported grab sent past the hour, or failing one the service may still report, turns this red.
+  await t.test('a sent grab Sonarr never reports fails after an hour', async () => {
+    history = [];
+    grabResponse = () => new Response('{}', { status: 200 });
+    const old = [(await grabs.grab(target, 'g-rejected', 'replace')).record.id, (await grabs.grab(target, 'g-rejected', 'replace')).record.id];
+    clock += 3_600_001;
+    const young = (await grabs.grab(target, 'g-rejected', 'replace')).record.id;
+    history = grabbedHistory;
+    const before = changes.length;
+    await grabs.resolvePending();
+    for (const id of old) {
+      const record = grabs.read(id);
+      assert.deepEqual([record.state, record.failure, record.downloadId], ['failed', 'Sonarr or Radarr never reported this grab.', null], `grab ${id}`);
+    }
+    assert.deepEqual([grabs.read(young).state, grabs.read(young).downloadId], ['sent', 'ABC123HASH']);
+    assert.equal(grabs.pending().some((record) => old.includes(record.id)), false);
+    assert.deepEqual(changes.slice(before).filter((record) => old.includes(record.id)).map((record) => [record.id, record.state]), old.map((id) => [id, 'failed']));
+  });
 
   assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
   assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
@@ -8486,6 +8595,9 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   const series = await history.list({ filter: 'all', service: 'sonarr', page: 1, seriesId: 3 });
   assert.equal(series.events[0].title, 'Andor S02E09');
   assert.deepEqual(series.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
+  // Letting a Radarr problem through the Sonarr service filter turns this red.
+  assert.deepEqual((await history.list({ filter: 'all', service: 'sonarr', page: 1 })).events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
+  assert.deepEqual((await history.list({ filter: 'all', service: 'radarr', page: 1 })).events.map((event) => event.id), ['mm2:1', 'mm2:2']);
 
   database.prepare(`
     INSERT INTO second_versions (id, service, series_id, episode_id, release_title, guid, indexer, quality, hash, state, created_at, updated_at)
@@ -8517,14 +8629,14 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   // A full Sonarr page of 100 grabs, one a minute from 10:00 back to 08:21, leaves the 07:00 step for a later page.
   const fullPage = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
   fake.sonarr.state.history = fullPage;
-  const full = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
+  const full = await history.list({ filter: 'all', service: 'all', page: 1 });
   // Reading steps from the start of time instead of from the oldest record on a full Sonarr page turns this red.
   assert.deepEqual(full.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:1']);
   assert.equal(full.hasMore, true);
   // Page 2 is Sonarr's last, with one grab at 08:10; the 07:00 step is older than everything on page 1.
   fake.sonarr.state.history = [...fullPage, { ...grabbed, id: 300, date: '2026-10-10T08:10:00Z' }];
   const fullOldest = Math.min(...full.events.map((event) => event.at));
-  const afterFull = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: fullOldest });
+  const afterFull = await history.list({ filter: 'all', service: 'all', page: 2, before: fullOldest });
   // Paging steps by offset on Sonarr's last page, instead of from the oldest event already shown, turns this red.
   assert.deepEqual(afterFull.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:2']);
   assert.equal(afterFull.hasMore, false);
@@ -8548,12 +8660,12 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   }
   fake.sonarr.state.history = fullPage;
   const newer = (events) => events.filter((event) => event.detail.startsWith('Newer step ')).map((event) => event.detail);
-  const crowded = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
+  const crowded = await history.list({ filter: 'all', service: 'all', page: 1 });
   // Returning every step newer than the oldest Sonarr record on one page, instead of the newest 100, turns this red.
   assert.deepEqual([newer(crowded.events), crowded.hasMore], [Array.from({ length: 100 }, (_, index) => `Newer step ${149 - index}`), true]);
   fake.sonarr.state.history = [];
   const crowdedOldestStep = Math.min(...crowded.events.filter((event) => event.source === 'media-manager-2').map((event) => event.at));
-  const afterCrowded = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: crowdedOldestStep });
+  const afterCrowded = await history.list({ filter: 'all', service: 'all', page: 2, before: crowdedOldestStep });
   // Ignoring before on page 2, or cutting the newest steps instead of the oldest, turns this red.
   assert.deepEqual(newer(afterCrowded.events), Array.from({ length: 51 }, (_, index) => `Newer step ${50 - index}`));
   // A full Sonarr page whose every grab is newer than every step.
