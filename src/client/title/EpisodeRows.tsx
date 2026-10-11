@@ -54,15 +54,16 @@ function IconAction({ label, icon, pressed = false, onClick }: { label: string; 
   );
 }
 
-function PickBand({ panel, episodes, onClose, onUnauthenticated }: {
+function PickBand({ panel, name, episodes, onClose, onUnauthenticated }: {
   panel: Extract<Panel, { panel: 'pick' }>;
+  name: string;
   episodes: EpisodeDetail[];
   onClose: () => void;
   onUnauthenticated: () => void;
 }) {
   return (
     <div className="border-b border-border bg-background p-2">
-      <PickRelease target={panel.target} title={panel.title} episodes={episodes} movieHasFile={false} onClose={onClose} onUnauthenticated={onUnauthenticated} />
+      <PickRelease target={panel.target} title={panel.title} name={name} episodes={episodes} movieHasFile={false} onClose={onClose} onUnauthenticated={onUnauthenticated} />
     </div>
   );
 }
@@ -228,7 +229,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   const tabStop = (key: string) => (key === (indexOf(focusKey) >= 0 ? focusKey : rows[0]?.key) ? 0 : -1);
   const pickOpen = (key: string) => panel?.key === key && panel.panel === 'pick';
   const pickBand = (key: string) => (panel !== null && panel.key === key && panel.panel === 'pick'
-    ? <PickBand panel={panel} episodes={detail.episodes} onClose={() => setPanel(null)} onUnauthenticated={onUnauthenticated} />
+    ? <PickBand panel={panel} name={detail.title} episodes={detail.episodes} onClose={() => setPanel(null)} onUnauthenticated={onUnauthenticated} />
     : null);
 
   if (seasons.length === 0) {

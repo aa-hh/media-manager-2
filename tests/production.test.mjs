@@ -4056,6 +4056,94 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
   });
 });
 
+test('TMDB posters and backdrops are copied to our server on first request', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createImageRoutes, createTmdbImages } = await import(titlesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tmdb-images-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let setups = 0;
+  const setup = async () => {
+    setups += 1;
+    const directory = join(root, `case-${setups}`);
+    const database = openDatabase(join(directory, 'media-manager.sqlite'));
+    t.after(() => database.close());
+    const clock = { value: Date.parse('2026-10-11T12:00:00Z') };
+    const fetched = [];
+    const remote = { reachable: true, bytes: new Uint8Array([1, 2, 3]) };
+    const fetchImpl = async (url) => {
+      fetched.push(String(url));
+      if (!remote.reachable) throw new TypeError('fetch failed');
+      return new Response(remote.bytes, { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+    };
+    const tmdb = createTmdbImages({ database, imageDirectory: join(directory, 'images'), fetchImpl, now: () => clock.value });
+    const { app } = await makeApp({ images: createImageRoutes({ image: () => undefined }, tmdb) });
+    const { session } = await signIn(app);
+    const get = (path) => app.request(path, { headers: { Cookie: session } });
+    const rows = () => database.prepare('SELECT size, path FROM tmdb_images').all().map(({ size, path }) => `${size}/${path}`);
+    return { app, clock, fetched, get, remote, rows };
+  };
+
+  // Fetching from TMDB on every request instead of serving the saved copy, or not sharing one fetch between concurrent misses, turns this red.
+  await t.test('the first request fetches from TMDB once and later requests serve the saved copy', async () => {
+    const { app, fetched, get } = await setup();
+    assert.equal((await app.request('/api/images/tmdb/w342/abc123.jpg')).status, 401);
+    const [first, concurrent] = await Promise.all([get('/api/images/tmdb/w342/abc123.jpg'), get('/api/images/tmdb/w342/abc123.jpg')]);
+    assert.equal(first.status, 200);
+    assert.equal(concurrent.status, 200);
+    assert.deepEqual(fetched, ['https://image.tmdb.org/t/p/w342/abc123.jpg']);
+    const second = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(second.status, 200);
+    assert.equal(second.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(new Uint8Array(await second.arrayBuffer()), new Uint8Array([1, 2, 3]));
+    assert.deepEqual(fetched, ['https://image.tmdb.org/t/p/w342/abc123.jpg']);
+    assert.equal((await get('/api/images/tmdb/w1920_and_h800_multi_faces/abc123.jpg')).status, 200);
+    assert.equal(fetched.length, 2, 'each size is its own copy');
+  });
+
+  // Loosening the size or file check, so a caller can steer the fetch or reach outside the image folder, turns this red.
+  await t.test('a size or file outside the allowed set is refused without a fetch', async () => {
+    const { fetched, get, rows } = await setup();
+    for (const path of [
+      '/api/images/tmdb/original/abc123.jpg',
+      '/api/images/tmdb/w500/abc123.jpg',
+      '/api/images/tmdb/w342/abc123.gif',
+      '/api/images/tmdb/w342/abc_123.jpg',
+      '/api/images/tmdb/w342/..%2F..%2Fmedia-manager.sqlite',
+      '/api/images/tmdb/w342/%2E%2E%2Fabc123.jpg',
+      '/api/images/tmdb/w342/abc123.jpg%2F..%2F..%2Fx.jpg',
+      '/api/images/tmdb/w342/evil.example%2Fabc123.jpg',
+    ]) {
+      assert.equal((await get(path)).status, 404, path);
+    }
+    assert.deepEqual(fetched, []);
+    assert.deepEqual(rows(), []);
+  });
+
+  // Keeping a copy past six months, against TMDB's terms, turns this red.
+  await t.test('a copy older than six months is fetched again', async () => {
+    const { clock, fetched, get, remote } = await setup();
+    await get('/api/images/tmdb/w342/abc123.jpg');
+    clock.value += 179 * 24 * 60 * 60_000;
+    await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(fetched.length, 1);
+    remote.bytes = new Uint8Array([7, 7]);
+    clock.value += 2 * 24 * 60 * 60_000;
+    const refreshed = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(fetched.length, 2);
+    assert.deepEqual(new Uint8Array(await refreshed.arrayBuffer()), new Uint8Array([7, 7]));
+  });
+
+  // Saving a row when TMDB cannot be reached, or answering anything other than a 502 JSON error, turns this red.
+  await t.test('TMDB unreachable on a miss answers 502 and saves nothing', async () => {
+    const { get, remote, rows } = await setup();
+    remote.reachable = false;
+    const response = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: 'tmdb_unreachable' });
+    assert.deepEqual(rows(), []);
+  });
+});
+
 test('problems record each fix attempt and its result', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
@@ -8756,6 +8844,66 @@ test('backup commands upload, list and restore through a bucket or a folder from
   assert.equal(fromFolder.code, 0, fromFolder.stderr);
   assert.match(fromFolder.stdout, new RegExp(`^restored ${folderKey} to `));
   for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey));
+});
+
+test('the settings screen sends only changed fields and ranks each service state', async (t) => {
+  // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
+  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
+
+  // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
+  await t.test('only a changed address and typed secrets are sent', () => {
+    const cases = [
+      [{ address: ' http://localhost:8989 ', secrets: { 'sonarr.apiKey': '  ' } }, {}],
+      [{ address: 'http://localhost:8990', secrets: {} }, { serviceAddresses: { 'sonarr.url': 'http://localhost:8990' } }],
+      [{ address: 'http://localhost:8989', secrets: { 'sonarr.apiKey': 'new' } }, { credentials: { 'sonarr.apiKey': 'new' } }],
+    ];
+    for (const [draft, expected] of cases) assert.deepEqual(changes('sonarr', saved, draft), expected);
+  });
+
+  // Letting unsaved edits hide a running test or a failure turns this red.
+  await t.test('a running test, then a failure, then unsaved edits win the pill', () => {
+    const sonarr = services.find((info) => info.name === 'sonarr');
+    const connected = { kind: 'ok', version: '4.0.10.2544', at: 0, ofSaved: true };
+    const cases = [
+      [{ kind: 'testing' }, 2, 'testing'],
+      [{ kind: 'rejected', at: 0, ofSaved: false }, 2, 'failed'],
+      [connected, 1, 'unsaved'],
+      [connected, 0, 'connected'],
+      [{ kind: 'idle' }, 0, 'not-set-up'],
+    ];
+    for (const [check, edited, state] of cases) assert.equal(pillFor(sonarr, check, edited).state, state);
+    assert.equal(pillFor(sonarr, connected, 0).text, 'Connected · 4.0.10');
+  });
+
+  // Drawing a link red while one side has never answered, or grey while a whole side is failing, turns this red.
+  await t.test('a link is faint until both sides answered, and red when a side has nothing working', () => {
+    const ok = { kind: 'ok', at: 0, ofSaved: true };
+    const down = { kind: 'unreachable', at: 0, ofSaved: true };
+    assert.equal(linkTone([ok, { kind: 'idle' }], [{ kind: 'idle' }]), 'idle');
+    assert.equal(linkTone([ok, down], [down]), 'risk');
+    assert.equal(linkTone([ok, down], [ok]), 'ok');
+  });
+});
+
+test('the tracker rule form sends the saved rule back unchanged and converts percentages and days', async () => {
+  // Sending percentages or days as typed, dropping the kept curve row, writing margins nobody changed, or sending
+  // typed text as a blank turns this red.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/trackers.ts', import.meta.url), 'utf8');
+  const { draftFromRow, ruleBody, notANumber } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const rule = {
+    seedHours: [{ upToGB: 1, hours: 72 }, { upToGB: 50, hours: 72, perGB: 2 }, { hours: -219.2023, lnGB: 100 }],
+    ratio: 0.9, logic: 'or', minGlobalRatio: null, partial: { exemptBelow: 0.1, ratio: 0.9, maxHours: 1440 },
+  };
+  const row = { host: 'privatehd.to', status: 'configured', rule, ruleSource: 'settings', margins: { timeFactor: 1.1, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 } };
+  const draft = draftFromRow(row);
+  assert.deepEqual(ruleBody(draft, draft), { rule });
+  const wider = ruleBody({ ...draft, timePercent: '20' }, draft);
+  assert.deepEqual(wider.margins, { timeFactor: 1.2, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 });
+  assert.deepEqual(notANumber({ ...draft, ratio: '0.9x' }), { field: 'ratio', reason: 'Enter a number, such as 0.9 or 72.' });
 });
 
 test('deleting a movie or a show maps its files first, keeps seeding unless chosen, and stops when Sonarr or Radarr refuses', async (t) => {

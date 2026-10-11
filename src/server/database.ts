@@ -365,6 +365,16 @@ export const applicationMigrations = [
     detail TEXT NOT NULL
   ) STRICT;
   CREATE INDEX title_events_at ON title_events (at);`,
+  // Our copies of TMDB posters and backdrops; title_images' CHECK constraints only allow Sonarr and Radarr rows.
+  `CREATE TABLE tmdb_images (
+    size TEXT NOT NULL,
+    path TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    etag TEXT NOT NULL,
+    file TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (size, path)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
