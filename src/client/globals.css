@@ -418,6 +418,8 @@
   html {
     min-width: 320px;
     background: var(--background);
+    /* Space for the scrollbar stays put, so a short page lays out at a long page's width and a screen change never shifts sideways. */
+    scrollbar-gutter: stable;
   }
 
   body {
