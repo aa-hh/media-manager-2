@@ -35,6 +35,7 @@ const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
 const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
+const libraryModuleUrl = new URL('../dist/server/library.js', import.meta.url).href;
 const protectionModuleUrl = new URL('../dist/server/protection.js', import.meta.url).href;
 const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.meta.url).href;
 const torrentGrabsModuleUrl = new URL('../dist/server/torrentGrabs.js', import.meta.url).href;
@@ -371,7 +372,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks, api, library } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -386,6 +387,7 @@ const makeApp = async (input = {}) => {
     timers,
     webhooks,
     api,
+    library,
   });
   return { app, clock, fixture };
 };
@@ -3729,4 +3731,135 @@ test('a hand grab marks its torrent grab record as by hand, whichever record arr
     assert.deepEqual([grab.seriesId, grab.episodeIds, grab.grabbedAt], [3, [31], 1_000]);
     database.close();
   }
+});
+
+test('the library reads Sonarr and Radarr, orders titles newest first and forwards monitoring changes', async (t) => {
+  const { createLibrary, createLibraryRoutes, newestFirst, imageUrl } = await import(libraryModuleUrl);
+  const calls = [];
+  const window = 'start=2026-10-01T00%3A00%3A00.000Z&end=2026-10-08T00%3A00%3A00.000Z&unmonitored=false';
+  const bodies = {
+    sonarr: {
+      '/api/v3/series/3?includeSeasonImages=true': {
+        id: 3, title: 'Andor', monitored: true, qualityProfileId: 4, tags: [9],
+        images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://img/p.jpg' }],
+        seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
+      },
+      '/api/v3/series/3': {
+        id: 3, title: 'Andor', monitored: true,
+        seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
+      },
+      '/api/v3/episode?seriesId=3&includeEpisodeFile=true&includeImages=true': [
+        {
+          id: 32, seasonNumber: 1, episodeNumber: 2, title: 'Two', hasFile: false, monitored: true,
+        },
+        {
+          id: 31, seasonNumber: 1, episodeNumber: 1, title: 'One', hasFile: true, monitored: true, finaleType: 'season',
+          sceneSeasonNumber: 2, sceneEpisodeNumber: 5, unverifiedSceneNumbering: true, airDateUtc: '2022-09-21T00:00:00Z',
+          images: [{ coverType: 'screenshot', remoteUrl: 'javascript:alert(1)' }],
+          episodeFile: {
+            id: 7, size: 100, qualityCutoffNotMet: true, releaseGroup: 'GRP',
+            quality: { quality: { name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: true } },
+            languages: [{ id: 1, name: 'English' }], customFormats: [{ id: 2, name: 'HDR' }, { id: 3, name: 'Atmos' }],
+          },
+        },
+      ],
+      '/api/v3/qualityprofile': [{
+        id: 4, name: 'HD', cutoff: 1002, items: [{ id: 1001, name: 'HD group', items: [{ quality: { id: 3, name: 'WEBDL-1080p' } }] }, { id: 1002, name: 'Remux group', quality: null, items: [] }],
+      }],
+      '/api/v3/tag': [{ id: 9, label: 'kids' }],
+      '/api/v3/series': [],
+      [`/api/v3/calendar?${window}&includeSeries=true&includeEpisodeFile=true`]: [],
+    },
+    radarr: {
+      [`/api/v3/calendar?${window}`]: [
+        { id: 5, title: 'Dune', year: 2024, monitored: true, inCinemas: '2026-10-02T00:00:00Z', digitalRelease: '2026-10-05T00:00:00Z', physicalRelease: '2026-12-01T00:00:00Z' },
+      ],
+      '/api/v3/movie': [],
+      '/api/v3/qualityprofile': [],
+    },
+  };
+  const fake = (name) => ({
+    configured: () => true,
+    request: async (path, init = {}) => {
+      calls.push({ name, method: init.method ?? 'GET', path, body: init.body });
+      if (init.method !== undefined) return { status: 200, body: undefined };
+      return path in bodies[name] ? { status: 200, body: bodies[name][path] } : { status: 404, body: undefined };
+    },
+  });
+  const library = createLibrary({ sonarr: fake('sonarr'), radarr: fake('radarr') });
+  const routes = createLibraryRoutes(library);
+  const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  await t.test('newestFirst orders by added descending, missing last, ties by title', () => {
+    // Sorting by title or service instead of the added date turns this red.
+    const order = newestFirst([
+      { title: 'B', added: '2024-01-01T00:00:00Z' }, { title: 'Z', added: null }, { title: 'A', added: '2024-01-01T00:00:00Z' },
+      { title: 'New', added: '2025-05-05T00:00:00Z' }, { title: 'Bad', added: 'nope' },
+    ]).map((entry) => entry.title);
+    assert.deepEqual(order, ['New', 'A', 'B', 'Bad', 'Z']);
+  });
+
+  await t.test('series keeps the raw facts the title page marks from', async () => {
+    // Resolving the cutoff by quality id only, or dropping a raw field the markers read, turns this red.
+    const result = await library.series(3);
+    assert.equal(result.kind, 'ok');
+    const detail = result.value;
+    assert.deepEqual(detail.qualityProfile, { id: 4, name: 'HD', cutoff: 'Remux group' });
+    assert.deepEqual(detail.tags, ['kids']);
+    assert.equal(detail.posterUrl, 'https://img/p.jpg');
+    assert.deepEqual(detail.episodes.map((episode) => episode.id), [31, 32]);
+    const [first] = detail.episodes;
+    assert.equal(first.finaleType, 'season');
+    assert.deepEqual([first.sceneSeasonNumber, first.sceneEpisodeNumber, first.unverifiedSceneNumbering], [2, 5, true]);
+    assert.equal(first.imageUrl, null);
+    assert.equal(first.airDate, '2022-09-21T00:00:00Z');
+    assert.equal(first.file.qualityCutoffNotMet, true);
+    assert.deepEqual(first.file.revision, { version: 2, real: 0, isRepack: true });
+    assert.deepEqual([first.file.languages, first.file.customFormats], [['English'], ['HDR', 'Atmos']]);
+    assert.equal(imageUrl([{ coverType: 'poster', remoteUrl: '/local/p.jpg' }], 'poster'), null);
+  });
+
+  await t.test('monitor forwards each change to the right write and the routes reject bad bodies', async () => {
+    // Flipping a different season, sending the wrong endpoint, or loosening the body checks turns this red.
+    calls.length = 0;
+    await library.monitor({ service: 'sonarr', kind: 'season', seriesId: 3, seasonNumber: 2, monitored: false });
+    await library.monitor({ service: 'sonarr', kind: 'episodes', episodeIds: [31, 32], monitored: true });
+    await library.monitor({ service: 'sonarr', kind: 'series', seriesId: 3, monitored: false });
+    await library.monitor({ service: 'radarr', kind: 'movie', movieId: 5, monitored: true });
+    const writes = calls.filter((call) => call.method !== 'GET');
+    assert.deepEqual(writes.map((call) => `${call.name} ${call.method} ${call.path}`), [
+      'sonarr PUT /api/v3/series/3', 'sonarr PUT /api/v3/episode/monitor', 'sonarr PUT /api/v3/series/editor', 'radarr PUT /api/v3/movie/editor',
+    ]);
+    assert.deepEqual(writes[0].body, {
+      id: 3, title: 'Andor', monitored: true,
+      seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: false }],
+    });
+    assert.deepEqual(writes[1].body, { episodeIds: [31, 32], monitored: true });
+    assert.deepEqual(writes[2].body, { seriesIds: [3], monitored: false });
+    assert.deepEqual(writes[3].body, { movieIds: [5], monitored: true });
+    assert.equal((await post('/monitor', { service: 'sonarr', kind: 'series', seriesId: 3, monitored: true })).status, 204);
+    const tooMany = Array.from({ length: 101 }, (_, index) => index + 1);
+    assert.equal((await post('/monitor', { service: 'sonarr', kind: 'episodes', episodeIds: tooMany, monitored: true })).status, 400);
+    assert.equal((await post('/monitor', { service: 'sonarr', kind: 'series', seriesId: 3, monitored: true, extra: 1 })).status, 400);
+    assert.equal((await post('/refresh', { service: 'sonarr', kind: 'episodes', episodeIds: [1] })).status, 400);
+    assert.equal((await post('/search', { service: 'radarr', kind: 'movie', movieId: 5 })).status, 204);
+  });
+
+  await t.test('calendar emits one movie entry per release date in range and refuses long windows', async () => {
+    // Emitting one entry per movie, or dropping the 45-day cap, turns this red.
+    const result = await library.calendar('2026-10-01T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+    assert.deepEqual(result.entries.map((entry) => [entry.kind, entry.release, entry.at]), [
+      ['movie', 'cinema', '2026-10-02T00:00:00Z'], ['movie', 'digital', '2026-10-05T00:00:00Z'],
+    ]);
+    assert.equal((await routes.request('/calendar?start=2026-10-01T00:00:00Z&end=2026-11-16T00:00:00Z')).status, 400);
+    assert.equal((await routes.request('/calendar?start=2026-10-01T00:00:00Z&end=2026-10-08T00:00:00Z')).status, 200);
+  });
+
+  await t.test('the library routes need a session', async () => {
+    // Mounting /api/library outside the private guard turns this red.
+    const { app } = await makeApp({ library });
+    assert.equal((await app.request('/api/library/titles')).status, 401);
+    const { session } = await signIn(app);
+    assert.equal((await app.request('/api/library/titles', { headers: { Cookie: session } })).status, 200);
+  });
 });

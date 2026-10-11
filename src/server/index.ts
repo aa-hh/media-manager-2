@@ -11,6 +11,7 @@ import { createGrabs, handGrab } from './grabs.js';
 import { createImportFix } from './imports.js';
 import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
+import { createLibrary } from './library.js';
 import { createOwned } from './owned.js';
 import { createProblems } from './problems.js';
 import { createProtection, vetoInBackground } from './protection.js';
@@ -92,6 +93,7 @@ if (database !== undefined) {
     grabs,
     owned: createOwned(arr),
     protection,
+    library: createLibrary(arr),
     api: createApiRoutes(database, {
       arr,
       refresh: torrentGrabs.refresh,
