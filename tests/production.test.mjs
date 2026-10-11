@@ -4682,9 +4682,15 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
 
   // Searching again without the one recheck, rechecking twice, or keeping an issue open after a clean answer turns this red.
   await t.test('unregistered asks for a replacement at once, damaged data is rechecked once first', async () => {
-    const { database, fake, watch, step } = setup();
-    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })]);
+    const { database, events, fake, watch, step } = setup();
+    const replacements = [];
+    events.subscribe((event) => { if (event.type === 'replacement') replacements.push(event.data.hash); });
+    // Asking for a replacement on a finished torrent turns this red: the stall fix then grabs a release nobody asked for.
+    const finished = row(hash(9), { complete: 1, completed: 1000, message: 'Tracker: [Failure reason "Unregistered torrent"]' });
+    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' }), finished]);
     assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash), [hash(4)]);
+    assert.deepEqual(replacements, [hash(4)]);
+    assert.ok(listOpenProblems(database).some((problem) => problem.kind === 'unregistered' && problem.hash === hash(9)));
     assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
     await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })], 31 * 60_000);
     assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);

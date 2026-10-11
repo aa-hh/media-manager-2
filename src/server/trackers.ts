@@ -165,7 +165,8 @@ export const createTrackerWatch = (options: {
         const next: Issue = issue ?? { hash: torrent.hash, kind, since: at, lastRetryAt: null, recheckedAt: null, replace: false };
         saveIssue(next);
         issueProblem(next, `The tracker no longer knows this torrent: "${text}"`);
-        askForReplacement(next, 'Unregistered torrent: blocking it and searching again.');
+        // A finished torrent has nothing left to download, so searching again would grab a release nobody asked for.
+        if (!torrent.complete) askForReplacement(next, 'Unregistered torrent: blocking it and searching again.');
       } else if (kind === 'tracker_down' && !torrent.complete) {
         const current: Issue = issue?.kind === 'tracker_down'
           ? issue
