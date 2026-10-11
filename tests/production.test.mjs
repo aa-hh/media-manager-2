@@ -9043,6 +9043,10 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   await store.delete('backups/a.enc');
   assert.equal(await store.get('backups/a.enc'), undefined);
   await assert.rejects(store.get('../outside'), /outside the backup folder/);
+  // Leaving the partial file behind when the save fails fills the backup folder with dead copies.
+  await mkdir(join(folder, 'backups', 'blocked.enc', 'inside'), { recursive: true });
+  await assert.rejects(store.put('backups/blocked.enc', new Uint8Array([1]), 'application/octet-stream'));
+  assert.equal(existsSync(join(folder, 'backups', 'blocked.enc.partial')), false);
 });
 
 // Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
