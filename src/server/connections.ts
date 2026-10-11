@@ -7,6 +7,7 @@ import { createMdblist } from './services/mdblist.js';
 import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTmdb } from './services/tmdb.js';
+import { createTrakt } from './services/trakt.js';
 import { getSetting, setSetting } from './settings.js';
 
 type Category = 'serviceAddresses' | 'credentials';
@@ -18,9 +19,10 @@ const serviceKeys = {
   radarr: { serviceAddresses: ['radarr.url'], credentials: ['radarr.apiKey'] },
   rtorrent: { serviceAddresses: ['rtorrent.url'], credentials: ['rtorrent.username', 'rtorrent.password'] },
   plex: { serviceAddresses: ['plex.url'], credentials: ['plex.token'] },
-  // TMDB has one fixed address, so the owner enters only its key.
+  // TMDB, MDBList and Trakt each have one fixed address, so the owner enters only a key.
   tmdb: { serviceAddresses: [], credentials: ['tmdb.apiKey'] },
   mdblist: { serviceAddresses: [], credentials: ['mdblist.apiKey'] },
+  trakt: { serviceAddresses: [], credentials: ['trakt.clientId'] },
 } satisfies Record<string, Record<Category, string[]>>;
 type ServiceName = keyof typeof serviceKeys;
 
@@ -32,6 +34,7 @@ const checks: Record<ServiceName, (database: DatabaseSync, options: ServiceOptio
   plex: (database, options) => createPlex(database, options).check(),
   tmdb: (database, options) => createTmdb(database, options).check(),
   mdblist: (database, options) => createMdblist(database, options).check(),
+  trakt: (database, options) => createTrakt(database, options).check(),
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
