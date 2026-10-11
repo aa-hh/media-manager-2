@@ -436,10 +436,10 @@ const makeApp = async (input = {}) => {
   return { app, clock, fixture };
 };
 
-const startAuthentication = async (app, { cookie, origin = 'https://media.example', body = {} } = {}) => {
+const startAuthentication = async (app, { cookie, origin = 'https://media.example', body = {}, headers = {} } = {}) => {
   const response = await app.request('/auth/start', {
     method: 'POST',
-    headers: { ...jsonHeaders(origin), ...(cookie ? { Cookie: cookie } : {}) },
+    headers: { ...jsonHeaders(origin), ...(cookie ? { Cookie: cookie } : {}), ...headers },
     body: JSON.stringify(body),
   });
   const json = await response.json();
@@ -915,6 +915,24 @@ test('Plex owner authentication', async (t) => {
     assert.ok(Number(limited.response.headers.get('retry-after')) >= 1);
     clock.value += 60_000;
     assert.equal((await startAuthentication(app)).response.status, 201);
+  });
+
+  // One shared start limit lets anyone who can reach the sign-in page lock the owner out; trusting the address a browser
+  // writes first in X-Forwarded-For, or the header at all without a proxy in front, lets one client escape its own limit.
+  await t.test('the start limit counts each client on its own, by the address the proxy added, under a ten-times backstop', async () => {
+    const from = (address) => ({ headers: { 'X-Forwarded-For': address } });
+    const { app } = await makeApp();
+    for (let index = 0; index < 10; index += 1) assert.equal((await startAuthentication(app, from(`10.0.0.${index}, 203.0.113.1`))).response.status, 201);
+    assert.equal((await startAuthentication(app, from('10.9.9.9, 203.0.113.1'))).response.status, 429);
+    assert.equal((await startAuthentication(app, from('203.0.113.2'))).response.status, 201);
+    for (let client = 3; client <= 11; client += 1) {
+      for (let index = 0; index < 10; index += 1) await startAuthentication(app, from(`203.0.113.${client}`));
+    }
+    assert.equal((await startAuthentication(app, from('203.0.113.12'))).response.status, 429);
+
+    const exposed = await makeApp({ listeningHost: '0.0.0.0' });
+    for (let index = 0; index < 10; index += 1) await startAuthentication(exposed.app, from(`203.0.113.${index}`));
+    assert.equal((await startAuthentication(exposed.app, from('203.0.113.99'))).response.status, 429);
   });
 
   await t.test('pending-attempt capacity refuses excess and removes expired attempts first', async () => {
