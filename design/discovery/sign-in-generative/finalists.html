@@ -27,9 +27,10 @@
     <button data-state="idle">Idle</button>
     <button data-state="checking">Checking Plex</button>
     <button data-state="success">Signed in</button>
+    <button data-state="error">Error</button>
   </div>
   <div class="group"><button id="phone" aria-pressed="false">Phone</button><button id="reload">Restart</button></div>
-  <kbd>← → concepts · 1 2 3 states · P phone · R restart</kbd>
+  <kbd>← → concepts · 1 2 3 4 states · P phone · R restart</kbd>
 </header>
 <main id="main"><iframe id="frame" title="Concept"></iframe></main>
 <script>
@@ -57,7 +58,7 @@
   addEventListener("keydown", e => {
     if (e.key === "ArrowLeft") document.getElementById("prev").click();
     else if (e.key === "ArrowRight") document.getElementById("next").click();
-    else if (e.key >= "1" && e.key <= "3") { state = ["idle", "checking", "success"][e.key - 1]; show(); }
+    else if (e.key >= "1" && e.key <= "4") { state = ["idle", "checking", "success", "error"][e.key - 1]; show(); }
     else if (e.key.toLowerCase() === "p") document.getElementById("phone").click();
     else if (e.key.toLowerCase() === "r") show();
   });

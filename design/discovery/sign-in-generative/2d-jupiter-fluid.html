@@ -20,7 +20,7 @@
   p { color: var(--text-dim); max-width: 34ch; }
   p strong { color: var(--text); font-weight: 500; }
   button.go {
-    margin-top: 10px; align-self: flex-start; display: inline-flex; align-items: center; gap: 12px;
+    position: relative; margin-top: 10px; align-self: flex-start; display: inline-flex; align-items: center; gap: 12px;
     height: 48px; padding: 0 22px 0 18px; border: 0; border-radius: 2px; cursor: pointer;
     background: var(--plex); color: var(--ground); font: 600 15px/1 inherit; font-family: inherit; text-shadow: none;
     transition: background-color .6s ease, color .6s ease, opacity .6s ease;
@@ -29,6 +29,19 @@
   button.go:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
   button.go:disabled { cursor: default; }
   button.go svg { width: 14px; height: 14px; fill: currentColor; }
+  /* while working: label and chevron hidden (the button keeps its width), a centred spinner in the label colour */
+  button.go:disabled { opacity: .78; }
+  button.go:disabled > * { visibility: hidden; }
+  button.go:disabled::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+    animation: spin .9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { button.go:disabled::after { animation: none; } }
+  /* sits 12px under the button, outside the flow, so nothing above it moves when it appears */
+  #msg { position: absolute; left: 0; top: calc(100% + 12px); white-space: nowrap; font-size: 14px; line-height: 21px; color: #cdb08e; visibility: hidden; }
+  body[data-state="error"] #msg { visibility: visible; }
   #panel {
     position: fixed; right: 16px; bottom: 16px; width: 260px; padding: 12px 14px; z-index: 5;
     background: rgba(10, 11, 14, .86); border: 1px solid rgba(236, 233, 225, .14); border-radius: 4px;
@@ -45,6 +58,7 @@
   @media (max-width: 700px) {
     .signin { left: 24px; right: 24px; width: auto; top: auto; bottom: 48px; transform: none; }
     h1 { font-size: 30px; }
+    #msg { white-space: normal; }
     #panel { width: 220px; }
   }
 </style>
@@ -56,10 +70,11 @@
   <h1>media-manager-2</h1>
   <p><strong>Only the owner's Plex account can open this app.</strong></p>
   <p>Plex is used only to confirm who you are. It never sees your password.</p>
-  <button class="go" type="button">
+  <button class="go" type="button" aria-label="Log in with Plex">
     <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
-    <span id="label" aria-live="polite">Sign in with Plex</span>
+    <span>Log in with Plex</span>
   </button>
+  <div id="msg" role="status"></div>
 </main>
 
 <aside id="panel" class="closed" aria-label="Tweak panel">
@@ -287,7 +302,14 @@ const pv = (k, t) => { const p = tw[k]; return p.from + (p.to - p.from) * ease((
 // on a phone the sign-in block sits below the planet, so the light swings down-left instead of left
 const target = (s, k) => k === 'az' && s !== 'idle' && narrow ? 235 : TARGET[s][k];
 let state = 'idle', tCheck = null, lastChange = -99, curT = 0;
-const label = document.getElementById('label'), btn = document.querySelector('button.go');
+const btn = document.querySelector('button.go');
+// error is the idle planet plus one line under the button; ?msg= picks the line
+const msg = document.getElementById('msg'), MSG = {
+  owner: "That Plex account isn't the owner's. Log in with the owner's account.",
+  unavailable: "Plex didn't answer. Try again in a moment.",
+  expired: 'That log-in attempt expired. Try again.',
+  cancelled: 'The Plex window was closed before finishing.',
+};
 function setState(s, t, instant) {
   for (const k in tw) {
     const p = tw[k], dl = s === 'success' ? DELAY[k] || 0 : 0;
@@ -295,8 +317,8 @@ function setState(s, t, instant) {
   }
   if (s === 'checking' && tCheck === null) tCheck = t;
   state = s; lastChange = t; document.body.dataset.state = s;
-  label.textContent = s === 'idle' ? 'Sign in with Plex' : s === 'checking' ? 'Logging in…' : 'Logging in';
-  btn.disabled = s !== 'idle';
+  btn.disabled = s !== 'idle'; btn.setAttribute('aria-busy', s !== 'idle');
+  msg.textContent = '';
 }
 
 // ---- frame: the CPU only sets a few uniforms ----
@@ -321,7 +343,8 @@ function frame(t) {
 buildPalette(); pushSliders(); resize();
 { const s0 = Q.get('state');
   if (s0 === 'checking') setState('checking', 0);
-  else if (s0 === 'success') { setState('checking', -4, true); setState('success', 0); } }
+  else if (s0 === 'success') { setState('checking', -4, true); setState('success', 0); }
+  else if (s0 === 'error') { document.body.dataset.state = 'error'; msg.textContent = MSG[Q.get('msg')] || MSG.owner; } }
 
 let raf = 0, T0real = 0, tBase = 0, lastDraw = -1e9;
 const STEP = 1000 / 24;
