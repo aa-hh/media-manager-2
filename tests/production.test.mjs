@@ -3905,6 +3905,44 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     second.database.close();
   });
 
+  // Relying on the Download webhook alone leaves finished, seeding torrents showing as downloading on title pages forever.
+  await t.test('the history check marks grabs imported or failed without webhooks', async () => {
+    const { database, fake, tracker } = setup();
+    fake.sonarr.state.history = [
+      historyRecord({ downloadId: episodeHash, seriesId: 3, episodeId: 31, date: '2026-10-08T11:00:00Z' }),
+      historyRecord({ downloadId: packHash, seriesId: 4, episodeId: 41, date: '2026-10-08T11:00:00Z' }),
+      historyRecord({ downloadId: episodeHash, seriesId: 3, episodeId: 31, eventType: 'downloadFolderImported', date: '2026-10-08T11:30:00Z' }),
+      historyRecord({ downloadId: packHash, seriesId: 4, episodeId: 41, eventType: 'downloadFailed', date: '2026-10-08T11:40:00Z' }),
+    ];
+    await tracker.reconcile();
+    assert.equal(listGrabs(database).length, 2);
+    assert.equal(findGrab(database, episodeHash).importedAt, Date.parse('2026-10-08T11:30:00Z'));
+    assert.equal(findGrab(database, episodeHash).failedAt, null);
+    assert.equal(findGrab(database, packHash).failedAt, Date.parse('2026-10-08T11:40:00Z'));
+    assert.equal(findGrab(database, packHash).importedAt, null);
+    database.close();
+  });
+
+  // Recording grabs from the backfill window would hand the stall fix grab records it never had, so a later stall would
+  // search again instead of only being flagged; the backfill may only mark grabs already known.
+  await t.test('the import backfill marks known grabs and never records grabs older than the grab bookmark', async () => {
+    const { database, clock, fake, tracker } = setup();
+    tracker.recordGrab({
+      hash: episodeHash.toUpperCase(), service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [31], releaseTitle: 'Show.S01E01.1080p',
+      indexer: '', grabbedAt: clock.value - 2 * 60 * 60_000, publishedAt: null, byHand: false,
+    });
+    // A database from before outcomes were read: the grab bookmark is an hour old, the outcome bookmark is empty.
+    database.prepare('INSERT INTO grab_checkpoints (service, history_checked_at) VALUES (?, ?)').run('sonarr', clock.value - 60 * 60_000);
+    fake.sonarr.state.history = [
+      historyRecord({ downloadId: missedHash, seriesId: 5, episodeId: 51, date: '2026-10-05T12:00:00Z' }),
+      historyRecord({ downloadId: episodeHash, seriesId: 3, episodeId: 31, eventType: 'downloadFolderImported', date: '2026-10-05T13:00:00Z' }),
+    ];
+    await tracker.reconcile();
+    assert.equal(findGrab(database, missedHash), undefined);
+    assert.equal(findGrab(database, episodeHash).importedAt, Date.parse('2026-10-05T13:00:00Z'));
+    database.close();
+  });
+
   // Dropping delayed (pending) items, keeping a stale queue after a failed read, or not marking the service down turns this red.
   await t.test('the queue snapshot keeps delayed releases and survives a failed read', async () => {
     const { database, fake, tracker } = setup();

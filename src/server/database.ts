@@ -385,6 +385,8 @@ export const applicationMigrations = [
     WHEN failure = 'That torrent is already in rTorrent.' THEN 'already_in_rtorrent'
     WHEN failure IN ('The download link returned a web page, not a torrent file.', 'The download link did not return a torrent file.') THEN 'not_a_torrent'
   END WHERE failure IS NOT NULL;`,
+  // Where the history check last read imports and failures; null makes the next check backfill the full lookback.
+  `ALTER TABLE grab_checkpoints ADD COLUMN outcomes_checked_at INTEGER;`,
 ] as const;
 
 class DatabaseError extends Error {}
