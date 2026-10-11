@@ -69,6 +69,10 @@
   --primary-hover: #2e2e2c;
   --primary-pressed: #000000;
   --primary-foreground: #ffffff;
+  --plex: #e5a00d;
+  --plex-hover: #f3aa0e;
+  --plex-pressed: #d19209;
+  --plex-foreground: #111111;
   --best: #c6f135;
   --best-soft: #f3fcd6;
   --best-foreground: #3d5600;
@@ -205,6 +209,10 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-pressed: var(--primary-pressed);
   --color-primary-foreground: var(--primary-foreground);
+  --color-plex: var(--plex);
+  --color-plex-hover: var(--plex-hover);
+  --color-plex-pressed: var(--plex-pressed);
+  --color-plex-foreground: var(--plex-foreground);
   --color-best: var(--best);
   --color-best-soft: var(--best-soft);
   --color-best-foreground: var(--best-foreground);
