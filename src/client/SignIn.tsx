@@ -13,21 +13,8 @@ import {
   type PopupMessage,
   type PopupWindow,
 } from './plexPopup';
+import { RECHECK_TRIES, holdSuccess, recheckLater, signInScreen, type SignInView } from './signInFlow';
 import { createPlanet } from './signInPlanet';
-
-type SignInView =
-  | 'status'
-  | 'initial'
-  | 'preparing'
-  | 'checking'
-  | 'pending'
-  | 'interrupted'
-  | 'wrong-owner'
-  | 'unavailable'
-  | 'not-configured'
-  | 'expired'
-  | 'invalid'
-  | 'session-expired';
 
 type SignInProps = {
   entryReason?: 'session-expired' | 'signed-out' | 'session-unavailable';
@@ -75,8 +62,6 @@ const isPlexHandoff = (value: unknown): value is string => {
   }
 };
 
-// 0.5 s green delay plus the 1.7 s success transition.
-const SUCCESS_HOLD_MS = 2_200;
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const popupHost: PopupHost = {
@@ -132,7 +117,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
 
   const isCurrent = useCallback((version: number) => requestVersionRef.current === version, []);
 
-  const completeSignIn = useCallback(async (state: string, quiet = false, retriesLeft = 5): Promise<void> => {
+  const completeSignIn = useCallback(async (state: string, quiet = false, retriesLeft = RECHECK_TRIES): Promise<void> => {
     const request = beginRequest();
     if (!quiet) {
       setAnnouncement('Checking your Plex account…');
@@ -149,19 +134,13 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
         const expiresAt = body.expiresAt;
         setSucceeded(true);
         setAnnouncement('Signed in.');
-        if (REDUCED_MOTION) onSignedIn(expiresAt);
-        else successTimerRef.current = window.setTimeout(() => onSignedIn(expiresAt), SUCCESS_HOLD_MS);
+        successTimerRef.current = holdSuccess(window, REDUCED_MOTION, () => onSignedIn(expiresAt));
         return;
       }
       if (response.status === 202 && body.status === 'pending') {
         if (quiet) return;
         // Back from Plex on a phone, the PIN can take a moment to register; ask again before showing an error.
-        if (retriesLeft > 0) {
-          window.setTimeout(() => {
-            if (isCurrent(request.version)) void completeSignIn(state, false, retriesLeft - 1);
-          }, POLL_INTERVAL_MS);
-          return;
-        }
+        if (recheckLater(window, retriesLeft, POLL_INTERVAL_MS, () => isCurrent(request.version), (left) => void completeSignIn(state, false, left))) return;
         setAnnouncement('Plex sign-in isn’t finished.');
         setView('pending');
         return;
@@ -183,12 +162,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
         setView('invalid');
       } else if (response.status === 409 && error === 'in_progress') {
         // A check the server already started (a timed poll, or another tab) finishes within a few seconds; ask again before handing the wait to the user.
-        if (retriesLeft > 0) {
-          window.setTimeout(() => {
-            if (isCurrent(request.version)) void completeSignIn(state, false, retriesLeft - 1);
-          }, 1_000);
-          return;
-        }
+        if (recheckLater(window, retriesLeft, 1_000, () => isCurrent(request.version), (left) => void completeSignIn(state, false, left))) return;
         setAnnouncement('Plex sign-in is still being checked.');
         setView('pending');
       } else {
@@ -380,17 +354,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
     };
   }, []);
 
-  const failedLine = 'Couldn\'t log you in. Try again.';
-  const screen: 'success' | 'loading' | 'idle' | 'waiting' | 'error' = succeeded ? 'success'
-    : view === 'status' ? 'loading'
-    : view === 'initial' || view === 'session-expired' || view === 'not-configured' ? 'idle'
-    : view === 'preparing' || view === 'checking' || (view === 'pending' && plexInWindow) ? 'waiting'
-    : 'error';
-  const line = succeeded ? undefined
-    : view === 'session-expired' ? 'Your session expired. Sign in again.'
-    : view === 'not-configured' ? 'Sign-in isn’t configured.'
-    : screen === 'error' ? failedLine
-    : undefined;
+  const { screen, line } = signInScreen(view, plexInWindow, succeeded);
   const busy = screen === 'loading' || screen === 'waiting' || screen === 'success';
   const planetState = screen === 'waiting' ? 'checking' : screen === 'success' ? 'success' : 'idle';
 
