@@ -105,6 +105,8 @@ export type SeriesDetail = {
     statistics: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; sizeOnDisk: number; nextAiring: string | null; previousAiring: string | null };
   }>;
   episodes: EpisodeDetail[];
+  /** Only on a series already in the library. */
+  secondVersions?: SecondVersion[];
 };
 
 export type MovieDetail = {
@@ -147,7 +149,41 @@ export type Credits = {
   cast: Array<{ name: string; character: string | null; order: number | null; photoUrl: string | null; tmdbId: number | null }>;
   crew: Array<{ name: string; job: string | null; department: string | null; photoUrl: string | null; tmdbId: number | null }>;
 };
-export type OwnedMovieDetail = MovieDetail & { credits: Credits };
+export type OwnedMovieDetail = MovieDetail & { credits: Credits; secondVersions: SecondVersion[] };
+
+/** A version media-manager-2 grabbed next to the tracked one; src/server/secondVersionRows.ts is the source of truth. */
+export type SecondVersion = {
+  id: number;
+  service: Service;
+  movieId: number | null;
+  seriesId: number | null;
+  episodeId: number | null;
+  state: 'sending' | 'downloading' | 'importing' | 'imported' | 'failed';
+  failure: string | null;
+  releaseTitle: string;
+  indexer: string;
+  quality: string;
+  group: string | null;
+  sizeBytes: number | null;
+  /** Milliseconds since 1970. */
+  addedAt: number;
+  importedAt: number | null;
+  hash: string | null;
+  path: string | null;
+  percent: number | null;
+  /** From the last rTorrent poll; null when media-manager-2 has never seen the torrent. */
+  seeding: { inRtorrent: boolean; complete: boolean; ratio: number; seedingSeconds: number; upRate: number; trackerHost: string | null } | null;
+};
+
+/** GET /api/advice/:hash; src/server/advice.ts is the source of truth. */
+export type RemovalAdvice = { recommendation: 'safe' | 'keep' | 'unconfirmed'; reason: string; globalRatio: string | null };
+
+/** DELETE /api/second-versions/:id reply; src/server/secondVersionDelete.ts is the source of truth. */
+export type SecondVersionDeleted = {
+  deleted: { path: string } | null;
+  torrent: { removed: true } | { removed: false; reason: string };
+  secondVersions: SecondVersion[];
+};
 
 export type HistoryEntry = {
   at: string | null;
