@@ -85,7 +85,7 @@ rTorrent continuing to upload a finished torrent. Required by the private tracke
 _Avoid_: sharing
 
 **Stalled**:
-A started, unfinished torrent that has made no progress for long enough that media-manager-2 stops waiting on it and looks for another release. rTorrent has no such status; media-manager-2 decides it.
+A started, unfinished torrent that has made no progress for long enough that media-manager-2 stops waiting on it and looks for another release. A stalled second version is never regrabbed: it is removed if nothing downloaded, and flagged to the user either way. rTorrent has no such status; media-manager-2 decides it.
 _Avoid_: stuck, dead, hung
 
 **Tracker**:

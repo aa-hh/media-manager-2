@@ -55,6 +55,7 @@ const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url)
 const trackerRulesModuleUrl = new URL('../dist/server/trackerRules.js', import.meta.url).href;
 const adviceModuleUrl = new URL('../dist/server/advice.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
+const labelsModuleUrl = new URL('../dist/server/labels.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
@@ -3671,6 +3672,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const { createTrackerWatch } = await import(trackersModuleUrl);
   const { createStallFix, indexerMatchesHost } = await import(stallsModuleUrl);
   const { createProtection } = await import(protectionModuleUrl);
+  const { createLabels } = await import(labelsModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-stalls-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   let count = 0;
@@ -3678,7 +3680,11 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const hash = 'AB'.repeat(20);
   const start = Date.parse('2026-10-08T12:00:00Z');
 
-  const setup = async ({ publishedAgoMs = 48 * 60 * minute, completed = 0, files = [[0]], releases, manual = false, message = '' } = {}) => {
+  // versions: second_versions rows for the torrent, which then has no grab record.
+  const setup = async ({
+    publishedAgoMs = 48 * 60 * minute, completed = 0, files = [[0]], releases, manual = false, message = '',
+    versions = null, removal = { removed: true, deleted: [], left: [] },
+  } = {}) => {
     count += 1;
     const database = openDatabase(join(root, `db-${count}`, 'media-manager.sqlite'));
     const clock = { value: start };
@@ -3699,9 +3705,25 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     };
     const { fake, ...arr } = connectArr(database);
     const radarr = fake.radarr;
-    radarr.state.queue = [queueItem({ id: 55, downloadId: hash.toLowerCase(), movieId: 7, title: 'Movie.2024.1080p' })];
-    radarr.state.history = [historyRecord({ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - minute).toISOString(),
-      data: { indexer: 'Blutopia (API)', publishedDate: new Date(start - publishedAgoMs).toISOString() } })];
+    radarr.state.movies = [movieRecord({ id: 7, title: 'Movie', year: 2024 })];
+    fake.sonarr.state.series = [seriesRecord({ id: 3, title: 'Show' })];
+    fake.sonarr.state.episodes = [31, 32, 33].map((id) => episodeRecord({ id, seriesId: 3, episodeNumber: id - 30 }));
+    if (versions === null) {
+      radarr.state.queue = [queueItem({ id: 55, downloadId: hash.toLowerCase(), movieId: 7, title: 'Movie.2024.1080p' })];
+      radarr.state.history = [historyRecord({ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - minute).toISOString(),
+        data: { indexer: 'Blutopia (API)', publishedDate: new Date(start - publishedAgoMs).toISOString() } })];
+    }
+    for (const row of versions ?? []) {
+      database.prepare(`
+        INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, failure, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'Movie.2024.2160p', 'guid', 'Blutopia', 'Remux-2160p', ?, ?, ?, 0, 0)
+      `).run(row.service, row.movieId ?? null, row.seriesId ?? null, row.episodeId ?? null, hash, row.state ?? 'downloading', row.failure ?? null);
+    }
+    const removed = [];
+    const removeTorrent = async (target) => {
+      removed.push(target);
+      return removal;
+    };
     radarr.routes.push((method, url) => {
       if (url.pathname !== '/api/v3/release') return undefined;
       return method === 'GET' ? { status: 200, body: releases } : { status: 200, body: {} };
@@ -3711,7 +3733,9 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     const problems = createProblems({ database, events, now });
     const trackers = createTrackerWatch({ database, rtorrent, problems, events, now });
     if (manual) database.prepare("INSERT INTO protected_items (service, item_id, created_at) VALUES ('radarr', 7, 0)").run();
-    const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, now, isManualDownload: createProtection(database, arr).isProtected });
+    const stalls = createStallFix({
+      database, rtorrent, arr, problems, trackers, now, isManualDownload: createProtection(database, arr).isProtected, labels: createLabels(arr), removeTorrent,
+    });
     await grabs.reconcile();
     const tick = async (minutes = 1) => {
       for (let i = 0; i < minutes; i += 1) {
@@ -3721,7 +3745,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
         await stalls.check();
       }
     };
-    return { database, torrent, calls, requests: radarr.requests, removals: radarr.state.removals, state: radarr.state, tick, problems };
+    return { database, torrent, calls, requests: radarr.requests, removals: radarr.state.removals, state: radarr.state, tick, problems, removed };
   };
   const release = (title, indexer, overrides = {}) => ({ guid: `guid-${title}`, indexerId: title.length, indexer, title, approved: true, ...overrides });
   const grabbedTitles = (requests) => requests.filter(({ method, path }) => method === 'POST' && path === '/api/v3/release').map(({ body }) => body.guid);
@@ -3834,6 +3858,79 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.match(problem.steps.at(-1).text, /was not blocked/);
     assert.deepEqual(run.removals, []);
     assert.deepEqual(grabbedTitles(run.requests), []);
+    run.database.close();
+  });
+
+  // Second versions have no grab record, so an unknown release age gives them the three-hour wait.
+  const stalledOnce = async (run) => {
+    await run.tick(181);
+    return run.database.prepare("SELECT * FROM problems WHERE kind = 'stalled'").all();
+  };
+  const versionRows = (run) => run.database.prepare('SELECT state, failure FROM second_versions ORDER BY id').all().map((row) => ({ ...row }));
+  const movieVersion = [{ service: 'radarr', movieId: 7 }];
+
+  // Treating a second version as "no grab record", erasing it outside removeTorrent, or regrabbing it turns this red.
+  await t.test('a stalled second version with nothing downloaded is removed through removeTorrent and flagged once', async () => {
+    const run = await setup({ versions: movieVersion, releases: [release('Another', 'BeyondHD')] });
+    const stalled = await stalledOnce(run);
+    assert.equal(stalled.length, 1);
+    assert.equal(stalled[0].state, 'needs_you');
+    assert.match(stalled[0].summary, /Second version of Movie \(2024\) \(Movie\.2024\.2160p\)/);
+    assert.deepEqual(run.removed, [hash]);
+    assert.deepEqual(versionRows(run), [{ state: 'failed', failure: 'Stalled with nothing downloaded; torrent removed.' }]);
+    await run.tick(240);
+    assert.equal(run.database.prepare("SELECT COUNT(*) AS count FROM problems WHERE kind = 'stalled'").get().count, 1);
+    assert.deepEqual(run.removed, [hash]);
+    assert.deepEqual(run.calls.filter(([method]) => method === 'd.erase'), []);
+    assert.deepEqual(grabbedTitles(run.requests), []);
+    assert.deepEqual(run.removals, []);
+    run.database.close();
+  });
+
+  // Removing a partly downloaded second version, stopping its files, or opening a problem per episode turns this red.
+  await t.test('a partly downloaded stalled second version pack stays active with one problem listing its episodes', async () => {
+    const pack = [31, 32, 33].map((episodeId) => ({ service: 'sonarr', seriesId: 3, episodeId }));
+    const run = await setup({ versions: pack, completed: 400, files: [[12], [0], [0]], releases: [] });
+    const stalled = await stalledOnce(run);
+    assert.equal(stalled.length, 1);
+    assert.match(stalled[0].summary, /Show S01E01, Show S01E02, Show S01E03/);
+    assert.deepEqual(run.removed, []);
+    assert.deepEqual(run.calls.filter(([method]) => method === 'd.erase' || method === 'f.priority.set'), []);
+    assert.deepEqual(versionRows(run).map((row) => row.state), ['downloading', 'downloading', 'downloading']);
+    run.database.close();
+  });
+
+  // Marking the rows failed when removeTorrent refuses, or hiding its reason, turns this red.
+  await t.test('a refused removal keeps the second version downloading and the problem says why', async () => {
+    const run = await setup({ versions: movieVersion, releases: [], removal: { removed: false, reason: 'A.mkv is also used by the torrent T7.' } });
+    await stalledOnce(run);
+    const [problem] = listOpenProblems(run.database).filter((item) => item.kind === 'stalled');
+    assert.match(problem.steps.at(-1).text, /A\.mkv is also used by the torrent T7\./);
+    assert.deepEqual(versionRows(run), [{ state: 'downloading', failure: null }]);
+    run.database.close();
+  });
+
+  // Leaving the problem open after the torrent downloads again, or never watching it again, turns this red.
+  await t.test('a flagged second version that downloads again resolves its problem and is watched afresh', async () => {
+    const run = await setup({ versions: movieVersion, completed: 400, releases: [] });
+    await stalledOnce(run);
+    run.torrent.seeders = 2;
+    run.torrent.down = 500;
+    await run.tick(1);
+    assert.deepEqual(listOpenProblems(run.database).filter((item) => item.kind === 'stalled'), []);
+    run.torrent.seeders = 0;
+    run.torrent.down = 0;
+    await run.tick(181);
+    assert.equal(listOpenProblems(run.database).filter((item) => item.kind === 'stalled').length, 1);
+    run.database.close();
+  });
+
+  // Recognising a hash whose rows Sonarr or Radarr took over as a second version turns this red.
+  await t.test('a stalled torrent with only failed second version rows is still flagged as having no grab record', async () => {
+    const run = await setup({ versions: [{ service: 'radarr', movieId: 7, state: 'failed', failure: 'Sonarr or Radarr grabbed the same torrent.' }], releases: [] });
+    const [problem] = await stalledOnce(run);
+    assert.match(problem.summary, /can't be replaced automatically/);
+    assert.deepEqual(run.removed, []);
     run.database.close();
   });
 });
