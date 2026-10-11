@@ -67,13 +67,17 @@ const positiveInteger = (value: unknown): value is number => (
   typeof value === 'number' && Number.isInteger(value) && value > 0
 );
 
+// Only codes raised while connecting: the request never left this host, so the service cannot have grabbed.
+// A route lost later (EHOSTUNREACH, ENETUNREACH) can follow a delivered POST, so those stay sent.
+const NEVER_CONNECTED_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT']);
+
 const connectionNeverOpened = (error: unknown): boolean => {
   const first = error instanceof Error ? error.cause : undefined;
   const second = first instanceof Error ? first.cause : undefined;
   const codes = [first, second]
     .flatMap((item) => (item instanceof AggregateError ? [item, ...item.errors] : [item]))
     .map((item) => (isRecord(item) ? item.code : undefined));
-  return codes.some((code) => code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EAI_AGAIN');
+  return codes.some((code) => typeof code === 'string' && NEVER_CONNECTED_CODES.has(code));
 };
 
 const refusal = (body: unknown): string | undefined => {
