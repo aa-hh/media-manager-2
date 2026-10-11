@@ -3070,6 +3070,23 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
     database.close();
   });
 
+  // Rechecking a torrent that has no data turns this red.
+  await t.test('damaged data on a torrent with nothing downloaded is flagged for the owner, never rechecked or replaced', async () => {
+    const { database, fake, watch, step } = setup();
+    const empty = row(hash(8), { completed: 0, state: 0, active: 0, message: 'Hash check on download completion found bad chunks' });
+    await step([empty]);
+    await step([empty], 31 * 60_000);
+    assert.equal(fake.calls.some(([method]) => method === 'd.check_hash'), false);
+    assert.deepEqual(listIssues(database), []);
+    assert.deepEqual(watch.replacementRequests(), []);
+    const [problem] = listOpenProblems(database);
+    assert.equal(problem.kind, 'damaged');
+    assert.equal(problem.state, 'needs_you');
+    assert.equal(problem.steps.at(-1).text, 'The download files are gone; nothing to recheck.');
+    assert.equal(problem.steps.length, 2);
+    database.close();
+  });
+
   // Acting on stale torrent rows while rTorrent is down turns this red.
   await t.test('nothing is acted on while rTorrent is down', async () => {
     const { database, events, fake, watch, poller } = setup();
@@ -3421,8 +3438,8 @@ test('missing movies and episodes are searched when they come out and every six 
     assert.equal(searchDueAt({ availableAt: 10 * hour, addedAt: 0, lastSearchAt: 11 * hour }), 17 * hour);
   });
 
-  // Sending a second search before Sonarr updates its last-search time, searching a queued or protected manual download, or searching while Sonarr is down turns this red.
-  await t.test('the scheduler searches each due item once, skips queued and manual ones and pauses with the service', async () => {
+  // Dropping the backlog filter, or seeding the backlog on every run, turns this red; so does a second search before Sonarr updates its last-search time, searching a queued or protected manual download, or searching while Sonarr is down.
+  await t.test('the first run records the backlog without searching, then each new due item is searched once, skipping queued and manual ones and pausing with the service', async () => {
     const database = openDatabase(join(root, 'scheduler', 'media-manager.sqlite'));
     const events = createEventHub();
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
@@ -3455,27 +3472,33 @@ test('missing movies and episodes are searched when they come out and every six 
     database.prepare("INSERT INTO protected_items (service, item_id, series_id, season_number, episode_number, created_at) VALUES ('sonarr', 4, 1, 1, 4, 0)").run();
     const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: createProtection(database, arr).isProtected });
 
+    const backlog = () => database.prepare('SELECT subject FROM search_backlog ORDER BY subject').all().map((entry) => entry.subject);
+
     await scheduler.check();
-    assert.deepEqual(commands, [['sonarr', { name: 'EpisodeSearch', episodeIds: [1] }]]);
-    assert.equal(subjectHistory(database, { type: 'episode', service: 'sonarr', id: '1' })[0].state, 'resolved');
+    assert.deepEqual(commands, []);
+    assert.deepEqual(backlog(), ['radarr:movie:7', 'sonarr:episode:1', 'sonarr:episode:2', 'sonarr:episode:3', 'sonarr:episode:4']);
+    assert.equal(database.prepare("SELECT value FROM preferences WHERE key = 'searches.baselineAt'").get()?.value, String(clock.value));
+
+    episodes.push({ id: 5, monitored: true, hasFile: false, airDateUtc: '2026-10-08T20:30:00Z', seasonNumber: 1, episodeNumber: 5, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } });
+    clock.value = Date.parse('2026-10-08T20:30:00Z');
+    await scheduler.check();
+    assert.deepEqual(commands, [['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }]]);
+    assert.equal(subjectHistory(database, { type: 'episode', service: 'sonarr', id: '5' })[0].state, 'resolved');
 
     clock.value += 2 * minute;
     await scheduler.check();
     assert.equal(commands.length, 1);
 
-    clock.value = Date.parse('2026-10-08T20:10:00Z');
+    // The owner clearing backlog rows by hand still leaves queued (3) and protected manual (4) episodes alone.
+    database.prepare("DELETE FROM search_backlog WHERE subject IN ('sonarr:episode:3', 'sonarr:episode:4')").run();
+    clock.value = Date.parse('2026-10-09T02:30:00Z');
     await scheduler.check();
-    assert.deepEqual(commands.at(-1), ['radarr', { name: 'MoviesSearch', movieIds: [7] }]);
-
-    clock.value = Date.parse('2026-10-08T21:00:00Z');
-    await scheduler.check();
-    assert.deepEqual(commands.at(-1), ['sonarr', { name: 'EpisodeSearch', episodeIds: [2] }]);
-    assert.equal(commands.length, 3);
+    assert.deepEqual(commands, [['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }], ['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }]]);
 
     writeDependency(database, events, 'sonarr', 'down', 0, 'Sonarr is unreachable.');
-    clock.value = Date.parse('2026-10-09T03:00:00Z');
+    clock.value = Date.parse('2026-10-09T08:30:00Z');
     await scheduler.check();
-    assert.equal(commands.some(([service], index) => index >= 3 && service === 'sonarr'), false);
+    assert.equal(commands.length, 2);
     database.close();
   });
 });
