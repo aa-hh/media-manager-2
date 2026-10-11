@@ -275,13 +275,22 @@ export const createProtection = (
         name: WEBHOOK_NAME,
         implementation: 'Webhook',
         configContract: 'WebhookSettings',
-        // The events the live-downloads receiver records; a service ignores flags it does not have.
+        // The events the live-downloads receiver records and the title cache listens to; a service ignores flags it does not have.
         onGrab: true,
         onDownload: true,
         onUpgrade: true,
         onDownloadFailure: true,
         onImportFailure: true,
         onManualInteractionRequired: true,
+        onRename: true,
+        onSeriesAdd: true,
+        onSeriesDelete: true,
+        onEpisodeFileDelete: true,
+        onEpisodeFileDeleteForUpgrade: true,
+        onMovieAdded: true,
+        onMovieDelete: true,
+        onMovieFileDelete: true,
+        onMovieFileDeleteForUpgrade: true,
         tags: [],
         fields: [
           { name: 'url', value: url },
@@ -298,7 +307,7 @@ export const createProtection = (
         const fields = Array.isArray(existing.fields) ? existing.fields : [];
         const current = fields.find((field) => isRecord(field) && field.name === 'url');
         if (
-          existing.name !== WEBHOOK_NAME || existing.onGrab !== true || !isRecord(current) || current.value !== url
+          existing.name !== WEBHOOK_NAME || existing.onGrab !== true || existing.onRename !== true || !isRecord(current) || current.value !== url
           || getPreference(database, secretKey) !== fingerprint
         ) {
           await call(service, `/api/v3/notification/${existing.id}`, 'PUT', { ...existing, ...wanted });

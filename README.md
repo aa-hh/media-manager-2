@@ -84,7 +84,7 @@ live service evidence: the owner runs `node dist/server/cli.js connections
 check` on the slot and sees four `ok` lines with versions. The test fixtures
 prove controlled behaviour only.
 
-## Tracker accounts
+### Tracker accounts
 
 `getTrackerAccountStats(database)` in `src/server/services/trackerAccounts.ts`
 returns one entry per tracker (Blutopia, PrivateHD, Beyond-HD, in that order).
@@ -95,6 +95,21 @@ leeching, seedbonus, hitAndRuns`); PrivateHD and Beyond-HD return
 (AA-23). Live tracker evidence is still owed: no live keys exist and the tests
 use fixtures. Acceptance needs the owner's `connections check` showing three
 tracker `ok` lines.
+
+### Title cache
+
+The server keeps a copy of every Sonarr series and Radarr movie, Sonarr's
+episodes, and each title's poster and fanart. The `title-refresh` job re-reads
+both full lists every five minutes. Between runs the shared webhook receiver
+refreshes one title on Sonarr's `SeriesAdd`, `Download`, `EpisodeFileDelete`
+and `Rename` events and Radarr's `MovieAdded`, `Download`, `MovieFileDelete`
+and `Rename` events, and drops it on `SeriesDelete` or `MovieDelete`.
+Images are stored in an `images` folder beside the database and served to the
+signed-in owner at `GET /api/images/{sonarr|radarr}/{id}/{poster|fanart}`,
+with an `ETag` (a matching `If-None-Match` gets `304`) and
+`Cache-Control: private, max-age=300`. No Sonarr or Radarr key reaches the
+browser. Search results from Sonarr and Radarr lookups are kept in memory for
+ten minutes per service and search term; a failed lookup is never kept.
 
 ## Plex owner sign-in
 
