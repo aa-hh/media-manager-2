@@ -272,7 +272,9 @@ export const createSecondVersions = (options: {
       } finally {
         sending.delete(hash);
       }
-      database.prepare("UPDATE second_versions SET state = 'downloading', updated_at = ? WHERE hash = ? AND state = 'sending'").run(now(), hash);
+      // A 0 reply only means rTorrent queued the load: it drops a hash it already has and just logs it. So the rows stay
+      // sending, restamped so only a poll that began after this reply settles them by the hash's label.
+      database.prepare("UPDATE second_versions SET updated_at = ? WHERE hash = ? AND state = 'sending'").run(now(), hash);
       return { kind: 'sent', records: byHash(hash) } as const;
     },
 
@@ -333,6 +335,7 @@ export const createSecondVersionRoutes = (secondVersions: SecondVersions) => {
     if (result.kind === 'refused') return context.json({ error: 'refused', reason: result.reason }, 409);
     if (result.kind === 'failed') return context.json({ error: 'failed', reason: result.reason, secondVersions: result.records }, 409);
     if (result.kind === 'unconfirmed') return context.json({ reason: result.reason, secondVersions: result.records }, 202);
+    // 201 with rows still sending: rTorrent took the file, and 202 stays the reply that carries a reason to show.
     return context.json({ secondVersions: result.records }, 201);
   });
   return routes;
