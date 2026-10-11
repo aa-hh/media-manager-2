@@ -205,10 +205,10 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
       if (!isCurrent(request.version)) return;
       if (response.status === 201 && isPlexHandoff(body.url)) {
         const state = handoffState(body.url);
-        callbackStateRef.current = state;
         try {
           stopPopupRef.current = sendToPlex(popupHost, popupRef.current, body.url, {
-            onTick: () => { if (state !== undefined) void completeSignIn(state, true); },
+            // A tick while a user-started check is running would abort that check and leave the page on "checking".
+            onTick: () => { if (state !== undefined && viewRef.current === 'pending') void completeSignIn(state, true); },
             onClosed: () => {
               stopPopupRef.current = undefined;
               setPlexInWindow(false);
@@ -224,6 +224,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
           return;
         }
         if (stopPopupRef.current !== undefined) {
+          callbackStateRef.current = state;
           setPlexInWindow(true);
           setAnnouncement('Plex is open in a new window.');
           setView('pending');
