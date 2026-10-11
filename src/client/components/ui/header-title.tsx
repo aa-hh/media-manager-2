@@ -1,5 +1,5 @@
 // v2/Header/title — design/design-system.lib.pen NaDkI
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ToggleBookmark, type BookmarkState } from '@/components/ui/toggle-bookmark';
 import { cn } from '@/lib/utils';
 
@@ -36,10 +36,27 @@ type HeaderTitleProps = {
 // A 1 px inner edge over a poster image (foreground at 10%).
 const innerEdge = 'after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-foreground/10';
 
+/** An image that is drawn at once when the browser already has it, and otherwise fades in when it arrives. */
+function FadeImage({ src, className }: { src: string; className?: string }) {
+  const [loaded, setLoaded] = useState(() => {
+    const probe = new Image();
+    probe.src = src;
+    return probe.complete && probe.naturalWidth > 0;
+  });
+  return (
+    <img
+      src={src}
+      alt=""
+      onLoad={() => setLoaded(true)}
+      className={cn('object-cover transition-opacity duration-(--duration-slow) ease-out', loaded ? 'opacity-100' : 'opacity-0', className)}
+    />
+  );
+}
+
 function Poster({ url, className }: { url?: string; className: string }) {
   return (
     <div className={cn('relative shrink-0 overflow-hidden bg-muted', innerEdge, className)}>
-      {url !== undefined && <img src={url} alt="" className="size-full object-cover" />}
+      {url !== undefined && <FadeImage key={url} src={url} className="size-full" />}
     </div>
   );
 }
@@ -88,8 +105,9 @@ function HeaderTitle({
   return (
     <header className={cn('relative flex w-full flex-col overflow-hidden bg-background px-10', actionsRight ? 'pt-10 pb-8' : 'pt-25 pb-6', className)}>
       {backdropUrl !== undefined && (
-        <div aria-hidden="true" className={cn('absolute inset-x-0 top-0 bg-cover bg-center', actionsRight ? 'bottom-0' : 'h-55')} style={{ backgroundImage: `url(${JSON.stringify(backdropUrl)})` }}>
-          <div className={cn('size-full bg-linear-to-b', actionsRight ? 'from-background/20 via-background/70 via-45% to-background' : 'from-transparent via-background/55 via-55% to-background')} />
+        <div aria-hidden="true" className={cn('absolute inset-x-0 top-0', actionsRight ? 'bottom-0' : 'h-55')}>
+          <FadeImage key={backdropUrl} src={backdropUrl} className="absolute inset-0 size-full" />
+          <div className={cn('relative size-full bg-linear-to-b', actionsRight ? 'from-background/20 via-background/70 via-45% to-background' : 'from-transparent via-background/55 via-55% to-background')} />
         </div>
       )}
       <div className={cn('relative flex w-full gap-8', actionsRight && 'items-end')}>
