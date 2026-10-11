@@ -115,18 +115,23 @@ export const audioHdrFromMediaInfo = (info: FileDetail['mediaInfo']): AudioHdr =
   return { audio: parsed.audio ?? info.audioCodec, hdr: parsed.hdr };
 };
 
-// PrivateHD's formula lands a hair above whole hours at its joins (172.0000005 h at 50 GB), so round off float noise before rounding up.
+// A seed-time table's ln term can land a hair above a whole hour (PrivateHD's log row starts at 172.0000005 h), so round off float noise before rounding up.
 const roundUp = (hours: number | null) => (hours === null ? null : Math.ceil(Math.round(hours * 1000) / 1000));
-// A release is not downloaded yet, so it is judged as a complete torrent.
-const describeRule = (found: { host: string; rule: HitAndRunRule }, sizeBytes: number | null): Rule => ({
-  host: found.host,
-  hours: found.rule.minHoursFormula === 'privatehd' && sizeBytes === null ? null : roundUp(checkHitAndRun(
-    found.rule,
-    { seedHours: 0, ratio: 0, sizeBytes: sizeBytes ?? 0, completedBytes: sizeBytes ?? 0 },
-  ).requiredHours),
-  ratio: found.rule.minRatio,
-  logic: found.rule.logic,
-});
+// A release is not downloaded yet, so it is judged as a complete torrent. With no size, only a one-row table without
+// per-GB or ln terms gives its hours.
+const describeRule = (found: { host: string; rule: HitAndRunRule }, sizeBytes: number | null): Rule => {
+  const [first, ...more] = found.rule.seedHours;
+  const fixed = more.length === 0 && !first.perGB && !first.lnGB;
+  return {
+    host: found.host,
+    hours: sizeBytes === null && !fixed ? null : roundUp(checkHitAndRun(
+      found.rule,
+      { seedHours: 0, ratio: 0, sizeBytes: sizeBytes ?? 0, completedBytes: sizeBytes ?? 0 },
+    ).requiredHours),
+    ratio: found.rule.ratio,
+    logic: found.rule.logic,
+  };
+};
 
 type Owned = OwnedFile & { qualityWeight: number | null };
 type RuleLookup = (name: string) => { host: string; rule: HitAndRunRule } | undefined;
@@ -168,7 +173,7 @@ const readOwned = async (database: DatabaseSync, services: ArrServices, target: 
       completedBytes: torrent.completedBytes,
     });
     // An incomplete torrent is held to the tracker's incomplete-torrent rule, which clears at either side.
-    const ratio = check.case === 'complete' ? found.rule.minRatio : check.case === 'partial' ? found.rule.partialRatio : null;
+    const ratio = check.case === 'complete' ? found.rule.ratio : check.case === 'partial' ? found.rule.partial.ratio : null;
     const hours = roundUp(check.requiredHours);
     hitAndRun = {
       host: found.host,
