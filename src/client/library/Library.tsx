@@ -37,7 +37,7 @@ function PosterCard({ title, fields, progress, downloading }: {
 }) {
   const lines: Array<{ text: string; risk?: boolean }> = [];
   const word = title.tv === null ? movieWord(title, progress.get(`movie:${title.id}`)) : null;
-  if (title.tv !== null) lines.push({ text: progressText(title.tv.episodeFileCount, downloading, title.tv.episodeCount) });
+  if (title.tv !== null && fields.includes('progress')) lines.push({ text: progressText(title.tv.episodeFileCount, downloading, title.tv.episodeCount) });
   else if (word !== null) lines.push({ text: word, risk: word === 'missing' || word === 'deleted' });
   if (!title.monitored) lines.push({ text: 'not monitored' });
   const facts = [
