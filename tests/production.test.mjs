@@ -7310,7 +7310,7 @@ test('second versions are served under their movie and series, and a check flags
 test('second versions that failed before failure codes get the code their text maps to', async () => {
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const database = new DatabaseSync(':memory:');
-  migrateDatabase(database, applicationMigrations.slice(0, -1));
+  migrateDatabase(database, applicationMigrations.slice(0, applicationMigrations.findIndex((migration) => migration.includes('ADD COLUMN failure_code'))));
   const insert = database.prepare(`
     INSERT INTO second_versions (service, movie_id, release_title, guid, indexer, quality, state, failure, created_at, updated_at)
     VALUES ('radarr', 1, 'x', 'g', 'i', 'q', ?, ?, 0, 0)
