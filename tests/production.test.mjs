@@ -46,6 +46,7 @@ const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.m
 const torrentGrabsModuleUrl = new URL('../dist/server/torrentGrabs.js', import.meta.url).href;
 const problemsModuleUrl = new URL('../dist/server/problems.js', import.meta.url).href;
 const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
+const connectionsModuleUrl = new URL('../dist/server/connections.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
@@ -1853,6 +1854,85 @@ test('service connections read saved settings and classify each outcome', async 
       assert.equal(errorText.includes(value), false, `${service.name} error mentions ${value}`);
     }
   }
+});
+
+// Serving a credential, overwriting one with a blank, saving tested values, or accepting a key no service reads turns this red.
+test('the settings screen shows addresses, hides credentials, saves known keys and tests unsaved values', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { getSetting, listSettingKeys, setSetting } = await import(settingsModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createConnectionRoutes } = await import(connectionsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-settings-screen-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const { fake } = connectArr(database, { sonarr: {} });
+  const secrets = [`rtorrent-password-${process.pid}-distinctive`, `blutopia-token-${process.pid}-distinctive`];
+  setSetting(database, 'credentials', 'rtorrent.password', secrets[0]);
+  setSetting(database, 'credentials', 'blutopia.apiToken', secrets[1]);
+  setSetting(database, 'credentials', 'plex.token', '');
+  // Only the fake Sonarr's port answers; every other address is unreachable.
+  const fetch = async (url, init) => {
+    if (new URL(String(url)).port === '65201') return fake.sonarr.fetch(url, init);
+    throw new TypeError('fetch failed');
+  };
+  const { app } = await makeApp({ api: createConnectionRoutes(database, { fetch }) });
+  const { session } = await signIn(app);
+  const send = (method, path, body, headers = jsonHeaders('https://media.example')) => app.request(path, {
+    method, headers: { ...headers, Cookie: session }, body: JSON.stringify(body),
+  });
+
+  // Serving any credential value, or reporting an empty one as set, turns this red.
+  const read = await app.request('/api/settings', { headers: { Cookie: session } });
+  assert.equal(read.status, 200);
+  const text = await read.text();
+  for (const secret of [...secrets, 'test-key']) assert.equal(text.includes(secret), false, secret);
+  const { services } = JSON.parse(text);
+  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'blutopia', 'privatehd', 'beyondhd']);
+  assert.deepEqual(services[0], { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65201' }, credentials: { 'sonarr.apiKey': true } });
+  assert.deepEqual(services[2].credentials, { 'rtorrent.username': false, 'rtorrent.password': true });
+  assert.deepEqual(services[3].credentials, { 'plex.token': false });
+
+  // Saving a blank credential over the stored one, or accepting a key no service reads, turns this red.
+  const before = listSettingKeys(database);
+  assert.equal((await send('PUT', '/api/settings/credentials/rtorrent.password', { value: '  ' })).status, 204);
+  assert.equal(getSetting(database, 'credentials', 'rtorrent.password'), secrets[0]);
+  for (const path of ['hostPaths/sonarr.url', 'credentials/webhook.secret', 'serviceAddresses/sonarr.apiKey', 'credentials/anything']) {
+    assert.equal((await send('PUT', `/api/settings/${path}`, { value: 'x' })).status, 404, path);
+  }
+  assert.equal((await send('PUT', '/api/settings/serviceAddresses/radarr.url', { value: 1 })).status, 400);
+  assert.equal((await send('PUT', '/api/settings/serviceAddresses/radarr.url', { value: 'x' }, { 'Content-Type': 'application/json' })).status, 403);
+  assert.deepEqual(listSettingKeys(database), before);
+  assert.equal((await send('PUT', '/api/settings/serviceAddresses/radarr.url', { value: 'http://radarr.example' })).status, 204);
+  assert.equal((await send('PUT', '/api/settings/credentials/radarr.apiKey', { value: 'radarr-key' })).status, 204);
+  assert.equal(getSetting(database, 'serviceAddresses', 'radarr.url'), 'http://radarr.example');
+  assert.equal(getSetting(database, 'credentials', 'radarr.apiKey'), 'radarr-key');
+
+  // Testing only saved values, saving the tested ones, or ignoring a blank credential's saved value turns this red.
+  const check = async (service, body) => {
+    const response = await send('POST', `/api/settings/test/${service}`, body);
+    assert.equal(response.status, 200, service);
+    return response.json();
+  };
+  assert.deepEqual(await check('sonarr', { credentials: { 'sonarr.apiKey': 'wrong-key' } }), { kind: 'rejected' });
+  assert.deepEqual(await check('sonarr', { credentials: { 'sonarr.apiKey': '' } }), { kind: 'ok', version: '4.0.0.0' });
+  assert.deepEqual(await check('sonarr', { serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65299' } }), { kind: 'unreachable' });
+  assert.deepEqual(await check('sonarr', { serviceAddresses: { 'sonarr.url': '' } }), { kind: 'not_configured' });
+  assert.deepEqual(await check('blutopia', { serviceAddresses: { 'blutopia.url': 'http://127.0.0.1:65298' } }), { kind: 'unreachable' });
+  assert.deepEqual(await check('privatehd', {}), { kind: 'not_configured' });
+  assert.equal(getSetting(database, 'credentials', 'sonarr.apiKey'), 'test-key');
+  assert.equal(getSetting(database, 'serviceAddresses', 'sonarr.url'), 'http://127.0.0.1:65201');
+  assert.equal(getSetting(database, 'serviceAddresses', 'blutopia.url'), undefined);
+  assert.equal((await send('POST', '/api/settings/test/sonarr', { credentials: { 'radarr.apiKey': 'x' } })).status, 400);
+  assert.equal((await send('POST', '/api/settings/test/sonarr', { hostPaths: {} })).status, 400);
+  assert.equal((await send('POST', '/api/settings/test/webhook', {})).status, 404);
+
+  // Leaving the routes out of the browser API turns this red.
+  const mounted = await makeApp({ api: createApiRoutes(database) });
+  const signedIn = await signIn(mounted.app);
+  assert.equal((await mounted.app.request('/api/settings', { headers: { Cookie: signedIn.session } })).status, 200);
 });
 
 // Classifying a status differently, dropping the service name from a message, or changing any operation's request turns a subtest red.
