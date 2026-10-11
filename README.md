@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="design/app-logo/logo-dark-256.png">
+    <img src="design/app-logo/logo-white-256.png" alt="" width="128" height="128">
+  </picture>
+</p>
+
 # media-manager-2
 
 A power-user web app that runs Sonarr and Radarr through one interface and
