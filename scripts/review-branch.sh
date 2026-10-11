@@ -122,7 +122,7 @@ REPO=${REPO:-$($GH repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
 git fetch -q origin || echo "Warning: git fetch origin failed; origin/main may be out of date." >&2
 tip=$(git rev-parse --verify HEAD) || exit 2
 main_base=$(git merge-base origin/main "$tip") || { echo "No merge base with origin/main." >&2; exit 2; }
-changes=$(git diff "$main_base" "$tip" -- . ':!*.md' | git patch-id --stable | cut -d' ' -f1)
+changes=$(git diff "$main_base" "$tip" -- . ':!*.md' | git patch-id --verbatim | cut -d' ' -f1)
 [ -n "$changes" ] || changes=none
 pending_root="$PWD/.review-pending"
 review_log="$common/branch-reviews.log"
