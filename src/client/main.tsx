@@ -64,8 +64,9 @@ function App() {
   const checkSession = useCallback(async (completedSignIn = false) => {
     if (sessionRef.current.kind === 'signing-out') return;
     const previous = sessionRef.current;
+    // No 'checking' here: it unmounts the signed-in app, losing typed settings and open dialogs on every focus.
+    // The first check and signedIn() start from 'checking' already.
     const request = beginRequest();
-    if (completedSignIn || previous.kind !== 'signed-out') setSession({ kind: 'checking' });
     try {
       const requestStartedAt = performance.now();
       const response = await fetch('/api/session', {
