@@ -375,6 +375,16 @@ export const applicationMigrations = [
     fetched_at INTEGER NOT NULL,
     PRIMARY KEY (size, path)
   ) STRICT;`,
+  // A fixed code beside each second version's failure text, so the client never matches the text. Rows failed before
+  // this get the code their exact text maps to; other texts keep a null code.
+  `ALTER TABLE second_versions ADD COLUMN failure_code TEXT;
+  UPDATE second_versions SET failure_code = CASE
+    WHEN failure = 'Stalled with nothing downloaded; torrent removed.' THEN 'stalled_removed'
+    WHEN failure = 'Sonarr or Radarr grabbed the same torrent.' THEN 'grabbed_by_arr'
+    WHEN failure LIKE 'rTorrent never received it.%' THEN 'never_received'
+    WHEN failure = 'That torrent is already in rTorrent.' THEN 'already_in_rtorrent'
+    WHEN failure IN ('The download link returned a web page, not a torrent file.', 'The download link did not return a torrent file.') THEN 'not_a_torrent'
+  END WHERE failure IS NOT NULL;`,
 ] as const;
 
 class DatabaseError extends Error {}

@@ -1828,6 +1828,7 @@ test('removal advice applies the hit and run rule with margins and proves time o
   });
   const blutopiaNeeds = 184.8 * hour;
   const unknownRatio = (host) => `Global ratio unknown: your ${host} ratio can't be read`;
+  const sentences = ({ recommendation, reason, globalRatio }) => ({ recommendation, reason, globalRatio });
 
   for (const [name, input, recommendation, reason, globalRatio = null] of [
     ['Blutopia 1 s short', { seconds: blutopiaNeeds - 1, ratio: 5000 }, 'keep', 'Keep seeding: 1 hour of seeding left'],
@@ -1869,18 +1870,41 @@ test('removal advice applies the hit and run rule with margins and proves time o
     ['PrivateHD under 10%, downloading', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 3 * GB, complete: 0 }, 'keep', 'Still downloading'],
     ['Blutopia incomplete', { completedBytes: 5 * GB, complete: 0, seconds: blutopiaNeeds }, 'keep', 'Download not complete; blutopia.cc counts seed time only at 100%'],
   ]) {
-    assert.deepEqual(await advise(torrent(input)), { recommendation, reason, globalRatio }, name);
+    assert.deepEqual(sentences(await advise(torrent(input))), { recommendation, reason, globalRatio }, name);
+  }
+
+  // Leaving the margin out of requiredHours, letting hoursLeft reach 0 while seed time is still short, giving an
+  // incomplete torrent hours left the counter can't measure, or keeping the verdict prefix in detail turns this red.
+  const numbers = ({ host, requiredHours, seededHours, hoursLeft, detail }) => ({ host, requiredHours, seededHours, hoursLeft, detail });
+  for (const [name, input, expected] of [
+    ['1 s short', { seconds: blutopiaNeeds - 1 },
+      { host: 'blutopia.cc', requiredHours: 184.8, seededHours: 184.8, hoursLeft: 0.01, detail: '1 hour of seeding left' }],
+    ['met', { seconds: blutopiaNeeds + 10 * hour },
+      { host: 'blutopia.cc', requiredHours: 184.8, seededHours: 194.8, hoursLeft: 0, detail: 'seeded 195 hours of 185 hours needed with margin' }],
+    ['subdomain host', { host: 'tracker.beyond-hd.me', seconds: 100 * hour },
+      { host: 'beyond-hd.me', requiredHours: 132, seededHours: 100, hoursLeft: 32, detail: '32 hours of seeding left, or ratio 0.00 of 1.05 needed' }],
+    ['partial', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 20 * GB, complete: 0, ratio: 949, seconds: 2000 * hour },
+      { host: 'privatehd.to', requiredHours: 1584, seededHours: 2000, hoursLeft: null,
+        detail: "Partly downloaded: clears at ratio 0.95 of the data downloaded (now 0.94) or after 66 days seeding, which isn't measured yet" }],
+    ['no rule', { host: 'tracker.opentrackr.org', seconds: 7 * hour },
+      { host: 'tracker.opentrackr.org', requiredHours: null, seededHours: 7, hoursLeft: null, detail: 'no hit and run rule for tracker.opentrackr.org' }],
+    ['met on ratio alone', { host: 'tracker.beyond-hd.me', seconds: 100 * hour, ratio: 1050 },
+      { host: 'beyond-hd.me', requiredHours: 132, seededHours: 100, hoursLeft: 0, detail: 'ratio 1.05 of 1.05' }],
+    ['gone', { goneAt: now - 1000, seconds: 7 * hour },
+      { host: 'blutopia.cc', requiredHours: null, seededHours: null, hoursLeft: null, detail: 'Seeding time unknown (torrent not in rTorrent)' }],
+  ]) {
+    assert.deepEqual(numbers(await advise(torrent(input))), expected, name);
   }
   assert.equal((await advise('F'.repeat(40))).reason, 'Seeding time unknown (torrent not in rTorrent)');
 
   // Blutopia's minimum is 0.4, so anything under 0.5 keeps the torrent even when its rule is met.
   const met = torrent({ seconds: blutopiaNeeds });
-  assert.deepEqual(await advise(met, { 'blutopia.cc': 0.49 }), {
+  assert.deepEqual(sentences(await advise(met, { 'blutopia.cc': 0.49 })), {
     recommendation: 'keep', reason: 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin',
     globalRatio: 'Keep for ratio: your blutopia.cc ratio is 0.49, minimum 0.4',
   });
   assert.equal((await advise(met, { 'blutopia.cc': 0.5 })).recommendation, 'safe');
-  assert.deepEqual(await advise(met, { 'blutopia.cc': null }), {
+  assert.deepEqual(sentences(await advise(met, { 'blutopia.cc': null })), {
     recommendation: 'safe', reason: 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin', globalRatio: unknownRatio('blutopia.cc'),
   });
 
@@ -1890,11 +1914,11 @@ test('removal advice applies the hit and run rule with margins and proves time o
   const adviseGazelle = (ratio, requiredRatio) => adviseRemoval(database, gazelle, {
     now, accountStats: async (host) => (host === 'gazelle.example' ? account(ratio, requiredRatio) : null),
   });
-  assert.deepEqual(await adviseGazelle(0.7, 0.6), {
+  assert.deepEqual(sentences(await adviseGazelle(0.7, 0.6)), {
     recommendation: 'keep', reason: 'Hit and run rule met: seeded 10 hours of 7 hours needed with margin',
     globalRatio: 'Keep for ratio: your gazelle.example ratio is 0.70, minimum 0.6',
   });
-  assert.deepEqual(await adviseGazelle(0.7, null), {
+  assert.deepEqual(sentences(await adviseGazelle(0.7, null)), {
     recommendation: 'safe', reason: 'Hit and run rule met: seeded 10 hours of 7 hours needed with margin', globalRatio: null,
   });
   assert.equal((await adviseGazelle(0.75, 0.6)).recommendation, 'safe');
@@ -3374,7 +3398,10 @@ test('tracker account connectors read UNIT3D, Gazelle and NexusPHP accounts and 
   // Dropping the hash check on the advice route turns this red.
   assert.equal((await app.request('/api/advice/not-a-hash', { headers: { Cookie: session } })).status, 400);
   const advice = await app.request(`/api/advice/${'a'.repeat(40)}`, { headers: { Cookie: session } });
-  assert.deepEqual(await advice.json(), { recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null });
+  assert.deepEqual(await advice.json(), {
+    recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null,
+    host: null, requiredHours: null, seededHours: null, hoursLeft: null, detail: 'Seeding time unknown (torrent not in rTorrent)',
+  });
   const posted = await app.request('/api/trackers', { method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: '{}' });
   assert.notEqual(posted.status, 200);
 
@@ -4645,6 +4672,9 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createTrackerWatch } = await import(trackersModuleUrl);
   const { createStallFix, indexerMatchesHost } = await import(stallsModuleUrl);
+  const { listSecondVersionRows } = await import(secondVersionRowsModuleUrl);
+  const { createSecondVersions, infoHash } = await import(secondVersionsModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
   const { createProtection } = await import(protectionModuleUrl);
   const { createLabels } = await import(labelsModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-stalls-'));
@@ -4654,22 +4684,23 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const hash = 'AB'.repeat(20);
   const start = Date.parse('2026-10-08T12:00:00Z');
 
-  // versions: second_versions rows for the torrent, which then has no grab record.
+  // versions: second_versions rows for the torrent, which then has no grab record. torrentHash replaces the fixed hash.
   const setup = async ({
     publishedAgoMs = 48 * 60 * minute, completed = 0, files = [[0]], releases, manual = false, message = '',
-    versions = null, removal = { removed: true, deleted: [], left: [] },
+    versions = null, removal = { removed: true, deleted: [], left: [] }, torrentHash = hash,
   } = {}) => {
     count += 1;
     const database = openDatabase(join(root, `db-${count}`, 'media-manager.sqlite'));
     const clock = { value: start };
     const now = () => clock.value;
     const events = createEventHub();
-    const torrent = { completed, down: 0, seeders: 0, scrape: 0 };
+    const torrent = { completed, down: 0, seeders: 0, scrape: 0, gone: false };
     const calls = [];
     const rtorrent = {
       call: async (method, params) => {
         if (method === 'd.multicall2') {
-          return [[hash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, message, 0, 0, torrent.seeders, torrent.seeders, '/downloads']];
+          if (torrent.gone) return [];
+          return [[torrentHash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, message, 0, 0, torrent.seeders, torrent.seeders, '/downloads']];
         }
         if (method === 't.multicall') return params[2] === 't.url=' ? [['https://tracker.blutopia.cc/announce/key']] : [[torrent.scrape]];
         if (method === 'f.multicall') return files;
@@ -4691,7 +4722,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
       database.prepare(`
         INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, failure, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'Movie.2024.2160p', 'guid', 'Blutopia', 'Remux-2160p', ?, ?, ?, 0, 0)
-      `).run(row.service, row.movieId ?? null, row.seriesId ?? null, row.episodeId ?? null, hash, row.state ?? 'downloading', row.failure ?? null);
+      `).run(row.service, row.movieId ?? null, row.seriesId ?? null, row.episodeId ?? null, torrentHash, row.state ?? 'downloading', row.failure ?? null);
     }
     const removed = [];
     const removeTorrent = async (target) => {
@@ -4719,7 +4750,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
         await stalls.check();
       }
     };
-    return { database, torrent, calls, requests: radarr.requests, removals: radarr.state.removals, state: radarr.state, tick, problems, removed };
+    return { database, torrent, calls, requests: radarr.requests, removals: radarr.state.removals, state: radarr.state, tick, problems, removed, now };
   };
   const release = (title, indexer, overrides = {}) => ({ guid: `guid-${title}`, indexerId: title.length, indexer, title, approved: true, ...overrides });
   const grabbedTitles = (requests) => requests.filter(({ method, path }) => method === 'POST' && path === '/api/v3/release').map(({ body }) => body.guid);
@@ -4840,7 +4871,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     await run.tick(181);
     return run.database.prepare("SELECT * FROM problems WHERE kind = 'stalled'").all();
   };
-  const versionRows = (run) => run.database.prepare('SELECT state, failure FROM second_versions ORDER BY id').all().map((row) => ({ ...row }));
+  const versionRows = (run) => run.database.prepare('SELECT state, failure, failure_code FROM second_versions ORDER BY id').all().map((row) => ({ ...row }));
   const movieVersion = [{ service: 'radarr', movieId: 7 }];
 
   // Treating a second version as "no grab record", erasing it outside removeTorrent, or regrabbing it turns this red.
@@ -4851,7 +4882,8 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.equal(stalled[0].state, 'needs_you');
     assert.match(stalled[0].summary, /Second version of Movie \(2024\) \(Movie\.2024\.2160p\)/);
     assert.deepEqual(run.removed, [hash]);
-    assert.deepEqual(versionRows(run), [{ state: 'failed', failure: 'Stalled with nothing downloaded; torrent removed.' }]);
+    // Dropping the failure code from the stall removal turns the code red.
+    assert.deepEqual(versionRows(run), [{ state: 'failed', failure: 'Stalled with nothing downloaded; torrent removed.', failure_code: 'stalled_removed' }]);
     await run.tick(240);
     assert.equal(run.database.prepare("SELECT COUNT(*) AS count FROM problems WHERE kind = 'stalled'").get().count, 1);
     assert.deepEqual(run.removed, [hash]);
@@ -4871,6 +4903,8 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.deepEqual(run.removed, []);
     assert.deepEqual(run.calls.filter(([method]) => method === 'd.erase' || method === 'f.priority.set'), []);
     assert.deepEqual(versionRows(run).map((row) => row.state), ['downloading', 'downloading', 'downloading']);
+    // Reading stalled from anything but the stall check's flag on a still-downloading row turns this red.
+    assert.deepEqual(listSecondVersionRows(run.database, { service: 'sonarr', seriesId: 3 }).map((row) => row.stalled), [true, true, true]);
     run.database.close();
   });
 
@@ -4880,7 +4914,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     await stalledOnce(run);
     const [problem] = listOpenProblems(run.database).filter((item) => item.kind === 'stalled');
     assert.match(problem.steps.at(-1).text, /A\.mkv is also used by the torrent T7\./);
-    assert.deepEqual(versionRows(run), [{ state: 'downloading', failure: null }]);
+    assert.deepEqual(versionRows(run), [{ state: 'downloading', failure: null, failure_code: null }]);
     run.database.close();
   });
 
@@ -4888,14 +4922,52 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   await t.test('a flagged second version that downloads again resolves its problem and is watched afresh', async () => {
     const run = await setup({ versions: movieVersion, completed: 400, releases: [] });
     await stalledOnce(run);
+    const stalled = () => listSecondVersionRows(run.database, { service: 'radarr', movieId: 7 }).map((row) => row.stalled);
+    assert.deepEqual(stalled(), [true]);
     run.torrent.seeders = 2;
     run.torrent.down = 500;
     await run.tick(1);
     assert.deepEqual(listOpenProblems(run.database).filter((item) => item.kind === 'stalled'), []);
+    // Keeping stalled once the torrent downloads again turns this red.
+    assert.deepEqual(stalled(), [false]);
     run.torrent.seeders = 0;
     run.torrent.down = 0;
     await run.tick(181);
     assert.equal(listOpenProblems(run.database).filter((item) => item.kind === 'stalled').length, 1);
+    run.database.close();
+  });
+
+  // Leaving the stall record of a torrent the stall fix erased when it is grabbed again as a second version turns this
+  // red: the stall check then skips that torrent for good and the new row never reads stalled.
+  await t.test('a second version grabbed again after the stall fix erased it is watched and flagged again', async () => {
+    const bytes = Buffer.from('d4:infod6:lengthi1000e4:name16:Movie.2024.2160pee');
+    const again = infoHash(bytes);
+    const run = await setup({ versions: movieVersion, releases: [], torrentHash: again });
+    await stalledOnce(run);
+    assert.deepEqual(versionRows(run).map((row) => row.failure_code), ['stalled_removed']);
+    run.torrent.gone = true;
+    await run.tick(1);
+
+    setSetting(run.database, 'hostPaths', 'downloads.versions', '/data/versions');
+    setSetting(run.database, 'serviceAddresses', 'rtorrent.url', 'http://127.0.0.1:1');
+    const secondVersions = createSecondVersions({
+      database: run.database,
+      releases: { find: () => ({ title: 'Movie.2024.2160p', downloadUrl: 'https://indexer.example/t', protocol: 'torrent', size: 1000, indexer: 'Blutopia', quality: 'Remux-2160p' }) },
+      rtorrent: { call: async (method) => (method === 'd.custom1' ? 'mm2-second-version' : 0) },
+      fetch: async () => new Response(bytes),
+      now: run.now,
+    });
+    assert.equal((await secondVersions.grab({ service: 'radarr', kind: 'movie', movieId: 7 }, 'guid')).kind, 'sent');
+    run.torrent.gone = false;
+    run.torrent.completed = 400;
+    await run.tick(1);
+    await secondVersions.reconcile(run.now());
+    assert.deepEqual(versionRows(run).map((row) => row.state), ['failed', 'downloading']);
+
+    await run.tick(181);
+    assert.deepEqual(listSecondVersionRows(run.database, { service: 'radarr', movieId: 7 }).map((row) => [row.state, row.stalled]), [
+      ['failed', false], ['downloading', true],
+    ]);
     run.database.close();
   });
 
@@ -6363,7 +6435,8 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
     return { status: response.status, body: JSON.parse(text) };
   };
   const rowCount = () => database.prepare('SELECT COUNT(*) AS n FROM second_versions').get().n;
-  const states = (path) => secondVersions.byHash(files[path].hash).map((row) => [row.state, row.failure]);
+  // Dropping or mixing up a failure code on any path below turns the matching line red.
+  const states = (path) => secondVersions.byHash(files[path].hash).map((row) => [row.state, row.failure, row.failureCode]);
   const addTorrent = (path) => database.prepare("INSERT INTO torrents VALUES (?, 'down', 100, 0, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0, '')").run(files[path].hash);
 
   const unset = await post(movie, 'm/movie');
@@ -6386,18 +6459,18 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   assert.deepEqual(calls[0].rows, [{ hash: files['/movie'].hash, state: 'sending' }]);
   // rTorrent drops a hash it already has after answering 0, so only a poll that began after the reply may judge it.
   await secondVersions.reconcile(clock);
-  assert.deepEqual(states('/movie'), [['sending', null]]);
+  assert.deepEqual(states('/movie'), [['sending', null, null]]);
 
   const again = await post(movie, 'm/movie');
-  assert.deepEqual([again.status, again.body.reason], [409, 'That torrent is already in rTorrent.']);
-  for (const [guid, reason] of [
-    ['m/magnet', /magnet link only/], ['m/html', /web page/], ['m/big', /larger than 10 MB/],
-    ['m/loop', /redirected too many times/], ['m/forbidden', /HTTP 403/],
+  assert.deepEqual([again.status, again.body.reason, again.body.secondVersions[0].failureCode], [409, 'That torrent is already in rTorrent.', 'already_in_rtorrent']);
+  for (const [guid, reason, code] of [
+    ['m/magnet', /magnet link only/, 'download_link_failed'], ['m/html', /web page/, 'not_a_torrent'], ['m/big', /larger than 10 MB/, 'download_link_failed'],
+    ['m/loop', /redirected too many times/, 'download_link_failed'], ['m/forbidden', /HTTP 403/, 'download_link_failed'],
   ]) {
     const failed = await post(movie, guid);
     assert.equal(failed.status, 409);
     assert.match(failed.body.reason, reason);
-    assert.deepEqual(failed.body.secondVersions.map((row) => [row.state, row.hash]), [['failed', null]]);
+    assert.deepEqual(failed.body.secondVersions.map((row) => [row.state, row.hash, row.failureCode]), [['failed', null, code]], guid);
   }
   assert.equal(calls.length, 1);
 
@@ -6415,32 +6488,32 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   labelFails = true;
   clock += 1;
   await secondVersions.reconcile(clock);
-  assert.deepEqual([...states('/movie'), ...states('/pack')], Array(4).fill(['sending', null]));
+  assert.deepEqual([...states('/movie'), ...states('/pack')], Array(4).fill(['sending', null, null]));
   labelFails = false;
   await secondVersions.reconcile(clock);
-  assert.deepEqual(states('/movie'), [['downloading', null]]);
-  assert.deepEqual(states('/pack'), Array(3).fill(['failed', 'Sonarr or Radarr grabbed the same torrent.']));
+  assert.deepEqual(states('/movie'), [['downloading', null, null]]);
+  assert.deepEqual(states('/pack'), Array(3).fill(['failed', 'Sonarr or Radarr grabbed the same torrent.', 'grabbed_by_arr']));
 
   rtorrentAnswer = () => { throw new RtorrentFault('rTorrent fault -503: Could not create download.'); };
   const fault = await post(movie, 'm/fault');
   assert.deepEqual([fault.status, fault.body.reason], [409, 'rTorrent fault -503: Could not create download.']);
-  assert.deepEqual(states('/fault'), [['failed', 'rTorrent fault -503: Could not create download.']]);
+  assert.deepEqual(states('/fault'), [['failed', 'rTorrent fault -503: Could not create download.', 'rtorrent_refused']]);
   assert.equal(calls.length, 3);
 
   // Sends rTorrent never confirmed stay sending until a poll that began after them, across a restart.
   rtorrentAnswer = () => { throw new Error('rTorrent is unreachable.'); };
   for (const guid of ['m/down', 'm/lost', 'm/sonarr']) assert.equal((await post(movie, guid)).status, 202);
   await secondVersions.reconcile(clock);
-  assert.deepEqual(states('/down'), [['sending', 'rTorrent is unreachable.']]);
+  assert.deepEqual(states('/down'), [['sending', 'rTorrent is unreachable.', 'send_unconfirmed']]);
   const restarted = createSecondVersions({ database, releases, rtorrent, fetch: indexer, now: () => clock });
   for (const path of ['/down', '/sonarr']) addTorrent(path);
   labels.set(files['/down'].hash, 'mm2-second-version');
   labels.set(files['/sonarr'].hash, 'radarr');
   clock += 1;
   await restarted.reconcile(clock);
-  assert.deepEqual(states('/down'), [['downloading', null]]);
-  assert.deepEqual(states('/lost'), [['failed', 'rTorrent never received it. rTorrent is unreachable.']]);
-  assert.deepEqual(states('/sonarr'), [['failed', 'Sonarr or Radarr grabbed the same torrent.']]);
+  assert.deepEqual(states('/down'), [['downloading', null, null]]);
+  assert.deepEqual(states('/lost'), [['failed', 'rTorrent never received it. rTorrent is unreachable.', 'never_received']]);
+  assert.deepEqual(states('/sonarr'), [['failed', 'Sonarr or Radarr grabbed the same torrent.', 'grabbed_by_arr']]);
   assert.equal(calls.length, 6, 'a send a restart left behind is never sent again');
 });
 
@@ -6534,6 +6607,7 @@ test('a finished second version is hardlinked into the versions folder and Plex 
     }
   };
   const rows = (hash) => database.prepare('SELECT state, failure, file_path FROM second_versions WHERE hash = ? ORDER BY id').all(hash).map((row) => ({ ...row }));
+  const failureCode = (hash) => database.prepare('SELECT failure_code FROM second_versions WHERE hash = ?').get(hash).failure_code;
   const eventCount = () => database.prepare('SELECT COUNT(*) AS n FROM version_events').get().n;
   const problemsFor = (kind) => database.prepare("SELECT subject_id, state, summary FROM problems WHERE kind = ? AND state != 'resolved' ORDER BY id")
     .all(kind).map((row) => ({ ...row }));
@@ -6595,6 +6669,8 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   addRows(unfinishedHash, [{ movieId: 12 }]);
   await versionImport.run();
   assert.deepEqual(rows(twoHash), [{ state: 'failed', failure: 'The torrent has 2 video files; one was expected.', file_path: null }]);
+  // Dropping the code from a failed match turns this red.
+  assert.equal(failureCode(twoHash), 'import_no_match');
   assert.deepEqual(problemsFor(IMPORT_PROBLEM_KIND), [
     { subject_id: '12', state: 'needs_you', summary: 'Alien (1979) (second version): The torrent has 2 video files; one was expected.' },
   ]);
@@ -6929,6 +7005,7 @@ test('second versions are served under their movie and series, and a check flags
     database.close();
     await rm(root, { recursive: true, force: true });
   });
+  await saveOwnerRules(database);
   const versions = { radarr: join(root, 'versions', 'radarr'), sonarr: join(root, 'versions', 'sonarr') };
   const movieFile = join(versions.radarr, 'Dune (2021)', 'Dune (2021) - Remux-2160p FLUX.mkv');
   const episodeFile = join(versions.sonarr, 'Show', 'Season 01', 'Show - S01E01 - WEBDL-2160p NTb.mkv');
@@ -6958,9 +7035,10 @@ test('second versions are served under their movie and series, and a check flags
   insert({ service: 'sonarr', series_id: 5, episode_id: 101, title: 'Show.S01E01.2160p-NTb', quality: 'WEBDL-2160p', hash: 'E'.repeat(40), state: 'imported', file_path: episodeFile, created_at: 300, imported_at: 400 });
   insert({ service: 'sonarr', series_id: 5, episode_id: 102, title: 'Show S01E02 [web]', quality: 'WEBDL-2160p', hash: 'F'.repeat(40), state: 'downloading', created_at: 500 });
   insert({ service: 'sonarr', series_id: 5, episode_id: 102, title: 'Show.S01E02-BAD', quality: 'WEBDL-2160p', hash: null, state: 'failed', failure: 'The download link returned a web page, not a torrent file.', created_at: 600 });
-  const torrent = database.prepare("INSERT INTO torrents VALUES (?, ?, 1000, ?, 0, 7, 1, 1, 1, ?, '', 0, ?, 0, 0, 'blutopia.cc', 1, 1, NULL, ?, '')");
-  torrent.run('M'.repeat(40), 'Dune', 1000, 1, 1500, 7200);
-  torrent.run('F'.repeat(40), 'Show S01E02', 400, 0, 0, 0);
+  const torrent = database.prepare("INSERT INTO torrents VALUES (?, ?, 1000, ?, ?, 7, 1, 1, 1, ?, '', 0, ?, 0, 0, 'blutopia.cc', 1, 1, NULL, ?, '')");
+  torrent.run('M'.repeat(40), 'Dune', 1000, 0, 1, 1500, 7200);
+  torrent.run('F'.repeat(40), 'Show S01E02', 400, 100, 0, 0, 0);
+  database.prepare('INSERT INTO stall_watch (hash, replaced_at) VALUES (?, 550)').run('F'.repeat(40));
 
   const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title)));
   const read = async (path) => (await routes.request(path)).json();
@@ -6973,6 +7051,8 @@ test('second versions are served under their movie and series, and a check flags
     releaseTitle: 'Dune.2021.2160p.Remux-FLUX', indexer: 'Blutopia', quality: 'Remux-2160p', group: 'FLUX', sizeBytes: 1000,
     addedAt: 100, importedAt: 200, hash: 'M'.repeat(40), path: movieFile, percent: null,
     seeding: { inRtorrent: true, complete: true, ratio: 1.5, seedingSeconds: 7200, upRate: 7, trackerHost: 'blutopia.cc' },
+    failureCode: null, stalled: false, etaSeconds: null,
+    hitAndRun: { host: 'blutopia.cc', requiredHours: 168, seededHours: 2, ratio: 1.5, requiredRatio: null, met: false },
   }]);
   const show = await read('/series/5');
   assert.deepEqual(show.secondVersions.map((row) => [row.episodeId, row.state, row.group, row.percent, row.seeding?.complete ?? null, row.failure]), [
@@ -6980,6 +7060,25 @@ test('second versions are served under their movie and series, and a check flags
     [102, 'downloading', null, 40, false, null],
     [102, 'failed', 'BAD', null, null, 'The download link returned a web page, not a torrent file.'],
   ]);
+  // Judging an incomplete torrent by the complete seed time, an ETA from the whole size instead of the bytes left, or
+  // calling a flagged downloading row anything but stalled turns this red.
+  assert.deepEqual(show.secondVersions.map((row) => [row.hitAndRun, row.etaSeconds, row.stalled]), [
+    [null, null, false],
+    [{ host: 'blutopia.cc', requiredHours: null, seededHours: 0, ratio: 0, requiredRatio: null, met: false }, 6, true],
+    [null, null, false],
+  ]);
+  // Counting a stall flag set before the row was created (an earlier use of the same torrent) turns this red.
+  database.prepare('UPDATE stall_watch SET replaced_at = 499 WHERE hash = ?').run('F'.repeat(40));
+  assert.equal((await read('/series/5')).secondVersions[1].stalled, false);
+
+  // Not judging a met rule as met, or failing the whole page on an invalid saved rule, turns these red.
+  setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', JSON.stringify({ seedHours: [{ hours: 2 }] }));
+  assert.deepEqual((await read('/movie/9')).secondVersions[0].hitAndRun,
+    { host: 'blutopia.cc', requiredHours: 2, seededHours: 2, ratio: 1.5, requiredRatio: null, met: true });
+  setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', 'not json');
+  const broken = await routes.request('/movie/9');
+  assert.equal(broken.status, 200);
+  assert.equal((await broken.json()).secondVersions[0].hitAndRun, null);
 
   const problems = createProblems({ database, events: createEventHub() });
   const checks = createSecondVersionChecks({ database, arr, problems });
@@ -7038,6 +7137,29 @@ test('second versions are served under their movie and series, and a check flags
     'second_version_orphaned sonarr 102 needs_you',
     'tracked_in_versions_folder sonarr 201 needs_you',
   ]);
+});
+
+// Dropping the failure_code backfill, or matching a text it does not own, turns this red.
+test('second versions that failed before failure codes get the code their text maps to', async () => {
+  const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+  const database = new DatabaseSync(':memory:');
+  migrateDatabase(database, applicationMigrations.slice(0, -1));
+  const insert = database.prepare(`
+    INSERT INTO second_versions (service, movie_id, release_title, guid, indexer, quality, state, failure, created_at, updated_at)
+    VALUES ('radarr', 1, 'x', 'g', 'i', 'q', ?, ?, 0, 0)
+  `);
+  const failures = [
+    'Stalled with nothing downloaded; torrent removed.', 'Sonarr or Radarr grabbed the same torrent.',
+    'rTorrent never received it. rTorrent is unreachable.', 'That torrent is already in rTorrent.',
+    'The download link did not return a torrent file.', 'The torrent has 2 video files; one was expected.',
+  ];
+  for (const failure of failures) insert.run('failed', failure);
+  insert.run('failed', null);
+  migrateDatabase(database, applicationMigrations);
+  assert.deepEqual(database.prepare('SELECT failure_code FROM second_versions ORDER BY id').all().map((row) => row.failure_code), [
+    'stalled_removed', 'grabbed_by_arr', 'never_received', 'already_in_rtorrent', 'not_a_torrent', null, null,
+  ]);
+  database.close();
 });
 
 // Forcing an import blocked for any reason but "Not an upgrade", using a move instead of a hardlink-or-copy import, forcing the same download twice, or calling a replace complete without an import breaks the replace guarantee.
