@@ -15,6 +15,7 @@ import {
   rm,
   stat,
   symlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -4320,7 +4321,7 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     const { session } = await signIn(app);
     const get = (path) => app.request(path, { headers: { Cookie: session } });
     const rows = () => database.prepare('SELECT size, path FROM tmdb_images').all().map(({ size, path }) => `${size}/${path}`);
-    return { app, clock, fetched, get, remote, rows };
+    return { app, clock, fetched, get, remote, rows, tmdb, images: join(directory, 'images') };
   };
 
   // Fetching from TMDB on every request instead of serving the saved copy, or not sharing one fetch between concurrent misses, turns this red.
@@ -4381,6 +4382,27 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     assert.equal(response.status, 502);
     assert.deepEqual(await response.json(), { error: 'tmdb_unreachable' });
     assert.deepEqual(rows(), []);
+  });
+
+  // Expiring a copy only when it is asked for again, or leaving the partial file a failed write made, grows the images folder forever.
+  await t.test('the sweep removes copies past six months and partial files older than a day, and a failed save leaves no partial file', async () => {
+    const { clock, get, rows, tmdb, images } = await setup();
+    const day = 24 * 60 * 60_000;
+    await get('/api/images/tmdb/w342/old.jpg');
+    clock.value += 181 * day;
+    await get('/api/images/tmdb/w342/fresh.jpg');
+    const at = (ms) => new Date(ms);
+    await writeFile(join(images, 'stale.jpg.1.tmp'), 'partial');
+    await utimes(join(images, 'stale.jpg.1.tmp'), at(clock.value - 2 * day), at(clock.value - 2 * day));
+    await writeFile(join(images, 'busy.jpg.2.tmp'), 'partial');
+    await utimes(join(images, 'busy.jpg.2.tmp'), at(clock.value), at(clock.value));
+    tmdb.sweep();
+    assert.deepEqual(rows(), ['w342/fresh.jpg']);
+    assert.deepEqual((await readdir(images)).sort(), ['busy.jpg.2.tmp', 'tmdb-w342-fresh.jpg']);
+
+    await mkdir(join(images, 'tmdb-w342-blocked.jpg', 'inside'), { recursive: true });
+    assert.equal((await get('/api/images/tmdb/w342/blocked.jpg')).status, 500);
+    assert.deepEqual((await readdir(images)).filter((name) => name.startsWith('tmdb-w342-blocked.jpg.')), []);
   });
 });
 

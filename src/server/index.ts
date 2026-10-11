@@ -51,7 +51,7 @@ import { createStallFix } from './stalls.js';
 import { createTorrentFiles } from './torrentFiles.js';
 import { createTitleDelete } from './titleDelete.js';
 import { adviseRemoval } from './advice.js';
-import { createImageRoutes, createTitleCache, createTmdbImages } from './titles.js';
+import { createImageRoutes, createTitleCache, createTmdbImages, IMAGE_SWEEP_INTERVAL_MS } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 const host = process.env.HOST ?? '127.0.0.1';
@@ -109,6 +109,8 @@ if (database !== undefined) {
   const imageDirectory = join(dirname(process.env.DB_PATH ?? defaultDatabasePath), 'images');
   const titles = createTitleCache({ database, arr, events, imageDirectory });
   runner.register('title-refresh', titles.intervalMs, titles.reconcile);
+  const tmdbImages = createTmdbImages({ database, imageDirectory });
+  runner.register('image-sweep', IMAGE_SWEEP_INTERVAL_MS, tmdbImages.sweep);
   const imports = createImportFix({ database, arr, problems, events });
   runner.register('import-fix', 60_000, imports.check);
   // 'grab' events carry torrent grab records for the Downloads screen, so a hand grab's own record goes out under its own name.
@@ -209,7 +211,7 @@ if (database !== undefined) {
       history: createHistory({ database, arr, labels }),
       blocklist: createBlocklist({ database, arr, isManualDownload: protection.isProtected }),
     }),
-    images: createImageRoutes(titles, createTmdbImages({ database, imageDirectory })),
+    images: createImageRoutes(titles, tmdbImages),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
       // One receiver for both: live downloads record every event, a Grab of a manual download is vetoed,
@@ -223,6 +225,12 @@ if (database !== undefined) {
       },
     },
   });
+  // The runner first runs a job one interval after start, so the daily sweep also runs now.
+  try {
+    tmdbImages.sweep();
+  } catch (error) {
+    console.error(`Image sweep failed: ${(error as Error).message}`);
+  }
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.log(`Listening on http://${host}:${info.port}`);
