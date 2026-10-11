@@ -367,8 +367,8 @@ export const createVersionImport = (options: {
     for (const row of rows) byHash.set(row.hash, [...byHash.get(row.hash) ?? [], row]);
     const unsettled = new Set<Service>();
     for (const group of byHash.values()) if (await importTorrent(group) !== 'done') unsettled.add(group[0].service);
-    // A run that reached the folder, or had nothing to import, with no folder error clears the folder problem,
-    // even when every row failed for another reason.
+    // A run with no folder error clears the folder problem, also when it had nothing to import or every row failed
+    // for another reason before the folder was tried.
     for (const service of ['radarr', 'sonarr'] as const) {
       if (versionsFolder(service) !== undefined && !unsettled.has(service)) {
         resolveOpen(FOLDER_PROBLEM_KIND, folderSubject(service), `An import run for hostPaths versions.${service} hit no folder error.`);

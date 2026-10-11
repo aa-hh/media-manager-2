@@ -6717,7 +6717,7 @@ test('flagged lists what automation gave up on with the right next step, and wan
   const flagged = createFlagged({ database, arr, labels: createLabels(arr), isManualDownload, now: () => clock.value });
 
   // Mapping a problem to the wrong next step, offering a manual import for a non-import problem, a pick for several episodes,
-  // a pick or search for a second version whose title or file is gone, or a delete of one still downloading turns this red.
+  // or a pick or search for a second version whose title or file is gone turns this red.
   const needsYou = await flagged.needsYou();
   assert.deepEqual(needsYou.items.map((item) => [item.problem.kind, item.label, item.actions.map((action) => action.kind)]), [
     ['stalled', 'Dune (2021)', ['pick_release', 'search']],
@@ -6727,15 +6727,16 @@ test('flagged lists what automation gave up on with the right next step, and wan
     ['tracker_cooldown', 'blutopia.cc', ['open_health']],
     ['dependency_down', 'rtorrent', ['open_health']],
     ['missed_search', 'Severance S01E02', ['pick_release', 'search']],
-    ['second_version_orphaned', 'Dune (2021)', ['delete_second_version']],
-    ['second_version_missing', 'Severance S01E02', ['delete_second_version']],
+    ['second_version_orphaned', 'Dune (2021)', []],
+    ['second_version_missing', 'Severance S01E02', []],
     ['tracked_in_versions_folder', 'Dune (2021)', ['pick_release', 'search']],
   ]);
   assert.equal(needsYou.items[1].kindWord, 'IMPORT MATCHING');
   assert.deepEqual(needsYou.items[1].actions[0], { kind: 'manual_import', service: 'sonarr', downloadId: 'BB'.repeat(20) });
   assert.deepEqual(needsYou.items[2].actions[0], { kind: 'search', service: 'sonarr', type: 'episode', ids: [33, 34] });
   assert.deepEqual(needsYou.items[6].actions[0].target, { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 32 });
-  assert.deepEqual([needsYou.items[7].actions, needsYou.items[8].actions], [[{ kind: 'delete_second_version', id: 1 }], [{ kind: 'delete_second_version', id: 3 }]]);
+  // Offering no delete for an orphaned or missing second version, or one still downloading, turns this red.
+  assert.deepEqual(needsYou.items.map((item) => item.deleteSecondVersionIds), [[], [], [], [], [], [], [], [1], [3], []]);
   // Counting resolutions older than a week, or counting open problems as handled, turns this red.
   assert.equal(needsYou.handledThisWeek, 1);
   assert.equal(needsYou.handlingCount, 1);
