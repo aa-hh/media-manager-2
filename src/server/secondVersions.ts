@@ -257,6 +257,8 @@ export const createSecondVersions = (options: {
       database.exec('BEGIN IMMEDIATE;');
       try {
         insert(hash, 'sending', null, null);
+        // A stall record left from an earlier use of this torrent would make the stall check skip it for good.
+        database.prepare('DELETE FROM stall_watch WHERE hash = ?').run(hash);
         database.exec('COMMIT;');
       } catch (error) {
         database.exec('ROLLBACK;');

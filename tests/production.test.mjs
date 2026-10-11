@@ -4448,6 +4448,8 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const { createTrackerWatch } = await import(trackersModuleUrl);
   const { createStallFix, indexerMatchesHost } = await import(stallsModuleUrl);
   const { listSecondVersionRows } = await import(secondVersionRowsModuleUrl);
+  const { createSecondVersions, infoHash } = await import(secondVersionsModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
   const { createProtection } = await import(protectionModuleUrl);
   const { createLabels } = await import(labelsModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-stalls-'));
@@ -4457,22 +4459,23 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const hash = 'AB'.repeat(20);
   const start = Date.parse('2026-10-08T12:00:00Z');
 
-  // versions: second_versions rows for the torrent, which then has no grab record.
+  // versions: second_versions rows for the torrent, which then has no grab record. torrentHash replaces the fixed hash.
   const setup = async ({
     publishedAgoMs = 48 * 60 * minute, completed = 0, files = [[0]], releases, manual = false, message = '',
-    versions = null, removal = { removed: true, deleted: [], left: [] },
+    versions = null, removal = { removed: true, deleted: [], left: [] }, torrentHash = hash,
   } = {}) => {
     count += 1;
     const database = openDatabase(join(root, `db-${count}`, 'media-manager.sqlite'));
     const clock = { value: start };
     const now = () => clock.value;
     const events = createEventHub();
-    const torrent = { completed, down: 0, seeders: 0, scrape: 0 };
+    const torrent = { completed, down: 0, seeders: 0, scrape: 0, gone: false };
     const calls = [];
     const rtorrent = {
       call: async (method, params) => {
         if (method === 'd.multicall2') {
-          return [[hash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, message, 0, 0, torrent.seeders, torrent.seeders, '/downloads']];
+          if (torrent.gone) return [];
+          return [[torrentHash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, message, 0, 0, torrent.seeders, torrent.seeders, '/downloads']];
         }
         if (method === 't.multicall') return params[2] === 't.url=' ? [['https://tracker.blutopia.cc/announce/key']] : [[torrent.scrape]];
         if (method === 'f.multicall') return files;
@@ -4494,7 +4497,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
       database.prepare(`
         INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, failure, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'Movie.2024.2160p', 'guid', 'Blutopia', 'Remux-2160p', ?, ?, ?, 0, 0)
-      `).run(row.service, row.movieId ?? null, row.seriesId ?? null, row.episodeId ?? null, hash, row.state ?? 'downloading', row.failure ?? null);
+      `).run(row.service, row.movieId ?? null, row.seriesId ?? null, row.episodeId ?? null, torrentHash, row.state ?? 'downloading', row.failure ?? null);
     }
     const removed = [];
     const removeTorrent = async (target) => {
@@ -4522,7 +4525,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
         await stalls.check();
       }
     };
-    return { database, torrent, calls, requests: radarr.requests, removals: radarr.state.removals, state: radarr.state, tick, problems, removed };
+    return { database, torrent, calls, requests: radarr.requests, removals: radarr.state.removals, state: radarr.state, tick, problems, removed, now };
   };
   const release = (title, indexer, overrides = {}) => ({ guid: `guid-${title}`, indexerId: title.length, indexer, title, approved: true, ...overrides });
   const grabbedTitles = (requests) => requests.filter(({ method, path }) => method === 'POST' && path === '/api/v3/release').map(({ body }) => body.guid);
@@ -4706,6 +4709,40 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     run.torrent.down = 0;
     await run.tick(181);
     assert.equal(listOpenProblems(run.database).filter((item) => item.kind === 'stalled').length, 1);
+    run.database.close();
+  });
+
+  // Leaving the stall record of a torrent the stall fix erased when it is grabbed again as a second version turns this
+  // red: the stall check then skips that torrent for good and the new row never reads stalled.
+  await t.test('a second version grabbed again after the stall fix erased it is watched and flagged again', async () => {
+    const bytes = Buffer.from('d4:infod6:lengthi1000e4:name16:Movie.2024.2160pee');
+    const again = infoHash(bytes);
+    const run = await setup({ versions: movieVersion, releases: [], torrentHash: again });
+    await stalledOnce(run);
+    assert.deepEqual(versionRows(run).map((row) => row.failure_code), ['stalled_removed']);
+    run.torrent.gone = true;
+    await run.tick(1);
+
+    setSetting(run.database, 'hostPaths', 'downloads.versions', '/data/versions');
+    setSetting(run.database, 'serviceAddresses', 'rtorrent.url', 'http://127.0.0.1:1');
+    const secondVersions = createSecondVersions({
+      database: run.database,
+      releases: { find: () => ({ title: 'Movie.2024.2160p', downloadUrl: 'https://indexer.example/t', protocol: 'torrent', size: 1000, indexer: 'Blutopia', quality: 'Remux-2160p' }) },
+      rtorrent: { call: async (method) => (method === 'd.custom1' ? 'mm2-second-version' : 0) },
+      fetch: async () => new Response(bytes),
+      now: run.now,
+    });
+    assert.equal((await secondVersions.grab({ service: 'radarr', kind: 'movie', movieId: 7 }, 'guid')).kind, 'sent');
+    run.torrent.gone = false;
+    run.torrent.completed = 400;
+    await run.tick(1);
+    await secondVersions.reconcile(run.now());
+    assert.deepEqual(versionRows(run).map((row) => row.state), ['failed', 'downloading']);
+
+    await run.tick(181);
+    assert.deepEqual(listSecondVersionRows(run.database, { service: 'radarr', movieId: 7 }).map((row) => [row.state, row.stalled]), [
+      ['failed', false], ['downloading', true],
+    ]);
     run.database.close();
   });
 
