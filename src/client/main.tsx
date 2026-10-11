@@ -302,7 +302,7 @@ function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'n
         };
         return (
           <DownloadsLiveBar
-            count={state.kind === 'ready' ? `${downloadingRows.length} downloading` : 'downloads'}
+            count={state.kind === 'ready' ? (downloadingRows.length === 0 ? 'Nothing downloading' : `${downloadingRows.length} downloading`) : 'downloads'}
             idle={downloadingRows.length === 0}
             speeds={speeds}
             items={downloadingRows.map((row) => ({ key: row.key, name: row.label, percent: row.progress ?? 0 }))}

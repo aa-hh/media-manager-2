@@ -8,11 +8,15 @@ import { Logo, trackerLogo, trackerName } from '@/components/ui/logo';
 import { cn } from '@/lib/utils';
 
 /**
- * White, 1 px edge, radius 10, clips its rows. Children: a TableHeader, then rows. The last child sits 1 px under
- * the bottom edge, so the last row's line is clipped even when that row is nested inside a group or panel.
+ * White, 1 px edge, radius 10, clips its rows. Children: a TableHeader, then rows. The rows sit in a body that
+ * pulls up 1 px under the clipped bottom edge, so the last row's line is hidden however the rows are wrapped.
  */
-function Table({ className, ...props }: ComponentProps<'div'>) {
-  return <div role="table" className={cn('flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card *:last:-mb-px', className)} {...props} />;
+function Table({ className, children, ...props }: ComponentProps<'div'>) {
+  return (
+    <div role="table" className={cn('flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card', className)} {...props}>
+      <div className="-mb-px flex flex-col">{children}</div>
+    </div>
+  );
 }
 
 /** Column header row, 32 px, white, line under. Children are TableHead cells with the widths of the rows below. */
@@ -103,6 +107,8 @@ function TableRow({ selected = false, marker, best = false, progress, className,
 
 /** Tracker cell content shared by the release, version, download and blocklist rows: the real logo at 16 px, then the name as the design writes it. */
 function TableCellTracker({ name, className }: { name: string; className?: string }) {
+  // An empty name is no tracker at all, not a blank logo slot.
+  if (name === '') return null;
   const logo = trackerLogo(name);
   return (
     <span className={cn('flex min-w-0 items-center gap-1.5 text-muted-foreground', className)}>

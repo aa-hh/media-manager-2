@@ -53,7 +53,7 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
   const [selected, setSelected] = useState<string | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState<BlockEntry | null>(null);
-  const timerRef = useRef<{ entry: BlockEntry; timer: number; toast: string } | null>(null);
+  const pendingRef = useRef<{ entry: BlockEntry; toast: string } | null>(null);
 
   const show = (key: string, visible: boolean) => setHidden((current) => {
     const next = new Set(current);
@@ -64,7 +64,6 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
 
   // The delete goes out only once the Undo window has passed; Sonarr and Radarr cannot put an entry back.
   const commit = async (entry: BlockEntry) => {
-    timerRef.current = null;
     const { status } = await sendJson(`/api/blocklist/${entry.service}/${entry.id}`, 'DELETE').catch(() => ({ status: 0 }));
     if (status === 204) return;
     show(keyOf(entry), true);
@@ -72,31 +71,33 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
   };
 
   const undo = () => {
-    const current = timerRef.current;
+    const current = pendingRef.current;
     if (current === null) return;
-    window.clearTimeout(current.timer);
-    timerRef.current = null;
+    pendingRef.current = null;
     toasts.close(current.toast);
     show(keyOf(current.entry), true);
   };
 
   const unblock = (entry: BlockEntry) => {
-    const previous = timerRef.current;
-    if (previous !== null) {
-      window.clearTimeout(previous.timer);
-      toasts.close(previous.toast);
-      void commit(previous.entry);
-    }
+    const previous = pendingRef.current;
+    if (previous !== null) toasts.close(previous.toast);
     show(keyOf(entry), false);
     setSelected(null);
     setFailed(null);
+    // The Undo window is the toast's own life, which pauses while hovered: the delete goes out when the toast closes
+    // by timing out or being dismissed, never while Undo is still on screen.
     const toast = toasts.add({
       title: `Unblocked ${entry.release}`,
       description: `${serviceWords[entry.service]} can grab that release again on the next search.`,
       timeout: UNDO_MS,
       actionProps: { children: 'Undo', onClick: undo },
+      onClose: () => {
+        if (pendingRef.current?.entry !== entry) return;
+        pendingRef.current = null;
+        void commit(entry);
+      },
     });
-    timerRef.current = { entry, toast, timer: window.setTimeout(() => void commit(entry), UNDO_MS) };
+    pendingRef.current = { entry, toast };
   };
 
   const entries = state.kind === 'ready' ? state.items.filter((entry) => !hidden.has(keyOf(entry))) : [];

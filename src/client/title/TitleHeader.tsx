@@ -122,13 +122,13 @@ const cardRatings = (subject: Subject) => {
   });
 };
 
-// Sonarr gives each season's next and previous air time; the show's are the earliest next and the latest previous.
+// The server sends the show's next and previous air time; when it has none, fall back to the earliest next and latest previous across the seasons.
 const airing = (tv: SeriesDetail, which: 'nextAiring' | 'previousAiring') => {
   const times = tv.seasons
     .map((season) => season.statistics[which])
     .filter((time) => time !== null)
     .sort((a, b) => Date.parse(a) - Date.parse(b));
-  const at = which === 'nextAiring' ? times[0] : times[times.length - 1];
+  const at = tv[which] ?? (which === 'nextAiring' ? times[0] : times[times.length - 1]);
   if (at === undefined) return null;
   const episode = tv.episodes.find((candidate) => candidate.airDate !== null && Date.parse(candidate.airDate) === Date.parse(at));
   const when = new Date(at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -138,7 +138,7 @@ const airing = (tv: SeriesDetail, which: 'nextAiring' | 'previousAiring') => {
 type Cell = { label: string; value: string | null | undefined };
 
 const tvFacts = (tv: SeriesDetail): Cell[][] => {
-  const firstAired = tv.episodes
+  const firstAired = tv.firstAired ?? tv.episodes
     .filter((episode) => episode.seasonNumber > 0 && episode.airDate !== null)
     .map((episode) => episode.airDate!)
     .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
@@ -227,7 +227,7 @@ function OverviewBand({ subject, library }: { subject: Subject; library: TitleFa
 
 type Sent = 'sending' | 'sent' | 'failed';
 
-export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, onUnauthenticated }: {
+export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, pickPanel, compact = false, onChangeMonitoring, add, onUnauthenticated }: {
   subject: Subject;
   owned: boolean;
   /** Status Badges under the meta line. */
@@ -242,6 +242,8 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   /** Pick a release: opens or closes the panel. */
   onPick?: () => void;
   picking?: boolean;
+  /** The open Pick a release panel, drawn between the header and the overview band. */
+  pickPanel?: ReactNode;
   compact?: boolean;
   onChangeMonitoring?: () => void;
   /** The add controls for a title not yet in the library; they take the place of the actions. */
@@ -326,6 +328,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
           ? headerFacts.map((fact) => <Fact key={fact.label} label={fact.label}>{fact.value}</Fact>)
           : undefined}
       />
+      {pickPanel}
       {owned && !compact && <OverviewBand subject={subject} library={libraryRows} />}
       {/* Hand-off to AA-32 (Second versions and safe deletion): delete show/movie and delete version. */}
       {showHistory && history}

@@ -60,7 +60,6 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
       <TitleHeader
         subject={{ type: 'movie', detail }}
         owned
-        compact={picking}
         badges={(
           <>
             <Badge variant="strong">In library</Badge>
@@ -70,16 +69,16 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         facts={facts}
         onPick={() => setPicking(!picking)}
         picking={picking}
+        pickPanel={picking && (
+          <div className="pt-2">
+            <PickRelease target={target} title={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} />
+          </div>
+        )}
         monitored={detail.monitored ? 'all' : 'none'}
         onToggleMonitored={() => void toggleMonitored()}
         monitorProblem={problem}
         onUnauthenticated={onUnauthenticated}
       />
-      {picking && (
-        <div className="pt-2">
-          <PickRelease target={target} title={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} />
-        </div>
-      )}
       {/* Hand-off to AA-32: second version row and delete. */}
       <div className="flex flex-col pt-2 pb-10">
         <LabelGroup count={detail.file === null ? 0 : 1}>Versions</LabelGroup>

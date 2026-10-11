@@ -75,7 +75,10 @@ export type SeriesDetail = {
   status: string | null;
   ended: boolean;
   airTime: string | null;
+  firstAired: string | null;
   lastAired: string | null;
+  nextAiring: string | null;
+  previousAiring: string | null;
   network: string | null;
   language: string | null;
   overview: string | null;
