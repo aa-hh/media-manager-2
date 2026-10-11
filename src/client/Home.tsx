@@ -1,3 +1,4 @@
+import { Settings as SettingsIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { AppBarDesktop, AppBarNavItem } from './components/ui/app-bar';
 import { Button } from './components/ui/button';
@@ -7,6 +8,8 @@ import type { DownloadsState } from './downloads/useDownloads';
 import { Library } from './library/Library';
 import { navigate, replace, routeFor, useLocation } from './navigation';
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
+import { Settings } from './settings/Settings';
+import { cn } from './lib/utils';
 import { Overview } from './title/Overview';
 
 type HomeProps = {
@@ -87,6 +90,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
       : pathname === '/history' ? 'history'
       : pathname === '/blocklist' ? 'blocklist'
       : pathname === '/health' ? 'health'
+      : pathname === '/settings' ? 'settings'
       : pathname === '/calendar' ? 'calendar'
         : /^\/(series|movie|title)\//.test(pathname) ? 'title'
           : 'library';
@@ -148,6 +152,18 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         })}
         actions={(
           <>
+            <Button
+              variant="ghost"
+              iconOnly
+              icon={<SettingsIcon />}
+              aria-label="Settings"
+              aria-current={view === 'settings' ? 'page' : undefined}
+              className={cn('[&>svg]:size-4.5', view === 'settings' ? 'bg-selected text-foreground' : 'text-muted-foreground')}
+              onClick={() => {
+                setQuery('');
+                navigate('/settings');
+              }}
+            />
             {signOutProblem}
             <Button variant="ghost" onClick={onSignOut} disabled={signOutDisabled}>
               {signOutLabel}
@@ -165,6 +181,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
             : view === 'history' ? history
             : view === 'blocklist' ? blocklist
             : view === 'health' ? health
+            : view === 'settings' ? <Settings onUnauthenticated={onUnauthenticated} />
             : view === 'calendar'
               ? <Calendar downloads={downloadsState} onUnauthenticated={onUnauthenticated} />
               : view === 'title'

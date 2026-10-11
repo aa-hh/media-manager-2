@@ -8751,6 +8751,66 @@ test('backup commands upload, list and restore through a bucket or a folder from
   for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey));
 });
 
+test('the settings screen sends only changed fields and ranks each service state', async (t) => {
+  // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
+  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
+
+  // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
+  await t.test('only a changed address and typed secrets are sent', () => {
+    const cases = [
+      [{ address: ' http://localhost:8989 ', secrets: { 'sonarr.apiKey': '  ' } }, {}],
+      [{ address: 'http://localhost:8990', secrets: {} }, { serviceAddresses: { 'sonarr.url': 'http://localhost:8990' } }],
+      [{ address: 'http://localhost:8989', secrets: { 'sonarr.apiKey': 'new' } }, { credentials: { 'sonarr.apiKey': 'new' } }],
+    ];
+    for (const [draft, expected] of cases) assert.deepEqual(changes('sonarr', saved, draft), expected);
+  });
+
+  // Letting unsaved edits hide a running test or a failure turns this red.
+  await t.test('a running test, then a failure, then unsaved edits win the pill', () => {
+    const sonarr = services.find((info) => info.name === 'sonarr');
+    const connected = { kind: 'ok', version: '4.0.10.2544', at: 0, ofSaved: true };
+    const cases = [
+      [{ kind: 'testing' }, 2, 'testing'],
+      [{ kind: 'rejected', at: 0, ofSaved: false }, 2, 'failed'],
+      [connected, 1, 'unsaved'],
+      [connected, 0, 'connected'],
+      [{ kind: 'idle' }, 0, 'not-set-up'],
+    ];
+    for (const [check, edited, state] of cases) assert.equal(pillFor(sonarr, check, edited).state, state);
+    assert.equal(pillFor(sonarr, connected, 0).text, 'Connected · 4.0.10');
+  });
+
+  // Drawing a link red while one side has never answered, or grey while a whole side is failing, turns this red.
+  await t.test('a link is faint until both sides answered, and red when a side has nothing working', () => {
+    const ok = { kind: 'ok', at: 0, ofSaved: true };
+    const down = { kind: 'unreachable', at: 0, ofSaved: true };
+    assert.equal(linkTone([ok, { kind: 'idle' }], [{ kind: 'idle' }]), 'idle');
+    assert.equal(linkTone([ok, down], [down]), 'risk');
+    assert.equal(linkTone([ok, down], [ok]), 'ok');
+  });
+});
+
+test('the tracker rule form sends the saved rule back unchanged and converts percentages and days', async () => {
+  // Sending percentages or days as typed, dropping the kept curve row, writing margins nobody changed, or sending
+  // typed text as a blank turns this red.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/trackers.ts', import.meta.url), 'utf8');
+  const { draftFromRow, ruleBody, notANumber } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const rule = {
+    seedHours: [{ upToGB: 1, hours: 72 }, { upToGB: 50, hours: 72, perGB: 2 }, { hours: -219.2023, lnGB: 100 }],
+    ratio: 0.9, logic: 'or', minGlobalRatio: null, partial: { exemptBelow: 0.1, ratio: 0.9, maxHours: 1440 },
+  };
+  const row = { host: 'privatehd.to', status: 'configured', rule, ruleSource: 'settings', margins: { timeFactor: 1.1, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 } };
+  const draft = draftFromRow(row);
+  assert.deepEqual(ruleBody(draft, draft), { rule });
+  const wider = ruleBody({ ...draft, timePercent: '20' }, draft);
+  assert.deepEqual(wider.margins, { timeFactor: 1.2, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 });
+  assert.deepEqual(notANumber({ ...draft, ratio: '0.9x' }), { field: 'ratio', reason: 'Enter a number, such as 0.9 or 72.' });
+});
+
 test('deleting a movie or a show maps its files first, keeps seeding unless chosen, and stops when Sonarr or Radarr refuses', async (t) => {
   const { rmSync } = await import('node:fs');
   const { openDatabase } = await import(databaseModuleUrl);
