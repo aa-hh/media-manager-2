@@ -5,8 +5,8 @@ import { readDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import type { createJobRunner } from './jobs.js';
 import type { ConnectionStatus } from './services/connection.js';
-import { type Tracker, type TrackerAccountStats, trackers as trackerNames } from './services/trackerAccounts.js';
-import { indexerMatchesHost } from './stalls.js';
+import type { TrackerConnection } from './services/trackerAccounts.js';
+import { trackerRule } from './trackerRules.js';
 import type { Service } from './torrentGrabs.js';
 import { type Cooldown, listCooldowns, listIssues } from './trackers.js';
 import { listTorrents } from './torrents.js';
@@ -46,17 +46,27 @@ type ArrClient = {
 const ranks: Record<HealthLevel, number> = { ok: 0, notice: 1, warning: 2, error: 3 };
 const labels: Record<ServiceName, string> = { sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex' };
 const arrServices: Service[] = ['sonarr', 'radarr'];
-const trackerLabels: Record<Tracker, string> = { blutopia: 'Blutopia', privatehd: 'PrivateHD', beyondhd: 'BeyondHD' };
-// Each tracker's own minimum global ratio, copied from its rules; PrivateHD publishes none.
-const RATIO_MINIMUMS: Partial<Record<Tracker, number>> = { blutopia: 0.4, beyondhd: 0.25 };
-
-const accountOf = (stats: TrackerAccountStats | undefined): TrackerAccount => {
-  if (stats === undefined || stats.kind === 'not_configured') return { kind: 'not_set_up' };
-  if (stats.kind !== 'ok') return { kind: 'unavailable', reason: stats.kind };
-  if (stats.stats === 'unsupported') return { kind: 'unavailable', reason: 'unsupported' };
-  // Blutopia's API reports hit-and-runs as a lifetime count, not the currently open ones.
-  return { kind: 'ok', ratio: stats.stats.ratio, ratioMinimum: RATIO_MINIMUMS[stats.tracker] ?? null, hitAndRuns: stats.stats.hitAndRuns, hitAndRunsIsLifetime: true };
+// The account's minimum ratio: a Gazelle site's own required ratio, else the minGlobalRatio of the tracker's rule.
+// A saved rule that fails validation leaves it unknown here; removal advice reports that rule's problem.
+const ratioMinimum = (database: DatabaseSync, host: string, connection: TrackerConnection) => {
+  if (connection.kind === 'ok' && connection.stats.requiredRatio !== null) return connection.stats.requiredRatio;
+  try {
+    return trackerRule(database, host)?.rule.minGlobalRatio ?? null;
+  } catch {
+    return null;
+  }
 };
+
+// A site older than its software's account API is shown like one with no account connection at all.
+const accountOf = (connection: TrackerConnection, minimum: number | null): TrackerAccount => {
+  if (connection.kind === 'not_configured') return { kind: 'not_set_up' };
+  if (connection.kind === 'too_old') return { kind: 'unavailable', reason: 'unsupported' };
+  if (connection.kind !== 'ok') return { kind: 'unavailable', reason: connection.kind };
+  const { stats } = connection;
+  return { kind: 'ok', ratio: stats.ratio, ratioMinimum: minimum, hitAndRuns: stats.hitAndRuns?.count ?? null, hitAndRunsIsLifetime: stats.hitAndRuns?.kind === 'lifetime' };
+};
+// An announce host such as tracker.blutopia.cc belongs to the added tracker blutopia.cc.
+const belongsTo = (host: string, tracker: string) => host === tracker || host.endsWith(`.${tracker}`);
 const GB = 1_000_000_000;
 const DISK_FREE_MINIMUM = 25 * GB;
 const BACKUP_STALE_MS = 26 * 60 * 60_000;
@@ -107,7 +117,7 @@ export const createHealth = (options: {
   rtorrent: { check(): Promise<ConnectionStatus> };
   plex: { check(): Promise<ConnectionStatus> };
   jobs: { status(): JobStatus };
-  trackerAccounts: { stats(): Promise<TrackerAccountStats[]> };
+  trackerAccounts: { stats(): Promise<{ host: string; connection: TrackerConnection }[]> };
   events: EventHub;
   now?: () => number;
 }) => {
@@ -115,7 +125,7 @@ export const createHealth = (options: {
   const now = options.now ?? Date.now;
   let snapshot: HealthSnapshot | undefined;
   // Kept in memory only: the first check after a restart records the count without warning.
-  const lastHitAndRuns = new Map<Tracker, number>();
+  const lastHitAndRuns = new Map<string, number>();
 
   const read = async (service: Service, path: string) => {
     const { status, body } = await arr[service].request(path);
@@ -206,25 +216,27 @@ export const createHealth = (options: {
     }
     const hosts = new Set<string>(cooldowns.map((cooldown) => cooldown.host));
     for (const torrent of torrents) if (torrent.trackerHost) hosts.add(torrent.trackerHost);
-    const trackerOf = (host: string) => trackerNames.find((name) => indexerMatchesHost(name, host));
-    for (const stats of accountStats) {
-      const account = accountOf(stats);
-      if (account.kind === 'ok') {
-        const label = trackerLabels[stats.tracker];
+    const accounts = new Map(accountStats.map(({ host, connection }) => [host, accountOf(connection, ratioMinimum(database, host, connection))]));
+    const trackerOf = (host: string) => [...accounts.keys()].filter((tracker) => belongsTo(host, tracker)).sort((a, b) => b.length - a.length)[0];
+    for (const { host: tracker, connection } of accountStats) {
+      const account = accounts.get(tracker);
+      if (account?.kind === 'ok') {
         if (account.ratio !== null && account.ratioMinimum !== null && account.ratio < account.ratioMinimum) {
-          ours(`ratio:${stats.tracker}`, 'warning', 'tracker', `${label} ratio ${account.ratio.toFixed(2)} is below its minimum ${account.ratioMinimum}`);
+          ours(`ratio:${tracker}`, 'warning', 'tracker', `${tracker} ratio ${account.ratio.toFixed(2)} is below its minimum ${account.ratioMinimum}`);
         }
-        const previous = lastHitAndRuns.get(stats.tracker);
+        const previous = lastHitAndRuns.get(tracker);
+        // Only UNIT3D reports hit-and-runs, as a lifetime count, not the currently open ones.
         if (account.hitAndRuns !== null) {
           if (previous !== undefined && account.hitAndRuns > previous) {
-            ours(`hnr:${stats.tracker}`, 'warning', 'tracker', `${label} hit-and-run count rose from ${previous} to ${account.hitAndRuns} (lifetime count)`);
+            ours(`hnr:${tracker}`, 'warning', 'tracker', `${tracker} hit-and-run count rose from ${previous} to ${account.hitAndRuns} (lifetime count)`);
           }
           // The first count since start stays the baseline, so the warning lasts until restart.
-          if (previous === undefined) lastHitAndRuns.set(stats.tracker, account.hitAndRuns);
+          if (previous === undefined) lastHitAndRuns.set(tracker, account.hitAndRuns);
         }
       }
-      if (stats.kind === 'not_configured' || [...hosts].some((host) => trackerOf(host) === stats.tracker)) continue;
-      hosts.add(stats.tracker);
+      // A tracker with no account connection is listed only once it has torrents or a cooldown.
+      if (connection.kind === 'not_configured' || connection.kind === 'unsupported' || [...hosts].some((host) => trackerOf(host) === tracker)) continue;
+      hosts.add(tracker);
     }
     const trackers = [...hosts].sort().map((host) => {
       const cooldown = cooldowns.find((entry) => entry.host === host) ?? null;
@@ -236,7 +248,7 @@ export const createHealth = (options: {
       const count = down.get(host) ?? 0;
       if (count > 0) ours(`tracker:${host}`, 'warning', 'tracker', `${host} isn't answering (${count} torrent${count === 1 ? '' : 's'})`);
       const tracker = trackerOf(host);
-      const account = accountOf(accountStats.find((stats) => stats.tracker === tracker));
+      const account = (tracker === undefined ? undefined : accounts.get(tracker)) ?? { kind: 'not_set_up' };
       return { host, reachable: count === 0, cooldown, account };
     });
 

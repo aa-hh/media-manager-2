@@ -100,6 +100,10 @@ _Avoid_: seeding requirement, seed rule, ratio rule
 The user's total upload-to-download ratio across a whole tracker account. Each tracker sets a minimum; it is separate from any single torrent's hit and run rule.
 _Avoid_: account ratio, overall ratio
 
+**Site software**:
+The tracker software a tracker's site runs (UNIT3D, Gazelle, NexusPHP, or other). It decides how media-manager-2 reads the tracker account; trackers running the same software share one way in.
+_Avoid_: tracker type, platform, engine
+
 **Plex**:
 The media server that plays the library folder to the user and friends.
 _Avoid_: the player, the server
