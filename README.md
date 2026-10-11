@@ -51,6 +51,15 @@ The server reaches Sonarr, Radarr, rTorrent and Plex, and finds their folders on
 | `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into, such as `/home/<user>/files/Radarr` |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
 | `hostPaths` | `library.radarr` | Absolute Radarr library root, such as `/home/<user>/Movies`; a stopped torrent whose download files are gone is re-linked from here |
+| `serviceAddresses` | `blutopia.url` | Blutopia base URL with scheme, such as `https://blutopia.cc` |
+| `serviceAddresses` | `privatehd.url` | PrivateHD base URL with scheme |
+| `serviceAddresses` | `beyondhd.url` | Beyond-HD base URL with scheme |
+| `credentials` | `blutopia.apiToken` | Blutopia API token from the site's API settings |
+| `credentials` | `privatehd.username` | PrivateHD account username |
+| `credentials` | `privatehd.password` | PrivateHD account password |
+| `credentials` | `privatehd.pid` | PrivateHD PID |
+| `credentials` | `beyondhd.apiKey` | Beyond-HD API key |
+| `credentials` | `beyondhd.rssKey` | Beyond-HD RSS key (optional) |
 
 Until a settings screen exists, save and check them on the server with the
 operator command:
@@ -74,7 +83,7 @@ list. One trailing line break is removed. `settings list` prints each saved
 category and key, never a value.
 
 `connections check` prints one line per service, in the order sonarr, radarr,
-rtorrent, plex, and exits 0 only when all four are `ok`:
+rtorrent, plex, blutopia, privatehd, beyondhd, and exits 0 only when all seven are `ok`. Tracker lines print `ok` without a version:
 
 - `ok <version>`: the service accepted the saved credentials and reported its version.
 - `not_configured`: the URL or a credential for that service is missing or empty.
@@ -83,8 +92,35 @@ rtorrent, plex, and exits 0 only when all four are `ok`:
 
 The output never contains a URL or a setting value. AA-38 is accepted only on
 live service evidence: the owner runs `node dist/server/cli.js connections
-check` on the slot and sees four `ok` lines with versions. The test fixtures
+check` on the slot and sees `ok` with a version on the sonarr, radarr, rtorrent and plex lines. The test fixtures
 prove controlled behaviour only.
+
+### Tracker accounts
+
+`getTrackerAccountStats(database)` in `src/server/services/trackerAccounts.ts`
+returns one entry per tracker (Blutopia, PrivateHD, Beyond-HD, in that order).
+`GET /api/trackers` (owner session) returns the same JSON. Only Blutopia
+returns stats (`username, group, uploaded, downloaded, ratio, buffer, seeding,
+leeching, seedbonus, hitAndRuns`); PrivateHD and Beyond-HD return
+`stats: "unsupported"`. The three trackers are used through their APIs only
+(AA-23). Live tracker evidence is still owed: no live keys exist and the tests
+use fixtures. Acceptance needs the owner's `connections check` showing three
+tracker `ok` lines.
+
+### Title cache
+
+The server keeps a copy of every Sonarr series and Radarr movie, Sonarr's
+episodes, and each title's poster and fanart. The `title-refresh` job re-reads
+both full lists every five minutes. Between runs the shared webhook receiver
+refreshes one title on Sonarr's `SeriesAdd`, `Download`, `EpisodeFileDelete`
+and `Rename` events and Radarr's `MovieAdded`, `Download`, `MovieFileDelete`
+and `Rename` events, and drops it on `SeriesDelete` or `MovieDelete`.
+Images are stored in an `images` folder beside the database and served to the
+signed-in owner at `GET /api/images/{sonarr|radarr}/{id}/{poster|fanart}`,
+with an `ETag` (a matching `If-None-Match` gets `304`) and
+`Cache-Control: private, max-age=300`. No Sonarr or Radarr key reaches the
+browser. Search results from Sonarr and Radarr lookups are kept in memory for
+ten minutes per service and search term; a failed lookup is never kept.
 
 ## Backups to Cloudflare R2
 
@@ -147,7 +183,7 @@ spare path against the real bucket.
 5. Ali (on the slot): from `~/media-manager-2`, run `node dist/server/cli.js backup list` and check the `(latest)` snapshot is recent.
 6. Ali (on the slot): run `node dist/server/cli.js backup restore --to ~/.local/share/media-manager-2/media-manager.sqlite` and check the row counts look right, for example `settings` is not 0.
 7. Ali (on the slot): type `exit` to leave the locked shell, then run `~/media-manager-2/bin/ensure-running.sh` to start the server on the restored database. Cron would also start it within a minute.
-8. Ali (on the slot): run `node dist/server/cli.js connections check` and check all four lines say `ok`.
+8. Ali (on the slot): run `node dist/server/cli.js connections check` and check the sonarr, radarr, rtorrent and plex lines say `ok`.
 
 ### Move to another host
 

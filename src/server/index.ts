@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
@@ -6,7 +7,7 @@ import { createAdd } from './add.js';
 import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
 import { createBackup } from './backup.js';
-import { openDatabase } from './database.js';
+import { defaultDatabasePath, openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createGrabs, handGrab } from './grabs.js';
 import { createImportFix } from './imports.js';
@@ -24,10 +25,12 @@ import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createR2Store, readR2Config } from './services/r2.js';
 import { createRtorrent } from './services/rtorrent.js';
+import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller } from './torrents.js';
 import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
 import { createStallFix } from './stalls.js';
+import { createImageRoutes, createTitleCache } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 const host = process.env.HOST ?? '127.0.0.1';
@@ -64,6 +67,13 @@ if (database !== undefined) {
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
   const trackers = createTrackerWatch({ database, rtorrent, problems, events });
   runner.register('tracker-watch', 30_000, trackers.check);
+  const titles = createTitleCache({
+    database,
+    arr,
+    events,
+    imageDirectory: join(dirname(process.env.DB_PATH ?? defaultDatabasePath), 'images'),
+  });
+  runner.register('title-refresh', titles.intervalMs, titles.reconcile);
   const imports = createImportFix({ database, arr, problems, events });
   runner.register('import-fix', 60_000, imports.check);
   const releases = createReleases(database, arr);
@@ -94,14 +104,28 @@ if (database !== undefined) {
       if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
     }
   });
+  const search = createSearch(arr);
+  const add = createAdd(database, arr);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
-    search: createSearch(arr),
-    add: createAdd(database, arr),
+    search,
+    add: {
+      ...add,
+      async addSeries(...args: Parameters<typeof add.addSeries>) {
+        const result = await add.addSeries(...args);
+        if (result.kind === 'added') search.forget('sonarr');
+        return result;
+      },
+      async addMovie(...args: Parameters<typeof add.addMovie>) {
+        const result = await add.addMovie(...args);
+        if (result.kind === 'added') search.forget('radarr');
+        return result;
+      },
+    },
     releases,
     grabs,
     owned: createOwned(arr),
@@ -109,15 +133,20 @@ if (database !== undefined) {
     api: createApiRoutes(database, {
       arr,
       refresh: torrentGrabs.refresh,
+      trackers: createTrackerAccounts(database),
       manualImport: createManualImport({ database, arr, problems }),
     }),
+    images: createImageRoutes(titles),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
-      // One receiver for both: live downloads record every event, and a Grab of a manual download is vetoed.
+      // One receiver for both: live downloads record every event, a Grab of a manual download is vetoed,
+      // and the title cache refreshes or drops the title an event names.
       receive: (service, payload) => {
-        const result = torrentGrabs.receiveWebhook(service, payload);
-        if (result === 'ok') void vetoInBackground(protection, service, payload);
-        return result;
+        const grabs = torrentGrabs.receiveWebhook(service, payload);
+        const title = titles.receiveWebhook(service, payload);
+        if (grabs === 'ok') void vetoInBackground(protection, service, payload);
+        if (grabs === 'invalid' || title === 'invalid') return 'invalid';
+        return grabs === 'ok' || title === 'ok' ? 'ok' : 'ignored';
       },
     },
   });

@@ -5,6 +5,7 @@ import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import type { createManualImport } from './manualImport.js';
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
+import type { TrackerAccountStats } from './services/trackerAccounts.js';
 
 type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
 
@@ -12,6 +13,7 @@ export type ApiActions = {
   arr: Record<Service, { request: ArrRequest }>;
   refresh(service: Service): Promise<void>;
   manualImport: ReturnType<typeof createManualImport>;
+  trackers?: { stats(): Promise<TrackerAccountStats[]> };
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -85,6 +87,11 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
       service: service === '' ? null : service as 'sonarr' | 'radarr',
       id,
     }));
+  });
+
+  api.get('/trackers', async (context) => {
+    if (actions?.trackers === undefined) return context.json({ error: 'not_found' }, 404);
+    return context.json(await actions.trackers.stats());
   });
 
   // Only items media-manager-2 has seen in the queue can be acted on, so a stray id never reaches Sonarr or Radarr.

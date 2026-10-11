@@ -7,6 +7,7 @@ import { createArr } from './services/arr.js';
 import { createPlex } from './services/plex.js';
 import { createR2Store, r2ConfigFromEnvironment, readR2Config } from './services/r2.js';
 import { createRtorrent } from './services/rtorrent.js';
+import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { deleteSetting, listSettingKeys, setSetting } from './settings.js';
 
 const usage = [
@@ -32,12 +33,16 @@ const checkConnections = async (database: DatabaseSync) => {
     ['rtorrent', createRtorrent(database)],
     ['plex', createPlex(database)],
   ] as const;
-  const statuses = await Promise.all(services.map(([, service]) => service.check()));
+  const [statuses, trackerStatuses] = await Promise.all([
+    Promise.all(services.map(([, service]) => service.check())),
+    createTrackerAccounts(database).stats(),
+  ]);
   statuses.forEach((status, index) => {
     const name = services[index][0];
     console.log(status.kind === 'ok' ? `${name}: ok ${status.version}` : `${name}: ${status.kind}`);
   });
-  return statuses.every((status) => status.kind === 'ok') ? 0 : 1;
+  trackerStatuses.forEach((status) => console.log(`${status.tracker}: ${status.kind}`));
+  return statuses.every((status) => status.kind === 'ok') && trackerStatuses.every((status) => status.kind === 'ok') ? 0 : 1;
 };
 
 const backupNow = async (database: DatabaseSync) => {
