@@ -280,9 +280,11 @@ function OverridePanel({ target, episodes, qualities, value, onApply, onCancel }
   );
 }
 
-export function PickRelease({ target, title, episodes, movieHasFile, onClose, onUnauthenticated }: {
+export function PickRelease({ target, title, name, episodes, movieHasFile, onClose, onUnauthenticated }: {
   target: ReleaseTarget;
   title: string;
+  /** The series or movie name, which leads the grab dialog's description when given. */
+  name?: string;
   episodes: OwnedEpisode[];
   movieHasFile: boolean;
   onClose: () => void;
@@ -522,9 +524,14 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
       ? `${missing[0]} has no file yet: it gets a second version only, and Sonarr still lists it as missing.`
       : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]} have no file yet: they get a second version only, and Sonarr still lists them as missing.`,
   ].filter((part) => part !== undefined).join(' ');
+  const pad = (number: number) => String(number).padStart(2, '0');
+  const targetEpisode = target.kind === 'episode' ? episodes.find((episode) => episode.id === target.episodeId) : undefined;
+  const lead = name === undefined ? undefined
+    : target.kind === 'season' ? `${name} S${pad(target.seasonNumber)}`
+      : targetEpisode === undefined ? name : `${name} S${pad(targetEpisode.seasonNumber)}E${pad(targetEpisode.episodeNumber)}`;
   const decisionSubject = target.kind === 'season'
-    ? `${[chosen?.quality, chosen === undefined ? undefined : splitName(chosen.title).group, chosen === undefined ? undefined : formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}, one torrent with ${packEpisodes.length} episodes. You have files for ${packEpisodes.length - missing.length} of them; their torrents keep seeding either way.`
-    : `${owned === null ? '' : `Your ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
+    ? `${lead === undefined ? '' : `${lead} · `}${[chosen?.quality, chosen === undefined ? undefined : splitName(chosen.title).group, chosen === undefined ? undefined : formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}, one torrent with ${packEpisodes.length} episodes. You have files for ${packEpisodes.length - missing.length} of them; their torrents keep seeding either way.`
+    : `${owned === null ? (lead === undefined ? '' : `${lead}. `) : `${lead === undefined ? 'Your' : `${lead} · your`} ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
   const second = choice === 'second' && secondAllowed;
   const confirmLabel = grabbing
     ? (second ? 'Grabbing…' : 'Replacing…')

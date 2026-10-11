@@ -81,7 +81,7 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         picking={picking}
         pickPanel={picking && (
           <div className="pt-2">
-            <PickRelease target={target} title={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} />
+            <PickRelease target={target} title={detail.title} name={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} />
           </div>
         )}
         monitored={detail.monitored ? 'all' : 'none'}
