@@ -7,7 +7,7 @@ import { type DiscoverResult, type Filters, present, type Rows, rowKey, type Row
 
 export type Discover = { rows: Rows; database: DatabaseSync; orchestrator: Pick<Orchestrator, 'request'> };
 
-type Row = { results: DiscoverResult[]; pending: boolean };
+type Row = { results: DiscoverResult[]; pending: boolean; failed: boolean; failure: Failure['kind'] | null };
 
 const pageNumber = (value: string | undefined) => {
   if (value === undefined) return 1;
@@ -55,8 +55,6 @@ const parseHomeQuery = (query: Record<string, string | undefined>) => {
   return { type, filters, services } as const;
 };
 
-const noFilters: Filters = { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null };
-
 export const createDiscoverRoutes = (discover: Discover) => {
   const { rows, database, orchestrator } = discover;
   const routes = new Hono();
@@ -67,15 +65,16 @@ export const createDiscoverRoutes = (discover: Discover) => {
     context.json({ error: failure.kind, reason: failure.message }, failure.kind === 'not_configured' ? 503 : 502)
   );
 
-  // Asks for every key at once, then reads what is saved; a key with a failure and nothing saved reads as an empty row.
+  // Asks for every key at once, then reads what is saved; a key with a failure and nothing saved reads as an empty row marked failed.
   const load = async (specs: RowSpec[]) => {
     const keys = specs.map(rowKey);
     const answers = await Promise.all(keys.map((key) => orchestrator.request(key)));
     return keys.map((key, index) => ({ ...answers[index], saved: rows.read(key)?.row }));
   };
-  const asRow = ({ pending, saved }: { pending: boolean; saved?: StoredRow }): Row => (
-    { results: saved === undefined ? [] : present(saved.items, database), pending }
-  );
+  const asRow = ({ pending, failure, saved }: { pending: boolean; failure?: Failure; saved?: StoredRow }): Row => {
+    const failed = saved === undefined && failure !== undefined;
+    return { results: saved === undefined ? [] : present(saved.items, database), pending, failed, failure: failed ? failure.kind : null };
+  };
   const reference = async (context: Parameters<typeof reply>[0], spec: RowSpec, name: 'genres' | 'providers') => {
     const [answer] = await load([spec]);
     if (answer.saved === undefined && answer.failure !== undefined) return reply(context, answer.failure);
@@ -89,9 +88,12 @@ export const createDiscoverRoutes = (discover: Discover) => {
 
   // razor: the trending grid stays TMDB-only, so its order differs from the home's blended trending row; upgrade path is serving the home recipe per page.
   routes.get('/trending', async (context) => {
-    const page = pageNumber(context.req.query('page'));
-    if (page === undefined) return context.json(invalid, 400);
-    return grid(context, { kind: 'grid', type: 'all', sort: 'trending', page, filters: noFilters });
+    const query = context.req.query();
+    const type = query.type ?? 'all';
+    const page = pageNumber(query.page);
+    const filters = parseFilters(query);
+    if ((type !== 'all' && type !== 'movie' && type !== 'tv') || page === undefined || filters === undefined) return context.json(invalid, 400);
+    return grid(context, { kind: 'grid', type, sort: 'trending', page, filters });
   });
   routes.get('/genres/:type', async (context) => {
     const type = mediaType(context.req.param('type'));
@@ -133,7 +135,7 @@ export const createDiscoverRoutes = (discover: Discover) => {
     const failures = answers.flatMap((answer) => (answer.saved === undefined && answer.failure !== undefined ? [answer.failure] : []));
     if (answers.length > 0 && failures.length === answers.length) return reply(context, failures[0]);
     const byKey = new Map(specs.map((spec, index) => [rowKey(spec), asRow(answers[index])]));
-    const empty: Row = { results: [], pending: false };
+    const empty: Row = { results: [], pending: false, failed: false, failure: null };
     const get = (spec: RowSpec | undefined) => (spec === undefined ? null : byKey.get(rowKey(spec)) ?? empty);
     const providerNames = (providerList[0]?.saved?.reference ?? []) as Array<{ id: number; name: string }>;
     return context.json({

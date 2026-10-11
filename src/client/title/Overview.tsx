@@ -16,7 +16,8 @@ import { TitleHeader } from './TitleHeader';
 
 type Route =
   | { owned: true; type: 'tv' | 'movie'; id: number }
-  | { owned: false; type: 'tv' | 'movie'; id: number };
+  | { owned: false; type: 'tv' | 'movie'; id: number }
+  | { owned: false; type: 'tv'; id: number; byTmdb: true };
 
 type ProtectedItem = { service: 'radarr'; kind: 'movie'; movieId: number } | { service: 'sonarr'; kind: 'episode'; episodeId: number };
 
@@ -35,6 +36,10 @@ const parseRoute = (pathname: string): Route | undefined => {
   if (first === 'series' || first === 'movie') {
     const id = Number(second);
     return Number.isInteger(id) && id > 0 ? { owned: true, type: first === 'series' ? 'tv' : 'movie', id } : undefined;
+  }
+  if (first === 'title' && second === 'tmdb-tv') {
+    const id = Number(third);
+    return Number.isInteger(id) && id > 0 ? { owned: false, type: 'tv', id, byTmdb: true } : undefined;
   }
   if (first === 'title' && (second === 'tvdb' || second === 'tmdb')) {
     const id = Number(third);
@@ -97,7 +102,9 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
     const controller = new AbortController();
     const read = async (): Promise<Load> => {
       if (!route.owned) {
-        const path = `/api/library/preview/${route.type === 'tv' ? 'sonarr' : 'radarr'}/${route.id}`;
+        const path = 'byTmdb' in route
+          ? `/api/library/preview/sonarr/tmdb/${route.id}`
+          : `/api/library/preview/${route.type === 'tv' ? 'sonarr' : 'radarr'}/${route.id}`;
         return route.type === 'tv'
           ? { kind: 'preview-tv', detail: await getJson<SeriesDetail>(path, onUnauthenticated, controller.signal) }
           : { kind: 'preview-movie', detail: await getJson<MovieDetail>(path, onUnauthenticated, controller.signal) };
@@ -118,7 +125,12 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
         if (!controller.signal.aborted) setLoad(loaded);
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setLoad({ kind: 'failed', message: failureText(service, error) });
+        if (controller.signal.aborted) return;
+        const reason = error instanceof Error ? error.message : '';
+        const message = 'byTmdb' in route && reason === 'not_found' ? "TMDB has no TVDB id for this show, so Sonarr can't look it up."
+          : 'byTmdb' in route && reason === 'not_configured' ? "TMDB or Sonarr isn't connected yet."
+            : failureText(service, error);
+        setLoad({ kind: 'failed', message });
       });
     return () => controller.abort();
   }, [route, onUnauthenticated, attempt]);

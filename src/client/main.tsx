@@ -250,7 +250,7 @@ function App() {
   );
 }
 
-// Home routes by address: the Library is home, search results, title pages and the calendar come from Home, and the Downloads, Flagged, History, Blocklist, Health and Settings screens live at /downloads, /flagged, /history, /blocklist, /health and /settings.
+// Home routes by address: the Library is home, search results, title pages, the calendar and Discover (/discover and its grids) come from Home, and the Downloads, Flagged, History, Blocklist, Health and Settings screens live at /downloads, /flagged, /history, /blocklist, /health and /settings.
 function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'downloading' | 'healthProblems' | 'healthRisk'>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
   const { pathname } = useLocation();

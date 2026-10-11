@@ -169,7 +169,8 @@ if (database !== undefined) {
     }),
     forget: search.forget,
   });
-  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist);
+  const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
+  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf);
   const add = createAdd(database, arr, titleStore);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);
@@ -202,7 +203,7 @@ if (database !== undefined) {
     protection,
     library,
     discover,
-    tmdbTitles: createTmdbTitles({ database, tmdb, store: titleStore }),
+    tmdbTitles,
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
       arr,
