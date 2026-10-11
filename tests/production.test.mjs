@@ -6683,20 +6683,29 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
   assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent', 'sent']);
 
-  // Recording every thrown grab request alike turns a row red: a timed-out grab may have reached Sonarr and the veto would remove it, while an unreachable one left sent makes a replace wait forever.
+  // Recording every thrown grab request alike turns a row red: a refused connection or failed name lookup means nothing was sent, so left sent it makes a replace wait forever, while any other failure may have reached Sonarr and the veto would remove it.
   const ownTitles = grabs.recentTitles('sonarr', 0).length;
   history = [];
   let unanswered;
+  const systemError = (message, code) => Object.assign(new Error(message), { code });
+  const doubt = "Sonarr didn't answer the grab, so it may still have gone through.";
+  const unreached = "Sonarr didn't answer the grab.";
   for (const [error, state, failure] of [
-    [new TypeError('fetch failed'), 'failed', "Sonarr didn't answer the grab."],
-    [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', "Sonarr didn't answer the grab, so it may still have gone through."],
+    [new TypeError('fetch failed'), 'sent', doubt],
+    [new TypeError('fetch failed', { cause: systemError('read ECONNRESET', 'ECONNRESET') }), 'sent', doubt],
+    [new TypeError('fetch failed', { cause: systemError('connect ECONNREFUSED', 'ECONNREFUSED') }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: Object.assign(new AggregateError([systemError('x', 'ECONNREFUSED')], 'aggregate'), { code: 'ECONNREFUSED' }) }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: systemError('getaddrinfo ENOTFOUND', 'ENOTFOUND') }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: systemError('getaddrinfo EAI_AGAIN', 'EAI_AGAIN') }), 'failed', unreached],
+    [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', doubt],
   ]) {
+    const row = `${error.name}:${error.cause?.code ?? 'none'}`;
     grabResponse = () => { throw error; };
     unanswered = await grabs.grab(target, 'g-rejected', 'replace');
-    assert.deepEqual([unanswered.kind, unanswered.record.state, unanswered.record.failure], [state, state, failure], error.name);
-    assert.equal(grabs.pending('replace').some((record) => record.id === unanswered.record.id), state === 'sent', error.name);
+    assert.deepEqual([unanswered.kind, unanswered.record.state, unanswered.record.failure], [state, state, failure], row);
+    assert.equal(grabs.pending('replace').some((record) => record.id === unanswered.record.id), state === 'sent', row);
   }
-  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 1);
+  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 3);
   history = grabbedHistory;
   const confirmed = await grabs.resolveDownloadId(unanswered.record);
   assert.deepEqual([confirmed.state, confirmed.downloadId, confirmed.failure], ['sent', 'ABC123HASH', null], 'history confirms the grab and clears the doubt');

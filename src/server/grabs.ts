@@ -65,6 +65,15 @@ const positiveInteger = (value: unknown): value is number => (
   typeof value === 'number' && Number.isInteger(value) && value > 0
 );
 
+const connectionNeverOpened = (error: unknown): boolean => {
+  const first = error instanceof Error ? error.cause : undefined;
+  const second = first instanceof Error ? first.cause : undefined;
+  const codes = [first, second]
+    .flatMap((item) => (item instanceof AggregateError ? [item, ...item.errors] : [item]))
+    .map((item) => (isRecord(item) ? item.code : undefined));
+  return codes.some((code) => code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EAI_AGAIN');
+};
+
 const refusal = (body: unknown): string | undefined => {
   const messages = (Array.isArray(body) ? body : [body]).flatMap((item) => {
     if (typeof item === 'string' && item.trim() !== '') return [item.trim()];
@@ -264,10 +273,10 @@ export const createGrabs = (
         // POST /release ignores the search's rejections; /release/push would drop rejected releases.
         response = await service.request('/api/v3/release', { method: 'POST', body, timeoutMs: GRAB_TIMEOUT_MS });
       } catch (error) {
-        if (!(error instanceof Error && error.cause instanceof DOMException && error.cause.name === 'TimeoutError')) {
+        if (connectionNeverOpened(error)) {
           return { kind: 'failed', record: update(id, { state: 'failed', failure: `${label} didn't answer the grab.` }) } as const;
         }
-        // A timed-out grab may still have reached the indexer, so it stays sent: the veto then spares it and history settles it.
+        // Any failure once the connection may have opened could still have reached the indexer, so it stays sent: the veto then spares it and history settles it.
         const unanswered = update(id, { state: 'sent', failure: `${label} didn't answer the grab, so it may still have gone through.` });
         return { kind: 'sent', record: await resolveDownloadId(unanswered) } as const;
       }
