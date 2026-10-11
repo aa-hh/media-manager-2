@@ -56,9 +56,18 @@ const readAssignments = (body: unknown): Assignment[] | undefined => {
 };
 const downloadPattern = /^[0-9A-F]{40}$/;
 
+const liveTorrents = (database: DatabaseSync) => listTorrents(database).filter((torrent) => torrent.goneAt === null);
+
+// The grabs the browser still has a use for: not yet imported or failed (progress), or still in rTorrent (seeding facts).
+// Everything else stays in the database for history and would only make the Downloads list grow for ever.
+export const listDownloadGrabs = (database: DatabaseSync) => {
+  const seeding = new Set(liveTorrents(database).map((torrent) => torrent.hash));
+  return listGrabs(database).filter((grab) => (grab.importedAt === null && grab.failedAt === null) || seeding.has(grab.hash));
+};
+
 // How far each movie and episode has downloaded, for title views and the calendar; finished imports drop out.
 export const listProgress = (database: DatabaseSync) => {
-  const torrents = new Map(listTorrents(database).filter((torrent) => torrent.goneAt === null).map((torrent) => [torrent.hash, torrent]));
+  const torrents = new Map(liveTorrents(database).map((torrent) => [torrent.hash, torrent]));
   return listGrabs(database).flatMap((grab) => {
     const torrent = torrents.get(grab.hash);
     if (torrent === undefined || grab.importedAt !== null || grab.failedAt !== null) return [];
@@ -74,9 +83,9 @@ export const listProgress = (database: DatabaseSync) => {
 export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) => {
   const api = new Hono();
   api.get('/downloads', (context) => context.json({
-    torrents: listTorrents(database).filter((torrent) => torrent.goneAt === null),
+    torrents: liveTorrents(database),
     queue: listQueue(database),
-    grabs: listGrabs(database),
+    grabs: listDownloadGrabs(database),
     problems: listOpenProblems(database),
   }));
   api.get('/progress', (context) => context.json(listProgress(database)));

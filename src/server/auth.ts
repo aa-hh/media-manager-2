@@ -15,11 +15,14 @@ const HANDOFF_ENDPOINT = 'https://app.plex.tv/auth';
 const ATTEMPT_LIFETIME_MS = 10 * 60_000;
 const SESSION_LIFETIME_MS = 24 * 60 * 60_000;
 const RATE_WINDOW_MS = 60_000;
+// Per client, so a stranger at the cap leaves the owner room; across all clients the backstop is ten times these.
 const MAX_STARTS_PER_WINDOW = 10;
 const MAX_ATTEMPTS = 100;
+const ALL_CLIENTS = 10;
 const MAX_SESSIONS = 100;
 
 type Attempt = {
+  client: string;
   bindingHash: string;
   stateHash: string;
   pinId: number;
@@ -71,7 +74,7 @@ export type SessionResult =
 
 const hash = (value: string) => createHash('sha256').update(value, 'utf8').digest('base64url');
 
-const isLoopback = (host: string) => {
+export const isLoopback = (host: string) => {
   const normalized = host.toLowerCase().replace(/^\[|\]$/g, '');
   return normalized === 'localhost'
     || normalized === '::1'
@@ -136,8 +139,9 @@ export const createAuthentication = (options: AuthenticationOptions) => {
   const configuration = readConfiguration(options.ownerPlexId, options.publicOrigin, options.listeningHost);
   const attempts = new Map<string, Attempt>();
   const sessions = new Map<string, Session>();
-  let starts: number[] = [];
-  let pendingStarts = 0;
+  let starts: Array<{ client: string; at: number }> = [];
+  const pendingStarts: string[] = [];
+  const settleStart = (client: string) => pendingStarts.splice(pendingStarts.indexOf(client), 1);
 
   const removeExpiredAttempts = () => {
     const currentTime = options.now();
@@ -159,18 +163,22 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     signal: AbortSignal.timeout(10_000),
   });
 
-  const start = async (existingBinding?: string): Promise<StartResult> => {
+  const start = async (existingBinding: string | undefined, client: string): Promise<StartResult> => {
     if (configuration === undefined) return { kind: 'not_configured' };
     removeExpiredAttempts();
     const currentTime = options.now();
-    starts = starts.filter((startedAt) => currentTime - startedAt < RATE_WINDOW_MS);
-    if (starts.length >= MAX_STARTS_PER_WINDOW) {
-      return { kind: 'rate_limited', retryAfter: Math.max(1, Math.ceil((starts[0] + RATE_WINDOW_MS - currentTime) / 1000)) };
+    starts = starts.filter((started) => currentTime - started.at < RATE_WINDOW_MS);
+    const own = starts.filter((started) => started.client === client);
+    const limiting = own.length >= MAX_STARTS_PER_WINDOW ? own : starts.length >= MAX_STARTS_PER_WINDOW * ALL_CLIENTS ? starts : undefined;
+    if (limiting !== undefined) {
+      return { kind: 'rate_limited', retryAfter: Math.max(1, Math.ceil((limiting[0].at + RATE_WINDOW_MS - currentTime) / 1000)) };
     }
     if (existingBinding !== undefined) attempts.delete(hash(existingBinding));
-    if (attempts.size + pendingStarts >= MAX_ATTEMPTS) return { kind: 'unavailable' };
-    starts.push(currentTime);
-    pendingStarts += 1;
+    const held = [...attempts.values()].filter((attempt) => attempt.client === client).length
+      + pendingStarts.filter((pending) => pending === client).length;
+    if (held >= MAX_ATTEMPTS || attempts.size + pendingStarts.length >= MAX_ATTEMPTS * ALL_CLIENTS) return { kind: 'unavailable' };
+    starts.push({ client, at: currentTime });
+    pendingStarts.push(client);
 
     const clientIdentifier = randomUUID();
     const kid = randomUUID();
@@ -188,15 +196,15 @@ export const createAuthentication = (options: AuthenticationOptions) => {
         body: JSON.stringify({ strong: true, jwk }),
       });
     } catch {
-      pendingStarts -= 1;
+      settleStart(client);
       return { kind: 'unavailable' };
     }
     if (response.status !== 201) {
-      pendingStarts -= 1;
+      settleStart(client);
       return { kind: 'unavailable' };
     }
     const body = await providerJson(response);
-    pendingStarts -= 1;
+    settleStart(client);
     if (!isRecord(body)) return { kind: 'unavailable' };
     const pinId = body.id;
     const code = body.code;
@@ -213,6 +221,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     const expiresAt = Math.min(currentTime + ATTEMPT_LIFETIME_MS, returnedExpiry);
     const bindingHash = hash(binding);
     attempts.set(bindingHash, {
+      client,
       bindingHash,
       stateHash: hash(state),
       pinId,

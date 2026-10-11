@@ -2,7 +2,7 @@
 import type { LogoName } from '../components/ui/logo';
 import type { ServiceState } from '../components/ui/status-service-pill';
 
-export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex';
+export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'tmdb' | 'mdblist' | 'trakt';
 
 // Shapes served by /api/settings; src/server/connections.ts is the source of truth.
 export type SavedService = { service: ServiceName; serviceAddresses: Record<string, string>; credentials: Record<string, boolean> };
@@ -19,16 +19,20 @@ type Credential = { key: string; label: string; short: string; placeholder: stri
 export type ServiceInfo = {
   name: ServiceName;
   label: string;
-  logo: LogoName;
-  addressPlaceholder: string;
+  /** Null when the logo set has none; the screen shows a globe instead. */
+  logo: LogoName | null;
+  /** Absent for a service with one fixed address: the owner enters only its key. */
+  addressPlaceholder?: string;
+  /** Services make up the "How the pieces connect" strip; Metadata feeds titles and ratings only. */
+  group: 'Services' | 'Metadata';
   usedFor: string;
   /** What a refusal refused, such as "API key" or "login". */
   refused: string;
   credentials: Credential[];
 };
 
-const apiKey = (app: string): Credential => ({
-  key: `${app.toLowerCase()}.apiKey`, label: 'API key', short: 'key', placeholder: 'Paste the API key', help: `In ${app}: Settings > General > API Key.`, secret: true,
+const apiKey = (app: string, help = `In ${app}: Settings > General > API Key.`): Credential => ({
+  key: `${app.toLowerCase()}.apiKey`, label: 'API key', short: 'key', placeholder: 'Paste the API key', help, secret: true,
 });
 const login = (service: string, help: string): Credential[] => [
   { key: `${service}.username`, label: 'Username', short: 'username', placeholder: 'Username', help, secret: false },
@@ -37,17 +41,34 @@ const login = (service: string, help: string): Credential[] => [
 
 // The screen's services, in list order. Trackers come from /api/settings/trackers instead (trackers.ts).
 export const services: ServiceInfo[] = [
-  { name: 'sonarr', label: 'Sonarr', logo: 'sonarr', addressPlaceholder: 'e.g. http://localhost:8989', usedFor: 'TV searches, grabs and imports', refused: 'API key', credentials: [apiKey('Sonarr')] },
-  { name: 'radarr', label: 'Radarr', logo: 'radarr', addressPlaceholder: 'e.g. http://localhost:7878', usedFor: 'Movie searches, grabs and imports', refused: 'API key', credentials: [apiKey('Radarr')] },
+  { name: 'sonarr', label: 'Sonarr', logo: 'sonarr', group: 'Services', addressPlaceholder: 'e.g. http://localhost:8989', usedFor: 'TV searches, grabs and imports', refused: 'API key', credentials: [apiKey('Sonarr')] },
+  { name: 'radarr', label: 'Radarr', logo: 'radarr', group: 'Services', addressPlaceholder: 'e.g. http://localhost:7878', usedFor: 'Movie searches, grabs and imports', refused: 'API key', credentials: [apiKey('Radarr')] },
   {
-    name: 'rtorrent', label: 'rTorrent', logo: 'rtorrent', addressPlaceholder: 'e.g. https://seedbox.example/xmlrpc', usedFor: 'Live torrent status, stall and re-link fixes, second versions', refused: 'login',
+    name: 'rtorrent', label: 'rTorrent', logo: 'rtorrent', group: 'Services', addressPlaceholder: 'e.g. https://seedbox.example/xmlrpc', usedFor: 'Live torrent status, stall and re-link fixes, second versions', refused: 'login',
     credentials: login('rtorrent', 'The login for the rTorrent address.'),
   },
   {
-    name: 'plex', label: 'Plex', logo: 'plex', addressPlaceholder: 'e.g. http://localhost:32400', usedFor: 'Health check, and library scans after a second version imports', refused: 'token',
+    name: 'plex', label: 'Plex', logo: 'plex', group: 'Services', addressPlaceholder: 'e.g. http://localhost:32400', usedFor: 'Health check, and library scans after a second version imports', refused: 'token',
     credentials: [{ key: 'plex.token', label: 'Plex token', short: 'token', placeholder: 'Paste the Plex token', help: 'The X-Plex-Token of your Plex server.', secret: true }],
   },
+  {
+    name: 'tmdb', label: 'TMDB', logo: null, group: 'Metadata', usedFor: 'Discover rows, title details and posters', refused: 'API key',
+    credentials: [apiKey('TMDB', 'On themoviedb.org: Settings > API > API Key.')],
+  },
+  {
+    name: 'mdblist', label: 'MDBList', logo: null, group: 'Metadata', usedFor: 'Ratings by site on show pages', refused: 'API key',
+    credentials: [apiKey('MDBList', 'On mdblist.com: Preferences > API Access.')],
+  },
+  {
+    name: 'trakt', label: 'Trakt', logo: null, group: 'Metadata', usedFor: 'Discover lists beyond TMDB', refused: 'Client ID',
+    credentials: [{ key: 'trakt.clientId', label: 'Client ID', short: 'Client ID', placeholder: 'Paste the Client ID', help: 'On trakt.tv: Settings > Your API Apps, then the app\'s Client ID.', secret: true }],
+  },
 ];
+
+const hasAddress = (service: ServiceName) => services.find((info) => info.name === service)?.addressPlaceholder !== undefined;
+
+/** What the form asks for, in words: "address and API key", or "API key" for a service with a fixed address. */
+export const fieldWords = (info: ServiceInfo) => (hasAddress(info.name) ? `address and ${info.refused}` : info.refused);
 
 export const addressKey = (service: ServiceName) => `${service}.url`;
 
@@ -66,7 +87,7 @@ export const emptyDraft = (saved: SavedService | undefined): Draft => ({ address
 export const changes = (service: ServiceName, saved: SavedService | undefined, draft: Draft) => {
   const result: { serviceAddresses?: Record<string, string>; credentials?: Record<string, string> } = {};
   const address = draft.address.trim();
-  if (address !== savedAddress(saved)) result.serviceAddresses = { [addressKey(service)]: address };
+  if (hasAddress(service) && address !== savedAddress(saved)) result.serviceAddresses = { [addressKey(service)]: address };
   const secrets = Object.entries(draft.secrets).filter(([, value]) => value.trim() !== '');
   if (secrets.length > 0) result.credentials = Object.fromEntries(secrets);
   return result;
@@ -94,7 +115,7 @@ export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = 
 
 const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected';
 
-const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
+export const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
 /** What the trackers add to the header: account connections that answer, of those that exist, and their own words. */
 export type TrackerSummary = { ok: number; total: number; failed: string[]; notes: string[] };
@@ -145,23 +166,26 @@ const consequences: Partial<Record<ServiceName, string>> = {
   rtorrent: 'nothing new downloads',
 };
 
+// Metadata services are not in the strip.
+const chainServices = services.filter((info) => info.group === 'Services');
+
 /** The strip's sentence about what works and what does not. */
 export const stripSummary = (checks: Record<ServiceName, Check>) => {
   // Several tests at once is the check every saved connection gets when the screen opens; a single Connect keeps the usual sentence.
-  if (services.filter((info) => checks[info.name].kind === 'testing').length > 1) return 'Checking each connection.';
-  if (services.every((info) => checks[info.name].kind === 'ok')) return 'Every link answers. Trackers don\'t feed Sonarr or Radarr: their hit and run rules decide when a torrent can be removed.';
-  if (!services.some((info) => checks[info.name].kind === 'ok')) {
-    const next = services.find((info) => checks[info.name].kind !== 'ok') ?? services[0];
+  if (chainServices.filter((info) => checks[info.name].kind === 'testing').length > 1) return 'Checking each connection.';
+  if (chainServices.every((info) => checks[info.name].kind === 'ok')) return 'Every link answers. Trackers don\'t feed Sonarr or Radarr: their hit and run rules decide when a torrent can be removed.';
+  if (!chainServices.some((info) => checks[info.name].kind === 'ok')) {
+    const next = chainServices.find((info) => checks[info.name].kind !== 'ok') ?? chainServices[0];
     return `Nothing answers yet, so nothing can be found, downloaded or watched. Start with ${next.label}.`;
   }
-  const sentences = services.flatMap((info) => {
+  const sentences = chainServices.flatMap((info) => {
     const check = checks[info.name];
     if (check.kind === 'rejected') return [`${info.label} refused its ${info.refused}.`];
     if (check.kind !== 'unreachable') return [];
     const consequence = consequences[info.name];
     return [`${info.label} is not answering${consequence === undefined ? '' : `, so ${consequence}`}.`];
   });
-  const unset = services.filter((info) => checks[info.name].kind !== 'ok' && !failed(checks[info.name])).map((info) => info.label);
+  const unset = chainServices.filter((info) => checks[info.name].kind !== 'ok' && !failed(checks[info.name])).map((info) => info.label);
   if (unset.length > 0) sentences.push(`${list(unset)} ${unset.length === 1 ? 'is' : 'are'} not set up yet.`);
   return sentences.join(' ');
 };
@@ -170,7 +194,7 @@ export const stripSummary = (checks: Record<ServiceName, Check>) => {
 export const failureTitle = (info: ServiceInfo, check: Check, address: string) => {
   if (check.kind === 'unreachable') return address === '' ? `${info.label} did not answer within 10 seconds` : `${info.label} did not answer at ${address}`;
   if (check.kind === 'rejected') return `${info.label} refused the ${info.refused}`;
-  return `${info.label} needs its address and ${info.refused} first`;
+  return `${info.label} needs its ${fieldWords(info)} first`;
 };
 
 /** "2 min ago" from a time in milliseconds. */

@@ -63,7 +63,7 @@ g12="$hook_dir/guard-agents-docs.sh"
 # (core.hooksPath may point every worktree at the primary checkout's hooks).
 if [ "$TEST_ON_COMMIT" = 1 ]; then
     # shellcheck disable=SC2086
-    staged_code=$(git diff --cached --name-only --diff-filter=ACMD -- $SOURCE_PATHS 2>/dev/null)
+    staged_code=$(git diff --cached --name-only --diff-filter=ACMDR -- $SOURCE_PATHS 2>/dev/null)
     if [ -n "$staged_code" ]; then
         repo_root=$(git rev-parse --show-toplevel)
         hook_root=$(cd "$hook_dir/.." 2>/dev/null && pwd)

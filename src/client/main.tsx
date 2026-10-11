@@ -4,6 +4,7 @@ import { SignIn } from './SignIn';
 import { Home } from './Home';
 import { navigate, useLocation } from './navigation';
 import { Button } from './components/ui/button';
+import { Callout } from './components/ui/callout';
 import { DownloadsLiveBar } from './components/ui/downloads-live-bar';
 import { LabelGroup } from './components/ui/label-group';
 import { PanelInline } from './components/ui/panel-inline';
@@ -20,6 +21,9 @@ import { useHealth } from './health/useHealth';
 import { BlocklistScreen } from './history/Blocklist';
 import { HistoryScreen } from './history/History';
 import { useBlocklist, useHistory } from './history/useHistory';
+import { startMetrics } from './metrics';
+import type { SetupStatus } from './settings/setup';
+import { SetupWizard } from './settings/SetupWizard';
 import './globals.css';
 
 type SessionState =
@@ -64,8 +68,9 @@ function App() {
   const checkSession = useCallback(async (completedSignIn = false) => {
     if (sessionRef.current.kind === 'signing-out') return;
     const previous = sessionRef.current;
+    // No 'checking' here: it unmounts the signed-in app, losing typed settings and open dialogs on every focus.
+    // The first check and signedIn() start from 'checking' already.
     const request = beginRequest();
-    if (completedSignIn || previous.kind !== 'signed-out') setSession({ kind: 'checking' });
     try {
       const requestStartedAt = performance.now();
       const response = await fetch('/api/session', {
@@ -222,7 +227,7 @@ function App() {
   }
 
   return (
-    <SignedIn
+    <SetupGate
       headingRef={headingRef}
       signOutLabel={session.kind === 'signing-out'
         ? 'Signing out…'
@@ -248,8 +253,45 @@ function App() {
   );
 }
 
+type SignedInProps = Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'downloading' | 'healthProblems' | 'healthRisk'>;
+
+// The setup wizard blocks the app until every required part is set up; once open, it stays until the owner leaves Done.
+function SetupGate(props: SignedInProps) {
+  const [gate, setGate] = useState<{ kind: 'checking' | 'failed' | 'app' } | { kind: 'setup'; status: SetupStatus }>({ kind: 'checking' });
+  const unauthorizedRef = useRef(props.onUnauthenticated);
+  unauthorizedRef.current = props.onUnauthenticated;
+
+  const check = useCallback(async () => {
+    setGate({ kind: 'checking' });
+    try {
+      const response = await fetch('/api/setup', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (response.status === 401) {
+        unauthorizedRef.current();
+        return;
+      }
+      if (!response.ok) throw new Error('Setup status could not be read.');
+      const status = await response.json() as SetupStatus;
+      setGate(status.requiredComplete ? { kind: 'app' } : { kind: 'setup', status });
+    } catch {
+      setGate({ kind: 'failed' });
+    }
+  }, []);
+
+  useEffect(() => { void check(); }, [check]);
+
+  if (gate.kind === 'app') return <SignedIn {...props} />;
+  if (gate.kind === 'setup') return <SetupWizard {...props} status={gate.status} onFinished={() => setGate({ kind: 'app' })} />;
+  return (
+    <main className="min-h-screen bg-background px-(--page-margin) pt-10">
+      {gate.kind === 'failed'
+        ? <Callout title="media-manager-2 could not be read" action={<Button variant="outline" onClick={() => void check()}>Retry</Button>}>Check that it is running, then retry.</Callout>
+        : <p className="sr-only" aria-live="polite">Checking setup…</p>}
+    </main>
+  );
+}
+
 // Home routes by address: the Library is home, search results, title pages and the calendar come from Home, and the Downloads, Flagged, History, Blocklist, Health and Settings screens live at /downloads, /flagged, /history, /blocklist, /health and /settings.
-function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'downloading' | 'healthProblems' | 'healthRisk'>) {
+function SignedIn(props: SignedInProps) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
   const { pathname } = useLocation();
   const history = useHistory(props.onUnauthenticated, pathname === '/history');
@@ -281,7 +323,7 @@ function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'n
       downloading={downloadingRows.length}
       healthProblems={healthProblems.filter((problem) => problem.level !== 'notice').length}
       healthRisk={healthProblems.some((problem) => problem.level === 'error')}
-      downloads={<DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />}
+      downloads={<DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} onUnauthenticated={props.onUnauthenticated} />}
       flagged={(
         <FlaggedScreen
           state={flagged}
@@ -345,4 +387,5 @@ function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'n
   );
 }
 
+startMetrics();
 createRoot(document.getElementById('root')!).render(<ToastProvider><App /></ToastProvider>);

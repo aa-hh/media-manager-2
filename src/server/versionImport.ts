@@ -111,7 +111,7 @@ export const createVersionImport = (options: {
   const folderSubject = (service: Service): Subject => ({ type: 'dependency', service, id: `versions.${service}` });
 
   const fail = (row: Row, title: string, reason: string, code: FailureCode) => {
-    const changed = database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, failure_code = ?, updated_at = ? WHERE id = ? AND state = 'importing'")
+    const changed = database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, failure_code = ?, updated_at = ? WHERE id = ? AND state IN ('downloading', 'importing')")
       .run(reason, code, now(), row.id).changes;
     if (changed === 1) problems.open({ kind: IMPORT_PROBLEM_KIND, subject: subjectOf(row), hash: row.hash, state: 'needs_you', summary: `${title} (second version): ${reason}` });
   };
@@ -336,8 +336,27 @@ export const createVersionImport = (options: {
     return outcome;
   };
 
+  const readRows = (states: string): Row[] => database.prepare(`
+    SELECT id, service, movie_id, series_id, episode_id, release_title, quality, hash FROM second_versions WHERE state IN (${states}) ORDER BY id
+  `).all().map((row): Row => ({
+    id: Number(row.id),
+    service: row.service as Service,
+    movieId: row.movie_id === null ? null : Number(row.movie_id),
+    seriesId: row.series_id === null ? null : Number(row.series_id),
+    episodeId: row.episode_id === null ? null : Number(row.episode_id),
+    releaseTitle: String(row.release_title),
+    quality: String(row.quality),
+    hash: String(row.hash),
+  }));
+
   const run = async () => {
-    const complete = new Set(listTorrents(database).filter((torrent) => torrent.goneAt === null && torrent.complete).map((torrent) => torrent.hash));
+    const torrents = listTorrents(database);
+    const complete = new Set(torrents.filter((torrent) => torrent.goneAt === null && torrent.complete).map((torrent) => torrent.hash));
+    // Nothing else moves a row on once its torrent leaves rTorrent, and a delete refuses a row still downloading or importing.
+    const gone = new Set(torrents.filter((torrent) => torrent.goneAt !== null).map((torrent) => torrent.hash));
+    for (const row of readRows("'downloading', 'importing'")) {
+      if (gone.has(row.hash)) fail(row, row.releaseTitle, 'Its torrent left rTorrent before it was imported.', 'torrent_gone');
+    }
     const at = now();
     // TV and movies each wait for their versions folder to be set before importing, and say so once something is waiting.
     for (const service of ['radarr', 'sonarr'] as const) {
@@ -358,18 +377,7 @@ export const createVersionImport = (options: {
         database.prepare("UPDATE second_versions SET state = 'importing', updated_at = ? WHERE id = ? AND state = 'downloading'").run(at, row.id);
       }
     }
-    const rows = database.prepare(`
-      SELECT id, service, movie_id, series_id, episode_id, release_title, quality, hash FROM second_versions WHERE state = 'importing' ORDER BY id
-    `).all().map((row): Row => ({
-      id: Number(row.id),
-      service: row.service as Service,
-      movieId: row.movie_id === null ? null : Number(row.movie_id),
-      seriesId: row.series_id === null ? null : Number(row.series_id),
-      episodeId: row.episode_id === null ? null : Number(row.episode_id),
-      releaseTitle: String(row.release_title),
-      quality: String(row.quality),
-      hash: String(row.hash),
-    }));
+    const rows = readRows("'importing'");
     const byHash = new Map<string, Row[]>();
     for (const row of rows) byHash.set(row.hash, [...byHash.get(row.hash) ?? [], row]);
     const unsettled = new Set<Service>();

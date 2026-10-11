@@ -1,11 +1,8 @@
 import type { GrabRecord, Grabs } from './grabs.js';
+import { NOT_BETTER } from './imports.js';
 import { type ArrServices, type QueueItem, valueOrThrow } from './services/arr.js';
 
 type Arr = ArrServices[keyof ArrServices];
-
-// The only import refusal a replace may override. Sonarr says "...existing episode file(s)",
-// Radarr "...existing movie file"; both begin the same way.
-const NOT_AN_UPGRADE = /^not an upgrade for existing (episode|movie) file/i;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -63,12 +60,12 @@ export const createReplaces = (
   };
 
   // ManualImport builds the import with no rejections, so only files whose own refusal is
-  // "Not an upgrade" go in; a sample, a dangerous file or a wrong title stays out.
+  // not being better than the file in place go in; a sample, a dangerous file or a wrong title stays out.
   const force = async (record: GrabRecord, service: Arr, downloadId: string): Promise<ReplaceStep> => {
     const listed = await get(service, `/api/v3/manualimport?downloadId=${encodeURIComponent(downloadId)}&filterExistingFiles=false`);
     if (!Array.isArray(listed)) throw new Error('manualimport did not return a list');
     const files = listed.filter(isRecord);
-    const importable = files.filter((file) => rejectionsOf(file).every((reason) => NOT_AN_UPGRADE.test(reason)));
+    const importable = files.filter((file) => rejectionsOf(file).every((reason) => NOT_BETTER.test(reason)));
     if (importable.length === 0) {
       const reasons = [...new Set(files.flatMap(rejectionsOf))];
       return { kind: 'failed', reason: reasons.length > 0 ? `Import blocked: ${reasons.join(' ')}` : 'The download has no file to import.' };
@@ -116,7 +113,7 @@ export const createReplaces = (
     if (item.trackedStatus !== 'warning') return { kind: 'waiting' };
     const messages = messagesOf(item.statusMessages);
     if (messages.length === 0) return { kind: 'waiting' };
-    if (!messages.every((message) => NOT_AN_UPGRADE.test(message))) {
+    if (!messages.every((message) => NOT_BETTER.test(message))) {
       return { kind: 'failed', reason: `Import blocked: ${[...new Set(messages)].join(' ')}` };
     }
     if (record.state === 'importing') {
@@ -140,13 +137,14 @@ export const createReplaces = (
         }
         if (next.kind === 'forced') grabs.update(record.id, { state: 'importing' });
         else if (next.kind === 'completed') {
-          const completed = grabs.update(record.id, { state: 'completed', failure: null });
+          // Reconcile only re-applies protection already recorded, so the replace stays open until protecting it succeeds.
           try {
-            await options.onCompleted?.(completed);
+            await options.onCompleted?.(record);
           } catch {
-            // Protection is re-applied by its own reconcile job; the replace itself is done.
-            console.error('Protecting a completed replace failed; the next reconcile retries it.');
+            console.error('Protecting a completed replace failed; the next pass retries it.');
+            continue;
           }
+          grabs.update(record.id, { state: 'completed', failure: null });
         }
         else if (next.kind === 'failed') grabs.update(record.id, { state: 'failed', failure: next.reason });
       }

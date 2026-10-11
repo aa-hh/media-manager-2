@@ -25,7 +25,7 @@ import {
   statFacts, trackerInfo, type TrackerRow,
 } from './trackers';
 
-/** Sends one request under /api/settings/trackers. Throws when media-manager-2 did not answer or the session ended. */
+/** Sends one request under the API path the caller picks (/api/settings/trackers or /api/setup). Throws when media-manager-2 did not answer or the session ended. */
 export type TrackerRequest = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown) => Promise<Response>;
 
 const noAnswer = 'media-manager-2 did not answer. Try again.';
@@ -75,25 +75,28 @@ export function TrackerPill({ row, edited, strip = false }: { row: TrackerRow; e
   return <StatusRulePill tone={pill.warning ? 'warning' : 'default'} leading={leading}>{pill.text}</StatusRulePill>;
 }
 
-type TrackerListRowProps = { host: string; title: ReactNode; subline: ReactNode; pill?: ReactNode; selected: boolean; adding?: boolean; onClick: () => void };
+type TrackerListRowProps = { host: string; title: ReactNode; subline: ReactNode; pill?: ReactNode; selected: boolean; adding?: boolean; icon?: ReactNode; onClick: () => void };
 
-/** A tracker in the settings list, 56 px, laid out as RowService. */
-export function TrackerListRow({ host, title, subline, pill, selected, adding = false, onClick }: TrackerListRowProps) {
+/** A tracker, or Folders and Backup with an icon in place of the tracker mark, in the settings list, 56 px, laid out as RowService. */
+export function TrackerListRow({ host, title, subline, pill, selected, adding = false, icon, onClick }: TrackerListRowProps) {
   return (
     <button
       type="button"
       aria-current={selected || undefined}
       onClick={onClick}
       className={cn(
-        'flex h-14 w-full items-center gap-3 rounded-sm px-4 text-left',
+        'relative flex h-14 w-full items-center gap-3 rounded-sm px-4 text-left',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         selected ? 'bg-selected' : 'hover:bg-surface-hover active:bg-surface-pressed',
       )}
     >
-      {selected && <span aria-hidden="true" className="h-10 w-0.75 shrink-0 rounded-[2px] bg-foreground" />}
+      {/* Always present and out of the flow, so selecting a row moves nothing; only its opacity changes. */}
+      <span aria-hidden="true" className={cn('absolute top-2 bottom-2 left-0 w-0.75 rounded-[2px] bg-foreground transition-opacity duration-(--duration-fast) ease-out', !selected && 'opacity-0')} />
       {adding
         ? <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-4"><Plus /></span>
-        : <TrackerMark host={host} size="row" />}
+        : icon !== undefined
+          ? <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-4">{icon}</span>
+          : <TrackerMark host={host} size="row" />}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate font-ui text-sm font-semibold text-foreground">{title}</span>
         <span className="truncate font-data text-[13px] font-normal text-muted-foreground">{subline}</span>
@@ -108,27 +111,43 @@ type AddTrackerProps = {
   onAddress: (address: string) => void;
   request: TrackerRequest;
   onCancel: () => void;
+  /** The Cancel button's words; the setup wizard says "Skip trackers". */
+  cancelLabel?: string;
   /** Called with the hostname the server stored, and whether its site software was saved too. */
   onAdded: (host: string, softwareSaved: boolean) => void;
+  /** Asks for the account's credential and adds through /api/setup/trackers, which tests it first (the setup wizard). */
+  withCredential?: boolean;
 };
 
-/** The pane for adding a tracker: its web address and site software. */
-export function AddTracker({ address, onAddress, request, onCancel, onAdded }: AddTrackerProps) {
+/** The pane for adding a tracker: its web address and site software, and in the setup wizard its credential. */
+export function AddTracker({ address, onAddress, request, onCancel, cancelLabel = 'Cancel', onAdded, withCredential = false }: AddTrackerProps) {
   const [software, setSoftware] = useState<Software>('unit3d');
+  const [credential, setCredential] = useState('');
   const [pending, setPending] = useState(false);
   const [fieldError, setFieldError] = useState<string>();
+  const [credentialError, setCredentialError] = useState<string>();
   const [problem, setProblem] = useState<string>();
+  const askCredential = withCredential && software !== 'other';
+  const ready = address.trim() !== '' && (!askCredential || credential.trim() !== '');
 
   const add = async () => {
     setPending(true);
     setFieldError(undefined);
+    setCredentialError(undefined);
     setProblem(undefined);
     try {
-      const response = await request('POST', '', { host: address });
+      const response = await request('POST', '', withCredential ? { host: address, software, ...(askCredential && { credential }) } : { host: address });
       if (response.status === 400) return setFieldError('Enter the address you open the tracker at, such as blutopia.cc.');
       if (response.status === 409) return setFieldError('This tracker is already added.');
+      if (withCredential && response.status === 200) {
+        const { connection } = await response.json() as { connection: Connection };
+        if (connection.kind === 'rejected') return setCredentialError(`${trackerInfo(address.trim()).name} refused this ${credentialName(software)}.`);
+        if (connection.kind === 'unreachable') return setFieldError('The tracker did not answer within 10 seconds. Check the address.');
+        return setProblem('The account could not be checked. Try again, or pick Other to add it without one.');
+      }
       if (response.status !== 201) return setProblem('The tracker could not be added. Try again.');
       const { host } = await response.json() as { host: string };
+      if (withCredential) return onAdded(host, true);
       let softwareSaved = true;
       if (software !== 'other') {
         try {
@@ -168,7 +187,7 @@ export function AddTracker({ address, onAddress, request, onCancel, onAdded }: A
           readOnly={pending}
           aria-invalid={fieldError !== undefined || undefined}
           onValueChange={(value) => onAddress(value)}
-          onKeyDown={(event) => { if (event.key === 'Enter' && address.trim() !== '') void add(); }}
+          onKeyDown={(event) => { if (event.key === 'Enter' && ready) void add(); }}
         />
       </FieldLabelled>
       <div className="flex flex-col gap-1.5">
@@ -180,16 +199,34 @@ export function AddTracker({ address, onAddress, request, onCancel, onAdded }: A
               control={<Radio value={choice.software} />}
               title={softwareLabels[choice.software]}
               description={choice.description}
-              className="rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]"
+              bordered
             />
           ))}
         </RadioGroup>
         <p className="font-ui text-xs text-subtle-foreground">Picks how media-manager-2 reads your account. Other: no account connection; only the hit and run rule is used.</p>
       </div>
+      {askCredential && (
+        <FieldLabelled label={credentialName(software)} error={credentialError} help={credentialSource(software)}>
+          <InputSearch
+            variant="field"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={`Paste the ${credentialName(software)}`}
+            value={credential}
+            readOnly={pending}
+            aria-invalid={credentialError !== undefined || undefined}
+            onValueChange={(value) => setCredential(value)}
+            onKeyDown={(event) => { if (event.key === 'Enter' && ready) void add(); }}
+          />
+        </FieldLabelled>
+      )}
       <BarBottomAction
-        summary="Adds the tracker with no rule. Its torrents keep seeding until you save one."
-        secondary={<Button variant="outline" disabled={pending} onClick={onCancel}>Cancel</Button>}
-        action={<Button size="large" icon={<Plus />} loading={pending} disabled={address.trim() === ''} onClick={() => void add()}>Add tracker</Button>}
+        summary={askCredential
+          ? `Tests the ${credentialName(software)} with the site, then adds the tracker. Its torrents keep seeding until you give it a rule.`
+          : 'Adds the tracker with no rule. Its torrents keep seeding until you save one.'}
+        secondary={<Button variant="outline" disabled={pending} onClick={onCancel}>{cancelLabel}</Button>}
+        action={<Button size="large" icon={<Plus />} loading={pending} disabled={!ready} onClick={() => void add()}>Add tracker</Button>}
       />
       {problem !== undefined && <Callout title={problem} />}
     </section>

@@ -1,4 +1,4 @@
-import { existsSync, linkSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
@@ -93,37 +93,57 @@ export const createRelinkFix = (options: {
     // Linked before rTorrent is touched, so a failed link leaves the torrent as it was. The link itself is the
     // drive check: matching device numbers miss bind mounts and container volumes.
     const base = await rtorrent.call('d.is_multi_file', [hash]) === 1 ? join(downloadRoot, name) : downloadRoot;
-    for (const { file, library } of pairs) {
-      const destination = join(base, file.path);
-      mkdirSync(dirname(destination), { recursive: true });
-      if (existsSync(destination) && statSync(destination).ino === library.ino) continue;
-      try {
-        linkSync(library.path, destination);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'EXDEV') throw new Error('The download folder and the library are on different drives.');
-        throw error;
+    // A torrent started later would write through leftover links into the library's files, so a run that fails before the recheck completes removes them.
+    const created: string[] = [];
+    try {
+      for (const { file, library } of pairs) {
+        const destination = join(base, file.path);
+        mkdirSync(dirname(destination), { recursive: true });
+        if (existsSync(destination) && statSync(destination).ino === library.ino) continue;
+        try {
+          linkSync(library.path, destination);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EXDEV') throw new Error('The download folder and the library are on different drives.');
+          throw error;
+        }
+        created.push(destination);
       }
-    }
-    const n = pairs.length;
-    problems.step(problemId, 'fix', `Hardlinked ${n} file${n === 1 ? '' : 's'} from the library.`);
-    await rtorrent.call('d.close', [hash]);
-    problems.step(problemId, 'fix', 'Closed the torrent in rTorrent.');
-    await rtorrent.call('d.directory.set', [hash, downloadRoot]);
-    problems.step(problemId, 'fix', `Pointed it at ${downloadRoot}.`);
-    await rtorrent.call('d.open', [hash]);
-    problems.step(problemId, 'fix', 'Opened it.');
-    await rtorrent.call('d.check_hash', [hash]);
-    problems.step(problemId, 'fix', 'Rechecking the data.');
+      const n = pairs.length;
+      problems.step(problemId, 'fix', `Hardlinked ${n} file${n === 1 ? '' : 's'} from the library.`);
+      await rtorrent.call('d.close', [hash]);
+      problems.step(problemId, 'fix', 'Closed the torrent in rTorrent.');
+      await rtorrent.call('d.directory.set', [hash, downloadRoot]);
+      problems.step(problemId, 'fix', `Pointed it at ${downloadRoot}.`);
+      await rtorrent.call('d.open', [hash]);
+      problems.step(problemId, 'fix', 'Opened it.');
+      await rtorrent.call('d.check_hash', [hash]);
+      problems.step(problemId, 'fix', 'Rechecking the data.');
 
-    const startedAt = now();
-    for (;;) {
-      await sleep(HASH_POLL_MS);
-      if (await rtorrent.call('d.hashing', [hash]) === 0) break;
-      if (now() - startedAt >= HASH_WAIT_LIMIT_MS) throw new Error('Still rechecking after two hours.');
+      const startedAt = now();
+      for (;;) {
+        await sleep(HASH_POLL_MS);
+        if (await rtorrent.call('d.hashing', [hash]) === 0) break;
+        if (now() - startedAt >= HASH_WAIT_LIMIT_MS) throw new Error('Still rechecking after two hours.');
+      }
+      if (await rtorrent.call('d.complete', [hash]) !== 1) {
+        throw new Error('The recheck found the data incomplete, so the torrent stays stopped.');
+      }
+    } catch (error) {
+      if (created.length > 0) {
+        let left = 0;
+        for (const path of created) {
+          try {
+            unlinkSync(path);
+          } catch {
+            left += 1;
+          }
+        }
+        const n = created.length - left;
+        problems.step(problemId, 'fix', `Removed the ${n} hardlink${n === 1 ? '' : 's'} again.${left > 0 ? ` ${left} could not be removed.` : ''}`);
+      }
+      throw error;
     }
-    if (await rtorrent.call('d.complete', [hash]) !== 1) {
-      throw new Error('The recheck found the data incomplete, so the torrent stays stopped.');
-    }
+    // Once the recheck is complete the links are the torrent's data, and a start that throws may still have started it.
     await rtorrent.call('d.start', [hash]);
     problems.step(problemId, 'fix', 'Started it.');
     try {

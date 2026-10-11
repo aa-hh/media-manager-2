@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Tests for scripts/review-branch.sh after two review rounds: merging
-# origin/main in must not use a round, anything else must keep refusing.
+# Tests for scripts/review-branch.sh across review rounds: merging origin/main
+# in must not use a round or widen round 2, anything else after round 2 must
+# keep refusing.
 # Builds a throwaway origin and clone, runs the script from THIS checkout with
 # cwd in the clone and GH pointed at a stub that keeps comments and statuses
 # in files.
@@ -134,6 +135,60 @@ if expect_rc "duplicating merge" 3; then
   expect_rc "duplicating merge --continue" 1 && expect_status "duplicating merge --continue" failure \
     && ok "a HIGH on the resolution fails the status"
 fi
+
+# Round 2 after a clean main merge reviews only the branch's own fix, not
+# what main gained since round 1. Breaks if round 2 diffs from round 1's head.
+setup
+printf '<!-- agent-review round=1 head=%s level=cheap high=1 changes=old -->\n## Review: cheap, round 1\n\n' "$(head_sha)" > "$STUB/comments"
+on_main b.txt 'b-unrelated-main-line\n' main-other
+g merge -q --no-edit origin/main
+commit_file a.txt 'one\nTWO-fix\nthree\n' own-fix
+# Main moving on after the branch's last merge must not show up reversed.
+on_main c.txt 'c-newer-main-line\n' main-newer
+run_review
+prompt=$(printf '%s\n' "$OUT" | sed -n 's/^cheap .* prompt=\(.*\)  save reply to=.*/\1/p')
+if expect_rc "round 2 after a main merge" 3; then
+  if ! printf '%s\n' "$OUT" | grep -q 'round 2$' || [ -z "$prompt" ]; then fail "round 2 after a main merge: wanted one cheap round 2 pass, got: $OUT"
+  elif ! grep -q 'TWO-fix' "$prompt" || grep -q 'b-unrelated-main-line' "$prompt" || grep -q 'c-newer-main-line' "$prompt"; then fail "round 2 after a main merge: prompt is not just the fix"
+  elif [ "$(g cat-file -t "$(sed -n 's/^base: \([0-9a-f]*\) tip: .*/\1/p' "$prompt")" 2>/dev/null)" != commit ]; then fail "round 2 after a main merge: the base is not a commit the history pass can blame"
+  else ok "round 2 after a main merge reviews only the fix"
+  fi
+fi
+
+# Round 2 after a conflicted main merge: the base is round 1's head with main
+# merged in, conflict markers and all, so the prompt holds the branch's
+# resolution and its fix and nothing of main's. Breaks if merge-tree's exit 1
+# (conflicts) is taken as a failure and the base falls back to round 1's head.
+setup
+printf '<!-- agent-review round=1 head=%s level=cheap high=1 changes=old -->\n## Review: cheap, round 1\n\n' "$(head_sha)" > "$STUB/comments"
+on_main a.txt 'one\nTWO-main\nthree\n' main-conflict
+on_main b.txt 'b-unrelated-main-line\n' main-other
+g merge -q --no-edit origin/main > /dev/null
+printf 'one\nTWO-both\nthree\n' > "$W/a.txt"; g add -A; g commit -qm merge
+commit_file a.txt 'one\nTWO-both\nthree-fix\n' own-fix
+run_review
+prompt=$(printf '%s\n' "$OUT" | sed -n 's/^cheap .* prompt=\(.*\)  save reply to=.*/\1/p')
+if expect_rc "round 2 after a conflicted main merge" 3; then
+  if ! printf '%s\n' "$OUT" | grep -q 'round 2$' || [ -z "$prompt" ]; then fail "round 2 after a conflicted main merge: wanted one cheap round 2 pass, got: $OUT"
+  elif printf '%s\n' "$OUT" | grep -q 'could not merge main'; then fail "round 2 after a conflicted main merge: warned that main could not be merged"
+  elif ! grep -q 'TWO-both' "$prompt" || ! grep -q 'three-fix' "$prompt" || grep -q 'b-unrelated-main-line' "$prompt"; then fail "round 2 after a conflicted main merge: prompt is not the resolution and the fix"
+  else ok "round 2 after a conflicted main merge reviews the resolution and the fix"
+  fi
+fi
+
+# Size count: review data under .impeccable/ and .claude/ does not count as
+# product lines, .claude/hooks/ does, and settings.json is still a risk path.
+# Breaks if *.json pulls them back in or settings.json leaves is_risk_path.
+setup
+: > "$STUB/comments"
+mkdir -p "$W/.impeccable/review" "$W/.claude/hooks"
+printf '{"line": %s}\n' $(seq 60) > "$W/.impeccable/review/case.json"
+printf '{"a": %s}\n' $(seq 5) > "$W/.claude/settings.json"
+printf '#!/bin/sh\nexit 0\n' > "$W/.claude/hooks/guard.sh"
+g add -A; g commit -qm data
+run_review
+case "$OUT" in *"Review level: full (2 product lines, risk: .claude/hooks/guard.sh, .claude/settings.json), round 1"*) ok ".impeccable/ and .claude/ data stay out of the size count" ;;
+  *) fail "size count: wanted 2 product lines from the hook only and settings.json as a risk path, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
 
 # A commit of the branch's own after round 2 still refuses.
 setup

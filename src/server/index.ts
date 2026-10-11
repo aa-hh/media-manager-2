@@ -27,7 +27,7 @@ import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
-import { createDiscover } from './discover.js';
+import { createDiscover } from './discover/index.js';
 import { createTitleStore } from './titleStore.js';
 import { createTmdbTitles } from './tmdbTitles.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
@@ -41,6 +41,7 @@ import { readSetting } from './services/connection.js';
 import { createMdblist } from './services/mdblist.js';
 import { createPlex } from './services/plex.js';
 import { createTmdb } from './services/tmdb.js';
+import { createTrakt } from './services/trakt.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller } from './torrents.js';
@@ -51,16 +52,20 @@ import { createStallFix } from './stalls.js';
 import { createTorrentFiles } from './torrentFiles.js';
 import { createTitleDelete } from './titleDelete.js';
 import { adviseRemoval } from './advice.js';
-import { createImageRoutes, createTitleCache, createTmdbImages } from './titles.js';
+import { createImageRoutes, createTitleCache, createTmdbImages, IMAGE_SWEEP_INTERVAL_MS } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
-const host = process.env.HOST ?? '127.0.0.1';
-const port = Number(process.env.PORT ?? '3000');
+// An empty HOST or PORT means the default, never every interface or a random port.
+const host = process.env.HOST || '127.0.0.1';
+const portText = process.env.PORT || '3000';
+const port = Number(portText);
 
 let database: DatabaseSync | undefined;
 try {
   // Checked once here so a bad TRACKER_RULES stops startup instead of failing each rule lookup later.
   trackerRulesFromEnvironment();
+  // 0 stays allowed: the README documents it as asking the system for a free port.
+  if (!/^\d{1,5}$/.test(portText) || port > 65535) throw new Error('PORT must be a whole number from 0 to 65535.');
   try {
     database = openDatabase();
   } catch {
@@ -109,6 +114,8 @@ if (database !== undefined) {
   const imageDirectory = join(dirname(process.env.DB_PATH ?? defaultDatabasePath), 'images');
   const titles = createTitleCache({ database, arr, events, imageDirectory });
   runner.register('title-refresh', titles.intervalMs, titles.reconcile);
+  const tmdbImages = createTmdbImages({ database, imageDirectory });
+  runner.register('image-sweep', IMAGE_SWEEP_INTERVAL_MS, tmdbImages.sweep);
   const imports = createImportFix({ database, arr, problems, events });
   runner.register('import-fix', 60_000, imports.check);
   // 'grab' events carry torrent grab records for the Downloads screen, so a hand grab's own record goes out under its own name.
@@ -139,16 +146,12 @@ if (database !== undefined) {
   });
   const trackerAccounts = createTrackerAccounts(database);
   const tmdb = createTmdb(database);
+  const trakt = createTrakt(database);
   const mdblist = createMdblist(database);
   const health = createHealth({ database, arr, rtorrent, plex, tmdb, mdblist, jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
   runner.register('replace-completion', 60_000, () => replaces.run());
-  runner.register('grab-download-ids', 30_000, async () => {
-    // A grab that never shows up in history within an hour is left for the owner to see, not polled forever.
-    for (const grab of grabs.pending()) {
-      if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
-    }
-  });
+  runner.register('grab-download-ids', 30_000, () => grabs.resolvePending());
   const secondVersionDelete = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan });
   const titleStore = createTitleStore(database);
   const search = createSearch(database, arr, titleStore);
@@ -168,6 +171,8 @@ if (database !== undefined) {
   });
   const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist);
   const add = createAdd(database, arr, titleStore);
+  const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
+  runner.register('discover-refresh', 10 * 60_000, discover.refresh);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
@@ -196,7 +201,7 @@ if (database !== undefined) {
     owned: createOwned(arr),
     protection,
     library,
-    discover: createDiscover({ tmdb, store: titleStore, libraryTitles: library.titles }),
+    discover,
     tmdbTitles: createTmdbTitles({ database, tmdb, store: titleStore }),
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
@@ -209,7 +214,7 @@ if (database !== undefined) {
       history: createHistory({ database, arr, labels }),
       blocklist: createBlocklist({ database, arr, isManualDownload: protection.isProtected }),
     }),
-    images: createImageRoutes(titles, createTmdbImages({ database, imageDirectory })),
+    images: createImageRoutes(titles, tmdbImages),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
       // One receiver for both: live downloads record every event, a Grab of a manual download is vetoed,
@@ -223,6 +228,12 @@ if (database !== undefined) {
       },
     },
   });
+  // The runner first runs a job one interval after start, so the daily sweep also runs now.
+  try {
+    tmdbImages.sweep();
+  } catch (error) {
+    console.error(`Image sweep failed: ${(error as Error).message}`);
+  }
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.log(`Listening on http://${host}:${info.port}`);
