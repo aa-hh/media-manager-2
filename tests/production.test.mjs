@@ -3717,6 +3717,31 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     database.close();
   });
 
+  // Keeping gone rows forever, or pruning one a grab or second version still names, turns this red.
+  await t.test('gone torrents are pruned after 30 days unless a grab or second version still names them', async () => {
+    const { database, clock, fake, poller } = setup();
+    const stored = () => database.prepare('SELECT hash FROM torrents ORDER BY hash').all().map((torrent) => torrent.hash);
+    fake.rows = [row(hashA), row(hashB), row(hashC)];
+    await poller.poll();
+    clock.value += 30_000;
+    fake.rows = [];
+    await poller.poll();
+    const goneAt = clock.value;
+    database.prepare(`INSERT INTO torrent_grabs (hash, service, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand, imported_at)
+      VALUES (?, 'sonarr', 5, '[50]', 'Show.S01E02', 'Blutopia', 1, 0, 2)`).run(hashB);
+    database.prepare(`INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, created_at, updated_at)
+      VALUES ('radarr', 7, NULL, NULL, 'Release', 'g', 'Blutopia', 'WEBDL-2160p', ?, 'downloading', 1, 1)`).run(hashC);
+    const all = [hashA.toUpperCase(), hashB, hashC];
+    clock.value = goneAt + 30 * 24 * 60 * 60_000 - 1;
+    await poller.poll();
+    assert.deepEqual(stored(), all);
+    clock.value = goneAt + 30 * 24 * 60 * 60_000 + 1;
+    await poller.poll();
+    assert.deepEqual(stored(), [hashB, hashC]);
+    assert.equal(listTorrents(database).every((torrent) => torrent.goneAt === goneAt), true);
+    database.close();
+  });
+
   // Crediting a poll where either side was not cleanly seeding, or crediting a gap longer than two intervals, turns this red.
   await t.test('the seeding counter credits only clean seeding across ordinary poll gaps and survives a restart', async () => {
     const databasePath = join(root, 'counter', 'media-manager.sqlite');
