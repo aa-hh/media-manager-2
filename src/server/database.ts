@@ -211,6 +211,16 @@ export const applicationMigrations = [
     created_at INTEGER NOT NULL,
     PRIMARY KEY (service, item_id)
   ) STRICT;`,
+  `CREATE TABLE backup_runs (
+    id INTEGER PRIMARY KEY,
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('ok', 'failed', 'skipped')),
+    detail TEXT NOT NULL,
+    object_key TEXT,
+    bytes INTEGER,
+    sha256 TEXT
+  ) STRICT;`,
   `CREATE TABLE titles (
     service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
     id INTEGER NOT NULL,
@@ -353,15 +363,14 @@ export const migrateDatabase = (database: DatabaseSync, migrations: readonly str
 
 export const defaultDatabasePath = join(homedir(), '.local', 'share', 'media-manager-2', 'media-manager.sqlite');
 
-export const openDatabase = (path?: string): DatabaseSync => {
-  const selectedPath = path ?? process.env.DB_PATH ?? defaultDatabasePath;
-  if (!selectedPath || !isAbsolute(selectedPath) || selectedPath === ':memory:') {
+export const assertDatabasePath = (path: string): void => {
+  if (!path || !isAbsolute(path) || path === ':memory:') {
     throw new DatabaseError(databasePathMessage);
   }
 
   let canonicalPath: string;
   try {
-    canonicalPath = canonicalize(selectedPath);
+    canonicalPath = canonicalize(path);
   } catch (error) {
     if (error instanceof DatabaseError) throw error;
     throw new DatabaseError(databasePathMessage);
@@ -369,7 +378,11 @@ export const openDatabase = (path?: string): DatabaseSync => {
   if (isInsideApplication(canonicalPath)) {
     throw new DatabaseError(databasePathMessage);
   }
+};
 
+export const openDatabase = (path?: string): DatabaseSync => {
+  const selectedPath = path ?? process.env.DB_PATH ?? defaultDatabasePath;
+  assertDatabasePath(selectedPath);
   prepareDatabaseFile(selectedPath);
   let database: DatabaseSync;
   try {
