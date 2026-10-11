@@ -69,6 +69,10 @@
   --primary-hover: #2e2e2c;
   --primary-pressed: #000000;
   --primary-foreground: #ffffff;
+  --plex: #e5a00d;
+  --plex-hover: #f3aa0e;
+  --plex-pressed: #d19209;
+  --plex-foreground: #111111;
   --best: #c6f135;
   --best-soft: #f3fcd6;
   --best-foreground: #3d5600;
@@ -181,6 +185,71 @@
   }
 }
 
+/*
+ * One light band sweeps across the window and every loading block shows its slice of it, so a grid of
+ * skeletons reads as one sheet catching the light instead of blocks pulsing out of step. The band is pinned
+ * to the window (background-attachment: fixed); iOS Safari ignores that and sweeps each block on its own.
+ * Under reduced motion the loop stops with the band parked off screen.
+ */
+@keyframes skeleton-sweep {
+  from {
+    background-position: -75vw 0;
+  }
+  to {
+    background-position: 75vw 0;
+  }
+}
+
+@utility skeleton-shimmer {
+  background-image: linear-gradient(105deg, transparent 40%, rgb(255 255 255 / 0.9) 50%, transparent 60%);
+  background-size: 100vw 100vh;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-position: -75vw 0;
+  animation: skeleton-sweep var(--duration-shimmer) var(--ease-linear) infinite;
+}
+
+/*
+ * View transitions (navigation.ts withViewTransition). The old page leaves fast, the new page arrives at base speed,
+ * and a poster card's poster morphs into the title page's large poster. Reduced motion never starts one.
+ */
+.title-poster {
+  view-transition-name: title-poster;
+}
+
+::view-transition-old(root) {
+  animation-duration: var(--duration-fast);
+  animation-timing-function: var(--ease-in);
+}
+
+::view-transition-new(root) {
+  animation-duration: var(--duration-base);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-group(title-poster) {
+  animation-duration: var(--duration-slow);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-old(title-poster),
+::view-transition-new(title-poster) {
+  animation-duration: var(--duration-slow);
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Content arriving in place of a skeleton crossfades in (DESIGN.md Motion: skeleton to content, base, out). */
+@keyframes content-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@utility animate-content-in {
+  animation: content-in var(--duration-base) var(--ease-out) both;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-card: var(--card);
@@ -205,6 +274,10 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-pressed: var(--primary-pressed);
   --color-primary-foreground: var(--primary-foreground);
+  --color-plex: var(--plex);
+  --color-plex-hover: var(--plex-hover);
+  --color-plex-pressed: var(--plex-pressed);
+  --color-plex-foreground: var(--plex-foreground);
   --color-best: var(--best);
   --color-best-soft: var(--best-soft);
   --color-best-foreground: var(--best-foreground);

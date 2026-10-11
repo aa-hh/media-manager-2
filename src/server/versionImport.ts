@@ -1,7 +1,7 @@
-import { linkSync, mkdirSync, statSync } from 'node:fs';
+import { linkSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { listOpenProblems, type createProblems, type Subject } from './problems.js';
+import { findOpenProblem, type createProblems, type Subject } from './problems.js';
 import type { FailureCode } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -103,8 +103,7 @@ export const createVersionImport = (options: {
     : { type: 'episode', service: 'sonarr', id: String(row.episodeId) });
 
   const resolveOpen = (kind: string, subject: Subject, text: string) => {
-    const open = listOpenProblems(database).find((problem) => problem.kind === kind && problem.subject.type === subject.type
-      && problem.subject.service === subject.service && problem.subject.id === subject.id);
+    const open = findOpenProblem(database, kind, subject);
     if (open !== undefined) problems.setState(open.id, 'resolved', text);
   };
 
@@ -224,11 +223,10 @@ export const createVersionImport = (options: {
         throw code !== undefined && RETRYABLE_CODES.has(code) ? new FolderError((error as Error).message) : error;
       }
     };
-    if (onFolder(() => statSync(root)).dev !== original.dev) {
-      throw new Error(`The download and hostPaths versions.${service} are on different drives, so no hardlink can be made.`);
-    }
+    // A missing versions folder (an unmounted drive) is reported, never created by the mkdir below.
+    onFolder(() => statSync(root));
     const folder = join(root, folderName);
-    onFolder(() => mkdirSync(folder, { recursive: true }));
+    const made = onFolder(() => mkdirSync(folder, { recursive: true }));
     for (let copy = 1; ; copy += 1) {
       const destination = join(folder, `${stem}${copy === 1 ? '' : ` (${copy})`}${extname(source)}`);
       const existing = onFolder(() => statSync(destination, { throwIfNoEntry: false }));
@@ -236,7 +234,14 @@ export const createVersionImport = (options: {
         if (existing.dev === original.dev && existing.ino === original.ino) return destination;
         continue;
       }
-      onFolder(() => linkSync(source, destination));
+      // The link itself is the drive check: matching device numbers miss bind mounts and container volumes.
+      try {
+        onFolder(() => linkSync(source, destination));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+        if (made !== undefined) rmSync(made, { recursive: true });
+        throw new Error(`The download and hostPaths versions.${service} are on different drives, so no hardlink can be made.`);
+      }
       if (statSync(destination).ino !== original.ino) throw new Error(`${destination} is not a hardlink of the download.`);
       return destination;
     }

@@ -22,7 +22,7 @@ import { SkeletonPosterCard } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { buildRows, formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import { navigate } from '../navigation';
+import { navigateFrom } from '../navigation';
 import { getJson, type LibraryTitle, type Outcome } from './api';
 import { FIELDS, missingCount, movieWord, progressText, readFields, totals, writeFields, type Field } from './grid';
 import { downloadingByShow, subjectProgress, type SubjectProgress } from './progress';
@@ -54,7 +54,7 @@ const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 const openLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
   event.preventDefault();
-  navigate(path);
+  navigateFrom(path, event.currentTarget);
 };
 
 // One badge per card: live progress, then deleted, then not monitored, then what is missing or not out yet.
@@ -67,7 +67,7 @@ function statusBadge(title: LibraryTitle, live: SubjectProgress | undefined, dow
   const missing = title.tv === null ? 0 : title.tv.episodeCount - title.tv.episodeFileCount - downloading;
   if (missing > 0) return <Badge variant="warning">Missing {missing} {missing === 1 ? 'episode' : 'episodes'}</Badge>;
   if (word === 'missing') return <Badge variant="warning">Missing</Badge>;
-  if (word === 'not available') return <Badge variant="outline">Not out yet</Badge>;
+  if (word === 'not available') return <Badge variant="outline" className="bg-card">Not out yet</Badge>;
   return undefined;
 }
 
@@ -185,7 +185,7 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
       </div>
       <div key={state.kind} className="transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
         {state.kind === 'loading' && (
-          <div className="flex flex-wrap gap-x-(--poster-gutter) gap-y-6">
+          <div className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
             {Array.from({ length: SKELETON_CARDS }, (_, index) => <SkeletonPosterCard key={index} />)}
           </div>
         )}
@@ -224,7 +224,7 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
                   </div>
                 )
                 : (
-                  <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-6">
+                  <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
                     {shown.map((title) => (
                       <PosterCard key={`${title.service}:${title.id}`} title={title} fields={fields} progress={progress} downloading={perShow.get(title.id) ?? 0} />
                     ))}

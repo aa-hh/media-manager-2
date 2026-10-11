@@ -13,7 +13,7 @@ Routes, background jobs and the SQLite database that act on Sonarr, Radarr, rTor
 - Interactive searches and grabs outlast the default request timeout, and a grab that throws may still have grabbed; settle it from history, never resend.
 - An accepted ManualImport is only queued; resolve its problem once the download leaves the queue.
 - Only `protection.ts` writes `protected_items`. Protect a replace before marking it completed, since nothing revisits a completed one.
-- No job holds a transaction across an await, because backups snapshot this connection.
+- No job holds a transaction across an await; jobs share this connection, so their writes would join it.
 
 ## Map
 

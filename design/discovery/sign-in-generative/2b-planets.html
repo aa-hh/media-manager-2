@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · media-manager-2</title>
+<style>
+  :root {
+    --ground: #0d1122;
+    --text: #eef1f7;
+    --text-dim: #9eabc4;
+    --paper: #eef1f7;
+    --lime: #c6f135;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--ground); color: var(--text); overflow: hidden; }
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .signin {
+    position: absolute; left: max(24px, 9vw); top: 50%; transform: translateY(-50%);
+    width: 380px; display: flex; flex-direction: column; gap: 18px;
+    text-shadow: 0 0 14px var(--ground), 0 0 4px var(--ground);
+  }
+  .mark { font: 500 12px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--text-dim); }
+  h1 { font: 600 40px/1.05 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -.03em; color: var(--text); margin-bottom: 6px; }
+  p { color: var(--text-dim); max-width: 34ch; }
+  p strong { color: var(--text); font-weight: 500; }
+  button {
+    margin-top: 10px; align-self: flex-start; display: inline-flex; align-items: center; gap: 12px;
+    height: 48px; padding: 0 22px 0 18px; border: 0; border-radius: 2px; cursor: pointer;
+    background: var(--paper); color: var(--ground); font: 600 15px/1 inherit; font-family: inherit;
+    text-shadow: none; transition: background-color .5s, filter .2s, opacity .2s;
+  }
+  button:hover { filter: brightness(1.06); }
+  button:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+  button[disabled] { cursor: progress; opacity: .8; }
+  button svg { width: 14px; height: 14px; fill: currentColor; }
+  body[data-state="success"] button { background: var(--lime); opacity: 1; cursor: default; }
+  .status { min-height: 1.5em; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-dim); }
+  .status[data-state="refused"] { color: var(--text); }
+  .status[data-state="success"] { color: var(--lime); }
+  @media (max-width: 600px) {
+    .signin { left: 24px; right: 24px; width: auto; top: auto; bottom: 56px; transform: none; }
+    h1 { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<main class="signin" id="signin">
+  <div class="mark">Owner sign-in</div>
+  <h1>media-manager-2</h1>
+  <p><strong>Only the owner's Plex account can open this app.</strong></p>
+  <p>Plex is used only to confirm who you are. It never sees your password.</p>
+  <button id="go" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    <span id="go-label">Sign in with Plex</span>
+  </button>
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+</main>
+<script>
+// ---- Tunable constants ----
+const SEED         = 7;       // seed for every random choice; same seed, same picture
+const RES          = 0.5;     // canvas resolution as a fraction of CSS pixels (0.5 = half-res, each dither dot is 2x2 CSS px)
+const PERSP        = 3;       // perspective distance in globe units; smaller = stronger size change with depth
+const LEVELS       = 6;       // tones in the dither palette (refused drops to 2)
+const N_BASE       = 14000;   // background streak particles at 1440x900; scales with screen area
+const SPEED        = 26;      // background current speed, CSS px per second
+const FLOW_ANGLE   = -0.22;   // direction of the background current in radians
+const NOISE_SCALE  = 420;     // size of the background swirls, CSS px
+const NOISE_AMOUNT = 1.15;    // how strongly noise bends the background current
+const EVOLVE       = 0.03;    // how fast the background field changes
+const CELL         = 10;      // background field grid spacing, canvas px
+const FADE         = 0.994;   // streak trail persistence per frame
+const DEPOSIT      = 0.03;    // brightness one particle adds per frame
+const STREAK_TONE  = 0.34;    // how bright the streaks may get (0..1 of the palette); keeps them faint
+const STAR_DENSITY = 0.0012;  // fraction of background pixels that are fixed specks
+const GRAIN        = 0.035;   // tone jitter before dithering, gives the print speckle
+const SCRIM_MIN    = 0.22;    // brightness left under the sign-in block (1 = no dimming)
+const LIGHT_AZ     = -0.85;   // idle light direction around the vertical axis (0 = from the viewer, negative = from the left)
+const LIGHT_EL     = 0.42;    // idle light elevation (radians, positive = from above)
+const LIGHT_SWAY   = 0.22;    // idle: how far the light drifts back and forth
+const CHECK_SPEED  = 5;       // checking: formula speed multiplier at full ramp
+const CHECK_RAMP   = [0.1, 1.4]; // checking: seconds over which speed and light swing ramp in
+const CHECK_SWING  = 4;       // checking: seconds per full turn of the light around the globes
+const REFUSE_AT    = 0.6;     // refused: seconds after load when the palette collapses
+const REFUSE_EXIT  = 6;       // refused: seconds for the globes to drift out of frame
+const SUCCESS_LEN  = 2.0;     // success: seconds for the light sweep, the lime and the swell; then it holds
+const SWELL_Z      = 1.05;    // success: how far the near globe moves toward the viewer (globe units)
+const STEP = 1 / 60;          // fixed simulation step
+
+// palette: index 0 is the ground; tones rise to paper white
+const COOL  = ['#0d1122', '#1a2341', '#34446b', '#6a7ea6', '#aebcd8', '#eef1f7'];
+const LIME  = ['#0d1122', '#1c2a16', '#41601c', '#86ae24', '#c6f135', '#ecffaa'];
+const FLAT  = ['#0d1122', '#58607a'];                 // refused: flat two-colour dither
+
+// globes: x,y screen fraction; r radius (fraction of the short side); z depth; drift amplitudes and periods (s);
+// spin period (s), axis tilt, formula
+const GLOBES = [
+  { x: .69, y: .50, r: .31, z: 0.00, ax: .035, ay: .04, az: .25, px: 97, py: 83, pz: 120, spin: 72, tx: .38, tz: -.30, f: 'interference', near: true },
+  { x: .88, y: .19, r: .14, z: 0.90, ax: .03,  ay: .03, az: .30, px: 88, py: 110, pz: 77, spin: 48, tx: -.5, tz: .25, f: 'halftone' },
+  { x: .55, y: .81, r: .11, z: 0.55, ax: .05,  ay: .03, az: .35, px: 74, py: 91, pz: 66,  spin: 58, tx: .9, tz: .4, f: 'contour' },
+  { x: .43, y: .17, r: .075, z: 1.25, ax: .04, ay: .03, az: .20, px: 115, py: 70, pz: 90, spin: 42, tx: .2, tz: .8, f: 'truchet' },
+  { x: .87, y: .80, r: .095, z: -0.25, ax: .03, ay: .04, az: .20, px: 81, py: 104, pz: 99, spin: 86, tx: -.3, tz: -.6, f: 'bands' },
+];
+
+// ---- URL params ----
+const qs = new URLSearchParams(location.search);
+let state = ['idle', 'checking', 'refused', 'success'].includes(qs.get('state')) ? qs.get('state') : 'idle';
+const fixedT = qs.has('t') ? Math.max(0, parseFloat(qs.get('t')) || 0) : null;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---- seeded random + Perlin noise (background current) ----
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+let rnd = mulberry32(SEED);
+const perm = new Uint8Array(512);
+{ const p = [...Array(256).keys()]; const r = mulberry32(SEED * 31 + 1);
+  for (let i = 255; i > 0; i--) { const j = (r() * (i + 1)) | 0; [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255]; }
+const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+function grad(h, x, y, z) { h &= 15; const u = h < 8 ? x : y, v = h < 4 ? y : (h === 12 || h === 14 ? x : z); return ((h & 1) ? -u : u) + ((h & 2) ? -v : v); }
+function perlin(x, y, z) {
+  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+  x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+  const u = fade(x), v = fade(y), w = fade(z);
+  const A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z, B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z;
+  const l = (a, b, t) => a + t * (b - a);
+  return l(l(l(grad(perm[AA], x, y, z), grad(perm[BA], x - 1, y, z), u), l(grad(perm[AB], x, y - 1, z), grad(perm[BB], x - 1, y - 1, z), u), v),
+           l(l(grad(perm[AA + 1], x, y, z - 1), grad(perm[BA + 1], x - 1, y, z - 1), u), l(grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1), u), v), w);
+}
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const PC = COOL.map(hex), PL = LIME.map(hex), PF = FLAT.map(hex);
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const fract = x => x - Math.floor(x);
+
+// ---- the five surface formulas; p = point on the unit sphere in the globe's own frame, T = formula time ----
+const S1 = [0.62, 0.48, 0.62], S2 = [-0.55, -0.25, 0.80];
+const FORMULAS = {
+  // two ring sources on the surface; their waves cross into moire
+  interference(x, y, z, T) {
+    const ax = x - S1[0], ay = y - S1[1], az = z - S1[2], bx = x - S2[0], by = y - S2[1], bz = z - S2[2];
+    const d1 = Math.sqrt(ax * ax + ay * ay + az * az), d2 = Math.sqrt(bx * bx + by * by + bz * bz);
+    const v = (Math.sin(d1 * 38 - T * 1.1) + Math.sin(d2 * 42 - T * 0.85) + 2) * 0.25;
+    return smooth(0.3, 0.72, v);
+  },
+  // dots on a longitude/latitude grid; dot size follows latitude and slides with time
+  halftone(x, y, z, T) {
+    const lon = Math.atan2(z, x), lat = Math.asin(Math.max(-1, Math.min(1, y)));
+    const u = (lon / (2 * Math.PI) + 0.5) * 40, v = (lat / Math.PI + 0.5) * 20;
+    const du = fract(u) - 0.5, dv = fract(v) - 0.5, d = Math.sqrt(du * du + dv * dv);
+    const rr = 0.08 + 0.36 * (0.5 + 0.5 * Math.sin(lat * 4.5 - T * 0.4));
+    return 0.08 + 0.92 * smooth(rr + 0.07, rr - 0.07, d);
+  },
+  // contour lines of a slowly shifting sum of sines
+  contour(x, y, z, T) {
+    const g = Math.sin(2.3 * x + T * 0.15) * Math.cos(1.7 * y) + Math.sin(2.9 * z - T * 0.1) + 0.5 * Math.sin(4.1 * (x + y + z) + T * 0.2);
+    const w = fract(g * 2.6), e = Math.min(w, 1 - w);
+    return 0.16 + 0.84 * smooth(0.13, 0.03, e);
+  },
+  // quarter-circle Truchet tiles on a lon/lat grid; tiles flip one by one over time
+  truchet(x, y, z, T) {
+    const lon = Math.atan2(z, x), lat = Math.asin(Math.max(-1, Math.min(1, y)));
+    const u = (lon / (2 * Math.PI) + 0.5) * 18, v = (lat / Math.PI + 0.5) * 9;
+    const i = Math.floor(u), j = Math.floor(v);
+    let fu = u - i, fv = v - j;
+    const h = Math.imul(i * 374761393 + j * 668265263 + Math.floor(T * 0.35 + ((i * 7 + j * 13) % 11) / 11) * 1442695041, 1274126177) >>> 0;
+    if (h & 0x10000) fu = 1 - fu;
+    const d = Math.min(Math.abs(Math.sqrt(fu * fu + fv * fv) - 0.5), Math.abs(Math.sqrt((fu - 1) * (fu - 1) + (fv - 1) * (fv - 1)) - 0.5));
+    return 0.12 + 0.88 * smooth(0.16, 0.08, d);
+  },
+  // latitude bands bent by two travelling sine waves
+  bands(x, y, z, T) {
+    const lon = Math.atan2(z, x), lat = Math.asin(Math.max(-1, Math.min(1, y)));
+    const v = Math.sin(lat * 9 + 1.6 * Math.sin(lon * 3 + 2 * y + T * 0.25) + 0.9 * Math.sin(x * 4 - z * 3 + T * 0.18));
+    return smooth(-0.4, 0.6, v);
+  },
+};
+
+// ---- setup ----
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const block = document.getElementById('signin'), btn = document.getElementById('go');
+let W, H, N, px, py, life, spd, img, silkBuf, grain, star, scrim, tone, zb, limeW, gw, gh, psi, gvx, gvy, scale = 1, unit;
+let calm, t = 0, stateT0 = 0, T = 0, lightAz = LIGHT_AZ, azFrom = 0;
+const LUT = new Float32Array(2048); for (let i = 0; i < 2048; i++) LUT[i] = 1 - Math.exp(-(i / 256) * 0.9);
+
+function measure() {
+  const r = block.getBoundingClientRect();
+  calm = { x: (r.left + r.width / 2) * RES, y: (r.top + r.height / 2) * RES, rx: (r.width / 2 + 60) * RES, ry: (r.height / 2 + 50) * RES };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = Math.hypot((x - calm.x) / calm.rx, (y - calm.y) / calm.ry);
+    scrim[y * W + x] = SCRIM_MIN + (1 - SCRIM_MIN) * smooth(0.75, 1.45, d);
+  }
+}
+function spawn(i) { px[i] = rnd() * W; py[i] = rnd() * H; life[i] = (5 + rnd() * 9) / STEP; }
+
+function init() {
+  rnd = mulberry32(SEED);
+  W = Math.max(2, Math.round(innerWidth * RES)); H = Math.max(2, Math.round(innerHeight * RES));
+  cv.width = W; cv.height = H; unit = Math.min(W, H);
+  img = ctx.createImageData(W, H);
+  silkBuf = new Float32Array(W * H); scale = 1;
+  grain = new Float32Array(W * H); star = new Float32Array(W * H); scrim = new Float32Array(W * H);
+  tone = new Float32Array(W * H); zb = new Float32Array(W * H); limeW = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, v = Math.hypot(x / W - 0.5, y / H - 0.5);
+    grain[i] = (rnd() * 2 - 1) * GRAIN - v * v * 0.12;          // speckle + vignette
+    star[i] = rnd() < STAR_DENSITY ? 0.35 + rnd() * 0.45 : 0;
+  }
+  gw = Math.ceil(W / CELL) + 3; gh = Math.ceil(H / CELL) + 3;
+  psi = new Float32Array(gw * gh); gvx = new Float32Array(gw * gh); gvy = new Float32Array(gw * gh);
+  N = Math.max(4000, Math.round(N_BASE * innerWidth * innerHeight / (1440 * 900)));
+  px = new Float32Array(N); py = new Float32Array(N); life = new Float32Array(N); spd = new Float32Array(N);
+  for (let i = 0; i < N; i++) { spawn(i); life[i] *= rnd(); spd[i] = 0.6 + rnd() * 0.8; }
+  measure();
+}
+
+// ---- state timing ----
+const el = () => t - stateT0;
+const checkW = () => state === 'checking' ? smooth(CHECK_RAMP[0], CHECK_RAMP[1], el()) : 0;
+const refuseP = () => state === 'refused' && el() > REFUSE_AT ? Math.min(1, (el() - REFUSE_AT) / REFUSE_EXIT) : 0;
+const successP = () => state === 'success' ? smooth(0.15, 0.15 + SUCCESS_LEN, el()) : 0;
+
+// ---- background current: noise stream function -> curl (from concept 2) ----
+function buildField() {
+  const U = SPEED * RES * STEP * (1 + (CHECK_SPEED - 1) * 0.4 * checkW()) * (1 - 0.8 * refuseP());
+  const s = 1 / (NOISE_SCALE * RES), A = NOISE_AMOUNT * U / s, zz = t * EVOLVE;
+  const ca = Math.cos(FLOW_ANGLE), sa = Math.sin(FLOW_ANGLE);
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const x = (i - 1) * CELL, y = (j - 1) * CELL;
+    const n = perlin(x * s, y * s, zz) + 0.35 * perlin(x * s * 2.1 + 17, y * s * 2.1, zz * 1.7);
+    psi[j * gw + i] = U * (y * ca - x * sa) + A * n;
+  }
+  for (let j = 1; j < gh - 1; j++) for (let i = 1; i < gw - 1; i++) {
+    const k = j * gw + i;
+    gvx[k] = (psi[k + gw] - psi[k - gw]) / (2 * CELL); gvy[k] = -(psi[k + 1] - psi[k - 1]) / (2 * CELL);
+  }
+}
+
+function step() {
+  buildField();
+  scale *= FADE;
+  if (scale < 1e-3) { for (let i = 0; i < W * H; i++) silkBuf[i] *= scale; scale = 1; }
+  const dep = DEPOSIT / scale;
+  for (let i = 0; i < N; i++) {
+    let x = px[i], y = py[i];
+    const gx = x / CELL + 1, gy = y / CELL + 1, ix = gx | 0, iy = gy | 0, fx = gx - ix, fy = gy - iy;
+    if (ix < 1 || iy < 1 || ix >= gw - 2 || iy >= gh - 2 || --life[i] <= 0) { spawn(i); continue; }
+    const k = iy * gw + ix;
+    const vx = (gvx[k] * (1 - fx) + gvx[k + 1] * fx) * (1 - fy) + (gvx[k + gw] * (1 - fx) + gvx[k + gw + 1] * fx) * fy;
+    const vy = (gvy[k] * (1 - fx) + gvy[k + 1] * fx) * (1 - fy) + (gvy[k + gw] * (1 - fx) + gvy[k + gw + 1] * fx) * fy;
+    x += vx * spd[i]; y += vy * spd[i]; px[i] = x; py[i] = y;
+    if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) { spawn(i); continue; }
+    const xi = x | 0, yi = y | 0, ax = x - xi, ay = y - yi, o = yi * W + xi;
+    silkBuf[o] += dep * (1 - ax) * (1 - ay); silkBuf[o + 1] += dep * ax * (1 - ay);
+    silkBuf[o + W] += dep * (1 - ax) * ay; silkBuf[o + W + 1] += dep * ax * ay;
+  }
+  // formula time and light angle are integrated so states can change speed without jumps
+  const cw = checkW();
+  T += STEP * (1 + (CHECK_SPEED - 1) * cw) * (1 - refuseP());
+  if (state === 'checking') lightAz += STEP * cw * 2 * Math.PI / CHECK_SWING;
+  else if (state === 'success') { if (el() < STEP) azFrom = lightAz; }
+  else if (state === 'idle') lightAz = LIGHT_AZ + LIGHT_SWAY * Math.sin(t * 0.07);
+  t += STEP;
+}
+
+// ---- globes: per-pixel ray-sphere with a z-buffer ----
+function drawGlobes() {
+  const sp = successP(), rp = refuseP(), rEase = rp * rp, night = 0.09 + 0.22 * checkW();
+  let az = lightAz, elv = LIGHT_EL;
+  if (state === 'success') {                       // light swings round to face the viewer from slightly upper left
+    const target = -0.32, from = azFrom - 2 * Math.PI * Math.round((azFrom - target) / (2 * Math.PI));
+    az = from + (target - from) * sp; elv = LIGHT_EL + (0.28 - LIGHT_EL) * sp;
+  }
+  const Lx = Math.sin(az) * Math.cos(elv), Ly = -Math.sin(elv), Lz = -Math.cos(az) * Math.cos(elv);
+  const list = GLOBES.map(g => {
+    let gx = g.x + g.ax * Math.sin(2 * Math.PI * t / g.px), gy = g.y + g.ay * Math.sin(2 * Math.PI * t / g.py + 1.3);
+    let gz = g.z + g.az * Math.sin(2 * Math.PI * t / g.pz + 2.1);
+    if (g.near) gz -= SWELL_Z * sp;
+    if (rEase > 0) {                               // refused: drift out of frame, away from the screen centre
+      const dx = gx - 0.5, dy = gy - 0.5, d = Math.hypot(dx, dy) + 1e-3;
+      gx += dx / d * rEase * 1.1; gy += dy / d * rEase * 1.1;
+    }
+    const k = PERSP / (PERSP + gz), R = g.r * unit * k;
+    const a = 2 * Math.PI * t / g.spin, ca = Math.cos(a), sa = Math.sin(a);
+    const cx = Math.cos(g.tx), sx = Math.sin(g.tx), cz = Math.cos(g.tz), sz = Math.sin(g.tz);
+    // view -> globe frame: undo tilt (Z then X), then spin about Y
+    const m = [[cz, sz, 0], [-sz * cx, cz * cx, sx], [sz * sx, -cz * sx, cx]];
+    const M = [[ca * m[0][0] - sa * m[2][0], ca * m[0][1] - sa * m[2][1], ca * m[0][2] - sa * m[2][2]], m[1],
+               [sa * m[0][0] + ca * m[2][0], sa * m[0][1] + ca * m[2][1], sa * m[0][2] + ca * m[2][2]]];
+    return { cx: gx * W, cy: gy * H, R, gz, M, f: FORMULAS[g.f], fog: 1 - 0.38 * smooth(-0.3, 1.4, gz), r: g.r };
+  }).sort((a, b) => a.gz - b.gz);                  // near first, so the z-test skips hidden pixels early
+
+  for (const g of list) {
+    const x0 = Math.max(0, Math.floor(g.cx - g.R)), x1 = Math.min(W - 1, Math.ceil(g.cx + g.R));
+    const y0 = Math.max(0, Math.floor(g.cy - g.R)), y1 = Math.min(H - 1, Math.ceil(g.cy + g.R));
+    const iR = 1 / g.R, M = g.M, f = g.f, depthR = g.r;
+    for (let y = y0; y <= y1; y++) {
+      const ny = (y + 0.5 - g.cy) * iR;
+      for (let x = x0; x <= x1; x++) {
+        const nx = (x + 0.5 - g.cx) * iR, d2 = nx * nx + ny * ny;
+        if (d2 >= 1) continue;
+        const nzp = Math.sqrt(1 - d2), zs = g.gz - depthR * nzp, i = y * W + x;
+        if (zs >= zb[i]) continue;
+        zb[i] = zs;
+        const nz = -nzp;                            // view space: z points away from the viewer
+        const px_ = M[0][0] * nx + M[0][1] * ny + M[0][2] * nz;
+        const py_ = M[1][0] * nx + M[1][1] * ny + M[1][2] * nz;
+        const pz_ = M[2][0] * nx + M[2][1] * ny + M[2][2] * nz;
+        const v = f(px_, py_, pz_, T);
+        const lam = nx * Lx + ny * Ly + nz * Lz, diff = lam > 0 ? lam : 0;
+        const e1 = 1 - nzp, rim = e1 * e1 * e1 * e1 * (0.15 + 0.55 * smooth(-0.2, 0.5, lam));
+        tone[i] = (0.03 + night * v * (1 - diff) + diff * (0.18 + 0.82 * v) + rim) * g.fog;
+        limeW[i] = sp * smooth(0.12, 0.45, diff);
+      }
+    }
+  }
+}
+
+function render() {
+  const k = 256 * scale, rp = refuseP(), flat = state === 'refused' && el() > REFUSE_AT;
+  for (let i = 0; i < W * H; i++) {               // background: faint streaks + fixed specks
+    tone[i] = LUT[Math.min(2047, (silkBuf[i] * k) | 0)] * STREAK_TONE * (1 - 0.6 * rp) + star[i];
+    zb[i] = Infinity; limeW[i] = 0;
+  }
+  drawGlobes();
+  const d = img.data, L1 = (flat ? 2 : LEVELS) - 1;
+  for (let y = 0, i = 0; y < H; y++) {
+    const brow = (y & 3) << 2;
+    for (let x = 0; x < W; x++, i++) {
+      const v = (tone[i] + grain[i]) * scrim[i];
+      let q = Math.floor(v * L1 + BAYER[brow | (x & 3)]); q = q < 0 ? 0 : q > L1 ? L1 : q;
+      const j = i << 2;
+      if (flat) { const c = PF[q]; d[j] = c[0]; d[j + 1] = c[1]; d[j + 2] = c[2]; }
+      else {
+        const a = PC[q], w = limeW[i];
+        if (w > 0) { const b = PL[q]; d[j] = a[0] + (b[0] - a[0]) * w; d[j + 1] = a[1] + (b[1] - a[1]) * w; d[j + 2] = a[2] + (b[2] - a[2]) * w; }
+        else { d[j] = a[0]; d[j + 1] = a[1]; d[j + 2] = a[2]; }
+      }
+      d[j + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---- state copy ----
+const label = document.getElementById('go-label'), status = document.getElementById('status');
+function applyState() {
+  document.body.dataset.state = state; status.dataset.state = state;
+  btn.disabled = state === 'checking' || state === 'success';
+  label.textContent = { checking: 'Waiting for Plex…', refused: 'Try another Plex account', success: 'Signed in' }[state] || 'Sign in with Plex';
+  status.textContent = { checking: 'Confirming your Plex account.', refused: 'That Plex account is not the owner of this app.', success: 'Opening media-manager-2…' }[state] || '';
+}
+applyState();
+
+// ---- run ----
+init();
+if (qs.has('bench') && fixedT === null) {       // ?bench: time 300 frames of step + render back to back, report in the title
+  for (let i = 0; i < 60; i++) { step(); render(); }
+  const t0 = performance.now(); for (let i = 0; i < 300; i++) { step(); render(); }
+  document.title = 'ms/frame ' + ((performance.now() - t0) / 300).toFixed(2);
+} else if (fixedT !== null || reduced) {
+  const n = Math.round((fixedT ?? 6) / STEP);
+  for (let i = 0; i < n; i++) step();
+  render();
+} else {
+  let last = performance.now(), acc = 0;
+  const loop = now => {
+    acc = Math.min(acc + (now - last) / 1000, STEP * 3); last = now;
+    while (acc >= STEP) { step(); acc -= STEP; }
+    render();
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+  btn.addEventListener('click', () => { if (state === 'idle' || state === 'refused') { state = 'checking'; stateT0 = t; applyState(); } });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const tt = t; init(); t = tt; }, 150); });
+}
+</script>
+</body>
+</html>

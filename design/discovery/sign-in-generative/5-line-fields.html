@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>media-manager-2 · sign in</title>
+<style>
+  :root {
+    --ground: #0c1419;
+    --ink: #9fb3be;
+    --ink-hi: #dde6ea;
+    --accent: #e5a00d;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--ground); color: var(--ink-hi); overflow: hidden; }
+  body { font-family: var(--mono); -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* The sign-in block is drawn as the title block of an engineering sheet. */
+  .sheet {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(440px, calc(100% - 32px));
+    background: var(--ground);
+    border: 1.5px solid var(--ink);
+    box-shadow: 0 0 0 10px var(--ground); /* clear margin so lines stop short of the box */
+  }
+  .row { border-top: 1px solid rgba(159,179,190,.45); padding: 14px 20px; }
+  .row:first-child { border-top: 0; }
+  .meta { display: flex; justify-content: space-between; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink); padding-top: 10px; padding-bottom: 10px; }
+  h1 { font-size: 30px; font-weight: 500; letter-spacing: -.02em; line-height: 1.1; padding: 22px 20px 20px; color: var(--ink-hi); }
+  h1 span { color: var(--accent); }
+  .copy p { font-size: 13px; line-height: 1.55; color: var(--ink-hi); }
+  .copy p + p { margin-top: 8px; color: var(--ink); }
+  .act { padding: 18px 20px 20px; }
+  button {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+    height: 48px; border: 0; border-radius: 2px; cursor: pointer;
+    background: var(--accent); color: #12100a;
+    font: 600 15px/1 var(--mono); letter-spacing: .01em;
+  }
+  button:hover { background: #f2b52c; }
+  button:focus-visible { outline: 2px solid var(--ink-hi); outline-offset: 3px; }
+  button svg { width: 15px; height: 15px; flex: none; }
+  button[aria-busy="true"] { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); cursor: progress; }
+  .status { min-height: 18px; margin-top: 12px; font-size: 12px; color: var(--ink); }
+  .status.no { color: var(--ink-hi); }
+  .status.no::before { content: "× "; color: var(--accent); }
+  @media (max-width: 480px) {
+    h1 { font-size: 25px; padding: 18px 16px 16px; }
+    .row, .act { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+
+<main class="sheet" aria-labelledby="t">
+  <div class="row meta"><span>Sheet 01</span><span>Sign in</span></div>
+  <h1 class="row" id="t">media-manager<span>-2</span></h1>
+  <div class="row copy">
+    <p>Only the owner's Plex account can open this app.</p>
+    <p>Plex is used only to confirm who you are. It never sees your password.</p>
+  </div>
+  <div class="row act">
+    <button id="plex" type="button">
+      <svg viewBox="0 0 72 72" aria-hidden="true"><path fill="currentColor" d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+      <span id="label">Sign in with Plex</span>
+    </button>
+    <p class="status" id="status" role="status"></p>
+  </div>
+</main>
+
+<script>
+// ---------- Tunable constants ----------
+const SEED        = 7;        // noise seed; same seed + same t = same frame
+const CELL        = 6;        // contour grid cell size in CSS px (smaller = smoother lines, more work)
+const INTERVAL    = 0.045;    // height difference between neighbouring contour lines
+const MAJOR_EVERY = 5;        // every Nth contour is drawn heavier, like an index contour on a map
+const SCALE       = 420;      // size of the terrain features in px
+const OCTAVES     = 3;        // layers of noise stacked into the height map
+const BREATHE     = 0.035;    // how fast the terrain changes shape (noise units per second)
+const DRIFT       = 5;        // how fast the terrain slides sideways (px per second)
+const INK_MINOR   = 'rgba(159,179,190,0.30)'; // thin contour colour
+const INK_MAJOR   = 'rgba(159,179,190,0.62)'; // index contour colour
+const ACCENT      = '#e5a00d'; // the one accent (Plex amber)
+const BORDER      = 22;       // inset of the drawing frame with tick marks, px
+// checking: concentric rings form around the button and tighten
+const RING_START  = 34;       // ring spacing when checking begins, px
+const RING_END    = 11;       // ring spacing once fully tightened, px
+const RING_PULL   = 14;       // rings travel inward at this many px per second
+const RING_INNER  = 400;      // rings are pure circles out to this radius from the button, px
+const RING_OUTER  = 700;      // by this radius the terrain has fully taken over again, px
+// refused: a straight-line grating crosses the contours, moiré peaks, then relaxes
+const GRATE_GAP   = 6.5;      // spacing of the crossing lines, px
+const GRATE_ANGLE = -0.62;    // angle of the crossing lines, radians
+const BEAT_ANGLE  = 0.07;     // angle offset between grating and tilted contours; drives the moiré
+const REFUSE_HOLD = 3.6;      // seconds the refusal stays at full strength
+const REFUSE_FADE = 2.8;      // seconds it takes to relax back to the plain terrain
+
+// ---------- URL params ----------
+const q = new URLSearchParams(location.search);
+const STATE = ['idle','checking','refused'].includes(q.get('state')) ? q.get('state') : 'idle';
+const FIXED_T = q.has('t') ? Math.max(0, parseFloat(q.get('t')) || 0) : null;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- seeded value noise ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rnd = mulberry32(SEED);
+const P = new Uint8Array(512), V = new Float32Array(256);
+{ const p=[...Array(256).keys()]; for(let i=255;i>0;i--){const j=Math.floor(rnd()*(i+1));[p[i],p[j]]=[p[j],p[i]];}
+  for(let i=0;i<512;i++)P[i]=p[i&255]; for(let i=0;i<256;i++)V[i]=rnd()*2-1; }
+const fade = t => t*t*t*(t*(t*6-15)+10);
+function noise3(x,y,z){
+  const xi=Math.floor(x), yi=Math.floor(y), zi=Math.floor(z);
+  const xf=x-xi, yf=y-yi, zf=z-zi, X=xi&255, Y=yi&255, Z=zi&255;
+  const u=fade(xf), v=fade(yf), w=fade(zf);
+  const h=(a,b,c)=>V[P[P[P[a]+b]+c]];
+  const x00=h(X,Y,Z)+(h(X+1,Y,Z)-h(X,Y,Z))*u,       x10=h(X,Y+1,Z)+(h(X+1,Y+1,Z)-h(X,Y+1,Z))*u;
+  const x01=h(X,Y,Z+1)+(h(X+1,Y,Z+1)-h(X,Y,Z+1))*u, x11=h(X,Y+1,Z+1)+(h(X+1,Y+1,Z+1)-h(X,Y+1,Z+1))*u;
+  const y0=x00+(x10-x00)*v, y1=x01+(x11-x01)*v;
+  return y0+(y1-y0)*w;
+}
+function fbm(x,y,z){ let s=0,a=1,f=1,n=0; for(let o=0;o<OCTAVES;o++){ s+=a*noise3(x*f,y*f,z*f+o*17.3); n+=a; a*=0.5; f*=2.03; } return s/n; }
+
+// ---------- canvas ----------
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W=0, H=0, NX=0, NY=0, field=null, bx=0, by=0;
+function resize(){
+  const dpr = Math.min(devicePixelRatio||1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  NX = Math.ceil(W/CELL)+1; NY = Math.ceil(H/CELL)+1;
+  field = new Float32Array((NX+1)*(NY+1));
+  const r = document.getElementById('plex').getBoundingClientRect();
+  bx = r.left + r.width/2; by = r.top + r.height/2;
+}
+
+const smooth = (a,b,x) => { const t=Math.min(1,Math.max(0,(x-a)/(b-a))); return t*t*(3-2*t); };
+
+// How strong each state's effect is at time t (0..1).
+function envelopes(t){
+  if (STATE==='checking') return { chk: smooth(0,1.4,t), ref: 0 };
+  if (STATE==='refused')  return { chk: 0, ref: smooth(0,0.7,t) * (1 - smooth(REFUSE_HOLD, REFUSE_HOLD+REFUSE_FADE, t)) };
+  return { chk:0, ref:0 };
+}
+
+function fillField(t, chk, ref){
+  const z = t*BREATHE, dx = t*DRIFT;
+  const spacing = RING_START + (RING_END-RING_START)*smooth(0.3,3,t);
+  const phase = t*RING_PULL;                         // rings move inward as phase grows
+  const tiltK = INTERVAL/GRATE_GAP;                  // tilt gives contours the same spacing as the grating
+  const na = GRATE_ANGLE + Math.PI/2 + BEAT_ANGLE + 0.025*Math.sin(t*0.9); // slow wander keeps the moiré moving
+  const cx = Math.cos(na), sy = Math.sin(na);
+  for (let j=0;j<=NY;j++){
+    const y = j*CELL;
+    for (let i=0;i<=NX;i++){
+      const x = i*CELL;
+      let h = fbm((x+dx)/SCALE, y/SCALE, z) * 1.6;
+      if (chk>0){
+        const rx=x-bx, ry=y-by, r=Math.sqrt(rx*rx+ry*ry);
+        const g = chk*(1 - smooth(RING_INNER, RING_OUTER, r));
+        const cone = ((r+phase)/spacing)*INTERVAL;
+        h = h*(1-g) + cone*g;
+      }
+      if (ref>0) h += ref*tiltK*(x*cx + y*sy) + ref*0.5*Math.sin((x*sy - y*cx)/90)*INTERVAL;
+      field[j*(NX+1)+i] = h;
+    }
+  }
+}
+
+// Marching squares, writing every crossing segment into one of three paths.
+function contours(chk){
+  const minor = new Path2D(), major = new Path2D(), acc = new Path2D();
+  const s = NX+1, R2 = RING_INNER**2;
+  for (let j=0;j<NY;j++){
+    const y0=j*CELL, y1=y0+CELL;
+    for (let i=0;i<NX;i++){
+      const x0=i*CELL, x1=x0+CELL;
+      const a=field[j*s+i], b=field[j*s+i+1], c=field[(j+1)*s+i+1], d=field[(j+1)*s+i];
+      const lo=Math.min(a,b,c,d), hi=Math.max(a,b,c,d);
+      let k0=Math.ceil(lo/INTERVAL), k1=Math.floor(hi/INTERVAL);
+      if (k1<k0) continue;
+      if (k1-k0>3) k0=k1-3; // a cell crossing many levels is sub-pixel detail; skip the excess
+      for (let k=k0;k<=k1;k++){
+        const L=k*INTERVAL;
+        const cs=(a>L?8:0)|(b>L?4:0)|(c>L?2:0)|(d>L?1:0);
+        if (cs===0||cs===15) continue;
+        const T=[x0+(L-a)/(b-a)*CELL,y0], Rt=[x1,y0+(L-b)/(c-b)*CELL],
+              B=[x0+(L-d)/(c-d)*CELL,y1], Lf=[x0,y0+(L-a)/(d-a)*CELL];
+        const major_ = ((k%MAJOR_EVERY)+MAJOR_EVERY)%MAJOR_EVERY===0;
+        let p = major_ ? major : minor;
+        if (chk>0.05 && major_){ const mx=(x0+CELL/2-bx), my=(y0+CELL/2-by); if (mx*mx+my*my < R2*chk) p = acc; }
+        const seg=(u,v)=>{ p.moveTo(u[0],u[1]); p.lineTo(v[0],v[1]); };
+        switch(cs){
+          case 1: case 14: seg(Lf,B); break;
+          case 2: case 13: seg(B,Rt); break;
+          case 3: case 12: seg(Lf,Rt); break;
+          case 4: case 11: seg(T,Rt); break;
+          case 6: case 9:  seg(T,B); break;
+          case 7: case 8:  seg(Lf,T); break;
+          case 5: if ((a+b+c+d)/4>L){ seg(T,Lf); seg(B,Rt); } else { seg(T,Rt); seg(Lf,B); } break;
+          case 10: if ((a+b+c+d)/4>L){ seg(T,Rt); seg(Lf,B); } else { seg(T,Lf); seg(B,Rt); } break;
+        }
+      }
+    }
+  }
+  return { minor, major, acc };
+}
+
+function grating(ref, t){
+  const ang = GRATE_ANGLE, ux=Math.cos(ang), uy=Math.sin(ang), nx=-uy, ny=ux;
+  const D = Math.hypot(W,H), n = Math.ceil(D/GRATE_GAP);
+  const cx=W/2, cy=H/2, off=(t*3)%GRATE_GAP;
+  ctx.beginPath();
+  for (let k=-n/2;k<=n/2;k++){
+    const o=k*GRATE_GAP+off, px=cx+nx*o, py=cy+ny*o;
+    ctx.moveTo(px-ux*D, py-uy*D); ctx.lineTo(px+ux*D, py+uy*D);
+  }
+  ctx.strokeStyle = `rgba(221,230,234,${0.55*ref})`; ctx.lineWidth = 1; ctx.stroke();
+}
+
+function frameMarks(){
+  ctx.strokeStyle = 'rgba(159,179,190,0.55)'; ctx.fillStyle = 'rgba(159,179,190,0.7)';
+  ctx.lineWidth = 1; ctx.font = '9px ui-monospace, Menlo, monospace';
+  const x0=BORDER, y0=BORDER, x1=W-BORDER, y1=H-BORDER;
+  ctx.fillStyle='#0c1419';
+  ctx.fillRect(0,0,W,BORDER); ctx.fillRect(0,y1,W,BORDER); ctx.fillRect(0,0,BORDER,H); ctx.fillRect(x1,0,BORDER,H);
+  ctx.strokeRect(x0+.5,y0+.5,x1-x0-1,y1-y0-1);
+  ctx.beginPath();
+  for (let x=x0+40;x<x1;x+=40){ const l=(x-x0)%200===0?8:4; ctx.moveTo(x+.5,y0); ctx.lineTo(x+.5,y0+l); ctx.moveTo(x+.5,y1); ctx.lineTo(x+.5,y1-l); }
+  for (let y=y0+40;y<y1;y+=40){ const l=(y-y0)%200===0?8:4; ctx.moveTo(x0,y+.5); ctx.lineTo(x0+l,y+.5); ctx.moveTo(x1,y+.5); ctx.lineTo(x1-l,y+.5); }
+  ctx.stroke();
+  ctx.fillStyle='rgba(159,179,190,0.7)';
+  for (let x=x0+200;x<x1-20;x+=200) ctx.fillText(String((x-x0)/200), x-3, y0-7);
+  for (let y=y0+200;y<y1-10;y+=200) ctx.fillText(String.fromCharCode(64+(y-y0)/200), x0-13, y+3);
+}
+
+function draw(t){
+  const { chk, ref } = envelopes(t);
+  fillField(t, chk, ref);
+  const p = contours(chk);
+  ctx.fillStyle = '#0c1419'; ctx.fillRect(0,0,W,H);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.lineWidth = 1;   ctx.strokeStyle = INK_MINOR; ctx.stroke(p.minor);
+  ctx.lineWidth = 1.5; ctx.strokeStyle = INK_MAJOR; ctx.stroke(p.major);
+  if (chk>0){ ctx.lineWidth = 1.6; ctx.strokeStyle = ACCENT; ctx.globalAlpha = Math.min(1,chk*1.2); ctx.stroke(p.acc); ctx.globalAlpha = 1; }
+  if (ref>0.01) grating(ref, t);
+  frameMarks();
+}
+
+// ---------- UI state ----------
+const btn = document.getElementById('plex'), status = document.getElementById('status');
+if (STATE==='checking'){ btn.setAttribute('aria-busy','true'); document.getElementById('label').textContent='Waiting for Plex'; status.textContent='Confirm the sign-in in the Plex window.'; }
+if (STATE==='refused'){ status.textContent="That Plex account isn't the owner of this app."; status.classList.add('no'); }
+
+// ---------- run ----------
+resize();
+if (FIXED_T!==null || REDUCED){
+  draw(FIXED_T ?? 2);
+  addEventListener('resize', ()=>{ resize(); draw(FIXED_T ?? 2); });
+} else {
+  addEventListener('resize', resize);
+  const start = performance.now();
+  let frames=0, last=start;
+  (function loop(now){
+    draw((now-start)/1000);
+    frames++; if (now-last>2000){ window.__fps = frames*1000/(now-last); frames=0; last=now; }
+    requestAnimationFrame(loop);
+  })(start);
+}
+</script>
+</body>
+</html>

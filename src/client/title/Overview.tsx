@@ -3,12 +3,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
+import { HeaderBackdrop } from '@/components/ui/header-title';
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { buildRows } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
 import { getJson, type MovieDetail, type OwnedMovieDetail, type SeriesDetail } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
-import { replace, useLocation } from '../navigation';
+import { passedPosterUrl, preloadImages, replace, useLocation, withViewTransition } from '../navigation';
 import { AddControls } from './AddControls';
 import { MovieOverview } from './MovieOverview';
 import { SeriesOverview } from './SeriesOverview';
@@ -16,7 +18,8 @@ import { TitleHeader } from './TitleHeader';
 
 type Route =
   | { owned: true; type: 'tv' | 'movie'; id: number }
-  | { owned: false; type: 'tv' | 'movie'; id: number };
+  | { owned: false; type: 'tv' | 'movie'; id: number }
+  | { owned: false; type: 'tv'; id: number; byTmdb: true };
 
 type ProtectedItem = { service: 'radarr'; kind: 'movie'; movieId: number } | { service: 'sonarr'; kind: 'episode'; episodeId: number };
 
@@ -36,6 +39,10 @@ const parseRoute = (pathname: string): Route | undefined => {
     const id = Number(second);
     return Number.isInteger(id) && id > 0 ? { owned: true, type: first === 'series' ? 'tv' : 'movie', id } : undefined;
   }
+  if (first === 'title' && second === 'tmdb-tv') {
+    const id = Number(third);
+    return Number.isInteger(id) && id > 0 ? { owned: false, type: 'tv', id, byTmdb: true } : undefined;
+  }
   if (first === 'title' && (second === 'tvdb' || second === 'tmdb')) {
     const id = Number(third);
     return Number.isInteger(id) && id > 0 ? { owned: false, type: second === 'tvdb' ? 'tv' : 'movie', id } : undefined;
@@ -43,7 +50,7 @@ const parseRoute = (pathname: string): Route | undefined => {
   return undefined;
 };
 
-const failureText = (service: 'Sonarr' | 'Radarr', error: unknown) => {
+const failureText = (service: string, error: unknown) => {
   const reason = error instanceof Error ? error.message : '';
   if (reason === 'not_configured') return `${service} isn't connected yet.`;
   if (reason === 'rejected') return `${service} refused the API key.`;
@@ -79,10 +86,9 @@ function PreviewSeasons({ detail }: { detail: SeriesDetail }) {
   );
 }
 
-const day = (iso: string | null) => (iso === null ? null : new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
-
 export function Overview({ downloads, onUnauthenticated }: { downloads: DownloadsState; onUnauthenticated: () => void }) {
-  const { pathname } = useLocation();
+  const { pathname, state: historyState } = useLocation();
+  const passedPoster = passedPosterUrl(historyState);
   const route = useMemo(() => parseRoute(pathname), [pathname]);
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -97,7 +103,9 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
     const controller = new AbortController();
     const read = async (): Promise<Load> => {
       if (!route.owned) {
-        const path = `/api/library/preview/${route.type === 'tv' ? 'sonarr' : 'radarr'}/${route.id}`;
+        const path = 'byTmdb' in route
+          ? `/api/library/preview/sonarr/tmdb/${route.id}`
+          : `/api/library/preview/${route.type === 'tv' ? 'sonarr' : 'radarr'}/${route.id}`;
         return route.type === 'tv'
           ? { kind: 'preview-tv', detail: await getJson<SeriesDetail>(path, onUnauthenticated, controller.signal) }
           : { kind: 'preview-movie', detail: await getJson<MovieDetail>(path, onUnauthenticated, controller.signal) };
@@ -114,11 +122,25 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       return { kind: 'movie', detail, protectedIds: new Set(items.flatMap((item) => (item.kind === 'movie' ? [item.movieId] : []))) };
     };
     read()
+      // razor: waits at most 600 ms for the header's poster and backdrop, so the page usually arrives with both drawn; a slower image fades in on its own.
+      .then(async (loaded) => {
+        if ('detail' in loaded) await preloadImages([loaded.detail.posterUrl, 'backdropUrl' in loaded.detail ? loaded.detail.backdropUrl : null], 600);
+        return loaded;
+      })
       .then((loaded) => {
-        if (!controller.signal.aborted) setLoad(loaded);
+        if (controller.signal.aborted) return;
+        // The skeleton crossfades into the page; the poster stays put because both carry title-poster.
+        withViewTransition(() => {
+          if (!controller.signal.aborted) setLoad(loaded);
+        });
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setLoad({ kind: 'failed', message: failureText(service, error) });
+        if (controller.signal.aborted) return;
+        const reason = error instanceof Error ? error.message : '';
+        // A preview by TMDB id fails the same ways whether TMDB or Sonarr failed, so the message names both.
+        const message = 'byTmdb' in route && reason === 'not_found' ? "TMDB has no TVDB id for this show, so Sonarr can't look it up."
+          : failureText('byTmdb' in route ? 'TMDB or Sonarr' : service, error);
+        setLoad({ kind: 'failed', message });
       });
     return () => controller.abort();
   }, [route, onUnauthenticated, attempt]);
@@ -134,16 +156,25 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
   return (
     <div>
       {load.kind === 'loading' && (
-        <div role="status" aria-label="Loading" className="flex flex-col gap-8 pt-25 pb-10">
-          <div className="flex gap-8">
-            <Skeleton className="h-66 w-44 rounded-md" />
+        // The poster sits where the loaded header puts it (owned pages start higher), so nothing jumps when the page arrives.
+        <div role="status" aria-label="Loading" className={cn('relative flex flex-col gap-8 pb-10', route?.owned === true ? 'pt-10' : 'pt-25')}>
+          {/* The owned header is 336 px tall: 40 above the poster, the 264 px poster, 32 below. */}
+          <HeaderBackdrop posterUrl={passedPoster} tall={route?.owned === true} className={cn('-inset-x-(--page-margin)', route?.owned === true && 'h-84')} />
+          <div className="relative flex gap-8">
+            {passedPoster === undefined
+              ? <Skeleton className="title-poster h-66 w-44 rounded-md" />
+              : (
+                <div className="title-poster relative h-66 w-44 shrink-0 overflow-hidden rounded-md bg-muted">
+                  <img src={passedPoster} alt="" className="size-full object-cover" />
+                </div>
+              )}
             <div className="flex flex-col gap-3.5 pt-24">
               <Skeleton className="h-9 w-90" />
               <Skeleton className="w-130" />
               <Skeleton className="w-75" />
             </div>
           </div>
-          <div className="flex flex-col">
+          <div className="relative flex flex-col">
             <SkeletonRow />
             <SkeletonRow />
             <SkeletonRow />
@@ -180,11 +211,8 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
           badges={<Badge>Not in library</Badge>}
           facts={[
             { label: 'Monitoring', value: 'Not monitored' },
+            { label: load.kind === 'preview-tv' ? 'New seasons' : 'Available when', value: 'Chosen when adding' },
             { label: 'Quality profile', value: 'Chosen when adding' },
-            ...(load.kind === 'preview-tv'
-              ? load.detail.network === null ? [] : [{ label: 'Network', value: load.detail.network }]
-              : load.detail.studio === null ? [] : [{ label: 'Studio', value: load.detail.studio }]),
-            ...(load.kind === 'preview-movie' ? [{ label: 'Digital release', value: day(load.detail.releaseDates.digital) ?? 'Not announced' }] : []),
           ]}
           add={(
             <div className="flex flex-col gap-4">

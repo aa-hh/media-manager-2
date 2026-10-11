@@ -14,6 +14,7 @@ import {
   type Series,
 } from './services/arr.js';
 import { lookupTitle } from './search.js';
+import { notConfigured } from './services/arr/result.js';
 import type { SecondVersionRow } from './secondVersionRows.js';
 import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
 import type { TitleStore } from './titleStore.js';
@@ -480,7 +481,13 @@ type VersionRows = {
 };
 
 // The tracked version comes from Sonarr or Radarr; second versions come from this app's own records, beside it.
-export const createLibrary = (services: ArrServices, versionRows: VersionRows, store: TitleStore, mdblist?: Pick<Mdblist, 'showRatings'>) => {
+export const createLibrary = (
+  services: ArrServices,
+  versionRows: VersionRows,
+  store: TitleStore,
+  mdblist?: Pick<Mdblist, 'showRatings'>,
+  tvdbIdOf?: (tmdbId: number) => Promise<ArrResult<number | null>>,
+) => {
   const showRatings = (record: Series) => (
     mdblist === undefined ? Promise.resolve(noRatings) : mdblist.showRatings(store, { tvdbId: record.tvdbId, tmdbId: record.tmdbId })
   );
@@ -555,6 +562,15 @@ export const createLibrary = (services: ArrServices, versionRows: VersionRows, s
       const movie = service === 'radarr' ? parseMovie(found.value) : null;
       if (show !== null) return { kind: 'ok', value: seriesDetail(show, { owned: false, ratingsBySite: await showRatings(show) }) };
       return movie === null ? { kind: 'not_found' } : { kind: 'ok', value: movieDetail(movie, { owned: false }) };
+    },
+
+    // Discover cards know a show only by its TMDB id; Sonarr looks shows up by TVDB id.
+    async previewShowByTmdbId(tmdbId: number): Promise<Result<SeriesDetail | MovieDetail>> {
+      if (tvdbIdOf === undefined) return { kind: 'not_configured', reason: notConfigured('TMDB', 'the show preview').message };
+      const found = await tvdbIdOf(tmdbId);
+      if (found.kind !== 'ok') return { kind: found.kind === 'refused' ? 'unreachable' : found.kind, reason: found.message };
+      if (found.value === null) return { kind: 'not_found', reason: 'TMDB knows no TVDB id for this show.' };
+      return this.preview('sonarr', found.value);
     },
 
     async history(subject: HistorySubject): Promise<Result<HistoryEntry[]>> {
@@ -708,6 +724,12 @@ export const createLibraryRoutes = (library: Library) => {
     const id = positiveInteger(Number(context.req.param('id')));
     if (id === null) return context.json(invalid, 400);
     const result = await library.movie(id);
+    return result.kind === 'ok' ? context.json(result.value) : failure(context, result);
+  });
+  routes.get('/preview/sonarr/tmdb/:tmdbId', async (context) => {
+    const tmdbId = positiveInteger(Number(context.req.param('tmdbId')));
+    if (tmdbId === null) return context.json(invalid, 400);
+    const result = await library.previewShowByTmdbId(tmdbId);
     return result.kind === 'ok' ? context.json(result.value) : failure(context, result);
   });
   routes.get('/preview/:service/:id', async (context) => {

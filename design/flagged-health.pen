@@ -353,8 +353,8 @@
                           "cornerRadius": "$5:control-radius-row",
                           "gap": 6,
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -735,8 +735,8 @@
                   "cornerRadius": "$5:control-radius-row",
                   "gap": 6,
                   "fill": "$5:card",
-                  "stroke": "$5:input",
-                  "strokeWidth": 1,
+                  "stroke": "$5:foreground",
+                  "strokeWidth": 1.5,
                   "descendants": {
                     "5:HQLEf": {
                       "enabled": false
@@ -1920,8 +1920,8 @@
                           "cornerRadius": "$5:control-radius-row",
                           "gap": 6,
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -2365,8 +2365,8 @@
                           "cornerRadius": "$5:control-radius-row",
                           "gap": 6,
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -2531,8 +2531,8 @@
                           "cornerRadius": "$5:control-radius-row",
                           "gap": 6,
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -7874,8 +7874,8 @@
                           "cornerRadius": "$5:control-radius-row",
                           "gap": 6,
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "enabled": false
@@ -8972,8 +8972,8 @@
                           "ref": "5:ht3RN",
                           "name": "Run all checks",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "loader-circle",
@@ -9120,8 +9120,8 @@
                           "ref": "5:ht3RN",
                           "name": "Run all checks",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "refresh-cw",
@@ -9282,8 +9282,8 @@
                           "ref": "5:ht3RN",
                           "name": "Run all checks",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "refresh-cw",

@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import type { Result } from './services/arr/result.js';
 import type { createTmdb, TmdbDetails, TmdbMediaType } from './services/tmdb.js';
 import type { Title, TitleStore } from './titleStore.js';
 import { libraryIdsByTmdbId } from './titles.js';
@@ -38,7 +39,7 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
   };
 
   // A saved copy is served at once; a stale one is refetched in the background for the next request.
-  const details = async (type: TmdbMediaType, tmdbId: number): Promise<Partial<TmdbDetails> | undefined> => {
+  const details = async (type: TmdbMediaType, tmdbId: number): Promise<Result<Partial<TmdbDetails>>> => {
     const load = () => tmdb.details(type, tmdbId);
     // Both arms match: the ternary only narrows the type for TitleRef.
     const saved = store.get<Partial<TmdbDetails>>(type === 'movie' ? { type, tmdbId } : { type, tmdbId }, PART);
@@ -47,19 +48,20 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
       if (title !== undefined && store.now() - saved.fetchedAt >= MAX_AGE_MS) {
         void store.fetch(title, PART, MAX_AGE_MS, load).catch(() => undefined);
       }
-      return saved.value;
+      return { kind: 'ok', value: saved.value };
     }
     const result = await load();
-    if (result.kind !== 'ok') return undefined;
+    if (result.kind !== 'ok') return result;
     // razor: a show TMDB knows no TVDB id for cannot be saved, so it is fetched on every visit.
     const title = titleOf(type, tmdbId, result.value.tvdbId);
     if (title !== undefined) store.put(title, PART, result.value);
-    return result.value;
+    return result;
   };
 
   return {
     async title(type: TmdbMediaType, tmdbId: number): Promise<TmdbTitleData> {
-      const found = await details(type, tmdbId);
+      const result = await details(type, tmdbId);
+      const found = result.kind === 'ok' ? result.value : undefined;
       const picks = (found?.recommendations ?? []).filter((item) => item.title !== null).slice(0, MAX_SIMILAR);
       const owned = {
         movie: libraryIdsByTmdbId(database, 'radarr', picks.filter((item) => (item.mediaType ?? type) === 'movie').map((item) => item.id)),
@@ -82,6 +84,13 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
         keywords: (found?.keywords ?? []).map((keyword) => keyword.name),
         similar,
       };
+    },
+
+    // A TMDB failure is passed on so it is not mistaken for a show TMDB has no TVDB id for.
+    async tvdbIdOf(tmdbId: number): Promise<Result<number | null>> {
+      const found = await details('tv', tmdbId);
+      if (found.kind !== 'ok') return found;
+      return { kind: 'ok', value: typeof found.value.tvdbId === 'number' ? found.value.tvdbId : null };
     },
   };
 };

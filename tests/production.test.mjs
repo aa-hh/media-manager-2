@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createCipheriv, createHash, createPublicKey, generateKeyPairSync, randomBytes, verify } from 'node:crypto';
 import { once } from 'node:events';
-import { existsSync } from 'node:fs';
+import fs, { existsSync } from 'node:fs';
 import {
   chmod,
   link,
@@ -18,6 +18,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -93,6 +94,17 @@ const ownerRules = {
 const saveOwnerRules = async (database) => {
   const { setSetting } = await import(settingsModuleUrl);
   for (const [host, rule] of Object.entries(ownerRules)) setSetting(database, 'trackerConfiguration', `rules.${host}`, JSON.stringify(rule));
+};
+
+// Makes every linkSync in the app throw `code`, as link() does across mounts, until the returned function restores it.
+const failLinks = (code) => {
+  const original = fs.linkSync;
+  fs.linkSync = () => { throw Object.assign(new Error(`${code}: link failed`), { code }); };
+  syncBuiltinESMExports();
+  return () => {
+    fs.linkSync = original;
+    syncBuiltinESMExports();
+  };
 };
 
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
@@ -2691,7 +2703,7 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
   const none = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null };
   const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
   const clock = { value: 1_800_000_000_000 };
-  const connect = (respond) => {
+  const connect = (respond, tvdbIdOf = async () => ({ kind: 'ok', value: 371980 })) => {
     database.prepare("DELETE FROM title_store_parts WHERE part = 'mdblistRatings'").run();
     const calls = [];
     const mdblist = createMdblist(database, { now: () => clock.value, fetch: async (url, init) => {
@@ -2699,7 +2711,7 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
       assert.equal(init.redirect, 'error');
       return respond(new URL(String(url)));
     } });
-    const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value }), mdblist));
+    const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value }), mdblist, tvdbIdOf));
     const page = async (path = '/series/7') => {
       const response = await routes.request(path);
       return { status: response.status, text: await response.text() };
@@ -2717,6 +2729,24 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
     assert.equal(calls[0].origin + calls[0].pathname, 'https://api.mdblist.com/tvdb/show/371980');
     assert.equal(calls[0].searchParams.get('apikey'), key);
     assert.deepEqual(JSON.parse((await page('/preview/sonarr/371980')).text).ratingsBySite, expected);
+  });
+
+  // Previewing anything but the TVDB id TMDB names, answering a show TMDB has no TVDB id for with anything but 404, or answering a TMDB failure with 404, turns this red.
+  await t.test('a show preview by TMDB id serves the TVDB preview, 404 when TMDB knows no TVDB id, and TMDB failures as themselves', async () => {
+    const { page } = connect(() => json(severance));
+    const byTmdb = await page('/preview/sonarr/tmdb/95396');
+    assert.equal(byTmdb.status, 200);
+    assert.equal(byTmdb.text, (await page('/preview/sonarr/371980')).text);
+    assert.equal((await connect(() => json(severance), async () => ({ kind: 'ok', value: null })).page('/preview/sonarr/tmdb/95396')).status, 404);
+    const failing = (kind) => connect(() => json(severance), async () => ({ kind, message: `TMDB ${kind}` })).page('/preview/sonarr/tmdb/95396');
+    const down = await failing('unreachable');
+    assert.equal(down.status, 502);
+    assert.deepEqual(JSON.parse(down.text), { error: 'unreachable', reason: 'TMDB unreachable' });
+    assert.equal((await failing('rejected')).status, 502);
+    assert.equal((await failing('not_configured')).status, 503);
+    // Answering a server with no TMDB at all with anything but 503 turns this red.
+    const noTmdb = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value })));
+    assert.equal((await noTmdb.request('/preview/sonarr/tmdb/95396')).status, 503);
   });
 
   // Not falling back to the TMDB id when MDBList has no such TVDB id turns this red.
@@ -2795,7 +2825,8 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
   let respond = () => { throw new TypeError('fetch failed'); };
   let calls = 0;
   const tmdb = createTmdb(database, { fetch: async (url) => { calls += 1; return respond(new URL(String(url))); } });
-  const routes = createTmdbTitleRoutes(createTmdbTitles({ database, tmdb, store: createTitleStore(database, { now: () => clock.value }) }));
+  const titles = createTmdbTitles({ database, tmdb, store: createTitleStore(database, { now: () => clock.value }) });
+  const routes = createTmdbTitleRoutes(titles);
   const json = (body, status = 200) => () => new Response(JSON.stringify(body), { status });
   const page = async (path) => {
     const response = await routes.request(path);
@@ -2828,6 +2859,16 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     respond = json({ id: 1, title: 'Film', keywords: { keywords: [{ id: 1, name: 'heist' }] }, credits: { cast }, recommendations: { results: [{ id: 2, title: 'Other' }] } });
     assert.deepEqual(await page('/tmdb/movie/1'), { similar: [{ tmdbId: 2, type: 'movie', title: 'Other', year: null, posterUrl: null, libraryId: null }] });
     assert.equal((await routes.request('/tmdb/person/1')).status, 400);
+  });
+
+  // Reading the TVDB id from anywhere but TMDB's external_ids, answering a show without one with anything but null, or folding a TMDB outage into null, turns this red.
+  await t.test('tvdbIdOf reads the TVDB id from external_ids, gives null without one, and passes a TMDB failure on', async () => {
+    respond = json({ id: 95396, name: 'Severance', external_ids: { tvdb_id: 371980 } });
+    assert.deepEqual(await titles.tvdbIdOf(95396), { kind: 'ok', value: 371980 });
+    respond = json({ id: 50, name: 'Unknown to TVDB' });
+    assert.deepEqual(await titles.tvdbIdOf(50), { kind: 'ok', value: null });
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.equal((await titles.tvdbIdOf(51)).kind, 'unreachable');
   });
 
   // Throwing or dropping a section when TMDB omits keywords, credits or recommendations turns this red.
@@ -3205,7 +3246,9 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     const fresh = await status();
     assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', plex: 'not_done', folders: 'not_done' });
     assert.equal(fresh.requiredComplete, false);
-    assert.deepEqual(fresh.optional, { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false } });
+    assert.deepEqual(fresh.optional, {
+      trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false },
+    });
     assert.deepEqual(fresh.backup, { destination: null, problem: null, key: 'missing', keyCreatedAt: null });
     assert.equal(fresh.plexSignInTokenAvailable, true);
     assert.equal((await (await build({ env: { BACKUP_KEY: 'ab'.repeat(32) } })).status()).backup.key, 'env');
@@ -3265,14 +3308,64 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
   // Dropping a stored choice, leaving backups on after the owner skipped them, or turning them on from a tick alone, turns this red.
   await t.test('the owner\'s choices round-trip and a skipped backup turns backups off', async () => {
     const { database, send, status } = await build();
-    const choose = (trackers, backup) => send('PUT', '/choices', { trackers, backup });
-    assert.equal((await choose({ wanted: false, skipped: false }, { wanted: true, skipped: true })).status, 204);
-    assert.deepEqual((await status()).optional, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'skipped', wanted: true } });
+    const choose = (trackers, metadata, backup) => send('PUT', '/choices', { trackers, metadata, backup });
+    assert.equal((await choose({ wanted: false, skipped: false }, { wanted: false, skipped: false }, { wanted: true, skipped: true })).status, 204);
+    assert.deepEqual((await status()).optional, {
+      trackers: { status: 'skipped', wanted: false }, metadata: { status: 'skipped', wanted: false }, backup: { status: 'skipped', wanted: true },
+    });
     assert.equal(backupsAreOff(database), true);
-    assert.equal((await choose({ wanted: true, skipped: false }, { wanted: true, skipped: false })).status, 204);
-    assert.deepEqual((await status()).optional, { trackers: { status: 'not_done', wanted: true }, backup: { status: 'not_done', wanted: true } });
+    assert.equal((await choose({ wanted: true, skipped: false }, { wanted: true, skipped: false }, { wanted: true, skipped: false })).status, 204);
+    assert.deepEqual((await status()).optional, {
+      trackers: { status: 'not_done', wanted: true }, metadata: { status: 'not_done', wanted: true }, backup: { status: 'not_done', wanted: true },
+    });
     assert.equal(backupsAreOff(database), true);
-    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, backup: { wanted: true, skipped: false } })).status, 400);
+    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, metadata: { wanted: true, skipped: false }, backup: { wanted: true, skipped: false } })).status, 400);
+    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true, skipped: false }, backup: { wanted: true, skipped: false } })).status, 400);
+    setSetting(database, 'credentials', 'mdblist.apiKey', 'value');
+    assert.equal((await status()).optional.metadata.status, 'done');
+
+    // Dropping the metadata default that readChoices lays under choices saved before the posters and ratings step turns this red.
+    const older = await build();
+    older.database.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)')
+      .run('setup.choices', JSON.stringify({ trackers: { wanted: true, skipped: false }, backup: { wanted: false, skipped: true } }));
+    assert.deepEqual((await older.status()).optional.metadata, { status: 'skipped', wanted: false });
+  });
+
+  // Returning the masked password, using a disabled or non-rTorrent client, or keeping a localhost host turns this red.
+  await t.test('rTorrent is suggested from the first enabled rTorrent download client, never its password', async () => {
+    const { database, fake, send } = await build({ which: { sonarr: {}, radarr: {} } });
+    const client = (implementation, enable, values) => ({
+      implementation, enable, fields: Object.entries(values).map(([name, value]) => ({ name, value })),
+    });
+    const clients = {
+      sonarr: [
+        client('QBittorrent', true, { host: 'qbit.example', port: 8080 }),
+        client('RTorrent', false, { host: 'off.example', port: 80, username: 'off' }),
+        client('RTorrent', true, { host: 'localhost', port: 443, useSsl: true, urlBase: 'xmlrpc', username: 'alec', password: '****' }),
+      ],
+      radarr: [client('RTorrent', true, { host: 'box.example', port: 8080, useSsl: false, urlBase: '/rtorrent/' })],
+    };
+    for (const service of ['sonarr', 'radarr']) {
+      fake[service].routes.push((method, url) => (
+        method === 'GET' && url.pathname === '/api/v3/downloadclient' ? { status: 200, body: clients[service] } : undefined
+      ));
+    }
+    const suggestion = async () => {
+      const response = await send('GET', '/rtorrent');
+      assert.equal(response.status, 200);
+      return response.text();
+    };
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://seedbox.example:8989');
+    const remote = await suggestion();
+    assert.deepEqual(JSON.parse(remote), { address: 'https://seedbox.example/xmlrpc', username: 'alec' });
+    assert.equal(remote.includes('****') || remote.includes('password'), false);
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65201');
+    assert.deepEqual(JSON.parse(await suggestion()), { address: null, username: 'alec' });
+    fake.sonarr.state.down = true;
+    assert.deepEqual(JSON.parse(await suggestion()), { address: 'http://box.example:8080/rtorrent', username: null });
+    const unconfigured = await (await build()).send('GET', '/rtorrent');
+    assert.equal(unconfigured.status, 200);
+    assert.deepEqual(await unconfigured.json(), { address: null, username: null });
   });
 
   // Suggesting a blank root folder or a disabled download client's folder, failing the whole read when one service is down, mixing up
@@ -4824,7 +4917,7 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
 test('problems record each fix attempt and its result', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
-  const { createProblems, listOpenProblems, subjectHistory, countReleaseAttempts } = await import(problemsModuleUrl);
+  const { createProblems, findOpenProblem, listOpenProblems, subjectHistory, countReleaseAttempts } = await import(problemsModuleUrl);
   const { writeDependency } = await import(dependenciesModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-problems-'));
@@ -4866,6 +4959,26 @@ test('problems record each fix attempt and its result', async (t) => {
     const reopened = problems.open({ kind: 'stalled', subject: episode, summary: 'Stalled again.' });
     assert.notEqual(reopened.id, first.id);
     assert.equal(published.filter((event) => event.type === 'problem').length, 5);
+    database.close();
+  });
+
+  // Loading all listed problems' steps together and attaching a step to the wrong problem, or out of order, turns this red.
+  await t.test('listed problems each carry their own steps in order, and a kind filter or single lookup finds the same', async () => {
+    const database = openDatabase(join(root, 'listing', 'media-manager.sqlite'));
+    const problems = createProblems({ database, events: createEventHub(), now: () => 7_000 });
+    const torrent = { type: 'torrent', service: null, id: 'CD'.repeat(20) };
+    const first = problems.open({ kind: 'stalled', subject: episode, summary: 'Stalled.' });
+    const second = problems.open({ kind: 'unfinished', subject: torrent, summary: 'Unfinished.' });
+    problems.step(first.id, 'fix', 'first fix');
+    problems.step(second.id, 'fix', 'second fix');
+    problems.setState(first.id, 'needs_you', 'first result');
+    assert.deepEqual(listOpenProblems(database).map((problem) => [problem.kind, problem.steps.map((step) => step.text)]), [
+      ['stalled', ['Stalled.', 'first fix', 'first result']],
+      ['unfinished', ['Unfinished.', 'second fix']],
+    ]);
+    assert.deepEqual(listOpenProblems(database, ['unfinished']), [listOpenProblems(database)[1]]);
+    assert.deepEqual(findOpenProblem(database, 'unfinished', torrent), listOpenProblems(database)[1]);
+    assert.equal(findOpenProblem(database, 'unfinished', episode), undefined);
     database.close();
   });
 
@@ -5568,7 +5681,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
 
   const setup = async ({
     name = 'Movie.2024.mkv', files = [['Movie.2024.mkv', 1234]], library = [['Movie (2024).mkv', 1234]],
-    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false, startFails = false,
+    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false, startFails = false, linkError,
   } = {}) => {
     count += 1;
     const base = join(root, `case-${count}`);
@@ -5619,7 +5732,12 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     const relink = createRelinkFix({ database, rtorrent, arr, problems, now, sleep, isManualDownload: createProtection(database, arr).isProtected });
     await grabs.reconcile();
     await poller.poll();
-    await relink.check();
+    const restoreLinks = linkError === undefined ? () => {} : failLinks(linkError);
+    try {
+      await relink.check();
+    } finally {
+      restoreLinks();
+    }
     const writes = calls.filter(([method]) => writeMethods.includes(method));
     const found = database.prepare("SELECT id FROM problems WHERE kind = 'download_missing'").all().map((row) => getProblem(database, Number(row.id)));
     database.close();
@@ -5661,6 +5779,14 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     assert.deepEqual(run.writes.find(([method]) => method === 'd.directory.set'), ['d.directory.set', hash, run.downloadRoot]);
     assert.equal((await stat(join(run.downloadRoot, 'Movie.2024', 'a.mkv'))).nlink, 2);
     assert.equal((await stat(join(run.downloadRoot, 'Movie.2024', 'b.mkv'))).nlink, 2);
+  });
+
+  // Pre-checking device numbers instead of linking, or touching rTorrent before the links are made, turns this red.
+  await t.test('a library on another drive is reported and rTorrent is left alone', async () => {
+    const run = await setup({ linkError: 'EXDEV' });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal(run.problem.steps.at(-1).text, 'The download folder and the library are on different drives.');
+    assert.deepEqual(run.writes, []);
   });
 
   // Dropping the manual-download check turns this red.
@@ -6228,19 +6354,23 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     }
   });
 
-  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move.
-  await t.test('a block that changes kind before clearing resolves every import problem on the download', async () => {
+  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move;
+  // matching on anything wider than this download's import problems closes another download's or a stall's.
+  await t.test('a block that changes kind before clearing resolves every import problem on the download, and only those', async () => {
     const run = await setup({ message: 'File is locked by another process' });
+    const other = 'FF'.repeat(20);
+    run.problems.open({ kind: 'import_temporary', subject: { type: 'torrent', service: null, id: other }, hash: other, summary: 'Other.Release' });
+    run.problems.open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, hash, summary: 'Release.Title' });
     await run.fix.check();
     run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Failed to move file'] }];
     await run.grabs.reconcile();
     run.clock.value += 5 * minute;
     await run.fix.check();
-    assert.ok(listOpenProblems(run.database).length >= 1);
+    assert.ok(listOpenProblems(run.database).length >= 3);
     run.queue.length = 0;
     await run.grabs.reconcile();
     await run.fix.check();
-    assert.deepEqual(listOpenProblems(run.database), []);
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => [problem.kind, problem.subject.id]), [['import_temporary', other], ['stalled', hash]]);
     run.database.close();
   });
 
@@ -7440,17 +7570,23 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   assert.equal(rows(unfinishedHash)[0].state, 'downloading');
   database.prepare('DELETE FROM second_versions WHERE hash = ?').run(unfinishedHash);
 
-  // Checking the drive after making folders, or not at all, turns this red.
-  assert.notEqual((await stat('/dev')).dev, (await stat(root)).dev, 'this check needs /dev on its own file system');
-  setSetting(database, 'hostPaths', 'versions.radarr', '/dev');
+  // Pre-checking device numbers instead of linking, or leaving the folder made for a link that failed, turns this red.
+  const otherDrive = join(root, 'versions', 'other-drive');
+  await mkdir(otherDrive);
+  setSetting(database, 'hostPaths', 'versions.radarr', otherDrive);
   const otherDriveHash = 'A6'.repeat(20);
   await addTorrent(otherDriveHash, ['Heat.mkv']);
   addRows(otherDriveHash, [{ movieId: 11 }]);
-  await versionImport.run();
+  const restoreLinks = failLinks('EXDEV');
+  try {
+    await versionImport.run();
+  } finally {
+    restoreLinks();
+  }
   assert.equal(rows(otherDriveHash)[0].state, 'failed');
   assert.match(rows(otherDriveHash)[0].failure, /different drives/);
   assert.match(problemsFor(IMPORT_PROBLEM_KIND).at(-1).summary, /^Heat \(1995\) \(second version\): .*different drives/);
-  assert.equal(existsSync('/dev/Heat (1995)'), false);
+  assert.deepEqual(await readdir(otherDrive), []);
   setSetting(database, 'hostPaths', 'versions.radarr', movies);
 
   // Importing TV before its versions folder is set, matching pack files by order instead of SxxEyy, or importing the extra episode turns this red.
@@ -9445,6 +9581,92 @@ test('title pages mark episodes and select ranges of episodes only', async (t) =
   });
 });
 
+test('discover helpers turn dates, filters and rows into what the screen shows', async (t) => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { countdown, dateTab, homeQuery, gridPath, readState, readGridState, titlePath, extraRowsView, visibleCards, filterTags } = await load('../src/client/discover/model.ts');
+  const empty = { genres: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
+
+  // Counting calendar days with local time, or moving a boundary (14 days, 84 days) by one, turns this red.
+  await t.test('a countdown says today, tomorrow, days, weeks or months', () => {
+    const cases = [[null, 'No date yet'], ['2026-10-11', 'Today'], ['2026-10-10', 'Today'], ['2026-10-12', 'Tomorrow'], ['2026-10-24', 'In 13 days'],
+      ['2026-10-25', 'In 2 weeks'], ['2027-01-02', 'In 12 weeks'], ['2027-01-03', 'In 3 months'], ['2026-11-07', 'In 4 weeks']];
+    for (const [date, word] of cases) assert.equal(countdown(date, '2026-10-11'), word, String(date));
+  });
+
+  // Padding the day with a zero, or a mixed-case month, turns this red.
+  await t.test('a date tab is a three-letter upper-case month and a plain day', () => {
+    assert.deepEqual(dateTab('2026-10-04'), { month: 'OCT', day: '4' });
+    assert.deepEqual(dateTab('2027-01-22'), { month: 'JAN', day: '22' });
+  });
+
+  // Sending window or region to the server, or keeping an empty value, turns this red.
+  await t.test('the home query uses the API names and drops empty values and the client-only window', () => {
+    assert.equal(homeQuery({ ...empty, type: 'all', window: 90 }, []), '');
+    const state = { type: 'tv', window: 30, genres: [18, 10765], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
+    const query = homeQuery(state, [8, 337]);
+    assert.equal(query, 'type=tv&genres=18%2C10765&providers=8&yearFrom=2006&minRating=7&services=8%2C337');
+    assert.ok(!query.includes('window') && !query.includes('region'));
+    assert.deepEqual(readState(`?${query}`), { ...state, window: 90 });
+    assert.equal(readState('?window=30').window, 30);
+  });
+
+  // Letting a bad value through to the screen (and then to the server as a 400) turns this red.
+  await t.test('page addresses read back, and bad values fall to the defaults', () => {
+    assert.equal(gridPath('movies', empty, { sort: 'popular' }), '/discover/movies');
+    const path = gridPath('trending', { ...empty, genres: [18], minRating: 8 }, { type: 'tv' });
+    assert.equal(path, '/discover/trending?type=tv&genres=18&minRating=8');
+    assert.deepEqual(readGridState(path.slice(path.indexOf('?'))), { ...empty, genres: [18], minRating: 8, type: 'tv', sort: 'popular' });
+    assert.equal(gridPath('tv', empty, { sort: 'rating' }), '/discover/tv?sort=rating');
+    assert.equal(readGridState('?sort=rating').sort, 'rating');
+    assert.deepEqual(readState('?type=film&genres=x,5&yearFrom=2020&yearTo=2019&minRating=11&window=7'),
+      { ...empty, genres: [5], type: 'all', window: 90 });
+    assert.equal(readGridState('?sort=title').sort, 'popular');
+    // Dropping the 1870–2200 bounds from yearOf turns this red: the server answers those years with a 400.
+    assert.deepEqual([readState('?yearFrom=1869&yearTo=2201'), readState('?yearFrom=1870&yearTo=2200')].map(({ yearFrom, yearTo }) => [yearFrom, yearTo]),
+      [[null, null], [1870, 2200]]);
+  });
+
+  // Sending a library title to the preview page, or a show to the movie preview, turns this red.
+  await t.test('a card opens the library page, or the preview page for its type', () => {
+    const result = (type, libraryId) => ({ tmdbId: 95396, type, libraryId });
+    assert.equal(titlePath(result('tv', 7)), '/series/7');
+    assert.equal(titlePath(result('movie', 7)), '/movie/7');
+    assert.equal(titlePath(result('tv', null)), '/title/tmdb-tv/95396');
+    assert.equal(titlePath(result('movie', null)), '/title/tmdb/95396');
+  });
+
+  // Hiding a row that is still loading, or showing the Trakt note when only some rows failed, turns this red.
+  await t.test('extra rows hide when empty and the Trakt note needs every row to be not configured', () => {
+    const row = (overrides) => ({ id: 'x', label: 'X', results: [{}], pending: false, failed: false, failure: null, ...overrides });
+    const missing = { results: [], failed: true, failure: 'not_configured' };
+    const view = extraRowsView([row(), row({ results: [] }), row({ results: [], pending: true })]);
+    assert.equal(view.shown.length, 2);
+    assert.equal(view.traktMissing, false);
+    assert.equal(extraRowsView([row(missing), row(missing)]).traktMissing, true);
+    assert.equal(extraRowsView([row(missing), row({ results: [], failed: true, failure: 'unreachable' })]).traktMissing, false);
+    assert.equal(extraRowsView([]).traktMissing, false);
+  });
+
+  // Counting a card's gap twice, or returning zero cards for a narrow strip, turns this red.
+  await t.test('a strip shows as many whole cards as fit, and at least one', () => {
+    assert.equal(visibleCards(1360), 5);
+    assert.equal(visibleCards(220), 1);
+    assert.equal(visibleCards(100), 1);
+  });
+
+  // Dropping a tag, or removing more than the one the tag names, turns this red.
+  await t.test('filter tags name each active filter and clear only their own', () => {
+    const filters = { genres: [18, 99], providers: [8], yearFrom: 2006, yearTo: 2024, minRating: 7 };
+    const tags = filterTags(filters, [{ id: 18, name: 'Drama' }], [{ id: 8, name: 'Netflix' }]);
+    assert.deepEqual(tags.map((tag) => tag.label), ['Drama', 'Netflix', '2006–2024', 'Rating 7 and above']);
+    assert.deepEqual(tags[0].remove, { ...filters, genres: [99] });
+    assert.deepEqual(tags[2].remove, { ...filters, yearFrom: null, yearTo: null });
+    assert.equal(filterTags({ ...empty, yearFrom: 2006 }, [], [])[0].label, 'From 2006');
+    assert.equal(filterTags({ ...empty, yearTo: 2024 }, [], [])[0].label, 'Up to 2024');
+  });
+});
+
 test('the calendar groups one show\'s same-day episodes and frames week, month and forecast windows', async (t) => {
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/calendar/model.ts', import.meta.url), 'utf8');
@@ -9671,7 +9893,7 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   assert.equal(existsSync(join(folder, 'backups', 'blocked.enc.partial')), false);
 });
 
-// Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
+// Snapshotting with a plain file copy during a write, letting an unfinished transaction on the app's connection into the snapshot, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
 test('backups snapshot a changing database and restore it consistently', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -9779,6 +10001,18 @@ test('backups snapshot a changing database and restore it consistently', async (
   assert.ok(Number(preferences.counter) >= 1);
   assert.equal(preferences['counter-copy'], preferences.counter);
   assert.deepEqual(restoredResult.counts.find(({ table }) => table === 'settings'), { table: 'settings', count: 3 });
+
+  database.exec('BEGIN IMMEDIATE');
+  database.prepare("INSERT INTO preferences (key, value) VALUES ('unfinished', 'yes')").run();
+  clock += 60_000;
+  const duringTransaction = await backup.run({ force: true });
+  database.exec('COMMIT');
+  assert.deepEqual(outcome(duringTransaction), ['ok', '']);
+  const isolatedPath = join(root, 'isolated', 'media-manager.sqlite');
+  await restoreBackup({ store, target: isolatedPath, key: backupKey });
+  const isolated = new DatabaseSync(isolatedPath, { readOnly: true });
+  t.after(() => isolated.close());
+  assert.equal(isolated.prepare("SELECT value FROM preferences WHERE key = 'unfinished'").get(), undefined);
 
   clock += 5 * 60_000;
   assert.deepEqual(outcome(await backup.run({ force: true })), ['ok', '']);
@@ -9984,7 +10218,7 @@ test('the settings screen sends only changed fields and ranks each service state
   // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
-  const { changes, pillFor, linkTone, services, stripSummary } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
   const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
 
   // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
@@ -10003,13 +10237,6 @@ test('the settings screen sends only changed fields and ranks each service state
     const tmdb = { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } };
     assert.deepEqual(changes('tmdb', tmdb, { address: 'https://api.themoviedb.org', secrets: { 'tmdb.apiKey': 'new' } }), { credentials: { 'tmdb.apiKey': 'new' } });
     assert.deepEqual(changes('trakt', undefined, { address: '', secrets: {} }), {});
-  });
-
-  // Counting a metadata service in the strip turns this red: the strip shows only the chain from Sonarr and Radarr to Plex.
-  await t.test('the strip sentence ignores metadata services', () => {
-    const ok = { kind: 'ok', at: 0, ofSaved: true };
-    const checks = Object.fromEntries(services.map((info) => [info.name, info.group === 'Services' ? ok : { kind: 'idle' }]));
-    assert.match(stripSummary(checks), /^Every link answers\./);
   });
 
   // Letting unsaved edits hide a running test or a failure turns this red.
@@ -10037,7 +10264,37 @@ test('the settings screen sends only changed fields and ranks each service state
   });
 
   const setupSource = await readFile(new URL('../src/client/settings/setup.ts', import.meta.url), 'utf8');
-  const { folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
+  const {
+    folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken, wantedParts, nextStep, firstStep,
+  } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
+
+  // Opening on a done step, visiting an unwanted or skipped optional part, skipping the posters and ratings step between trackers and backup, or reaching Done with a required part missing turns this red.
+  await t.test('the wizard moves to the next open step and reaches Done only once every required part is saved', () => {
+    const status = (done, optional = {}) => ({
+      required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
+      optional: { trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
+    });
+    const fresh = status([]);
+    assert.deepEqual(wantedParts(fresh), { trackers: true, metadata: true, backup: true });
+    assert.equal(firstStep(fresh, wantedParts(fresh)), 'what');
+    assert.equal(nextStep('what', fresh, wantedParts(fresh)), 'sonarr');
+    // Radarr saved in Settings earlier is passed over.
+    assert.equal(nextStep('sonarr', status(['sonarr', 'radarr']), { trackers: true, backup: true }), 'rtorrent');
+    assert.equal(firstStep(status(['sonarr']), { trackers: true, backup: true }), 'radarr');
+    const required = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
+    const chosen = status(required, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'not_done', wanted: true } });
+    assert.deepEqual(wantedParts(chosen), { trackers: false, metadata: false, backup: true });
+    assert.equal(nextStep('folders', chosen, wantedParts(chosen)), 'backup');
+    assert.equal(nextStep('backup', chosen, wantedParts(chosen)), 'done');
+    const all = { trackers: true, metadata: true, backup: true };
+    assert.equal(nextStep('trackers', status(required), all), 'metadata');
+    assert.equal(nextStep('metadata', status(required), all), 'backup');
+    assert.equal(nextStep('trackers', status(required, { metadata: { status: 'skipped', wanted: true } }), all), 'backup');
+    const skipped = status(required, { trackers: { status: 'skipped', wanted: true }, backup: { status: 'skipped', wanted: true } });
+    assert.equal(nextStep('folders', skipped, wantedParts(skipped)), 'done');
+    // Past the end with Plex missing goes back to Plex, not to Done.
+    assert.equal(nextStep('backup', status(['sonarr', 'radarr', 'rtorrent', 'folders']), { trackers: true, backup: true }), 'plex');
+  });
 
   // Letting a suggestion replace a saved folder, or leaving a field null when nothing is known, turns this red.
   await t.test('a saved folder beats a suggestion, a suggestion fills a gap, and nothing known is blank', () => {
@@ -10665,7 +10922,7 @@ test('the discover routes check every value, mark library titles and turn a miss
     const target = new URL(String(url));
     calls.push(target);
     if (target.pathname === '/3/genre/movie/list') return json({ genres: [{ id: 878, name: 'Science Fiction' }, { id: 18, name: 'Drama' }] });
-    if (target.pathname === '/3/genre/tv/list') return json({ genres: [] });
+    if (target.pathname === '/3/genre/tv/list') return json({ genres: [{ id: 18, name: 'Drama' }] });
     return json({ page: 2, total_pages: 3, results: [
       { id: 438631, title: 'Dune', release_date: '2021-09-15', poster_path: '/d5NX.jpg', backdrop_path: null, vote_average: 7.8, overview: 'Paul travels. Then more.', genre_ids: [878, 18], popularity: 90.5 },
       { id: 999, name: 'Severance', media_type: 'tv', first_air_date: '2022-02-17', poster_path: null, backdrop_path: '/bg.jpg' },
@@ -10695,6 +10952,8 @@ test('the discover routes check every value, mark library titles and turn a miss
   for (const path of [
     'movie?sort=trending', 'movie?region=usa', 'movie?region=us', 'movie?yearFrom=2020&yearTo=2019', 'movie?genres=18,abc',
     'movie?providers=8|9', 'movie?page=0', 'movie?page=501', 'movie?minRating=11', 'person', 'providers/tv?region=GBR',
+    // Dropping the type or year check on the trending grid turns these two red.
+    'trending?type=film', 'trending?yearFrom=2020&yearTo=2019',
   ]) {
     assert.equal((await get(`/api/discover/${path}`)).status, 400, path);
   }
@@ -10729,6 +10988,19 @@ test('the discover routes check every value, mark library titles and turn a miss
   clock.value += 5 * 60_000 + 1;
   assert.equal((await get(path)).status, 200);
   assert.equal(calls.slice(before).filter((call) => call.pathname === '/3/discover/movie').length, 1);
+
+  // Asking TMDB for the mixed trending list on a TV grid, or not applying the genre filter to the trending page, turns this red.
+  const trending = await get('/api/discover/trending?type=tv&genres=18');
+  assert.equal(trending.status, 200);
+  assert.ok(calls.some((call) => call.pathname === '/3/trending/tv/week'));
+  assert.deepEqual(trending.body.results.map((item) => item.title), ['Dune']);
+  assert.ok(trending.body.results.every((item) => item.genres.includes('Drama')));
+
+  // Reporting a Trakt-only row with no Trakt as an empty row instead of failed, or marking a TMDB-filled row failed, turns this red.
+  const home = await get('/api/discover/home');
+  assert.ok(home.body.extraRows.length > 0);
+  assert.ok(home.body.extraRows.every((row) => row.failed === true && row.failure === 'not_configured'));
+  assert.equal(home.body.trending.all.failed, false);
 });
 
 test('the discover home serves recipe rows from saved results, blends sources by weighted rank, applies the filter bar and never leaks a key', async (t) => {
@@ -10973,7 +11245,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
   await t.test('the TV filter hides movie rows and keeps shows only', async () => {
     const { body } = await home('?type=tv');
     assert.deepEqual([body.popularMovies, body.upcomingMovies], [null, null]);
-    assert.deepEqual(body.trending.movie, { results: [], pending: false });
+    assert.deepEqual(body.trending.movie, { results: [], pending: false, failed: false, failure: null });
     assert.equal(body.extraRows.some((row) => row.id === 'box-office'), false);
     const watched = body.extraRows.find((row) => row.id === 'most-watched');
     assert.ok(watched.results.length > 0);
@@ -11088,12 +11360,12 @@ test('the discover home serves recipe rows from saved results, blends sources by
     traktHold = { promise: new Promise((resolve) => { release = resolve; }) };
     const before = traktCalls.filter((call) => call.type === 'movie' && call.kind === 'trending').length;
     const waiting = await get('/api/discover/home?type=movie', cappedApp, cappedSession); // real-time-ok: the fill cap is the behaviour under test
-    assert.deepEqual(waiting.body.trending.movie, { results: [], pending: true });
+    assert.deepEqual(waiting.body.trending.movie, { results: [], pending: true, failed: false, failure: null });
     for (const row of [waiting.body.popularMovies, waiting.body.upcomingMovies.days30, waiting.body.upcomingMovies.days90, ...waiting.body.extraRows]) {
       assert.equal(row.pending, false);
       assert.ok(row.results.length > 0);
     }
-    assert.deepEqual((await get('/api/discover/home?type=movie', cappedApp, cappedSession)).body.trending.movie, { results: [], pending: true });
+    assert.deepEqual((await get('/api/discover/home?type=movie', cappedApp, cappedSession)).body.trending.movie, { results: [], pending: true, failed: false, failure: null });
     release({ kind: 'ok', value: traktLists['movie:trending'] });
     traktHold = undefined;
     await capped.idle();

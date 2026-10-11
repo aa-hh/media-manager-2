@@ -1,0 +1,122 @@
+[
+  {
+    "title": "Mad Max: Fury Road",
+    "year": "2015",
+    "type": "Movie",
+    "imdbId": "tt1392190",
+    "source": "https://imdb.com/title/tt1392190",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt1392190.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt1392190/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt1392190.jpg",
+    "httpStatus": 200,
+    "bytes": 25838
+  },
+  {
+    "title": "The Martian",
+    "year": "2015",
+    "type": "Movie",
+    "imdbId": "tt3659388",
+    "source": "https://imdb.com/title/tt3659388",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt3659388.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt3659388/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt3659388.jpg",
+    "httpStatus": 200,
+    "bytes": 32949
+  },
+  {
+    "title": "Interstellar",
+    "year": "2014",
+    "type": "Movie",
+    "imdbId": "tt0816692",
+    "source": "https://imdb.com/title/tt0816692",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt0816692.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt0816692/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt0816692.jpg",
+    "httpStatus": 200,
+    "bytes": 31346
+  },
+  {
+    "title": "Her",
+    "year": "2014",
+    "type": "Movie",
+    "imdbId": "tt1798709",
+    "source": "https://imdb.com/title/tt1798709",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt1798709.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt1798709/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt1798709.jpg",
+    "httpStatus": 200,
+    "bytes": 21432
+  },
+  {
+    "title": "Ex Machina",
+    "year": "2014",
+    "type": "Movie",
+    "imdbId": "tt0470752",
+    "source": "https://imdb.com/title/tt0470752",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt0470752.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt0470752/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt0470752.jpg",
+    "httpStatus": 200,
+    "bytes": 25076
+  },
+  {
+    "title": "Gravity",
+    "year": "2013",
+    "type": "Movie",
+    "imdbId": "tt1454468",
+    "source": "https://imdb.com/title/tt1454468",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt1454468.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt1454468/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt1454468.jpg",
+    "httpStatus": 200,
+    "bytes": 9986
+  },
+  {
+    "title": "Arrival",
+    "year": "2016",
+    "type": "Movie",
+    "imdbId": "tt2543164",
+    "source": "https://imdb.com/title/tt2543164",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt2543164.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt2543164/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt2543164.jpg",
+    "httpStatus": 200,
+    "bytes": 23182
+  },
+  {
+    "title": "Moon",
+    "year": "2009",
+    "type": "Movie",
+    "imdbId": "tt1182345",
+    "source": "https://imdb.com/title/tt1182345",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt1182345.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt1182345/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt1182345.jpg",
+    "httpStatus": 200,
+    "bytes": 36874
+  },
+  {
+    "title": "Children of Men",
+    "year": "2006",
+    "type": "Movie",
+    "imdbId": "tt0206634",
+    "source": "https://imdb.com/title/tt0206634",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt0206634.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt0206634/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt0206634.jpg",
+    "httpStatus": 200,
+    "bytes": 21918
+  },
+  {
+    "title": "Blade Runner 2049",
+    "year": "2017",
+    "type": "Movie",
+    "imdbId": "tt1856101",
+    "source": "https://imdb.com/title/tt1856101",
+    "apiSource": "https://v3-cinemeta.strem.io/meta/movie/tt1856101.json",
+    "imageUrl": "https://images.metahub.space/poster/small/tt1856101/img",
+    "localPath": "/Users/alechenderson/Projects/media-manager-2/.claude/worktrees/codex-design-finish/.scratch/discover-design-from-codex-2a18/assets/tt1856101.jpg",
+    "httpStatus": 200,
+    "bytes": 36093
+  }
+]

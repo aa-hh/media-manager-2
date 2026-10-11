@@ -9,19 +9,14 @@ import { cn } from '@/lib/utils';
 
 /**
  * Grey block while data loads, 160 by 14 and radius 4 unless sized with classes.
- * A lighter band sweeps across it once per duration-shimmer; under reduced motion the block stays still and plain.
- * tw-shimmer is the keyframe from shadcn/tailwind.css (background-position 100% to 0).
+ * A light band sweeps across the window once per duration-shimmer and every block shows its slice of it
+ * (skeleton-shimmer in globals.css); under reduced motion the block stays still and plain.
  */
 function Skeleton({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       aria-hidden="true"
-      className={cn(
-        'h-3.5 w-40 shrink-0 rounded-xs bg-muted',
-        'bg-linear-to-r from-transparent via-card/60 to-transparent bg-size-[200%_100%] bg-no-repeat',
-        'animate-[tw-shimmer_var(--duration-shimmer)_linear_infinite] motion-reduce:bg-none',
-        className,
-      )}
+      className={cn('h-3.5 w-40 shrink-0 rounded-xs bg-muted skeleton-shimmer motion-reduce:bg-none', className)}
       {...props}
     />
   );

@@ -22,14 +22,15 @@ function RowService({ logo, name, address, state, stateText, selected = false, c
       type="button"
       aria-current={selected || undefined}
       className={cn(
-        'flex h-14 w-full items-center gap-3 rounded-sm px-4 text-left',
+        'relative flex h-14 w-full items-center gap-3 rounded-sm px-4 text-left',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         selected ? 'bg-selected' : 'hover:bg-surface-hover active:bg-surface-pressed',
         className,
       )}
       {...props}
     >
-      {selected && <span aria-hidden="true" className="h-10 w-0.75 shrink-0 rounded-[2px] bg-foreground" />}
+      {/* Always present and out of the flow, so selecting a row moves nothing; only its opacity changes. */}
+      <span aria-hidden="true" className={cn('absolute top-2 bottom-2 left-0 w-0.75 rounded-[2px] bg-foreground transition-opacity duration-(--duration-fast) ease-out', !selected && 'opacity-0')} />
       <Logo name={logo} alt="" className="size-6" />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="font-ui text-sm font-semibold text-foreground">{name}</span>

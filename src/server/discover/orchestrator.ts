@@ -239,6 +239,21 @@ export const createOrchestrator = (options: {
     return result.kind === 'ok' ? { kind: 'ok', value: fromTmdb(result.value.results) } : result;
   };
 
+  const availableOn = async <T extends { item: StoredItem; tvdbId: number | null }>(entries: T[], filters: Filters) => {
+    // razor: the first load of a service filter makes up to 40 availability lookups per row; upgrade path is a bulk provider cache.
+    const looked = entries.slice(0, PROVIDER_LOOKUPS);
+    const available = await Promise.all(looked.map(({ item, tvdbId }) => savedPart(
+      item.type, item.tmdbId, tvdbId, 'tmdbProviders', PROVIDERS_MAX_AGE_MS, () => tmdb.watchProviders(item.type, item.tmdbId),
+    )));
+    // A failed lookup drops its title, so the row is partial rather than complete without it. A title TMDB no longer has is simply dropped.
+    const lookupsFailed = available.some((result) => result.kind !== 'ok' && result.kind !== 'not_found');
+    const kept = looked.filter((_, index) => {
+      const result = available[index];
+      return result.kind === 'ok' && (result.value[filters.region] ?? []).some((id) => filters.providers.includes(id));
+    });
+    return { kept, lookupsFailed };
+  };
+
   const buildRow = async (spec: Extract<RowSpec, { kind: 'row' }>): Promise<Built> => {
     const recipe = recipeById(spec.recipe);
     if (recipe === undefined) return { result: { kind: 'not_found', message: `Discover has no row called ${spec.recipe}.` }, partial: false };
@@ -258,19 +273,7 @@ export const createOrchestrator = (options: {
     let candidates = fuse(live.map(({ source, result }) => ({ weight: source.weight, entries: result.kind === 'ok' ? result.value : [] })))
       .filter((candidate) => passes(candidate.item, filters));
     let lookupsFailed = false;
-    if (filters.providers.length > 0) {
-      // razor: the first load of a service filter makes up to 40 availability lookups per row; upgrade path is a bulk provider cache.
-      candidates = candidates.slice(0, PROVIDER_LOOKUPS);
-      const available = await Promise.all(candidates.map(({ item, tvdbId }) => savedPart(
-        item.type, item.tmdbId, tvdbId, 'tmdbProviders', PROVIDERS_MAX_AGE_MS, () => tmdb.watchProviders(item.type, item.tmdbId),
-      )));
-      // A failed lookup drops its title, so the row is partial rather than complete without it. A title TMDB no longer has is simply dropped.
-      lookupsFailed = available.some((result) => result.kind !== 'ok' && result.kind !== 'not_found');
-      candidates = candidates.filter((_, index) => {
-        const result = available[index];
-        return result.kind === 'ok' && (result.value[filters.region] ?? []).some((id) => filters.providers.includes(id));
-      });
-    }
+    if (filters.providers.length > 0) ({ kept: candidates, lookupsFailed } = await availableOn(candidates, filters));
     if (recipe.order === 'date') {
       const from = today(at);
       const to = recipe.dropOutsideWindowDays === undefined ? undefined : daysAfter(at, recipe.dropOutsideWindowDays);
@@ -291,15 +294,25 @@ export const createOrchestrator = (options: {
       return { result: result.kind === 'ok' ? { kind: 'ok', value: { items: [], totalPages: null, reference: result.value } } : result, partial: false };
     }
     if (spec.kind === 'row') return buildRow(spec);
-    const result = spec.sort === 'trending'
-      ? await tmdb.trending('all', 'week', spec.page)
-      : await tmdb.discover(spec.type, {
-        ...filterParams(spec.type, spec.filters, spec.sort === 'upcoming' ? today(now()) : undefined),
-        page: spec.page,
-        sort_by: sorts[spec.sort][spec.type],
-        // A rating sort without a vote floor fills the page with titles rated by one person.
-        'vote_count.gte': spec.sort === 'rating' ? 200 : undefined,
-      });
+    if (spec.sort === 'trending') {
+      // razor: filters are applied after fetching because TMDB's trending endpoint takes none; this keeps TMDB's trending order and
+      // works for the mixed movie and TV list, at the cost of pages holding fewer than 20 titles (the client stops after
+      // 5 empty pages in a row, EMPTY_PAGE_LIMIT in Grid.tsx); upgrade path is a server-side merged page.
+      const trending = await tmdb.trending(spec.type, 'week', spec.page);
+      if (trending.kind !== 'ok') return { result: trending, partial: false };
+      let entries = fromTmdb(trending.value.results).filter(({ item }) => passes(item, spec.filters));
+      let lookupsFailed = false;
+      if (spec.filters.providers.length > 0) ({ kept: entries, lookupsFailed } = await availableOn(entries, spec.filters));
+      const named = await withGenreNames(entries.map(({ item }) => item));
+      return { result: { kind: 'ok', value: { items: named.items, totalPages: trending.value.totalPages } }, partial: lookupsFailed || !named.complete };
+    }
+    const result = await tmdb.discover(spec.type, {
+      ...filterParams(spec.type, spec.filters, spec.sort === 'upcoming' ? today(now()) : undefined),
+      page: spec.page,
+      sort_by: sorts[spec.sort][spec.type],
+      // A rating sort without a vote floor fills the page with titles rated by one person.
+      'vote_count.gte': spec.sort === 'rating' ? 200 : undefined,
+    });
     if (result.kind !== 'ok') return { result, partial: false };
     const named = await withGenreNames(fromTmdb(result.value.results).map(({ item }) => item));
     return { result: { kind: 'ok', value: { items: named.items, totalPages: result.value.totalPages } }, partial: !named.complete };

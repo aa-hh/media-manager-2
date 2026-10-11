@@ -115,9 +115,10 @@ export const folderWarnings = (
   return warnings;
 };
 
-type Part = 'trackers' | 'backup';
+type Part = 'trackers' | 'metadata' | 'backup';
 type Choices = Record<Part, { wanted: boolean; skipped: boolean }>;
 const CHOICES_KEY = 'setup.choices';
+const metadataKeys = [['credentials', 'tmdb.apiKey'], ['credentials', 'mdblist.apiKey'], ['credentials', 'trakt.clientId']] as const;
 
 const readBody = async (context: Context): Promise<unknown> => {
   try {
@@ -140,7 +141,9 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
 
   const readChoices = (): Choices | undefined => {
     const stored = getPreference(database, CHOICES_KEY);
-    return stored === undefined ? undefined : JSON.parse(stored) as Choices;
+    if (stored === undefined) return undefined;
+    // Choices saved before the posters and ratings step existed lack metadata.
+    return { metadata: { wanted: false, skipped: false }, ...JSON.parse(stored) } as Choices;
   };
   const chosenOut = (part: Part) => {
     const choices = readChoices();
@@ -183,6 +186,10 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
           status: listTrackerHosts(database, env).length > 0 ? 'done' : chosenOut('trackers') ? 'skipped' : 'not_done',
           wanted: choices?.trackers.wanted ?? false,
         },
+        metadata: {
+          status: metadataKeys.some(([category, key]) => isSet(category, key)) ? 'done' : chosenOut('metadata') ? 'skipped' : 'not_done',
+          wanted: choices?.metadata.wanted ?? false,
+        },
         backup: {
           // Backups switched off elsewhere count as skipped until the owner says they want them here.
           status: destination !== undefined && !off ? 'done' : (choices === undefined ? off : chosenOut('backup')) ? 'skipped' : 'not_done',
@@ -207,10 +214,10 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   // Ticking them never turns them on: only a saved destination (POST /backup) does.
   routes.put('/choices', async (context) => {
     const body = await readBody(context);
-    if (!hasExactly(body, ['trackers', 'backup']) || !isChoice(body.trackers) || !isChoice(body.backup)) {
+    if (!hasExactly(body, ['trackers', 'metadata', 'backup']) || !isChoice(body.trackers) || !isChoice(body.metadata) || !isChoice(body.backup)) {
       return context.json({ error: 'invalid_request' }, 400);
     }
-    setPreference(database, CHOICES_KEY, JSON.stringify({ trackers: body.trackers, backup: body.backup }));
+    setPreference(database, CHOICES_KEY, JSON.stringify({ trackers: body.trackers, metadata: body.metadata, backup: body.backup }));
     if (chosenOut('backup')) setBackupsOff(database, true);
     return context.body(null, 204);
   });
@@ -263,6 +270,46 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
         versionsRadarr: libraryRadarr === null ? null : `${libraryRadarr}-versions`,
       },
     });
+  });
+
+  // Suggests the rTorrent address and username from the first enabled rTorrent download client in Sonarr, then Radarr.
+  // The password is never read. Always answers 200 so the wizard can ask before rTorrent is saved.
+  routes.get('/rtorrent', async (context) => {
+    const isLocal = (host: string) => host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    const bare = (host: string) => host.replace(/^\[|\]$/g, '');
+    const read = async (service: 'sonarr' | 'radarr') => {
+      try {
+        const { status, body } = await arr[service].request('/api/v3/downloadclient');
+        if (status < 200 || status > 299 || !Array.isArray(body)) return undefined;
+        for (const client of body) {
+          if (!isRecord(client) || client.enable === false || client.implementation !== 'RTorrent' || !Array.isArray(client.fields)) continue;
+          const value = (name: string) => (client.fields as unknown[]).find((entry) => isRecord(entry) && entry.name === name) as { value?: unknown } | undefined;
+          const host = value('host')?.value;
+          if (typeof host !== 'string' || host.trim() === '') continue;
+          const port = value('port')?.value;
+          const secure = value('useSsl')?.value === true;
+          const urlBase = value('urlBase')?.value;
+          const username = value('username')?.value;
+          let name = bare(host.trim().toLowerCase());
+          if (isLocal(name)) {
+            try {
+              name = bare(new URL(readSetting(database, 'serviceAddresses', `${service}.url`) ?? '').hostname);
+            } catch {
+              name = '';
+            }
+          }
+          const path = typeof urlBase === 'string' ? urlBase.replace(/^\/+|\/+$/g, '') : '';
+          const displayHost = name.includes(':') ? `[${name}]` : name;
+          const address = name === '' || isLocal(name) ? null
+            : `${secure ? 'https' : 'http'}://${displayHost}${typeof port === 'number' && port !== (secure ? 443 : 80) ? `:${port}` : ''}${path === '' ? '' : `/${path}`}`;
+          return { address, username: typeof username === 'string' && username !== '' ? username : null };
+        }
+      } catch {
+        // An unconfigured or unreachable service reads as no client.
+      }
+      return undefined;
+    };
+    return context.json(await read('sonarr') ?? await read('radarr') ?? { address: null, username: null });
   });
 
   // Second versions download into the same folder as their service's own grabs, so there is no separate downloads key for them.

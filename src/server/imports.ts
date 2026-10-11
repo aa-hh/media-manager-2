@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import { type ArrServices, type QueueItem, valueOrThrow } from './services/arr.js';
@@ -89,9 +90,13 @@ export const createImportFix = (options: {
   const save = (handling: Handling) => saveHandling(database, handling);
 
   // A block can change kind between checks (locked, then a failed move), so a download's import problems close together.
-  const closeImportProblems = (downloadId: string, text: string, skip: (problem: Problem) => boolean = () => false) => {
-    for (const problem of listOpenProblems(database)) {
-      if (!problem.kind.startsWith('import_') || problem.subject.type !== 'torrent' || problem.subject.id !== downloadId || skip(problem)) continue;
+  // Runs once per blocked download per check, so it reads only that download's open problems and never their steps.
+  const closeImportProblems = (downloadId: string, text: string, skip: (problem: Pick<Problem, 'id' | 'kind'>) => boolean = () => false) => {
+    const rows = database.prepare("SELECT id, kind FROM problems WHERE subject_type = 'torrent' AND service = '' AND subject_id = ? AND state != 'resolved' ORDER BY opened_at, id")
+      .all(downloadId)
+      .map((row) => ({ id: Number(row.id), kind: String(row.kind) }));
+    for (const problem of rows) {
+      if (!problem.kind.startsWith('import_') || skip(problem)) continue;
       problems.setState(problem.id, 'resolved', text);
     }
   };
@@ -221,7 +226,7 @@ export const createImportFix = (options: {
         if (item.service !== service || item.downloadId === null || !blocked(item)) continue;
         groups.set(item.downloadId, [...(groups.get(item.downloadId) ?? []), item]);
       }
-      const failed = listOpenProblems(database).filter((problem) => problem.kind === 'import_fix_failed');
+      const failed = listOpenProblems(database, ['import_fix_failed']);
       for (const [downloadId, items] of groups) {
         // Sonarr and Radarr can refuse the same request every time, so a failed fix backs off instead of resending each check.
         const failure = failed.find((problem) => problem.subject.id === downloadId);
@@ -229,6 +234,8 @@ export const createImportFix = (options: {
           const failures = failure.steps.filter((step) => step.kind === 'result').length;
           if (at - failure.updatedAt < Math.min(FIX_FAILED_RETRY_MS * 2 ** (failures - 1), TEMPORARY_LIMIT_MS)) continue;
         }
+        // Hundreds of downloads can sit blocked; letting requests in between them keeps a check from freezing the server.
+        await nextTurn();
         try {
           await handle(service, downloadId, items, at);
           closeImportProblems(downloadId, 'The import fix worked on a later try.', (item) => item.kind !== 'import_fix_failed');
