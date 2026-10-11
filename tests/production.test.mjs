@@ -4261,11 +4261,12 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   clock.value = Date.parse('2026-10-10T07:00:00Z');
   problems.open({ kind: 'missed_search', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Nothing found' });
   const requests = [];
+  let sonarrRecords = [grabbed, imported];
   const arr = {
     sonarr: {
       request: async (path) => {
         requests.push(path);
-        if (path.startsWith('/api/v3/history?')) return { status: 200, body: { records: [grabbed, imported] } };
+        if (path.startsWith('/api/v3/history?')) return { status: 200, body: { records: sonarrRecords } };
         if (path === '/api/v3/episode?seriesId=3') return { status: 200, body: [{ id: 31 }] };
         return { status: 404, body: undefined };
       },
@@ -4291,11 +4292,38 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   assert.match(requests.find((path) => path.startsWith('/api/v3/history?') && path.includes('seriesIds=3')) ?? '', /includeSeries=true&includeEpisode=true/);
   assert.deepEqual(series.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
 
+  // A full Sonarr page of 100 grabs, one a minute from 10:00 back to 08:21, leaves the 07:00 step for a later page.
+  sonarrRecords = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
+  const full = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
+  // Reading steps from the start of time instead of from the oldest record on a full Sonarr page turns this red.
+  assert.deepEqual(full.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:1']);
+  assert.equal(full.hasMore, true);
+  // Page 2 is Sonarr's last, with one grab at 08:10; the 07:00 step is older than everything on page 1.
+  sonarrRecords = [{ ...grabbed, id: 300, date: '2026-10-10T08:10:00Z' }];
+  const fullOldest = Math.min(...full.events.map((event) => event.at));
+  const afterFull = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: fullOldest });
+  // Paging steps by offset on Sonarr's last page, instead of from the oldest event already shown, turns this red.
+  assert.deepEqual(afterFull.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:2']);
+  assert.equal(afterFull.hasMore, false);
+  sonarrRecords = [grabbed, imported];
+
+  const missed = problems.open({ kind: 'missed_search', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Nothing found' });
+  for (let index = 0; index < 100; index += 1) {
+    clock.value = Date.parse('2026-10-10T06:00:00Z') - index * 60_000;
+    problems.step(missed.id, 'fix', `Searched again ${index}`);
+  }
+  // Returning every step on one page when no Sonarr or Radarr page is full, or ignoring before, turns this red.
+  const firstFixes = await history.list({ filter: 'fixes', service: 'all', page: 1 });
+  assert.deepEqual([firstFixes.events.length, firstFixes.hasMore], [100, true]);
+  const secondFixes = await history.list({ filter: 'fixes', service: 'all', page: 2, before: Math.min(...firstFixes.events.map((event) => event.at)) });
+  assert.deepEqual([secondFixes.events.map((event) => event.detail), secondFixes.hasMore], [['Searched again 97', 'Searched again 98', 'Searched again 99'], false]);
+
   const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, history }) });
   const { session } = await signIn(app);
   // Serving history without a session, or accepting a filter name it doesn't know, turns this red.
   assert.equal((await app.request('/api/history')).status, 401);
   assert.equal((await app.request('/api/history?filter=nope', { headers: { Cookie: session } })).status, 400);
+  assert.equal((await app.request('/api/history?before=soon', { headers: { Cookie: session } })).status, 400);
   assert.equal((await app.request('/api/history?filter=fixes', { headers: { Cookie: session } })).status, 200);
 });
 

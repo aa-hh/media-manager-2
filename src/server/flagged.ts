@@ -167,13 +167,13 @@ export const createFlagged = (options: {
     };
   };
 
-  const toWanted = (service: Service, record: WantedRecord): Wanted => {
+  const toWanted = (service: Service, record: WantedRecord, queue: ReturnType<typeof listQueue>, grabs: Grab[]): Wanted => {
     const type = serviceTypes[service];
     const ours = database.prepare('SELECT searched_at FROM search_log WHERE subject = ?').get(key(service, type, record.id));
     const known = [record.lastSearchAt, ours === undefined ? null : Number(ours.searched_at)].filter((value): value is number => value !== null);
     const lastSearchAt = known.length === 0 ? null : Math.max(...known);
-    const inQueue = listQueue(database).some((item) => item.service === service && (type === 'movie' ? item.movieId : item.episodeId) === record.id);
-    const grab = lastSearchAt === null ? undefined : listGrabs(database).filter((candidate) => candidate.service === service
+    const inQueue = queue.some((item) => item.service === service && (type === 'movie' ? item.movieId : item.episodeId) === record.id);
+    const grab = lastSearchAt === null ? undefined : grabs.filter((candidate) => candidate.service === service
       && candidate.grabbedAt >= lastSearchAt
       && (type === 'movie' ? candidate.movieId === record.id : candidate.episodeIds.includes(record.id))).at(-1);
     const lastResult = inQueue ? 'in queue'
@@ -194,13 +194,13 @@ export const createFlagged = (options: {
   };
 
   // A service that is not set up or cannot be read contributes nothing, so the other service's list still shows.
-  const list = async (which: 'missing' | 'cutoff') => {
+  const list = async (which: 'missing' | 'cutoff', queue: ReturnType<typeof listQueue>, grabs: Grab[]) => {
     const sources = [
       { service: 'sonarr' as const, filters: 'monitored=true&includeSeries=true', read: readEpisode },
       { service: 'radarr' as const, filters: 'monitored=true', read: readMovie },
     ];
     const results = await Promise.allSettled(sources.map(async ({ service, filters, read }) => (
-      (await readPages(service, `/api/v3/wanted/${which}`, filters, read)).map((record) => toWanted(service, record))
+      (await readPages(service, `/api/v3/wanted/${which}`, filters, read)).map((record) => toWanted(service, record, queue, grabs))
     )));
     const items = results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
     const kept = which === 'cutoff'
@@ -210,7 +210,9 @@ export const createFlagged = (options: {
   };
 
   const wanted = async () => {
-    const [missing, cutoff] = await Promise.all([list('missing'), list('cutoff')]);
+    const queue = listQueue(database);
+    const grabs = listGrabs(database);
+    const [missing, cutoff] = await Promise.all([list('missing', queue, grabs), list('cutoff', queue, grabs)]);
     return { missing, cutoff };
   };
 

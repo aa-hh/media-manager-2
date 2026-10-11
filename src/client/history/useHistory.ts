@@ -64,18 +64,18 @@ const readLink = () => {
 };
 
 // While active, reads one list page by page; a page only adds items whose id is not already shown, since the server repeats newer steps.
-const usePaged = <T,>(onUnauthorized: () => void, active: boolean, url: string, read: (body: unknown) => { items: T[]; hasMore: boolean }, idOf: (item: T) => string) => {
+const usePaged = <T,>(onUnauthorized: () => void, active: boolean, url: string, read: (body: unknown) => { items: T[]; hasMore: boolean }, idOf: (item: T) => string, nextQuery?: (shown: T[]) => string) => {
   const [state, setState] = useState<Paged<T>>({ kind: 'loading' });
   const unauthorizedRef = useRef(onUnauthorized);
   unauthorizedRef.current = onUnauthorized;
   const versionRef = useRef(0);
 
-  const load = useCallback(async (page: number) => {
+  const load = useCallback(async (page: number, extra = '') => {
     const version = page === 1 ? ++versionRef.current : versionRef.current;
     if (page === 1) setState({ kind: 'loading' });
     else setState((current) => (current.kind === 'ready' ? { ...current, loadingMore: true } : current));
     try {
-      const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}page=${page}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}page=${page}${extra}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       if (version !== versionRef.current) return;
       if (response.status === 401) {
         unauthorizedRef.current();
@@ -102,8 +102,8 @@ const usePaged = <T,>(onUnauthorized: () => void, active: boolean, url: string, 
   }, [load, active]);
 
   const loadMore = useCallback(() => {
-    if (state.kind === 'ready' && state.hasMore && !state.loadingMore) void load(state.page + 1);
-  }, [state, load]);
+    if (state.kind === 'ready' && state.hasMore && !state.loadingMore) void load(state.page + 1, nextQuery?.(state.items) ?? '');
+  }, [state, load, nextQuery]);
 
   return { state, loadMore, reload: useCallback(() => load(1), [load]) };
 };
@@ -113,6 +113,8 @@ const readEvents = (body: unknown) => {
   return { items: value.events ?? [], hasMore: value.hasMore === true };
 };
 const eventId = (event: HistoryEvent) => event.id;
+// A later page asks for steps no newer than the oldest event shown, so steps between two Sonarr or Radarr pages are not skipped.
+const eventsBefore = (shown: HistoryEvent[]) => (shown.length === 0 ? '' : `&before=${Math.min(...shown.map((event) => event.at))}`);
 
 export const useHistory = (onUnauthorized: () => void, active: boolean) => {
   const [initial] = useState(readLink);
@@ -129,8 +131,19 @@ export const useHistory = (onUnauthorized: () => void, active: boolean) => {
       setService(next.service);
     }
   }
+  // The nav's History link leaves a title's history without reopening the screen, so every navigation re-reads the link.
+  useEffect(() => {
+    if (!active) return;
+    const onPopState = () => {
+      const next = readLink();
+      setLink((current) => (JSON.stringify(current) === JSON.stringify(next.link) ? current : next.link));
+      setService(next.service);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [active]);
   const ids = Object.entries(link).map(([key, value]) => `&${key}=${value}`).join('');
-  const paged = usePaged(onUnauthorized, active, `/api/history?filter=${filter}&service=${service}${ids}`, readEvents, eventId);
+  const paged = usePaged(onUnauthorized, active, `/api/history?filter=${filter}&service=${service}${ids}`, readEvents, eventId, eventsBefore);
   return { ...paged, filter, setFilter, service, setService, link };
 };
 

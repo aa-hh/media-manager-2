@@ -242,7 +242,7 @@ function App() {
   );
 }
 
-// Search and the title view come from Home; the Downloads screen fills Home while the search box is empty.
+// Search and the title view come from Home; the screen chosen by the route fills Home while the search box is empty.
 function SignedIn(props: ComponentProps<typeof Home>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
   const screen = useRoute();

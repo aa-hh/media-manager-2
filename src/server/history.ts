@@ -40,6 +40,7 @@ export type HistoryQuery = {
   filter: HistoryFilter;
   service: Service | 'all';
   page: number;
+  before?: number;
   movieId?: number;
   seriesId?: number;
   episodeId?: number;
@@ -251,12 +252,15 @@ export const createHistory = (options: {
       : arrEvents.filter((event): event is HistoryEvent => event !== null && (filter === 'all' || filterTypes[filter].has(event.eventType)));
 
     let ownEvents: HistoryEvent[] = [];
+    let moreSteps = false;
     if (filter === 'all' || filter === 'fixes') {
-      // Older steps belong to a later page while Sonarr or Radarr still has more; on the last page every older step shows.
+      // Older steps belong to a later page while Sonarr or Radarr still has more; a later page starts at the oldest event already shown.
       const times = arrEvents.flatMap((event) => event?.at ?? []);
       const since = hasMore && times.length > 0 ? Math.min(...times) : 0;
       const matches = await titleMatcher(query);
-      const steps = readSteps(since).filter((step) => matches(step.subject));
+      const matched = readSteps(since).filter((step) => (query.before === undefined || step.at <= query.before) && matches(step.subject));
+      const steps = matched.slice(0, PAGE_SIZE);
+      moreSteps = matched.length > PAGE_SIZE;
       ownEvents = await Promise.all(steps.map(async (step): Promise<HistoryEvent> => ({
         id: `mm2:${step.stepId}`,
         at: step.at,
@@ -274,7 +278,7 @@ export const createHistory = (options: {
         markFailed: null,
       })));
     }
-    return { events: [...kept, ...ownEvents].sort((a, b) => b.at - a.at), hasMore };
+    return { events: [...kept, ...ownEvents].sort((a, b) => b.at - a.at), hasMore: hasMore || moreSteps };
   };
 
   return { list };
@@ -301,14 +305,16 @@ export const createHistoryRoutes = (history: History) => {
     const movieId = optionalId(context.req.query('movieId'));
     const seriesId = optionalId(context.req.query('seriesId'));
     const episodeId = optionalId(context.req.query('episodeId'));
+    const before = optionalId(context.req.query('before'));
     if (!filters.has(filter) || !serviceChoices.has(service) || !/^\d{1,2}$/.test(pageText) || page < 1 || page > 50
-      || !movieId.ok || !seriesId.ok || !episodeId.ok) {
+      || !movieId.ok || !seriesId.ok || !episodeId.ok || !before.ok) {
       return context.json({ error: 'invalid_request' }, 400);
     }
     return context.json(await history.list({
       filter: filter as HistoryFilter,
       service: service as HistoryQuery['service'],
       page,
+      before: before.id,
       movieId: movieId.id,
       seriesId: seriesId.id,
       episodeId: episodeId.id,
