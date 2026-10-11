@@ -1,6 +1,6 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search } from 'lucide-react';
-import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { BarSelection, BarSelectionAction } from '@/components/ui/bar-selection';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { Table } from '@/components/ui/table';
 import { ToggleBookmark } from '@/components/ui/toggle-bookmark';
 import { Tooltip } from '@/components/ui/tooltip';
 import { formatBytes, type Snapshot } from '../downloads/model';
-import type { EpisodeDetail, SeriesDetail } from '../library/api';
+import type { EpisodeDetail, SecondVersion, SeriesDetail } from '../library/api';
 import { progressText } from '../library/grid';
 import { downloadingEpisodes, seedingFacts, type SubjectProgress } from '../library/progress';
 import { PickRelease, type ReleaseTarget } from '../PickRelease';
@@ -54,15 +54,16 @@ function IconAction({ label, icon, pressed = false, onClick }: { label: string; 
   );
 }
 
-function PickBand({ panel, episodes, onClose, onUnauthenticated }: {
+function PickBand({ panel, name, episodes, onClose, onUnauthenticated }: {
   panel: Extract<Panel, { panel: 'pick' }>;
+  name: string;
   episodes: EpisodeDetail[];
   onClose: () => void;
   onUnauthenticated: () => void;
 }) {
   return (
     <div className="border-b border-border bg-background p-2">
-      <PickRelease target={panel.target} title={panel.title} episodes={episodes} movieHasFile={false} onClose={onClose} onUnauthenticated={onUnauthenticated} />
+      <PickRelease target={panel.target} title={panel.title} name={name} episodes={episodes} movieHasFile={false} onClose={onClose} onUnauthenticated={onUnauthenticated} />
     </div>
   );
 }
@@ -72,7 +73,7 @@ const stateLook = (word: string, live: SubjectProgress | undefined): BadgeVarian
   return word === 'Missing' || word === 'Below cutoff' ? 'warning' : 'neutral';
 };
 
-export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progress, problems, onMonitor, onUnauthenticated }: {
+export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progress, problems, onMonitor, onSecondVersions, onUnauthenticated }: {
   detail: SeriesDetail;
   /** Goes up each time the header's Pick a release is pressed: opens the first season's panel. */
   pickRequest: number;
@@ -81,6 +82,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   progress: Map<string, SubjectProgress>;
   problems: Record<string, string>;
   onMonitor: (change: MonitorChange, problemKey: string) => void;
+  onSecondVersions: (next: SetStateAction<SecondVersion[]>) => void;
   onUnauthenticated: () => void;
 }) {
   const seasons = [...detail.seasons].sort((a, b) => b.seasonNumber - a.seasonNumber);
@@ -111,7 +113,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
     return episodes.length === 0 ? (season.monitored ? 'all' : 'none') : seasonMonitoredState(episodes);
   };
 
-  // The visible rows in screen order; version rows join once second versions are drawn.
+  // The visible rows in screen order. Second-version rows sit inside the episode details band and stay out of this list.
   const rows: RowRef[] = seasons.flatMap((season) => [
     { kind: 'season' as const, key: seasonKey(season.seasonNumber), episodeId: null },
     ...(open.has(season.seasonNumber)
@@ -227,7 +229,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   const tabStop = (key: string) => (key === (indexOf(focusKey) >= 0 ? focusKey : rows[0]?.key) ? 0 : -1);
   const pickOpen = (key: string) => panel?.key === key && panel.panel === 'pick';
   const pickBand = (key: string) => (panel !== null && panel.key === key && panel.panel === 'pick'
-    ? <PickBand panel={panel} episodes={detail.episodes} onClose={() => setPanel(null)} onUnauthenticated={onUnauthenticated} />
+    ? <PickBand panel={panel} name={detail.title} episodes={detail.episodes} onClose={() => setPanel(null)} onUnauthenticated={onUnauthenticated} />
     : null);
 
   if (seasons.length === 0) {
@@ -314,6 +316,8 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                     const word = episodeWord(episode, live, protectedIds, now);
                     const upcoming = episode.airDate !== null && Date.parse(episode.airDate) > now;
                     const detailsOpen = panel?.key === rowKey && panel.panel === 'details';
+                    const secondVersions = (detail.secondVersions ?? []).filter((version) => version.episodeId === episode.id);
+                    const versionCount = (episode.hasFile ? 1 : 0) + secondVersions.filter((version) => version.state === 'imported').length;
                     return (
                       <Fragment key={rowKey}>
                         <RowEpisode
@@ -340,6 +344,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                               {word !== null
                                 ? <Badge variant={stateLook(word, live)}>{word}</Badge>
                                 : upcoming && <Badge variant="outline">Not out yet</Badge>}
+                              {versionCount > 1 && <Badge>{`${versionCount} versions`}</Badge>}
                               {statusOf(rowKey)}
                             </>
                           )}
@@ -372,6 +377,8 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                             <EpisodeDetails
                               episode={episode}
                               seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { episodeId: episode.id })}
+                              secondVersions={secondVersions}
+                              onSecondVersions={onSecondVersions}
                               profile={detail.qualityProfile?.name ?? null}
                               seriesPath={detail.path}
                               onClose={() => {

@@ -37,6 +37,7 @@ import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createPlex } from './services/plex.js';
+import { createTmdb } from './services/tmdb.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller } from './torrents.js';
@@ -47,7 +48,7 @@ import { createStallFix } from './stalls.js';
 import { createTorrentFiles } from './torrentFiles.js';
 import { createTitleDelete } from './titleDelete.js';
 import { adviseRemoval } from './advice.js';
-import { createImageRoutes, createTitleCache } from './titles.js';
+import { createImageRoutes, createTitleCache, createTmdbImages } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 const host = process.env.HOST ?? '127.0.0.1';
@@ -102,12 +103,8 @@ if (database !== undefined) {
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
   const trackers = createTrackerWatch({ database, rtorrent, problems, events });
   runner.register('tracker-watch', 30_000, trackers.check);
-  const titles = createTitleCache({
-    database,
-    arr,
-    events,
-    imageDirectory: join(dirname(process.env.DB_PATH ?? defaultDatabasePath), 'images'),
-  });
+  const imageDirectory = join(dirname(process.env.DB_PATH ?? defaultDatabasePath), 'images');
+  const titles = createTitleCache({ database, arr, events, imageDirectory });
   runner.register('title-refresh', titles.intervalMs, titles.reconcile);
   const imports = createImportFix({ database, arr, problems, events });
   runner.register('import-fix', 60_000, imports.check);
@@ -138,7 +135,7 @@ if (database !== undefined) {
     await protection.reconcile();
   });
   const trackerAccounts = createTrackerAccounts(database);
-  const health = createHealth({ database, arr, rtorrent, plex, jobs: runner, trackerAccounts, events });
+  const health = createHealth({ database, arr, rtorrent, plex, tmdb: createTmdb(database), jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
   runner.register('replace-completion', 60_000, () => replaces.run());
   runner.register('grab-download-ids', 30_000, async () => {
@@ -203,7 +200,7 @@ if (database !== undefined) {
       history: createHistory({ database, arr, labels }),
       blocklist: createBlocklist({ database, arr, isManualDownload: protection.isProtected }),
     }),
-    images: createImageRoutes(titles),
+    images: createImageRoutes(titles, createTmdbImages({ database, imageDirectory })),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
       // One receiver for both: live downloads record every event, a Grab of a manual download is vetoed,

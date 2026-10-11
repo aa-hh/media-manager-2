@@ -1,13 +1,15 @@
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, SetStateAction } from 'react';
 import { FactRow } from '@/components/ui/fact';
 import { RowEpisodeDetails } from '@/components/ui/row-episode-details';
 import { RowHistoryHeader } from '@/components/ui/row-history';
 import { RowSecondVersion, RowSecondVersionHeader } from '@/components/ui/row-second-version';
 import { SkeletonRow } from '@/components/ui/skeleton';
 import { formatBytes } from '../downloads/model';
-import type { EpisodeDetail, FileDetail } from '../library/api';
+import type { EpisodeDetail, FileDetail, SecondVersion } from '../library/api';
 import type { SeedingFact } from '../library/progress';
 import { historyEmpty, historyRows, useTitleHistory } from './History';
+import { SecondVersionRows } from './SecondVersions';
+import { episodeCode } from './TitleHeader';
 
 const day = (iso: string | null) => (iso === null ? '' : new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }));
 
@@ -29,7 +31,6 @@ const fileDetail = (file: FileDetail) => {
 };
 
 // The file Sonarr or Radarr tracks, as the tracked-version row; movies use the same row under their header.
-// Hand-off to AA-32: hit and run rule and second-version rows.
 export function TrackedVersion({ file, seeding, indent }: { file: FileDetail; seeding: SeedingFact[]; indent: boolean }) {
   return (
     <RowSecondVersion
@@ -45,9 +46,13 @@ export function TrackedVersion({ file, seeding, indent }: { file: FileDetail; se
   );
 }
 
-export function EpisodeDetails({ episode, seeding, profile, seriesPath, onClose, onUnauthenticated }: {
+export function EpisodeDetails({ episode, seeding, secondVersions, onSecondVersions, profile, seriesPath, onClose, onUnauthenticated }: {
   episode: EpisodeDetail;
   seeding: SeedingFact[];
+  /** This episode's second versions. */
+  secondVersions: SecondVersion[];
+  /** Takes the series' whole list, as the delete reply gives it, or an update to it. */
+  onSecondVersions: (next: SetStateAction<SecondVersion[]>) => void;
   profile: string | null;
   seriesPath: string | null;
   onClose: () => void;
@@ -79,9 +84,22 @@ export function EpisodeDetails({ episode, seeding, profile, seriesPath, onClose,
       overview={episode.overview ?? undefined}
       stillUrl={episode.imageUrl ?? undefined}
       details={details}
-      versionCount={file === null ? 0 : 1}
-      versions={file === null ? undefined : <><RowSecondVersionHeader /><TrackedVersion file={file} seeding={seeding} indent={false} /></>}
-      versionsEmpty={file === null ? 'No file yet.' : undefined}
+      versionCount={(file === null ? 0 : 1) + secondVersions.length}
+      versions={file === null && secondVersions.length === 0 ? undefined : (
+        <>
+          <RowSecondVersionHeader />
+          {file !== null && <TrackedVersion file={file} seeding={seeding} indent={false} />}
+          <SecondVersionRows
+            versions={secondVersions}
+            indent={false}
+            subject={episodeCode(episode)}
+            trackedQuality={file?.quality ?? null}
+            onChanged={onSecondVersions}
+            onUnauthenticated={onUnauthenticated}
+          />
+        </>
+      )}
+      versionsEmpty={file === null && secondVersions.length === 0 ? 'No file yet.' : undefined}
       historyCount={history.kind === 'ready' ? history.entries.length : undefined}
       history={history.kind === 'loading'
         ? <SkeletonRow />
