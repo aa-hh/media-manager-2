@@ -11,6 +11,8 @@ type HeaderTitleProps = {
   /** A Breadcrumb. */
   breadcrumb: ReactNode;
   bookmark?: { state: BookmarkState; onToggle?: () => void };
+  /** A StatusInline beside the title, such as a monitor change Sonarr refused. */
+  status?: ReactNode;
   /** Plain meta line in the data font, such as "TV · Apple TV+ · 2022". */
   meta?: ReactNode;
   /** Status Badges. */
@@ -47,6 +49,7 @@ function HeaderTitle({
   posterUrl,
   breadcrumb,
   bookmark,
+  status,
   meta,
   badges,
   overview,
@@ -93,6 +96,7 @@ function HeaderTitle({
           <div className="flex items-center gap-2.5">
             {bookmark !== undefined && <ToggleBookmark state={bookmark.state} onToggle={bookmark.onToggle} className="size-9" />}
             <h1 className="font-ui text-4xl font-extrabold tracking-[-0.6px] text-foreground">{title}</h1>
+            {status}
           </div>
           {meta !== undefined && <p className="font-data text-[15px] font-normal text-muted-foreground">{meta}</p>}
           {badges !== undefined && <div className="flex flex-wrap items-center gap-1.5">{badges}</div>}

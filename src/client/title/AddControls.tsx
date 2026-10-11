@@ -1,5 +1,17 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Button } from '../components/ui/button';
+import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
+import { Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BlockAddControls } from '@/components/ui/block-add-controls';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible-trigger';
+import { SelectContent, SelectItem } from '@/components/ui/dropdown-menu';
+import { OptionRow } from '@/components/ui/option-row';
+import { Select, SelectTrigger } from '@/components/ui/select-trigger';
+import { StatusInline } from '@/components/ui/status-inline';
+import { useToastManager } from '@/components/ui/toast';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { SearchResult } from '../Search';
 
 type QualityProfile = { id: number; name: string };
@@ -85,23 +97,28 @@ const readBody = async (response: Response): Promise<Record<string, unknown>> =>
   }
 };
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-sm font-medium text-[var(--secondary-ink)]">{label}</label>
-      {children}
-    </div>
-  );
-}
+const seriesTypeLabels: Array<[SeriesChoices['seriesType'], string]> = [['standard', 'Standard'], ['daily', 'Daily'], ['anime', 'Anime']];
 
-const selectClass = 'h-9 rounded-md border border-[var(--border)] bg-[var(--control)] px-2 text-sm text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus)]';
+// The first three monitor choices sit in the toggle group; the rest open from "More".
+const FIRST_CHOICES = 3;
 
-function Toggle({ id, label, checked, onChange }: { id: string; label: string; checked: boolean; onChange: (value: boolean) => void }) {
+const labelOf = (labels: Array<[string, string]>, value: string) => labels.find(([key]) => key === value)?.[1] ?? value;
+
+// A Select whose trigger shows the chosen label after a grey lead word.
+function ChoiceSelect({ lead, value, labels, disabled, onChange }: {
+  lead: string;
+  value: string;
+  labels: Array<[string, string]>;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
   return (
-    <label htmlFor={id} className="flex items-center gap-2 text-sm text-[var(--ink)]">
-      <input id={id} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="size-4 accent-[var(--ink)]" />
-      {label}
-    </label>
+    <Select value={value} onValueChange={(next) => onChange(String(next))} disabled={disabled}>
+      <SelectTrigger lead={lead}>{labelOf(labels, value)}</SelectTrigger>
+      <SelectContent>
+        {labels.map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -112,6 +129,7 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
 }) {
   const tv = result.type === 'tv';
   const serviceName = tv ? 'Sonarr' : 'Radarr';
+  const toasts = useToastManager();
   const [load, setLoad] = useState<LoadState>({ kind: 'loading' });
   const [series, setSeries] = useState<SeriesChoices | undefined>(undefined);
   const [movie, setMovie] = useState<MovieChoices | undefined>(undefined);
@@ -161,31 +179,29 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
     return () => controller.abort();
   }, [tv, serviceName, onUnauthenticated]);
 
-  if (add.kind === 'added') {
-    return (
-      <p role="status" className="text-[var(--ink)]">
-        Added to {serviceName}.{' '}
-        {add.searched
-          ? tv ? 'Sonarr is searching for the monitored episodes that have aired.' : 'Radarr is searching for the movie.'
-          : 'No search was started.'}
-      </p>
-    );
+  const heading = `Add to ${serviceName}`;
+  if (load.kind === 'loading') {
+    return <BlockAddControls heading={heading} option={<StatusInline status="busy">Loading {serviceName}'s add options…</StatusInline>} />;
   }
-  if (load.kind === 'loading') return <p className="text-[var(--secondary-ink)]">Loading {serviceName}'s add options…</p>;
-  if (load.kind === 'failed') return <p role="alert" className="text-[#b42318]">{load.message}</p>;
+  if (load.kind === 'failed') return <BlockAddControls heading={heading} callout={<Callout title={load.message} />} />;
 
   const { qualityProfiles, rootFolders } = load.options;
   const choices = tv ? series : movie;
   if (choices === undefined) return null;
   const searchOnAdd = choices.searchOnAdd;
+  const busy = add.kind === 'adding' || add.kind === 'added';
+  const update = (patch: Partial<SeriesChoices & MovieChoices>) => {
+    if (tv) setSeries({ ...series!, ...patch });
+    else setMovie({ ...movie!, ...patch });
+  };
 
-  const submit = async () => {
+  const submit = async (search: boolean) => {
     setAdd({ kind: 'adding' });
     try {
       const response = await postJson('/api/add', {
         service: tv ? 'sonarr' : 'radarr',
         id: tv ? result.tvdbId : result.tmdbId,
-        choices,
+        choices: { ...choices, searchOnAdd: search },
       });
       if (response.status === 401) {
         onUnauthenticated();
@@ -193,7 +209,13 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
       }
       const body = await readBody(response);
       if (response.status === 201 && typeof body.libraryId === 'number') {
-        setAdd({ kind: 'added', searched: searchOnAdd });
+        setAdd({ kind: 'added', searched: search });
+        toasts.add({
+          title: `Added to ${serviceName}`,
+          description: search
+            ? tv ? 'Sonarr is searching for the monitored episodes that have aired.' : 'Radarr is searching for the movie.'
+            : 'No search was started.',
+        });
         onAdded(body.libraryId);
         return;
       }
@@ -208,111 +230,112 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
     }
   };
 
-  const profileSelect = (
-    <Field label="Quality profile" htmlFor="add-profile">
-      <select
-        id="add-profile"
-        className={selectClass}
-        value={choices.qualityProfileId}
-        onChange={(event) => {
-          const qualityProfileId = Number(event.target.value);
-          if (tv) setSeries({ ...series!, qualityProfileId });
-          else setMovie({ ...movie!, qualityProfileId });
-        }}
-      >
-        {qualityProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-      </select>
-    </Field>
-  );
+  const monitorLabels = tv ? seriesMonitorLabels : movieMonitorLabels;
+  const firstChoices = monitorLabels.slice(0, FIRST_CHOICES);
+  const restChoices = monitorLabels.slice(FIRST_CHOICES);
+  const inRest = restChoices.some(([key]) => key === choices.monitor);
 
   return (
     <form
-      className="flex flex-col gap-5"
       onSubmit={(event) => {
         event.preventDefault();
-        void submit();
+        void submit(searchOnAdd);
       }}
     >
-      <div className="flex flex-wrap gap-4">
-        {tv && series !== undefined && (
-          <Field label="Monitor" htmlFor="add-monitor">
-            <select id="add-monitor" className={selectClass} value={series.monitor} onChange={(event) => setSeries({ ...series, monitor: event.target.value })}>
-              {seriesMonitorLabels.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </Field>
-        )}
-        {!tv && movie !== undefined && (
+      <BlockAddControls
+        heading={heading}
+        monitorLabel="Monitor"
+        monitor={(
           <>
-            <Field label="Monitor" htmlFor="add-monitor">
-              <select id="add-monitor" className={selectClass} value={movie.monitor} onChange={(event) => setMovie({ ...movie, monitor: event.target.value })}>
-                {movieMonitorLabels.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </Field>
-            <Field label="Minimum availability" htmlFor="add-availability">
-              <select id="add-availability" className={selectClass} value={movie.minimumAvailability} onChange={(event) => setMovie({ ...movie, minimumAvailability: event.target.value })}>
-                {availabilityLabels.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </Field>
+            <ToggleGroup aria-label="Monitor" value={choices.monitor} onValueChange={(monitor) => update({ monitor })} disabled={busy}>
+              {firstChoices.map(([key, label]) => <ToggleGroupItem key={key} value={key}>{label}</ToggleGroupItem>)}
+            </ToggleGroup>
+            {restChoices.length > 0 && (
+              <Select value={choices.monitor} onValueChange={(monitor) => update({ monitor: String(monitor) })} disabled={busy}>
+                <SelectTrigger aria-label="More monitor choices">{inRest ? labelOf(monitorLabels, choices.monitor) : 'More'}</SelectTrigger>
+                <SelectContent>
+                  {restChoices.map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </>
         )}
-        {profileSelect}
-      </div>
-
-      <Toggle
-        id="add-search"
-        label={tv ? 'Start search for missing episodes' : 'Start search for missing movie'}
-        checked={searchOnAdd}
-        onChange={(value) => (tv ? setSeries({ ...series!, searchOnAdd: value }) : setMovie({ ...movie!, searchOnAdd: value }))}
-      />
-
-      <div>
-        <button
-          type="button"
-          aria-expanded={more}
-          onClick={() => setMore(!more)}
-          className="text-sm font-medium text-[var(--secondary-ink)] underline-offset-2 hover:text-[var(--ink)] hover:underline"
-        >
-          {more ? 'Fewer options' : 'More options'}
-        </button>
-        {more && (
-          <div className="mt-4 flex max-w-sm flex-col gap-4">
-            <Field label="Root folder" htmlFor="add-root">
-              <select
-                id="add-root"
-                className={selectClass}
-                value={choices.rootFolderPath}
-                onChange={(event) => {
-                  const rootFolderPath = event.target.value;
-                  if (tv) setSeries({ ...series!, rootFolderPath });
-                  else setMovie({ ...movie!, rootFolderPath });
-                }}
-              >
-                {rootFolders.map((folder) => <option key={folder.path} value={folder.path}>{folder.path}</option>)}
-              </select>
-            </Field>
-            {tv && series !== undefined && (
-              <>
-                <Field label="Series type" htmlFor="add-type">
-                  <select id="add-type" className={selectClass} value={series.seriesType} onChange={(event) => setSeries({ ...series, seriesType: event.target.value as SeriesChoices['seriesType'] })}>
-                    <option value="standard">Standard</option>
-                    <option value="daily">Daily</option>
-                    <option value="anime">Anime</option>
-                  </select>
-                </Field>
-                <Toggle id="add-season-folder" label="Season folders" checked={series.seasonFolder} onChange={(seasonFolder) => setSeries({ ...series, seasonFolder })} />
-                <Toggle id="add-new-seasons" label="Monitor new seasons" checked={series.monitorNewSeasons} onChange={(monitorNewSeasons) => setSeries({ ...series, monitorNewSeasons })} />
-              </>
+        selects={(
+          <>
+            <ChoiceSelect
+              lead="Quality"
+              value={String(choices.qualityProfileId)}
+              labels={qualityProfiles.map((profile) => [String(profile.id), profile.name])}
+              disabled={busy}
+              onChange={(value) => update({ qualityProfileId: Number(value) })}
+            />
+            {!tv && movie !== undefined && (
+              <ChoiceSelect
+                lead="Available when"
+                value={movie.minimumAvailability}
+                labels={availabilityLabels}
+                disabled={busy}
+                onChange={(minimumAvailability) => update({ minimumAvailability })}
+              />
             )}
-          </div>
+          </>
         )}
-      </div>
-
-      {add.kind === 'refused' && <p role="alert" className="text-[#b42318]">{add.message}</p>}
-      <div>
-        <Button type="submit" disabled={add.kind === 'adding'} className="min-h-10 bg-[var(--ink)] text-[var(--control)] hover:bg-[var(--ink)]/90">
-          {add.kind === 'adding' ? 'Adding…' : searchOnAdd ? 'Add and search' : 'Add'}
-        </Button>
-      </div>
+        option={(
+          <>
+            <OptionRow
+              control={<Checkbox checked={searchOnAdd} disabled={busy} onCheckedChange={(checked) => update({ searchOnAdd: checked })} />}
+              title="Search on add"
+              description={tv ? 'Start the automatic search for every monitored episode that has aired.' : 'Search for the movie as soon as it is added.'}
+            />
+            <Collapsible open={more} onOpenChange={setMore}>
+              <CollapsibleTrigger className="px-0">More options</CollapsibleTrigger>
+              <CollapsiblePrimitive.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-size) ease-out data-ending-style:h-0 data-ending-style:duration-(--duration-fast) data-ending-style:ease-in data-starting-style:h-0 motion-reduce:transition-none">
+                <div className="flex flex-col gap-2 pt-2">
+                  <div className="flex gap-3">
+                    <ChoiceSelect
+                      lead="Root folder"
+                      value={choices.rootFolderPath}
+                      labels={rootFolders.map((folder) => [folder.path, folder.path])}
+                      disabled={busy}
+                      onChange={(rootFolderPath) => update({ rootFolderPath })}
+                    />
+                    {tv && series !== undefined && (
+                      <ChoiceSelect
+                        lead="Series type"
+                        value={series.seriesType}
+                        labels={seriesTypeLabels}
+                        disabled={busy}
+                        onChange={(seriesType) => update({ seriesType: seriesType as SeriesChoices['seriesType'] })}
+                      />
+                    )}
+                  </div>
+                  {tv && series !== undefined && (
+                    <>
+                      <OptionRow
+                        className="px-0"
+                        control={<Checkbox checked={series.seasonFolder} disabled={busy} onCheckedChange={(seasonFolder) => update({ seasonFolder })} />}
+                        title="Season folders"
+                      />
+                      <OptionRow
+                        className="px-0"
+                        control={<Checkbox checked={series.monitorNewSeasons} disabled={busy} onCheckedChange={(monitorNewSeasons) => update({ monitorNewSeasons })} />}
+                        title="Monitor new seasons"
+                      />
+                    </>
+                  )}
+                </div>
+              </CollapsiblePrimitive.Panel>
+            </Collapsible>
+          </>
+        )}
+        callout={add.kind === 'refused' ? <Callout title={add.message} /> : undefined}
+        primary={(
+          <Button type="submit" size="large" icon={<Plus />} loading={add.kind === 'adding'} disabled={add.kind === 'added'}>
+            {add.kind === 'adding' ? 'Adding…' : searchOnAdd ? 'Add and search' : 'Add'}
+          </Button>
+        )}
+        secondary={searchOnAdd && <Button variant="outline" disabled={busy} onClick={() => void submit(false)}>Add without searching</Button>}
+      />
     </form>
   );
 }

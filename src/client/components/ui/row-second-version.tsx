@@ -32,6 +32,8 @@ type RowSecondVersionProps = Omit<TableRowProps, 'progress'> & {
   label?: ReactNode;
   quality: ReactNode;
   release: ReactNode;
+  /** Second line under the release name, such as HDR, audio, languages and custom formats; the row grows to fit. */
+  detail?: ReactNode;
   size: ReactNode;
   tracker: string;
   /** Seeding words, or a live Badge while downloading. */
@@ -40,9 +42,9 @@ type RowSecondVersionProps = Omit<TableRowProps, 'progress'> & {
   actions?: ReactNode;
 };
 
-function RowSecondVersion({ indent = true, tracked = false, label, quality, release, size, tracker, seeding, actions, ...props }: RowSecondVersionProps) {
+function RowSecondVersion({ indent = true, tracked = false, label, quality, release, detail, size, tracker, seeding, actions, className, ...props }: RowSecondVersionProps) {
   return (
-    <TableRow {...props}>
+    <TableRow className={cn(detail !== undefined && 'h-auto min-h-(--row) py-2', className)} {...props}>
       {indent && <TableCell className={w.indent} />}
       <TableCell className={w.label}>
         <Badge variant={tracked ? 'outline' : 'neutral'} className={cn(tracked && 'bg-card text-foreground')}>
@@ -52,8 +54,9 @@ function RowSecondVersion({ indent = true, tracked = false, label, quality, rele
       <TableCell className={w.quality}>
         <Badge>{quality}</Badge>
       </TableCell>
-      <TableCell fill className={cn(!tracked && 'text-muted-foreground')}>
-        <span className="truncate">{release}</span>
+      <TableCell fill className={cn(!tracked && 'text-muted-foreground', detail !== undefined && 'flex-col items-start justify-center gap-0.5')}>
+        <span className="max-w-full truncate">{release}</span>
+        {detail !== undefined && <span className="max-w-full truncate text-data-small text-muted-foreground">{detail}</span>}
       </TableCell>
       <TableCell align="end" className={w.size}>{size}</TableCell>
       <TableCell className={w.tracker}>

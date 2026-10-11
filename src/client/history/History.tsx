@@ -1,6 +1,22 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
+import { CircleX, Download, FilePen, FolderInput, History as HistoryIcon, RefreshCw, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Collapsible } from '@/components/ui/collapsible-trigger';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FactRow } from '@/components/ui/fact';
+import { HeaderPage } from '@/components/ui/header-page';
+import { LabelGroup } from '@/components/ui/label-group';
+import { trackerName } from '@/components/ui/logo';
+import { PanelInline } from '@/components/ui/panel-inline';
+import { RowHistory, RowHistoryHeader } from '@/components/ui/row-history';
+import { SkeletonRow } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
+import { StatusInline } from '@/components/ui/status-inline';
+import { Table } from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs-trigger';
 import { cn } from '@/lib/utils';
-import { ScreenButton, ScreenHeading } from '../screen';
 import { type HistoryEvent, type HistoryFilter, type ServiceChoice, sendJson, type useHistory } from './useHistory';
 
 const filters: { value: HistoryFilter; label: string }[] = [
@@ -17,10 +33,6 @@ const serviceChoices: { value: ServiceChoice; label: string }[] = [
   { value: 'radarr', label: 'Radarr' },
 ];
 const serviceWords = { sonarr: 'Sonarr', radarr: 'Radarr' } as const;
-
-const columns = 'grid grid-cols-[52px_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-3 md:grid-cols-[88px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_120px]';
-const medium = 'hidden md:block';
-const label = 'font-data text-[11px] font-bold tracking-[0.6px] text-[var(--mm-ink-2)]';
 
 const dayKey = (at: number) => new Date(at).toDateString();
 const shortDate = (at: number) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -41,25 +53,28 @@ export function FilterTabs<T extends string>({ label: name, choices, value, onCh
   label: string; choices: { value: T; label: string }[]; value: T; onChange: (value: T) => void;
 }) {
   return (
-    <div role="tablist" aria-label={name} className="flex flex-wrap">
-      {choices.map((choice) => (
-        <button
-          key={choice.value}
-          type="button"
-          role="tab"
-          aria-selected={value === choice.value}
-          onClick={() => onChange(choice.value)}
-          className={cn(
-            'h-[34px] px-3 font-ui text-[13px] font-medium focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)]',
-            value === choice.value ? 'border-b border-[var(--mm-ink)] text-[var(--mm-ink)]' : 'text-[var(--mm-ink-2)]',
-          )}
-        >
-          {choice.label}
-        </button>
-      ))}
-    </div>
+    <Tabs value={value} onValueChange={(next) => onChange(next as T)}>
+      <TabsList aria-label={name}>
+        {choices.map((choice) => <TabsTrigger key={choice.value} value={choice.value}>{choice.label}</TabsTrigger>)}
+      </TabsList>
+    </Tabs>
   );
 }
+
+// Height change for the details band: 0 to full at duration-size, instant under reduced motion.
+const panelMotion = cn(
+  'h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-size) ease-out',
+  'data-starting-style:h-0 data-ending-style:h-0 data-ending-style:duration-(--duration-fast) data-ending-style:ease-in motion-reduce:transition-none',
+);
+
+const eventIcon = (event: HistoryEvent) => {
+  if (event.eventType.startsWith('mm2_')) return <RefreshCw />;
+  if (event.eventType === 'grabbed') return <Download />;
+  if (event.eventType.endsWith('Imported')) return <FolderInput />;
+  if (event.eventType.endsWith('Deleted')) return <Trash2 />;
+  if (event.eventType.endsWith('Renamed')) return <FilePen />;
+  return <CircleX />;
+};
 
 const scoreText = (details: HistoryEvent['details']) => {
   const parts = [...(details.score === null ? [] : [`${details.score >= 0 ? '+' : ''}${details.score.toLocaleString('en-US')}`]), ...details.formats];
@@ -73,7 +88,8 @@ type MarkState =
   | { kind: 'remove_failed_on' }
   | { kind: 'failed' };
 
-function MarkFailedPanel({ target, onClose }: { target: NonNullable<HistoryEvent['markFailed']>; onClose: () => void }) {
+// While marking, the band holds the confirm panel in place of the details; once marked, it shows the outcome.
+function MarkFailed({ target, onClose }: { target: NonNullable<HistoryEvent['markFailed']>; onClose: () => void }) {
   const [state, setState] = useState<MarkState>({ kind: 'confirm' });
   const service = serviceWords[target.service];
   const send = async () => {
@@ -93,93 +109,96 @@ function MarkFailedPanel({ target, onClose }: { target: NonNullable<HistoryEvent
       search_failed: `${service} did not take the search; the next scheduled search will look again.`,
     };
     return (
-      <div className="flex flex-wrap items-center gap-3 border-t border-[var(--mm-seam)] bg-[var(--mm-row-hover)] px-5 py-4" onClick={(event) => event.stopPropagation()}>
-        <p role="status" className="text-[var(--mm-ink)]">Marked as failed. {outcome[state.searched] ?? ''}</p>
-        <ScreenButton onClick={onClose}>Close</ScreenButton>
+      <div className="flex items-center gap-3 py-3 pr-4 pl-(--detail-indent)">
+        <StatusInline status="sent">Marked as failed. {outcome[state.searched] ?? ''}</StatusInline>
+        <Button variant="outline" size="row" onClick={onClose}>Close</Button>
       </div>
     );
   }
   return (
-    <div className="space-y-3 border-t border-[var(--mm-seam)] bg-[var(--mm-row-hover)] px-5 py-4" onClick={(event) => event.stopPropagation()}>
-      <p className="text-[var(--mm-ink)]">Mark this grab as failed?</p>
-      <p className="text-[var(--mm-ink-2)]">
-        {service} blocklists this release and searches again. Your current file stays until a replacement imports; the torrent keeps seeding in rTorrent.
-      </p>
-      {state.kind === 'remove_failed_on' && (
-        <p role="alert" className="text-[var(--mm-risk)]">
-          Turn off &apos;Remove Failed&apos; for the rTorrent download client in {service}&apos;s settings first; media-manager-2 never removes a seeding torrent.
-        </p>
-      )}
-      {state.kind === 'failed' && <p role="alert" className="text-[var(--mm-risk)]">{service} did not mark it. Try again.</p>}
-      <div className="flex items-center gap-3">
-        <ScreenButton filled disabled={state.kind === 'sending'} onClick={() => void send()}>Mark as failed, keep seeding</ScreenButton>
-        <ScreenButton onClick={onClose}>Cancel</ScreenButton>
-      </div>
+    <div className="pt-3 pr-4 pb-4 pl-(--detail-indent)">
+      <PanelInline
+        open
+        title="Mark this grab as failed?"
+        onClose={onClose}
+        primary={<Button size="large" loading={state.kind === 'sending'} onClick={() => void send()}>Mark as failed, keep seeding</Button>}
+        secondary={<Button variant="outline" onClick={onClose}>Cancel</Button>}
+      >
+        <div className="flex flex-col gap-2 px-5">
+          <p className="text-body leading-normal text-muted-foreground">
+            {service} blocklists this release and searches again. Your current file stays until a replacement imports; the torrent keeps seeding in rTorrent.
+          </p>
+          {state.kind === 'remove_failed_on' && (
+            <p className="text-label leading-normal font-normal text-destructive">
+              Turn off 'Remove Failed' for the rTorrent download client in {service}'s settings first; media-manager-2 never removes a seeding torrent.
+            </p>
+          )}
+          {state.kind === 'failed' && <p className="text-label leading-normal font-normal text-destructive">{service} did not mark it. Try again.</p>}
+        </div>
+      </PanelInline>
     </div>
   );
 }
 
-function Detail({ name, children }: { name: string; children: ReactNode }) {
-  return (
-    <div className="flex gap-4">
-      <span className={cn(label, 'w-[180px] shrink-0 pt-0.5')}>{name}</span>
-      <span className="min-w-0 [overflow-wrap:anywhere] text-[var(--mm-ink)]">{children}</span>
-    </div>
-  );
-}
-
-function EventRow({ event, index, expanded, dimmed, marking, onToggle, onMark, onCloseMark }: {
-  event: HistoryEvent; index: number; expanded: boolean; dimmed: boolean; marking: boolean;
+function EventRow({ event, expanded, dimmed, marking, onToggle, onMark, onCloseMark }: {
+  event: HistoryEvent; expanded: boolean; dimmed: boolean; marking: boolean;
   onToggle: () => void; onMark: () => void; onCloseMark: () => void;
 }) {
   const { details } = event;
   const rows: [string, string | null][] = [
-    ['RELEASE', event.release],
-    ['TRACKER', details.tracker],
-    ['RELEASE GROUP', details.releaseGroup],
-    ['CUSTOM FORMAT SCORE', scoreText(details)],
-    ['HOW IT WAS FOUND', details.howFound],
-    ['AGE WHEN GRABBED', details.ageWhenGrabbed],
-    ['DELETION REASON', details.deletionReason],
-    ['FROM', details.droppedPath],
-    ['TO', details.importedPath],
-    [`${event.source.toUpperCase()} SAYS`, details.message],
+    ['Release', event.release],
+    ['Quality', event.quality],
+    ['Tracker', details.tracker === null ? null : trackerName(details.tracker)],
+    ['Release group', details.releaseGroup],
+    ['Custom format score', scoreText(details)],
+    ['How it was found', details.howFound],
+    ['Age when grabbed', details.ageWhenGrabbed],
+    ['Deletion reason', details.deletionReason],
+    ['From', details.droppedPath],
+    ['To', details.importedPath],
+    [`${event.source} says`, details.message],
   ];
-  return (
-    <div
-      role="row"
-      tabIndex={0}
-      aria-expanded={expanded}
-      onClick={onToggle}
-      onKeyDown={(keyEvent) => { if (keyEvent.key === 'Enter' && keyEvent.target === keyEvent.currentTarget) onToggle(); }}
-      className={cn(
-        'border-b border-[var(--mm-seam)] font-data text-[13px] focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)]',
-        expanded ? 'bg-[var(--mm-row-hover)]' : index % 2 === 0 ? 'bg-[var(--mm-row)]' : 'bg-[var(--mm-row-alt)]',
-        dimmed && 'opacity-35',
+  const facts = (
+    <div className="flex flex-col gap-3 pt-3 pr-4 pb-4 pl-(--detail-indent)">
+      <dl className="m-0 flex flex-col *:last:border-b-0">
+        {rows.filter(([, value]) => value !== null).map(([name, value]) => (
+          <FactRow key={name} label={name} className="h-8"><span className="font-normal">{value}</span></FactRow>
+        ))}
+      </dl>
+      {event.markFailed !== null && (
+        <div><Button variant="outline" size="row" onClick={onMark}>Mark as failed</Button></div>
       )}
-    >
-      <div className={cn(columns, 'min-h-[34px] px-5 py-1.5')}>
-        <span className="tabular-nums text-[var(--mm-ink-2)]">{formatWhen(event.at)}</span>
-        <span className="min-w-0 [overflow-wrap:anywhere] text-[var(--mm-ink)]">{event.title}</span>
-        <span className="min-w-0 [overflow-wrap:anywhere]">
-          <span className={event.event === 'Download failed' ? 'text-[var(--mm-risk)]' : 'text-[var(--mm-ink)]'}>{event.event}</span>
-          {event.detail !== '' && <span className="ml-2 text-[var(--mm-ink-2)]">{event.detail}</span>}
-        </span>
-        <span className={cn(medium, 'min-w-0 [overflow-wrap:anywhere] text-[var(--mm-ink-2)]')}>
-          {[event.release, event.quality].filter((part) => part !== null).join(' · ')}
-        </span>
-        <span className={cn(medium, 'text-[var(--mm-ink-2)]')}>{event.source}</span>
-      </div>
-      {expanded && !marking && (
-        <div className="space-y-1.5 px-5 pb-3 md:pl-[120px]" onClick={(clickEvent) => clickEvent.stopPropagation()}>
-          {rows.filter(([, value]) => value !== null).map(([name, value]) => <Detail key={name} name={name}>{value}</Detail>)}
-          {event.markFailed !== null && (
-            <div className="pt-2"><ScreenButton onClick={onMark}>Mark as failed</ScreenButton></div>
-          )}
-        </div>
-      )}
-      {expanded && marking && event.markFailed !== null && <MarkFailedPanel target={event.markFailed} onClose={onCloseMark} />}
     </div>
+  );
+  return (
+    <>
+      <RowHistory
+        when={formatWhen(event.at)}
+        icon={eventIcon(event)}
+        event={`${event.title} · ${event.event}`}
+        by={event.byHand ? 'You' : event.source}
+        detail={event.detail}
+        tone={event.event === 'Download failed' ? 'problem' : undefined}
+        selected={expanded}
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        onKeyDown={(keyEvent) => { if (keyEvent.key === 'Enter' && keyEvent.target === keyEvent.currentTarget) onToggle(); }}
+        className={cn('transition-all', dimmed && 'opacity-35')}
+      />
+      <Collapsible open={expanded}>
+        <CollapsiblePrimitive.Panel className={panelMotion}>
+          <div role="row" className="relative border-b border-border bg-muted">
+            <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.75 bg-foreground" />
+            <div role="cell">
+              {marking && event.markFailed !== null
+                ? <MarkFailed target={event.markFailed} onClose={onCloseMark} />
+                : facts}
+            </div>
+          </div>
+        </CollapsiblePrimitive.Panel>
+      </Collapsible>
+    </>
   );
 }
 
@@ -224,58 +243,69 @@ export function HistoryScreen({ history, onNavigate }: { history: ReturnType<typ
     setExpanded((current) => (current === id ? null : id));
   };
   return (
-    <section aria-label="History">
-      <ScreenHeading title="History" summary={`Sonarr, Radarr and media-manager-2 · newest first${title === null ? '' : ` · ${title}`}`}>
-        <a
-          href="/blocklist"
-          onClick={(clickEvent) => { clickEvent.preventDefault(); onNavigate('/blocklist'); }}
-          className="font-ui text-[13px] font-medium text-[var(--mm-ink-2)] hover:text-[var(--mm-ink)]"
-        >
-          Blocklist →
-        </a>
-      </ScreenHeading>
-      <div className="flex flex-wrap items-center justify-between gap-x-6 border-b border-[var(--mm-seam)] px-2">
+    <section aria-label="History" className="flex flex-col gap-4 pt-2 pb-6">
+      <HeaderPage
+        title="History"
+        summary={`Sonarr, Radarr and media-manager-2 · newest first${title === null ? '' : ` · ${title}`}`}
+        action={(
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            render={<a href="/blocklist" />}
+            onClick={(clickEvent) => { clickEvent.preventDefault(); onNavigate('/blocklist'); }}
+          >
+            Blocklist
+          </Button>
+        )}
+      />
+      <div className="flex flex-wrap items-center justify-between border-b border-border">
         <FilterTabs label="Events" choices={filters} value={filter} onChange={(value) => { setExpanded(null); setFilter(value); }} />
         <FilterTabs label="Service" choices={serviceChoices} value={service} onChange={(value) => { setExpanded(null); setService(value); }} />
       </div>
-      {state.kind === 'loading' && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">Reading history…</p>}
-      {state.kind === 'failed' && (
-        <div className="flex items-center gap-3 px-5 py-6 text-[13px]">
-          <p role="alert" className="text-[var(--mm-risk)]">History could not be read.</p>
-          <ScreenButton onClick={() => void reload()}>Try again</ScreenButton>
+      {state.kind === 'loading' && (
+        <div className="flex flex-col gap-3">
+          <p className="font-ui text-sm text-muted-foreground">Reading history…</p>
+          <Table aria-label="History">
+            <RowHistoryHeader />
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => <SkeletonRow key={index} />)}
+          </Table>
         </div>
       )}
-      {state.kind === 'ready' && (<>
-        <div className={cn(columns, 'h-[30px] items-center bg-[var(--mm-row)] px-5', label)} role="row">
-          <span>WHEN</span><span>TITLE</span><span>EVENT</span><span className={medium}>RELEASE AND QUALITY</span><span className={medium}>SOURCE</span>
-        </div>
-        {state.items.length === 0 && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">No events yet.</p>}
-        <div role="table" aria-label="History">
+      {state.kind === 'failed' && (
+        <Callout title="History could not be read." action={<Button variant="outline" size="row" onClick={() => void reload()}>Try again</Button>} />
+      )}
+      {state.kind === 'ready' && state.items.length === 0 && <EmptyState icon={<HistoryIcon />} title="No events yet" className="mt-16" />}
+      {state.kind === 'ready' && state.items.length > 0 && (
+        <div className="flex flex-col">
           {days.map((day) => (
-            <div key={day.title} role="rowgroup">
-              <p className={cn('border-b border-[var(--mm-seam)] bg-[var(--mm-ground)] px-5 pb-1.5 pt-3', label)}>{day.title}</p>
-              {day.events.map((event, index) => (
-                <EventRow
-                  key={event.id}
-                  event={event}
-                  index={index}
-                  expanded={expanded === event.id}
-                  dimmed={expanded !== null && expanded !== event.id}
-                  marking={marking && expanded === event.id}
-                  onToggle={() => toggle(event.id)}
-                  onMark={() => setMarking(true)}
-                  onCloseMark={() => setMarking(false)}
-                />
-              ))}
+            <div key={day.title} className="flex flex-col">
+              <LabelGroup count={day.events.length}>{day.title}</LabelGroup>
+              <Table aria-label={day.title}>
+                <RowHistoryHeader />
+                {day.events.map((event) => (
+                  <EventRow
+                    key={event.id}
+                    event={event}
+                    expanded={expanded === event.id}
+                    dimmed={expanded !== null && expanded !== event.id}
+                    marking={marking && expanded === event.id}
+                    onToggle={() => toggle(event.id)}
+                    onMark={() => setMarking(true)}
+                    onCloseMark={() => setMarking(false)}
+                  />
+                ))}
+              </Table>
             </div>
           ))}
+          {state.hasMore && (
+            <div className="pt-4">
+              <Button variant="outline" disabled={state.loadingMore} icon={state.loadingMore ? <Spinner /> : undefined} onClick={loadMore}>
+                {state.loadingMore ? 'Loading…' : 'Load more'}
+              </Button>
+            </div>
+          )}
         </div>
-        {state.hasMore && (
-          <div className="px-5 py-4">
-            <ScreenButton disabled={state.loadingMore} onClick={loadMore}>{state.loadingMore ? 'Loading…' : 'Load more'}</ScreenButton>
-          </div>
-        )}
-      </>)}
+      )}
     </section>
   );
 }

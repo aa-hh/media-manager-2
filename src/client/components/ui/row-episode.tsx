@@ -20,7 +20,7 @@ function RowEpisodeHeader() {
   );
 }
 
-type RowEpisodeProps = Omit<TableRowProps, 'progress'> & {
+type RowEpisodeProps = Omit<TableRowProps, 'progress' | 'title'> & {
   /** A ToggleBookmark. */
   bookmark: ReactNode;
   number: ReactNode;

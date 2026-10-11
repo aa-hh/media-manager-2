@@ -1,12 +1,19 @@
-import { useState, type ReactNode } from 'react';
-import { cn } from '@/lib/utils';
-import { formatBytes } from '../downloads/model';
+import { Ellipsis, History as HistoryIcon, List, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
+import { Breadcrumb } from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Fact } from '@/components/ui/fact';
+import { HeaderTitle } from '@/components/ui/header-title';
+import { StatusInline } from '@/components/ui/status-inline';
+import type { BookmarkState } from '@/components/ui/toggle-bookmark';
 import { postJson, type MovieDetail, type SeriesDetail } from '../library/api';
-import { Poster, statusLabel } from '../Search';
-import { cutoffLine } from './rows';
+import { navigate, useLocation } from '../navigation';
+import { statusLabel } from '../Search';
 
 export type Subject = { type: 'tv'; detail: SeriesDetail } | { type: 'movie'; detail: MovieDetail };
-export type MonitoredState = 'all' | 'none' | 'mixed';
+export type MonitoredState = BookmarkState;
+export type TitleFact = { label: string; value: ReactNode };
 
 // Sends one library write; true when Sonarr or Radarr accepted it.
 export const sendAction = async (path: string, body: unknown, onUnauthenticated: () => void) => {
@@ -19,169 +26,150 @@ export const sendAction = async (path: string, body: unknown, onUnauthenticated:
   }
 };
 
-export function ActionButton({ children, onClick, disabled, filled, label }: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  filled?: boolean;
-  label?: string;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      aria-label={label}
-      onClick={(event) => { event.stopPropagation(); onClick(); }}
-      className={cn(
-        'h-8 shrink-0 px-3 font-ui text-[14px] font-semibold disabled:opacity-50',
-        'focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-[var(--mm-ink)]',
-        filled ? 'bg-[var(--mm-ink)] text-[var(--mm-on-cell)]' : 'border border-[var(--mm-ink-3)] text-[var(--mm-ink)] hover:bg-[var(--mm-row-hover)]',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-const bookmarkLabels: Record<MonitoredState, string> = { all: 'Monitored', none: 'Not monitored', mixed: 'Partly monitored' };
-
-export function Bookmark({ state, onToggle, className }: { state: MonitoredState; onToggle?: () => void; className?: string }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={state === 'all' ? true : state === 'none' ? false : 'mixed'}
-      aria-label={bookmarkLabels[state]}
-      title={bookmarkLabels[state]}
-      disabled={onToggle === undefined}
-      onClick={(event) => { event.stopPropagation(); onToggle?.(); }}
-      className={cn(
-        'inline-flex size-7 shrink-0 items-center justify-center text-[var(--mm-ink-2)] hover:text-[var(--mm-ink)] disabled:hover:text-[var(--mm-ink-2)]',
-        'focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-[var(--mm-ink)]',
-        className,
-      )}
-    >
-      <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill={state === 'all' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-        <path d="M6 3h12v18l-6-4-6 4z" />
-        {state === 'mixed' && <path d="M9 10h6" strokeLinecap="round" />}
-      </svg>
-    </button>
-  );
-}
-
 const runtimeText = (minutes: number | null) => {
   if (minutes === null || minutes <= 0) return '';
   const hours = Math.floor(minutes / 60);
-  return hours === 0 ? `${minutes}m` : `${hours}h ${minutes % 60}m`;
+  return hours === 0 ? `${minutes} min` : `${hours} h ${minutes % 60} min`;
 };
 
 const metaLine = (subject: Subject) => {
   const { detail } = subject;
-  const parts: string[] = [detail.year === null ? '' : String(detail.year)];
+  const parts: string[] = [subject.type === 'tv' ? 'TV' : 'Movie'];
+  if (subject.type === 'tv') parts.push(subject.detail.network ?? '');
+  else parts.push(subject.detail.studio ?? '');
+  parts.push(detail.year === null ? '' : String(detail.year), statusLabel(detail.status) ?? '', detail.certification ?? '');
+  parts.push(detail.rating === null ? '' : `★ ${detail.rating.toFixed(1)}`);
   if (subject.type === 'tv') {
     const tv = subject.detail;
     const seasons = tv.statistics.seasonCount || tv.seasons.filter((season) => season.seasonNumber > 0).length;
     const episodes = tv.statistics.totalEpisodeCount;
-    parts.push(tv.network ?? '', tv.language ?? '');
-    parts.push(seasons === 0 ? '' : `${seasons} ${seasons === 1 ? 'season' : 'seasons'}${episodes > 0 ? `, ${episodes} episodes` : ''}`);
-    parts.push(tv.statistics.sizeOnDisk > 0 ? `${formatBytes(tv.statistics.sizeOnDisk)} on disk` : '');
+    parts.push(seasons === 0 ? '' : `${seasons} ${seasons === 1 ? 'season' : 'seasons'}`);
+    parts.push(episodes === 0 ? '' : `${episodes} episodes`);
   } else {
-    const movie = subject.detail;
-    parts.push(movie.studio ?? '', runtimeText(movie.runtime));
-    parts.push(movie.sizeOnDisk > 0 ? `${formatBytes(movie.sizeOnDisk)} on disk` : '');
+    parts.push(runtimeText(subject.detail.runtime));
   }
-  parts.push(cutoffLine(detail.qualityProfile) ?? '');
+  parts.push(detail.genres.join(', '));
   return parts.filter((part) => part !== '').join(' · ');
 };
 
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex gap-3">
-      <dt className="w-24 shrink-0 text-[var(--mm-ink-3)]">{label}</dt>
-      <dd className="min-w-0 [overflow-wrap:anywhere]">{children}</dd>
-    </div>
-  );
-}
+const externalLink = (label: string, href: string) => (
+  <a key={label} href={href} target="_blank" rel="noreferrer" className="focus-ring rounded-xs underline underline-offset-2 hover:text-muted-foreground">{label}</a>
+);
+
+// What Sonarr or Radarr knows beyond the facts each page passes: shown under them, each only when the data has it.
+const titleFacts = (subject: Subject): TitleFact[] => {
+  const { detail } = subject;
+  const tmdbKind = subject.type === 'tv' ? 'tv' : 'movie';
+  const links = [
+    detail.links.imdbId === null ? null : externalLink('IMDb', `https://www.imdb.com/title/${detail.links.imdbId}/`),
+    subject.type === 'tv' && subject.detail.links.tvdbId !== null ? externalLink('TVDB', `https://www.thetvdb.com/?tab=series&id=${subject.detail.links.tvdbId}`) : null,
+    detail.links.tmdbId === null ? null : externalLink('TMDB', `https://www.themoviedb.org/${tmdbKind}/${detail.links.tmdbId}`),
+  ].filter((link) => link !== null);
+  return [
+    ...(subject.type === 'tv' && subject.detail.language !== null ? [{ label: 'Language', value: subject.detail.language }] : []),
+    ...(subject.type === 'movie' && subject.detail.collection !== null ? [{ label: 'Collection', value: subject.detail.collection }] : []),
+    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="[overflow-wrap:anywhere]">{detail.path}</span> }]),
+    ...(detail.tags.length === 0 ? [] : [{ label: 'Tags', value: detail.tags.join(', ') }]),
+    ...(links.length === 0 ? [] : [{ label: 'Links', value: <span className="flex gap-3">{links}</span> }]),
+  ];
+};
 
 type Sent = 'sending' | 'sent' | 'failed';
 
-export function TitleHeader({ subject, owned, statusWord, monitored, onToggleMonitored, monitorProblem, history, onUnauthenticated }: {
+export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, onUnauthenticated }: {
   subject: Subject;
   owned: boolean;
-  statusWord?: string | null;
+  /** Status Badges under the meta line. */
+  badges?: ReactNode;
+  facts?: TitleFact[];
   monitored?: MonitoredState;
   onToggleMonitored?: () => void;
   monitorProblem?: string;
+  /** Shown under the header when History is chosen from the menu. */
   history?: ReactNode;
+  /** Pick a release: opens or closes the panel. */
+  onPick?: () => void;
+  picking?: boolean;
+  compact?: boolean;
+  onChangeMonitoring?: () => void;
+  /** The add controls for a title not yet in the library; they take the place of the actions. */
+  add?: ReactNode;
   onUnauthenticated: () => void;
 }) {
   const { detail } = subject;
   const service = subject.type === 'tv' ? 'Sonarr' : 'Radarr';
+  const allFacts = [...(facts ?? []), ...titleFacts(subject)];
+  const { state } = useLocation();
   const [search, setSearch] = useState<Sent | undefined>(undefined);
   const [refresh, setRefresh] = useState<Sent | undefined>(undefined);
   const [showHistory, setShowHistory] = useState(false);
   const target = subject.type === 'tv'
     ? { service: 'sonarr', kind: 'series', seriesId: detail.id }
     : { service: 'radarr', kind: 'movie', movieId: detail.id };
-  const status = statusWord !== undefined ? statusWord : statusLabel(detail.status);
-  const links = [
-    detail.links.imdbId === null ? null : { label: 'IMDb', href: `https://www.imdb.com/title/${detail.links.imdbId}/` },
-    subject.type === 'tv' && subject.detail.links.tvdbId !== null ? { label: 'TVDB', href: `https://thetvdb.com/?tab=series&id=${subject.detail.links.tvdbId}` } : null,
-    detail.links.tmdbId === null ? null : { label: 'TMDB', href: `https://www.themoviedb.org/${subject.type === 'tv' ? 'tv' : 'movie'}/${detail.links.tmdbId}` },
-  ].filter((link) => link !== null);
 
   const send = async (path: string, set: (value: Sent) => void) => {
     set('sending');
     set(await sendAction(path, target, onUnauthenticated) ? 'sent' : 'failed');
   };
 
-  return (
-    <section aria-label={detail.title} className="flex flex-col gap-6 sm:flex-row">
-      <Poster url={detail.posterUrl} className="h-60 w-40" />
-      <div className="min-w-0 max-w-3xl flex-1 font-ui text-[14px]">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {owned && monitored !== undefined && <Bookmark state={monitored} onToggle={onToggleMonitored} />}
-          <h2 className="text-[24px] font-semibold tracking-[-0.02em]">{detail.title}</h2>
-          {status !== null && (
-            <span className={cn('font-data text-[13px]', statusWord === 'missing' || statusWord === 'deleted' ? 'text-[var(--mm-risk)]' : 'text-[var(--mm-ink-2)]')}>
-              {status}
-            </span>
-          )}
-          {detail.rating !== null && <span className="font-data text-[13px] text-[var(--mm-ink-2)]">★ {detail.rating.toFixed(1)}</span>}
-        </div>
-        {monitorProblem !== undefined && <p role="alert" className="mt-1 text-[var(--mm-risk)]">{monitorProblem}</p>}
-        <p className="mt-2 font-data text-[13px] text-[var(--mm-ink-2)]">{metaLine(subject)}</p>
-        {detail.overview !== null && <p className="mt-3 text-[var(--mm-ink-2)]">{detail.overview}</p>}
-        <dl className="mt-4 flex flex-col gap-1 font-data text-[13px]">
-          {detail.certification !== null && <Fact label="Certification">{detail.certification}</Fact>}
-          {detail.genres.length > 0 && <Fact label="Genres">{detail.genres.join(', ')}</Fact>}
-          {subject.type === 'movie' && subject.detail.collection !== null && <Fact label="Collection">{subject.detail.collection}</Fact>}
-          {detail.path !== null && <Fact label="Path">{detail.path}</Fact>}
-          {detail.tags.length > 0 && <Fact label="Tags">{detail.tags.join(', ')}</Fact>}
-          {links.length > 0 && (
-            <Fact label="Links">
-              <span className="flex gap-3">
-                {links.map((link) => (
-                  <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-[var(--mm-ink)]">{link.label}</a>
-                ))}
-              </span>
-            </Fact>
-          )}
-        </dl>
-        {owned && (
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <ActionButton disabled={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>Search automatically</ActionButton>
-            <ActionButton disabled={refresh === 'sending'} onClick={() => void send('/api/library/refresh', setRefresh)}>Refresh</ActionButton>
-            {history !== undefined && (
-              <ActionButton onClick={() => setShowHistory(!showHistory)}>{showHistory ? 'Hide history' : 'History'}</ActionButton>
-            )}
-            {/* Hand-off to AA-32 (Second versions and safe deletion): delete show/movie and delete version. */}
-            {search === 'sent' && <span role="status" className="text-[var(--mm-ink-2)]">search sent</span>}
-            {refresh === 'sent' && <span role="status" className="text-[var(--mm-ink-2)]">refresh sent</span>}
-            {(search === 'failed' || refresh === 'failed') && <span role="alert" className="text-[var(--mm-risk)]">{service} didn't answer.</span>}
-          </div>
+  // Titles opened from search results carry the result as history state; going back keeps the search.
+  const fromSearch = state !== null && state !== undefined;
+  const crumb = fromSearch
+    ? { label: 'Search', href: '/search', onClick: (event: MouseEvent<HTMLAnchorElement>) => { event.preventDefault(); window.history.back(); } }
+    : { label: 'Library', href: '/', onClick: (event: MouseEvent<HTMLAnchorElement>) => { event.preventDefault(); navigate('/'); } };
+
+  const status = (
+    <>
+      {search === 'sent' && <StatusInline status="sent">search sent</StatusInline>}
+      {refresh === 'sent' && <StatusInline status="sent">refresh sent</StatusInline>}
+      {(search === 'failed' || refresh === 'failed') && <StatusInline status="failed">{service} didn't answer.</StatusInline>}
+    </>
+  );
+
+  const menu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="large" iconOnly icon={<Ellipsis />} aria-label="More actions" />} />
+      <DropdownMenuContent>
+        <DropdownMenuItem icon={<RefreshCw />} disabled={refresh === 'sending'} onClick={() => void send('/api/library/refresh', setRefresh)}>Refresh</DropdownMenuItem>
+        {history !== undefined && (
+          <DropdownMenuItem icon={<HistoryIcon />} onClick={() => setShowHistory(!showHistory)}>{showHistory ? 'Hide history' : 'History'}</DropdownMenuItem>
         )}
-        {showHistory && history}
-      </div>
-    </section>
+        {onChangeMonitoring !== undefined && <DropdownMenuItem icon={<SlidersHorizontal />} onClick={onChangeMonitoring}>Change monitoring</DropdownMenuItem>}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  return (
+    <>
+      <HeaderTitle
+        className="-mx-(--page-margin) w-auto"
+        compact={compact}
+        title={detail.title}
+        backdropUrl={detail.backdropUrl ?? undefined}
+        posterUrl={detail.posterUrl ?? undefined}
+        breadcrumb={<Breadcrumb links={[crumb]} current={detail.title} />}
+        bookmark={owned && monitored !== undefined ? { state: monitored, onToggle: onToggleMonitored } : { state: 'none' }}
+        status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}
+        meta={metaLine(subject)}
+        badges={badges}
+        overview={detail.overview ?? undefined}
+        primary={add ?? (owned && (
+          <Button size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
+            Search automatically
+          </Button>
+        ))}
+        secondary={owned && onPick !== undefined && (
+          <Button variant="outline" size="large" icon={picking ? <X /> : <List />} className={picking ? 'bg-selected' : undefined} onClick={onPick}>
+            {picking ? 'Close Pick a release' : 'Pick a release'}
+          </Button>
+        )}
+        more={owned && <>{menu}{status}</>}
+        facts={allFacts.length > 0
+          ? allFacts.map((fact) => <Fact key={fact.label} label={fact.label}>{fact.value}</Fact>)
+          : undefined}
+      />
+      {/* Hand-off to AA-32 (Second versions and safe deletion): delete show/movie and delete version. */}
+      {showHistory && history}
+    </>
   );
 }
