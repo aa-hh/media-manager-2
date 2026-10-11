@@ -51,8 +51,8 @@ only through a pull request, and only once the `tests` check and the
 
 ## Agent skills
 
-- **Issue tracker:** Linear, team Aa-hh (`AA`), project media-manager-2 (`P-AA-1`) — see
-  `docs/agents/issue-tracker.md`.
+- **Issue tracker:** Linear, team Aa-hh (`AA`), one project per epic under the
+  initiative Media Manager 2 v1 — see `docs/agents/issue-tracker.md`.
 - **Triage labels:** `docs/agents/triage-labels.md`.
 - **Domain docs:** `CONTEXT.md` plus `docs/adr/` — see `docs/agents/domain.md`.
 - **`/pr-review`:** manual adversarial PR review (`.claude/skills/pr-review/`).
