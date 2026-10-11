@@ -4067,6 +4067,7 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
         'radarr/7/poster.jpg': new Uint8Array([7, 7, 7]),
         'radarr/8/poster.jpg': new Uint8Array([8, 8, 8]),
       },
+      contentTypes: {},
       down: false,
       throws: false,
       gate: null,
@@ -4077,8 +4078,9 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     const answer = async (service, url, init) => {
       const image = /^\/api\/v3\/mediacover\/(\d+)\/([^/]+)$/.exec(new URL(String(url)).pathname);
       if (!image) return fake[service].fetch(url, init);
-      const bytes = state.images[`${service}/${image[1]}/${image[2]}`];
-      return bytes === undefined ? json({}, 404) : new Response(bytes.slice(), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+      const key = `${service}/${image[1]}/${image[2]}`;
+      const bytes = state.images[key];
+      return bytes === undefined ? json({}, 404) : new Response(bytes.slice(), { status: 200, headers: { 'Content-Type': state.contentTypes[key] ?? 'image/jpeg' } });
     };
     const wrap = (service) => async (url, init = {}) => {
       const parsed = new URL(String(url));
@@ -4301,6 +4303,24 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     clock.value += 60_000;
     await cache.reconcile();
     assert.deepEqual(downloads(), []);
+  });
+
+  // Storing whatever Content-Type the service sent, instead of only an image type, turns this red.
+  await t.test('a non-image Content-Type from the service is replaced by the type of the file extension', async () => {
+    const { cache, database, fake, state } = setup();
+    fake.sonarr.state.series[1].images = [{ coverType: 'poster', url: '/MediaCover/2/poster.png?lastWrite=1' }];
+    state.images['sonarr/2/poster.png'] = new Uint8Array([2, 2, 3]);
+    state.contentTypes['sonarr/1/poster.jpg'] = 'text/html; charset=utf-8';
+    state.contentTypes['sonarr/2/poster.png'] = 'IMAGE/PNG; charset=binary';
+    await cache.reconcile();
+    const stored = (id) => database.prepare("SELECT content_type FROM title_images WHERE service = 'sonarr' AND id = ? AND kind = 'poster'").get(id)?.content_type;
+    assert.equal(stored(1), 'image/jpeg');
+    assert.equal(stored(2), 'IMAGE/PNG; charset=binary');
+    const { app } = await makeApp({ images: createImageRoutes(cache) });
+    const { session } = await signIn(app);
+    const served = await app.request('/api/images/sonarr/1/poster', { headers: { Cookie: session } });
+    assert.equal(served.status, 200);
+    assert.equal(served.headers.get('content-type'), 'image/jpeg');
   });
 
   // Writing episodes without checking the series still exists, or publishing 'updated' for a deleted title, turns this red.
