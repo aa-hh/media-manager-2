@@ -70,6 +70,8 @@ spacing:
   page-margin: "40px"
   page-margin-phone: "16px"
   poster-gutter: "20px"
+  poster-width: "152px"
+  detail-indent: "133px"
 components:
   button-default: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "40px"}
   button-default-hover: {backgroundColor: "{colors.primary-hover}"}
@@ -97,6 +99,15 @@ components:
   table-row-hover: {backgroundColor: "{colors.surface-hover}"}
   table-row-selected: {backgroundColor: "{colors.selected}"}
   table-row-best: {backgroundColor: "{colors.best-soft}"}
+  nav-item: {textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 10px", height: "40px"}
+  nav-item-active: {backgroundColor: "{colors.selected}"}
+  dropdown-item: {rounded: "{rounded.radius-xs}", padding: "0px 8px", height: "32px"}
+  dropdown-content: {backgroundColor: "{colors.popover}", rounded: "{rounded.radius-lg}", padding: "4px", width: "248px"}
+  panel-inline: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "20px"}
+  dialog: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "24px", width: "560px"}
+  toast: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", width: "380px"}
+  selection-bar: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", height: "44px"}
+  episode-details: {backgroundColor: "{colors.muted}"}
   app-bar: {backgroundColor: "{colors.background}", textColor: "{colors.foreground}", padding: "0px 40px", height: "64px"}
   downloads-live-bar: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", typography: "{typography.data-small}", height: "40px"}
   tooltip: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-sm}"}
@@ -113,11 +124,11 @@ Paper white and black with lime. Black carries the content, the actions and ever
 
 Light mode only for now. The dark design is archived in `design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
 
-The source of truth is the pen.dev library `design/design-system.lib.pen`: its variables and its five component sheets. The nine screen files import it. `design/mediaManager2.pen` no longer exists; see [`design/README.md`](design/README.md) for which file holds which screen.
+The source of truth is the pen.dev library `design/design-system.lib.pen`: its variables, its five component sheets and a sixth sheet for motion. The nine screen files import it. `design/mediaManager2.pen` no longer exists; see [`design/README.md`](design/README.md) for which file holds which screen.
 
 These are static pen.dev components. Keyboard behaviour, focus handling, screen reader support, live updates and table sorting are implementation work; a static frame proves none of them.
 
-Token names follow shadcn/ui, so code and design use the same words. The code does not use these names yet (see "Names in the current code" below).
+Token names follow shadcn/ui, so code and design use the same words.
 
 ## Colors
 
@@ -139,11 +150,7 @@ Posters keep their own colour; the interface stays black and white around them.
 
 ### Names in the current code
 
-`src/client/globals.css` on main still uses older names. Moving it to the names above is implementation work, not done. Proposed mapping:
-
-- `--ground` to `background`; `--control` to `card`; `--control-hover` to `surface-hover`; `--quiet-hover` to `surface-pressed`; `--ink` to `foreground`; `--secondary-ink` to `muted-foreground`; `--border` stays `border`; `--focus` to `ring`.
-- The `--mm-*` set (`--mm-ground`, `--mm-row`, `--mm-ink`, `--mm-best`, `--mm-risk` and the rest) holds the archived dark values. It goes away; the library's Tokens sheet lists each old `mm-` name with its new name.
-- The fonts change too: the code loads Inter and Barlow; the target is Schibsted Grotesk and Barlow Semi Condensed.
+`src/client/globals.css` now uses the names above, with Schibsted Grotesk and Barlow Semi Condensed bundled in `src/client/assets/fonts/`.
 
 ## Typography
 
@@ -159,19 +166,20 @@ Schibsted Grotesk (`font-ui`) for the interface: titles, labels, buttons, naviga
 - **Tables:** 40px rows, 56px for two-line rows (`row-two-line`), 32px header row (`row-header`), 16px side padding in every row so columns line up across pages. Release tables use the same fixed column widths everywhere.
 - **Library:** 152px posters (`poster-width`) with a 20px gutter, 8 per row at 1440px.
 - **Group headings:** 24px above, 8px below, no band and no line.
-- **Episode details:** opens under the row as a full-width band, content starting at the Title column.
+- **Episode details:** opens under the row as a full-width `muted` band with the 3px selection bar continuing from the open row, content starting at the Title column (`detail-indent`, 133px). Three sections 24px apart: Details, Versions, History, each a group heading over a white panel.
+- **Title header:** 220px backdrop band fading to white behind a 176 by 264 poster, title 36/800, facts column on the right. When the page scrolls it collapses to a 72px strip with a 32 by 48 poster thumb, breadcrumb, 20/700 title and the same three actions.
 - **Phone:** 16px margin (`page-margin-phone`), 52px top bar with a full-width 44px search under it, bottom sheets for grabs and choices, 44px touch targets.
 - **Spacing:** the `space-*` scale, 4 to 64px.
 
 ## Elevation & Depth
 
-Flat by default. Things in the page flow (tables, rows, panels in the page, callouts, cards, the add block) get a 1px `border` edge and no shadow.
+Flat by default. Things in the page flow (tables, rows, the inline panel, callouts, cards, the add block, the episode details band) get a 1px `border` edge and no shadow.
 
-Only things that float get a shadow: dropdown menus, tooltips, toasts, the inline panel, the phone sheet and the selection bar. One shadow for all of them: `0 2px 6px #1111110F, 0 8px 24px #1111111F` (the phone sheet casts it upward).
+Only things that float get a shadow: dropdown menus, tooltips, toasts, dialogs, the phone sheet and the selection bar. One shadow for all of them: `0 2px 6px #1111110F, 0 8px 24px #1111111F` (the phone sheet casts it upward).
 
 ## Shapes
 
-Corners run from 4 to 10px. `radius-xs` (4) for badges, Kbd, checkboxes, menu items and skeletons; `radius-sm` (6) for row buttons, form fields and tooltips; `radius-md` (8) for default buttons, posters, cards and callouts; `radius-lg` (10) for large buttons, the search field, tables, panels, menus, toasts and sheets; `radius-full` for dots and progress bars. The only side bar is the 3px row marker; callouts have none.
+Corners run from 4 to 10px. `radius-xs` (4) for badges, Kbd, checkboxes, menu items and skeletons; `radius-sm` (6) for row buttons, form fields and tooltips; `radius-md` (8) for default buttons, posters, cards and callouts; `radius-lg` (10) for large buttons, the search field, tables, panels, dialogs, menus, toasts and sheets; `radius-full` for dots and progress bars. The only side bar is the 3px row marker; callouts have none.
 
 ## Components
 
@@ -192,19 +200,79 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 - **v2/Button:** primary (black, shadcn `default`), outline (white, `input` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron). Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
 - **v2/Badge**, 20px: neutral (`muted`), strong (black, "In library"), lime (`best`, black text: best release, "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). Release tables add `v2/Mark/comparison` (best is the only lime pill), `v2/Cell/profile-fit` (fit in words) and `v2/Mark/pending-change` (old value, arrow, new value on amber while a change waits).
 - **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 40px, radius 6, white with an edge. Phone: 44px, full width.
-- **Toggle group:** `muted` track, white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
+- **Select trigger:** 40px, radius 8, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
+- **Toggle group:** up to six segments, 34px each inside a 40px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
 
 ### Tables and rows
 
 `v2/Table` is white with a 1px edge and radius 10. Every named row (release, episode, season, download, health problem and the rest) is an instance of `v2/Table/Row`, so states work the same everywhere: hover `surface-hover`, pressed `surface-pressed`, selected `selected` tint plus a 3px black bar on the left edge, risk a red bar, warning an amber bar, best a `best-soft` tint, focus a 2px inner black edge. A grabbed release swaps Grab for a lime badge with the percent and a 3px black progress line along the row's bottom.
 
+### Library, search and calendar
+
+- **Poster card:** 152 by 228, radius 8, 1px inner edge. Hover darkens the poster 8%, pressed 16%; selected adds a 2px black edge and a 700 title. Downloading shows a 4px lime strip on the poster's bottom edge; just imported shows it full width plus a black chip with a lime check.
+- **Search result:** 84px row with a 40 by 60 poster, title and year, one meta line, one overview line, and either "In library" with the file count (fixed 80px column) or a 40px outline Add button.
+- **Calendar:** entries are `muted` tiles, radius 6, no edge, with a 3px marker (amber missing, red gave up) and a black progress bar while downloading. Today's date sits in a black circle. Month cells are 188 by 132 with up to three entries and "+2 more". Week view has a 2px black now line with an 8px dot. The calendar is view-only; entries open the title.
+
 ### Chrome and floating things
 
-The downloads bar is black with white text; lime is allowed there for the arrow and progress fills because it sits on black. Menus, tooltips (`bar`, after 400ms), toasts (`bar`, bottom left), the inline panel and the selection bar (`bar`) float and take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
+- **App bar:** 64px, white, line under, 40px side padding. Nav items are 40px, radius 8, with a count pill (red on `destructive-soft` for problems); the active item gets the `selected` fill and a black 600 label. Service status lives behind Health, whose count turns red when a service fails.
+- **Downloads bar:** black with white text; lime is allowed there for the arrow and progress fills because it sits on black. Idle reads "Nothing downloading". A stalled item shows a red dot and words.
+- **Floating:** menus (248px, 32px items), tooltips (`bar`, after 400ms), toasts (`bar`, 380px, bottom left above the downloads bar, Undo with the Z key), dialogs and the selection bar (`bar`, 44px, 16px above the downloads bar) take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
+- **Sign-in:** a 400px block at x 40, y 160 under an app bar that shows only the product name. The Plex button carries Plex's own gold chevron, only on the black button. The Plex trademark line sits bottom left.
+
+### Where a decision opens
+
+The kind of decision sets the scale of the place it opens in. Three tiers:
+
+1. **In the table**, for choices that open from a row and need the rows in view: a tinted `muted` band under the row, 13px text, choices as a 28px toggle group or 32px option rows, and a 28px button on the row's actions line named for the outcome. No 40 or 48px control and no card surface inside a table. Grab choice, remove from downloads, inline status, history details.
+2. **Page panel** (`v2/Panel/inline`), for work under a page header or hero or with its own rows: 1px edge, no shadow, 40px controls, one 48px main action. Pick a release, import by hand, change monitoring.
+3. **Dialog** (`v2/Dialog` over `v2/Scrim`, 560px), for destructive or lossy confirmations: delete a file, version or title; replace the current file; discard unsaved edits; remove from downloads; grab on a title you already own.
+
+### Errors, empty and loading
+
+- A row error is an inline status line (`v2/Status/inline`: icon plus words for sent, failed or busy) in a `muted` band under the row.
+- A table error is a one-line `v2/Callout` above the table. Callouts come in risk, warning and info looks, radius 8, no side bar.
+- Empty: a centred 360px block, one plain sentence and at most one next step.
+- Loading: skeleton rows shaped like the row family they replace (40px row, 56px two-line row, poster card, search result, calendar entry).
+- Unsaved edits: an amber pencil and "Unsaved edits" in the footer beside a Discard edits outline button; the main action stays the 48px button.
 
 ### Focus
 
-Every focused control gets a 2px `ring` outline with a 2px white gap (Tailwind `outline-2 outline-offset-2`). The black ring is 18.9:1 against the white gap, so it reads beside black, red and lime fills alike. On black bars it is `focus-on-dark`; rows use the 2px inner edge. Spinners (700ms a turn) and skeleton shimmer (1.4s) stay still under reduced motion.
+Every focused control gets a 2px `ring` outline with a 2px white gap (Tailwind `outline-2 outline-offset-2`). The black ring is 18.9:1 against the white gap, so it reads beside black, red and lime fills alike. On black bars it is `focus-on-dark`; rows use the 2px inner edge. Spinners and skeleton shimmer stay still under reduced motion (see Motion).
+
+## Motion
+
+The library's sixth sheet holds the motion tokens and a transition table; each screen file holds `v2 / Motion / …` storyboards drawn as Before, Mid and After frames.
+
+- **Durations:** `duration-fast` 120ms (hover, press, checks), `duration-base` 160ms (panels, menus, tabs, crossfades), `duration-slow` 220ms (toast, phone sheet, progress), `duration-spin` 700ms, `duration-shimmer` 1400ms, `duration-toast` 6000ms, `delay-tooltip` 400ms.
+- **Easing:** `ease-out` `cubic-bezier(0.2, 0, 0, 1)` for anything entering, crossfades and progress; `ease-in` `cubic-bezier(0.4, 0, 1, 1)` for anything leaving; `ease-linear` for loops. `ease-in-out` `cubic-bezier(0.4, 0, 0.2, 1)` exists but no transition uses it yet.
+- **Reduced motion** (`prefers-reduced-motion: reduce`): loops stop, every slide or scale becomes an opacity fade of `duration-fast`, every size change is instant.
+
+| Trigger | What changes | Duration | Easing |
+|---|---|---|---|
+| Page change | new page fades in | fast | out |
+| Hover (rows, buttons, nav, posters, calendar entries, cards) | fill to the hover token; poster brightness to 92% | fast | out |
+| Press, focus ring | instant | 0 | — |
+| Inline panel open / close | height 0 to full, fade in, rise 6px, sibling rows dim / reverse | base / fast | out / in |
+| Season expand, history row expand | chevron turns 90°, rows grow from 0 | base | out |
+| Row selection | side bar and selected fill appear | fast | out |
+| Selection bar in / out | slide up 16px and fade in / fade out | base / fast | out / in |
+| Toast | slide up 12px and fade in, stays `duration-toast` (paused on hover), fades out | slow / fast | out / in |
+| Phone sheet and scrim | sheet slides up, scrim fades in | slow | out / in |
+| Dropdown menu, select list | fade and 4px slide from the trigger | fast | out / in |
+| Tooltip | fades in after `delay-tooltip` | fast | out |
+| Skeleton to content | content crossfades over the shimmer | base | out |
+| Progress update | fill width moves; percent text swaps at once | slow | out |
+| Download imports | badge crossfades Downloading to Imported; row leaves the list after `duration-toast` | base | out |
+| Grab in a row | Grab, then spinner, then Grabbed badge crossfade; progress line grows from 0 | base | out |
+| Undo window (blocklist, toast) | row height to 0 after the window; Undo restores it | base | in / out |
+| Checkbox, radio, bookmark | glyph scales 0.85 to 1, check stroke draws | fast | out |
+| Toggle group, tabs | segment or underline slides to the new item | base | out |
+| Calendar step, view switch, search results, settings pane | content crossfade | base | out |
+| Downloads bar expand | panel rises from the bar | base / fast | out / in |
+| Sign-in state change | heading and body crossfade; button label swaps at once | base | out |
+| Connect, Run all checks, Add and search | button goes to loading at once; result crossfades | base | out |
+| Dialog | scrim and dialog fade in, dialog scales 0.98 to 1 / reverse | base / fast | out / in |
 
 ## Do's and Don'ts
 
@@ -220,7 +288,8 @@ Every focused control gets a 2px `ring` outline with a 2px white gap (Tailwind `
 
 - **Don't** put lime on white as text, icons, lines or a thin progress bar.
 - **Don't** use red for anything that has not gone wrong, or amber for decoration.
-- **Don't** put shadows on anything in the page flow, or corners outside 4 to 10px.
+- **Don't** put shadows on anything in the page flow (the inline panel included), or corners outside 4 to 10px.
+- **Don't** put a 40 or 48px control, or a card, inside a table row; open a page panel or a dialog instead.
 - **Don't** use `faint-foreground` for readable text, or opacity for disabled.
 - **Don't** draw a coloured side bar on callouts.
 - **Don't** describe these static components as working keyboard controls or tested accessibility.
