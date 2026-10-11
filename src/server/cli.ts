@@ -15,7 +15,7 @@ const usage = [
   '       node dist/server/cli.js settings delete <category> <key>',
   '       node dist/server/cli.js settings list',
   '       node dist/server/cli.js connections check',
-  '       node dist/server/cli.js backup now   (the restore key saved in the app, or BACKUP_KEY)',
+  '       node dist/server/cli.js backup now   (a key made in the app, or BACKUP_KEY)',
   '       node dist/server/cli.js backup off | on',
   '       node dist/server/cli.js backup list   (BACKUP_FOLDER or BACKUP_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY)',
   '       node dist/server/cli.js backup restore --to <absolute path> [--object <key>]   (the backup list variables and BACKUP_RESTORE_KEY or BACKUP_KEY)',

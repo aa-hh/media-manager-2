@@ -9062,7 +9062,7 @@ test('backup commands upload, list and restore through a bucket or a folder from
   t.after(() => rm(root, { recursive: true, force: true }));
   const s3 = await startFakeS3(t);
   const base = { ...process.env, NODE_NO_WARNINGS: '1' };
-  for (const name of ['BACKUP_FOLDER', 'BACKUP_ENDPOINT', 'BACKUP_BUCKET', 'BACKUP_REGION', 'BACKUP_ACCESS_KEY_ID', 'BACKUP_SECRET_ACCESS_KEY', 'BACKUP_KEY']) delete base[name];
+  for (const name of ['BACKUP_FOLDER', 'BACKUP_ENDPOINT', 'BACKUP_BUCKET', 'BACKUP_REGION', 'BACKUP_ACCESS_KEY_ID', 'BACKUP_SECRET_ACCESS_KEY', 'BACKUP_KEY', 'BACKUP_RESTORE_KEY']) delete base[name];
   const backupKey = randomBytes(32).toString('hex');
   const withoutKey = { ...base, DB_PATH: join(root, 'live', 'media-manager.sqlite') };
   const withDatabase = { ...withoutKey, BACKUP_KEY: backupKey };
