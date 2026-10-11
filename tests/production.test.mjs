@@ -3915,3 +3915,72 @@ test('library posters and title pages derive progress and totals from the live d
     assert.deepEqual(seedingFacts(snapshot({ torrents: [torrent()], grabs: [grab()] }), { episodeId: 11 }), []);
   });
 });
+
+test('title pages mark episodes and select ranges of episodes only', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { episodeMarks, seasonMonitoredState, movieWord } = await load('../src/client/title/rows.ts');
+  const { rangeBetween } = await load('../src/client/title/selection.ts');
+
+  // Letting a season header or version row into a range, or depending on which end the range starts from, turns this red.
+  await t.test('a range takes episode rows only, in either direction', () => {
+    const rows = [
+      { kind: 'season', key: 'season:1', episodeId: null },
+      { kind: 'episode', key: 'episode:1', episodeId: 1 },
+      { kind: 'episode', key: 'episode:2', episodeId: 2 },
+      { kind: 'version', key: 'version:2', episodeId: 2 },
+      { kind: 'episode', key: 'episode:3', episodeId: 3 },
+      { kind: 'season', key: 'season:2', episodeId: null },
+      { kind: 'episode', key: 'episode:4', episodeId: 4 },
+    ];
+    assert.deepEqual(rangeBetween(rows, 1, 6), [1, 2, 3, 4]);
+    assert.deepEqual(rangeBetween(rows, 6, 1), [1, 2, 3, 4]);
+  });
+
+  // Mislabelling a premiere, finale or revision, or flagging scene numbers that match, turns this red.
+  await t.test('episode marks follow Sonarr\'s numbering, finale type, revision and scene fields', () => {
+    const file = (revision) => ({ revision: { version: 1, real: 0, isRepack: false, ...revision } });
+    const episode = (overrides = {}) => ({ seasonNumber: 2, episodeNumber: 5, finaleType: null, sceneSeasonNumber: null, sceneEpisodeNumber: null,
+      unverifiedSceneNumbering: false, file: null, ...overrides });
+    const cases = [
+      [episode(), []],
+      [episode({ seasonNumber: 1, episodeNumber: 1 }), ['Series premiere']],
+      [episode({ episodeNumber: 1 }), ['Premiere']],
+      [episode({ seasonNumber: 0, episodeNumber: 1 }), []],
+      [episode({ finaleType: 'series' }), ['Series finale']],
+      [episode({ finaleType: 'season' }), ['Season finale']],
+      [episode({ finaleType: 'midseason' }), ['Midseason finale']],
+      [episode({ file: file({ version: 2, isRepack: true }) }), ['Repack']],
+      [episode({ file: file({ version: 2 }) }), ['Proper']],
+      [episode({ file: file({ real: 1 }) }), ['Real']],
+      [episode({ sceneSeasonNumber: 2, sceneEpisodeNumber: 5 }), []],
+      [episode({ sceneSeasonNumber: 3, sceneEpisodeNumber: 1 }), ['Scene S03E01']],
+      [episode({ unverifiedSceneNumbering: true }), ['Scene numbering unverified']],
+    ];
+    for (const [input, marks] of cases) assert.deepEqual(episodeMarks(input), marks, JSON.stringify(input));
+  });
+
+  // Reading a partly monitored season as fully monitored or not monitored turns this red.
+  await t.test('a season is monitored, not monitored or partly monitored', () => {
+    assert.equal(seasonMonitoredState([{ monitored: true }, { monitored: true }]), 'all');
+    assert.equal(seasonMonitoredState([{ monitored: false }, { monitored: false }]), 'none');
+    assert.equal(seasonMonitoredState([{ monitored: true }, { monitored: false }]), 'mixed');
+  });
+
+  // Printing a word for a downloaded movie, or a different word from the Downloads screen's, turns this red.
+  await t.test('a movie prints one status word only for exceptions', () => {
+    const movie = (overrides = {}) => ({ status: 'released', hasFile: true, isAvailable: true, file: { qualityCutoffNotMet: false }, ...overrides });
+    const live = (word, percent) => ({ word, tone: 'normal', percent, downRate: 0 });
+    const cases = [
+      [movie(), undefined, null],
+      [movie({ status: 'deleted' }), live('downloading', 40), 'deleted'],
+      [movie({ hasFile: false, file: null }), live('downloading', 64), 'downloading 64%'],
+      [movie({ hasFile: false, file: null }), live('queued', null), 'queued'],
+      [movie({ hasFile: false, file: null }), undefined, 'missing'],
+      [movie({ hasFile: false, isAvailable: false, file: null }), undefined, 'not available'],
+      [movie({ file: { qualityCutoffNotMet: true } }), undefined, 'below cutoff'],
+    ];
+    for (const [input, progress, word] of cases) assert.equal(movieWord(input, progress), word, JSON.stringify([input, progress]));
+  });
+});

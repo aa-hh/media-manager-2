@@ -5,6 +5,7 @@ import { getJson, type MovieDetail, type SeriesDetail } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
 import { replace, useLocation } from '../navigation';
 import { AddControls } from './AddControls';
+import { MovieOverview } from './MovieOverview';
 import { SeriesOverview } from './SeriesOverview';
 import { TitleHeader } from './TitleHeader';
 
@@ -132,7 +133,7 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
         />
       )}
       {load.kind === 'movie' && (
-        <TitleHeader subject={{ type: 'movie', detail: load.detail }} owned onUnauthenticated={onUnauthenticated} />
+        <MovieOverview detail={load.detail} downloads={downloads} progress={progress} onUnauthenticated={onUnauthenticated} />
       )}
       {(load.kind === 'preview-tv' || load.kind === 'preview-movie') && (
         <>
