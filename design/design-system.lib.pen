@@ -5771,7 +5771,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "One badge, six looks, set by root fill and Label fill. Neutral (muted, ink-2): file quality, Manual download, 2 versions. Strong (black, white): In library, stays visible on a selected row. Lime (best, black text): best release and Downloading 64%, with Dot on. Risk (risk-soft, risk): Hit and run risk, Stalled, Failed. Warning (warning-soft, warning): Missing 2 episodes, Below cutoff. Outline (1 px line-strong, ink-2): Not out yet, Searching with Spinner on. Not interactive, so no hover or focus. Maps to shadcn Badge variants secondary, default, best (custom), destructive, warning (custom), outline. Icon: optional 12 px lucide icon before the label, off by default; turn it on and set its icon for states such as Not monitored (bookmark-x). Spinner stays for Searching only. Two sizes. Default: 20 px high (badge-h), badge-px 6, badge-text 11, 12 px icons (badge-icon). Row size: a badge beside a row button takes the button's row tokens, 28 px high (control-h-row), control-px-row, control-text-row and 14 px icons (control-icon-row), so the two always match.",
+              "content": "One badge, six looks, set by root fill and Label fill. Neutral (muted, ink-2): file quality, Manual download, 2 versions. Strong (black, white): In library, stays visible on a selected row. Lime (best, black text): best release and Downloading 64%, with Dot on. Risk (risk-soft, risk): Hit and run risk, Stalled, Failed. Warning (warning-soft, warning): Missing 2 episodes, Below cutoff. Outline (1 px line-strong, ink-2): Not out yet, Searching with Spinner on. Not interactive, so no hover or focus. Maps to shadcn Badge variants secondary, default, best (custom), destructive, warning (custom), outline. Icon: optional 12 px lucide icon before the label, off by default; turn it on and set its icon for states such as Not monitored (bookmark-x). Spinner stays for Searching only. Size: 20 px high (badge-h), badge-px 6, badge-text 11, 12 px icons (badge-icon). Plain: no fill and no padding, a 14 px foreground check and muted words at 13 px, 28 px high, built from the row tokens (control-h-row, control-text-row, control-icon-row) so it lines up with the row button beside it. Use plain for a standing status next to a row button, such as In library on a search result. A filled badge never takes button height, or it reads as a button.",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -6184,7 +6184,7 @@
                 {
                   "type": "frame",
                   "id": "x9aewd",
-                  "name": "State row size",
+                  "name": "State plain",
                   "layout": "vertical",
                   "gap": 8,
                   "children": [
@@ -6193,7 +6193,7 @@
                       "id": "n00Rw",
                       "name": "Caption",
                       "fill": "$subtle-foreground",
-                      "content": "row size, beside a row button",
+                      "content": "plain, beside a row button",
                       "fontFamily": "$font-ui",
                       "fontSize": 11,
                       "fontWeight": "600"
@@ -6209,17 +6209,21 @@
                           "id": "nNhJ1",
                           "type": "ref",
                           "ref": "zGBcp",
-                          "name": "Instance strong row size",
-                          "fill": "$primary",
+                          "name": "Instance plain",
+                          "fill": "#00000000",
                           "height": 28,
-                          "padding": [
-                            0,
-                            "$control-px-row"
-                          ],
+                          "padding": 0,
                           "descendants": {
+                            "htpMr": {
+                              "enabled": true,
+                              "icon": "check",
+                              "fill": "$foreground",
+                              "width": 14,
+                              "height": 14
+                            },
                             "rMeqR": {
                               "content": "In library",
-                              "fill": "$primary-foreground",
+                              "fill": "$muted-foreground",
                               "fontSize": "$control-text-row"
                             }
                           }
@@ -34687,7 +34691,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "One search result, 84 px: enough to tell titles apart before opening one. Poster 40 by 60 in colour, Title and Year, Meta as one plain line (TV or Movie, network or studio, Continuing or Ended, rating), Overview on one line, and In library at the right with the file count. Overrides: Poster fill, Title, Year, Meta, Overview, Status (badge strong, off when not in library), Files (fixed 80 px column, right aligned, so every In library badge lines up whatever the count), Add (outline v2/Button at the 28 px row size from control-h-row, control-px-row and control-text-row, on when not in library). Status takes the badge row size, so In library and Add are both 28 px. States: default, hover, pressed, focus (inner ring, radius 8), highlighted by keyboard (same as hover). Maps to shadcn Command item laid out as a row.",
+              "content": "One search result, 84 px: enough to tell titles apart before opening one. Poster 40 by 60 in colour, Title and Year, Meta as one plain line (TV or Movie, network or studio, Continuing or Ended, rating), Overview on one line, and In library at the right with the file count. Overrides: Poster fill, Title, Year, Meta, Overview, Status (badge strong, off when not in library), Files (fixed 80 px column, right aligned, so every In library badge lines up whatever the count), Add (outline v2/Button at the 28 px row size from control-h-row, control-px-row and control-text-row, on when not in library). Status is the plain badge (check and words, no box) at 28 px, so In library lines up with Add without looking like a button. States: default, hover, pressed, focus (inner ring, radius 8), highlighted by keyboard (same as hover). Maps to shadcn Command item laid out as a row.",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -34827,16 +34831,20 @@
                           "type": "ref",
                           "ref": "zGBcp",
                           "name": "Status",
-                          "fill": "$primary",
+                          "fill": "#00000000",
                           "height": 28,
-                          "padding": [
-                            0,
-                            "$control-px-row"
-                          ],
+                          "padding": 0,
                           "descendants": {
+                            "htpMr": {
+                              "enabled": true,
+                              "icon": "check",
+                              "fill": "$foreground",
+                              "width": 14,
+                              "height": 14
+                            },
                             "rMeqR": {
                               "content": "In library",
-                              "fill": "$primary-foreground",
+                              "fill": "$muted-foreground",
                               "fontSize": "$control-text-row"
                             }
                           }
