@@ -2549,7 +2549,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     assert.equal(complete.requiredComplete, true);
   });
 
-  // Dropping a stored choice, or leaving backups on after the owner skipped them, turns this red.
+  // Dropping a stored choice, leaving backups on after the owner skipped them, or turning them on from a tick alone, turns this red.
   await t.test('the owner\'s choices round-trip and a skipped backup turns backups off', async () => {
     const { database, send, status } = await build();
     const choose = (trackers, backup) => send('PUT', '/choices', { trackers, backup });
@@ -2558,7 +2558,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     assert.equal(backupsAreOff(database), true);
     assert.equal((await choose({ wanted: true, skipped: false }, { wanted: true, skipped: false })).status, 204);
     assert.deepEqual((await status()).optional, { trackers: { status: 'not_done', wanted: true }, backup: { status: 'not_done', wanted: true } });
-    assert.equal(backupsAreOff(database), false);
+    assert.equal(backupsAreOff(database), true);
     assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, backup: { wanted: true, skipped: false } })).status, 400);
   });
 

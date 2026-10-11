@@ -149,7 +149,8 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
           wanted: choices?.trackers.wanted ?? false,
         },
         backup: {
-          status: destination !== undefined && !off ? 'done' : chosenOut('backup') || off ? 'skipped' : 'not_done',
+          // Backups switched off elsewhere count as skipped until the owner says they want them here.
+          status: destination !== undefined && !off ? 'done' : (choices === undefined ? off : chosenOut('backup')) ? 'skipped' : 'not_done',
           wanted: choices?.backup.wanted ?? false,
         },
       },
@@ -167,13 +168,14 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   });
 
   // Skipping or unticking backups turns them off, as the CLI's `backup off` does, so the health check stops reminding.
+  // Ticking them never turns them on: only a saved destination (POST /backup) does.
   routes.put('/choices', async (context) => {
     const body = await readBody(context);
     if (!hasExactly(body, ['trackers', 'backup']) || !isChoice(body.trackers) || !isChoice(body.backup)) {
       return context.json({ error: 'invalid_request' }, 400);
     }
     setPreference(database, CHOICES_KEY, JSON.stringify({ trackers: body.trackers, backup: body.backup }));
-    setBackupsOff(database, chosenOut('backup'));
+    if (chosenOut('backup')) setBackupsOff(database, true);
     return context.body(null, 204);
   });
 
