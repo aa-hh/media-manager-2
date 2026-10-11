@@ -15,6 +15,7 @@ export type FlaggedAction =
   | { kind: 'pick_release'; target: ReleaseTarget; title: string }
   | { kind: 'search'; service: Service; type: WantedType; ids: number[] }
   | { kind: 'manual_import'; service: Service; downloadId: string }
+  | { kind: 'delete_second_version'; id: number }
   | { kind: 'open_health' };
 
 export type FlaggedItem = { problem: Problem; kindWord: string; label: string; detail: string; actions: FlaggedAction[] };
@@ -87,9 +88,13 @@ export const createFlagged = (options: {
   const actionsFor = async (problem: Problem, label: string): Promise<FlaggedAction[]> => {
     const { subject } = problem;
     if (problem.kind === 'tracker_cooldown' || subject.type === 'tracker' || subject.type === 'dependency') return [{ kind: 'open_health' }];
-    // The title or the file is gone, so picking a release or searching cannot help.
-    // AA-97 (Delete a second version, with the choice to keep or remove its torrent) adds a delete action here.
-    if (problem.kind === ORPHANED || problem.kind === FILE_MISSING) return [];
+    // The title or the file is gone, so picking a release or searching cannot help; only versions that can be deleted now are offered.
+    if (problem.kind === ORPHANED || problem.kind === FILE_MISSING) {
+      return database.prepare(`
+        SELECT id FROM second_versions WHERE state IN ('imported', 'failed') AND service = ? AND ${subject.type === 'movie' ? 'movie_id' : 'episode_id'} = ?
+          AND (? IS NULL OR hash = ?) ORDER BY id
+      `).all(subject.service, Number(subject.id), problem.hash, problem.hash).map((row) => ({ kind: 'delete_second_version', id: Number(row.id) }));
+    }
     if (subject.type === 'movie') {
       const movieId = Number(subject.id);
       return [{ kind: 'pick_release', target: { service: 'radarr', kind: 'movie', movieId }, title: label }, searchAction('radarr', [movieId])];

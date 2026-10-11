@@ -315,6 +315,8 @@ export const applicationMigrations = [
     detail TEXT NOT NULL
   ) STRICT;
   CREATE INDEX version_events_at ON version_events (at);`,
+  // The imported file's device and inode, so a delete removes only the file this app linked there.
+  'ALTER TABLE second_versions ADD COLUMN file_inode TEXT;',
 ] as const;
 
 class DatabaseError extends Error {}

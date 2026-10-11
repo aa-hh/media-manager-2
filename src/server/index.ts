@@ -28,6 +28,7 @@ import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
+import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
 import { createVersionImport } from './versionImport.js';
 import { createGrabTracker } from './torrentGrabs.js';
@@ -159,6 +160,7 @@ if (database !== undefined) {
     releases,
     grabs,
     secondVersions,
+    secondVersionDelete: createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan }),
     owned: createOwned(arr),
     protection,
     library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title)),
