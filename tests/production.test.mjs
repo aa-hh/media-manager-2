@@ -411,7 +411,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api, library, titleDelete, images, setup } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks, api, library, discover, titleDelete, images, setup } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -427,6 +427,7 @@ const makeApp = async (input = {}) => {
     webhooks,
     api,
     library,
+    discover,
     titleDelete,
     images,
     setup,
@@ -9325,4 +9326,71 @@ test('the delete routes sit under the owner guard at /api/library and take a lon
   });
   assert.equal(response.status, 200);
   assert.deepEqual(calls, [[{ service: 'radarr', movieId: 3 }, 60, 'keepUnmonitored']]);
+});
+
+test('the discover routes check every value, mark library titles and turn a missing TMDB key into a readable error', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTmdb } = await import(tmdbModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createDiscover } = await import(new URL('../dist/server/discover.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-discover-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const calls = [];
+  const tmdb = createTmdb(database, { fetch: async (url) => {
+    calls.push(new URL(String(url)));
+    return new Response(JSON.stringify({ page: 2, total_pages: 3, results: [
+      { id: 438631, title: 'Dune', release_date: '2021-09-15', poster_path: '/d5NX.jpg', backdrop_path: null, vote_average: 7.8, overview: 'Paul travels. Then more.' },
+      { id: 999, name: 'Severance', media_type: 'tv', first_air_date: '2022-02-17', poster_path: null, backdrop_path: '/bg.jpg' },
+    ] }));
+  } });
+  const store = createTitleStore(database);
+  const libraryTitles = async () => ({ titles: [{ type: 'movie', id: 7, tmdbId: 438631 }, { type: 'tv', id: 999, tmdbId: null }] });
+  const { app } = await makeApp({ discover: createDiscover({ tmdb, store, libraryTitles }) });
+  const { session } = await signIn(app);
+  const get = async (path) => {
+    const response = await app.request(path, { headers: { Cookie: session } });
+    return { status: response.status, body: await response.json() };
+  };
+
+  // Mounting /api/discover outside the private guard turns this red.
+  assert.equal((await app.request('/api/discover/movie')).status, 401);
+
+  // Answering a missing TMDB key with a 500 or without its reason turns this red.
+  const unconfigured = await get('/api/discover/movie');
+  assert.equal(unconfigured.status, 503);
+  assert.equal(unconfigured.body.error, 'not_configured');
+  assert.match(unconfigured.body.reason, /TMDB is not configured/);
+
+  // Letting any one of these values through to TMDB turns its row red.
+  setSetting(database, 'credentials', 'tmdb.apiKey', 'tmdb-key');
+  for (const path of [
+    'movie?sort=trending', 'movie?region=usa', 'movie?region=us', 'movie?yearFrom=2020&yearTo=2019', 'movie?genres=18,abc',
+    'movie?providers=8|9', 'movie?page=0', 'movie?page=501', 'movie?minRating=11', 'person', 'providers/tv?region=GBR',
+  ]) {
+    assert.equal((await get(`/api/discover/${path}`)).status, 400, path);
+  }
+  assert.equal(calls.length, 0);
+
+  // Matching the library by anything but type and TMDB id, building image URLs other than the agreed route, or not saving the summary turns this red.
+  const page = await get('/api/discover/movie?genres=18,878&providers=8,9&region=GB&yearFrom=2020&minRating=6.5&page=2');
+  assert.equal(page.status, 200);
+  assert.deepEqual({ page: page.body.page, totalPages: page.body.totalPages }, { page: 2, totalPages: 3 });
+  assert.deepEqual(page.body.results[0], {
+    tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, posterUrl: '/api/images/tmdb/w342/d5NX.jpg', backdropUrl: null,
+    rating: 7.8, overview: 'Paul travels.', libraryId: 7,
+  });
+  assert.equal(page.body.results[1].backdropUrl, '/api/images/tmdb/w1920_and_h800_multi_faces/bg.jpg');
+  assert.equal(page.body.results[1].libraryId, null);
+  assert.equal(store.get({ type: 'movie', tmdbId: 438631 }, 'tmdbSummary').value.title, 'Dune');
+  assert.equal(store.get({ type: 'tv', tmdbId: 999 }, 'tmdbSummary').value.title, 'Severance');
+  const sent = calls.at(-1).searchParams;
+  assert.deepEqual(
+    ['sort_by', 'with_genres', 'with_watch_providers', 'watch_region', 'primary_release_date.gte', 'vote_average.gte', 'page'].map((name) => sent.get(name)),
+    ['popularity.desc', '18,878', '8|9', 'GB', '2020-01-01', '6.5', '2'],
+  );
 });

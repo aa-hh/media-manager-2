@@ -34,6 +34,7 @@ export type LibraryTitle = {
   type: 'tv' | 'movie';
   service: Service;
   id: number;
+  tmdbId: number | null;
   title: string;
   year: number | null;
   added: string | null;
@@ -417,6 +418,7 @@ const toTitle = (service: Service, record: Series | Movie, profiles: unknown): L
   const base = {
     service,
     id,
+    tmdbId: record.tmdbId,
     title,
     year: record.year,
     added: record.added,
