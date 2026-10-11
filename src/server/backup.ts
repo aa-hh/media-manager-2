@@ -7,7 +7,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { applicationMigrations, assertDatabasePath, openDatabase } from './database.js';
 import type { EventHub } from './events.js';
 
-type Store = {
+export type BackupStore = {
   put(key: string, body: Uint8Array, contentType: string): Promise<void>;
   get(key: string): Promise<Uint8Array | undefined>;
   list(prefix: string): Promise<Array<{ key: string; size: number }>>;
@@ -33,7 +33,7 @@ const countedTables = ['settings', 'torrents', 'torrent_grabs', 'grabs', 'proble
 
 const sha256Hex = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 
-// The bucket would otherwise hold every saved credential in plain text, so snapshots are sealed with AES-256-GCM:
+// The backup destination would otherwise hold every saved credential in plain text, so snapshots are sealed with AES-256-GCM:
 // a 12-byte nonce, the ciphertext, then the 16-byte authentication tag.
 export const backupKeyFromEnvironment = (env: NodeJS.ProcessEnv = process.env): Buffer | undefined => {
   const value = env.BACKUP_KEY;
@@ -65,7 +65,7 @@ const keyTime = (key: string) => {
 };
 
 // Keeps every snapshot from the last 24 hours plus the newest of each earlier UTC day within 7 days.
-const prune = async (store: Store, now: number, uploadedKey: string) => {
+const prune = async (store: BackupStore, now: number, uploadedKey: string) => {
   const older = (await store.list('backups/'))
     .map(({ key }) => ({ key, time: keyTime(key) }))
     .filter((entry): entry is { key: string; time: number } => entry.time !== undefined && entry.key !== uploadedKey)
@@ -85,7 +85,7 @@ const prune = async (store: Store, now: number, uploadedKey: string) => {
 export const createBackup = ({ database, events, store, key = backupKeyFromEnvironment, now = Date.now }: {
   database: DatabaseSync;
   events: EventHub;
-  store: () => Store | undefined;
+  store: () => BackupStore | undefined;
   key?: () => Buffer | undefined;
   now?: () => number;
 }) => {
@@ -97,7 +97,7 @@ export const createBackup = ({ database, events, store, key = backupKeyFromEnvir
   };
   let backedUpMarker: string | undefined;
 
-  const snapshot = async (target: Store, sealKey: Buffer, startedAt: number) => {
+  const snapshot = async (target: BackupStore, sealKey: Buffer, startedAt: number) => {
     const directory = mkdtempSync(join(tmpdir(), 'media-manager-2-backup-'));
     let raw: Uint8Array;
     let marker: string;
@@ -128,19 +128,20 @@ export const createBackup = ({ database, events, store, key = backupKeyFromEnvir
   return {
     async run({ force = false }: { force?: boolean } = {}): Promise<BackupRun> {
       const startedAt = now();
-      const target = store();
+      let target: BackupStore | undefined;
       let sealKey: Buffer | undefined;
-      let keyError: string | undefined;
+      let configError: string | undefined;
       try {
+        target = store();
         sealKey = key();
       } catch (error) {
-        keyError = error instanceof Error ? error.message : 'Invalid BACKUP_KEY.';
+        configError = error instanceof Error ? error.message : 'Backup is not configured correctly.';
       }
       // The marker describes the database as the uploaded snapshot saw it; undefined means nothing is known to be backed up.
       let marker: string | undefined;
       let result: Omit<BackupRun, 'id' | 'startedAt' | 'finishedAt'>;
-      if (keyError !== undefined) {
-        result = { outcome: 'failed', detail: keyError, objectKey: null, bytes: null, sha256: null };
+      if (configError !== undefined) {
+        result = { outcome: 'failed', detail: configError, objectKey: null, bytes: null, sha256: null };
       } else if (target === undefined || sealKey === undefined) {
         result = { outcome: 'skipped', detail: 'not_configured', objectKey: null, bytes: null, sha256: null };
       } else if (!force && backedUpMarker !== undefined && backedUpMarker === writeMarker()) {
@@ -191,7 +192,7 @@ export const listBackupRuns = (database: DatabaseSync, limit = 50): BackupRun[] 
   sha256: row.sha256 === null ? null : String(row.sha256),
 }));
 
-const readPointerKey = async (store: Store) => {
+const readPointerKey = async (store: BackupStore) => {
   const body = await store.get(pointerKey);
   if (body === undefined) return undefined;
   try {
@@ -202,7 +203,7 @@ const readPointerKey = async (store: Store) => {
   }
 };
 
-export const listSnapshots = async (store: Store) => {
+export const listSnapshots = async (store: BackupStore) => {
   const snapshots = (await store.list('backups/'))
     .filter(({ key }) => snapshotKey.test(key))
     .sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
@@ -210,7 +211,7 @@ export const listSnapshots = async (store: Store) => {
 };
 
 export const restoreBackup = async ({ store, target, objectKey, key: sealKey }: {
-  store: Store;
+  store: BackupStore;
   target: string;
   objectKey?: string;
   key: Buffer;

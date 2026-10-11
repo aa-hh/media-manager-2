@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createCipheriv, createHash, createPublicKey, generateKeyPairSync, randomBytes, verify } from 'node:crypto';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
 import {
   chmod,
   lstat,
@@ -51,7 +52,8 @@ const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url)
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const manualImportModuleUrl = new URL('../dist/server/manualImport.js', import.meta.url).href;
-const r2ModuleUrl = new URL('../dist/server/services/r2.js', import.meta.url).href;
+const s3ModuleUrl = new URL('../dist/server/services/s3.js', import.meta.url).href;
+const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js', import.meta.url).href;
 const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
@@ -4730,8 +4732,8 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       input: { jobs: [{ name: 'stall-fix', intervalMs: 60_000, lastStartedAt: now - hour, lastFinishedAt: now - hour, lastFailed: false, late: true }] },
       level: 'warning', errors: 0, warnings: 1, message: 'Background job stall-fix hasn\'t finished for 1h 0m; expected every 1m',
     },
-    { name: 'no ok backup yet', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Cloudflare R2 backups are not set up yet' },
-    { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last Cloudflare R2 backup finished 30h 0m ago' },
+    { name: 'no ok backup yet', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Backups are not set up' },
+    { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last backup finished 30h 0m ago' },
     // Mapping tracker account stats to the wrong account kind, or warning on a first look at a ratio above its minimum, turns these rows red.
     {
       name: 'tracker with no account stats', input: { torrentHost: 'blutopia.cc' }, level: 'ok', errors: 0, warnings: 0, message: undefined,
@@ -5537,10 +5539,8 @@ const startFakeS3 = async (t) => {
 };
 
 // Encoding the secret's "+" wrongly, sorting query parameters by original order, hashing a body other than the one sent, or naming the endpoint or key id in an error turns this red.
-test('R2 requests are signed with AWS Signature V4 and stored path-style', async (t) => {
-  const { createR2Store, r2ConfigFromEnvironment, readR2Config, signRequest } = await import(r2ModuleUrl);
-  const { openDatabase } = await import(databaseModuleUrl);
-  const { setSetting } = await import(settingsModuleUrl);
+test('S3 requests are signed with AWS Signature V4 and stored path-style', async (t) => {
+  const { createS3Store, signRequest } = await import(s3ModuleUrl);
 
   const vector = {
     method: 'GET',
@@ -5570,10 +5570,11 @@ test('R2 requests are signed with AWS Signature V4 and stored path-style', async
   const config = {
     endpoint: s3.endpoint,
     bucket: 'mm2-backups',
+    region: 'auto',
     accessKeyId: `key-id-${process.pid}-distinctive`,
     secretAccessKey: `secret-${process.pid}-distinctive`,
   };
-  const store = createR2Store(config, { now: () => Date.UTC(2026, 9, 11, 4, 7, 33) });
+  const store = createS3Store(config, { now: () => Date.UTC(2026, 9, 11, 4, 7, 33) });
   const body = new Uint8Array([1, 2, 3]);
   await store.put('backups/a.sqlite.gz', body, 'application/gzip');
   await store.put('other/b', new Uint8Array([4]), 'text/plain');
@@ -5592,36 +5593,77 @@ test('R2 requests are signed with AWS Signature V4 and stored path-style', async
 
   s3.state.failWith = 503;
   const answered = await store.put('backups/c.sqlite.gz', body, 'application/gzip').catch((error) => error);
-  assert.equal(answered.message, 'R2 answered 503.');
+  assert.equal(answered.message, 'Backup storage answered 503.');
   s3.close();
   const unreachable = await store.get('backups/c.sqlite.gz').catch((error) => error);
-  assert.equal(unreachable.message, 'R2 is unreachable.');
+  assert.equal(unreachable.message, 'Backup storage is unreachable.');
   for (const error of [answered, unreachable]) {
     for (const secret of [config.secretAccessKey, config.accessKeyId, config.endpoint]) assert.equal(error.message.includes(secret), false);
   }
 
-  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-r2-'));
-  const database = openDatabase(join(root, 'media-manager.sqlite'));
-  t.after(async () => {
-    database.close();
-    await rm(root, { recursive: true, force: true });
-  });
-  const settings = [
-    ['serviceAddresses', 'r2.endpoint', config.endpoint],
-    ['serviceAddresses', 'r2.bucket', config.bucket],
-    ['credentials', 'r2.accessKeyId', config.accessKeyId],
-    ['credentials', 'r2.secretAccessKey', config.secretAccessKey],
-  ];
-  const env = { R2_ENDPOINT: config.endpoint, R2_BUCKET: config.bucket, R2_ACCESS_KEY_ID: config.accessKeyId, R2_SECRET_ACCESS_KEY: config.secretAccessKey };
-  for (const [index, [category, key, value]] of settings.entries()) {
-    assert.equal(readR2Config(database), undefined, `before ${key}`);
+});
+
+// Accepting half an S3 setup, accepting a folder and a bucket together, losing settings saved under the old r2.* keys,
+// creating a missing backup folder, or letting a key escape the folder turns this red.
+test('backups go to a folder or an S3-compatible bucket, chosen by settings or environment', async (t) => {
+  const { applicationMigrations, openDatabase } = await import(databaseModuleUrl);
+  const { listSettingKeys, setSetting } = await import(settingsModuleUrl);
+  const { backupDestinationFromEnvironment, createFolderStore, readBackupDestination } = await import(backupDestinationModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-destination-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const s3 = { endpoint: 'https://s3.example', bucket: 'backups', region: 'auto', accessKeyId: 'key-id', secretAccessKey: 'secret' };
+  const env = { BACKUP_ENDPOINT: s3.endpoint, BACKUP_BUCKET: s3.bucket, BACKUP_ACCESS_KEY_ID: s3.accessKeyId, BACKUP_SECRET_ACCESS_KEY: s3.secretAccessKey };
+  for (const name of Object.keys(env)) {
     const partial = { ...env };
-    delete partial[Object.keys(env)[index]];
-    assert.equal(r2ConfigFromEnvironment(partial), undefined, `without ${Object.keys(env)[index]}`);
-    setSetting(database, category, key, value);
+    delete partial[name];
+    assert.equal(backupDestinationFromEnvironment(partial), undefined, `without ${name}`);
   }
-  assert.deepEqual(readR2Config(database), config);
-  assert.deepEqual(r2ConfigFromEnvironment(env), config);
+  assert.deepEqual(backupDestinationFromEnvironment(env), { kind: 's3', config: s3 });
+  assert.deepEqual(backupDestinationFromEnvironment({ ...env, BACKUP_REGION: 'us-west-004' }), { kind: 's3', config: { ...s3, region: 'us-west-004' } });
+  assert.deepEqual(backupDestinationFromEnvironment({ BACKUP_FOLDER: root }), { kind: 'folder', folder: root });
+  assert.throws(() => backupDestinationFromEnvironment({ ...env, BACKUP_FOLDER: root }), /either a backup folder or a backup bucket/);
+  assert.throws(() => backupDestinationFromEnvironment({ BACKUP_FOLDER: 'backups' }), /absolute path/);
+
+  // A database saved before the rename keeps its bucket.
+  const databasePath = join(root, 'data', 'media-manager.sqlite');
+  const old = openDatabase(databasePath);
+  for (const [category, key, value] of [
+    ['serviceAddresses', 'r2.endpoint', s3.endpoint],
+    ['serviceAddresses', 'r2.bucket', s3.bucket],
+    ['credentials', 'r2.accessKeyId', s3.accessKeyId],
+    ['credentials', 'r2.secretAccessKey', s3.secretAccessKey],
+  ]) setSetting(old, category, key, value);
+  old.exec(`PRAGMA user_version = ${applicationMigrations.length - 1};`);
+  old.close();
+  const database = openDatabase(databasePath);
+  t.after(() => database.close());
+  assert.deepEqual(listSettingKeys(database).map(({ key }) => key), ['backup.accessKeyId', 'backup.secretAccessKey', 'backup.bucket', 'backup.endpoint']);
+  assert.deepEqual(readBackupDestination(database), { kind: 's3', config: s3 });
+  setSetting(database, 'hostPaths', 'backup.folder', root);
+  assert.throws(() => readBackupDestination(database), /not both/);
+
+  const missing = createFolderStore(join(root, 'unmounted'));
+  await assert.rejects(missing.put('backups/a', new Uint8Array([1]), 'application/octet-stream'), /does not exist/);
+  assert.equal(existsSync(join(root, 'unmounted')), false);
+  const folder = join(root, 'store');
+  await mkdir(folder);
+  const store = createFolderStore(folder);
+  assert.deepEqual(await store.list('backups/'), []);
+  await store.put('backups/a.enc', new Uint8Array([1, 2, 3]), 'application/octet-stream');
+  await store.put('backups/latest.json', new Uint8Array([4]), 'application/json');
+  await writeFile(join(folder, 'backups', 'b.enc.partial'), 'half');
+  assert.deepEqual((await store.list('backups/')).sort((a, b) => a.key.localeCompare(b.key)), [
+    { key: 'backups/a.enc', size: 3 },
+    { key: 'backups/latest.json', size: 1 },
+  ]);
+  assert.deepEqual(await store.list('backups/a'), [{ key: 'backups/a.enc', size: 3 }]);
+  assert.deepEqual(new Uint8Array(await store.get('backups/a.enc')), new Uint8Array([1, 2, 3]));
+  assert.equal(await store.get('backups/missing'), undefined);
+  assert.equal((await stat(join(folder, 'backups', 'a.enc'))).mode & 0o777, 0o600);
+  await store.delete('backups/a.enc');
+  assert.equal(await store.get('backups/a.enc'), undefined);
+  await assert.rejects(store.get('../outside'), /outside the backup folder/);
 });
 
 // Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, or restoring a snapshot without checking its key, hash or schema version turns this red.
@@ -5646,7 +5688,7 @@ test('backups snapshot a changing database and restore it consistently', async (
   const store = {
     async put(key, body) {
       calls.push(['put', key]);
-      if (failPut) throw new Error('R2 answered 503.');
+      if (failPut) throw new Error('Backup storage answered 503.');
       objects.set(key, Uint8Array.from(body));
     },
     async get(key) {
@@ -5749,7 +5791,7 @@ test('backups snapshot a changing database and restore it consistently', async (
 
   failPut = true;
   clock += 5 * 60_000;
-  assert.deepEqual(outcome(await backup.run({ force: true })), ['failed', 'R2 answered 503.']);
+  assert.deepEqual(outcome(await backup.run({ force: true })), ['failed', 'Backup storage answered 503.']);
   failPut = false;
   clock += 5 * 60_000;
   assert.deepEqual(outcome(await backup.run()), ['ok', '']);
@@ -5786,18 +5828,18 @@ test('backups snapshot a changing database and restore it consistently', async (
 });
 
 // Opening the database before listing or restoring, printing a secret, running without a valid BACKUP_KEY, or restoring over an existing file turns this red.
-test('backup commands upload, list and restore through R2 from the command line', async (t) => {
+test('backup commands upload, list and restore through a bucket or a folder from the command line', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backup-cli-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const s3 = await startFakeS3(t);
   const base = { ...process.env, NODE_NO_WARNINGS: '1' };
-  for (const name of ['R2_ENDPOINT', 'R2_BUCKET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'BACKUP_KEY']) delete base[name];
+  for (const name of ['BACKUP_FOLDER', 'BACKUP_ENDPOINT', 'BACKUP_BUCKET', 'BACKUP_REGION', 'BACKUP_ACCESS_KEY_ID', 'BACKUP_SECRET_ACCESS_KEY', 'BACKUP_KEY']) delete base[name];
   const backupKey = randomBytes(32).toString('hex');
   const withoutKey = { ...base, DB_PATH: join(root, 'live', 'media-manager.sqlite') };
   const withDatabase = { ...withoutKey, BACKUP_KEY: backupKey };
   const secret = `secret-${process.pid}-distinctive`;
   const keyId = `key-id-${process.pid}-distinctive`;
-  const withR2 = { ...base, R2_ENDPOINT: s3.endpoint, R2_BUCKET: 'mm2-backups', R2_ACCESS_KEY_ID: keyId, R2_SECRET_ACCESS_KEY: secret, BACKUP_KEY: backupKey };
+  const withR2 = { ...base, BACKUP_ENDPOINT: s3.endpoint, BACKUP_BUCKET: 'mm2-backups', BACKUP_ACCESS_KEY_ID: keyId, BACKUP_SECRET_ACCESS_KEY: secret, BACKUP_KEY: backupKey };
   const outputs = [];
   const cli = async (args, env, stdin) => {
     const result = await runCli(args, { env, stdin });
@@ -5810,10 +5852,10 @@ test('backup commands upload, list and restore through R2 from the command line'
   assert.equal(notConfigured.stdout, 'backup: skipped not_configured\n');
 
   for (const [category, key, value] of [
-    ['serviceAddresses', 'r2.endpoint', s3.endpoint],
-    ['serviceAddresses', 'r2.bucket', 'mm2-backups'],
-    ['credentials', 'r2.accessKeyId', keyId],
-    ['credentials', 'r2.secretAccessKey', secret],
+    ['serviceAddresses', 'backup.endpoint', s3.endpoint],
+    ['serviceAddresses', 'backup.bucket', 'mm2-backups'],
+    ['credentials', 'backup.accessKeyId', keyId],
+    ['credentials', 'backup.secretAccessKey', secret],
   ]) {
     const saved = await cli(['settings', 'set', category, key], withDatabase, value);
     assert.equal(saved.code, 0, saved.stderr);
@@ -5856,7 +5898,24 @@ test('backup commands upload, list and restore through R2 from the command line'
   for (const args of [['backup', 'list'], ['backup', 'restore', '--to', join(root, 'other.sqlite')]]) {
     const missing = await cli(args, base);
     assert.equal(missing.code, 1);
-    assert.equal(missing.stderr, 'R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY must be set.\n');
+    assert.equal(missing.stderr, 'Set BACKUP_FOLDER, or BACKUP_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID and BACKUP_SECRET_ACCESS_KEY.\n');
   }
+
+  // The same commands against a folder: switch the saved destination, upload, then restore from the folder alone.
+  const folder = join(root, 'folder');
+  await mkdir(folder, { mode: 0o700 });
+  for (const key of ['backup.endpoint', 'backup.bucket']) {
+    assert.equal((await cli(['settings', 'delete', 'serviceAddresses', key], withDatabase)).code, 0);
+  }
+  assert.equal((await cli(['settings', 'set', 'hostPaths', 'backup.folder'], withDatabase, folder)).code, 0);
+  const toFolder = await cli(['backup', 'now'], withDatabase);
+  assert.equal(toFolder.code, 0, toFolder.stderr);
+  const folderKey = toFolder.stdout.match(/^backup: ok (backups\/\S+\.sqlite\.gz\.enc) \d+ bytes\n$/)?.[1];
+  assert.ok(existsSync(join(folder, folderKey)), toFolder.stdout);
+  const withFolder = { ...base, BACKUP_FOLDER: folder, BACKUP_KEY: backupKey };
+  const folderTarget = join(root, 'from-folder', 'media-manager.sqlite');
+  const fromFolder = await cli(['backup', 'restore', '--to', folderTarget], withFolder);
+  assert.equal(fromFolder.code, 0, fromFolder.stderr);
+  assert.match(fromFolder.stdout, new RegExp(`^restored ${folderKey} to `));
   for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey));
 });

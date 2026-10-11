@@ -1,7 +1,6 @@
 #!/bin/sh
 # Starts media-manager-2 on the Whatbox slot unless it already answers. Cron
-# runs it at @reboot and every minute; see README.md, "Restart after a crash
-# or reboot". It runs only on the slot, which has flock; macOS does not.
+# runs it at @reboot and every minute; see README.md, "Keep it running". It runs only on the slot, which has flock; macOS does not.
 set -u
 app="$HOME/media-manager-2"
 server="$app/dist/server/index.js"

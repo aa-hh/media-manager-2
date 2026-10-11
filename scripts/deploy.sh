@@ -1,7 +1,7 @@
 #!/bin/sh
-# Builds this worktree and runs it on the Whatbox slot behind the fixed
-# Managed Link, replacing whatever copy was running there. One-time slot setup
-# is in README.md, "Test deploy to Whatbox".
+# Builds this worktree and runs it on the deploy host behind its fixed public
+# address, replacing whatever copy was running there. One-time host setup is in
+# README.md, "Run it on a server".
 #
 # Usage: sh scripts/deploy.sh   (DEPLOY_HOST overrides the ssh host)
 set -eu
@@ -23,7 +23,7 @@ PORT=<the Managed Link's port, 10000-32767>
 HOST=127.0.0.1
 APP_ORIGIN=<the Managed Link's https address, no trailing slash>
 PLEX_OWNER_ID=<your numeric Plex account ID>
-BACKUP_KEY=<64 hex characters, see README.md, Set up R2>
+BACKUP_KEY=<64 hex characters, only for backups; see README.md, Backups>
 
 Leave DB_PATH unset so the database stays under ~/.local/share/media-manager-2.
 EOF

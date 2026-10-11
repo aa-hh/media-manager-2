@@ -1,11 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { isAbsolute } from 'node:path';
 import { backupKeyFromEnvironment, createBackup, listSnapshots, restoreBackup } from './backup.js';
+import { backupDestinationFromEnvironment, createBackupStore, readBackupDestination } from './backupDestination.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createArr } from './services/arr.js';
 import { createPlex } from './services/plex.js';
-import { createR2Store, r2ConfigFromEnvironment, readR2Config } from './services/r2.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { deleteSetting, listSettingKeys, setSetting } from './settings.js';
@@ -16,8 +16,8 @@ const usage = [
   '       node dist/server/cli.js settings list',
   '       node dist/server/cli.js connections check',
   '       node dist/server/cli.js backup now   (BACKUP_KEY environment variable)',
-  '       node dist/server/cli.js backup list   (R2_* environment variables)',
-  '       node dist/server/cli.js backup restore --to <absolute path> [--object <key>]   (R2_* and BACKUP_KEY environment variables)',
+  '       node dist/server/cli.js backup list   (BACKUP_FOLDER or BACKUP_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY)',
+  '       node dist/server/cli.js backup restore --to <absolute path> [--object <key>]   (the backup list variables and BACKUP_KEY)',
 ].join('\n');
 
 const readStdin = async () => {
@@ -50,8 +50,8 @@ const backupNow = async (database: DatabaseSync) => {
     database,
     events: createEventHub(),
     store: () => {
-      const config = readR2Config(database);
-      return config === undefined ? undefined : createR2Store(config);
+      const destination = readBackupDestination(database);
+      return destination === undefined ? undefined : createBackupStore(destination);
     },
   });
   const run = await backup.run({ force: true });
@@ -59,15 +59,15 @@ const backupNow = async (database: DatabaseSync) => {
   return run.outcome === 'failed' ? 1 : 0;
 };
 
-// Listing and restoring read R2 from the environment and never open the database, so they work on a host with no database yet.
+// Listing and restoring read the destination from the environment and never open the database, so they work on a host with no database yet.
 const runWithoutDatabase = async (restoreOptions: Map<string, string> | undefined) => {
-  const config = r2ConfigFromEnvironment();
-  if (config === undefined) {
-    console.error('R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY must be set.');
-    return 1;
-  }
-  const store = createR2Store(config);
   try {
+    const destination = backupDestinationFromEnvironment();
+    if (destination === undefined) {
+      console.error('Set BACKUP_FOLDER, or BACKUP_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID and BACKUP_SECRET_ACCESS_KEY.');
+      return 1;
+    }
+    const store = createBackupStore(destination);
     if (restoreOptions === undefined) {
       const { latestKey, snapshots } = await listSnapshots(store);
       for (const { key, size } of snapshots) console.log(`${key} ${size} bytes${key === latestKey ? ' (latest)' : ''}`);

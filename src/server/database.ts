@@ -266,6 +266,9 @@ export const applicationMigrations = [
     origin TEXT NOT NULL CHECK (origin IN ('history', 'downloads')),
     PRIMARY KEY (service, release_title, at)
   ) STRICT;`,
+  // Backups once went only to Cloudflare R2; the same four settings now describe any S3-compatible bucket.
+  `UPDATE OR IGNORE settings SET key = 'backup.' || substr(key, 4)
+    WHERE key IN ('r2.endpoint', 'r2.bucket', 'r2.accessKeyId', 'r2.secretAccessKey');`,
 ] as const;
 
 class DatabaseError extends Error {}
