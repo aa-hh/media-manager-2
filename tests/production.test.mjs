@@ -969,6 +969,97 @@ test('Plex owner authentication', async (t) => {
   });
 });
 
+test('the Plex sign-in popup is used when it opens, skipped when blocked or on a phone, and noticed when closed early', async (t) => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/plexPopup.ts', import.meta.url), 'utf8');
+  const { POLL_INTERVAL_MS, openPopup, sendToPlex, handoffState, isPopupMessage } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const handoff = `https://app.plex.tv/auth#?${new URLSearchParams({ clientID: 'c', code: 'k', 'context[device][product]': 'media-manager-2', forwardUrl: 'https://media.example/auth/callback?state=abc' })}`;
+  const makePopup = () => ({ closed: false, closeCalls: 0, close() { this.closed = true; this.closeCalls += 1; }, location: { assigned: [], assign(url) { this.assigned.push(url); } } });
+  const makeHost = ({ popup = null, narrow = false } = {}) => {
+    const host = {
+      opened: 0,
+      assigned: [],
+      timers: new Map(),
+      nextId: 1,
+      open: () => { host.opened += 1; return popup; },
+      narrow: () => narrow,
+      assign(url) { this.assigned.push(url); },
+      setInterval(cb, ms) { const id = this.nextId++; this.timers.set(id, { cb, ms }); return id; },
+      clearInterval(id) { this.timers.delete(id); },
+      tick() { for (const { cb } of [...this.timers.values()]) cb(); },
+    };
+    return host;
+  };
+  const makeHandlers = () => {
+    const calls = { ticks: 0, closed: 0 };
+    return { calls, handlers: { onTick: () => { calls.ticks += 1; }, onClosed: () => { calls.closed += 1; } } };
+  };
+
+  // Navigating the page itself instead of the popup, or polling at another interval, turns this red.
+  await t.test('an open popup is sent to Plex and polled until stopped', () => {
+    const popup = makePopup();
+    const host = makeHost({ popup });
+    assert.equal(openPopup(host), popup);
+    const { calls, handlers } = makeHandlers();
+    const stop = sendToPlex(host, popup, handoff, handlers);
+    assert.deepEqual(popup.location.assigned, [handoff]);
+    assert.deepEqual(host.assigned, []);
+    assert.equal(typeof stop, 'function');
+    assert.equal(POLL_INTERVAL_MS, 2000);
+    assert.deepEqual([...host.timers.values()].map(({ ms }) => ms), [POLL_INTERVAL_MS]);
+    host.tick();
+    assert.deepEqual(calls, { ticks: 1, closed: 0 });
+    stop();
+    assert.equal(host.timers.size, 0);
+    host.tick();
+    assert.deepEqual(calls, { ticks: 1, closed: 0 });
+  });
+
+  // Dropping the redirect fallback, or opening a popup on a phone-sized viewport, turns this red.
+  await t.test('a blocked popup or a phone-sized viewport falls back to leaving the page', () => {
+    const blocked = makeHost();
+    assert.equal(openPopup(blocked), null);
+    const { calls, handlers } = makeHandlers();
+    assert.equal(sendToPlex(blocked, null, handoff, handlers), undefined);
+    assert.deepEqual(blocked.assigned, [handoff]);
+    assert.equal(blocked.timers.size, 0);
+    assert.deepEqual(calls, { ticks: 0, closed: 0 });
+    const phone = makeHost({ popup: makePopup(), narrow: true });
+    assert.equal(openPopup(phone), null);
+    assert.equal(phone.opened, 0);
+  });
+
+  // Not checking popup.closed on each tick, or leaving the timer running after it closes, turns this red.
+  await t.test('a popup closed early is reported once and stops the polling', () => {
+    const popup = makePopup();
+    const host = makeHost({ popup });
+    const { calls, handlers } = makeHandlers();
+    sendToPlex(host, popup, handoff, handlers);
+    popup.closed = true;
+    host.tick();
+    assert.deepEqual(calls, { ticks: 0, closed: 1 });
+    assert.equal(host.timers.size, 0);
+    host.tick();
+    assert.deepEqual(calls, { ticks: 0, closed: 1 });
+  });
+
+  // Reading state from the wrong part of the handoff URL, or throwing on a malformed one, turns this red.
+  await t.test('the sign-in state is read from the handoff forwardUrl', () => {
+    assert.equal(handoffState(handoff), 'abc');
+    assert.equal(handoffState('https://app.plex.tv/auth'), undefined);
+    assert.equal(handoffState(`https://app.plex.tv/auth#?${new URLSearchParams({ forwardUrl: 'https://media.example/auth/callback' })}`), undefined);
+    assert.equal(handoffState('nope'), undefined);
+  });
+
+  // Accepting a message with another type or an empty state turns this red.
+  await t.test('only a popup message with a non-empty state is accepted', () => {
+    assert.equal(isPopupMessage({ type: 'plex-sign-in', state: 'abc' }), true);
+    for (const data of [{ type: 'plex-sign-in', state: '' }, { type: 'other', state: 'abc' }, null, 'string']) {
+      assert.equal(isPopupMessage(data), false, JSON.stringify(data));
+    }
+  });
+});
+
 test('event stream delivery', async (t) => {
   const setup = async () => {
     const clock = { value: 1_800_000_000_000 };
