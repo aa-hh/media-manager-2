@@ -14,6 +14,7 @@ import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
 import { StatusInline } from '@/components/ui/status-inline';
 import { Table } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { adviceReason, recommendationLabels, useAdvice } from '../title/advice';
 import { ImportPanel } from './ImportPanel';
 import { buildRows, formatDuration, formatSpeed, groupRows, latestStep, type Group, type QueueItem, type Row } from './model';
 import { postAction, type DownloadsState } from './useDownloads';
@@ -87,6 +88,8 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
   const service = serviceName(item);
+  // Advice only: removal here never touches rTorrent, so this says whether removing the torrent there later is safe.
+  const advice = useAdvice(open ? item.downloadId : null, () => {});
   const confirm = async () => {
     setSending(true);
     setFailed(false);
@@ -107,7 +110,16 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
       onOpenChange={(next) => { if (!next) onCancel(); }}
       title="Remove from downloads?"
       subject={`${[row.label, row.quality, row.release].filter((part) => part !== '').join(' · ')}. The torrent keeps seeding in rTorrent; media-manager-2 never removes a torrent from here.`}
-      callout={failed ? <Callout look="risk" title={`${service} did not remove it. Try again.`} /> : undefined}
+      callout={advice?.kind !== 'ready' && !failed ? undefined : (
+        <div className="flex flex-col gap-2">
+          {advice?.kind === 'ready' && (
+            <Callout look={advice.advice.recommendation === 'safe' ? 'info' : 'warning'} title={`Hit and run: ${recommendationLabels[advice.advice.recommendation]}`}>
+              {[adviceReason(advice.advice.reason), advice.advice.globalRatio].filter((part) => part !== null).join('. ')}
+            </Callout>
+          )}
+          {failed && <Callout look="risk" title={`${service} did not remove it. Try again.`} />}
+        </div>
+      )}
       actions={(
         <>
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
