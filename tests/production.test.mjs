@@ -3575,18 +3575,26 @@ test('manual downloads are protected with tags, release profiles and a grab veto
   await vetoInBackground({ veto: async () => assert.fail('only a Grab is vetoed') }, 'sonarr', { eventType: 'Download' });
 
   assert.equal(await protection.ensureWebhook('sonarr'), false, 'nothing is registered without the address and the webhook secret');
+  state.sonarr.notifications = [{ id: 90, name: 'media-manager-2 grab veto', onGrab: true, fields: [{ name: 'url', value: 'http://old/hooks/grab/sonarr?token=t' }] }];
   setSetting(database, 'serviceAddresses', 'mediaManager.hookUrl', 'http://mm2.lan:8080/');
   setSetting(database, 'credentials', 'webhook.secret', 'hook-secret');
   assert.equal(await protection.ensureWebhook('sonarr'), true);
-  assert.equal(state.sonarr.notifications.length, 1);
+  assert.equal(state.sonarr.notifications.length, 1, 'the old grab-veto webhook is updated, not left behind');
   const [registered] = state.sonarr.notifications;
+  assert.equal(registered.id, 90);
+  assert.equal(registered.name, 'media-manager-2');
   assert.equal(registered.onGrab, true);
   assert.equal(registered.onDownload, true);
   assert.deepEqual(Object.fromEntries(registered.fields.map(({ name, value }) => [name, value])), {
     url: 'http://mm2.lan:8080/webhooks/sonarr', method: 1, username: 'media-manager-2', password: 'hook-secret',
   });
+  registered.fields = registered.fields.map((field) => (field.name === 'password' ? { ...field, value: '********' } : field));
   await protection.ensureWebhook('sonarr');
   assert.equal(state.sonarr.notifications.length, 1, 'the webhook is registered once');
+  assert.equal(state.sonarr.notifications[0].fields.find((field) => field.name === 'password').value, '********', 'an unchanged secret is not sent again');
+  setSetting(database, 'credentials', 'webhook.secret', 'rotated-secret');
+  await protection.ensureWebhook('sonarr');
+  assert.equal(state.sonarr.notifications[0].fields.find((field) => field.name === 'password').value, 'rotated-secret', 'a new secret reaches the service');
 
   // The stall and missed-search fixes ask whether a movie or episode is a manual download.
   assert.equal(protection.isProtected({ type: 'episode', service: 'sonarr', id: '50' }), true);

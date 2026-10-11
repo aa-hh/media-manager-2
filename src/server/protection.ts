@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import type { GrabRecord } from './grabs.js';
+import { getPreference, setPreference } from './preferences.js';
 import type { Subject } from './problems.js';
 import type { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -18,6 +20,8 @@ const RADARR_PROFILE = 'mm2 manual downloads';
 const seriesTag = (seriesId: number) => `mm2-manual-${seriesId}`;
 const seriesProfile = (seriesId: number) => `mm2 manual downloads: series ${seriesId}`;
 const WEBHOOK_NAME = 'media-manager-2';
+// The grab veto's own webhook before it joined the live-downloads receiver; found and renamed in place.
+const LEGACY_WEBHOOK_NAME = 'media-manager-2 grab veto';
 // A grab of a protected item counts as the owner's own when media-manager-2 sent a grab
 // with the same release title this recently; the webhook fires within seconds of the grab.
 const OWN_GRAB_WINDOW_MS = 10 * 60_000;
@@ -260,7 +264,7 @@ export const createProtection = (
       if (base === undefined || secret === undefined || !services[service].configured()) return false;
       const url = `${base.replace(/\/+$/, '')}/webhooks/${service}`;
       const notifications = await call(service, '/api/v3/notification');
-      const existing = Array.isArray(notifications) ? notifications.find((item) => isRecord(item) && item.name === WEBHOOK_NAME) : undefined;
+      const existing = Array.isArray(notifications) ? notifications.find((item) => isRecord(item) && (item.name === WEBHOOK_NAME || item.name === LEGACY_WEBHOOK_NAME)) : undefined;
       const wanted = {
         name: WEBHOOK_NAME,
         implementation: 'Webhook',
@@ -280,15 +284,21 @@ export const createProtection = (
           { name: 'password', value: secret },
         ],
       };
+      // The services mask a saved password, so a changed secret is noticed from a fingerprint of the last one sent.
+      const secretKey = `webhook.sent.${service}`;
+      const fingerprint = createHash('sha256').update(secret).digest('base64url');
       if (!isRecord(existing)) await call(service, '/api/v3/notification', 'POST', wanted);
       else {
         const fields = Array.isArray(existing.fields) ? existing.fields : [];
         const current = fields.find((field) => isRecord(field) && field.name === 'url');
-        // The services mask the saved password, so only the address and the grab event are compared.
-        if (existing.onGrab !== true || !isRecord(current) || current.value !== url) {
+        if (
+          existing.name !== WEBHOOK_NAME || existing.onGrab !== true || !isRecord(current) || current.value !== url
+          || getPreference(database, secretKey) !== fingerprint
+        ) {
           await call(service, `/api/v3/notification/${existing.id}`, 'PUT', { ...existing, ...wanted });
         }
       }
+      setPreference(database, secretKey, fingerprint);
       return true;
     },
 
