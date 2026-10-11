@@ -235,13 +235,22 @@ export const createGrabTracker = (options: {
     try {
       const checkpoint = readCheckpoint(service);
       const since = Math.max(startedAt - HISTORY_LOOKBACK_MS, (checkpoint ?? 0) - HISTORY_OVERLAP_MS);
-      const filter = { since, eventType: 'grabbed' } as const;
+      const filter = { since };
       const [queue, history] = await Promise.all([
         arr[service].queue(),
         service === 'sonarr' ? arr.sonarr.history(filter) : arr.radarr.history(filter),
       ]);
       const items = valueOrThrow(queue);
-      for (const grab of mergeGrabs(service, valueOrThrow(history))) recordGrab(grab);
+      const records = valueOrThrow(history);
+      for (const grab of mergeGrabs(service, records.filter((record) => record.eventType === 'grabbed'))) recordGrab(grab);
+      // The Download webhook is not the only way to learn of an import: without it, finished torrents would read as downloading forever.
+      for (const record of records) {
+        const hash = normalizeHash(record.downloadId);
+        const at = Date.parse(record.date ?? '');
+        if (hash === null || Number.isNaN(at)) continue;
+        if (record.eventType === 'downloadFolderImported') markOutcome(hash, 'imported_at', at);
+        if (record.eventType === 'downloadFailed') markOutcome(hash, 'failed_at', at);
+      }
       storeQueue(service, items);
       database.prepare(`
         INSERT INTO grab_checkpoints (service, history_checked_at) VALUES (?, ?)

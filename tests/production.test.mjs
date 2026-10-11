@@ -3837,6 +3837,24 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     second.database.close();
   });
 
+  // Relying on the Download webhook alone leaves finished, seeding torrents showing as downloading on title pages forever.
+  await t.test('the history check marks grabs imported or failed without webhooks', async () => {
+    const { database, fake, tracker } = setup();
+    fake.sonarr.state.history = [
+      historyRecord({ downloadId: episodeHash, seriesId: 3, episodeId: 31, date: '2026-10-08T11:00:00Z' }),
+      historyRecord({ downloadId: packHash, seriesId: 4, episodeId: 41, date: '2026-10-08T11:00:00Z' }),
+      historyRecord({ downloadId: episodeHash, seriesId: 3, episodeId: 31, eventType: 'downloadFolderImported', date: '2026-10-08T11:30:00Z' }),
+      historyRecord({ downloadId: packHash, seriesId: 4, episodeId: 41, eventType: 'downloadFailed', date: '2026-10-08T11:40:00Z' }),
+    ];
+    await tracker.reconcile();
+    assert.equal(listGrabs(database).length, 2);
+    assert.equal(findGrab(database, episodeHash).importedAt, Date.parse('2026-10-08T11:30:00Z'));
+    assert.equal(findGrab(database, episodeHash).failedAt, null);
+    assert.equal(findGrab(database, packHash).failedAt, Date.parse('2026-10-08T11:40:00Z'));
+    assert.equal(findGrab(database, packHash).importedAt, null);
+    database.close();
+  });
+
   // Dropping delayed (pending) items, keeping a stale queue after a failed read, or not marking the service down turns this red.
   await t.test('the queue snapshot keeps delayed releases and survives a failed read', async () => {
     const { database, fake, tracker } = setup();
@@ -7211,7 +7229,7 @@ test('second versions are served under their movie and series, and a check flags
 test('second versions that failed before failure codes get the code their text maps to', async () => {
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const database = new DatabaseSync(':memory:');
-  migrateDatabase(database, applicationMigrations.slice(0, -1));
+  migrateDatabase(database, applicationMigrations.slice(0, applicationMigrations.findIndex((migration) => migration.includes('ADD COLUMN failure_code'))));
   const insert = database.prepare(`
     INSERT INTO second_versions (service, movie_id, release_title, guid, indexer, quality, state, failure, created_at, updated_at)
     VALUES ('radarr', 1, 'x', 'g', 'i', 'q', ?, ?, 0, 0)
