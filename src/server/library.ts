@@ -15,6 +15,7 @@ import {
 } from './services/arr.js';
 import { lookupTitle } from './search.js';
 import type { SecondVersionRow } from './secondVersionRows.js';
+import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
 import type { TitleStore } from './titleStore.js';
 
 export type { FileDetail };
@@ -87,6 +88,7 @@ export type SeriesDetail = {
   backdropUrl: string | null;
   rating: number | null;
   ratingVotes: number | null;
+  ratingsBySite: RatingsBySite;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -320,7 +322,7 @@ const episodeDetails = (episodes: Episode[]): EpisodeDetail[] => episodes
   }))
   .sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
 
-const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unknown; episodes?: Episode[]; owned: boolean }): SeriesDetail => ({
+const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unknown; episodes?: Episode[]; owned: boolean; ratingsBySite: RatingsBySite }): SeriesDetail => ({
   id: extras.owned ? record.id : null,
   title: record.title,
   alternateTitles: record.alternateTitles,
@@ -339,6 +341,7 @@ const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unkno
   backdropUrl: imageUrl(record.images, 'fanart'),
   rating: record.rating,
   ratingVotes: record.ratingVotes,
+  ratingsBySite: extras.ratingsBySite,
   certification: record.certification,
   genres: record.genres,
   runtime: record.runtime,
@@ -475,7 +478,10 @@ type VersionRows = {
 };
 
 // The tracked version comes from Sonarr or Radarr; second versions come from this app's own records, beside it.
-export const createLibrary = (services: ArrServices, versionRows: VersionRows, store: TitleStore) => {
+export const createLibrary = (services: ArrServices, versionRows: VersionRows, store: TitleStore, mdblist?: Pick<Mdblist, 'showRatings'>) => {
+  const showRatings = (record: Series) => (
+    mdblist === undefined ? Promise.resolve(noRatings) : mdblist.showRatings(store, { tvdbId: record.tvdbId, tmdbId: record.tmdbId })
+  );
   const outcome = <T>(result: Result<T[]>): Outcome => (
     result.kind === 'ok' ? { kind: 'ok', count: result.value.length } : { kind: result.kind === 'not_found' ? 'unreachable' : result.kind }
   );
@@ -513,9 +519,10 @@ export const createLibrary = (services: ArrServices, versionRows: VersionRows, s
       ]);
       if (record.kind !== 'ok') return record;
       if (episodes.kind !== 'ok') return episodes;
+      const ratingsBySite = await showRatings(record.value);
       return {
         kind: 'ok',
-        value: { ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true }), secondVersions: versionRows({ service: 'sonarr', seriesId: id }) },
+        value: { ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite }), secondVersions: versionRows({ service: 'sonarr', seriesId: id }) },
       };
     },
 
@@ -544,7 +551,7 @@ export const createLibrary = (services: ArrServices, versionRows: VersionRows, s
       if (found.kind !== 'ok') return found;
       const show = service === 'sonarr' ? parseSeries(found.value) : null;
       const movie = service === 'radarr' ? parseMovie(found.value) : null;
-      if (show !== null) return { kind: 'ok', value: seriesDetail(show, { owned: false }) };
+      if (show !== null) return { kind: 'ok', value: seriesDetail(show, { owned: false, ratingsBySite: await showRatings(show) }) };
       return movie === null ? { kind: 'not_found' } : { kind: 'ok', value: movieDetail(movie, { owned: false }) };
     },
 
