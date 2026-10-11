@@ -76,7 +76,14 @@ const howFoundWords: Record<string, string> = {
 };
 
 const stepWords: Record<StepKind, string> = { problem: 'Problem', fix: 'Fix', result: 'Result' };
-const versionWords: Record<string, string> = { added: 'Second version added' };
+const versionWords: Record<string, string> = {
+  added: 'Second version added',
+  deleted: 'Second version deleted',
+  torrent_removed: 'Torrent removed',
+  torrent_kept: 'Torrent kept',
+};
+// Second version events that also show under Deletions.
+const deletionKinds: ReadonlySet<string> = new Set(['deleted', 'torrent_removed', 'torrent_kept']);
 
 const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
 const integer = (value: unknown) => (typeof value === 'number' && Number.isSafeInteger(value) ? value : null);
@@ -186,7 +193,7 @@ export const createHistory = (options: {
     };
   };
 
-  type OwnRecord = { at: number; subject: Subject; event: () => Promise<HistoryEvent> };
+  type OwnRecord = { at: number; subject: Subject; kind?: string; event: () => Promise<HistoryEvent> };
 
   const ownEvent = async (subject: Subject, fields: Pick<HistoryEvent, 'id' | 'at' | 'event' | 'detail' | 'release' | 'quality' | 'eventType'>): Promise<HistoryEvent> => ({
     ...fields,
@@ -238,6 +245,7 @@ export const createHistory = (options: {
     return {
       at,
       subject,
+      kind: String(row.kind),
       event: () => ownEvent(subject, {
         id: `mm2-version:${Number(row.id)}`,
         at,
@@ -271,13 +279,14 @@ export const createHistory = (options: {
 
     let ownEvents: HistoryEvent[] = [];
     let moreSteps = false;
-    if (filter === 'all' || filter === 'fixes') {
+    if (filter === 'all' || filter === 'fixes' || filter === 'deletions') {
       // Older steps belong to a later page while Sonarr or Radarr still has more; a later page starts at the oldest event already shown.
       const times = arrEvents.flatMap((event) => event?.at ?? []);
       const since = hasMore && times.length > 0 ? Math.min(...times) : 0;
       const matches = await titleMatcher(query);
-      // Second version events are not fixes, so they show under All only.
-      const own = filter === 'all' ? [...readSteps(since), ...readVersionEvents(since)].sort((a, b) => b.at - a.at) : readSteps(since);
+      // Second version events are not fixes; deleting one also shows under Deletions.
+      const own = filter === 'all' ? [...readSteps(since), ...readVersionEvents(since)].sort((a, b) => b.at - a.at)
+        : filter === 'fixes' ? readSteps(since) : readVersionEvents(since).filter((record) => deletionKinds.has(record.kind ?? ''));
       const matched = own.filter((record) => (query.before === undefined || record.at <= query.before) && matches(record.subject));
       moreSteps = matched.length > PAGE_SIZE;
       ownEvents = await Promise.all(matched.slice(0, PAGE_SIZE).map((record) => record.event()));

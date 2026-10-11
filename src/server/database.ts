@@ -315,6 +315,8 @@ export const applicationMigrations = [
     detail TEXT NOT NULL
   ) STRICT;
   CREATE INDEX version_events_at ON version_events (at);`,
+  // The imported file's device and inode, so a delete removes only the file this app linked there.
+  'ALTER TABLE second_versions ADD COLUMN file_inode TEXT;',
   // Tracker accounts moved from one fixed set of keys per tracker to one credential and software per added tracker.
   // Blutopia's token becomes blutopia.cc's credential (adding the tracker); blutopia.cc runs UNIT3D whenever it is
   // added or had a token. The Beyond-HD and PrivateHD sign-ins and blutopia.url are gone: the address is now https://<host>.
