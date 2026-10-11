@@ -26,6 +26,7 @@ export type SearchResult = {
   posterUrl: string | null;
   inLibrary: boolean;
   libraryId: number | null;
+  files: number | null;
   tvdbId: number | null;
   tmdbId: number | null;
   imdbId: string | null;
@@ -226,6 +227,7 @@ function ResultRow({ result, onOpen, onKeyDown }: {
         meta={meta}
         overview={result.overview ?? undefined}
         status={result.inLibrary ? <Badge variant="plain" icon={<Check aria-hidden="true" />}>In library</Badge> : undefined}
+        files={result.files === null ? undefined : result.files === 0 ? 'No file yet' : `${result.files} file${result.files === 1 ? '' : 's'}`}
         // The row already opens the title page, where adding happens; this only looks like the outline Add button, so it is
         // neither a button nor focusable, and its click falls through to the row.
         action={result.inLibrary ? undefined : (
