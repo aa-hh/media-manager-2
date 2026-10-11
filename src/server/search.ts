@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { type ArrServices, type Image, type Movie, parseMovie, parseSeries, type Result, type Series } from './services/arr.js';
 import type { Title, TitleStore } from './titleStore.js';
+import { readTitle } from './titles.js';
 
 export type SearchQuery =
   | { kind: 'name'; term: string }
@@ -23,6 +24,7 @@ export type SearchResult = {
   posterUrl: string | null;
   inLibrary: boolean;
   libraryId: number | null;
+  files: number | null;
   tvdbId: number | null;
   tmdbId: number | null;
   imdbId: string | null;
@@ -99,6 +101,7 @@ const toSeries = (record: Series): SearchResult | undefined => {
     posterUrl: posterUrl(record.images),
     inLibrary: libraryId !== null,
     libraryId,
+    files: null,
     tvdbId,
     tmdbId: record.tmdbId,
     imdbId: record.imdbId,
@@ -121,6 +124,7 @@ const toMovie = (record: Movie): SearchResult | undefined => {
     posterUrl: posterUrl(record.images),
     inLibrary: libraryId !== null,
     libraryId,
+    files: null,
     tvdbId: null,
     tmdbId,
     imdbId: record.imdbId,
@@ -221,6 +225,14 @@ const pending = { outcome: { kind: 'pending' } as const, results: [] };
 export const createSearch = (database: DatabaseSync, services: ArrServices, store: TitleStore) => {
   const { now } = store;
 
+  // Sonarr's lookup sends every series count as zero, and a stored lookup can be ten minutes old, so a library title's
+  // file count comes from this app's own copy of the library, read at answer time. A Radarr movie has one file at most.
+  const withFiles = (result: SearchResult): SearchResult => {
+    const detail = result.libraryId === null ? undefined : readTitle(database, result.service, result.libraryId)?.detail;
+    if (detail === undefined) return result;
+    return { ...result, files: result.service === 'sonarr' ? (detail as Series).statistics.episodeFileCount : (detail as Movie).hasFile ? 1 : 0 };
+  };
+
   const cachedLookup = async (service: Service, term: string | undefined): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
     const { part, idField, title, normalize } = lookups[service];
     if (term !== undefined && services[service].configured()) {
@@ -260,7 +272,8 @@ export const createSearch = (database: DatabaseSync, services: ArrServices, stor
         return { results: merge(sonarr.results, radarr.results), services: { sonarr: sonarr.outcome, radarr: radarr.outcome } };
       };
       await Promise.all((['sonarr', 'radarr'] as const).map(async (service) => {
-        const answer = await cachedLookup(service, lookupTerm(query, service));
+        const found = await cachedLookup(service, lookupTerm(query, service));
+        const answer = { ...found, results: found.results.map(withFiles) };
         answers[service] = answer;
         if ((answers.sonarr === undefined || answers.radarr === undefined) && answer.results.length > 0) onPartial?.(respond());
       }));

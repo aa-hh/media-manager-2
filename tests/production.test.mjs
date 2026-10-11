@@ -6611,7 +6611,7 @@ test('operator command stores settings from stdin and checks connections without
   assert.equal(relisted.stdout.split('\n').includes('credentials plex.token'), false);
 });
 
-// Routing an identifier to the wrong service, letting one failed service hide the other's results, sorting library matches after new ones, passing a service-local or full-size image URL to the browser, holding the faster service's results until the slower one answers, or caching a failed lookup or serving one past ten minutes breaks search.
+// Routing an identifier to the wrong service, letting one failed service hide the other's results, sorting library matches after new ones, passing a service-local or full-size image URL to the browser, holding the faster service's results until the slower one answers, taking a library title's file count from its lookup record (Sonarr's says zero) or a stored answer, or caching a failed lookup or serving one past ten minutes breaks search.
 test('one search routes to Sonarr and Radarr and reports each outcome', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { deleteSetting, setSetting } = await import(settingsModuleUrl);
@@ -6638,7 +6638,7 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   ];
   const shows = [
     { title: 'Dune: Prophecy', year: 2024, tvdbId: 1, network: 'HBO', status: 'continuing', ratings: { value: 7.4 }, overview: 'Sisters.', images: poster('https://artworks.thetvdb.com/banners/v4/series/1/posters/a.jpg') },
-    { title: 'Dune', year: 2000, tvdbId: 2, id: 9, network: 'Sci Fi', status: 'ended', images: poster(`/MediaCover/2/poster.jpg?apikey=${sonarrKey}`) },
+    { title: 'Dune', year: 2000, tvdbId: 2, id: 9, network: 'Sci Fi', status: 'ended', statistics: { episodeFileCount: 0 }, images: poster(`/MediaCover/2/poster.jpg?apikey=${sonarrKey}`) },
     { title: 'Dune', tvdbId: 2 },
     { title: '', tvdbId: 3 },
   ];
@@ -6646,6 +6646,9 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
     { title: 'Dune', year: 2021, tmdbId: 438631, imdbId: 'tt1160419', studio: 'Legendary', status: 'released', ratings: { imdb: { value: 8 }, tmdb: { value: 7.8 } }, images: poster('https://image.tmdb.org/t/p/original/dune.jpg') },
     { title: 'Dune', year: 1984, tmdbId: 841, id: 4, ratings: { tmdb: { value: 0 }, imdb: { value: 6.3 } } },
   ];
+  const libraryCopy = database.prepare('INSERT OR REPLACE INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  libraryCopy.run('sonarr', 9, 'Dune', 2000, JSON.stringify({ id: 9, statistics: { episodeFileCount: 2 } }), 'x', 0);
+  libraryCopy.run('radarr', 4, 'Dune', 1984, JSON.stringify({ id: 4, hasFile: false }), 'x', 0);
   const { fake, ...services } = connectArr(database, { sonarr: { apiKey: sonarrKey }, radarr: { apiKey: radarrKey } });
   const calls = () => ['sonarr', 'radarr'].flatMap((service) => fake[service].requests.map(({ path, params }) => [service, path, params.get('term')]));
   const clearCalls = () => {
@@ -6679,9 +6682,10 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   assert.deepEqual(show, {
     type: 'tv', service: 'sonarr', key: 'tvdb:1', title: 'Dune: Prophecy', year: 2024, network: 'HBO', status: 'continuing',
     rating: 7.4, overview: 'Sisters.', posterUrl: 'https://artworks.thetvdb.com/banners/v4/series/1/posters/a_t.jpg', inLibrary: false, libraryId: null,
-    tvdbId: 1, tmdbId: null, imdbId: null,
+    files: null, tvdbId: 1, tmdbId: null, imdbId: null,
   });
   assert.equal(libraryShow.libraryId, 9);
+  assert.deepEqual([libraryShow.files, libraryMovie.files, movie.files], [2, 0, null]);
   assert.equal(libraryShow.posterUrl, null);
   assert.equal(movie.network, 'Legendary');
   assert.equal(movie.posterUrl, 'https://image.tmdb.org/t/p/w185/dune.jpg');
@@ -6753,6 +6757,9 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   const cached = await lookUp('Dune');
   assert.equal(calls().length, 0);
   assert.deepEqual(cached, first);
+  libraryCopy.run('radarr', 4, 'Dune', 1984, JSON.stringify({ id: 4, hasFile: true }), 'x', 0);
+  assert.equal((await lookUp('Dune')).results.find((result) => result.key === 'tmdb:841').files, 1);
+  assert.equal(calls().length, 0);
   clock.value += LOOKUP_CACHE_MS - 1;
   await lookUp('Dune');
   assert.equal(calls().length, 0);
