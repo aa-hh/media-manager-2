@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { Button } from './components/ui/button';
-import { readSearchQuery, SearchBox, SearchResults, useDebouncedSearch, useSearch, type SearchResult } from './Search';
-import { TitleView } from './Title';
+import { Calendar } from './calendar/Calendar';
+import type { DownloadsState } from './downloads/useDownloads';
+import { Library } from './library/Library';
+import { navigate, replace, routeFor, useLocation } from './navigation';
+import { readSearchQuery, SearchBox, SearchResults, useDebouncedSearch, useSearch } from './Search';
+import { Overview } from './title/Overview';
 
 type HomeProps = {
   headingRef: RefObject<HTMLHeadingElement | null>;
@@ -10,6 +14,7 @@ type HomeProps = {
   signOutProblem: ReactNode;
   onSignOut: () => void;
   onUnauthenticated: () => void;
+  downloadsState: DownloadsState;
   downloads?: ReactNode;
   renderBar?: (showDownloads: () => void) => ReactNode;
 };
@@ -19,13 +24,17 @@ const writeSearchQuery = (query: string) => {
   const trimmed = query.trim();
   if (trimmed === '') url.searchParams.delete('q');
   else url.searchParams.set('q', trimmed);
-  url.pathname = trimmed === '' ? '/' : '/search';
-  if (url.href !== window.location.href) window.history.replaceState(null, '', url);
+  // Emptying the box leaves other screens (calendar, downloads, a title) where they are; only the search page goes home.
+  if (trimmed !== '') url.pathname = '/search';
+  else if (url.pathname === '/search') url.pathname = '/';
+  if (url.href !== window.location.href) replace(`${url.pathname}${url.search}`);
 };
 
-export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloads, renderBar }: HomeProps) {
+const navItems = [{ label: 'Library', path: '/' }, { label: 'Calendar', path: '/calendar' }, { label: 'Downloads', path: '/downloads' }];
+
+export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloadsState, downloads, renderBar }: HomeProps) {
   const [query, setQuery] = useState(readSearchQuery);
-  const [opened, setOpened] = useState<SearchResult | undefined>(undefined);
+  const { pathname } = useLocation();
   const { state, run } = useSearch(onUnauthenticated);
 
   const search = useCallback((value: string) => {
@@ -35,10 +44,17 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
   useDebouncedSearch(query, search);
 
   useEffect(() => {
-    const onPopState = () => setQuery(readSearchQuery());
+    // Replacing the address while typing also fires this; keep the typed text unless the address differs from it.
+    const onPopState = () => setQuery((current) => (current.trim() === readSearchQuery() ? current : readSearchQuery()));
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  const view = pathname === '/search' || query.trim() !== '' ? 'search'
+    : pathname === '/downloads' ? 'downloads'
+      : pathname === '/calendar' ? 'calendar'
+        : /^\/(series|movie|title)\//.test(pathname) ? 'title'
+          : 'library';
 
   return (
     <div className="min-h-screen">
@@ -48,15 +64,30 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         </h1>
         <SearchBox
           value={query}
-          onChange={(value) => {
-            setOpened(undefined);
-            setQuery(value);
-          }}
-          onSubmit={(value) => {
-            setOpened(undefined);
-            search(value);
-          }}
+          onChange={setQuery}
+          onSubmit={search}
         />
+        <nav aria-label="Main" className="flex shrink-0 items-center gap-4">
+          {navItems.map((item) => {
+            const current = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);
+            return (
+              <a
+                key={item.path}
+                href={item.path}
+                aria-current={current ? 'page' : undefined}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                  event.preventDefault();
+                  setQuery('');
+                  navigate(item.path);
+                }}
+                className={current ? 'text-sm font-semibold text-[var(--ink)]' : 'text-sm text-[var(--secondary-ink)] hover:text-[var(--ink)]'}
+              >
+                {item.label}
+              </a>
+            );
+          })}
+        </nav>
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {signOutProblem}
           <Button variant="quiet" className="min-h-9 px-3 text-sm" onClick={onSignOut} disabled={signOutDisabled}>
@@ -65,22 +96,19 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         </div>
       </header>
       <main>
-        {opened === undefined
-          ? downloads !== undefined && query.trim() === ''
+        {view === 'search'
+          ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
+          : view === 'downloads'
             ? downloads
-            : <SearchResults state={state} onOpen={setOpened} onRetry={() => search(query)} />
-          : (
-            <TitleView
-              result={opened}
-              onBack={() => setOpened(undefined)}
-              onAdded={(libraryId) => setOpened({ ...opened, inLibrary: true, libraryId })}
-              onUnauthenticated={onUnauthenticated}
-            />
-          )}
+            : view === 'calendar'
+              ? <Calendar downloads={downloadsState} onUnauthenticated={onUnauthenticated} />
+              : view === 'title'
+                ? <Overview downloads={downloadsState} onUnauthenticated={onUnauthenticated} />
+                : <Library downloads={downloadsState} onUnauthenticated={onUnauthenticated} />}
       </main>
       {renderBar?.(() => {
-        setOpened(undefined);
         setQuery('');
+        navigate('/downloads');
       })}
     </div>
   );
