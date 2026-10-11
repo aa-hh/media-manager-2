@@ -17,7 +17,11 @@ export type FlaggedAction =
   | { kind: 'manual_import'; service: Service; downloadId: string }
   | { kind: 'open_health' };
 
-export type FlaggedItem = { problem: Problem; kindWord: string; label: string; detail: string; actions: FlaggedAction[] };
+// Second versions that DELETE /api/second-versions/:id can delete now. Kept out of actions, because the shipped client
+// treats any action kind it does not know as a search.
+export type FlaggedItem = {
+  problem: Problem; kindWord: string; label: string; detail: string; actions: FlaggedAction[]; deleteSecondVersionIds: number[];
+};
 
 export type Wanted = {
   service: Service;
@@ -84,11 +88,18 @@ export const createFlagged = (options: {
     return result.kind === 'ok' ? result.value.seriesId : null;
   };
 
+  // Only versions a delete would accept now: imported or failed, never one still sending, downloading or importing.
+  const deletableVersions = ({ kind, subject, hash }: Problem) => (kind === ORPHANED || kind === FILE_MISSING
+    ? database.prepare(`
+        SELECT id FROM second_versions WHERE state IN ('imported', 'failed') AND service = ? AND ${subject.type === 'movie' ? 'movie_id' : 'episode_id'} = ?
+          AND (? IS NULL OR hash = ?) ORDER BY id
+      `).all(subject.service, Number(subject.id), hash, hash).map((row) => Number(row.id))
+    : []);
+
   const actionsFor = async (problem: Problem, label: string): Promise<FlaggedAction[]> => {
     const { subject } = problem;
     if (problem.kind === 'tracker_cooldown' || subject.type === 'tracker' || subject.type === 'dependency') return [{ kind: 'open_health' }];
     // The title or the file is gone, so picking a release or searching cannot help.
-    // AA-97 (Delete a second version, with the choice to keep or remove its torrent) adds a delete action here.
     if (problem.kind === ORPHANED || problem.kind === FILE_MISSING) return [];
     if (subject.type === 'movie') {
       const movieId = Number(subject.id);
@@ -118,6 +129,7 @@ export const createFlagged = (options: {
         label,
         detail: problem.steps.at(-1)?.text ?? problem.summary,
         actions: await actionsFor(problem, label),
+        deleteSecondVersionIds: deletableVersions(problem),
       };
     }));
     const handled = database.prepare('SELECT COUNT(*) AS count FROM problems WHERE resolved_at >= ?').get(now() - WEEK_MS);

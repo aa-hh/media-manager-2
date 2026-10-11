@@ -116,12 +116,14 @@ export const createVersionImport = (options: {
   };
 
   const markImported = (row: Row, destination: string) => {
+    const { dev, ino } = statSync(destination, { bigint: true });
+    const inode = `${dev}:${ino}`;
     const at = now();
     database.exec('BEGIN IMMEDIATE;');
     try {
       const changed = database.prepare(`
-        UPDATE second_versions SET state = 'imported', file_path = ?, failure = NULL, imported_at = ?, updated_at = ? WHERE id = ? AND state = 'importing'
-      `).run(destination, at, at, row.id).changes;
+        UPDATE second_versions SET state = 'imported', file_path = ?, file_inode = ?, failure = NULL, imported_at = ?, updated_at = ? WHERE id = ? AND state = 'importing'
+      `).run(destination, inode, at, at, row.id).changes;
       if (changed === 1) {
         database.prepare("INSERT INTO version_events (second_version_id, at, kind, detail) VALUES (?, ?, 'added', ?)").run(row.id, at, basename(destination));
       }
@@ -131,7 +133,6 @@ export const createVersionImport = (options: {
       throw error;
     }
     resolveOpen(IMPORT_PROBLEM_KIND, subjectOf(row), 'A later second version imported.');
-    resolveOpen(FOLDER_PROBLEM_KIND, folderSubject(row.service), `Imported into hostPaths versions.${row.service}.`);
   };
 
   const torrentFiles = async (hash: string) => {
@@ -270,18 +271,19 @@ export const createVersionImport = (options: {
     }
   };
 
-  const importTorrent = async (rows: Row[]) => {
+  // 'skipped' when Sonarr, Radarr or rTorrent did not answer, so the versions folder was not tried.
+  const importTorrent = async (rows: Row[]): Promise<'done' | 'skipped' | 'folder_error'> => {
     const { service, hash } = rows[0];
     const root = versionsFolder(service);
-    if (root === undefined) return;
+    if (root === undefined) return 'skipped';
     let files: string[];
     let places: Map<number, Place | string> | undefined;
     try {
       [files, places] = await Promise.all([torrentFiles(hash), placesFor(rows)]);
     } catch {
-      return;
+      return 'skipped';
     }
-    if (places === undefined) return;
+    if (places === undefined) return 'skipped';
     const videos = files.filter(isVideo);
     const { matched, reasons } = matchFiles(rows, videos, places);
     // Rows sharing one file (a file holding several episodes) get one hardlink between them.
@@ -301,6 +303,7 @@ export const createVersionImport = (options: {
       bySource.set(source, [...bySource.get(source) ?? [], { row, place }]);
     }
     const folders = new Set<string>();
+    let outcome: 'done' | 'folder_error' = 'done';
     for (const [source, sharing] of bySource) {
       sharing.sort((a, b) => Number(a.place.episode) - Number(b.place.episode));
       const { place } = sharing[0];
@@ -316,12 +319,14 @@ export const createVersionImport = (options: {
             state: 'needs_you',
             summary: `Second versions cannot be imported into ${root} (hostPaths versions.${service}): ${error.message}`,
           });
+          outcome = 'folder_error';
           break;
         }
         for (const { row } of sharing) fail(row, place.title, error instanceof Error ? error.message : 'The hardlink failed.');
       }
     }
     if (folders.size > 0) await scan(service, root, folders);
+    return outcome;
   };
 
   const run = async () => {
@@ -360,8 +365,16 @@ export const createVersionImport = (options: {
     }));
     const byHash = new Map<string, Row[]>();
     for (const row of rows) byHash.set(row.hash, [...byHash.get(row.hash) ?? [], row]);
-    for (const group of byHash.values()) await importTorrent(group);
+    const unsettled = new Set<Service>();
+    for (const group of byHash.values()) if (await importTorrent(group) !== 'done') unsettled.add(group[0].service);
+    // A run with no folder error clears the folder problem, also when it had nothing to import or every row failed
+    // for another reason before the folder was tried.
+    for (const service of ['radarr', 'sonarr'] as const) {
+      if (versionsFolder(service) !== undefined && !unsettled.has(service)) {
+        resolveOpen(FOLDER_PROBLEM_KIND, folderSubject(service), `An import run for hostPaths versions.${service} hit no folder error.`);
+      }
+    }
   };
 
-  return { run };
+  return { run, scan };
 };
