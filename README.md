@@ -31,7 +31,8 @@ npm start
 
 The server prepares its database, then prints its listening address. If the
 database cannot be prepared it prints `Database initialization failed.` and
-exits unsuccessfully. Production runs the Hono server, which serves the
+exits unsuccessfully. An invalid `TRACKER_RULES` stops it the same way, with a
+message naming the tracker and field at fault. Production runs the Hono server, which serves the
 compiled React app; Vite's preview server is not used.
 
 ### Environment variables
@@ -44,6 +45,7 @@ compiled React app; Vite's preview server is not used.
 | `APP_ORIGIN` | yes | The public origin people open, such as `https://media.example.com` |
 | `PLEX_OWNER_ID` | yes | Your numeric Plex account ID; only this account can sign in |
 | `BACKUP_KEY` | for backups | 64 hex characters that encrypt every backup; see [Backups](#backups-optional) |
+| `TRACKER_RULES` | no | Hit-and-run rules as JSON keyed by tracker hostname; see [Tracker hit-and-run rules](#tracker-hit-and-run-rules) |
 
 `DB_PATH` must be absolute, outside the application folder, and inside a
 folder owned by the current user with no group or other access. A new folder
@@ -89,17 +91,12 @@ on disk, through these saved settings:
 | `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
 | `hostPaths` | `library.radarr` | Absolute Radarr library root, such as `/home/<user>/Movies`; same use as above |
-| `serviceAddresses` | `blutopia.url` | Optional. Blutopia base URL with scheme, such as `https://blutopia.cc` |
-| `credentials` | `blutopia.apiToken` | Optional. Blutopia API token from the site's API settings |
-| `serviceAddresses` | `privatehd.url` | Optional. PrivateHD base URL with scheme |
-| `credentials` | `privatehd.username` | Optional. PrivateHD account username |
-| `credentials` | `privatehd.password` | Optional. PrivateHD account password |
-| `credentials` | `privatehd.pid` | Optional. PrivateHD PID |
-| `serviceAddresses` | `beyondhd.url` | Optional. Beyond-HD base URL with scheme |
-| `credentials` | `beyondhd.apiKey` | Optional. Beyond-HD API key |
-| `credentials` | `beyondhd.rssKey` | Optional. Beyond-HD RSS key |
-
-The backup settings are listed under [Backups](#backups-optional).
+| `hostPaths` | `downloads.versions` | Absolute folder rTorrent downloads second versions into |
+| `hostPaths` | `versions.radarr` | Absolute folder finished movie second versions are hardlinked into. Must be on the same drive as `downloads.versions` and inside a Plex Movies library |
+| `hostPaths` | `versions.sonarr` | Same as above for episodes, inside a Plex TV library. Episode second versions wait until it is set |
+The backup settings are listed under [Backups](#backups-optional); tracker
+settings under [Tracker accounts](#tracker-accounts) and
+[Tracker hit-and-run rules](#tracker-hit-and-run-rules).
 
 Until a settings screen exists, save and check settings with the command-line
 tool, run from the app folder with the same `DB_PATH` as the server:
@@ -127,24 +124,138 @@ trailing line break is removed. `settings list` prints each saved category and
 key, never a value.
 
 `connections check` prints one line per service, in the order sonarr, radarr,
-rtorrent, plex, blutopia, privatehd, beyondhd, and exits 0 only when all seven
-are `ok`. Tracker lines print `ok` without a version.
+rtorrent, plex, then one `<host>: <result>` line per added tracker. It exits 0
+only when every service is `ok` and every tracker `ok` or `unsupported`.
+Tracker lines print `ok` without a version.
 
 - `ok <version>`: the service accepted the saved credentials and reported its version.
 - `not_configured`: the URL or a credential for that service is missing or empty.
 - `rejected`: the service refused the saved credentials.
 - `unreachable`: the request failed, timed out after 10 seconds, or returned an unexpected answer.
+- `too_old` (trackers only): the site's UNIT3D is older than v8.3.4, which added its account API.
+- `unsupported` (trackers only): the tracker's software is "other", which has no account connection.
 
 The output never contains a URL or a setting value.
 
 ### Tracker accounts
 
-`GET /api/trackers` returns one entry per tracker (Blutopia, PrivateHD,
-Beyond-HD, in that order). Only Blutopia returns stats: `username` and `group`
-as text, and `uploaded`, `downloaded` and `buffer` (bytes), `ratio`,
-`seeding`, `leeching`, `seedbonus` and `hitAndRuns` as numbers, each `null`
-when Blutopia leaves it out. PrivateHD and Beyond-HD return
-`stats: "unsupported"`. Trackers are only ever reached through their APIs.
+Each added tracker has a site software, and one account connection per
+software covers every tracker running it. The app reaches the site at
+`https://<host>` and only through its API; the credential goes in a header,
+never in a URL, a log or an answer to the browser.
+
+| Category | Key | Meaning |
+| --- | --- | --- |
+| `trackerConfiguration` | `software.<host>` | `unit3d`, `gazelle`, `nexusphp` or `other` (the default) |
+| `credentials` | `trackers.<host>` | The account credential for that software |
+
+| Software | Credential | Request |
+| --- | --- | --- |
+| UNIT3D | API token from the site's API settings | `GET /api/user`, `Authorization: Bearer <token>`. Needs UNIT3D v8.3.4 or later |
+| Gazelle (Orpheus code, Redacted) | API key from the site's user settings | `GET /ajax.php?action=index`, `Authorization: token <key>`, then the bare key if that is refused (Redacted); the form that worked is remembered until restart |
+| NexusPHP | API token from the site | `GET /api/profile`, `Authorization: Bearer <token>` |
+| Other | none | no account connection; only the hit-and-run rule applies |
+
+Each tracker is checked at most once every five minutes, unless its software
+or credential changes. A Gazelle "Rate limit exceeded" answer (or HTTP 429)
+reads as `unreachable` and is not reused, so the next call checks again. A check gives `{ kind: "ok", stats }` or
+`not_configured`, `rejected`, `unreachable`, `too_old` or `unsupported`, as
+for `connections check`. `stats` has `ratio`, `uploadedBytes`,
+`downloadedBytes`, `bufferBytes`, `seeding`, `leeching`, `bonus`,
+`hitAndRuns` (`{ count, kind: "lifetime" }`) and `requiredRatio`, each `null`
+where the software reports no such field:
+
+- UNIT3D fills all but `requiredRatio`. Sizes sent as text such as
+  "1.23 TiB" count binary units in 1024s and decimal units in 1000s.
+  `hitAndRuns` counts every hit and run the account ever had; Health warns
+  when it rises, until the next restart.
+- Gazelle fills `ratio`, the byte counts, `bonus` and `requiredRatio`; that
+  required ratio is the account's minimum in removal advice and Health, ahead
+  of the rule's `minGlobalRatio`. `seeding` stays `null`: the call that
+  reports it allows 4 requests a minute.
+- NexusPHP fills `ratio` (worked out from the byte counts), the byte counts
+  and `bonus`.
+
+`GET /api/trackers` returns `{ host, software, connection }` per added
+tracker. The settings screen uses these routes under the owner guard:
+
+- `GET /api/settings/trackers` rows also carry `software`, `credentialSet`
+  (whether a credential is saved, never the credential) and `connection`.
+- `PUT /api/settings/trackers/<host>/software` `{ software }` saves the
+  software; an unknown one gets 400.
+- `PUT /api/settings/trackers/<host>/credential` `{ value }` saves the
+  credential; a blank value keeps the saved one.
+- `POST /api/settings/trackers/<host>/test` `{ software?, credential? }`
+  checks the form's values over the saved ones without saving either.
+
+Removing a tracker removes its software and credential too. The Beyond-HD
+and PrivateHD sign-ins are gone: neither site's API reports account stats.
+An older install's Blutopia token (`blutopia.apiToken`) moves to
+`trackers.blutopia.cc` once, at the first start of this version, which adds
+blutopia.cc as a tracker running UNIT3D. A blutopia.cc tracker or rule saved
+in settings with no token gets UNIT3D too; one only in `TRACKER_RULES` does not. `blutopia.url` and the Beyond-HD and PrivateHD settings
+are deleted.
+
+### Tracker hit-and-run rules
+
+No tracker or rule is built in. Removal advice and the release columns judge a
+torrent only by a tracker you have added; a tracker with no rule gets "Can't
+tell; keep seeding". Rules come from two places, and a rule saved in settings
+wins over the env file's rule for the same host:
+
+| Category | Key | Meaning |
+| --- | --- | --- |
+| `trackerConfiguration` | `trackers.<host>` | The tracker was added, with or without a rule |
+| `trackerConfiguration` | `rules.<host>` | The tracker's saved rule, as JSON |
+| `trackerConfiguration` | `margins.<host>` | Optional. Removal-advice margins as JSON: `timeFactor` and `globalRatioFactor` (1 or more), `extraHours` and `ratioExtra` (0 or more); defaults 1.1, 1.25, 6 and 0.05 |
+
+`TRACKER_RULES` in the env file holds rules as one JSON object keyed by
+hostname. A tracker listed there counts as added and can only be removed there.
+Each rule has these fields. `seedHours` is required; any other left out means
+"none":
+
+- `seedHours`: the seed time that clears a finished torrent, as a list of rows
+  `{ upToGB, hours, perGB, lnGB }`. The first row whose `upToGB` is at or above
+  the torrent's size applies, and needs `hours + perGB × GB + lnGB × ln(GB)`
+  hours, with GB as 1000³ bytes; `perGB` and `lnGB` may be left out. Every row
+  but the last has an `upToGB`, rising row by row; the last has none and covers
+  every larger size. One row is a fixed time. A row that would need less than
+  0 hours anywhere from 0 to 10 000 GB is refused.
+- `ratio`: the torrent ratio that clears it, combined with the seed time by
+  `logic` (`"and"` or `"or"`).
+- `minGlobalRatio`: the account-wide ratio minimum.
+- `partial`: `{ exemptBelow, ratio, maxHours }` for a download left incomplete:
+  the fraction below which it owes nothing, and the ratio or seeding hours that
+  clear it otherwise.
+
+The owner's three trackers, as one line. Keep the single quotes: the env file
+is read by `sh`, which would strip the double quotes.
+
+```sh
+TRACKER_RULES='{"blutopia.cc":{"seedHours":[{"hours":168}],"minGlobalRatio":0.4},"beyond-hd.me":{"seedHours":[{"hours":120}],"ratio":1.0,"logic":"or","minGlobalRatio":0.25},"privatehd.to":{"seedHours":[{"upToGB":1,"hours":72},{"upToGB":50,"hours":72,"perGB":2},{"hours":-219.2023,"lnGB":100}],"ratio":0.9,"logic":"or","partial":{"exemptBelow":0.1,"ratio":0.9,"maxHours":1440}}}'
+```
+
+The older field names still work, in `TRACKER_RULES` and in saved rules, and
+are read as the matching table: `minHours` (one row), `minHoursFormula:
+"privatehd"` (the PrivateHD table above), `minRatio`, and `partialExemptBelow`,
+`partialRatio`, `partialMaxHours`. A rule can't mix old and new names. Saving
+a rule in settings always writes the new shape.
+
+The settings screen uses these routes under the owner guard:
+
+- `GET /api/settings/trackers` lists `{ host, status, rule, ruleSource, margins, problem }`
+  per tracker. `status` is `configured` (saved rule), `configured_env` (env
+  file rule only) or `no_rule`; `problem` names a saved value that fails
+  validation.
+- `POST /api/settings/trackers` `{ host }` adds a tracker. A URL is cut down to
+  its hostname; a duplicate gets 409, anything that is not a hostname 400.
+- `PUT /api/settings/trackers/<host>/rule` `{ rule, margins? }` saves a rule. An
+  invalid one gets 400 `{ error, field, reason }`; `field` is a path such as
+  `seedHours[1].perGB` or `partial.ratio`.
+- `DELETE /api/settings/trackers/<host>/rule` clears the saved rule and
+  margins; the env file's rule, if any, applies again.
+- `DELETE /api/settings/trackers/<host>` removes the tracker and everything
+  saved for it. A tracker in `TRACKER_RULES` gets 409 `in_environment`.
 
 ### Title cache
 
@@ -300,6 +411,7 @@ Set the host up once:
    APP_ORIGIN=<the public https address, no trailing slash>
    PLEX_OWNER_ID=<your numeric Plex account ID>
    BACKUP_KEY=<64 hex characters, only if you use backups>
+   TRACKER_RULES='<JSON, only if you keep tracker rules here>'
    ```
 
    Leave `DB_PATH` unset so the database stays at its default path outside the

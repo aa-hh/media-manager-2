@@ -5,7 +5,7 @@
 # Usage: sh scripts/test.sh [--full] [extra args passed to the test runner]
 #   (no flag)  the fast run Guard 4 uses at commit
 #   --full     the full suite; pre-push and CI run it
-#   --review-script  check the review script with macOS Bash
+#   --review-script  check the review script with macOS Bash and its self-test
 #   --production  check the already built production application
 set -eu
 cd "$(dirname "$0")/.."
@@ -27,6 +27,7 @@ if [ "${1:-}" = --review-script ]; then
         exit 1
     fi
     echo "review script: Bash syntax and invalid argument checks passed"
+    /bin/bash scripts/test-review-branch.sh
     exit 0
 fi
 

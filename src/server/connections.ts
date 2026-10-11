@@ -5,7 +5,6 @@ import { createArr } from './services/arr.js';
 import { type ConnectionStatus, readSetting, type ServiceOptions } from './services/connection.js';
 import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
-import { createTrackerAccounts, type Tracker } from './services/trackerAccounts.js';
 import { getSetting, setSetting } from './settings.js';
 
 type Category = 'serviceAddresses' | 'credentials';
@@ -17,25 +16,15 @@ const serviceKeys = {
   radarr: { serviceAddresses: ['radarr.url'], credentials: ['radarr.apiKey'] },
   rtorrent: { serviceAddresses: ['rtorrent.url'], credentials: ['rtorrent.username', 'rtorrent.password'] },
   plex: { serviceAddresses: ['plex.url'], credentials: ['plex.token'] },
-  blutopia: { serviceAddresses: ['blutopia.url'], credentials: ['blutopia.apiToken'] },
-  privatehd: { serviceAddresses: ['privatehd.url'], credentials: ['privatehd.username', 'privatehd.password', 'privatehd.pid'] },
-  beyondhd: { serviceAddresses: ['beyondhd.url'], credentials: ['beyondhd.apiKey', 'beyondhd.rssKey'] },
 } satisfies Record<string, Record<Category, string[]>>;
 type ServiceName = keyof typeof serviceKeys;
 
-// Tracker accounts have no version to report, so their ok carries none.
-type TestResult = { kind: ConnectionStatus['kind']; version?: string };
-const trackerCheck = (tracker: Tracker) => async (database: DatabaseSync, options: ServiceOptions): Promise<TestResult> => (
-  { kind: (await createTrackerAccounts(database, options).check(tracker)).kind }
-);
-const checks: Record<ServiceName, (database: DatabaseSync, options: ServiceOptions) => Promise<TestResult>> = {
+// Tracker accounts live with their trackers (trackerSettings.ts), not here.
+const checks: Record<ServiceName, (database: DatabaseSync, options: ServiceOptions) => Promise<ConnectionStatus>> = {
   sonarr: (database, options) => createArr('sonarr', database, options).check(),
   radarr: (database, options) => createArr('radarr', database, options).check(),
   rtorrent: (database, options) => createRtorrent(database, options).check(),
   plex: (database, options) => createPlex(database, options).check(),
-  blutopia: trackerCheck('blutopia'),
-  privatehd: trackerCheck('privatehd'),
-  beyondhd: trackerCheck('beyondhd'),
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (

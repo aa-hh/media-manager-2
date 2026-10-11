@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { parseTarget, type Release, type Releases, type ReleaseTarget } from './releases.js';
+import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { readSetting } from './services/connection.js';
 import { RtorrentFault, type XmlRpcParam } from './services/rtorrent.js';
 import { listTorrents } from './torrents.js';
@@ -316,8 +317,26 @@ export const createSecondVersions = (options: {
 
 export type SecondVersions = ReturnType<typeof createSecondVersions>;
 
-export const createSecondVersionRoutes = (secondVersions: SecondVersions) => {
+export const createSecondVersionRoutes = (secondVersions: SecondVersions, deleteVersion?: SecondVersionDelete) => {
   const routes = new Hono();
+  routes.delete('/:id', async (context) => {
+    const idText = context.req.param('id');
+    let body: unknown;
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    if (!/^\d{1,15}$/.test(idText) || !isRecord(body) || Object.keys(body).join(',') !== 'removeTorrent' || typeof body.removeTorrent !== 'boolean') {
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    if (deleteVersion === undefined) return context.json({ error: 'not_found' }, 404);
+    const result = await deleteVersion(Number(idText), body.removeTorrent);
+    if (result.kind === 'not_found') return context.json({ error: 'not_found' }, 404);
+    if (result.kind === 'refused') return context.json({ error: 'refused', reason: result.reason }, 409);
+    const { kind: _kind, ...reply } = result;
+    return context.json(reply);
+  });
   routes.post('/', async (context) => {
     let body: unknown;
     try {

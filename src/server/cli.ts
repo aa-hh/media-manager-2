@@ -42,8 +42,10 @@ const checkConnections = async (database: DatabaseSync) => {
     const name = services[index][0];
     console.log(status.kind === 'ok' ? `${name}: ok ${status.version}` : `${name}: ${status.kind}`);
   });
-  trackerStatuses.forEach((status) => console.log(`${status.tracker}: ${status.kind}`));
-  return statuses.every((status) => status.kind === 'ok') && trackerStatuses.every((status) => status.kind === 'ok') ? 0 : 1;
+  trackerStatuses.forEach(({ host, connection }) => console.log(`${host}: ${connection.kind}`));
+  // A tracker set to "other" software has no account connection by design, so it never fails the check.
+  const fine = (kind: string) => kind === 'ok' || kind === 'unsupported';
+  return statuses.every((status) => status.kind === 'ok') && trackerStatuses.every(({ connection }) => fine(connection.kind)) ? 0 : 1;
 };
 
 const backupNow = async (database: DatabaseSync) => {

@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { adviseRemoval } from './advice.js';
 import type { Assignment } from './assignments.js';
 import { createConnectionRoutes } from './connections.js';
+import { createTrackerRoutes } from './trackerSettings.js';
 import { createFlaggedRoutes, type Flagged } from './flagged.js';
 import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import { createHealthRoutes, type Health } from './health.js';
@@ -12,7 +13,7 @@ import { type Blocklist, createBlocklistRoutes, createHistoryFailedRoute, record
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
 import type { ArrServices, Result } from './services/arr.js';
-import type { Tracker, TrackerAccountStats } from './services/trackerAccounts.js';
+import type { TrackerAccounts } from './services/trackerAccounts.js';
 
 export type ApiActions = {
   arr: ArrServices;
@@ -22,7 +23,7 @@ export type ApiActions = {
   flagged?: Flagged;
   history?: History;
   blocklist?: Blocklist;
-  trackers?: { stats(): Promise<TrackerAccountStats[]>; check(tracker: Tracker): Promise<TrackerAccountStats> };
+  trackers?: TrackerAccounts;
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -105,9 +106,9 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     if (!downloadPattern.test(hash.toUpperCase())) return context.json({ error: 'invalid_request' }, 400);
     return context.json(await adviseRemoval(database, hash.toUpperCase(), {
       now: Date.now(),
-      accountRatio: async (tracker) => {
-        const account = await actions?.trackers?.check(tracker);
-        return account?.kind === 'ok' && account.stats !== 'unsupported' ? account.stats.ratio : null;
+      accountStats: async (host) => {
+        const account = await actions?.trackers?.connection(host);
+        return account?.kind === 'ok' ? account.stats : null;
       },
     }));
   });
@@ -185,6 +186,7 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     return context.body(null, 204);
   });
   api.route('/', createConnectionRoutes(database));
+  api.route('/', createTrackerRoutes(database, process.env, actions?.trackers));
   if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
   if (actions?.flagged !== undefined) api.route('/flagged', createFlaggedRoutes(actions.flagged));
   if (actions?.history !== undefined) api.route('/history', createHistoryRoutes(actions.history));

@@ -85,7 +85,7 @@ rTorrent continuing to upload a finished torrent. Required by the private tracke
 _Avoid_: sharing
 
 **Stalled**:
-A started, unfinished torrent that has made no progress for long enough that media-manager-2 stops waiting on it and looks for another release. rTorrent has no such status; media-manager-2 decides it.
+A started, unfinished torrent that has made no progress for long enough that media-manager-2 stops waiting on it and looks for another release. A stalled second version is never regrabbed: it is removed if nothing downloaded, and flagged to the user either way. rTorrent has no such status; media-manager-2 decides it.
 _Avoid_: stuck, dead, hung
 
 **Tracker**:
@@ -99,6 +99,10 @@ _Avoid_: seeding requirement, seed rule, ratio rule
 **Global ratio**:
 The user's total upload-to-download ratio across a whole tracker account. Each tracker sets a minimum; it is separate from any single torrent's hit and run rule.
 _Avoid_: account ratio, overall ratio
+
+**Site software**:
+The tracker software a tracker's site runs (UNIT3D, Gazelle, NexusPHP, or other). It decides how media-manager-2 reads the tracker account; trackers running the same software share one way in.
+_Avoid_: tracker type, platform, engine
 
 **Plex**:
 The media server that plays the library folder to the user and friends.

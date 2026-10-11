@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { getSetting } from './settings.js';
-import type { Tracker } from './services/trackerAccounts.js';
-import { checkHitAndRun, findTrackerRule, type HitAndRunRule, trackerOf } from './trackerRules.js';
+import { deleteSetting, getSetting, setSetting } from './settings.js';
+import type { TrackerAccountStats } from './services/trackerAccounts.js';
+import { checkHitAndRun, findTrackerRule, type HitAndRunRule, isRecord } from './trackerRules.js';
 import { listTorrents, type Torrent } from './torrents.js';
 
 export type Recommendation = 'safe' | 'keep' | 'unconfirmed';
@@ -11,9 +11,20 @@ type Margins = { timeFactor: number; extraHours: number; ratioExtra: number; glo
 // The margins the owner accepted in AA-24 (How the delete recommendation judges hit and run).
 const DEFAULT_MARGINS: Margins = { timeFactor: 1.1, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 };
 
-// A saved margin may only tighten the rule: a factor below 1 or a negative extra would recommend removal too early,
-// so an invalid saved margin throws rather than falling back.
-const readMargins = (database: DatabaseSync, host: string): Margins => {
+// A margin may only tighten the rule: a factor below 1 or a negative extra would recommend removal too early.
+// Margins left out keep their default.
+export const parseMargins = (value: unknown): Margins | { field: string | null; reason: string } => {
+  if (!isRecord(value)) return { field: null, reason: 'the margins must be a JSON object' };
+  for (const [key, number] of Object.entries(value)) {
+    if (!Object.hasOwn(DEFAULT_MARGINS, key)) return { field: key, reason: `${key} is not a margin` };
+    const least = key.endsWith('Factor') ? 1 : 0;
+    if (typeof number !== 'number' || !Number.isFinite(number) || number < least) return { field: key, reason: `${key} must be a number of ${least} or more` };
+  }
+  return { ...DEFAULT_MARGINS, ...value } as Margins;
+};
+
+// An invalid saved margin throws rather than falling back to the defaults.
+export const readMargins = (database: DatabaseSync, host: string): Margins => {
   const stored = getSetting(database, 'trackerConfiguration', `margins.${host}`);
   if (stored === undefined) return DEFAULT_MARGINS;
   let parsed: unknown;
@@ -22,12 +33,14 @@ const readMargins = (database: DatabaseSync, host: string): Margins => {
   } catch {
     parsed = undefined;
   }
-  const margins = { ...DEFAULT_MARGINS, ...(typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : { invalid: true }) };
-  const valid = !('invalid' in margins) && Object.entries(margins).every(([key, value]) => key in DEFAULT_MARGINS
-    && typeof value === 'number' && Number.isFinite(value) && value >= (key.endsWith('Factor') ? 1 : 0));
-  if (!valid) throw new Error(`The saved hit and run margins for ${host} are not valid.`);
+  const margins = parseMargins(parsed);
+  if ('reason' in margins) throw new Error(`The saved hit and run margins for ${host} are not valid.`);
   return margins;
 };
+
+export const saveMargins = (database: DatabaseSync, host: string, margins: Margins | null) => (margins === null
+  ? deleteSetting(database, 'trackerConfiguration', `margins.${host}`)
+  : setSetting(database, 'trackerConfiguration', `margins.${host}`, JSON.stringify(margins)));
 
 const hours = (value: number) => (Math.ceil(value) === 1 ? '1 hour' : `${Math.ceil(value)} hours`);
 // Rounded down, so a ratio of 1.049 reads 1.04 and never looks like it meets 1.05.
@@ -53,21 +66,21 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
   if (base.case === 'under_buffer') {
     // A running download may still cross the exemption line.
     if (torrent.started && torrent.active) return { recommendation: 'keep', reason: 'Still downloading' };
-    return { recommendation: 'safe', reason: `Under ${Math.round((rule.partialExemptBelow ?? 0) * 100)}% downloaded; not a hit and run on ${host}` };
+    return { recommendation: 'safe', reason: `Under ${Math.round((rule.partial.exemptBelow ?? 0) * 100)}% downloaded; not a hit and run on ${host}` };
   }
 
   if (base.case === 'partial') {
-    if (rule.partialRatio === null && rule.partialMaxHours === null) {
+    if (rule.partial.ratio === null && rule.partial.maxHours === null) {
       return { recommendation: 'keep', reason: `Download not complete; ${host} counts seed time only at 100%` };
     }
-    const neededRatio = rule.partialRatio === null ? null : withMarginRatio(rule.partialRatio);
+    const neededRatio = rule.partial.ratio === null ? null : withMarginRatio(rule.partial.ratio);
     // The seeding counter never runs for an incomplete torrent, so only the ratio can make it safe.
-    if (neededRatio !== null && checkHitAndRun({ ...rule, partialRatio: neededRatio }, facts).ratio === true) {
+    if (neededRatio !== null && checkHitAndRun({ ...rule, partial: { ...rule.partial, ratio: neededRatio } }, facts).ratio === true) {
       return { recommendation: 'safe', reason: `Partly downloaded: ratio ${ratioText(facts.ratio)} of ${ratioText(neededRatio)} on the data downloaded` };
     }
     const ways = [
       neededRatio === null ? null : `at ratio ${ratioText(neededRatio)} of the data downloaded (now ${ratioText(facts.ratio)})`,
-      rule.partialMaxHours === null ? null : `after ${Math.ceil(withMarginHours(rule.partialMaxHours) / 24)} days seeding, which isn't measured yet`,
+      rule.partial.maxHours === null ? null : `after ${Math.ceil(withMarginHours(rule.partial.maxHours) / 24)} days seeding, which isn't measured yet`,
     ].filter((way) => way !== null);
     return { recommendation: 'keep', reason: `Partly downloaded: clears ${ways.join(' or ')}` };
   }
@@ -75,10 +88,10 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
   const { requiredHours } = base;
   if (requiredHours === null) return { recommendation: 'unconfirmed', reason: `Can't tell; keep seeding: the rule for ${host} sets no seed time` };
   const neededHours = withMarginHours(requiredHours);
-  const neededRatio = rule.minRatio === null ? null : withMarginRatio(rule.minRatio);
+  const neededRatio = rule.ratio === null ? null : withMarginRatio(rule.ratio);
   const strict: HitAndRunRule = neededRatio === null
-    ? { ...rule, minHours: neededHours, minHoursFormula: null, minRatio: null, logic: null }
-    : { ...rule, minHours: neededHours, minHoursFormula: null, minRatio: neededRatio, logic: rule.logic ?? 'or' };
+    ? { ...rule, seedHours: [{ hours: neededHours }], ratio: null, logic: null }
+    : { ...rule, seedHours: [{ hours: neededHours }], ratio: neededRatio, logic: rule.logic ?? 'or' };
   const result = checkHitAndRun(strict, facts);
   const ratioPart = neededRatio === null ? null : `ratio ${ratioText(facts.ratio)} of ${ratioText(neededRatio)}`;
 
@@ -112,7 +125,7 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
 export const adviseRemoval = async (
   database: DatabaseSync,
   hash: string,
-  options: { now: number; accountRatio(tracker: Tracker): Promise<number | null> },
+  options: { now: number; accountStats(host: string): Promise<TrackerAccountStats | null> },
 ): Promise<RemovalAdvice> => {
   const torrent = listTorrents(database).find((row) => row.hash === hash);
   if (torrent === undefined || torrent.goneAt !== null) {
@@ -132,12 +145,14 @@ export const adviseRemoval = async (
   const margins = readMargins(database, host);
   let { recommendation, reason } = judge(torrent, rule, host, margins, options.now);
   let globalRatio: string | null = null;
-  if (rule.minGlobalRatio !== null) {
-    const tracker = trackerOf(host);
-    const ratio = tracker === undefined ? null : await options.accountRatio(tracker);
+  const account = await options.accountStats(host);
+  // A Gazelle site reports the account's own required ratio, which beats the rule's.
+  const minimum = account?.requiredRatio ?? rule.minGlobalRatio;
+  if (minimum !== null) {
+    const ratio = account?.ratio ?? null;
     if (ratio === null) globalRatio = `Global ratio unknown: your ${host} ratio can't be read`;
-    else if (ratio < rule.minGlobalRatio * margins.globalRatioFactor) {
-      globalRatio = `Keep for ratio: your ${host} ratio is ${ratioText(ratio)}, minimum ${rule.minGlobalRatio}`;
+    else if (ratio < minimum * margins.globalRatioFactor) {
+      globalRatio = `Keep for ratio: your ${host} ratio is ${ratioText(ratio)}, minimum ${minimum}`;
       recommendation = 'keep';
     }
   }
