@@ -107,6 +107,27 @@ Trusted server background jobs continue without a browser session. Future webhoo
 
 Later features add background jobs to the job runner under these rules. Every job is registered before the runner starts. A job never overlaps its own previous run; a tick that arrives while the previous run is unfinished is skipped. A failing job is logged by name only and stays scheduled. Jobs run with no session and no request. The first run happens one interval after start. SIGTERM or SIGINT stops the runner, waits for runs in progress, closes open streams and the server, and exits with code 0. A second signal during shutdown exits immediately with code 1. The schedule lives only in memory, so a restart starts from an empty schedule.
 
+## Test deploy to Whatbox
+
+`sh scripts/deploy.sh` builds the current worktree and runs it on the Whatbox slot behind one fixed address, replacing whatever copy was running there. Set the slot up once:
+
+1. On Whatbox's Manage Links page, click "Add a custom app". Name it `mm2`, give it a port between 10000 and 32767, and leave WebSockets off; `/api/events` is plain HTTP.
+2. On the slot, create `~/.config/media-manager-2/env` with mode `0600`:
+
+   ```sh
+   PORT=<the link's port>
+   HOST=127.0.0.1
+   APP_ORIGIN=<the link's https address, no trailing slash>
+   PLEX_OWNER_ID=<your numeric Plex account ID>
+   ```
+
+   Leave `DB_PATH` unset so the database stays at its default path outside the app folder, where deploys never touch it.
+3. Run `sh scripts/deploy.sh` once, then save the Sonarr, Radarr, rTorrent and Plex settings from `~/media-manager-2` on the slot with `settings set`, as described under Service connections. They persist across later deploys.
+
+The script reaches the slot over ssh as `DEPLOY_HOST`, default `shenzhou`. It copies `dist/`, `package.json` and `package-lock.json` to `~/media-manager-2/`, runs `npm ci --omit=dev` when the lock file changed, stops the old server with SIGTERM and starts the new one. It then checks the server answers on the slot and at `APP_ORIGIN`, prints `connections check`, and prints the branch and commit now live, which it also keeps in `~/media-manager-2/DEPLOYED`. Server output goes to `~/media-manager-2/server.log`.
+
+One copy runs at a time, so a deploy from another worktree replaces it. Nothing restarts the server after a crash or reboot yet; that belongs to AA-43 "Deploy and restart the application on Whatbox".
+
 Use `npm run dev` for the Vite development server.
 Always build and test through `scripts/build.sh` and `scripts/test.sh`.
 `sh scripts/test.sh --production` checks an existing build without rebuilding.

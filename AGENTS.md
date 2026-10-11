@@ -44,7 +44,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 
 <!-- One line per top-level folder: path → what it is. Each folder with
      rules of its own gets an AGENTS.md. -->
-- `scripts/` → the only sanctioned way to build, test, review and land.
+- `scripts/` → the only sanctioned way to build, test, review, land and deploy.
 - `.githooks/` → commit and push guards; settings in `project.conf`.
 - `docs/review/` → instructions for each branch-review pass.
 - `.scratch/` → local issue tracker (`docs/agents/issue-tracker.md`).
