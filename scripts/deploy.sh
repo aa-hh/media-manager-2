@@ -32,6 +32,13 @@ elif [ "$status" != 0 ]; then
     exit 1
 fi
 
+# A fresh worktree has no node_modules, and a merge can change the lockfile.
+# The marker lives inside node_modules so deleting that folder resets it.
+if ! cmp -s package-lock.json node_modules/.installed-package-lock.json; then
+    npm ci --no-audit --no-fund
+    cp package-lock.json node_modules/.installed-package-lock.json
+fi
+
 sh scripts/build.sh
 rsync -a --delete dist package.json package-lock.json "$host:media-manager-2/"
 
