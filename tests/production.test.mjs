@@ -75,6 +75,7 @@ const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).hre
 const setupModuleUrl = new URL('../dist/server/setup.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
 const titleStoreModuleUrl = new URL('../dist/server/titleStore.js', import.meta.url).href;
+const tmdbTitlesModuleUrl = new URL('../dist/server/tmdbTitles.js', import.meta.url).href;
 // The owner's confirmed rules (AA-23). The code ships none, so tests that judge these trackers supply them.
 const ownerRules = {
   'blutopia.cc': { minHours: 168, minGlobalRatio: 0.4 },
@@ -2233,11 +2234,11 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
   await t.test('title details from a reply with most fields missing', async () => {
     const { tmdb, calls } = connect(() => json({ id: 7, name: 'Show', keywords: { results: [{ id: 1, name: 'heist' }, { id: 'x' }] }, aggregate_credits: { cast: [{ id: 3, name: 'Ann', roles: [{ character: 'Lead' }] }, { name: 'No id' }] } }));
     assert.deepEqual(await tmdb.details('tv', 7), { kind: 'ok', value: {
-      id: 7, mediaType: 'tv', title: 'Show', overview: null, tagline: null, posterPath: null, backdropPath: null, date: null, runtime: null,
+      id: 7, mediaType: 'tv', tvdbId: null, title: 'Show', overview: null, tagline: null, posterPath: null, backdropPath: null, date: null, runtime: null,
       status: null, voteAverage: null, genres: [], keywords: [{ id: 1, name: 'heist' }], recommendations: [], cast: [{ id: 3, name: 'Ann', character: 'Lead', profilePath: null }],
     } });
     assert.equal(calls[0].origin + calls[0].pathname, 'https://api.themoviedb.org/3/tv/7');
-    assert.equal(calls[0].searchParams.get('append_to_response'), 'keywords,recommendations,aggregate_credits');
+    assert.equal(calls[0].searchParams.get('append_to_response'), 'keywords,recommendations,aggregate_credits,external_ids');
     assert.equal(calls[0].searchParams.get('api_key'), key);
   });
 
@@ -2399,6 +2400,100 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
     clock.value += 1;
     assert.deepEqual(JSON.parse((await page()).text).ratingsBySite, expected);
     assert.equal(calls.length, 2);
+  });
+});
+
+test('a title page gets top cast, keywords and similar titles from TMDB, saved for seven days', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting, deleteSetting } = await import(settingsModuleUrl);
+  const { createTmdb } = await import(tmdbModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createTmdbTitles, createTmdbTitleRoutes } = await import(tmdbTitlesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tmdb-titles-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  setSetting(database, 'credentials', 'tmdb.apiKey', 'tmdb-key');
+  database.prepare('INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run('radarr', 5, 'Dune', 2021, JSON.stringify({ id: 5, tmdbId: 438631 }), 'x', 0);
+  const clock = { value: 1_800_000_000_000 };
+  let respond = () => { throw new TypeError('fetch failed'); };
+  let calls = 0;
+  const tmdb = createTmdb(database, { fetch: async (url) => { calls += 1; return respond(new URL(String(url))); } });
+  const routes = createTmdbTitleRoutes(createTmdbTitles({ database, tmdb, store: createTitleStore(database, { now: () => clock.value }) }));
+  const json = (body, status = 200) => () => new Response(JSON.stringify(body), { status });
+  const page = async (path) => {
+    const response = await routes.request(path);
+    assert.equal(response.status, 200, path);
+    return response.json();
+  };
+  const settle = async (done) => {
+    for (let turn = 0; turn < 100 && !done(); turn += 1) await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  // Ignoring TMDB's cast order or the top-10 cap, dropping the library id match, or building the poster URL other than the saved-image route turns this red.
+  await t.test('fields map from a TMDB reply', async () => {
+    const cast = Array.from({ length: 12 }, (_, index) => ({ id: index + 1, name: `Actor ${index + 1}`, roles: [{ character: `Role ${index + 1}` }] }));
+    const recommendations = [
+      { id: 438631, media_type: 'movie', title: 'Dune', release_date: '2021-09-15', poster_path: '/dune.jpg' },
+      { id: 99, name: 'Untitled poster', first_air_date: '' },
+      { id: 98 },
+      ...Array.from({ length: 25 }, (_, index) => ({ id: 1000 + index, name: `Show ${index}` })),
+    ];
+    respond = json({ id: 95396, name: 'Severance', external_ids: { tvdb_id: 371980 }, keywords: { results: [{ id: 1, name: 'office' }] }, aggregate_credits: { cast }, recommendations: { results: recommendations } });
+    const show = await page('/tmdb/tv/95396');
+    assert.deepEqual(show.cast.slice(0, 2), [{ name: 'Actor 1', character: 'Role 1' }, { name: 'Actor 2', character: 'Role 2' }]);
+    assert.equal(show.cast.length, 10);
+    assert.deepEqual(show.keywords, ['office']);
+    assert.equal(show.similar.length, 20);
+    assert.deepEqual(show.similar.slice(0, 2), [
+      { tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, posterUrl: '/api/images/tmdb/w342/dune.jpg', libraryId: 5 },
+      { tmdbId: 99, type: 'tv', title: 'Untitled poster', year: null, posterUrl: null, libraryId: null },
+    ]);
+    respond = json({ id: 1, title: 'Film', keywords: { keywords: [{ id: 1, name: 'heist' }] }, credits: { cast }, recommendations: { results: [{ id: 2, title: 'Other' }] } });
+    assert.deepEqual(await page('/tmdb/movie/1'), { similar: [{ tmdbId: 2, type: 'movie', title: 'Other', year: null, posterUrl: null, libraryId: null }] });
+    assert.equal((await routes.request('/tmdb/person/1')).status, 400);
+  });
+
+  // Throwing or dropping a section when TMDB omits keywords, credits or recommendations turns this red.
+  await t.test('a reply missing every field gives empty sections', async () => {
+    respond = json({ id: 7 });
+    assert.deepEqual(await page('/tmdb/tv/7'), { cast: [], keywords: [], similar: [] });
+  });
+
+  // Answering anything but 200 with empty sections when TMDB is unset, rejects the key or is down turns this red.
+  await t.test('TMDB unset, rejected or unreachable gives empty sections with 200', async () => {
+    const before = calls;
+    deleteSetting(database, 'credentials', 'tmdb.apiKey');
+    assert.deepEqual(await page('/tmdb/tv/11'), { cast: [], keywords: [], similar: [] });
+    assert.equal(calls, before);
+    setSetting(database, 'credentials', 'tmdb.apiKey', 'tmdb-key');
+    respond = json({ status_message: 'Invalid API key' }, 401);
+    assert.deepEqual(await page('/tmdb/tv/12'), { cast: [], keywords: [], similar: [] });
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.deepEqual(await page('/tmdb/movie/13'), { similar: [] });
+  });
+
+  // Skipping the saved copy, refetching before seven days, or making the visitor wait on a stale refetch turns this red.
+  await t.test('a second request within seven days makes no TMDB call, and a stale copy is served while it refetches', async () => {
+    const before = calls;
+    // The show saved by the first subtest is found again by its TMDB id though the store keeps shows under their TVDB id.
+    assert.deepEqual((await page('/tmdb/tv/95396')).keywords, ['office']);
+    assert.equal(calls, before);
+    respond = json({ id: 20, title: 'First', recommendations: { results: [{ id: 21, title: 'Old' }] } });
+    assert.equal((await page('/tmdb/movie/20')).similar[0].title, 'Old');
+    clock.value += 7 * 86_400_000 - 1;
+    respond = json({ id: 20, title: 'First', recommendations: { results: [{ id: 21, title: 'New' }] } });
+    assert.equal((await page('/tmdb/movie/20')).similar[0].title, 'Old');
+    assert.equal(calls, before + 1);
+    clock.value += 1;
+    assert.equal((await page('/tmdb/movie/20')).similar[0].title, 'Old');
+    const savedAt = () => database.prepare("SELECT fetched_at FROM title_store_parts WHERE key = 'movie:20'").get().fetched_at;
+    await settle(() => savedAt() === clock.value);
+    assert.equal((await page('/tmdb/movie/20')).similar[0].title, 'New');
+    assert.equal(calls, before + 2);
   });
 });
 

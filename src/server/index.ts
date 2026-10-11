@@ -29,6 +29,7 @@ import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
 import { createDiscover } from './discover.js';
 import { createTitleStore } from './titleStore.js';
+import { createTmdbTitles } from './tmdbTitles.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
@@ -195,6 +196,7 @@ if (database !== undefined) {
     protection,
     library,
     discover: createDiscover({ tmdb, store: titleStore, libraryTitles: library.titles }),
+    tmdbTitles: createTmdbTitles({ database, tmdb, store: titleStore }),
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
       arr,
