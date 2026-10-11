@@ -40,6 +40,24 @@ export type GrabRecord = {
   updatedAt: number;
 };
 
+// The torrent grab record for a hand grab once its download is known. The import fix reads its byHand to leave a
+// replace's "Not an upgrade" import to the replace flow instead of clearing it from the queue.
+export const handGrab = (record: GrabRecord & { downloadId: string }) => {
+  const { target } = record;
+  return {
+    hash: record.downloadId.toUpperCase(),
+    service: record.service,
+    movieId: target.kind === 'movie' ? target.movieId : null,
+    seriesId: target.kind === 'movie' ? null : target.seriesId,
+    episodeIds: target.kind === 'episode' ? [target.episodeId] : target.kind === 'episodes' ? target.episodeIds : [],
+    releaseTitle: record.releaseTitle,
+    indexer: '',
+    grabbedAt: record.createdAt,
+    publishedAt: null,
+    byHand: true,
+  };
+};
+
 const GRAB_TIMEOUT_MS = 60_000;
 // Sonarr and Radarr keep their grab history paged newest first; a grab media-manager-2
 // just sent is on the first page unless dozens of grabs landed in between.

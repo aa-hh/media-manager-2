@@ -240,7 +240,11 @@ function SignedIn(props: ComponentProps<typeof Home>) {
     <div className="pb-8">
       <Home
         {...props}
-        downloads={<DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />}
+        downloads={(
+          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
+            <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
+          </div>
+        )}
         renderBar={(showDownloads) => (
           <LiveBar
             state={state}

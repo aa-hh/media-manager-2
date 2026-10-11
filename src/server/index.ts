@@ -7,7 +7,7 @@ import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
-import { createGrabs } from './grabs.js';
+import { createGrabs, handGrab } from './grabs.js';
 import { createImportFix } from './imports.js';
 import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
@@ -60,7 +60,13 @@ if (database !== undefined) {
   const imports = createImportFix({ database, arr, problems, events });
   runner.register('import-fix', 60_000, imports.check);
   const releases = createReleases(database, arr);
-  const grabs = createGrabs(database, arr, releases, { onChange: (grab) => events.publish('grab', grab) });
+  // 'grab' events carry torrent grab records for the Downloads screen, so a hand grab's own record goes out under its own name.
+  const grabs = createGrabs(database, arr, releases, {
+    onChange: (grab) => {
+      events.publish('release-grab', grab);
+      if (grab.downloadId !== null) torrentGrabs.recordGrab(handGrab({ ...grab, downloadId: grab.downloadId }));
+    },
+  });
   const protection = createProtection(database, arr, { recentGrabTitles: (service, since) => grabs.recentTitles(service, since) });
   const replaces = createReplaces(arr, grabs, { onCompleted: (grab) => protection.protect(grab) });
   runner.register('manual-download-protection', 10 * 60_000, async () => {

@@ -3667,3 +3667,33 @@ test('the downloads screen joins torrents, queue items and problems into rows', 
     assert.equal(applyEvent(snapshot, 'unknown', {}), snapshot);
   });
 });
+
+test('a hand grab marks its torrent grab record as by hand, whichever record arrives first', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker, findGrab } = await import(torrentGrabsModuleUrl);
+  const { handGrab } = await import(grabsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-hand-grab-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const service = { request: async () => ({ status: 404, body: undefined }) };
+  const hand = handGrab({
+    id: 1, service: 'sonarr', target: { service: 'sonarr', kind: 'episode', seriesId: 3, episodeId: 31 },
+    searchedFor: { service: 'sonarr', kind: 'episode', seriesId: 3, episodeId: 31 }, guid: 'g', releaseTitle: 'Show.S01E01',
+    intent: 'replace', state: 'sent', failure: null, downloadId: 'ab'.repeat(20), createdAt: 1_000, updatedAt: 1_000,
+  });
+  const webhook = { ...hand, indexer: 'Blutopia', grabbedAt: 2_000, byHand: false };
+
+  // Dropping byHand from handGrab, or recording the hand grab only when no webhook record exists, turns this red:
+  // the import fix then clears a replace's "Not an upgrade" download from the queue.
+  for (const [first, second] of [[webhook, hand], [hand, webhook]]) {
+    const database = openDatabase(join(root, `db-${first === hand ? 'hand' : 'webhook'}-first`, 'media-manager.sqlite'));
+    const tracker = createGrabTracker({ database, arr: { sonarr: service, radarr: service }, events: createEventHub() });
+    tracker.recordGrab(first);
+    tracker.recordGrab(second);
+    const grab = findGrab(database, 'ab'.repeat(20));
+    assert.equal(grab.byHand, true);
+    assert.equal(grab.indexer, 'Blutopia');
+    assert.deepEqual([grab.seriesId, grab.episodeIds, grab.grabbedAt], [3, [31], 1_000]);
+    database.close();
+  }
+});
