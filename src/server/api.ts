@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import type { Assignment } from './assignments.js';
+import { createConnectionRoutes } from './connections.js';
 import { createFlaggedRoutes, type Flagged } from './flagged.js';
 import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import { createHealthRoutes, type Health } from './health.js';
@@ -169,6 +170,7 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     await actions.refresh(service);
     return context.body(null, 204);
   });
+  api.route('/', createConnectionRoutes(database));
   if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
   if (actions?.flagged !== undefined) api.route('/flagged', createFlaggedRoutes(actions.flagged));
   if (actions?.history !== undefined) api.route('/history', createHistoryRoutes(actions.history));
