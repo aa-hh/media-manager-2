@@ -32,6 +32,7 @@ const settingsModuleUrl = new URL('../dist/server/settings.js', import.meta.url)
 const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).href;
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
+const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
@@ -2202,6 +2203,77 @@ test('service connections read saved settings and classify each outcome', async 
   }
 });
 
+test('the TMDB client sends the key only to TMDB, parses partial replies and caches lists', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTmdb } = await import(tmdbModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tmdb-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const key = `tmdb-key-${process.pid}-distinctive`;
+  setSetting(database, 'credentials', 'tmdb.apiKey', key);
+  let clock = 1_800_000_000_000;
+  const connect = (respond) => {
+    const calls = [];
+    const tmdb = createTmdb(database, { now: () => clock, fetch: async (url, init) => {
+      calls.push(new URL(String(url)));
+      assert.equal(init.redirect, 'error');
+      return respond(new URL(String(url)));
+    } });
+    return { tmdb, calls };
+  };
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+
+  // Reading a missing field as anything but null or an empty list, or confusing the movie and TV reply shapes, turns this red.
+  await t.test('title details from a reply with most fields missing', async () => {
+    const { tmdb, calls } = connect(() => json({ id: 7, name: 'Show', keywords: { results: [{ id: 1, name: 'heist' }, { id: 'x' }] }, aggregate_credits: { cast: [{ id: 3, name: 'Ann', roles: [{ character: 'Lead' }] }, { name: 'No id' }] } }));
+    assert.deepEqual(await tmdb.details('tv', 7), { kind: 'ok', value: {
+      id: 7, mediaType: 'tv', title: 'Show', overview: null, tagline: null, posterPath: null, backdropPath: null, date: null, runtime: null,
+      status: null, voteAverage: null, genres: [], keywords: [{ id: 1, name: 'heist' }], recommendations: [], cast: [{ id: 3, name: 'Ann', character: 'Lead', profilePath: null }],
+    } });
+    assert.equal(calls[0].origin + calls[0].pathname, 'https://api.themoviedb.org/3/tv/7');
+    assert.equal(calls[0].searchParams.get('append_to_response'), 'keywords,recommendations,aggregate_credits');
+    assert.equal(calls[0].searchParams.get('api_key'), key);
+  });
+
+  // Dropping the cache, keeping a list past five minutes, or caching a failure turns this red.
+  await t.test('a list is served from memory for five minutes, then fetched again', async () => {
+    let fail = true;
+    const { tmdb, calls } = connect(() => (fail ? new Response('', { status: 500 }) : json({ page: 1, results: [{ id: 1, title: 'Film' }] })));
+    assert.equal((await tmdb.trending('movie', 'week')).kind, 'refused');
+    fail = false;
+    const first = await tmdb.trending('movie', 'week');
+    assert.equal(first.kind, 'ok');
+    assert.equal(first.value.results[0].title, 'Film');
+    clock += 5 * 60_000 - 1;
+    assert.deepEqual(await tmdb.trending('movie', 'week'), first);
+    assert.equal(calls.length, 2);
+    clock += 1;
+    await tmdb.trending('movie', 'week');
+    assert.equal(calls.length, 3);
+  });
+
+  // Reading a 401 as anything but a rejected key, a network failure as anything but unreachable, or putting the key in a message turns this red.
+  await t.test('the check maps 401 to rejected and a network failure to unreachable, and no message carries the key', async () => {
+    assert.deepEqual(await connect(() => json({ success: true })).tmdb.check(), { kind: 'ok', version: '3' });
+    assert.deepEqual(await connect(() => json({ status_message: 'Invalid API key' }, 401)).tmdb.check(), { kind: 'rejected' });
+    const offline = connect(() => { throw new TypeError(`fetch failed for ${key}`); });
+    assert.deepEqual(await offline.tmdb.check(), { kind: 'unreachable' });
+    const failures = [
+      await offline.tmdb.discover('movie', { with_genres: '18' }),
+      await connect(() => json({ status_message: `bad ${key}` }, 401)).tmdb.genres('tv'),
+      await connect(() => json({}, 500)).tmdb.details('movie', 1),
+    ];
+    for (const failure of failures) {
+      assert.notEqual(failure.kind, 'ok');
+      assert.equal(JSON.stringify(failure).includes(key), false, failure.kind);
+    }
+  });
+});
+
 // Serving a credential, overwriting one with a blank, saving tested values, or accepting a key no service reads turns this red.
 test('the settings screen shows addresses, hides credentials, saves known keys and tests unsaved values', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
@@ -2236,10 +2308,12 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   for (const secret of [...secrets, 'test-key']) assert.equal(text.includes(secret), false, secret);
   const { services } = JSON.parse(text);
   // Tracker accounts live with their trackers; listing the old Blutopia, PrivateHD or Beyond-HD sign-ins here turns this red.
-  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex']);
+  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb']);
   assert.deepEqual(services[0], { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65201' }, credentials: { 'sonarr.apiKey': true } });
   assert.deepEqual(services[2].credentials, { 'rtorrent.username': false, 'rtorrent.password': true });
   assert.deepEqual(services[3].credentials, { 'plex.token': false });
+  // Asking for a TMDB address, which is fixed, turns this red.
+  assert.deepEqual(services[4], { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } });
 
   // Saving a blank credential over the stored one, or accepting a key no service reads, turns this red.
   const before = listSettingKeys(database);
@@ -7195,6 +7269,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       arr: { sonarr: fake('sonarr'), radarr: fake('radarr') },
       rtorrent: { check: async () => ok },
       plex: { check: async () => ok },
+      tmdb: { check: async () => input.statuses?.tmdb ?? ok },
       jobs: { status: () => input.jobs ?? [] },
       trackerAccounts: { stats: async () => input.accounts ?? notConfigured },
       events: { publish: (type, data) => { published.push({ type, data }); } },
@@ -7208,6 +7283,8 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
   const cases = [
     { name: 'all ok', input: {}, level: 'ok', errors: 0, warnings: 0, message: undefined },
     { name: 'Sonarr unreachable', input: { statuses: { sonarr: { kind: 'unreachable' } } }, level: 'error', errors: 1, warnings: 0, message: 'Sonarr is unreachable.' },
+    // Leaving TMDB out of the service checks turns this row red.
+    { name: 'TMDB key rejected', input: { statuses: { tmdb: { kind: 'rejected' } } }, level: 'error', errors: 1, warnings: 0, message: 'TMDB refused the credentials.' },
     {
       name: 'arr warning row with a string wikiUrl',
       input: { arr: { radarr: { '/api/v3/health': [{ source: 'IndexerStatusCheck', type: 'warning', message: 'Indexers unavailable: Blutopia', wikiUrl: 'https://wiki.servarr.com/radarr/1' }] } } },
