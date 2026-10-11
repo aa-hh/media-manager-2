@@ -49,6 +49,7 @@ const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const connectionsModuleUrl = new URL('../dist/server/connections.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
 const trackerRulesModuleUrl = new URL('../dist/server/trackerRules.js', import.meta.url).href;
+const adviceModuleUrl = new URL('../dist/server/advice.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
@@ -1658,6 +1659,93 @@ test('hit and run rules come from settings with the confirmed defaults and an ex
   }
 });
 
+// Dropping either margin, letting time since finishing prove a time rule, matching only the exact announce hostname
+// (so "tracker.beyond-hd.me" finds no rule), or letting a low global ratio leave "safe" standing turns this red.
+test('removal advice applies the hit and run rule with margins and proves time only from the seeding counter', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-advice-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { adviseRemoval } = await import(adviceModuleUrl);
+  const database = openDatabase(join(root, 'database.sqlite'));
+  t.after(() => database.close());
+
+  const now = 1_800_000_000_000;
+  const hour = 3600;
+  const GB = 1000 ** 3;
+  const finished = now / 1000 - 1000 * hour;
+  let count = 0;
+  // Each row is first seen before it finished (full seeding history) unless `firstSeenAt` says otherwise.
+  const torrent = (input) => {
+    const hash = (++count).toString(16).toUpperCase().padStart(40, '0');
+    const row = { host: 'blutopia.cc', sizeBytes: 10 * GB, ratio: 0, seconds: 0, finishedAt: finished, firstSeenAt: (finished - hour) * 1000, goneAt: null, complete: 1, active: 1, ...input };
+    database.prepare("INSERT INTO torrents VALUES (?, 'Some.Movie', ?, ?, 0, 0, 1, 1, ?, ?, '', ?, ?, 0, 0, ?, ?, ?, ?, ?)")
+      .run(hash, row.sizeBytes, row.completedBytes ?? row.sizeBytes, row.active, row.complete, row.finishedAt, row.ratio, row.host, row.firstSeenAt, now, row.goneAt, row.seconds);
+    return hash;
+  };
+  const ratios = { blutopia: 1.0, beyondhd: null, privatehd: null };
+  const advise = (hash, accountRatios = ratios) => adviseRemoval(database, hash, { now, accountRatio: async (tracker) => accountRatios[tracker] });
+  const blutopiaNeeds = 184.8 * hour;
+  const unknownRatio = (host) => `Global ratio unknown: your ${host} ratio can't be read`;
+
+  for (const [name, input, recommendation, reason, globalRatio = null] of [
+    ['Blutopia 1 s short', { seconds: blutopiaNeeds - 1, ratio: 5000 }, 'keep', 'Keep seeding: 1 hour of seeding left'],
+    ['Blutopia met', { seconds: blutopiaNeeds }, 'safe', 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin'],
+    ['Beyond-HD short on both', { host: 'tracker.beyond-hd.me', seconds: 132 * hour - 1, ratio: 1049 }, 'keep',
+      'Keep seeding: 1 hour of seeding left, or ratio 1.04 of 1.05 needed', unknownRatio('beyond-hd.me')],
+    ['Beyond-HD time met', { host: 'tracker.beyond-hd.me', seconds: 132 * hour }, 'safe',
+      'Hit and run rule met: seeded 132 hours of 132 hours needed with margin', unknownRatio('beyond-hd.me')],
+    ['Beyond-HD ratio met', { host: 'tracker.beyond-hd.me', ratio: 1050 }, 'safe', 'Hit and run rule met: ratio 1.05 of 1.05', unknownRatio('beyond-hd.me')],
+    ['PrivateHD 40 GB 1 s short', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, seconds: 167.2 * hour - 1, ratio: 949 }, 'keep',
+      'Keep seeding: 1 hour of seeding left, or ratio 0.94 of 0.95 needed'],
+    ['PrivateHD 40 GB met', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, seconds: 167.2 * hour }, 'safe',
+      'Hit and run rule met: seeded 168 hours of 168 hours needed with margin'],
+    ['PrivateHD ratio met', { host: 'tracker.privatehd.to', ratio: 950 }, 'safe', 'Hit and run rule met: ratio 0.95 of 0.95'],
+    ['no history, finished under the rule', { finishedAt: now / 1000 - 100 * hour, firstSeenAt: now - hour * 1000 }, 'keep',
+      'Keep seeding: at least 85 hours of seeding left'],
+    ['no history, finished long ago', { firstSeenAt: now - 10 * hour * 1000, seconds: 10 * hour }, 'unconfirmed',
+      "Can't confirm yet; keep seeding: seeding time not confirmed: up to 1000 hours since it finished (upper estimate, includes time not seeding); confirmed in 175 hours if it keeps seeding"],
+    ['no history, counter proves it', { firstSeenAt: now - 200 * hour * 1000, seconds: blutopiaNeeds }, 'safe',
+      'Hit and run rule met: seeded 185 hours of 185 hours needed with margin'],
+    ['no history, ratio proves it', { host: 'tracker.beyond-hd.me', firstSeenAt: now - hour * 1000, ratio: 1100 }, 'safe',
+      'Hit and run rule met: ratio 1.10 of 1.05', unknownRatio('beyond-hd.me')],
+    ['gone from rTorrent', { seconds: blutopiaNeeds, goneAt: now - 1000 }, 'keep', 'Seeding time unknown (torrent not in rTorrent)'],
+    ['no rule', { host: 'tracker.opentrackr.org', seconds: blutopiaNeeds }, 'unconfirmed', "Can't tell; keep seeding: no hit and run rule for tracker.opentrackr.org"],
+    ['no tracker', { host: null }, 'unconfirmed', "Can't tell; keep seeding: its tracker is not known"],
+    // Incomplete torrents: judging them by the complete rule, letting the counter prove PrivateHD's 60 days, dropping the
+    // ratio margin, or calling a running download under 10% safe turns these red.
+    ['PrivateHD partial ratio met', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 20 * GB, complete: 0, ratio: 950 }, 'safe',
+      'Partly downloaded: ratio 0.95 of 0.95 on the data downloaded'],
+    ['PrivateHD partial ratio short', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 20 * GB, complete: 0, ratio: 949, seconds: 2000 * hour }, 'keep',
+      "Partly downloaded: clears at ratio 0.95 of the data downloaded (now 0.94) or after 66 days seeding, which isn't measured yet"],
+    ['PrivateHD under 10%, stopped', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 3 * GB, complete: 0, active: 0 }, 'safe',
+      'Under 10% downloaded; not a hit and run on privatehd.to'],
+    ['PrivateHD under 10%, downloading', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 3 * GB, complete: 0 }, 'keep', 'Still downloading'],
+    ['Blutopia incomplete', { completedBytes: 5 * GB, complete: 0, seconds: blutopiaNeeds }, 'keep', 'Download not complete; blutopia.cc counts seed time only at 100%'],
+  ]) {
+    assert.deepEqual(await advise(torrent(input)), { recommendation, reason, globalRatio }, name);
+  }
+  assert.equal((await advise('F'.repeat(40))).reason, 'Seeding time unknown (torrent not in rTorrent)');
+
+  // Blutopia's minimum is 0.4, so anything under 0.5 keeps the torrent even when its rule is met.
+  const met = torrent({ seconds: blutopiaNeeds });
+  assert.deepEqual(await advise(met, { blutopia: 0.49 }), {
+    recommendation: 'keep', reason: 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin',
+    globalRatio: 'Keep for ratio: your blutopia.cc ratio is 0.49, minimum 0.4',
+  });
+  assert.equal((await advise(met, { blutopia: 0.5 })).recommendation, 'safe');
+  assert.deepEqual(await advise(met, { blutopia: null }), {
+    recommendation: 'safe', reason: 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin', globalRatio: unknownRatio('blutopia.cc'),
+  });
+
+  setSetting(database, 'trackerConfiguration', 'margins.blutopia.cc', JSON.stringify({ timeFactor: 1.2 }));
+  assert.equal((await advise(met)).reason, 'Keep seeding: 17 hours of seeding left');
+  for (const bad of ['not json', '{"timeFactor":0.9}', '{"extraHours":-1}', '{"ratioExtra":"0.05"}', '{"other":1}', '[]']) {
+    setSetting(database, 'trackerConfiguration', 'margins.blutopia.cc', bad);
+    await assert.rejects(advise(met), { message: 'The saved hit and run margins for blutopia.cc are not valid.' }, bad);
+  }
+});
+
 // PrivateHD's rules for incomplete torrents (privatehd.to/rules/hit-run-rules). Each case names its defect.
 test('incomplete torrents follow the tracker partial-download rules', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-partial-rules-'));
@@ -2396,6 +2484,10 @@ test('tracker accounts read saved settings and classify each outcome', async (t)
   const listed = await app.request('/api/trackers', { headers: { Cookie: session } });
   assert.equal(listed.status, 200);
   assert.deepEqual(await listed.json(), fixedArray);
+  // Dropping the hash check on the advice route turns this red.
+  assert.equal((await app.request('/api/advice/not-a-hash', { headers: { Cookie: session } })).status, 400);
+  const advice = await app.request(`/api/advice/${'a'.repeat(40)}`, { headers: { Cookie: session } });
+  assert.deepEqual(await advice.json(), { recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null });
   const posted = await app.request('/api/trackers', { method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: '{}' });
   assert.notEqual(posted.status, 200);
 });

@@ -23,6 +23,8 @@ const DEFAULTS: Record<Tracker, { host: string; rule: HitAndRunRule }> = {
   beyondhd: { host: 'beyond-hd.me', rule: { minHours: 120, minHoursFormula: null, minRatio: 1.0, minGlobalRatio: 0.25, logic: 'or', ...NO_INCOMPLETE } },
 };
 const defaultFor = (host: string) => Object.values(DEFAULTS).find((entry) => entry.host === host)?.rule;
+// The tracker whose account stats belong to this rule hostname.
+export const trackerOf = (host: string) => (Object.keys(DEFAULTS) as Tracker[]).find((tracker) => DEFAULTS[tracker].host === host);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const amount = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -80,13 +82,16 @@ const knownHosts = (database: DatabaseSync) => new Set([
     .map((entry) => entry.key.slice(PREFIX.length)),
 ]);
 
-// Matches a tracker hostname exactly, or a Sonarr/Radarr indexer name whose normalised form equals exactly one
+// Matches a tracker hostname (or one of its parent domains) exactly, or a Sonarr/Radarr indexer name whose normalised form equals exactly one
 // hostname's normalised form. Substring matches never count, so "hd" matches nothing.
 export const findTrackerRule = (database: DatabaseSync, hostOrIndexer: string): { host: string; rule: HitAndRunRule } | undefined => {
   const hosts = [...knownHosts(database)];
   const lowered = hostOrIndexer.trim().toLowerCase();
   const name = normalise(hostOrIndexer);
-  const exact = hosts.find((host) => host === lowered);
+  // Announce hostnames can carry a subdomain ("tracker.beyond-hd.me"), so parent domains of two or more labels match too, longest first.
+  const labels = lowered.split('.');
+  const candidates = [lowered, ...labels.slice(1, -1).map((_, index) => labels.slice(index + 1).join('.'))];
+  const exact = candidates.map((candidate) => hosts.find((host) => host === candidate)).find((host) => host !== undefined);
   const byName = hosts.filter((host) => name !== '' && hostName(host) === name);
   const host = exact ?? (byName.length === 1 ? byName[0] : undefined);
   if (host === undefined) return undefined;
