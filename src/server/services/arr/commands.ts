@@ -93,7 +93,18 @@ export const createCommands = <S extends Service>({ service, label, send }: { se
     return done(await command(operation, { name: 'ManualImport', files, importMode: 'copy' }));
   };
 
+  // Sonarr and Radarr move deleted files here instead of deleting them, so the space is freed only once it is emptied.
+  const recycleBin = async (): Promise<Result<string | null>> => {
+    const operation = 'the media management settings read';
+    const answer = await send(operation, '/api/v3/config/mediamanagement');
+    if (answer.kind !== 'ok') return answer;
+    const { body } = answer.value;
+    if (!isRecord(body)) return refusal(`${label} sent no record for ${operation}.`);
+    return { kind: 'ok', value: typeof body.recycleBin === 'string' && body.recycleBin.trim() !== '' ? body.recycleBin.trim() : null };
+  };
+
   return {
+    recycleBin,
     searchAutomatically: searchAutomatically as (target: SearchTarget<S>) => Promise<Result<void>>,
     refreshTitle,
     refreshMonitoredDownloads,
