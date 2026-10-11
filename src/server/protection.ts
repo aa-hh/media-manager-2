@@ -264,7 +264,13 @@ export const createProtection = (
       if (base === undefined || secret === undefined || !services[service].configured()) return false;
       const url = `${base.replace(/\/+$/, '')}/webhooks/${service}`;
       const notifications = await call(service, '/api/v3/notification');
-      const existing = Array.isArray(notifications) ? notifications.find((item) => isRecord(item) && (item.name === WEBHOOK_NAME || item.name === LEGACY_WEBHOOK_NAME)) : undefined;
+      const listed = Array.isArray(notifications) ? notifications.filter(isRecord) : [];
+      const current = listed.find((item) => item.name === WEBHOOK_NAME);
+      const legacy = listed.filter((item) => item.name === LEGACY_WEBHOOK_NAME);
+      // The old grab-veto webhook is renamed in place; when an earlier build already added the new
+      // one beside it, the old one points at a route that is gone, so it is removed instead.
+      const existing = current ?? legacy[0];
+      for (const item of legacy) if (item !== existing) await call(service, `/api/v3/notification/${item.id}`, 'DELETE');
       const wanted = {
         name: WEBHOOK_NAME,
         implementation: 'Webhook',
@@ -287,12 +293,12 @@ export const createProtection = (
       // The services mask a saved password, so a changed secret is noticed from a fingerprint of the last one sent.
       const secretKey = `webhook.sent.${service}`;
       const fingerprint = createHash('sha256').update(secret).digest('base64url');
-      if (!isRecord(existing)) await call(service, '/api/v3/notification', 'POST', wanted);
+      if (existing === undefined) await call(service, '/api/v3/notification', 'POST', wanted);
       else {
         const fields = Array.isArray(existing.fields) ? existing.fields : [];
-        const current = fields.find((field) => isRecord(field) && field.name === 'url');
+        const sentUrl = fields.find((field) => isRecord(field) && field.name === 'url');
         if (
-          existing.name !== WEBHOOK_NAME || existing.onGrab !== true || !isRecord(current) || current.value !== url
+          existing.name !== WEBHOOK_NAME || existing.onGrab !== true || !isRecord(sentUrl) || sentUrl.value !== url
           || getPreference(database, secretKey) !== fingerprint
         ) {
           await call(service, `/api/v3/notification/${existing.id}`, 'PUT', { ...existing, ...wanted });
