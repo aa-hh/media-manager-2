@@ -6793,3 +6793,45 @@ test('backup commands upload, list and restore through a bucket or a folder from
   assert.match(fromFolder.stdout, new RegExp(`^restored ${folderKey} to `));
   for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey));
 });
+
+test('the settings screen sends only changed fields and ranks each service state', async (t) => {
+  // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
+  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
+
+  // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
+  await t.test('only a changed address and typed secrets are sent', () => {
+    const cases = [
+      [{ address: ' http://localhost:8989 ', secrets: { 'sonarr.apiKey': '  ' } }, {}],
+      [{ address: 'http://localhost:8990', secrets: {} }, { serviceAddresses: { 'sonarr.url': 'http://localhost:8990' } }],
+      [{ address: 'http://localhost:8989', secrets: { 'sonarr.apiKey': 'new' } }, { credentials: { 'sonarr.apiKey': 'new' } }],
+    ];
+    for (const [draft, expected] of cases) assert.deepEqual(changes('sonarr', saved, draft), expected);
+  });
+
+  // Letting unsaved edits hide a running test or a failure turns this red.
+  await t.test('a running test, then a failure, then unsaved edits win the pill', () => {
+    const sonarr = services.find((info) => info.name === 'sonarr');
+    const connected = { kind: 'ok', version: '4.0.10.2544', at: 0, ofSaved: true };
+    const cases = [
+      [{ kind: 'testing' }, 2, 'testing'],
+      [{ kind: 'rejected', at: 0, ofSaved: false }, 2, 'failed'],
+      [connected, 1, 'unsaved'],
+      [connected, 0, 'connected'],
+      [{ kind: 'idle' }, 0, 'not-set-up'],
+    ];
+    for (const [check, edited, state] of cases) assert.equal(pillFor(sonarr, check, edited).state, state);
+    assert.equal(pillFor(sonarr, connected, 0).text, 'Connected · 4.0.10');
+  });
+
+  // Drawing a link red while one side has never answered, or grey while a whole side is failing, turns this red.
+  await t.test('a link is faint until both sides answered, and red when a side has nothing working', () => {
+    const ok = { kind: 'ok', at: 0, ofSaved: true };
+    const down = { kind: 'unreachable', at: 0, ofSaved: true };
+    assert.equal(linkTone([ok, { kind: 'idle' }], [{ kind: 'idle' }]), 'idle');
+    assert.equal(linkTone([ok, down], [down]), 'risk');
+    assert.equal(linkTone([ok, down], [ok]), 'ok');
+  });
+});
