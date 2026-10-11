@@ -36,7 +36,7 @@ function RowSearchResult({ poster, title, year, meta, overview, status, files, a
       {...props}
     >
       {poster !== undefined
-        ? <img src={poster} alt="" className="h-15 w-10 shrink-0 rounded-xs object-cover" />
+        ? <img src={poster} alt="" loading="lazy" decoding="async" className="h-15 w-10 shrink-0 rounded-xs object-cover" />
         : <span aria-hidden="true" className="h-15 w-10 shrink-0 rounded-xs bg-muted" />}
       <span className="flex min-w-0 flex-1 flex-col gap-0.75 overflow-hidden">
         <span className="flex min-w-0 items-center gap-1.5 text-[15px]">

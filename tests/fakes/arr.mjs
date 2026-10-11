@@ -264,7 +264,7 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     if (state.down) throw new TypeError('fetch failed');
     if (new Headers(init.headers).get('X-Api-Key') !== apiKey) return json(401, { message: 'Unauthorized' });
     for (const route of routes) {
-      const answer = route(method, url, body);
+      const answer = await route(method, url, body);
       if (answer !== undefined) return json(answer.status, answer.body);
     }
     const answer = builtIn(method, url, body);

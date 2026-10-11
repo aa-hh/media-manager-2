@@ -6507,7 +6507,7 @@ test('operator command stores settings from stdin and checks connections without
   assert.equal(relisted.stdout.split('\n').includes('credentials plex.token'), false);
 });
 
-// Routing an identifier to the wrong service, letting one failed service hide the other's results, sorting library matches after new ones, passing a service-local image URL to the browser, or caching a failed lookup or serving one past ten minutes breaks search.
+// Routing an identifier to the wrong service, letting one failed service hide the other's results, sorting library matches after new ones, passing a service-local or full-size image URL to the browser, holding the faster service's results until the slower one answers, or caching a failed lookup or serving one past ten minutes breaks search.
 test('one search routes to Sonarr and Radarr and reports each outcome', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { deleteSetting, setSetting } = await import(settingsModuleUrl);
@@ -6533,13 +6533,13 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
     { coverType: 'poster', url: `/MediaCover/1/poster.jpg?apikey=${sonarrKey}`, remoteUrl },
   ];
   const shows = [
-    { title: 'Dune: Prophecy', year: 2024, tvdbId: 1, network: 'HBO', status: 'continuing', ratings: { value: 7.4 }, overview: 'Sisters.', images: poster('https://artworks.example/1.jpg') },
+    { title: 'Dune: Prophecy', year: 2024, tvdbId: 1, network: 'HBO', status: 'continuing', ratings: { value: 7.4 }, overview: 'Sisters.', images: poster('https://artworks.thetvdb.com/banners/v4/series/1/posters/a.jpg') },
     { title: 'Dune', year: 2000, tvdbId: 2, id: 9, network: 'Sci Fi', status: 'ended', images: poster(`/MediaCover/2/poster.jpg?apikey=${sonarrKey}`) },
     { title: 'Dune', tvdbId: 2 },
     { title: '', tvdbId: 3 },
   ];
   const movies = [
-    { title: 'Dune', year: 2021, tmdbId: 438631, imdbId: 'tt1160419', studio: 'Legendary', status: 'released', ratings: { imdb: { value: 8 }, tmdb: { value: 7.8 } }, images: poster('https://image.tmdb.example/dune.jpg') },
+    { title: 'Dune', year: 2021, tmdbId: 438631, imdbId: 'tt1160419', studio: 'Legendary', status: 'released', ratings: { imdb: { value: 8 }, tmdb: { value: 7.8 } }, images: poster('https://image.tmdb.org/t/p/original/dune.jpg') },
     { title: 'Dune', year: 1984, tmdbId: 841, id: 4, ratings: { tmdb: { value: 0 }, imdb: { value: 6.3 } } },
   ];
   const { fake, ...services } = connectArr(database, { sonarr: { apiKey: sonarrKey }, radarr: { apiKey: radarrKey } });
@@ -6574,12 +6574,13 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   const [libraryShow, libraryMovie, show, movie] = both.results;
   assert.deepEqual(show, {
     type: 'tv', service: 'sonarr', key: 'tvdb:1', title: 'Dune: Prophecy', year: 2024, network: 'HBO', status: 'continuing',
-    rating: 7.4, overview: 'Sisters.', posterUrl: 'https://artworks.example/1.jpg', inLibrary: false, libraryId: null,
+    rating: 7.4, overview: 'Sisters.', posterUrl: 'https://artworks.thetvdb.com/banners/v4/series/1/posters/a_t.jpg', inLibrary: false, libraryId: null,
     tvdbId: 1, tmdbId: null, imdbId: null,
   });
   assert.equal(libraryShow.libraryId, 9);
   assert.equal(libraryShow.posterUrl, null);
   assert.equal(movie.network, 'Legendary');
+  assert.equal(movie.posterUrl, 'https://image.tmdb.org/t/p/w185/dune.jpg');
   assert.equal(movie.rating, 7.8);
   assert.equal(libraryMovie.rating, 6.3);
   assert.equal(JSON.stringify(both).includes('apikey'), false);
@@ -6609,6 +6610,26 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
     else fake.sonarr.routes.pop();
     assert.deepEqual(partial.services, { sonarr: { kind }, radarr: { kind: 'ok', count: 2 } }, label);
     assert.deepEqual(partial.results.map((result) => result.service), ['radarr', 'radarr'], label);
+  }
+
+  // Radarr's results go out while Sonarr is still answering; the full answer follows. A partial with no results is not sent.
+  for (const [label, movieLookup, expectedPartial] of [['radarr first', movies, [['tmdb:841', true], ['tmdb:438631', false]]], ['radarr empty', [], undefined]]) {
+    fake.radarr.state.lookup = movieLookup;
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    fake.sonarr.routes.push(async (method, url) => (url.pathname === '/api/v3/series/lookup' ? held : undefined));
+    clock.value += LOOKUP_CACHE_MS + 1;
+    const partials = [];
+    const answer = search.search(parseSearchQuery('Dune'), (partial) => partials.push(structuredClone(partial)));
+    for (let turn = 0; turn < 100 && partials.length === 0; turn += 1) await drain();
+    assert.deepEqual(partials.map((partial) => [partial.services.sonarr, partial.results.map((result) => [result.key, result.inLibrary])]),
+      expectedPartial === undefined ? [] : [[{ kind: 'pending' }, expectedPartial]], label);
+    fake.sonarr.routes.pop();
+    release(undefined);
+    const final = await answer;
+    assert.deepEqual(final.services.sonarr, { kind: 'ok', count: 2 }, label);
+    assert.equal(partials.length, expectedPartial === undefined ? 0 : 1, label);
+    clearCalls();
   }
 
   fake.sonarr.state.lookup = [];
