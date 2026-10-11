@@ -143,9 +143,9 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
 
 type Panel = 'remove' | 'import';
 
-function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged }: {
+function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged, onUnauthenticated }: {
   row: Row; now: number; selected: boolean; dimmed: boolean; panel: Panel | null;
-  onSelect: () => void; onOpen: (panel: Panel) => void; onClose: () => void; onChanged: () => void;
+  onSelect: () => void; onOpen: (panel: Panel) => void; onClose: () => void; onChanged: () => void; onUnauthenticated: () => void;
 }) {
   const [grabbing, setGrabbing] = useState(false);
   const [grabFailed, setGrabFailed] = useState(false);
@@ -208,6 +208,7 @@ function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onCl
             downloadId={row.importable.downloadId}
             onDone={onChanged}
             onCancel={onClose}
+            onUnauthenticated={onUnauthenticated}
           />
         </div>
       )}
@@ -220,8 +221,8 @@ const headerSummary = (rows: Row[], groups: Group[]) => {
   return [`${rows.length} ${rows.length === 1 ? 'item' : 'items'}`, `${count('needs_you')} needs you`, `${count('handling')} being handled`].join(' · ');
 };
 
-export function DownloadsScreen({ state, reload, headingRef }: {
-  state: DownloadsState; reload: () => Promise<unknown>; headingRef: RefObject<HTMLHeadingElement | null>;
+export function DownloadsScreen({ state, reload, headingRef, onUnauthenticated }: {
+  state: DownloadsState; reload: () => Promise<unknown>; headingRef: RefObject<HTMLHeadingElement | null>; onUnauthenticated: () => void;
 }) {
   const now = useClock();
   const rows = useMemo(() => (state.kind === 'ready' ? buildRows(state.snapshot) : []), [state]);
@@ -289,6 +290,7 @@ export function DownloadsScreen({ state, reload, headingRef }: {
                 onOpen={(panel) => { setSelected(row.key); setOpen({ key: row.key, panel }); }}
                 onClose={() => setOpen(null)}
                 onChanged={changed}
+                onUnauthenticated={onUnauthenticated}
               />
             ))}
           </Table>

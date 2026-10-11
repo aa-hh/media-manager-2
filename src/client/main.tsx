@@ -282,7 +282,7 @@ function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'n
       downloading={downloadingRows.length}
       healthProblems={healthProblems.filter((problem) => problem.level !== 'notice').length}
       healthRisk={healthProblems.some((problem) => problem.level === 'error')}
-      downloads={<DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />}
+      downloads={<DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} onUnauthenticated={props.onUnauthenticated} />}
       flagged={(
         <FlaggedScreen
           state={flagged}
