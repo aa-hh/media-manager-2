@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>media-manager-2 — sign in</title>
+<style>
+  :root {
+    --bone: #e9e1cf;
+    --oxblood: #5a1018;
+    --ink: #1e0a0c;
+    --plex: #e5a00d;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bone);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+  canvas {
+    position: fixed; inset: 0;
+    width: 100vw; height: 100vh;
+    display: block;
+  }
+  main {
+    position: relative;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px 16px;
+  }
+  .plate {
+    width: min(420px, 100%);
+    padding: 40px 40px 32px;
+    background: rgba(233, 225, 207, 0.9);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    border: 1px solid rgba(90, 16, 24, 0.55);
+    box-shadow: 0 0 0 6px rgba(233, 225, 207, 0.55);
+  }
+  .tag {
+    font: 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--oxblood);
+    margin-bottom: 18px;
+  }
+  h1 {
+    font: italic 400 40px/1.05 "Iowan Old Style", "Palatino", Georgia, serif;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin-bottom: 20px;
+  }
+  p { color: #3a2224; max-width: 34ch; }
+  p + p { margin-top: 6px; }
+  button {
+    margin-top: 28px;
+    width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    padding: 15px 20px;
+    font: 600 15px/1 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--bone);
+    background: var(--oxblood);
+    border: 0;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  button:hover { background: #6d1520; }
+  button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  button svg { width: 12px; height: 18px; flex: none; }
+  .status {
+    margin-top: 14px;
+    min-height: 1.5em;
+    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--oxblood);
+  }
+  @media (max-width: 480px) {
+    .plate { padding: 32px 24px 24px; }
+    h1 { font-size: 34px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="field" aria-hidden="true"></canvas>
+<main>
+  <section class="plate" id="plate">
+    <div class="tag">Private media server</div>
+    <h1>media-manager-2</h1>
+    <p>Only the owner’s Plex account can open this app.</p>
+    <p>Plex confirms who you are. This app never sees your password.</p>
+    <button type="button" id="signin">
+      <svg viewBox="14 0 44 72" aria-hidden="true"><path fill="#e5a00d" d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+      <span id="label">Sign in with Plex</span>
+    </button>
+    <div class="status" id="status" role="status"></div>
+  </section>
+</main>
+<script>
+// ---- Tunable constants ----
+const CELL = 3;              // CSS px per simulation cell (grid is 1/3 of the viewport)
+const RENDER_SCALE = 0.5;    // canvas pixels per CSS px (half-res, upscaled by the browser)
+const SEED = 7411;           // seed for every random choice, so ?t frames repeat exactly
+const STEPS_PER_SEC = 200;   // simulation steps per second of idle time
+const WARMUP = 1400;         // steps run before t=0 so the pattern already exists
+const MAX_STEPS_FRAME = 40;  // cap per animation frame (live catch-up after load)
+const PARAM_EVERY = 10;      // steps between refreshes of the per-cell feed/kill map
+const DU = 1.0, DV = 0.5;    // diffusion rates of chemical U and chemical V
+const F_BASE = 0.0390;       // base feed rate (spots that split, near the coral boundary)
+const K_BASE = 0.0625;       // base kill rate
+const F_DRIFT = 0.0070;      // how far the feed rate wanders across space and time
+const K_DRIFT = 0.0018;      // how far the kill rate wanders
+const DRIFT_SPEED = 0.035;   // radians per second of the slow parameter drift
+const CLEAR_K = 0.012;       // extra kill rate behind the sign-in plate (keeps a clearing)
+const CLEAR_MARGIN = 56;     // px beyond the plate edge where the clearing fades out
+const RESEED_EVERY = 2.5;    // seconds between small new seeds dropped into bare areas
+const CHECK_F = 0.018;       // checking: extra feed carried by each outward pulse
+const CHECK_PERIOD = 1.6;    // checking: seconds between pulses
+const CHECK_SPEED = 260;     // checking: pulse travel speed in px per second
+const CHECK_RATE = 1.3;      // checking: simulation speed multiplier
+const CHECK_SWELL = 0.06;    // checking: how much each passing pulse thickens the ink
+const REFUSE_K = 0.016;      // refused: extra kill rate inside the receding circle
+const REFUSE_GROW = 150;     // refused: px per second the dead circle widens
+const GRAIN = 0.07;          // printed-grain strength added to V before colour mapping
+const BONE = [233, 225, 207], OXBLOOD = [90, 16, 24], INK = [30, 10, 12];
+const E0 = 0.11, E1 = 0.21;  // V range that fades bone into oxblood
+const E2 = 0.29, E3 = 0.37;  // V range that fades oxblood into ink
+
+// ---- Setup ----
+const params = new URLSearchParams(location.search);
+const STATE = ['checking', 'refused'].includes(params.get('state')) ? params.get('state') : 'idle';
+const FIXED_T = params.has('t') ? Math.max(0, parseFloat(params.get('t')) || 0) : null;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const statusEl = document.getElementById('status');
+if (STATE === 'checking') { statusEl.textContent = 'Waiting for Plex to confirm…'; document.getElementById('label').textContent = 'Checking with Plex…'; }
+if (STATE === 'refused') statusEl.textContent = 'That Plex account is not the owner.';
+
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hash(x, y, s) { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 2147483647) | 0; h = Math.imul(h ^ h >>> 13, 1274126177); return ((h ^ h >>> 16) >>> 0) / 4294967296; }
+const smooth = (a, b, x) => { x = (x - a) / (b - a); x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
+
+const canvas = document.getElementById('field');
+const ctx = canvas.getContext('2d');
+const VW = innerWidth, VH = innerHeight;
+const GW = Math.ceil(VW / CELL), GH = Math.ceil(VH / CELL), N = GW * GH;
+const RW = Math.ceil(VW * RENDER_SCALE), RH = Math.ceil(VH * RENDER_SCALE);
+canvas.width = RW; canvas.height = RH;
+const img = ctx.createImageData(RW, RH);
+
+let U = new Float32Array(N).fill(1), V = new Float32Array(N);
+let U2 = new Float32Array(N), V2 = new Float32Array(N);
+const Fm = new Float32Array(N), Km = new Float32Array(N);
+const clearK = new Float32Array(N), dist = new Float32Array(N);
+const rnd = mulberry32(SEED);
+
+// Two smooth random fields from summed sines; the drift moves along them.
+const waves = [...Array(8)].map(() => ({ fx: (rnd() - 0.5) * 0.02, fy: (rnd() - 0.5) * 0.02, ph: rnd() * 6.283 }));
+const N1 = new Float32Array(N), N2 = new Float32Array(N);
+const rect = document.getElementById('plate').getBoundingClientRect();
+const cx = (rect.left + rect.right) / 2, cy = (rect.top + rect.bottom) / 2;
+for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+  const i = y * GW + x, px = x * CELL, py = y * CELL;
+  let a = 0, b = 0;
+  for (let w = 0; w < 4; w++) a += Math.sin(px * waves[w].fx + py * waves[w].fy + waves[w].ph);
+  for (let w = 4; w < 8; w++) b += Math.sin(px * waves[w].fx + py * waves[w].fy + waves[w].ph);
+  N1[i] = a / 4; N2[i] = b / 4;
+  const dx = Math.max(rect.left - px, 0, px - rect.right), dy = Math.max(rect.top - py, 0, py - rect.bottom);
+  clearK[i] = CLEAR_K * (1 - smooth(0, CLEAR_MARGIN, Math.hypot(dx, dy)));
+  dist[i] = Math.hypot(px - cx, py - cy);
+}
+
+function blob(gx, gy, r) {
+  for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
+    if (x * x + y * y > r * r) continue;
+    const i = ((gy + y + GH) % GH) * GW + ((gx + x + GW) % GW);
+    U[i] = 0.5; V[i] = 0.25 + rnd() * 0.05;
+  }
+}
+const nSeeds = Math.max(12, Math.round(N / 500));
+for (let s = 0; s < nSeeds; s++) blob(Math.floor(rnd() * GW), Math.floor(rnd() * GH), 2 + Math.floor(rnd() * 3));
+
+// Simulation time in seconds for a given step count (state effects start at t=0).
+const rate = STATE === 'checking' ? CHECK_RATE : 1;
+const stepTime = (s) => s < WARMUP ? (s - WARMUP) / STEPS_PER_SEC : (s - WARMUP) / (STEPS_PER_SEC * rate);
+
+function updateParams(t) {
+  const d = t * DRIFT_SPEED, tt = Math.max(0, t);
+  const refR = STATE === 'refused' ? 60 + tt * REFUSE_GROW : 0;
+  const refRamp = STATE === 'refused' ? smooth(0, 0.6, tt) : 0;
+  for (let i = 0; i < N; i++) {
+    let f = F_BASE + F_DRIFT * Math.sin(N1[i] * 3.1 + d);
+    let k = K_BASE + K_DRIFT * Math.sin(N2[i] * 3.1 - d * 0.7) + clearK[i];
+    if (t >= 0 && STATE === 'checking') {
+      const ph = (tt * CHECK_SPEED - dist[i]) / (CHECK_SPEED * CHECK_PERIOD);
+      const c = 0.5 + 0.5 * Math.cos(ph * 6.283);
+      f += CHECK_F * (0.35 + 0.65 * c * c * c * c) * smooth(0, 0.5, tt);
+      k -= clearK[i] * 0.5;
+    }
+    if (refRamp) k += REFUSE_K * refRamp * (1 - smooth(refR - 120, refR, dist[i]));
+    Fm[i] = f; Km[i] = f + k; // Km holds feed + kill, the total loss rate of V
+  }
+}
+
+function step() {
+  for (let y = 0; y < GH; y++) {
+    const r0 = y * GW, rm = ((y - 1 + GH) % GH) * GW, rp = ((y + 1) % GH) * GW;
+    for (let x = 0; x < GW; x++) {
+      const xm = x === 0 ? GW - 1 : x - 1, xp = x === GW - 1 ? 0 : x + 1;
+      const i = r0 + x, u = U[i], v = V[i];
+      const lu = 0.2 * (U[r0 + xm] + U[r0 + xp] + U[rm + x] + U[rp + x])
+               + 0.05 * (U[rm + xm] + U[rm + xp] + U[rp + xm] + U[rp + xp]) - u;
+      const lv = 0.2 * (V[r0 + xm] + V[r0 + xp] + V[rm + x] + V[rp + x])
+               + 0.05 * (V[rm + xm] + V[rm + xp] + V[rp + xm] + V[rp + xp]) - v;
+      const uvv = u * v * v, f = Fm[i];
+      U2[i] = u + DU * lu - uvv + f * (1 - u);
+      V2[i] = v + DV * lv + uvv - Km[i] * v;
+    }
+  }
+  let t = U; U = U2; U2 = t; t = V; V = V2; V2 = t;
+}
+
+// Drop a small seed into a bare patch every few seconds, so no region stays finished.
+const reseedRnd = mulberry32(SEED ^ 0x9e37);
+function reseed() {
+  for (let tries = 0; tries < 20; tries++) {
+    const gx = Math.floor(reseedRnd() * GW), gy = Math.floor(reseedRnd() * GH), i = gy * GW + gx;
+    if (V[i] < 0.02 && clearK[i] === 0) { blob(gx, gy, 2); return; }
+  }
+}
+
+let done = 0;
+const reseedSteps = Math.round(RESEED_EVERY * STEPS_PER_SEC);
+function advanceTo(target) {
+  while (done < target) {
+    if (done % PARAM_EVERY === 0) updateParams(stepTime(done));
+    if (done % reseedSteps === 0 && STATE !== 'refused') reseed();
+    step(); done++;
+  }
+}
+
+// Per-pixel colour map with a static printed grain, at half resolution.
+// Colour comes from a lookup table on V; distance to the plate is precomputed for the checking swell.
+const LUT_N = 1024, LUT_MAX = 0.6;
+const lutR = new Float32Array(LUT_N), lutG = new Float32Array(LUT_N), lutB = new Float32Array(LUT_N), lutP = new Float32Array(LUT_N);
+for (let j = 0; j < LUT_N; j++) {
+  const v = j / (LUT_N - 1) * LUT_MAX, m = smooth(E0, E1, v), n = smooth(E2, E3, v);
+  let r = BONE[0] + (OXBLOOD[0] - BONE[0]) * m, g = BONE[1] + (OXBLOOD[1] - BONE[1]) * m, b = BONE[2] + (OXBLOOD[2] - BONE[2]) * m;
+  lutR[j] = r + (INK[0] - r) * n; lutG[j] = g + (INK[1] - g) * n; lutB[j] = b + (INK[2] - b) * n; lutP[j] = 0.05 * (1 - m);
+}
+const grain = new Float32Array(RW * RH), speck = new Uint8Array(RW * RH), rdist = new Uint16Array(RW * RH);
+const rcx = cx * RENDER_SCALE, rcy = cy * RENDER_SCALE;
+for (let y = 0; y < RH; y++) for (let x = 0; x < RW; x++) {
+  const i = y * RW + x;
+  grain[i] = hash(x, y, SEED) + hash(x, y, SEED + 1) - 1;
+  const s = hash(x, y, SEED + 2);
+  speck[i] = s > 0.9965 ? 1 : s < 0.0025 ? 2 : 0;
+  rdist[i] = Math.round(Math.hypot(x - rcx, y - rcy));
+}
+const swell = new Float32Array(Math.ceil(Math.hypot(RW, RH)) + 2);
+const px32 = new Uint32Array(img.data.buffer);
+function render(t) {
+  const sx = GW / RW, sy = GH / RH, chk = STATE === 'checking' ? smooth(0, 0.5, t) : 0;
+  if (chk) {
+    const per = CHECK_SPEED * CHECK_PERIOD * RENDER_SCALE, head = t * CHECK_SPEED * RENDER_SCALE;
+    for (let r = 0; r < swell.length; r++) { const c = 0.5 + 0.5 * Math.cos(6.283 * (head - r) / per); swell[r] = CHECK_SWELL * chk * c * c * c; }
+  }
+  const q = (LUT_N - 1) / LUT_MAX, bR = BONE[0], bG = BONE[1], bB = BONE[2];
+  const inkPx = (255 << 24) | (INK[2] << 16) | (INK[1] << 8) | INK[0], bonePx = (255 << 24) | (bB << 16) | (bG << 8) | bR;
+  for (let y = 0; y < RH; y++) {
+    let gy = (y + 0.5) * sy - 0.5; if (gy < 0) gy = 0;
+    const y0 = Math.floor(gy), y1 = Math.min(y0 + 1, GH - 1), fy = gy - y0, r0 = y0 * GW, r1 = y1 * GW;
+    for (let x = 0; x < RW; x++) {
+      let gx = (x + 0.5) * sx - 0.5; if (gx < 0) gx = 0;
+      const x0 = gx | 0, x1 = x0 + 1 < GW ? x0 + 1 : x0, fx = gx - x0;
+      const a0 = V[r0 + x0] + (V[r0 + x1] - V[r0 + x0]) * fx;
+      const a1 = V[r1 + x0] + (V[r1 + x1] - V[r1 + x0]) * fx;
+      const p = y * RW + x;
+      let v = a0 + (a1 - a0) * fy + grain[p] * GRAIN;
+      if (chk) v += swell[rdist[p]];
+      let j = (v * q) | 0; j = j < 0 ? 0 : j >= LUT_N ? LUT_N - 1 : j;
+      const sp = speck[p];
+      if (sp === 1) { px32[p] = inkPx; continue; }
+      if (sp === 2 && j > LUT_N * 0.27) { px32[p] = bonePx; continue; }
+      const paper = 1 - lutP[j] * (grain[p] + 1);
+      px32[p] = (255 << 24) | ((lutB[j] * paper) << 16) | ((lutG[j] * paper) << 8) | (lutR[j] * paper);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+const targetFor = (t) => WARMUP + Math.floor(t * STEPS_PER_SEC * rate);
+if (FIXED_T !== null || REDUCED) {
+  advanceTo(targetFor(FIXED_T ?? 2));
+  render(FIXED_T ?? 2);
+} else {
+  const start = performance.now();
+  (function frame() {
+    const t = (performance.now() - start) / 1000;
+    advanceTo(Math.min(targetFor(t), done + MAX_STEPS_FRAME));
+    render(t);
+    requestAnimationFrame(frame);
+  })();
+}
+</script>
+</body>
+</html>

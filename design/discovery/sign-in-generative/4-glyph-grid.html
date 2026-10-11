@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>media-manager-2 — sign in</title>
+<style>
+  :root {
+    --paper: #11100E;
+    --ink: #DCD5C3;
+    --ink-2: #A39C8A;
+    --accent: #E5A00D;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--paper); color: var(--ink); overflow: hidden; }
+  body { font-family: var(--mono); -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; left: 0; top: 0; display: block; }
+
+  .panel {
+    position: fixed; left: 7vw; top: 50%; transform: translateY(-50%);
+    width: min(440px, calc(100vw - 32px));
+    padding: 32px 0;
+  }
+  .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  h1 {
+    font-size: clamp(30px, 3.4vw, 44px); font-weight: 500; letter-spacing: -.02em;
+    line-height: 1.05; margin-top: 14px; white-space: nowrap;
+  }
+  h1 .cur {
+    display: inline-block; width: .55em; height: .9em; margin-left: .08em;
+    background: var(--accent); vertical-align: -.08em; animation: blink 1.06s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .copy { margin-top: 22px; font-size: 14px; line-height: 1.6; color: var(--ink-2); max-width: 38ch; }
+  .copy p + p { margin-top: 8px; }
+  .copy strong { color: var(--ink); font-weight: 500; }
+
+  button {
+    margin-top: 30px; display: inline-flex; align-items: center; gap: 12px;
+    height: 52px; padding: 0 22px 0 18px; border: 0; border-radius: 2px;
+    background: var(--accent); color: #17130A;
+    font: 600 15px/1 var(--mono); letter-spacing: .01em; cursor: pointer;
+  }
+  button svg { width: 16px; height: 16px; fill: currentColor; }
+  button:hover { background: #F0B229; }
+  button:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+  .status { margin-top: 16px; min-height: 20px; font-size: 13px; color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .panel { left: 16px; right: 16px; top: auto; bottom: 28px; transform: none; width: auto; padding: 24px 0 8px; }
+    h1 { font-size: 30px; }
+    .copy { font-size: 13px; }
+    button { width: 100%; justify-content: center; }
+  }
+  @media (prefers-reduced-motion: reduce) { h1 .cur { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+
+<main class="panel" id="panel">
+  <div class="kicker">Owner sign-in</div>
+  <h1>media-manager-2<span class="cur" aria-hidden="true"></span></h1>
+  <div class="copy">
+    <p><strong>Only the owner's Plex account can open this app.</strong></p>
+    <p>Plex is used only to confirm it's you. This app never sees your password.</p>
+  </div>
+  <button id="go" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    Sign in with Plex
+  </button>
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+</main>
+
+<script>
+// ---- Tunable constants ---------------------------------------------------
+const FONT_PX        = 12;      // glyph size in CSS px; sets grid density
+const LINE           = 1.3;     // row height as a multiple of FONT_PX
+const PAPER          = '#11100E'; // background (paper)
+const INK            = ['#4A463E', '#837D6F', '#DCD5C3']; // ink at dim / mid / full strength
+const ACCENT         = '#E5A00D'; // the one accent: cursors, rings, button
+const RAMP           = ' .·:-=+*#%@'; // glyphs from empty to dense
+const EXTRA          = '_▌×';   // special glyphs (cursor, block cursor, cross)
+const BG_LEVEL       = 0.05;    // floor brightness of the background field
+const BG_NOISE       = 0.22;    // how much noise adds to the background
+const BG_WAVES       = 0.09;    // how much the two-source sine interference adds
+const NOISE_SCALE    = 0.045;   // noise frequency per cell
+const NOISE_DRIFT    = 0.05;    // how fast the noise field drifts (per second)
+const WAVE_LEN       = 70;      // interference wavelength, CSS px
+const WAVE_SPEED     = 0.5;     // interference phase speed (radians per second)
+const FORM_SIZE      = 0.43;    // torus outer radius as a fraction of min(width, height)
+const FORM_R         = 1.0;     // torus major radius (object units)
+const FORM_r         = 0.42;    // torus tube radius (object units)
+const SPIN_A         = 0.11;    // turn rate around X (radians per second)
+const SPIN_B         = 0.07;    // turn rate around Z (radians per second)
+const FLICKER_RATE   = 1.6;     // cursor flicker slots per second
+const FLICKER_P      = 0.0011;  // chance a cell is a flickering cursor in a slot
+const PANEL_CLEAR    = 44;      // px of soft clearance around the sign-in block
+const RING_PERIOD    = 1.25;    // checking: seconds between rings
+const RING_SPEED     = 520;     // checking: ring speed, px per second
+const RING_WIDTH     = 26;      // checking: ring thickness, px
+const CHECK_SPIN     = 2.6;     // checking: torus spin multiplier
+const REFUSE_CYCLE   = 9;       // refused: seconds per fill-collapse-return cycle
+const REDUCED_T      = 4;       // still frame time used for reduced motion
+const MAX_DPR        = 2;       // pixel density cap; set 1 to render at half resolution on retina
+
+// ---- Setup ---------------------------------------------------------------
+const q = new URLSearchParams(location.search);
+let state = ['idle', 'checking', 'refused'].includes(q.get('state')) ? q.get('state') : 'idle';
+const fixedT = q.has('t') ? parseFloat(q.get('t')) || 0 : null;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono');
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const panel = document.getElementById('panel'), btn = document.getElementById('go');
+const statusEl = document.getElementById('status');
+const STATUS = { idle: '', checking: 'Waiting for Plex to confirm…', refused: 'That Plex account is not the owner. Nothing was opened.' };
+
+let W, H, dpr, cw, ch, cols, rows, gw, gh, stride, img, buf, glyphs, lut, paperPx, panelR, btnC;
+const CHARS = RAMP + EXTRA;
+const COLORS = [...INK, ACCENT];  // colour index: 0..2 ink, 3 accent
+const rgb = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+const pack = (r, g, b) => (255 << 24 | b << 16 | g << 8 | r) >>> 0; // little-endian RGBA
+
+function build() {
+  dpr = Math.max(1, Math.min(MAX_DPR, Math.round(window.devicePixelRatio || 1)));
+  W = innerWidth; H = innerHeight;
+  ctx.font = `${FONT_PX}px ${MONO}`;
+  cw = Math.max(6, Math.round(ctx.measureText('M').width));
+  ch = Math.round(FONT_PX * LINE);
+  cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+  gw = cw * dpr; gh = ch * dpr; stride = cols * gw;
+  // canvas covers whole cells so no glyph is ever clipped; the page hides the overhang
+  cv.width = stride; cv.height = rows * gh;
+  cv.style.width = cols * cw + 'px'; cv.style.height = rows * ch + 'px';
+  img = ctx.createImageData(cv.width, cv.height); buf = new Uint32Array(img.data.buffer);
+  // glyph atlas: render each glyph once, keep only its inked pixels as (offset, alpha) lists
+  const a = document.createElement('canvas'); a.width = CHARS.length * gw; a.height = gh;
+  const ac = a.getContext('2d');
+  ac.scale(dpr, dpr); ac.font = `${FONT_PX}px ${MONO}`; ac.textAlign = 'center'; ac.textBaseline = 'middle'; ac.fillStyle = '#fff';
+  [...CHARS].forEach((g, i) => ac.fillText(g, i * cw + cw / 2, ch / 2 + 0.5));
+  const px = ac.getImageData(0, 0, a.width, a.height).data;
+  glyphs = [...CHARS].map((_, g) => {
+    const off = [], al = [];
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const v = px[(y * a.width + g * gw + x) * 4 + 3];
+      if (v > 8) { off.push(y * stride + x); al.push(v); }
+    }
+    return { off: Int32Array.from(off), al: Uint8Array.from(al) };
+  });
+  // colour lookup: paper blended toward each ink/accent colour by glyph alpha
+  const P = rgb(PAPER); paperPx = pack(...P);
+  lut = new Uint32Array(COLORS.length * 256);
+  COLORS.forEach((c, ci) => { const C = rgb(c); for (let v = 0; v < 256; v++) lut[ci * 256 + v] = pack(...P.map((p, k) => Math.round(p + (C[k] - p) * v / 255))); });
+  const p = panel.getBoundingClientRect(), b = btn.getBoundingClientRect();
+  panelR = { x0: p.left, y0: p.top, x1: p.right, y1: p.bottom };
+  btnC = { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 };
+}
+
+// ---- Maths ---------------------------------------------------------------
+function hash3(x, y, z) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1103515245); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+const fade = t => t * t * (3 - 2 * t);
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const u = fade(x - xi), v = fade(y - yi), w = fade(z - zi);
+  const L = (a, b, t) => a + (b - a) * t;
+  const c = (dx, dy, dz) => hash3(xi + dx, yi + dy, zi + dz);
+  return L(L(L(c(0,0,0), c(1,0,0), u), L(c(0,1,0), c(1,1,0), u), v),
+           L(L(c(0,0,1), c(1,0,1), u), L(c(0,1,1), c(1,1,1), u), v), w);
+}
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+// distance from a point to the panel rectangle (0 inside)
+function panelDist(x, y) {
+  const dx = Math.max(panelR.x0 - x, 0, x - panelR.x1), dy = Math.max(panelR.y0 - y, 0, y - panelR.y1);
+  return Math.hypot(dx, dy);
+}
+
+// ---- Frame ---------------------------------------------------------------
+function frame(t, tau) {
+  buf.fill(paperPx);
+
+  const phone = W <= 640;
+  const fcx = phone ? W * 0.5 : W * 0.64, fcy = phone ? H * 0.27 : H * 0.5;
+  const outer = FORM_SIZE * Math.min(W, phone ? H * 0.62 : H) * (phone ? 1.05 : 1);
+  const S = outer / (FORM_R + FORM_r);
+  const spin = state === 'checking' ? CHECK_SPIN : 1;
+  const A = 0.6 + t * SPIN_A * spin, B = 0.3 + t * SPIN_B * spin;
+  // object = Rz(B) * Rx(A) * world ; columns give ray origin + direction
+  const ca = Math.cos(A), sa = Math.sin(A), cb = Math.cos(B), sb = Math.sin(B);
+  const m = [cb, -sb * ca, sb * sa,  sb, cb * ca, -cb * sa,  0, sa, ca]; // row-major 3x3
+  const col0 = [m[0], m[3], m[6]], col1 = [m[1], m[4], m[7]], dir = [m[2], m[5], m[8]];
+  let L = [-0.55, -0.65, -0.52]; // light from upper-left, toward viewer
+  L = [m[0]*L[0]+m[1]*L[1]+m[2]*L[2], m[3]*L[0]+m[4]*L[1]+m[5]*L[2], m[6]*L[0]+m[7]*L[1]+m[8]*L[2]];
+  const nl = Math.hypot(...L); L = L.map(v => v / nl);
+
+  const s1x = W * (0.25 + 0.08 * Math.sin(t * 0.05)), s1y = H * (0.2 + 0.06 * Math.cos(t * 0.04));
+  const s2x = W * (0.85 + 0.05 * Math.cos(t * 0.03)), s2y = H * (0.9 + 0.05 * Math.sin(t * 0.06));
+  const k = 2 * Math.PI / WAVE_LEN, nz = t * NOISE_DRIFT;
+  const slot = Math.floor(t * FLICKER_RATE), slotOn = (t * FLICKER_RATE) % 1 < 0.6;
+  const maxD = Math.hypot(W, H);
+
+  // refused envelope
+  let fill = 0, D = 0, back = 1;
+  if (state === 'refused') {
+    const p = tau % REFUSE_CYCLE;
+    fill = smooth(0, 0.45, p); D = fade(clamp((p - 1.0) / 2.6, 0, 1)); back = smooth(4.4, 7.6, p);
+  }
+  const nRamp = RAMP.length - 1;
+
+  for (let j = 0; j < rows; j++) {
+    const y = j * ch + ch / 2;
+    for (let i = 0; i < cols; i++) {
+      const x = i * cw + cw / 2;
+      let b, accent = false, glyph = -1;
+
+      // background: drifting value noise + two-source sine interference
+      const n = noise3(i * NOISE_SCALE, j * NOISE_SCALE * LINE * 1.6, nz) * 0.65
+              + noise3(i * NOISE_SCALE * 2.3, j * NOISE_SCALE * 3.7, nz * 1.7 + 9) * 0.35;
+      const wv = (Math.sin(Math.hypot(x - s1x, y - s1y) * k - t * WAVE_SPEED)
+                + Math.sin(Math.hypot(x - s2x, y - s2y) * k - t * WAVE_SPEED)) * 0.5;
+      b = BG_LEVEL + BG_NOISE * n * n * 1.6 + BG_WAVES * wv;
+
+      // the turning form: sphere-trace a torus seen straight on
+      const wx = (x - fcx) / S, wy = (y - fcy) / S;
+      if (wx * wx + wy * wy < (FORM_R + FORM_r) ** 2 * 1.02) {
+        let ox = wx * col0[0] + wy * col1[0] - 3 * dir[0];
+        let oy = wx * col0[1] + wy * col1[1] - 3 * dir[1];
+        let oz = wx * col0[2] + wy * col1[2] - 3 * dir[2];
+        for (let s = 0, d = 0; s < 48 && d < 6; s++) {
+          const px = ox + dir[0] * d, py = oy + dir[1] * d, pz = oz + dir[2] * d;
+          const rq = Math.hypot(px, pz), dist = Math.hypot(rq - FORM_R, py) - FORM_r;
+          if (dist < 0.004) {
+            const cx = px - px / rq * FORM_R, cz = pz - pz / rq * FORM_R;
+            const inv = 1 / Math.hypot(cx, py, cz);
+            const lam = Math.max(0, (cx * L[0] + py * L[1] + cz * L[2]) * inv);
+            const grain = hash3(i, j, 7) * 0.06;
+            b = 0.3 + 0.7 * Math.pow(lam, 1.1) + grain;
+            break;
+          }
+          d += dist;
+        }
+      }
+
+      // checking: rings run out from the button
+      if (state === 'checking') {
+        const dd = Math.hypot(x - btnC.x, y - btnC.y);
+        let ring = 0;
+        for (let r = Math.floor(tau / RING_PERIOD); r >= 0; r--) {
+          const rad = (tau - r * RING_PERIOD) * RING_SPEED;
+          if (rad > maxD + RING_WIDTH * 3) break;
+          const e = (dd - rad) / RING_WIDTH;
+          ring += Math.exp(-e * e) * Math.exp(-rad / (maxD * 0.7));
+        }
+        if (ring > 0.32) { accent = true; b = Math.max(b, 0.25 + ring * 0.75); }
+        else b += ring * 0.5;
+      }
+
+      // refused: the grid fills to a dense block, then crumbles top-down and empties
+      if (state === 'refused') {
+        const h = hash3(i, j, 31);
+        const thr = 0.72 * h + 0.28 * (j / rows);
+        const block = 0.88 + h * 0.12;
+        if (D < thr) {
+          b = b + (block - b) * fill;
+          if (D > 0 && thr - D < 0.035) { b = 0.5; glyph = RAMP.length + 2; } // crumbling edge: ×
+        } else b *= back;
+      }
+
+      // keep the sign-in block on clean paper
+      const pd = panelDist(x, y);
+      if (pd < PANEL_CLEAR) { const mfac = smooth(0, PANEL_CLEAR, pd); b *= mfac; if (mfac < 0.5) { accent = false; glyph = -1; } }
+
+      // a few cells flicker like a cursor
+      if (!accent && glyph < 0 && slotOn && pd > PANEL_CLEAR && hash3(i, j, slot) < FLICKER_P && state !== 'refused') {
+        accent = true; glyph = RAMP.length + (hash3(i, j, slot + 3) < 0.5 ? 0 : 1);
+      }
+
+      if (glyph < 0) {
+        b = clamp(b, 0, 1);
+        glyph = Math.min(nRamp, Math.floor(b * (nRamp + 0.999)));
+        if (glyph === 0) continue;
+      }
+      const L0 = (accent ? 3 : b < 0.34 ? 0 : b < 0.62 ? 1 : 2) * 256;
+      const G = glyphs[glyph], off = G.off, al = G.al, base = j * gh * stride + i * gw;
+      for (let k = 0; k < off.length; k++) buf[base + off[k]] = lut[L0 + al[k]];
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---- Loop ----------------------------------------------------------------
+let t0 = performance.now(), stateStart = 0;
+function setState(s, now) { state = s; stateStart = now; statusEl.textContent = STATUS[s]; btn.setAttribute('aria-busy', s === 'checking'); }
+
+function run() {
+  build();
+  setState(state, 0);
+  if (fixedT !== null || reduced) { const t = fixedT ?? REDUCED_T; frame(t, t); return; }
+  const tick = () => { const t = (performance.now() - t0) / 1000; frame(t, t - stateStart); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  btn.addEventListener('click', () => setState('checking', (performance.now() - t0) / 1000));
+}
+addEventListener('resize', () => { build(); if (fixedT !== null || reduced) { const t = fixedT ?? REDUCED_T; frame(t, t); } });
+if (document.readyState === 'complete') run(); else addEventListener('load', run);
+</script>
+</body>
+</html>

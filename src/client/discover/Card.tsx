@@ -11,6 +11,13 @@ export const openLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>)
   navigateFrom(path, event.currentTarget);
 };
 
+const prefetched = new Set<string>();
+const prefetch = (url: string | null) => {
+  if (url === null || prefetched.has(url)) return;
+  prefetched.add(url);
+  new Image().src = url;
+};
+
 const localToday = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -24,6 +31,9 @@ export function Card({ result, rank, upcoming = false, size }: { result: Discove
     <LibraryPosterCard
       href={path}
       onClick={openLink(path)}
+      // Pointing at a card starts its backdrop downloading, so the title page has it by the time it opens.
+      onPointerEnter={() => prefetch(result.backdropUrl)}
+      onFocus={() => prefetch(result.backdropUrl)}
       size={size}
       poster={result.posterUrl ?? undefined}
       title={result.title}

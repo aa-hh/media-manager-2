@@ -4,10 +4,23 @@ import type { SearchResult } from './Search';
 
 const announce = () => window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
 
+// A new screen opens at the top; back and forward keep the browser's own scroll restore.
 export const navigate = (path: string, state?: unknown) => {
   window.history.pushState(state ?? null, '', path);
+  window.scrollTo({ top: 0, behavior: 'instant' });
   announce();
 };
+
+/** Waits until these images are downloaded and decoded, or the wait runs out, whichever comes first. */
+export const preloadImages = (urls: Array<string | null | undefined>, maxWaitMs: number) => Promise.race([
+  Promise.all(urls.flatMap((url) => {
+    if (url === null || url === undefined) return [];
+    const image = new Image();
+    image.src = url;
+    return [image.decode().catch(() => undefined)];
+  })),
+  new Promise((resolve) => setTimeout(resolve, maxWaitMs)),
+]);
 
 // The large poster on a title page and the card poster it grew from share this name, so the browser morphs one into the other.
 export const TITLE_POSTER = 'title-poster';

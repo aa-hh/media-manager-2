@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · media-manager-2</title>
+<style>
+  :root {
+    --ink: #0a0e1c;
+    --text: #e8ecf4;
+    --text-dim: #9aa5bd;
+    --btn: #e8ecf4;
+    --btn-ink: #0a0e1c;
+    --live: #c6f135;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--ink); color: var(--text); overflow: hidden; }
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; image-rendering: auto; }
+  .signin {
+    position: absolute; left: max(24px, 8vw); top: 50%; transform: translateY(-50%);
+    width: 380px; display: flex; flex-direction: column; gap: 16px;
+    text-shadow: 0 1px 12px rgba(10, 14, 28, .9);
+  }
+  .mark {
+    font: 500 12px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  h1 { font: 600 40px/1.05 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -.03em; margin-bottom: 6px; }
+  p { color: var(--text-dim); max-width: 34ch; }
+  p strong { color: var(--text); font-weight: 500; }
+  button {
+    margin-top: 10px; align-self: flex-start; display: inline-flex; align-items: center; gap: 12px;
+    height: 48px; padding: 0 22px 0 18px; border: 0; border-radius: 4px; cursor: pointer;
+    background: var(--btn); color: var(--btn-ink); font: 600 15px/1 inherit; font-family: inherit;
+    transition: background-color .6s, filter .2s;
+  }
+  button:hover { filter: brightness(1.06); }
+  button:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+  button[disabled] { cursor: progress; }
+  button svg { width: 14px; height: 14px; fill: currentColor; }
+  body[data-state="success"] button { background: var(--live); }
+  .status { min-height: 1.5em; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-dim); }
+  .status[data-state="refused"] { color: var(--text); }
+  .status[data-state="success"] { color: var(--live); }
+  @media (max-width: 600px) {
+    .signin { left: 24px; right: 24px; width: auto; top: auto; bottom: 32px; transform: none; gap: 12px; }
+    h1 { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<main class="signin" id="signin">
+  <div class="mark">Owner sign-in</div>
+  <h1>media-manager-2</h1>
+  <p><strong>Only the owner's Plex account can open this app.</strong></p>
+  <p>Plex is used only to confirm who you are. It never sees your password.</p>
+  <button id="go" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    <span id="go-label">Sign in with Plex</span>
+  </button>
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+</main>
+<script>
+// ---- Tunable constants ----
+const SEED        = 11;                 // seed for every random choice; same seed, same picture
+const RES         = 0.5;                // canvas resolution as a fraction of CSS pixels (0.5 = half-res, scaled up)
+const DENS        = 1.5;                // how much light the points of a globe add up to per pixel
+const GAIN        = 1.25;               // tone curve strength; higher = brighter globes
+const AMBIENT     = 0.07;               // light on the night side of each globe
+const LIGHT       = [-0.82, -0.42, -0.38]; // direction toward the sun (x right, y down, z into screen)
+const GRAIN       = 6;                  // static print grain, +/- RGB levels
+const STARS       = 520;                // background specks
+const HUE_DRIFT   = 9;                  // degrees the whole palette drifts back and forth
+const HUE_PERIOD  = 140;                // seconds for one hue drift cycle
+const SCRIM       = 0.72;               // how much the globes dim behind the sign-in text
+const BG          = [10, 14, 28];       // #0a0e1c deep space
+const NEBULA      = [26, 30, 58];       // #1a1e3a faint nebula haze
+const GREEN       = [198, 241, 53];     // #C6F135 success
+// checking
+const CHECK_RAMP  = 1.5;                // seconds for the spin to reach full speed-up
+const CHECK_SPIN  = 0.6;                // extra spin speed while checking (0.6 = 60% faster)
+const CHECK_PULSE = 1.3;                // seconds per brightness pulse, shared by every globe
+const CHECK_DEPTH = 0.38;               // pulse strength
+// refused
+const REFUSE_AT   = 0.4;                // seconds before the globes start to leave
+const REFUSE_ACC  = 0.05;               // outward acceleration, screen-size units per s^2
+// success
+const RESOLVE     = 1.2;                // seconds for formulas to resolve to green
+const SWELL       = 2.0;                // seconds for the near globe to swell toward the viewer
+const SWELL_Z     = 0.30;               // how far the near globe comes forward (fraction of its depth)
+
+// Globes. Positions are in units of the open-space size from its centre; z is depth (bigger = further).
+// orbit: [radius x, radius z, period s, start angle] makes a globe circle in depth so it passes in front of / behind others.
+const GLOBES = [
+  { kind: 'bands',   R: .42, pos: [ .12,  .04, 1.70], drift: [.04, .03, .08], driftP: [170, 130, 150],
+    spin: 75, tilt: .42, pitch: .22, N: 80000, lo: [58, 62, 98],  hi: [232, 220, 198] },   // gas giant: noise-bent bands
+  { kind: 'lattice', R: .17, pos: [ .12, -.12, 1.70], orbit: [.5, .8, 150, -2.17],
+    spin: 48, tilt: -.3, pitch: .3, N: 26000, lo: [24, 38, 96], hi: [176, 206, 255] },     // sine interference lattice
+  { kind: 'dither',  R: .13, pos: [ .46, -.36, 1.15], drift: [.03, .04, .05], driftP: [120, 160, 110],
+    spin: 40, tilt: .2, pitch: .15, N: 30000, lo: [52, 48, 80], hi: [232, 228, 244] },      // ordered-dither rim gradient
+  { kind: 'rings',   R: .10, pos: [-.10,  .40, 1.05], drift: [.05, .03, .06], driftP: [140, 120, 180],
+    spin: 90, tilt: .38, pitch: .34, N: 9000, lo: [70, 62, 110], hi: [204, 190, 238],
+    ringN: 16000, ringIn: 1.45, ringOut: 2.45, ringOrbit: 60, ringLo: [60, 70, 110], ringHi: [178, 196, 228] }, // ringed globe
+];
+const LF = 24;                          // lattice wave frequency across a globe
+const NEAR = 0;                         // index of the globe that swells on success
+
+// ---- URL params ----
+const qs = new URLSearchParams(location.search);
+let state = ['idle', 'checking', 'refused', 'success'].includes(qs.get('state')) ? qs.get('state') : 'idle';
+const fixedT = qs.has('t') ? Math.max(0, parseFloat(qs.get('t')) || 0) : null;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---- seeded random + Perlin noise ----
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const perm = new Uint8Array(512);
+{ const p = [...Array(256).keys()]; const r = mulberry32(SEED * 31 + 1);
+  for (let i = 255; i > 0; i--) { const j = (r() * (i + 1)) | 0; [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255]; }
+const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+function grad(h, x, y, z) { h &= 15; const u = h < 8 ? x : y, v = h < 4 ? y : (h === 12 || h === 14 ? x : z); return ((h & 1) ? -u : u) + ((h & 2) ? -v : v); }
+function perlin(x, y, z) {
+  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+  x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+  const u = fade(x), v = fade(y), w = fade(z);
+  const A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z, B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z;
+  const l = (a, b, t) => a + t * (b - a);
+  return l(l(l(grad(perm[AA], x, y, z), grad(perm[BA], x - 1, y, z), u), l(grad(perm[AB], x, y - 1, z), grad(perm[BB], x - 1, y - 1, z), u), v),
+           l(l(grad(perm[AA + 1], x, y, z - 1), grad(perm[BA + 1], x - 1, y, z - 1), u), l(grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1), u), v), w);
+}
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+
+// ---- per-point data, built once ----
+const rnd0 = mulberry32(SEED);
+for (const g of GLOBES) {
+  const N = g.N;
+  g.bx = new Float32Array(N); g.by = new Float32Array(N); g.bz = new Float32Array(N);
+  g.lon = new Float32Array(N); g.n1 = new Float32Array(N); g.n2 = new Float32Array(N); g.gr = new Float32Array(N);
+  const o = rnd0() * 50;
+  for (let i = 0; i < N; i++) {           // uniform random points on the unit sphere
+    const y = rnd0() * 2 - 1, a = rnd0() * Math.PI * 2, r = Math.sqrt(1 - y * y);
+    const x = r * Math.cos(a), z = r * Math.sin(a);
+    g.bx[i] = x; g.by[i] = y; g.bz[i] = z; g.lon[i] = a;
+    g.n1[i] = perlin(x * 1.6 + o, y * 1.6, z * 1.6) + .5 * perlin(x * 3.4 + o, y * 3.4 + 7, z * 3.4);
+    g.n2[i] = perlin(x * 1.6 + o + 40, y * 1.6, z * 1.6 + 9) + .5 * perlin(x * 3.4, y * 3.4 + o, z * 3.4 + 3);
+    g.gr[i] = 0.65 + rnd0() * 0.7;        // per-point brightness jitter = grain
+  }
+  if (g.ringN) {
+    const M = g.ringN;
+    g.rr = new Float32Array(M); g.ra = new Float32Array(M); g.rh = new Float32Array(M); g.rf = new Float32Array(M); g.rg = new Float32Array(M);
+    for (let i = 0; i < M; i++) {
+      const rr = g.ringIn + (g.ringOut - g.ringIn) * Math.sqrt(rnd0());
+      g.rr[i] = rr; g.ra[i] = rnd0() * Math.PI * 2; g.rh[i] = (rnd0() - .5) * .03;
+      const gap = 1 - .9 * (1 - smooth(0, .045, Math.abs(rr - 1.98)));     // dark gap in the ring
+      g.rf[i] = (.45 + .55 * (.5 + .5 * Math.sin(rr * 41))) * gap;           // fine radial bands
+      g.rg[i] = 0.6 + rnd0() * 0.8;
+    }
+  }
+}
+const starRnd = mulberry32(SEED + 5);
+const stars = Array.from({ length: STARS }, () => ({ x: starRnd(), y: starRnd(), b: Math.pow(starRnd(), 3), w: .3 + starRnd() * 1.5, p: starRnd() * 6.28 }));
+
+// ---- canvas + buffers ----
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const block = document.getElementById('signin');
+let W, H, img, buf, occ, bgR, bgG, bgB, scrim, acx, acy, SP, ox, oy;
+const LUT = new Float32Array(4096); for (let i = 0; i < 4096; i++) LUT[i] = 255 * (1 - Math.exp(-(i / 512) * GAIN));
+
+function init() {
+  W = Math.max(2, Math.round(innerWidth * RES)); H = Math.max(2, Math.round(innerHeight * RES));
+  cv.width = W; cv.height = H; img = ctx.createImageData(W, H);
+  const n = W * H;
+  buf = new Float32Array(n * 3); occ = new Float32Array(n);   // r,g,b light per pixel, interleaved
+  bgR = new Float32Array(n); bgG = new Float32Array(n); bgB = new Float32Array(n); scrim = new Float32Array(n);
+  const phone = innerWidth < 600;
+  // open space where the globes live: right of the text on desktop, above it on phones
+  const ax0 = phone ? 0 : .40 * innerWidth, ax1 = innerWidth, ay0 = 0, ay1 = phone ? .56 * innerHeight : innerHeight;
+  acx = (ax0 + ax1) / 2 * RES; acy = (ay0 + ay1) / 2 * RES; SP = Math.min(ax1 - ax0, (ay1 - ay0) * 1.05) * RES;
+  const r = block.getBoundingClientRect();
+  const sx = (r.left + r.width / 2) * RES, sy = (r.top + r.height / 2) * RES;
+  ox = (sx - acx) / SP; oy = (sy - acy) / SP;   // the text's position in globe units: refused globes flee from it
+  const rx = (r.width / 2 + 50) * RES, ry = (r.height / 2 + 50) * RES;
+  const gr = mulberry32(SEED + 9), ns = 1 / (260 * RES);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    const neb = clamp01(.5 + .9 * (perlin(x * ns, y * ns, 3.3) + .5 * perlin(x * ns * 2.3, y * ns * 2.3, 8.1)));
+    const v = Math.hypot(x / W - .55, y / H - .5), haze = neb * neb * (1 - v) * .9, g = (gr() * 2 - 1) * GRAIN;
+    bgR[i] = BG[0] + (NEBULA[0] - BG[0]) * haze + g; bgG[i] = BG[1] + (NEBULA[1] - BG[1]) * haze + g; bgB[i] = BG[2] + (NEBULA[2] - BG[2]) * haze + g;
+    scrim[i] = 1 - SCRIM * (1 - smooth(.85, 1.7, Math.hypot((x - sx) / rx, (y - sy) / ry)));
+  }
+}
+
+// ---- palette drift: rotate a colour around the grey axis ----
+function hueMat(deg) {
+  const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), k = 1 / 3, q = Math.sqrt(1 / 3);
+  return [c + (1 - c) * k, (1 - c) * k - q * s, (1 - c) * k + q * s,
+          (1 - c) * k + q * s, c + (1 - c) * k, (1 - c) * k - q * s,
+          (1 - c) * k - q * s, (1 - c) * k + q * s, c + (1 - c) * k];
+}
+const rot = (m, c) => [m[0] * c[0] + m[1] * c[1] + m[2] * c[2], m[3] * c[0] + m[4] * c[1] + m[5] * c[2], m[6] * c[0] + m[7] * c[1] + m[8] * c[2]].map(v => Math.max(0, v / 255));
+
+// ---- state timing (everything is a closed-form function of time, so ?t= is exact) ----
+function stateAt(tau) {
+  const s = { spinExtra: 0, pulse: 1, resolve: 0, swell: 0, out: 0 };
+  if (state === 'checking') {
+    const k = Math.min(tau, CHECK_RAMP);
+    s.spinExtra = CHECK_SPIN * (tau < CHECK_RAMP ? tau * tau / (2 * CHECK_RAMP) : tau - CHECK_RAMP / 2);  // integral of the ramp
+    s.pulse = 1 + CHECK_DEPTH * (k / CHECK_RAMP) * Math.sin(2 * Math.PI * tau / CHECK_PULSE);
+  } else if (state === 'refused') {
+    const u = Math.max(0, tau - REFUSE_AT); s.out = REFUSE_ACC * u * u;
+  } else if (state === 'success') {
+    s.resolve = smooth(0, RESOLVE, tau);
+    const u = clamp01(tau / SWELL); s.swell = 1 - Math.pow(1 - u, 3);
+  }
+  return s;
+}
+
+// ---- one frame ----
+function frame(t, tau) {
+  const st = stateAt(tau), n = W * H;
+  buf.fill(0); occ.fill(0);
+  const hm = hueMat(HUE_DRIFT * Math.sin(2 * Math.PI * t / HUE_PERIOD));
+  const Lm = Math.hypot(...LIGHT), Lx = LIGHT[0] / Lm, Ly = LIGHT[1] / Lm, Lz = LIGHT[2] / Lm;
+  const tw = (t + st.spinExtra);       // formula clock: runs faster while checking
+
+  // stars
+  for (const s of stars) {
+    const x = s.x * (W - 2), y = s.y * (H - 2), b = s.b * (.55 + .45 * Math.sin(t * s.w + s.p)) * 1.6;
+    const o = ((y | 0) * W + (x | 0)) * 3; buf[o] += b * .8; buf[o + 1] += b * .85; buf[o + 2] += b;
+  }
+
+  // world centres
+  const scene = GLOBES.map((g, gi) => {
+    let x, y, z;
+    if (g.orbit) {
+      const a = g.orbit[3] + 2 * Math.PI * t / g.orbit[2];
+      x = g.pos[0] + g.orbit[0] * Math.cos(a); y = g.pos[1] + .06 * Math.sin(a * 2); z = g.pos[2] + g.orbit[1] * Math.sin(a);
+    } else {
+      x = g.pos[0] + g.drift[0] * Math.sin(2 * Math.PI * t / g.driftP[0] + gi);
+      y = g.pos[1] + g.drift[1] * Math.sin(2 * Math.PI * t / g.driftP[1] + gi * 2);
+      z = g.pos[2] + g.drift[2] * Math.sin(2 * Math.PI * t / g.driftP[2] + gi * 3);
+    }
+    if (st.out > 0) {                    // refused: drift apart, away from the sign-in text, out of frame
+      let dx = x / z - ox, dy = (y / z - oy) * 1.6; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
+      x += dx * st.out * z; y += dy * st.out * z; z += st.out * .25;
+    }
+    if (gi === NEAR && st.swell > 0) { const k = 1 - SWELL_Z * st.swell; x *= k; y *= k; z *= k; }
+    return { g, x, y, z };
+  }).sort((a, b) => b.z - a.z);         // far first; spheres don't intersect, so this is exact
+
+  for (const { g, x: Cx, y: Cy, z: Cz } of scene) drawGlobe(g, Cx, Cy, Cz, t, tw, st, hm, Lx, Ly, Lz);
+
+  // tone map
+  const d = img.data;
+  for (let i = 0, j = 0, k = 0; i < n; i++, j += 4, k += 3) {
+    const o = 1 - .85 * occ[i], r = buf[k], g = buf[k + 1], b = buf[k + 2];
+    const m = r > g ? (r > b ? r : b) : (g > b ? g : b);   // tone-map the brightest channel, keep the hue
+    const f = m > 0 ? LUT[Math.min(4095, (m * scrim[i] * 512) | 0)] / m : 0;
+    d[j]     = bgR[i] * o + r * f;
+    d[j + 1] = bgG[i] * o + g * f;
+    d[j + 2] = bgB[i] * o + b * f;
+    d[j + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function drawGlobe(g, Cx, Cy, Cz, t, tw, st, hm, Lx, Ly, Lz) {
+  if (Cz < .2) return;
+  const R = g.R, S = SP;
+  const lenC = Math.hypot(Cx, Cy, Cz), rs = R * S / Math.sqrt(Math.max(1e-4, lenC * lenC - R * R));
+  const pcx = acx + Cx / Cz * S, pcy = acy + Cy / Cz * S;
+  const reach = rs * (g.ringN ? g.ringOut * 1.2 : 1.05);
+  if (pcx + reach < 0 || pcx - reach > W || pcy + reach < 0 || pcy - reach > H) return;
+
+  // orientation: spin about body y, lean (tilt), then nod toward viewer (pitch)
+  const th = 2 * Math.PI * (t + st.spinExtra) / g.spin;
+  const ct = Math.cos(g.tilt), stl = Math.sin(g.tilt), cp = Math.cos(g.pitch), sp = Math.sin(g.pitch);
+  const A = [ct, -stl, 0, stl * cp, ct * cp, -sp, stl * sp, ct * sp, cp];
+  const cs = Math.cos(th), sn = Math.sin(th);
+  const M = [A[0] * cs - A[2] * sn, A[1], A[0] * sn + A[2] * cs,
+             A[3] * cs - A[5] * sn, A[4], A[3] * sn + A[5] * cs,
+             A[6] * cs - A[8] * sn, A[7], A[6] * sn + A[8] * cs];
+  const lo = rot(hm, g.lo), hi = rot(hm, g.hi), gr = GREEN.map(v => v / 255);
+  const res = st.resolve, pulse = st.pulse;
+  const area = Math.PI * rs * rs, Wt = DENS * area / (g.N * .5) * 3.2;
+  const iC = 1 / lenC, vx = Cx * iC, vy = Cy * iC, vz = Cz * iC;
+
+  const splat = (x, y, a, r, gg, b) => {   // one pixel per point: crisp grain, cheap
+    if (x < 0 || y < 0 || x >= W || y >= H) return;
+    const o = ((y | 0) * W + (x | 0)) * 3;
+    buf[o] += a * r; buf[o + 1] += a * gg; buf[o + 2] += a * b;
+  };
+
+  // rings: back half first, front half after the globe
+  const ring = front => {
+    if (!g.ringN) return;
+    const rlo = rot(hm, g.ringLo), rhi = rot(hm, g.ringHi);
+    const Wr = DENS * Math.PI * (g.ringOut ** 2 - g.ringIn ** 2) * rs * rs * .5 / g.ringN * 2.2;
+    const tr = (t + st.spinExtra) * 2 * Math.PI / g.ringOrbit;
+    for (let i = 0; i < g.ringN; i++) {
+      const rr = g.rr[i], a = g.ra[i] + tr * Math.pow(g.ringIn / rr, 1.5);
+      const bx = rr * Math.cos(a), by = g.rh[i], bz = rr * Math.sin(a);
+      const wx = A[0] * bx + A[1] * by + A[2] * bz, wy = A[3] * bx + A[4] * by + A[5] * bz, wz = A[6] * bx + A[7] * by + A[8] * bz;
+      if ((wz > 0) === front) continue;
+      // planet shadow on the ring: points behind the globe as seen from the sun
+      const dotL = wx * Lx + wy * Ly + wz * Lz, perp2 = wx * wx + wy * wy + wz * wz - dotL * dotL;
+      const lit = dotL < 0 && perp2 < 1 ? .12 : 1;
+      let f = g.rf[i] * pulse; f += (1 - f) * res;
+      const k = clamp01(f) * lit, sh = res * lit;
+      let r = rlo[0] + (rhi[0] - rlo[0]) * k, gg = rlo[1] + (rhi[1] - rlo[1]) * k, b = rlo[2] + (rhi[2] - rlo[2]) * k;
+      r += (gr[0] - r) * sh; gg += (gr[1] - gg) * sh; b += (gr[2] - b) * sh;
+      const X = Cx + R * wx, Y = Cy + R * wy, Z = Cz + R * wz;
+      if (Z < .1) continue;
+      const amt = Wr * g.rg[i] * (.25 + .75 * k);
+      splat(acx + X / Z * S, acy + Y / Z * S, amt, r, gg, b);
+    }
+  };
+  ring(false);
+
+  // the globe hides whatever is behind it
+  const x0 = Math.max(0, (pcx - rs - 1) | 0), x1 = Math.min(W - 1, (pcx + rs + 2) | 0);
+  const y0 = Math.max(0, (pcy - rs - 1) | 0), y1 = Math.min(H - 1, (pcy + rs + 2) | 0);
+  for (let y = y0; y <= y1; y++) { const dy = y + .5 - pcy; for (let x = x0; x <= x1; x++) {
+    const dx = x + .5 - pcx, c = clamp01(rs + .5 - Math.sqrt(dx * dx + dy * dy));
+    if (c <= 0) continue;
+    const i = y * W + x, k = 1 - c;
+    buf[i * 3] *= k; buf[i * 3 + 1] *= k; buf[i * 3 + 2] *= k; if (c > occ[i]) occ[i] = c;
+  } }
+
+  // the surface
+  const N = g.N, bxA = g.bx, byA = g.by, bzA = g.bz, lonA = g.lon, n1 = g.n1, n2 = g.n2, grA = g.gr;
+  const kind = g.kind, ca = Math.cos(tw * .05), sa = Math.sin(tw * .05);
+  for (let i = 0; i < N; i++) {
+    const bx = bxA[i], by = byA[i], bz = bzA[i];
+    const nx = M[0] * bx + M[1] * by + M[2] * bz, ny = M[3] * bx + M[4] * by + M[5] * bz, nz = M[6] * bx + M[7] * by + M[8] * bz;
+    if (nx * Cx + ny * Cy + nz * Cz > -R) continue;           // facing away from the camera
+    const X = Cx + R * nx, Y = Cy + R * ny, Z = Cz + R * nz;
+    const sx = acx + X / Z * S, sy = acy + Y / Z * S;
+    const lam = Math.max(0, nx * Lx + ny * Ly + nz * Lz);
+    const mu = -(nx * vx + ny * vy + nz * vz);                // 1 at the centre of the disc, 0 at the edge
+    let f, light = AMBIENT + (1 - AMBIENT) * lam;
+    if (kind === 'bands') {
+      const warp = n1[i] * ca + n2[i] * sa;
+      f = .5 + .5 * Math.sin(by * 15 + 2.4 * warp + .7 * Math.sin(lonA[i] * 2 + tw * .11));
+      f = f * f * (3 - 2 * f);
+    } else if (kind === 'lattice') {
+      // three plane waves 120 degrees apart interfere into a hexagonal lattice of bright nodes
+      const v = Math.cos(LF * (bx + .25 * by) + tw * .35) + Math.cos(LF * (-.5 * bx + .866 * bz - .2 * by) - tw * .27) + Math.cos(LF * (-.5 * bx - .866 * bz + .1 * by) + tw * .19);
+      f = smooth(.2, 2.4, v);
+    } else if (kind === 'dither') {
+      const rim = Math.pow(1 - Math.max(0, mu), 1.6);
+      const gv = clamp01(.06 + .85 * rim * (.35 + .65 * lam) + .5 * lam * (.55 + .45 * Math.sin(by * 5 + tw * .25)));
+      const thr = BAYER[((sy | 0) & 3) * 4 + ((sx | 0) & 3)];
+      f = gv * pulse > thr ? 1 : 0;
+      if (f === 0 && res === 0) continue;
+      light = .25 + .75 * Math.max(lam, rim * .8);
+    } else {
+      f = .5 + .5 * Math.sin(lonA[i] * 3 + by * 7 + n1[i] * 2.2 - tw * .2);
+    }
+    if (kind !== 'dither') f = clamp01(f * pulse);
+    const lit = res > 0 ? res * smooth(.05, .35, lam) : 0;  // success: lit side turns green...
+    f += (1 - f) * lit; f *= 1 - .7 * (res - lit);             // ...its formula resolves to full; the night side goes quiet
+    light *= 1 + .7 * lit;
+    let r = lo[0] + (hi[0] - lo[0]) * f, gg = lo[1] + (hi[1] - lo[1]) * f, b = lo[2] + (hi[2] - lo[2]) * f;
+    r += (gr[0] - r) * lit; gg += (gr[1] - gg) * lit; b += (gr[2] - b) * lit;
+    const e = 1 - mu, e2 = e * e, limb = 1 + .5 * e2 * e2 * lam;          // thin bright atmosphere at the lit edge
+    splat(sx, sy, Wt * grA[i] * light * limb * (.3 + .7 * f), r, gg, b);
+  }
+  ring(true);
+}
+
+// ---- state copy ----
+const btn = document.getElementById('go'), label = document.getElementById('go-label'), status = document.getElementById('status');
+function applyState() {
+  document.body.dataset.state = state; status.dataset.state = state;
+  btn.disabled = state === 'checking' || state === 'success';
+  label.textContent = { checking: 'Waiting for Plex…', refused: 'Try another Plex account', success: 'Opening media-manager-2' }[state] || 'Sign in with Plex';
+  status.textContent = { checking: 'Confirming your Plex account.', refused: 'That Plex account is not the owner of this app.', success: 'Signed in. Opening your library.' }[state] || '';
+}
+applyState();
+
+// ---- run ----
+init();
+if (qs.has('bench')) {                                       // time 120 frames back to back
+  const t0 = performance.now(); for (let k = 0; k < 120; k++) frame(5 + k / 60, 5 + k / 60);
+  document.title = 'ms/frame ' + ((performance.now() - t0) / 120).toFixed(2);
+} else if (fixedT !== null || reduced) {
+  const T = fixedT ?? 6; frame(T, T);
+} else {
+  let start = performance.now(), stateT0 = 0;
+  const loop = now => { const t = (now - start) / 1000; frame(t, t - stateT0); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  btn.addEventListener('click', () => { if (state === 'idle' || state === 'refused') { state = 'checking'; stateT0 = (performance.now() - start) / 1000; applyState(); } });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(init, 150); });
+}
+</script>
+</body>
+</html>

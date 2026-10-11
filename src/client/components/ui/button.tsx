@@ -6,7 +6,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
-type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive' | 'outline-destructive' | 'menu';
+type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive' | 'outline-destructive' | 'menu' | 'plex';
 type ButtonSize = 'row' | 'default' | 'large';
 
 type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
@@ -29,6 +29,7 @@ const variants: Record<ButtonVariant, string> = {
   destructive: 'bg-destructive text-primary-foreground not-data-disabled:hover:bg-destructive-hover not-data-disabled:active:bg-destructive-pressed',
   'outline-destructive': 'border border-destructive bg-card text-destructive not-data-disabled:hover:bg-destructive-soft not-data-disabled:active:bg-destructive/20 data-disabled:border-border',
   menu: 'border border-input bg-card text-foreground not-data-disabled:hover:bg-surface-hover not-data-disabled:active:bg-surface-pressed data-disabled:border-border',
+  plex: 'bg-plex text-plex-foreground not-data-disabled:hover:bg-plex-hover not-data-disabled:active:bg-plex-pressed aria-busy:opacity-[0.78]',
 };
 
 const icons: Record<ButtonSize, string> = {
