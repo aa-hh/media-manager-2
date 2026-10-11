@@ -4727,11 +4727,20 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
 
   // Searching again without the one recheck, rechecking twice, or keeping an issue open after a clean answer turns this red.
   await t.test('unregistered asks for a replacement at once, damaged data is rechecked once first', async () => {
-    const { database, fake, watch, step } = setup();
-    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })]);
+    const { database, events, fake, watch, step } = setup();
+    const replacements = [];
+    events.subscribe((event) => { if (event.type === 'replacement') replacements.push(event.data.hash); });
+    // Asking for a replacement on a finished torrent turns this red: the stall fix then grabs a release nobody asked for.
+    const finished = row(hash(9), { complete: 1, completed: 1000, message: 'Tracker: [Failure reason "Unregistered torrent"]' });
+    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' }), finished]);
     assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash), [hash(4)]);
+    assert.deepEqual(replacements, [hash(4)]);
+    // Opening the finished torrent's problem as handling turns this red: nothing handles it, so it waits on the owner unseen.
+    const flagged = listOpenProblems(database).find((problem) => problem.kind === 'unregistered' && problem.hash === hash(9));
+    assert.equal(flagged?.state, 'needs_you');
     assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
-    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })], 31 * 60_000);
+    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' }), row(hash(9), { complete: 1, completed: 1000 })], 31 * 60_000);
+    assert.equal(listOpenProblems(database).some((problem) => problem.id === flagged.id), false, 'a clean message ends the finished torrent\'s problem');
     assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
     assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash).sort(), [hash(4), hash(5)].sort());
     watch.replacementHandled(hash(4), 'Grabbed another release.');
@@ -5598,17 +5607,18 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     replace.database.close();
   });
 
-  // Importing a file onto an episode outside the grab record turns this red.
+  // Importing a file onto an episode outside the grab record, or forcing in a file Sonarr rejected as a sample, turns this red.
   await t.test('matching doubts are forced only onto what was grabbed', async () => {
     const good = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
       { path: '/files/Sonarr/a.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }] },
       { path: '/files/Sonarr/b.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 32 }] },
+      { path: '/files/Sonarr/a.sample.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }], rejections: [{ reason: 'Sample', type: 'permanent' }] },
     ] });
     await good.fix.check();
     const [command] = good.fake.sonarr.state.commands;
     assert.equal(command.name, 'ManualImport');
     assert.equal(command.importMode, 'copy');
-    assert.deepEqual(command.files.map((file) => file.episodeIds), [[31], [32]]);
+    assert.deepEqual(command.files.map((file) => [file.path, file.episodeIds]), [['/files/Sonarr/a.mkv', [31]], ['/files/Sonarr/b.mkv', [32]]]);
     good.database.close();
 
     const stray = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
@@ -6376,7 +6386,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const { setSetting } = await import(settingsModuleUrl);
   const { createArr } = await import(arrModuleUrl);
   const { createReleases } = await import(releasesModuleUrl);
-  const { createGrabs, parseOverrides } = await import(grabsModuleUrl);
+  const { createGrabRoutes, createGrabs, parseOverrides } = await import(grabsModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-grabs-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -6388,6 +6398,8 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const quality = { quality: { id: 3, name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: false } };
   const posts = [];
   let grabResponse = () => new Response('{}', { status: 200 });
+  const grabbedHistory = [{ downloadId: 'OTHER', data: { guid: 'g-other' } }, { downloadId: 'ABC123HASH', data: { guid: 'g-rejected' } }];
+  let history = grabbedHistory;
   const fetch = async (url, init = {}) => {
     const { pathname } = new URL(String(url));
     if (init.method === 'POST') {
@@ -6400,12 +6412,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
         rejections: ['Not an upgrade for existing episode file(s)'],
       }]), { status: 200 });
     }
-    if (pathname === '/api/v3/history') {
-      return new Response(JSON.stringify({ records: [
-        { downloadId: 'OTHER', data: { guid: 'g-other' } },
-        { downloadId: 'ABC123HASH', data: { guid: 'g-rejected' } },
-      ] }), { status: 200 });
-    }
+    if (pathname === '/api/v3/history') return new Response(JSON.stringify({ records: history }), { status: 200 });
     if (pathname === '/api/v3/qualitydefinition') {
       return new Response(JSON.stringify([{ quality: { id: 3, name: 'WEBDL-1080p' } }, { quality: { id: 4, name: 'HDTV-720p', resolution: 720 } }]), { status: 200 });
     }
@@ -6448,6 +6455,53 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.equal(refused.record.state, 'failed');
   assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
   assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent', 'sent']);
+
+  // Recording every thrown grab request alike turns a row red: a timed-out grab may have reached Sonarr and the veto would remove it, while an unreachable one left sent makes a replace wait forever.
+  const ownTitles = grabs.recentTitles('sonarr', 0).length;
+  history = [];
+  let unanswered;
+  for (const [error, state, failure] of [
+    [new TypeError('fetch failed'), 'failed', "Sonarr didn't answer the grab."],
+    [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', "Sonarr didn't answer the grab, so it may still have gone through."],
+  ]) {
+    grabResponse = () => { throw error; };
+    unanswered = await grabs.grab(target, 'g-rejected', 'replace');
+    assert.deepEqual([unanswered.kind, unanswered.record.state, unanswered.record.failure], [state, state, failure], error.name);
+    assert.equal(grabs.pending('replace').some((record) => record.id === unanswered.record.id), state === 'sent', error.name);
+  }
+  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 1);
+  history = grabbedHistory;
+  const confirmed = await grabs.resolveDownloadId(unanswered.record);
+  assert.deepEqual([confirmed.state, confirmed.downloadId, confirmed.failure], ['sent', 'ABC123HASH', null], 'history confirms the grab and clears the doubt');
+
+  // Mapping a route outcome to the wrong status turns the matching row red, and the screen then shows the wrong message.
+  const routes = createGrabRoutes(grabs);
+  const call = async (path, init) => (await routes.request(path, init)).status;
+  const post = (body) => call('/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  const cases = [
+    ['bad JSON', () => post('{'), 400],
+    ['unknown body key', () => post({ target, guid: 'g-rejected', intent: 'grab', extra: 1 }), 400],
+    ['bad intent', () => post({ target, guid: 'g-rejected', intent: 'upgrade' }), 400],
+    ['bad overrides', () => post({ target, guid: 'g-rejected', intent: 'grab', overrides: { movieId: 9 } }), 400],
+    ['unknown release', () => post({ target, guid: 'g-missing', intent: 'grab' }), 404],
+    ['refused grab', () => {
+      grabResponse = () => new Response(JSON.stringify({ message: 'Release rejected' }), { status: 400 });
+      return post({ target, guid: 'g-rejected', intent: 'grab' });
+    }, 409],
+    ['sent grab', () => {
+      grabResponse = () => new Response('{}', { status: 200 });
+      return post({ target, guid: 'g-rejected', intent: 'grab' });
+    }, 201],
+    ['not configured', async () => {
+      setSetting(database, 'serviceAddresses', 'sonarr.url', '');
+      const status = await post({ target, guid: 'g-rejected', intent: 'grab' });
+      setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65041');
+      return status;
+    }, 503],
+    ['list for a bad target', () => call('/?kind=episode&seriesId=5'), 400],
+    ['list', () => call('/?kind=episode&seriesId=5&episodeId=50'), 200],
+  ];
+  for (const [name, run, status] of cases) assert.equal(await run(), status, name);
 
   assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
   assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
@@ -7326,7 +7380,8 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   const releases = createReleases(database, services);
   let clock = 1_000_000;
   const grabs = createGrabs(database, services, releases, { now: () => clock });
-  const replaces = createReplaces(services, grabs, { now: () => clock });
+  let onCompleted = async () => {};
+  const replaces = createReplaces(services, grabs, { now: () => clock, onCompleted: (record) => onCompleted(record) });
   const start = async (target, downloadId) => {
     await releases.get(target);
     const guid = (await releases.get(target)).search.releases[0].guid;
@@ -7383,12 +7438,36 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   delete queue.e;
   history[hashEpisode].push({ eventType: 'downloadFolderImported' });
   clock += 31 * 60_000;
+  // Marking the replace completed before protecting it turns this red: one failed protect then leaves the manual download unprotected for good.
+  const protectedIds = [];
+  let protectFails = true;
+  onCompleted = async (record) => {
+    if (protectFails) {
+      protectFails = false;
+      throw new Error('Sonarr is unreachable.');
+    }
+    protectedIds.push(record.id);
+  };
   await replaces.run();
   assert.equal(grabs.read(vanished).state, 'failed');
   assert.equal(grabs.read(vanished).failure, 'The download left the queue without being imported.');
-  assert.equal(grabs.read(episode).state, 'completed');
+  assert.equal(grabs.read(episode).state, 'importing', 'a replace whose protection failed is not completed yet');
   assert.equal(grabs.read(movie).state, 'failed', 'a forced import still blocked after the grace period has failed');
   assert.equal(commands.length, 2);
+  await replaces.run();
+  await replaces.run();
+  assert.equal(grabs.read(episode).state, 'completed');
+  assert.deepEqual(protectedIds, [episode], 'the next pass protects it once');
+
+  // Overriding only "Not an upgrade" turns this red: a same-quality replace with a lower custom format score then fails.
+  const notFormatUpgrade = 'Not a Custom Format upgrade for existing episode file(s). New: [] (0) do not improve on Existing: [x264] (10)';
+  const hashFormat = '34'.repeat(20);
+  const format = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 52 }, hashFormat);
+  queue.f = { ...blocked('sonarr', [notFormatUpgrade]), id: 5, downloadId: hashFormat };
+  manual[hashFormat] = [episodeFile('/dl/Show.S01E03/ep.mkv', [notFormatUpgrade], [{ id: 52 }])];
+  await replaces.run();
+  assert.equal(grabs.read(format).state, 'importing');
+  assert.deepEqual(commands[2].body.files.map((file) => [file.path, file.episodeIds]), [['/dl/Show.S01E03/ep.mkv', [52]]]);
 });
 
 // An ignored term that misses a naming of the protected episode lets Sonarr upgrade over a manual download; one that also matches a neighbouring episode stops that episode upgrading.
@@ -7593,6 +7672,10 @@ test('the veto and the replace find a queue item past the first 500', async (t) 
   const grab = { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 50 }], downloadId: 'ab'.repeat(20), release: { releaseTitle: 'Show.S01E02.1080p' } };
   assert.equal(await createProtection(database, services).veto('sonarr', grab), 'vetoed');
   assert.deepEqual(fake.sonarr.state.erasedFromClient, ['AB'.repeat(20)]);
+  // Dropping skipRedownload from the veto's removal turns this red: Sonarr then searches again and the veto removes that grab too, round after round.
+  assert.deepEqual(fake.sonarr.state.removals.map(({ removeFromClient, blocklist, skipRedownload }) => ({ removeFromClient, blocklist, skipRedownload })), [
+    { removeFromClient: true, blocklist: true, skipRedownload: true },
+  ]);
 
   fake.radarr.state.queue = [...fillers(), queueItem({ downloadId: 'CD'.repeat(20), movieId: 9, trackedDownloadState: 'downloading' })];
   const now = () => 10 * 60 * 60_000;

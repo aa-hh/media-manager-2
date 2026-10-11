@@ -159,7 +159,7 @@ export const createGrabs = (
     const result = record.service === 'sonarr' ? await services.sonarr.history(filter) : await services.radarr.history(filter);
     if (result.kind !== 'ok') return record;
     const event = result.value.records.find((entry) => entry.data.guid === record.guid && entry.downloadId !== null);
-    return event === undefined ? record : update(record.id, { downloadId: event.downloadId! });
+    return event === undefined ? record : update(record.id, { downloadId: event.downloadId!, failure: null });
   };
 
   const seasonEpisodeIds = async (seriesId: number, seasonNumber: number) => {
@@ -258,15 +258,20 @@ export const createGrabs = (
         }
       }
 
+      const label = searchedFor.service === 'sonarr' ? 'Sonarr' : 'Radarr';
       let response: { status: number; body: unknown };
       try {
         // POST /release ignores the search's rejections; /release/push would drop rejected releases.
         response = await service.request('/api/v3/release', { method: 'POST', body, timeoutMs: GRAB_TIMEOUT_MS });
-      } catch {
-        return { kind: 'failed', record: update(id, { state: 'failed', failure: `${searchedFor.service === 'sonarr' ? 'Sonarr' : 'Radarr'} didn't answer the grab.` }) } as const;
+      } catch (error) {
+        if (!(error instanceof Error && error.cause instanceof DOMException && error.cause.name === 'TimeoutError')) {
+          return { kind: 'failed', record: update(id, { state: 'failed', failure: `${label} didn't answer the grab.` }) } as const;
+        }
+        // A timed-out grab may still have reached the indexer, so it stays sent: the veto then spares it and history settles it.
+        const unanswered = update(id, { state: 'sent', failure: `${label} didn't answer the grab, so it may still have gone through.` });
+        return { kind: 'sent', record: await resolveDownloadId(unanswered) } as const;
       }
       if (response.status < 200 || response.status > 299) {
-        const label = searchedFor.service === 'sonarr' ? 'Sonarr' : 'Radarr';
         const reason = response.status === 401 || response.status === 403
           ? `${label} refused the API key.`
           : refusal(response.body) ?? `${label} refused the grab (HTTP ${response.status}).`;
