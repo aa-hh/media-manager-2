@@ -8,13 +8,11 @@ import { formatBytes } from '../downloads/model';
 import type { EpisodeDetail, FileDetail, SecondVersion } from '../library/api';
 import type { SeedingFact } from '../library/progress';
 import { historyEmpty, historyRows, useTitleHistory } from './History';
+import { seedingText } from './secondVersionText';
 import { SecondVersionRows } from './SecondVersions';
 import { episodeCode } from './TitleHeader';
 
 const day = (iso: string | null) => (iso === null ? '' : new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }));
-
-export const seedingText = (fact: SeedingFact) =>
-  `${fact.complete ? 'seeding' : 'downloading'} ${Math.floor(fact.seedingSeconds / 3600)} h · ratio ${fact.ratio.toFixed(2)}`;
 
 const releaseName = (file: FileDetail) => {
   const name = file.relativePath?.split('/').pop() ?? '';

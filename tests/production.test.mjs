@@ -9644,3 +9644,53 @@ test('the discover routes check every value, mark library titles and turn a miss
     ['popularity.desc', '18,878', '8|9', 'GB', '2020-01-01', '6.5', '2'],
   );
 });
+
+test('second-version rows and hit and run advice word themselves from the structured fields', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { versionSeedingText, timeLeftText, keepChoiceText, removeChoiceText, downloadsAdviceText } = await load('../src/client/title/secondVersionText.ts');
+  const seeding = { inRtorrent: true, complete: true, ratio: 0.41, seedingSeconds: 41 * 3600, upRate: 0, trackerHost: 'privatehd.to' };
+  const rule = (overrides = {}) => ({ host: 'privatehd.to', requiredHours: 72, seededHours: 41.6, ratio: 0.41, requiredRatio: 0.9, met: false, ...overrides });
+  const advice = (overrides = {}) => ({ recommendation: 'keep', reason: 'Keep seeding: 39 hours of seeding left', globalRatio: null, host: 'privatehd.to',
+    requiredHours: 79.2, seededHours: 41.6, hoursLeft: 37.6, detail: '39 hours of seeding left', ...overrides });
+
+  // Rounding seeded hours up, or dropping the fallback when no rule applies, turns this red.
+  await t.test('the Seeding column shows rule progress, rule met, or the plain seeding text', () => {
+    assert.equal(versionSeedingText({ seeding, hitAndRun: rule() }), 'seeding 41 h of 72 h');
+    assert.equal(versionSeedingText({ seeding, hitAndRun: rule({ seededHours: 1950.2, met: true }) }), 'seeding 1,950 h · rule met');
+    assert.equal(versionSeedingText({ seeding, hitAndRun: null }), 'seeding 41 h · ratio 0.41');
+    assert.equal(versionSeedingText({ seeding, hitAndRun: rule({ requiredHours: null }) }), 'seeding 41 h · ratio 0.41');
+    assert.equal(versionSeedingText({ seeding: null, hitAndRun: null }), '');
+  });
+
+  await t.test('time left reads in minutes, hours or days', () => {
+    assert.equal(timeLeftText(330), '6 min left');
+    assert.equal(timeLeftText(5), '1 min left');
+    assert.equal(timeLeftText(5 * 3600 + 1), '6 h left');
+    assert.equal(timeLeftText(3 * 86400), '3 days left');
+    assert.equal(timeLeftText(null), '');
+  });
+
+  // Matching on the reason's text instead of the fields, or showing the margin as the tracker's ask, turns this red.
+  await t.test('the delete dialog choices use the tracker, hours and detail', () => {
+    assert.equal(keepChoiceText(advice(), 'PrivateHD', 72), 'Recommended: PrivateHD asks 72 h, seeded 41 h');
+    assert.equal(keepChoiceText(advice(), 'PrivateHD', null), 'Recommended: PrivateHD asks 80 h, seeded 41 h');
+    assert.equal(keepChoiceText(advice({ hoursLeft: null, seededHours: null, detail: 'no hit and run rule for x.example' }), 'x.example', null),
+      'Recommended: No hit and run rule for x.example');
+    assert.equal(keepChoiceText(advice({ recommendation: 'safe', hoursLeft: 0 }), 'PrivateHD', 72), 'The torrent keeps seeding in rTorrent');
+    assert.equal(removeChoiceText(advice(), 'PrivateHD'), 'Breaks the PrivateHD rule');
+    assert.equal(removeChoiceText(advice({ hoursLeft: 0, globalRatio: 'Keep for ratio: your privatehd.to ratio is 0.90, minimum 1' }), 'PrivateHD'),
+      'Keep for ratio: your privatehd.to ratio is 0.90, minimum 1.');
+    assert.equal(removeChoiceText(advice({ recommendation: 'safe', hoursLeft: 0, detail: 'seeded 168 hours of 80 hours needed with margin' }), 'PrivateHD'),
+      'Recommended: PrivateHD rule met, seeded 168 hours of 80 hours needed with margin');
+    assert.equal(removeChoiceText(advice({ recommendation: 'unconfirmed' }), 'PrivateHD'), "The hit and run rule can't be confirmed.");
+  });
+
+  await t.test('the Downloads advice line names the hours left or falls back to the detail', () => {
+    assert.equal(downloadsAdviceText(advice(), 'PrivateHD'), 'PrivateHD needs 38 more hours to avoid a hit and run');
+    assert.equal(downloadsAdviceText(advice({ hoursLeft: 0.5 }), 'PrivateHD'), 'PrivateHD needs 1 more hour to avoid a hit and run');
+    assert.equal(downloadsAdviceText(advice({ recommendation: 'safe', hoursLeft: 0, detail: 'seeded 168 hours of 80 hours needed with margin', globalRatio: 'Global ratio unknown' }), 'PrivateHD'),
+      'Seeded 168 hours of 80 hours needed with margin. Global ratio unknown');
+  });
+});
