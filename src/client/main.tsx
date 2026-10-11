@@ -1,9 +1,18 @@
-import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
 import { Home } from './Home';
+import { navigate, useLocation } from './navigation';
 import { DownloadsScreen, LiveBar } from './downloads/Downloads';
+import { FlaggedScreen } from './flagged/Flagged';
+import { useFlagged } from './flagged/useFlagged';
+import { buildRows, groupRows } from './downloads/model';
 import { useDownloads } from './downloads/useDownloads';
+import { HealthScreen } from './health/Health';
+import { useHealth } from './health/useHealth';
+import { BlocklistScreen } from './history/Blocklist';
+import { HistoryScreen } from './history/History';
+import { useBlocklist, useHistory } from './history/useHistory';
 import './globals.css';
 
 type SessionState =
@@ -232,18 +241,58 @@ function App() {
   );
 }
 
-// Home routes by address: the Library is home, search results, title pages and the calendar come from Home, and the Downloads screen lives at /downloads.
-function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState'>) {
+// Home routes by address: the Library is home, search results, title pages and the calendar come from Home, and the Downloads, Flagged, History, Blocklist and Health screens live at /downloads, /flagged, /history, /blocklist and /health.
+function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'healthBadge'>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
+  const { pathname } = useLocation();
+  const history = useHistory(props.onUnauthenticated, pathname === '/history');
+  const blocklist = useBlocklist(props.onUnauthenticated, pathname === '/blocklist');
   const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const flagged = useFlagged(props.onUnauthenticated, pathname === '/flagged');
+  const flaggedHeadingRef = useRef<HTMLDivElement>(null);
+  const health = useHealth(props.onUnauthenticated);
+  const healthHeadingRef = useRef<HTMLDivElement>(null);
+  const healthBadge = (() => {
+    if (health.state.kind !== 'ready') return null;
+    const { problems } = health.state.snapshot;
+    const errors = problems.filter((problem) => problem.level === 'error').length;
+    const warnings = problems.filter((problem) => problem.level === 'warning').length;
+    if (errors > 0) return `${errors} ${errors === 1 ? 'RISK' : 'RISKS'}`;
+    if (warnings > 0) return `${warnings} ${warnings === 1 ? 'WARNING' : 'WARNINGS'}`;
+    return null;
+  })();
+  const needsYou = useMemo(() => {
+    const rows = state.kind === 'ready' ? buildRows(state.snapshot) : [];
+    return groupRows(rows).find((group) => group.key === 'needs_you')?.rows.length ?? 0;
+  }, [state]);
   return (
     <div className="pb-8">
       <Home
         {...props}
         downloadsState={state}
+        needsYou={needsYou}
+        healthBadge={healthBadge}
         downloads={(
           <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
             <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
+          </div>
+        )}
+        flagged={(
+          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
+            <FlaggedScreen
+              state={flagged}
+              reload={flagged.reload}
+              headingRef={flaggedHeadingRef}
+              onUnauthenticated={props.onUnauthenticated}
+              onOpenHealth={() => navigate('/health')}
+            />
+          </div>
+        )}
+        history={<div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><HistoryScreen history={history} onNavigate={navigate} /></div>}
+        blocklist={<div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><BlocklistScreen blocklist={blocklist} /></div>}
+        health={(
+          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
+            <HealthScreen state={health.state} runChecks={health.runChecks} headingRef={healthHeadingRef} />
           </div>
         )}
         renderBar={(showDownloads) => (

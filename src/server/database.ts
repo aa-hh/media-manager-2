@@ -259,6 +259,13 @@ export const applicationMigrations = [
     subject TEXT PRIMARY KEY,
     seen_at INTEGER NOT NULL
   ) STRICT;`,
+  `CREATE TABLE blocklist_marks (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    release_title TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    origin TEXT NOT NULL CHECK (origin IN ('history', 'downloads')),
+    PRIMARY KEY (service, release_title, at)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
