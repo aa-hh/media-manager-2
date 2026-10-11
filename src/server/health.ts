@@ -21,7 +21,7 @@ export type HealthProblem = {
   docsUrl: string | null;
 };
 type JobStatus = ReturnType<ReturnType<typeof createJobRunner>['status']>;
-type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'tmdb';
+type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'tmdb' | 'mdblist';
 export type TrackerAccount =
   | { kind: 'not_set_up' }
   | { kind: 'unavailable'; reason: 'rejected' | 'unreachable' | 'unsupported' }
@@ -44,7 +44,7 @@ type ArrClient = {
 };
 
 const ranks: Record<HealthLevel, number> = { ok: 0, notice: 1, warning: 2, error: 3 };
-const labels: Record<ServiceName, string> = { sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex', tmdb: 'TMDB' };
+const labels: Record<ServiceName, string> = { sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex', tmdb: 'TMDB', mdblist: 'MDBList' };
 const arrServices: Service[] = ['sonarr', 'radarr'];
 // The account's minimum ratio: a Gazelle site's own required ratio, else the minGlobalRatio of the tracker's rule.
 // A saved rule that fails validation leaves it unknown here; removal advice reports that rule's problem.
@@ -117,12 +117,13 @@ export const createHealth = (options: {
   rtorrent: { check(): Promise<ConnectionStatus> };
   plex: { check(): Promise<ConnectionStatus> };
   tmdb: { check(): Promise<ConnectionStatus> };
+  mdblist: { check(): Promise<ConnectionStatus> };
   jobs: { status(): JobStatus };
   trackerAccounts: { stats(): Promise<{ host: string; connection: TrackerConnection }[]> };
   events: EventHub;
   now?: () => number;
 }) => {
-  const { database, arr, rtorrent, plex, tmdb, jobs, trackerAccounts, events } = options;
+  const { database, arr, rtorrent, plex, tmdb, mdblist, jobs, trackerAccounts, events } = options;
   const now = options.now ?? Date.now;
   let snapshot: HealthSnapshot | undefined;
   // Kept in memory only: the first check after a restart records the count without warning.
@@ -139,7 +140,7 @@ export const createHealth = (options: {
     const checkedAt = now();
     const configured = arrServices.filter((service) => arr[service].configured());
     const [statuses, arrReads, accountStats] = await Promise.all([
-      Promise.allSettled([arr.sonarr.check(), arr.radarr.check(), rtorrent.check(), plex.check(), tmdb.check()]),
+      Promise.allSettled([arr.sonarr.check(), arr.radarr.check(), rtorrent.check(), plex.check(), tmdb.check(), mdblist.check()]),
       Promise.all(configured.map(async (service) => {
         const [health, disks, updates] = await Promise.allSettled([
           read(service, '/api/v3/health'),
@@ -155,7 +156,7 @@ export const createHealth = (options: {
       problems.push({ id, level, source: 'media-manager-2', check, message, docsUrl: null });
     };
 
-    const names: ServiceName[] = ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb'];
+    const names: ServiceName[] = ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist'];
     const services = names.map((name, index) => {
       const status = settled<ConnectionStatus>(statuses[index], { kind: 'unreachable' });
       const label = labels[name];
