@@ -1,6 +1,6 @@
 # media-manager-2
 
-A power-user web app that puts Sonarr and Radarr behind one interface, will later let friends request movies and TV shows (as Seerr does), and watches their downloads closely enough to catch and fix the cases where they stall, report vague status, or fail to act.
+A power-user web app for discovering, downloading and managing media in one place. It puts Sonarr and Radarr behind one interface, will later let friends request movies and TV shows (as Seerr does), and watches their downloads closely enough to catch and fix the cases where they stall, report vague status, or fail to act.
 
 ## Language
 

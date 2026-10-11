@@ -2,8 +2,9 @@
 
 ## Purpose
 
-A power-user web app that puts Sonarr and Radarr behind one interface and
-watches their downloads. `CONTEXT.md` defines the domain words; `docs/adr/`
+A power-user web app for discovering, downloading and managing media in one
+place. It puts Sonarr and Radarr behind one interface and watches their
+downloads. `CONTEXT.md` defines the domain words; `docs/adr/`
 records decisions. This file orients an agent to where things live and the
 rules that apply everywhere.
 
