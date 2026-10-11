@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { parseTarget, type Release, type Releases, type ReleaseTarget } from './releases.js';
 import { readSetting } from './services/connection.js';
-import type { XmlRpcParam } from './services/rtorrent.js';
+import { RtorrentFault, type XmlRpcParam } from './services/rtorrent.js';
 import { listTorrents } from './torrents.js';
 
 type XmlRpcCall = (method: string, params: readonly XmlRpcParam[]) => Promise<unknown>;
@@ -261,8 +261,12 @@ export const createSecondVersions = (options: {
       try {
         await rtorrent.call('load.raw_start', ['', fetched.bytes, `d.directory.set="${folder}"`, `d.custom1.set=${SECOND_VERSION_LABEL}`]);
       } catch (error) {
-        // The call may have reached rTorrent before failing, so the next poll decides; it is never sent again.
         const reason = error instanceof Error ? error.message : 'rTorrent did not answer.';
+        if (error instanceof RtorrentFault) {
+          database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, updated_at = ? WHERE hash = ? AND state = 'sending'").run(reason, now(), hash);
+          return { kind: 'failed', reason, records: byHash(hash) } as const;
+        }
+        // A transport failure may have reached rTorrent anyway, so the next poll decides; it is never sent again.
         database.prepare("UPDATE second_versions SET failure = ?, updated_at = ? WHERE hash = ? AND state = 'sending'").run(reason, now(), hash);
         return { kind: 'unconfirmed', reason, records: byHash(hash) } as const;
       } finally {
@@ -272,8 +276,9 @@ export const createSecondVersions = (options: {
       return { kind: 'sent', records: byHash(hash) } as const;
     },
 
-    // After a poll that began at `polledSince`: rows still sending from before it are settled by whether rTorrent has their hash.
-    reconcile(polledSince: number) {
+    // After a poll that began at `polledSince`: rows still sending from before it are settled by whether rTorrent has
+    // their hash under this app's label; the same hash without it is a torrent Sonarr or Radarr grabbed.
+    async reconcile(polledSince: number) {
       const live = new Set(listTorrents(database).filter((torrent) => torrent.goneAt === null).map((torrent) => torrent.hash));
       const hashes = database.prepare("SELECT DISTINCT hash FROM second_versions WHERE state = 'sending' AND updated_at < ?")
         .all(polledSince)
@@ -282,7 +287,17 @@ export const createSecondVersions = (options: {
       for (const hash of hashes) {
         if (sending.has(hash)) continue;
         if (live.has(hash)) {
-          database.prepare("UPDATE second_versions SET state = 'downloading', failure = NULL, updated_at = ? WHERE hash = ? AND state = 'sending'").run(at, hash);
+          let label: unknown;
+          try {
+            label = await rtorrent.call('d.custom1', [hash]);
+          } catch {
+            continue;
+          }
+          if (label === SECOND_VERSION_LABEL) {
+            database.prepare("UPDATE second_versions SET state = 'downloading', failure = NULL, updated_at = ? WHERE hash = ? AND state = 'sending'").run(at, hash);
+          } else {
+            database.prepare("UPDATE second_versions SET state = 'failed', failure = 'Sonarr or Radarr grabbed the same torrent.', updated_at = ? WHERE hash = ? AND state = 'sending'").run(at, hash);
+          }
         } else {
           database.prepare(`
             UPDATE second_versions SET state = 'failed', updated_at = ?,

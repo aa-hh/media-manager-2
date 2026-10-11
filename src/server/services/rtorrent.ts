@@ -151,6 +151,9 @@ const parseMethodResponse = (text: string): { value: XmlRpcValue } | { faultCode
   return result;
 };
 
+// rTorrent answered and refused the call, as opposed to a transport failure where it may have acted anyway.
+export class RtorrentFault extends Error {}
+
 export const createRtorrent = (database: DatabaseSync, options: ServiceOptions = {}) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
@@ -190,7 +193,7 @@ export const createRtorrent = (database: DatabaseSync, options: ServiceOptions =
       case 'not_configured': throw new Error('rTorrent is not configured.');
       case 'rejected': throw new Error('rTorrent rejected the credentials.');
       case 'unreachable': throw new Error('rTorrent is unreachable.');
-      case 'fault': throw new Error(`rTorrent fault ${outcome.faultCode}: ${outcome.faultString}`);
+      case 'fault': throw new RtorrentFault(`rTorrent fault ${outcome.faultCode}: ${outcome.faultString}`);
     }
   };
 

@@ -4700,13 +4700,14 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.deepEqual(parseOverrides(undefined, 'radarr'), {});
 });
 
-// Sending a second version through Sonarr or Radarr, sending before recording, hashing re-encoded info bytes instead of the file's own, sending a magnet or a web page to rTorrent, one row for a whole pack, or settling a send a restart left behind by anything but the torrent list breaks second versions.
+// Sending a second version through Sonarr or Radarr, sending before recording, hashing re-encoded info bytes instead of the file's own, sending a magnet, a web page, an oversized file or a refused download to rTorrent, one row for a whole pack, leaving a refused send pending, or settling a pending send by anything but the torrent list and this app's label breaks second versions.
 test('a second version is recorded, then sent straight to rTorrent with its folder and label', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
   const { createArr } = await import(arrModuleUrl);
   const { createReleases } = await import(releasesModuleUrl);
   const { createSecondVersionRoutes, createSecondVersions, infoHash } = await import(secondVersionsModuleUrl);
+  const { RtorrentFault } = await import(rtorrentModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-second-versions-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -4730,7 +4731,7 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
     const file = `d8:announce${bencode('https://tracker.test/announce/passkey')}13:announce-listll3:a:eee7:comment${bencode('e:d4:info')}13:creation datei-7e4:info${info}8:url-listlee`;
     return { bytes: Buffer.from(file, 'latin1'), hash: createHash('sha1').update(info, 'latin1').digest('hex').toUpperCase() };
   };
-  const files = Object.fromEntries(['/movie', '/pack', '/down', '/lost'].map((path) => [path, torrentFile(path.slice(1))]));
+  const files = Object.fromEntries(['/movie', '/pack', '/down', '/lost', '/sonarr', '/fault'].map((path) => [path, torrentFile(path.slice(1))]));
   assert.equal(infoHash(files['/movie'].bytes), files['/movie'].hash);
   for (const bad of ['<!DOCTYPE html>', 'd4:infod4:name', 'd4:name4:moviee', 'd4:info3:abce']) assert.equal(infoHash(Buffer.from(bad)), undefined, bad);
 
@@ -4744,7 +4745,7 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
     const parsed = new URL(String(url));
     if (parsed.pathname !== '/api/v3/release') return new Response('[]', { status: 200 });
     return new Response(JSON.stringify(parsed.port === '65062'
-      ? ['/movie', '/magnet', '/html', '/down', '/lost'].map((path) => release(`m${path}`, path))
+      ? ['/movie', '/magnet', '/html', '/big', '/loop', '/forbidden', '/fault', '/down', '/lost', '/sonarr'].map((path) => release(`m${path}`, path))
       : [{ ...release('s/pack', '/pack'), mappedEpisodeInfo: [{ id: 101 }, { id: 102 }, { id: 103 }] }]), { status: 200 });
   };
   const services = { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) };
@@ -4760,15 +4761,19 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
     const { pathname } = new URL(String(url));
     if (pathname === '/magnet') return new Response(null, { status: 302, headers: { Location: 'magnet:?xt=urn:btih:abc' } });
     if (pathname === '/html') return new Response('<!DOCTYPE html><html>Log in</html>', { status: 200 });
+    if (pathname === '/big') return new Response(new Uint8Array(10 * 1024 * 1024 + 1), { status: 200 });
+    if (pathname === '/loop') return new Response(null, { status: 302, headers: { Location: '/loop?apikey=indexer-secret' } });
+    if (pathname === '/forbidden') return new Response('no', { status: 403 });
     return new Response(files[pathname].bytes, { status: 200 });
   };
   const calls = [];
-  let rtorrentAnswers = true;
+  let rtorrentAnswer = () => 0;
+  const labels = new Map();
   const rtorrent = {
     call: async (method, params) => {
+      if (method === 'd.custom1') return labels.get(params[0]) ?? '';
       calls.push({ method, params, rows: database.prepare('SELECT hash, state FROM second_versions WHERE hash = ?').all(infoHash(params[1])).map((row) => ({ ...row })) });
-      if (!rtorrentAnswers) throw new Error('rTorrent is unreachable.');
-      return 0;
+      return rtorrentAnswer();
     },
   };
   let clock = 1_000;
@@ -4803,7 +4808,10 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
 
   const again = await post(movie, 'm/movie');
   assert.deepEqual([again.status, again.body.reason], [409, 'That torrent is already in rTorrent.']);
-  for (const [guid, reason] of [['m/magnet', /magnet link only/], ['m/html', /web page/]]) {
+  for (const [guid, reason] of [
+    ['m/magnet', /magnet link only/], ['m/html', /web page/], ['m/big', /larger than 10 MB/],
+    ['m/loop', /redirected too many times/], ['m/forbidden', /HTTP 403/],
+  ]) {
     const failed = await post(movie, guid);
     assert.equal(failed.status, 409);
     assert.match(failed.body.reason, reason);
@@ -4817,19 +4825,30 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   assert.equal(calls.length, 2);
   assert.equal(arrRequests, arrRequestsBefore);
 
-  // Sends rTorrent never confirmed stay sending until a poll that began after them, across a restart.
-  rtorrentAnswers = false;
-  for (const guid of ['m/down', 'm/lost']) assert.equal((await post(movie, guid)).status, 202);
   const states = (path) => secondVersions.byHash(files[path].hash).map((row) => [row.state, row.failure]);
-  secondVersions.reconcile(clock);
+  rtorrentAnswer = () => { throw new RtorrentFault('rTorrent fault -503: Could not create download.'); };
+  const fault = await post(movie, 'm/fault');
+  assert.deepEqual([fault.status, fault.body.reason], [409, 'rTorrent fault -503: Could not create download.']);
+  assert.deepEqual(states('/fault'), [['failed', 'rTorrent fault -503: Could not create download.']]);
+  assert.equal(calls.length, 3);
+
+  // Sends rTorrent never confirmed stay sending until a poll that began after them, across a restart.
+  rtorrentAnswer = () => { throw new Error('rTorrent is unreachable.'); };
+  for (const guid of ['m/down', 'm/lost', 'm/sonarr']) assert.equal((await post(movie, guid)).status, 202);
+  await secondVersions.reconcile(clock);
   assert.deepEqual(states('/down'), [['sending', 'rTorrent is unreachable.']]);
   const restarted = createSecondVersions({ database, releases, rtorrent, fetch: indexer, now: () => clock });
-  database.prepare("INSERT INTO torrents VALUES (?, 'down', 100, 0, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0)").run(files['/down'].hash);
+  for (const path of ['/down', '/sonarr']) {
+    database.prepare("INSERT INTO torrents VALUES (?, 'down', 100, 0, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0)").run(files[path].hash);
+  }
+  labels.set(files['/down'].hash, 'mm2-second-version');
+  labels.set(files['/sonarr'].hash, 'radarr');
   clock += 1;
-  restarted.reconcile(clock);
+  await restarted.reconcile(clock);
   assert.deepEqual(states('/down'), [['downloading', null]]);
   assert.deepEqual(states('/lost'), [['failed', 'rTorrent never received it. rTorrent is unreachable.']]);
-  assert.equal(calls.length, 4, 'a send a restart left behind is never sent again');
+  assert.deepEqual(states('/sonarr'), [['failed', 'Sonarr or Radarr grabbed the same torrent.']]);
+  assert.equal(calls.length, 6, 'a send a restart left behind is never sent again');
 });
 
 // Forcing an import blocked for any reason but "Not an upgrade", using a move instead of a hardlink-or-copy import, forcing the same download twice, or calling a replace complete without an import breaks the replace guarantee.

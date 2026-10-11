@@ -64,7 +64,7 @@ if (database !== undefined) {
   // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them.
   runner.register('rtorrent-poll', poller.intervalMs, async () => {
     const startedAt = Date.now();
-    if (await poller.poll()) secondVersions.reconcile(startedAt);
+    if (await poller.poll()) await secondVersions.reconcile(startedAt);
   });
   const backup = createBackup({
     database,
