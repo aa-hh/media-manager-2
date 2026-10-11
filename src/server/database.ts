@@ -330,6 +330,30 @@ export const applicationMigrations = [
   DELETE FROM settings
     WHERE (category = 'serviceAddresses' AND key IN ('blutopia.url', 'privatehd.url', 'beyondhd.url'))
       OR (category = 'credentials' AND key IN ('blutopia.apiToken', 'privatehd.username', 'privatehd.password', 'privatehd.pid', 'beyondhd.apiKey', 'beyondhd.rssKey'));`,
+  // What each source said about a title outside the library. Each source's reply is its own part row with its own
+  // fetch time, so a new source is a new part name, not a new column. A show's key is its TVDB id; its TMDB id sits
+  // beside it so either finds the row. search_lookups keeps which titles a search term returned.
+  `CREATE TABLE title_store (
+    key TEXT PRIMARY KEY,
+    type TEXT NOT NULL CHECK (type IN ('movie', 'tv')),
+    tmdb_id INTEGER,
+    tvdb_id INTEGER
+  ) STRICT;
+  CREATE INDEX title_store_tmdb ON title_store (type, tmdb_id);
+  CREATE TABLE title_store_parts (
+    key TEXT NOT NULL REFERENCES title_store (key),
+    part TEXT NOT NULL,
+    json TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (key, part)
+  ) STRICT;
+  CREATE TABLE search_lookups (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    term TEXT NOT NULL,
+    ids TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (service, term)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
