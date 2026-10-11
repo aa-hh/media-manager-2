@@ -212,6 +212,8 @@ export const createTitleDelete = (options: {
       for (const { choice, row } of ticked) {
         if (!choice.removeTorrent) continue;
         if (row.hash === null) return changed(`The second version ${row.releaseTitle} has no torrent to remove.`);
+        // An unticked second version still uses this torrent: the delete keeps it and says why, so the request is not stale.
+        if (secondVersions.some((other) => other.hash === row.hash && !choices.secondVersions.some((picked) => picked.id === other.id))) continue;
         const check = torrentFiles.canRemoveTorrent(row.hash, { after });
         if (!check.allowed) return changed(`The torrent of ${row.releaseTitle} can no longer be removed: ${check.reason}`);
       }
@@ -286,17 +288,20 @@ export const createTitleDelete = (options: {
         const remove = keepAll === null && row.hash !== null && wanted.get(row.hash) === true && last.get(row.hash) === row.id;
         let reason = !choice.removeTorrent || remove ? null
           : keepAll ?? 'Kept: another ticked second version using this torrent was set to keep it.';
-        let result = await deleteVersion(row.id, remove);
-        if (result.kind === 'refused' && remove) {
+        let asked = remove;
+        let result = await deleteVersion(row.id, asked);
+        if (result.kind === 'refused' && asked) {
+          // Refused only for the torrent (another second version uses it): delete the file anyway and keep the torrent.
           reason = result.reason;
-          result = await deleteVersion(row.id, false);
+          asked = false;
+          result = await deleteVersion(row.id, asked);
         }
         if (result.kind !== 'deleted') {
           versionResults.set(row.id, { id: row.id, deleted: false, torrentRemoved: false, reason: result.kind === 'refused' ? result.reason : 'This second version was already deleted.' });
           continue;
         }
-        if (remove && !result.torrent.removed) reason = result.torrent.reason;
-        versionResults.set(row.id, { id: row.id, deleted: true, torrentRemoved: remove && result.torrent.removed, reason });
+        if (asked && !result.torrent.removed) reason = result.torrent.reason;
+        versionResults.set(row.id, { id: row.id, deleted: true, torrentRemoved: asked && result.torrent.removed, reason });
       }
       // The other second versions of a removed pack report the torrent as the last one did.
       for (const { row } of ticked) {

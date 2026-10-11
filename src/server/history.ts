@@ -198,7 +198,7 @@ export const createHistory = (options: {
     };
   };
 
-  // A deleted show has no subject: Sonarr no longer knows it, so no title filter can name it.
+  // A deleted show has no subject, because Subject has no series type.
   type OwnRecord = { at: number; subject: Subject | null; kind?: string; event: () => Promise<HistoryEvent> };
 
   const ownEvent = async (subject: Subject, fields: Pick<HistoryEvent, 'id' | 'at' | 'event' | 'detail' | 'release' | 'quality' | 'eventType'>): Promise<HistoryEvent> => ({
@@ -264,10 +264,10 @@ export const createHistory = (options: {
     };
   });
 
-  // Every title event is a deletion.
-  const readTitleEvents = (since: number): OwnRecord[] => database.prepare(
-    'SELECT id, service, title_id, title, at, kind, detail FROM title_events WHERE at >= ? ORDER BY at DESC, id DESC',
-  ).all(since).map((row) => {
+  // Every title event is a deletion. A deleted show matches no title filter, so the service filter is applied here.
+  const readTitleEvents = (since: number, only: HistoryQuery['service']): OwnRecord[] => database.prepare(
+    "SELECT id, service, title_id, title, at, kind, detail FROM title_events WHERE at >= ? AND (? = 'all' OR service = ?) ORDER BY at DESC, id DESC",
+  ).all(since, only, only).map((row) => {
     const service = row.service as Service;
     const subject: Subject | null = service === 'radarr' ? { type: 'movie', service, id: String(row.title_id) } : null;
     const at = Number(row.at);
@@ -322,9 +322,9 @@ export const createHistory = (options: {
       const since = hasMore && times.length > 0 ? Math.min(...times) : 0;
       const matches = await titleMatcher(query);
       // Second version events are not fixes; deleting one also shows under Deletions.
-      const own = filter === 'all' ? [...readSteps(since), ...readVersionEvents(since), ...readTitleEvents(since)].sort((a, b) => b.at - a.at)
+      const own = filter === 'all' ? [...readSteps(since), ...readVersionEvents(since), ...readTitleEvents(since, query.service)].sort((a, b) => b.at - a.at)
         : filter === 'fixes' ? readSteps(since)
-          : [...readVersionEvents(since).filter((record) => deletionKinds.has(record.kind ?? '')), ...readTitleEvents(since)].sort((a, b) => b.at - a.at);
+          : [...readVersionEvents(since).filter((record) => deletionKinds.has(record.kind ?? '')), ...readTitleEvents(since, query.service)].sort((a, b) => b.at - a.at);
       const matched = own.filter((record) => (query.before === undefined || record.at <= query.before)
         && (record.subject === null ? movieId === undefined && seriesId === undefined && episodeId === undefined : matches(record.subject)));
       moreSteps = matched.length > PAGE_SIZE;

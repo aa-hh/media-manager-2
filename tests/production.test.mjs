@@ -8369,8 +8369,8 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     };
     const requests = (service) => arrFake[service].requests.map((request) => `${request.method} ${request.path}${request.params.size > 0 ? `?${request.params}` : ''}`);
     const versionState = (id) => database.prepare('SELECT state FROM second_versions WHERE id = ?').get(id).state;
-    const deletions = async () => (await createHistory({ database, arr, labels: { subject: async () => 'label' } })
-      .list({ filter: 'deletions', service: 'all', page: 1 })).events.filter((event) => event.eventType.startsWith('mm2_title_'));
+    const deletions = async (service = 'all') => (await createHistory({ database, arr, labels: { subject: async () => 'label' } })
+      .list({ filter: 'deletions', service, page: 1 })).events.filter((event) => event.eventType.startsWith('mm2_title_'));
     const steps = (body) => body.steps.map((step) => `${step.step}:${step.outcome}`);
     return { at, database, fake, arrFake, poller, clock, addTorrent, hardlink, addVersion, onDelete, plan, remove, requests, versionState, deletions, steps };
   };
@@ -8572,6 +8572,26 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(body.steps[4].secondVersions, [{ id: w.versions[0], deleted: true, torrentRemoved: false, reason: null }]);
     const [event] = await w.deletions();
     assert.deepEqual([event.title, event.event, event.subject], ['Andor', 'Show deleted', null]);
+    assert.deepEqual(await w.deletions('radarr'), []);
+  });
+
+  // Refusing the whole delete as stale when an unticked second version still uses the chosen torrent turns this red.
+  await t.test('a ticked second version whose pack an unticked one still uses is deleted and its torrent kept with the reason', async () => {
+    const w = await andor();
+    const PACKV = 'D1'.repeat(20);
+    await w.addTorrent(PACKV, 'downloads/Andor.S01.2160p', ['e3.mkv', 'e4.mkv']);
+    await w.poller.poll();
+    const [third, fourth] = [
+      await w.addVersion(PACKV, { episodeId: 103 }, w.at('downloads/Andor.S01.2160p/e3.mkv'), w.at('versions/tv/Andor/Andor - S01E03.2160p.mkv')),
+      await w.addVersion(PACKV, { episodeId: 104 }, w.at('downloads/Andor.S01.2160p/e4.mkv'), w.at('versions/tv/Andor/Andor - S01E04.2160p.mkv')),
+    ];
+    w.onDelete('sonarr', '/api/v3/series/5', { removes: w.files });
+    const { status, body } = await w.remove('/series/5', { removeTorrents: [], secondVersions: [{ id: third, removeTorrent: true }] });
+    assert.equal(status, 200);
+    assert.deepEqual(body.steps[4].secondVersions.map((row) => [row.id, row.deleted, row.torrentRemoved]), [[third, true, false]]);
+    assert.match(body.steps[4].secondVersions[0].reason, /Another second version uses this torrent/);
+    assert.deepEqual([w.versionState(third), w.versionState(fourth)], ['deleted', 'imported']);
+    assert.equal(w.fake.torrents.some((torrent) => torrent.hash === PACKV), true);
   });
 
   // Carrying on after Sonarr refuses turns this red.

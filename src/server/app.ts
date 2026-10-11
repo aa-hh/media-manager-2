@@ -163,7 +163,8 @@ export const createApp = (options: CreateAppOptions) => {
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
   });
 
-  // A manual import lists every file of a season pack, so it gets more room than the other private writes.
+  // A manual import lists every file of a season pack, and a movie or show delete every torrent and second version chosen,
+  // so they get more room than the other private writes.
   const importRequestLimit = bodyLimit({
     maxSize: 64 * 1_024,
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
