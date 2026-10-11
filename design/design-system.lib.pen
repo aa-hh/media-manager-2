@@ -150,6 +150,51 @@
                 "url": "logos/beyondhd-logo.png",
                 "mode": "contain"
               }
+            },
+            {
+              "type": "frame",
+              "id": "hIFNH",
+              "name": "Logo/TMDB",
+              "context": "Official logo, unchanged. File: logos/tmdb-logo.png.",
+              "reusable": true,
+              "width": 20,
+              "height": 20,
+              "fill": {
+                "type": "image",
+                "enabled": true,
+                "url": "logos/tmdb-logo.png",
+                "mode": "contain"
+              }
+            },
+            {
+              "type": "frame",
+              "id": "l3vQ3",
+              "name": "Logo/MDBList",
+              "context": "Official logo, unchanged. File: logos/mdblist-logo.png.",
+              "reusable": true,
+              "width": 20,
+              "height": 20,
+              "fill": {
+                "type": "image",
+                "enabled": true,
+                "url": "logos/mdblist-logo.png",
+                "mode": "contain"
+              }
+            },
+            {
+              "type": "frame",
+              "id": "i12hFG",
+              "name": "Logo/Trakt",
+              "context": "Official logo, unchanged. File: logos/trakt-logo.png.",
+              "reusable": true,
+              "width": 20,
+              "height": 20,
+              "fill": {
+                "type": "image",
+                "enabled": true,
+                "url": "logos/trakt-logo.png",
+                "mode": "contain"
+              }
             }
           ]
         }
@@ -2963,7 +3008,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "One button for every action, one component. Looks via root fill and stroke: primary black (shadcn variant default), secondary white with a 3.4:1 edge (outline), ghost, destructive red, outline-destructive (custom destructive-outline), menu (outline plus Chevron, opens a DropdownMenu). Other overrides: Label, Icon (any lucide icon, or off), Kbd. Disabled uses a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.\n\nSizes, set by overriding with the size tokens (never raw numbers): In-row: padding control-px-row (10), Label control-text-row (13), radius control-radius-row (6), height 28, icon 14. Only inside table rows and dense lists. Default (the component as built): control-px-default 16, text 14, radius 8, height 40, icon 16. Every button outside a table: page headers, panels, forms, dialogs, toolbars, settings. Large: control-px-large 20, text 15, radius 10, height 48, icon 18. The one main action on a page or panel: title header actions, the grab confirmation (Replace or Second version), Settings Connect. Icon-only buttons are squares at the same three heights. Inputs, selects and segmented groups use the same tokens. The file format cannot bind height or icon size to a variable, so those are typed as the numbers in control-h-* and control-icon-*; change both together.",
+              "content": "One button for every action, one component. Looks via root fill and stroke: primary black (shadcn variant default), secondary white with a 1.5px border in the text colour (outline), so its edge reads as firmly as the primary's solid fill, ghost, destructive red, outline-destructive (custom destructive-outline), menu (outline plus Chevron, opens a DropdownMenu). Every bordered button, input and select uses a 1.5px border. Other overrides: Label, Icon (any lucide icon, or off), Kbd. Disabled uses a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.\n\nSizes, set by overriding with the size tokens (never raw numbers): In-row: padding control-px-row (10), Label control-text-row (13), radius control-radius-row (6), height 28, icon 14. Only inside table rows and dense lists. Default (the component as built): control-px-default 16, text 14, radius 8, height 40, icon 16. Every button outside a table: page headers, panels, forms, dialogs, toolbars, settings. Large: control-px-large 20, text 15, radius 10, height 48, icon 18. The one main action on a page or panel: title header actions, the grab confirmation (Replace or Second version), Settings Connect. Icon-only buttons are squares at the same three heights. Inputs, selects and segmented groups use the same tokens. The file format cannot bind height or icon size to a variable, so those are typed as the numbers in control-h-* and control-icon-*; change both together.",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -3002,6 +3047,7 @@
                       "height": 40,
                       "fill": "$primary",
                       "cornerRadius": "$control-radius-default",
+                      "stroke": "$primary",
                       "gap": 8,
                       "padding": [
                         0,
@@ -3386,8 +3432,8 @@
                       "ref": "ht3RN",
                       "name": "Button secondary default",
                       "fill": "$card",
-                      "stroke": "$input",
-                      "strokeWidth": 1,
+                      "stroke": "$foreground",
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$foreground",
@@ -3444,8 +3490,8 @@
                       "ref": "ht3RN",
                       "name": "Button secondary hover",
                       "fill": "$surface-hover",
-                      "stroke": "$input",
-                      "strokeWidth": 1,
+                      "stroke": "$foreground",
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$foreground",
@@ -3502,8 +3548,8 @@
                       "ref": "ht3RN",
                       "name": "Button secondary pressed",
                       "fill": "$surface-pressed",
-                      "stroke": "$input",
-                      "strokeWidth": 1,
+                      "stroke": "$foreground",
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$foreground",
@@ -3627,7 +3673,7 @@
                       "name": "Button secondary disabled",
                       "fill": "$muted",
                       "stroke": "$border",
-                      "strokeWidth": 1,
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$faint-foreground",
@@ -4256,6 +4302,397 @@
             },
             {
               "type": "frame",
+              "id": "K1vVa",
+              "name": "Row plex",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "BaKc2",
+                  "name": "Row label",
+                  "width": 150,
+                  "height": 36,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "HlHqw",
+                      "name": "Variant name",
+                      "fill": "$foreground",
+                      "content": "plex",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "tOEdZ",
+                  "name": "State default",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ovs9Z",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "default",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "uU6DO",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex default",
+                      "fill": "$plex",
+                      "stroke": "$plex",
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "XSaWu",
+                          "name": "Plex mark",
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$plex-foreground",
+                          "content": "Log in with Plex"
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "EUEXA",
+                  "name": "State hover",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "OvtiJ",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "hover",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "T3cAf",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex hover",
+                      "fill": "$plex-hover",
+                      "stroke": "$plex-hover",
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "tFwDQ",
+                          "name": "Plex mark",
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$plex-foreground",
+                          "content": "Log in with Plex"
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Mm5Ea",
+                  "name": "State pressed",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "UbMl3",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "pressed",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "lwRyN",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex pressed",
+                      "fill": "$plex-pressed",
+                      "stroke": "$plex-pressed",
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "EgAem",
+                          "name": "Plex mark",
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$plex-foreground",
+                          "content": "Log in with Plex"
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "bvViS",
+                  "name": "State focus",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ui1VE",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "focus",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "fhEUO",
+                      "type": "ref",
+                      "ref": "v1tSkC",
+                      "name": "Focus wrap",
+                      "children": [
+                        {
+                          "id": "swFoO",
+                          "type": "ref",
+                          "ref": "ht3RN",
+                          "name": "Button plex default",
+                          "fill": "$plex",
+                          "stroke": "$plex",
+                          "descendants": {
+                            "HQLEf": {
+                              "type": "frame",
+                              "id": "iV1R3",
+                              "name": "Plex mark",
+                              "width": 16,
+                              "height": 16,
+                              "fill": {
+                                "type": "image",
+                                "enabled": true,
+                                "url": "logos/plex-icon.png",
+                                "mode": "contain"
+                              }
+                            },
+                            "OXVvv": {
+                              "fill": "$plex-foreground",
+                              "content": "Log in with Plex"
+                            },
+                            "T1Pftv": {
+                              "enabled": false
+                            },
+                            "T1Pftv/BvVhW": {
+                              "content": "D"
+                            },
+                            "iwvSz": {
+                              "enabled": false,
+                              "fill": "$primary-foreground"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Ug8BG",
+                  "name": "State disabled",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "EnWEz",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "disabled",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "AMbC4",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex disabled",
+                      "fill": "$muted",
+                      "stroke": "$muted",
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "KPhav",
+                          "name": "Plex mark",
+                          "opacity": 0.35,
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$faint-foreground",
+                          "content": "Log in with Plex"
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$faint-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "gGs99",
+                  "name": "State busy",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "BDlMo",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "busy",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "SZD68",
+                      "type": "ref",
+                      "ref": "ht3RN",
+                      "name": "Button plex busy",
+                      "fill": "$plex",
+                      "stroke": "$plex",
+                      "opacity": 0.78,
+                      "descendants": {
+                        "HQLEf": {
+                          "type": "frame",
+                          "id": "baVEu",
+                          "name": "Plex mark",
+                          "opacity": 0,
+                          "width": 16,
+                          "height": 16,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "logos/plex-icon.png",
+                            "mode": "contain"
+                          }
+                        },
+                        "OXVvv": {
+                          "fill": "$plex-foreground",
+                          "content": "Log in with Plex",
+                          "opacity": 0
+                        },
+                        "T1Pftv": {
+                          "enabled": false
+                        },
+                        "T1Pftv/BvVhW": {
+                          "content": "D"
+                        },
+                        "iwvSz": {
+                          "enabled": false,
+                          "fill": "$primary-foreground"
+                        }
+                      }
+                    },
+                    {
+                      "type": "icon",
+                      "id": "V1kEzY",
+                      "layoutPosition": "absolute",
+                      "x": 72,
+                      "y": 34,
+                      "name": "Spinner overlay",
+                      "width": 16,
+                      "height": 16,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "$plex-foreground"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "ZYte6",
               "name": "Row outline-destructive",
               "width": "fill_container",
@@ -4306,7 +4743,7 @@
                       "name": "Button outline-destructive default",
                       "fill": "$card",
                       "stroke": "$destructive",
-                      "strokeWidth": 1,
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$destructive",
@@ -4364,7 +4801,7 @@
                       "name": "Button outline-destructive hover",
                       "fill": "$destructive-soft",
                       "stroke": "$destructive",
-                      "strokeWidth": 1,
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$destructive",
@@ -4422,7 +4859,7 @@
                       "name": "Button outline-destructive pressed",
                       "fill": "#FAD4D0",
                       "stroke": "$destructive",
-                      "strokeWidth": 1,
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$destructive",
@@ -4546,7 +4983,7 @@
                       "name": "Button outline-destructive disabled",
                       "fill": "$muted",
                       "stroke": "$border",
-                      "strokeWidth": 1,
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$faint-foreground",
@@ -4633,8 +5070,8 @@
                       "ref": "ht3RN",
                       "name": "Button menu default",
                       "fill": "$card",
-                      "stroke": "$input",
-                      "strokeWidth": 1,
+                      "stroke": "$foreground",
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$foreground",
@@ -4691,8 +5128,8 @@
                       "ref": "ht3RN",
                       "name": "Button menu hover",
                       "fill": "$surface-hover",
-                      "stroke": "$input",
-                      "strokeWidth": 1,
+                      "stroke": "$foreground",
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$foreground",
@@ -4749,8 +5186,8 @@
                       "ref": "ht3RN",
                       "name": "Button menu pressed",
                       "fill": "$surface-pressed",
-                      "stroke": "$input",
-                      "strokeWidth": 1,
+                      "stroke": "$foreground",
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$foreground",
@@ -4874,7 +5311,7 @@
                       "name": "Button menu disabled",
                       "fill": "$muted",
                       "stroke": "$border",
-                      "strokeWidth": 1,
+                      "strokeWidth": 1.5,
                       "descendants": {
                         "HQLEf": {
                           "fill": "$faint-foreground",
@@ -5426,6 +5863,20 @@
                           "fontFamily": "$font-ui",
                           "fontSize": 11,
                           "fontWeight": "600"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "p0lXg",
+                          "x": 0,
+                          "y": 0,
+                          "name": "Remove",
+                          "context": "Optional trailing remove control, for filter tags.",
+                          "enabled": false,
+                          "width": 12,
+                          "height": 12,
+                          "icon": "x",
+                          "library": "lucide",
+                          "fill": "$muted-foreground"
                         }
                       ]
                     }
@@ -7963,7 +8414,7 @@
                       "fill": "$muted",
                       "cornerRadius": "$control-radius-large",
                       "stroke": "#FFFFFF00",
-                      "strokeWidth": 1,
+                      "strokeWidth": 1.5,
                       "gap": 12,
                       "padding": [
                         0,
@@ -8387,7 +8838,7 @@
                       "fill": "$card",
                       "cornerRadius": "$control-radius-default",
                       "stroke": "$input",
-                      "strokeWidth": 1,
+                      "strokeWidth": 1.5,
                       "gap": 6,
                       "padding": [
                         0,
@@ -10583,6 +11034,237 @@
         },
         {
           "type": "frame",
+          "id": "n58gGc",
+          "name": "Section v2/Collapsible trigger/open and v2/Collapsible/content",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "oRzNp",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Collapsible trigger/open and v2/Collapsible/content",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "d3OZXA",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "The open state of v2/Collapsible trigger, and the container for what it reveals, placed directly under the trigger. Trigger overrides as v2/Collapsible trigger; the Chevron points down. Content: 520 wide by default, set width to fill; padding lines the content up with the trigger's Title (36 left, 16 bottom); replace Slot with the revealed rows. Maps to shadcn Collapsible trigger and CollapsibleContent.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "sLlIc",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "E3K6S",
+                  "name": "State Component, trigger open",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "H9cqd2",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component, trigger open",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "T1mOH",
+                      "name": "v2/Collapsible trigger/open",
+                      "reusable": true,
+                      "width": 520,
+                      "height": 40,
+                      "cornerRadius": "$radius-sm",
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "yVQeP",
+                          "name": "Chevron",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "chevron-down",
+                          "library": "lucide",
+                          "fill": "$muted-foreground"
+                        },
+                        {
+                          "type": "text",
+                          "id": "k629K",
+                          "name": "Title",
+                          "fill": "$foreground",
+                          "content": "More",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "DaPgg",
+                          "name": "Summary",
+                          "fill": "$muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "fontFamily": "$font-data",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "id": "o001Qn",
+                          "type": "ref",
+                          "ref": "zGBcp",
+                          "name": "Trailing badge",
+                          "enabled": false,
+                          "fill": "$destructive-soft",
+                          "descendants": {
+                            "rMeqR": {
+                              "content": "1 problem",
+                              "fill": "$destructive"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "kckWG",
+                  "name": "State Component, content",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "XBEMS",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component, content",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "xy2em",
+                      "name": "v2/Collapsible/content",
+                      "reusable": true,
+                      "width": 520,
+                      "layout": "vertical",
+                      "gap": 16,
+                      "padding": [
+                        0,
+                        12,
+                        16,
+                        36
+                      ],
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "MDz8q",
+                          "name": "Slot",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "RX55E",
+                              "name": "Placeholder",
+                              "fill": "$subtle-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Replace Slot with the revealed rows.",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "USM4U",
+                  "name": "State open with content",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ByyTY",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "open with content",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "wASRt",
+                      "name": "Open with content",
+                      "width": 520,
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "id": "Ia8Vn",
+                          "type": "ref",
+                          "ref": "T1mOH",
+                          "name": "Instance trigger open",
+                          "width": "fill_container",
+                          "descendants": {
+                            "k629K": {
+                              "content": "Episodes"
+                            },
+                            "DaPgg": {
+                              "content": "10 of 10 downloaded"
+                            }
+                          }
+                        },
+                        {
+                          "id": "sZQQs",
+                          "type": "ref",
+                          "ref": "xy2em",
+                          "name": "Instance content",
+                          "width": "fill_container"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
           "id": "vPG00",
           "name": "Section v2/Option row",
           "width": "fill_container",
@@ -10606,7 +11288,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "A radio or checkbox with a title and a line of explanation: monitor choices, delete choices, settings. Radius 6, padding 10. Overrides: Radio or Checkbox (turn one off), Title, Description, Kbd (number key, off by default), root fill. Selected shows in the control, not as a tint. Maps to shadcn RadioGroup item or Checkbox with Label.",
+              "content": "A radio or checkbox with a title and a line of explanation: monitor choices, delete choices, settings. Radius 6, padding 10. Overrides: Radio or Checkbox (turn one off), Title, Description, Kbd (number key, off by default), root fill. Selected shows in the control, not as a tint. Maps to shadcn RadioGroup item or Checkbox with Label. v2/Option row/bordered is the same row as a card with its own edge, for a short set of standalone choices laid out in a grid (site software, backup destination, Plex token, the setup wizard's optional parts): radius 8, padding 14 16, 1px border edge; on, the edge turns 2px foreground (the second pixel is an inset shadow in code, so nothing moves).",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -10968,6 +11650,177 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "frame",
+              "id": "NU8aw",
+              "name": "Bordered row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "XlHbr",
+                  "name": "State bordered, component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "LTcl2",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "bordered, component",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "zDrOf",
+                      "type": "ref",
+                      "reusable": true,
+                      "ref": "qq4VX",
+                      "name": "v2/Option row/bordered",
+                      "fill": "$card",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "cornerRadius": "$radius-md",
+                      "padding": [
+                        14,
+                        16
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "u5TUSk",
+                  "name": "State bordered, radio selected",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "hc4az",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "bordered, radio selected",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "Jb9zz",
+                      "type": "ref",
+                      "ref": "zDrOf",
+                      "name": "Instance bordered radio selected",
+                      "stroke": "$foreground",
+                      "strokeWidth": 2,
+                      "descendants": {
+                        "X5jFeq": {
+                          "fill": "$primary",
+                          "stroke": "$primary"
+                        },
+                        "X5jFeq/hDXPq": {
+                          "enabled": true
+                        },
+                        "o65TR7": {
+                          "content": "UNIT3D"
+                        },
+                        "UoGzj": {
+                          "content": "API token. Reads ratio, upload, download, buffer, seeding, bonus and hit and runs."
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "EgMPw",
+                  "name": "State bordered, checkbox checked",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "bGflL",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "bordered, checkbox checked",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "tCbx1",
+                      "type": "ref",
+                      "ref": "zDrOf",
+                      "name": "Instance bordered checkbox checked",
+                      "stroke": "$foreground",
+                      "strokeWidth": 2,
+                      "descendants": {
+                        "X5jFeq": {
+                          "enabled": false
+                        },
+                        "bgVNE": {
+                          "enabled": true,
+                          "fill": "$primary",
+                          "stroke": "$primary"
+                        },
+                        "bgVNE/U0rn6": {
+                          "enabled": true
+                        },
+                        "o65TR7": {
+                          "content": "Trackers"
+                        },
+                        "UoGzj": {
+                          "content": "Add each private tracker and its hit and run rule, so deleting a version never breaks one."
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "L8vA1Z",
+                  "name": "State bordered, checkbox off",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TBXSr",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "bordered, checkbox off",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "IWj9b",
+                      "type": "ref",
+                      "ref": "zDrOf",
+                      "name": "Instance bordered checkbox off",
+                      "descendants": {
+                        "X5jFeq": {
+                          "enabled": false
+                        },
+                        "bgVNE": {
+                          "enabled": true
+                        },
+                        "o65TR7": {
+                          "content": "Backup"
+                        },
+                        "UoGzj": {
+                          "content": "Copy the database every few minutes to a folder or an S3-compatible bucket."
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
             }
           ]
         },
@@ -11091,8 +11944,8 @@
                               "name": "Action",
                               "enabled": false,
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "height": 40,
                               "padding": [
                                 0,
@@ -11368,6 +12221,426 @@
                         },
                         "RPLCk": {
                           "content": "Saved. Replace to change it."
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "gJiDN",
+          "name": "Section v2/Field/labelled optional",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "V3QTAs",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Field/labelled optional",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "d6u8RR",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "v2/Field/labelled for a field that may be left blank: the word Optional sits after the Label, in subtle-foreground. Overrides as v2/Field/labelled: Label, Optional, Input, Action, Help, Error. Maps to shadcn Field with Label.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "lO8Hv",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "MZmRY",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "l6UZ5P",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "r4FA5",
+                      "name": "v2/Field/labelled optional",
+                      "reusable": true,
+                      "width": 360,
+                      "layout": "vertical",
+                      "gap": 6,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "RfKHl",
+                          "name": "Label row",
+                          "gap": 6,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "IH9KG",
+                              "name": "Label",
+                              "fill": "$foreground",
+                              "content": "Global ratio minimum",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "wOYL7",
+                              "name": "Optional",
+                              "fill": "$subtle-foreground",
+                              "content": "Optional",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "JNK4B",
+                          "name": "Control row",
+                          "width": "fill_container",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "mqMyP",
+                              "type": "ref",
+                              "ref": "tY5yB",
+                              "name": "Input",
+                              "width": "fill_container",
+                              "height": 40,
+                              "cornerRadius": "$control-radius-default",
+                              "fill": "$card",
+                              "stroke": "$input",
+                              "padding": [
+                                0,
+                                "$control-px-default"
+                              ],
+                              "descendants": {
+                                "gyqge": {
+                                  "enabled": false,
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "RigzS": {
+                                  "content": "http://localhost:8989",
+                                  "fontSize": 14,
+                                  "fill": "$foreground"
+                                },
+                                "Fxbk0": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "bgq1Q",
+                              "type": "ref",
+                              "ref": "ht3RN",
+                              "name": "Action",
+                              "enabled": false,
+                              "fill": "$card",
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
+                              "height": 40,
+                              "padding": [
+                                0,
+                                "$control-px-default"
+                              ],
+                              "cornerRadius": "$control-radius-default",
+                              "descendants": {
+                                "HQLEf": {
+                                  "enabled": false
+                                },
+                                "OXVvv": {
+                                  "content": "Replace",
+                                  "fill": "$foreground",
+                                  "fontSize": "$control-text-default"
+                                },
+                                "T1Pftv": {
+                                  "enabled": false
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "p4awec",
+                          "name": "Help",
+                          "fill": "$subtle-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Your ratio across the whole account.",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "cfOC1",
+                          "x": 0,
+                          "y": 0,
+                          "name": "Error",
+                          "enabled": false,
+                          "fill": "$destructive",
+                          "content": "Sonarr did not answer at this address. Check the port.",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "sxipB",
+                  "name": "State empty",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "CEshb",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "empty",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "T9PJoZ",
+                      "type": "ref",
+                      "ref": "r4FA5",
+                      "name": "Instance empty",
+                      "width": 360
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "LVPVF",
+          "name": "Section v2/Field/number",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "Z2vB7S",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Field/number",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "I9WrRn",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "A short number box with its words around it, read as one sentence: Not a hit and run below 10 % downloaded. Before and After are plain text (turn either off); Input is a v2/Input/Search instance, 72 wide and 40 high, with Icon and Kbd off and the value in font-data. An empty box shows a hint in subtle-foreground. Maps to shadcn Input with type number.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "h8uU1o",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "nY5pn",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "vXax4",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "FIdi9",
+                      "name": "v2/Field/number",
+                      "reusable": true,
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Roknw",
+                          "name": "Before",
+                          "fill": "$foreground",
+                          "content": "Not a hit and run below",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "id": "SSyS3",
+                          "type": "ref",
+                          "ref": "tY5yB",
+                          "name": "Input",
+                          "width": 72,
+                          "height": 40,
+                          "cornerRadius": "$control-radius-default",
+                          "fill": "$card",
+                          "stroke": "$input",
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "descendants": {
+                            "gyqge": {
+                              "enabled": false
+                            },
+                            "RigzS": {
+                              "content": "10",
+                              "fontSize": 14,
+                              "fill": "$foreground",
+                              "fontFamily": "$font-data"
+                            },
+                            "Fxbk0": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "vwNRI",
+                          "name": "After",
+                          "fill": "$foreground",
+                          "content": "% downloaded",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "N6MH2",
+                  "name": "State unit after",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "RfSF9",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "unit after",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "lvPkV",
+                      "type": "ref",
+                      "ref": "FIdi9",
+                      "name": "Instance unit after",
+                      "descendants": {
+                        "Roknw": {
+                          "enabled": false
+                        },
+                        "SSyS3/RigzS": {
+                          "content": "0.05"
+                        },
+                        "vwNRI": {
+                          "content": "extra ratio"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Y3WOiA",
+                  "name": "State empty",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "V3YRV",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "empty",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "D21by",
+                      "type": "ref",
+                      "ref": "FIdi9",
+                      "name": "Instance empty",
+                      "descendants": {
+                        "Roknw": {
+                          "enabled": false
+                        },
+                        "SSyS3": {
+                          "width": 96
+                        },
+                        "SSyS3/RigzS": {
+                          "content": "e.g. 168",
+                          "fill": "$subtle-foreground"
+                        },
+                        "vwNRI": {
+                          "content": "hours",
+                          "fill": "$muted-foreground"
                         }
                       }
                     }
@@ -13405,12 +14678,22 @@
                               "fontWeight": "normal"
                             },
                             {
+                              "type": "frame",
+                              "id": "dKEH5",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Action gap",
+                              "enabled": false,
+                              "width": 1,
+                              "height": 8
+                            },
+                            {
                               "id": "ikNaK",
                               "type": "ref",
                               "ref": "ht3RN",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "name": "Action",
                               "enabled": false,
                               "height": 40,
@@ -13522,6 +14805,240 @@
                           "content": "Sonarr will not upgrade over this release."
                         },
                         "ikNaK": {
+                          "enabled": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "O3H9ha",
+          "name": "Section v2/Callout/info",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "oujvx",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Callout/info",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "y1UKq",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "A neutral message inside the page: a fact to know, not a problem. Muted fill, muted-foreground icon, radius 8, no shadow, no coloured side bar. Overrides: Icon (icon only; keep the fill), Title, Body, Action (a v2/Button, off by default). Use v2/Callout for risk and warning. Maps to shadcn Alert, default.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "GoAoU",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "abbOh",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "N1PfF6",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Tegv9",
+                      "name": "v2/Callout/info",
+                      "reusable": true,
+                      "width": 520,
+                      "fill": "$muted",
+                      "cornerRadius": "$radius-md",
+                      "gap": 10,
+                      "padding": [
+                        12,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "KV9tC",
+                          "name": "Icon",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "info",
+                          "library": "lucide",
+                          "fill": "$muted-foreground"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mD4Yt",
+                          "name": "Text",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "yWVDh",
+                              "name": "Title",
+                              "fill": "$foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "This rule comes from the env file on the server",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 14,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "qiU1k",
+                              "name": "Body",
+                              "fill": "$foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Saving a change keeps a copy in Settings that takes over from the env file.",
+                              "lineHeight": 1.45,
+                              "fontFamily": "$font-ui",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "R8T1Xe",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Action gap",
+                              "enabled": false,
+                              "width": 1,
+                              "height": 8
+                            },
+                            {
+                              "id": "ud64H",
+                              "type": "ref",
+                              "ref": "ht3RN",
+                              "fill": "$card",
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
+                              "name": "Action",
+                              "enabled": false,
+                              "height": 40,
+                              "padding": [
+                                0,
+                                "$control-px-default"
+                              ],
+                              "cornerRadius": "$control-radius-default",
+                              "descendants": {
+                                "HQLEf": {
+                                  "enabled": false
+                                },
+                                "OXVvv": {
+                                  "content": "Keep seeding",
+                                  "fill": "$foreground",
+                                  "fontSize": "$control-text-default"
+                                },
+                                "T1Pftv": {
+                                  "enabled": false
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "AUMho",
+                  "name": "State other icon",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "aCcxP",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "other icon",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "BmmO5",
+                      "type": "ref",
+                      "ref": "Tegv9",
+                      "name": "Instance other icon",
+                      "descendants": {
+                        "KV9tC": {
+                          "icon": "file-text"
+                        },
+                        "yWVDh": {
+                          "content": "This rule is a Settings copy"
+                        },
+                        "qiU1k": {
+                          "content": "The env file also has a rule for this tracker."
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "dkP40",
+                  "name": "State with action",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "GrdlF",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "with action",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "MZ7qQ",
+                      "type": "ref",
+                      "ref": "Tegv9",
+                      "name": "Instance with action",
+                      "descendants": {
+                        "yWVDh": {
+                          "content": "Grabbed by hand"
+                        },
+                        "qiU1k": {
+                          "content": "Sonarr will not upgrade over this release."
+                        },
+                        "ud64H": {
                           "enabled": true
                         }
                       }
@@ -14585,8 +16102,8 @@
                           "type": "ref",
                           "ref": "ht3RN",
                           "fill": "$card",
-                          "stroke": "$input",
-                          "strokeWidth": 1,
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
                           "name": "Action",
                           "height": 40,
                           "padding": [
@@ -15217,8 +16734,8 @@
                           "height": 48,
                           "cornerRadius": "$control-radius-large",
                           "fill": "$card",
-                          "stroke": "$input",
-                          "strokeWidth": 1,
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
                           "padding": [
                             0,
                             "$control-px-large"
@@ -15529,8 +17046,8 @@
                               "ref": "ht3RN",
                               "name": "Secondary",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "enabled": false
@@ -16111,8 +17628,8 @@
                           "name": "Secondary",
                           "enabled": false,
                           "fill": "$card",
-                          "stroke": "$input",
-                          "strokeWidth": 1,
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "HQLEf": {
                               "fill": "$foreground",
@@ -16911,8 +18428,8 @@
                               "ref": "ht3RN",
                               "name": "Cancel",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "enabled": false
@@ -17546,6 +19063,613 @@
         },
         {
           "type": "frame",
+          "id": "ofL3F",
+          "name": "Section v2/Card/library and v2/Fact/stacked",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "c2b49",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Card/library and v2/Fact/stacked",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "DoOcd",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Title page overview band (show and movie pages). Information is grouped by what it describes. Left column: the show or film itself (overview, a three-column grid of v2/Fact/stacked, crew for movies, links, genre and keyword chips). Right column: v2/Card/library, 360 px, everything about your copy (monitoring, quality profile, files, size, added, folder, your tags). Order inside the card: the In your library heading, then the Ratings row (one entry per rating site; the Logo slot is off until real rater logos are added), then v2/Fact/row rows (label 112, value right-aligned), then the Tags row. In the page flow: card fill, 1 px border, radius 10, no shadow. Fact/stacked: label 14/600 foreground over value 14/400 muted-foreground, 2 px apart; grid rows 16 apart, columns 24 apart. Overrides: Rating 1 to 4 (Logo, Source, Value, Votes), Title, Row 1 to 8 (Label, Value), Tag list. Custom; plain markup (dl) inside a section.",
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "T3lI3k",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 40,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "CgPEx",
+                  "name": "v2/Fact/stacked",
+                  "reusable": true,
+                  "width": 220,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ZNuuj",
+                      "name": "Label",
+                      "fill": "$foreground",
+                      "content": "Air time",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "SSNAx",
+                      "name": "Value",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Fridays · 03:00",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "yZ5NT",
+                  "name": "v2/Card/library",
+                  "reusable": true,
+                  "clip": true,
+                  "width": 360,
+                  "fill": "$card",
+                  "cornerRadius": "$radius-lg",
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "IsQS5",
+                      "name": "Heading",
+                      "width": "fill_container",
+                      "height": 44,
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "Q3jgMm",
+                          "name": "Icon",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "hard-drive",
+                          "library": "lucide",
+                          "fill": "$foreground"
+                        },
+                        {
+                          "type": "text",
+                          "id": "tR3Iv",
+                          "name": "Title",
+                          "fill": "$foreground",
+                          "content": "In your library",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 14,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ajRPs",
+                      "name": "Ratings",
+                      "width": "fill_container",
+                      "height": 48,
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "gap": 16,
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "oF5UH",
+                          "name": "Rating 1",
+                          "gap": 5,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "D43n6",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Logo",
+                              "enabled": false,
+                              "width": 16,
+                              "height": 16
+                            },
+                            {
+                              "type": "text",
+                              "id": "viVKi",
+                              "name": "Source",
+                              "fill": "$subtle-foreground",
+                              "content": "IMDb",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "AQb4u",
+                              "name": "Value",
+                              "fill": "$foreground",
+                              "content": "8.5",
+                              "fontFamily": "$font-data",
+                              "fontSize": 15,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "huqSi",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Votes",
+                              "enabled": false,
+                              "fill": "$subtle-foreground",
+                              "content": "1,203 votes",
+                              "fontFamily": "$font-data",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "vto0n",
+                          "name": "Rating 2",
+                          "gap": 5,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "SNgZ8",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Logo",
+                              "enabled": false,
+                              "width": 16,
+                              "height": 16
+                            },
+                            {
+                              "type": "text",
+                              "id": "KO59W",
+                              "name": "Source",
+                              "fill": "$subtle-foreground",
+                              "content": "TMDB",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "rfsUE",
+                              "name": "Value",
+                              "fill": "$foreground",
+                              "content": "82%",
+                              "fontFamily": "$font-data",
+                              "fontSize": 15,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "YTrVY",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Votes",
+                              "enabled": false,
+                              "fill": "$subtle-foreground",
+                              "content": "1,203 votes",
+                              "fontFamily": "$font-data",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "xkOvw",
+                          "name": "Rating 3",
+                          "gap": 5,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "bZOwI",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Logo",
+                              "enabled": false,
+                              "width": 16,
+                              "height": 16
+                            },
+                            {
+                              "type": "text",
+                              "id": "BzjBK",
+                              "name": "Source",
+                              "fill": "$subtle-foreground",
+                              "content": "RT",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "bf5bh",
+                              "name": "Value",
+                              "fill": "$foreground",
+                              "content": "92%",
+                              "fontFamily": "$font-data",
+                              "fontSize": 15,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "LAB7n",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Votes",
+                              "enabled": false,
+                              "fill": "$subtle-foreground",
+                              "content": "1,203 votes",
+                              "fontFamily": "$font-data",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "XaPwX",
+                          "name": "Rating 4",
+                          "gap": 5,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "ThTl8",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Logo",
+                              "enabled": false,
+                              "width": 16,
+                              "height": 16
+                            },
+                            {
+                              "type": "text",
+                              "id": "b3s0Xz",
+                              "name": "Source",
+                              "fill": "$subtle-foreground",
+                              "content": "Metacritic",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "l339p",
+                              "name": "Value",
+                              "fill": "$foreground",
+                              "content": "79",
+                              "fontFamily": "$font-data",
+                              "fontSize": 15,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "DEVAU",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Votes",
+                              "enabled": false,
+                              "fill": "$subtle-foreground",
+                              "content": "1,203 votes",
+                              "fontFamily": "$font-data",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "w9Zbs4",
+                      "type": "ref",
+                      "ref": "e95lV",
+                      "name": "Row 1",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "enabled": true,
+                      "descendants": {
+                        "EY0GR": {
+                          "content": "Monitoring",
+                          "width": 112
+                        },
+                        "AslXb": {
+                          "content": "Monitored",
+                          "width": "fill_container",
+                          "textGrowth": "fixed-width",
+                          "textAlign": "right"
+                        }
+                      }
+                    },
+                    {
+                      "id": "LM5Nz",
+                      "type": "ref",
+                      "ref": "e95lV",
+                      "name": "Row 2",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "enabled": true,
+                      "descendants": {
+                        "EY0GR": {
+                          "content": "Available when",
+                          "width": 112
+                        },
+                        "AslXb": {
+                          "content": "Released",
+                          "width": "fill_container",
+                          "textGrowth": "fixed-width",
+                          "textAlign": "right"
+                        }
+                      }
+                    },
+                    {
+                      "id": "n1NbPK",
+                      "type": "ref",
+                      "ref": "e95lV",
+                      "name": "Row 3",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "enabled": true,
+                      "descendants": {
+                        "EY0GR": {
+                          "content": "Quality profile",
+                          "width": 112
+                        },
+                        "AslXb": {
+                          "content": "UHD preferred",
+                          "width": "fill_container",
+                          "textGrowth": "fixed-width",
+                          "textAlign": "right"
+                        }
+                      }
+                    },
+                    {
+                      "id": "lIFQR",
+                      "type": "ref",
+                      "ref": "e95lV",
+                      "name": "Row 4",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "enabled": true,
+                      "descendants": {
+                        "EY0GR": {
+                          "content": "File",
+                          "width": 112
+                        },
+                        "AslXb": {
+                          "content": "2160p WEB-DL · FLUX",
+                          "width": "fill_container",
+                          "textGrowth": "fixed-width",
+                          "textAlign": "right"
+                        }
+                      }
+                    },
+                    {
+                      "id": "xLsvv",
+                      "type": "ref",
+                      "ref": "e95lV",
+                      "name": "Row 5",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "enabled": true,
+                      "descendants": {
+                        "EY0GR": {
+                          "content": "On disk",
+                          "width": 112
+                        },
+                        "AslXb": {
+                          "content": "66.2 GB · 1 file",
+                          "width": "fill_container",
+                          "textGrowth": "fixed-width",
+                          "textAlign": "right"
+                        }
+                      }
+                    },
+                    {
+                      "id": "B7uGhr",
+                      "type": "ref",
+                      "ref": "e95lV",
+                      "name": "Row 6",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "enabled": true,
+                      "descendants": {
+                        "EY0GR": {
+                          "content": "Added",
+                          "width": 112
+                        },
+                        "AslXb": {
+                          "content": "2 Apr 2024",
+                          "width": "fill_container",
+                          "textGrowth": "fixed-width",
+                          "textAlign": "right"
+                        }
+                      }
+                    },
+                    {
+                      "id": "e8kxkk",
+                      "type": "ref",
+                      "ref": "e95lV",
+                      "name": "Row 7",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "enabled": true,
+                      "descendants": {
+                        "EY0GR": {
+                          "content": "Folder",
+                          "width": 112
+                        },
+                        "AslXb": {
+                          "content": "/media/movies/Dune Part Two (2024)",
+                          "width": "fill_container",
+                          "textGrowth": "fixed-width",
+                          "textAlign": "right"
+                        }
+                      }
+                    },
+                    {
+                      "id": "qQXLV",
+                      "type": "ref",
+                      "ref": "e95lV",
+                      "name": "Row 8",
+                      "width": "fill_container(0)",
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "enabled": false,
+                      "descendants": {
+                        "EY0GR": {
+                          "content": "Episodes",
+                          "width": 112
+                        },
+                        "AslXb": {
+                          "content": "16 of 19 on disk",
+                          "width": "fill_container",
+                          "textGrowth": "fixed-width",
+                          "textAlign": "right"
+                        }
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "p7QfVc",
+                      "name": "Tags",
+                      "width": "fill_container",
+                      "height": 44,
+                      "gap": 6,
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "WYQmP",
+                          "name": "Label",
+                          "fill": "$muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": 112,
+                          "content": "Tags",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mBMtU",
+                          "name": "Tag list",
+                          "width": "fill_container",
+                          "gap": 6,
+                          "justifyContent": "end",
+                          "children": [
+                            {
+                              "id": "rVUz5",
+                              "type": "ref",
+                              "ref": "zGBcp",
+                              "name": "Tag 1",
+                              "descendants": {
+                                "rMeqR": {
+                                  "content": "4k"
+                                }
+                              }
+                            },
+                            {
+                              "id": "n3Sb3",
+                              "type": "ref",
+                              "ref": "zGBcp",
+                              "name": "Tag 2",
+                              "descendants": {
+                                "rMeqR": {
+                                  "content": "favourite"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
           "id": "Z37M7",
           "name": "Section v2/Status/service pill",
           "width": "fill_container",
@@ -17944,6 +20068,168 @@
                         },
                         "bX27S": {
                           "content": "Unsaved edits",
+                          "fill": "$warning"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "D7y7i",
+          "name": "Section v2/Status/rule pill",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "k63bA",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Status/rule pill",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "WEHKb",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "A tracker's hit and run rule state, in the tracker row, the editor header and the How the pieces connect strip. Same shape as v2/Status/service pill, with no logo and no icon. Overrides: Dot, State, root fill. Configured: black dot. Configured (env file): black dot, the rule is read from the server's env file. No rule: warning-soft fill, amber dot and text; torrents from the tracker keep seeding. Custom; maps to shadcn Badge outline.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "rA6KT",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "vD57t",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "HPCKB",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ir39A",
+                      "name": "v2/Status/rule pill",
+                      "reusable": true,
+                      "height": 26,
+                      "fill": "$muted",
+                      "cornerRadius": "$radius-sm",
+                      "gap": 6,
+                      "padding": [
+                        0,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "ellipse",
+                          "id": "L2mfp",
+                          "name": "Dot",
+                          "fill": "$foreground",
+                          "width": 6,
+                          "height": 6
+                        },
+                        {
+                          "type": "text",
+                          "id": "HPSk7",
+                          "name": "State",
+                          "fill": "$muted-foreground",
+                          "content": "Configured",
+                          "fontFamily": "$font-data",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "KDseA",
+                  "name": "State configured (env file)",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "XC9Xu",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "configured (env file)",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "nZMSu",
+                      "type": "ref",
+                      "ref": "ir39A",
+                      "name": "Instance configured env file",
+                      "descendants": {
+                        "HPSk7": {
+                          "content": "Configured (env file)"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "fr3fr",
+                  "name": "State no rule",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "QA5ER",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "no rule",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "zl1lG",
+                      "type": "ref",
+                      "ref": "ir39A",
+                      "name": "Instance no rule",
+                      "fill": "$warning-soft",
+                      "descendants": {
+                        "L2mfp": {
+                          "fill": "$warning"
+                        },
+                        "HPSk7": {
+                          "content": "No rule",
                           "fill": "$warning"
                         }
                       }
@@ -19737,8 +22023,8 @@
                               "name": "Action",
                               "enabled": false,
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "icon": "history",
@@ -21005,8 +23291,8 @@
                                       "ref": "ht3RN",
                                       "name": "Secondary",
                                       "fill": "$card",
-                                      "stroke": "$input",
-                                      "strokeWidth": 1,
+                                      "stroke": "$foreground",
+                                      "strokeWidth": 1.5,
                                       "height": 48,
                                       "padding": [
                                         0,
@@ -21267,8 +23553,8 @@
                                   "ref": "ht3RN",
                                   "name": "Secondary",
                                   "fill": "$card",
-                                  "stroke": "$input",
-                                  "strokeWidth": 1,
+                                  "stroke": "$foreground",
+                                  "strokeWidth": 1.5,
                                   "height": 48,
                                   "padding": [
                                     0,
@@ -21687,8 +23973,8 @@
                                   "ref": "ht3RN",
                                   "name": "More choices",
                                   "fill": "$card",
-                                  "stroke": "$input",
-                                  "strokeWidth": 1,
+                                  "stroke": "$foreground",
+                                  "strokeWidth": 1.5,
                                   "descendants": {
                                     "HQLEf": {
                                       "enabled": false
@@ -21818,8 +24104,8 @@
                               "ref": "ht3RN",
                               "name": "Secondary",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "enabled": false
@@ -30538,7 +32824,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "Library grid card. Poster 152 by 228 in full colour (stand-in gradients here; real art from Sonarr or Radarr as an image fill), radius 8, 1 px inner edge so light posters keep an edge. Overrides: Poster fill, Progress strip (on while downloading: 4 px lime on the poster's bottom edge, it sits on the image so lime is allowed), Hover veil, root stroke for selected, Title, Meta, Status (one v2/Badge, off when normal). States: default, hover (veil darkens the poster 8%), pressed (16%), focus (ring around the poster), selected (2 px black edge, title 700), downloading, missing, manual download, not out yet. Custom card; maps to a link with an img. Imported: Progress strip and fill on at full width (152, lime) plus Imported check on (black chip, lime check, bottom left of the poster); shows for a short while after the last file imports.",
+              "content": "Library grid card. Poster 152 by 228 in full colour (stand-in gradients here; real art from Sonarr or Radarr as an image fill), radius 8, 1 px inner edge so light posters keep an edge. Overrides: Poster fill, Progress strip (on while downloading: 4 px lime on the poster's bottom edge, it sits on the image so lime is allowed), Hover veil, root stroke for selected, Title, Meta, Status (one v2/Badge, off when normal; it sits on the poster's bottom-left corner, 8 px in, so a card's status can never read as a heading for the row below; at other poster heights set its y to poster height minus 28; it hides on pointer hover and keyboard focus so the overview reads clean, and while Imported shows). States: default, hover (veil darkens the poster 8%), pressed (16%), focus (ring around the poster), selected (2 px black edge, title 700), downloading, missing, manual download, not out yet. Custom card; maps to a link with an img. Imported: Progress strip and fill on at full width (152, lime) plus Imported check on (black chip, lime check, bottom left of the poster); shows for a short while after the last file imports.",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -30582,7 +32868,7 @@
                           "id": "Useiw",
                           "name": "Poster",
                           "clip": true,
-                          "width": 152,
+                          "width": "fill_container",
                           "height": 228,
                           "fill": {
                             "type": "gradient",
@@ -30682,6 +32968,185 @@
                                   "fontWeight": "600"
                                 }
                               ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "onmTG",
+                              "x": 8,
+                              "y": 8,
+                              "name": "Date tab",
+                              "context": "Optional release or premiere date on the poster corner.",
+                              "enabled": false,
+                              "fill": "$card",
+                              "cornerRadius": "$radius-md",
+                              "effect": {
+                                "type": "shadow",
+                                "shadowType": "outer",
+                                "color": "$shadow",
+                                "offset": {
+                                  "x": 0,
+                                  "y": 1
+                                },
+                                "blur": 4
+                              },
+                              "layout": "vertical",
+                              "padding": [
+                                5,
+                                9,
+                                6,
+                                9
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "XFOO1",
+                                  "name": "Month",
+                                  "fill": "$muted-foreground",
+                                  "content": "OCT",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 11,
+                                  "fontWeight": "700",
+                                  "letterSpacing": 0.6
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "A0Hev",
+                                  "name": "Day",
+                                  "fill": "$foreground",
+                                  "content": "14",
+                                  "lineHeight": 1,
+                                  "fontFamily": "$font-data",
+                                  "fontSize": 22,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "d6gzLL",
+                              "x": 0,
+                              "y": 0,
+                              "name": "No poster",
+                              "context": "Optional state when the title has no artwork. Resize with the poster.",
+                              "enabled": false,
+                              "width": 152,
+                              "height": 228,
+                              "fill": "$muted",
+                              "layout": "vertical",
+                              "gap": 8,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "Oq8Rm",
+                                  "name": "No poster icon",
+                                  "width": 24,
+                                  "height": 24,
+                                  "icon": "image-off",
+                                  "library": "lucide",
+                                  "fill": "$subtle-foreground"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "nXm7M",
+                                  "name": "No poster label",
+                                  "fill": "$muted-foreground",
+                                  "content": "No poster yet",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "id": "cEGE4",
+                              "type": "ref",
+                              "ref": "zGBcp",
+                              "name": "Status",
+                              "enabled": false,
+                              "x": 8,
+                              "y": 200,
+                              "context": "Optional single status. Sits on the poster's bottom-left corner so it belongs to this card, never to the row below. Hidden while Imported shows."
+                            },
+                            {
+                              "type": "frame",
+                              "id": "WeP65",
+                              "x": 0,
+                              "y": 98,
+                              "name": "Overview",
+                              "context": "Optional hover state: the title's overview over the lower poster. Resize with the poster.",
+                              "enabled": false,
+                              "width": 152,
+                              "height": 130,
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "linear",
+                                "enabled": true,
+                                "rotation": 180,
+                                "size": {
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#11111100",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#111111E6",
+                                    "position": 0.6
+                                  }
+                                ]
+                              },
+                              "layout": "vertical",
+                              "gap": 8,
+                              "padding": 12,
+                              "justifyContent": "end",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Q4Mxa1",
+                                  "name": "Overview text",
+                                  "fill": "#FFFFFF",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "One-line overview of the title.",
+                                  "lineHeight": 1.4,
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "szcSW",
+                                  "name": "Open hint",
+                                  "gap": 4,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "lW3XU",
+                                      "name": "Open label",
+                                      "fill": "#FFFFFF",
+                                      "content": "Open title",
+                                      "fontFamily": "$font-ui",
+                                      "fontSize": 12,
+                                      "fontWeight": "600"
+                                    },
+                                    {
+                                      "type": "icon",
+                                      "id": "idjZC",
+                                      "name": "Open arrow",
+                                      "width": 13,
+                                      "height": 13,
+                                      "icon": "arrow-right",
+                                      "library": "lucide",
+                                      "fill": "#FFFFFF"
+                                    }
+                                  ]
+                                }
+                              ]
                             }
                           ]
                         },
@@ -30694,16 +33159,39 @@
                           "gap": 2,
                           "children": [
                             {
-                              "type": "text",
-                              "id": "B9wRy",
-                              "name": "Title",
-                              "fill": "$foreground",
-                              "textGrowth": "fixed-width",
+                              "type": "frame",
+                              "id": "H0vYS",
+                              "name": "Title row",
                               "width": "fill_container",
-                              "content": "Severance",
-                              "fontFamily": "$font-ui",
-                              "fontSize": 14,
-                              "fontWeight": "600"
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "kSaKB",
+                                  "x": 0,
+                                  "y": 0,
+                                  "name": "Rank",
+                                  "context": "Optional position in a ranked list such as Trending.",
+                                  "enabled": false,
+                                  "fill": "$subtle-foreground",
+                                  "content": "1",
+                                  "fontFamily": "$font-data",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "B9wRy",
+                                  "name": "Title",
+                                  "fill": "$foreground",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Severance",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                }
+                              ]
                             },
                             {
                               "type": "text",
@@ -30716,15 +33204,130 @@
                               "fontFamily": "$font-data",
                               "fontSize": 13,
                               "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "O0tOv",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Type line",
+                              "context": "Optional media type with icon and year; use instead of Meta.",
+                              "enabled": false,
+                              "gap": 6,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "t1h0j",
+                                  "name": "Type icon",
+                                  "width": 14,
+                                  "height": 14,
+                                  "icon": "tv",
+                                  "library": "lucide",
+                                  "fill": "$muted-foreground"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "N4dlug",
+                                  "name": "Type",
+                                  "fill": "$muted-foreground",
+                                  "content": "TV series",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 13,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "Ru2TN",
+                                  "name": "Dot",
+                                  "fill": "$subtle-foreground",
+                                  "content": "·",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "A9jz2",
+                                  "name": "Year",
+                                  "fill": "$muted-foreground",
+                                  "content": "2022",
+                                  "fontFamily": "$font-data",
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "ERwm7",
+                              "x": 0,
+                              "y": 0,
+                              "name": "Genres",
+                              "enabled": false,
+                              "fill": "$subtle-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container(0)",
+                              "content": "Drama, Mystery",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
                             }
                           ]
                         },
                         {
-                          "id": "cEGE4",
-                          "type": "ref",
-                          "ref": "zGBcp",
-                          "name": "Status",
-                          "enabled": false
+                          "type": "frame",
+                          "id": "rgk0x",
+                          "x": 0,
+                          "y": 0,
+                          "name": "Badges",
+                          "context": "Optional row of badges: rating plus one status (In library, countdown, expected).",
+                          "enabled": false,
+                          "gap": 6,
+                          "padding": [
+                            2,
+                            0,
+                            0,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "id": "mWEdA",
+                              "type": "ref",
+                              "ref": "zGBcp",
+                              "name": "Rating",
+                              "descendants": {
+                                "htpMr": {
+                                  "enabled": true,
+                                  "icon": "star",
+                                  "fill": "$foreground"
+                                },
+                                "rMeqR": {
+                                  "content": "8.4",
+                                  "fill": "$foreground",
+                                  "fontFamily": "$font-data",
+                                  "fontSize": 13
+                                }
+                              }
+                            },
+                            {
+                              "id": "TJz9J",
+                              "type": "ref",
+                              "ref": "zGBcp",
+                              "name": "Tag",
+                              "descendants": {
+                                "htpMr": {
+                                  "enabled": true,
+                                  "icon": "check",
+                                  "fill": "$foreground"
+                                },
+                                "rMeqR": {
+                                  "content": "In library",
+                                  "fill": "$foreground"
+                                }
+                              }
+                            }
+                          ]
                         }
                       ]
                     }
@@ -30851,9 +33454,6 @@
                         "Useiw": {
                           "stroke": "$foreground",
                           "strokeWidth": 2
-                        },
-                        "B9wRy": {
-                          "fontWeight": "700"
                         }
                       }
                     }
@@ -30909,22 +33509,20 @@
                         "GmaGP": {
                           "enabled": true
                         },
-                        "B9wRy": {
-                          "content": "Dune: Part Two"
-                        },
-                        "aUm15": {
-                          "content": "2024 · 1 file"
-                        },
                         "cEGE4": {
                           "enabled": true,
-                          "fill": "$live"
+                          "fill": "$best"
                         },
                         "cEGE4/CTVTW": {
-                          "enabled": true
+                          "enabled": true,
+                          "fill": "$foreground"
                         },
                         "cEGE4/rMeqR": {
                           "content": "Downloading 64%",
                           "fill": "$foreground"
+                        },
+                        "aUm15": {
+                          "content": "2024 · 1 file"
                         }
                       }
                     }
@@ -30974,19 +33572,16 @@
                             ]
                           }
                         },
-                        "B9wRy": {
-                          "content": "Andor"
-                        },
-                        "aUm15": {
-                          "content": "2022 · 21 / 24 · 61.0 GB"
-                        },
                         "cEGE4": {
                           "enabled": true,
                           "fill": "$warning-soft"
                         },
                         "cEGE4/rMeqR": {
-                          "content": "Missing 3",
+                          "content": "Missing 3 episodes",
                           "fill": "$warning"
+                        },
+                        "aUm15": {
+                          "content": "2022 · 21 / 24 · 61.0 GB"
                         }
                       }
                     }
@@ -31036,17 +33631,16 @@
                             ]
                           }
                         },
-                        "B9wRy": {
-                          "content": "The Bear"
+                        "cEGE4": {
+                          "enabled": true,
+                          "fill": "$muted"
+                        },
+                        "cEGE4/rMeqR": {
+                          "content": "Manual download",
+                          "fill": "$muted-foreground"
                         },
                         "aUm15": {
                           "content": "2022 · 28 / 28 · 18.7 GB"
-                        },
-                        "cEGE4": {
-                          "enabled": true
-                        },
-                        "cEGE4/rMeqR": {
-                          "content": "Manual download"
                         }
                       }
                     }
@@ -31096,20 +33690,18 @@
                             ]
                           }
                         },
-                        "B9wRy": {
-                          "content": "Dune: Prophecy"
-                        },
-                        "aUm15": {
-                          "content": "2024 · 0 / 6"
-                        },
                         "cEGE4": {
                           "enabled": true,
-                          "fill": "#FFFFFF00",
+                          "fill": "$card",
                           "stroke": "$input",
                           "strokeWidth": 1
                         },
                         "cEGE4/rMeqR": {
-                          "content": "Not out yet"
+                          "content": "Not out yet",
+                          "fill": "$muted-foreground"
+                        },
+                        "aUm15": {
+                          "content": "2024 · 0 / 6"
                         }
                       }
                     }
@@ -31158,13 +33750,674 @@
                         "e2ErO4": {
                           "enabled": true
                         },
-                        "B9wRy": {
-                          "content": "Andor"
-                        },
                         "aUm15": {
                           "content": "2022 · 24 of 24 · 121 GB"
                         }
                       }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Q40pM",
+                  "name": "State missing, pointer hover",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "z54RVI",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "missing, pointer hover: overview on, status hidden",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "on9R7",
+                      "type": "ref",
+                      "ref": "Z0OVp",
+                      "name": "Instance missing, pointer hover",
+                      "descendants": {
+                        "Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#5A4A63",
+                                "position": 0
+                              },
+                              {
+                                "color": "#2D2433",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "cEGE4": {
+                          "enabled": false,
+                          "fill": "$warning-soft"
+                        },
+                        "cEGE4/rMeqR": {
+                          "content": "Missing 3 episodes",
+                          "fill": "$warning"
+                        },
+                        "WeP65": {
+                          "enabled": true,
+                          "width": 152,
+                          "height": 200,
+                          "y": 28
+                        },
+                        "Q4Mxa1": {
+                          "content": "A team at Lumon has their memories surgically split between work and home lives."
+                        },
+                        "aUm15": {
+                          "content": "2022 · 21 / 24 · 61.0 GB"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "WkEZP",
+              "name": "Optional parts",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": [
+                24,
+                0,
+                0,
+                0
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "TcDPY",
+                  "name": "Group title",
+                  "fill": "$foreground",
+                  "content": "Optional parts (used by Discover)",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 14,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "xYOj0",
+                  "name": "Group note",
+                  "fill": "$muted-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": 900,
+                  "content": "All off by default, so the library card above is unchanged. Shown here at 220 by 330 (poster width follows the card width; set Poster height per use). Turn on: Rank (in Title row; match its size to the title), Type line (use instead of Meta), Genres, Badges (two v2/Badge: Rating and Tag), Date tab (poster corner), Overview (pointer hover; size it to the poster), No poster (size it to the poster). Keyboard focus: Poster stroke $ring, 2, outer. Tag variants: In library is solid ($primary fill, $primary-foreground icon and label); countdown and expected use the muted default.",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "x1vxop",
+                  "name": "Demo row optional parts",
+                  "width": "fill_container",
+                  "gap": 20,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "N8HvyL",
+                      "name": "State library default",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "JYbaF",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "library default",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "O5I62",
+                          "type": "ref",
+                          "ref": "Z0OVp",
+                          "name": "Instance library default",
+                          "width": 220,
+                          "descendants": {
+                            "Useiw": {
+                              "height": 330
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "RyGuP",
+                      "name": "State Discover: rank, type line, genres, badges",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "TuZfv",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "Discover: rank, type line, genres, badges",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "p5tRdd",
+                          "type": "ref",
+                          "ref": "Z0OVp",
+                          "name": "Instance Discover: rank, type line, genres, badges",
+                          "width": 220,
+                          "descendants": {
+                            "Useiw": {
+                              "height": 330,
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "linear",
+                                "enabled": true,
+                                "rotation": 180,
+                                "size": {
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#6B4E8C",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#33244A",
+                                    "position": 1
+                                  }
+                                ]
+                              }
+                            },
+                            "kSaKB": {
+                              "enabled": true,
+                              "fontSize": 16,
+                              "lineHeight": 1.25
+                            },
+                            "B9wRy": {
+                              "fontSize": 16,
+                              "lineHeight": 1.25
+                            },
+                            "aUm15": {
+                              "enabled": false
+                            },
+                            "O0tOv": {
+                              "enabled": true
+                            },
+                            "ERwm7": {
+                              "enabled": true
+                            },
+                            "rgk0x": {
+                              "enabled": true
+                            },
+                            "TJz9J": {
+                              "fill": "$primary"
+                            },
+                            "TJz9J/htpMr": {
+                              "fill": "$primary-foreground"
+                            },
+                            "TJz9J/rMeqR": {
+                              "fill": "$primary-foreground"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "c99YO",
+                      "name": "State upcoming: date tab, countdown",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "B8iir6",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "upcoming: date tab, countdown",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "UsGZz",
+                          "type": "ref",
+                          "ref": "Z0OVp",
+                          "name": "Instance upcoming: date tab, countdown",
+                          "width": 220,
+                          "descendants": {
+                            "Useiw": {
+                              "height": 330,
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "linear",
+                                "enabled": true,
+                                "rotation": 180,
+                                "size": {
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#4D5E4A",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#263024",
+                                    "position": 1
+                                  }
+                                ]
+                              }
+                            },
+                            "onmTG": {
+                              "enabled": true
+                            },
+                            "kSaKB": {
+                              "enabled": false
+                            },
+                            "B9wRy": {
+                              "fontSize": 16,
+                              "lineHeight": 1.25,
+                              "content": "VisionQuest"
+                            },
+                            "aUm15": {
+                              "enabled": false
+                            },
+                            "O0tOv": {
+                              "enabled": true
+                            },
+                            "A9jz2": {
+                              "content": "2026"
+                            },
+                            "ERwm7": {
+                              "enabled": false
+                            },
+                            "rgk0x": {
+                              "enabled": true
+                            },
+                            "mWEdA": {
+                              "enabled": false
+                            },
+                            "TJz9J/htpMr": {
+                              "enabled": true,
+                              "icon": "calendar-clock",
+                              "fill": "$foreground"
+                            },
+                            "TJz9J/rMeqR": {
+                              "content": "In 5 days",
+                              "fill": "$foreground"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "X8nPb",
+                      "name": "State pointer hover: overview",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "VIoFO",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "pointer hover: overview",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "skJLH",
+                          "type": "ref",
+                          "ref": "Z0OVp",
+                          "name": "Instance pointer hover: overview",
+                          "width": 220,
+                          "descendants": {
+                            "Useiw": {
+                              "height": 330,
+                              "fill": {
+                                "type": "gradient",
+                                "gradientType": "linear",
+                                "enabled": true,
+                                "rotation": 180,
+                                "size": {
+                                  "height": 1
+                                },
+                                "colors": [
+                                  {
+                                    "color": "#B07A3E",
+                                    "position": 0
+                                  },
+                                  {
+                                    "color": "#5A3A1C",
+                                    "position": 1
+                                  }
+                                ]
+                              }
+                            },
+                            "WeP65": {
+                              "enabled": true,
+                              "width": 220,
+                              "height": 200,
+                              "y": 130
+                            },
+                            "Q4Mxa1": {
+                              "content": "A team at Lumon has their memories surgically split between work and home lives."
+                            },
+                            "kSaKB": {
+                              "enabled": false
+                            },
+                            "B9wRy": {
+                              "fontSize": 16,
+                              "lineHeight": 1.25
+                            },
+                            "aUm15": {
+                              "enabled": false
+                            },
+                            "O0tOv": {
+                              "enabled": true
+                            },
+                            "ERwm7": {
+                              "enabled": true
+                            },
+                            "rgk0x": {
+                              "enabled": true
+                            },
+                            "TJz9J": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "kQ5Tk",
+                      "name": "State keyboard focus: ring on poster",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "YI6Ba",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "keyboard focus: ring on poster",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "izGra",
+                          "type": "ref",
+                          "ref": "Z0OVp",
+                          "name": "Instance keyboard focus: ring on poster",
+                          "width": 220,
+                          "descendants": {
+                            "Useiw": {
+                              "height": 330,
+                              "stroke": "$ring",
+                              "strokeWidth": 2,
+                              "strokeAlignment": "outer"
+                            },
+                            "kSaKB": {
+                              "enabled": false
+                            },
+                            "B9wRy": {
+                              "fontSize": 16,
+                              "lineHeight": 1.25
+                            },
+                            "aUm15": {
+                              "enabled": false
+                            },
+                            "O0tOv": {
+                              "enabled": true
+                            },
+                            "ERwm7": {
+                              "enabled": true
+                            },
+                            "rgk0x": {
+                              "enabled": true
+                            },
+                            "TJz9J": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Z60m6",
+                      "name": "State no poster",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "D8okMC",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "no poster",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "aDHNJ",
+                          "type": "ref",
+                          "ref": "Z0OVp",
+                          "name": "Instance no poster",
+                          "width": 220,
+                          "descendants": {
+                            "Useiw": {
+                              "height": 330
+                            },
+                            "d6gzLL": {
+                              "enabled": true,
+                              "width": 220,
+                              "height": 330
+                            },
+                            "kSaKB": {
+                              "enabled": false
+                            },
+                            "B9wRy": {
+                              "fontSize": 16,
+                              "lineHeight": 1.25
+                            },
+                            "aUm15": {
+                              "enabled": false
+                            },
+                            "O0tOv": {
+                              "enabled": true
+                            },
+                            "ERwm7": {
+                              "enabled": true
+                            },
+                            "rgk0x": {
+                              "enabled": true
+                            },
+                            "TJz9J": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Ef993",
+                  "name": "Demo row badges",
+                  "width": "fill_container",
+                  "gap": 20,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "M2dsy",
+                      "name": "State v2/Badge rating",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "jdtU2",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "badge: rating",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "Heuju",
+                          "type": "ref",
+                          "ref": "zGBcp",
+                          "name": "Instance v2/Badge rating",
+                          "descendants": {
+                            "htpMr": {
+                              "enabled": true,
+                              "icon": "star",
+                              "fill": "$foreground"
+                            },
+                            "rMeqR": {
+                              "content": "8.4",
+                              "fill": "$foreground",
+                              "fontFamily": "$font-data",
+                              "fontSize": 13
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HTbTf",
+                      "name": "State v2/Badge in library (solid)",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Qg69v",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "badge: in library (solid)",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "n8ir38",
+                          "type": "ref",
+                          "ref": "zGBcp",
+                          "name": "Instance v2/Badge in library (solid)",
+                          "fill": "$primary",
+                          "descendants": {
+                            "htpMr": {
+                              "enabled": true,
+                              "icon": "check",
+                              "fill": "$primary-foreground"
+                            },
+                            "rMeqR": {
+                              "content": "In library",
+                              "fill": "$primary-foreground"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "z1PNZb",
+                      "name": "State v2/Badge countdown",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "V92D3B",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "badge: countdown",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "US7DJ",
+                          "type": "ref",
+                          "ref": "zGBcp",
+                          "name": "Instance v2/Badge countdown",
+                          "descendants": {
+                            "htpMr": {
+                              "enabled": true,
+                              "icon": "calendar-clock",
+                              "fill": "$foreground"
+                            },
+                            "rMeqR": {
+                              "content": "In 5 days",
+                              "fill": "$foreground"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "aMQU0",
+                      "name": "State v2/Badge removable filter tag",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "y2O904",
+                          "name": "Caption",
+                          "fill": "$subtle-foreground",
+                          "content": "badge: removable filter tag",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "uh8Sk",
+                          "type": "ref",
+                          "ref": "zGBcp",
+                          "name": "Instance v2/Badge removable filter tag",
+                          "descendants": {
+                            "rMeqR": {
+                              "content": "Science Fiction",
+                              "fill": "$foreground"
+                            },
+                            "p0lXg": {
+                              "enabled": true
+                            }
+                          }
+                        }
+                      ]
                     }
                   ]
                 }
@@ -31365,8 +34618,8 @@
                           "name": "Add",
                           "enabled": false,
                           "fill": "$card",
-                          "stroke": "$input",
-                          "strokeWidth": 1,
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
                           "height": 40,
                           "padding": [
                             0,
@@ -32884,8 +36137,8 @@
                               "ref": "ht3RN",
                               "name": "Previous",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "width": 40,
                               "height": 40,
                               "padding": 0,
@@ -32908,8 +36161,8 @@
                               "ref": "ht3RN",
                               "name": "Today",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "descendants": {
                                 "HQLEf": {
                                   "enabled": false
@@ -32940,8 +36193,8 @@
                               "ref": "ht3RN",
                               "name": "Next",
                               "fill": "$card",
-                              "stroke": "$input",
-                              "strokeWidth": 1,
+                              "stroke": "$foreground",
+                              "strokeWidth": 1.5,
                               "width": 40,
                               "height": 40,
                               "padding": 0,
@@ -36145,6 +39398,22 @@
     "ease-linear": {
       "type": "string",
       "value": "linear"
+    },
+    "plex": {
+      "type": "color",
+      "value": "#E5A00D"
+    },
+    "plex-hover": {
+      "type": "color",
+      "value": "#F3AA0E"
+    },
+    "plex-pressed": {
+      "type": "color",
+      "value": "#D19209"
+    },
+    "plex-foreground": {
+      "type": "color",
+      "value": "#111111"
     }
   },
   "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"

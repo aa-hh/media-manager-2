@@ -1760,6 +1760,4726 @@
           ]
         }
       ]
+    },
+    {
+      "type": "frame",
+      "id": "aRPf6",
+      "x": 20200,
+      "y": 6349,
+      "name": "DISCOVERY / Sign-in brand concepts (not approved)",
+      "width": 9000,
+      "height": 10300,
+      "fill": "#FFF4CC",
+      "stroke": "#E0A800",
+      "strokeWidth": 4,
+      "layout": "vertical",
+      "gap": 40,
+      "padding": 60,
+      "children": [
+        {
+          "type": "frame",
+          "id": "rNiHg",
+          "name": "Section header",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "O1alT",
+              "name": "Title",
+              "fill": "#1A1400",
+              "content": "DISCOVERY — Sign-in brand concepts, round 2: generative motion",
+              "fontFamily": "Schibsted Grotesk",
+              "fontSize": 56,
+              "fontWeight": "800"
+            },
+            {
+              "type": "text",
+              "id": "FaY7t",
+              "name": "Note",
+              "fill": "#5C4A00",
+              "content": "11 Oct 2026, round 2. Exploration only, not approved, not linked to the library. Five generative-motion directions (animation from maths, no illustration), one lane each. Each lane shows stills from a working HTML prototype in design/discovery/sign-in-generative/. Nothing here ships until Alec picks one.",
+              "fontFamily": "Schibsted Grotesk",
+              "fontSize": 22,
+              "fontWeight": "normal"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "FhUIi",
+          "name": "Lanes",
+          "width": "fill_container",
+          "height": "fill_container",
+          "gap": 40,
+          "children": [
+            {
+              "type": "frame",
+              "id": "M0Vumc",
+              "name": "Lane 1",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ygiGB",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 1 — Dusk tide (dithered noise field)",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "NyV0F",
+                  "name": "Idle row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "HRpYH",
+                      "name": "Idle, t = 0.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "LM7xu",
+                          "name": "Still Idle, t = 0.5 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/1-noise-field-idle-t0.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "p6MFKp",
+                          "name": "Caption Idle, t = 0.5 s",
+                          "fill": "#1A1400",
+                          "content": "Idle, t = 0.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "eUUg1",
+                      "name": "Idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "o89SQ",
+                          "name": "Still Idle, t = 2 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/1-noise-field-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Lao8e",
+                          "name": "Caption Idle, t = 2 s",
+                          "fill": "#1A1400",
+                          "content": "Idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "SfLwa",
+                  "name": "Idle row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "sJ8jA",
+                      "name": "Idle, t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "aJReI",
+                          "name": "Still Idle, t = 6 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/1-noise-field-idle-t6.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Nn7Uo",
+                          "name": "Caption Idle, t = 6 s",
+                          "fill": "#1A1400",
+                          "content": "Idle, t = 6 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YcoKl",
+                      "name": "Idle, t = 12 s (inks have rotated)",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "h5p4T",
+                          "name": "Still Idle, t = 12 s (inks have rotated)",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/1-noise-field-idle-t12.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Sh1CI",
+                          "name": "Caption Idle, t = 12 s (inks have rotated)",
+                          "fill": "#1A1400",
+                          "content": "Idle, t = 12 s (inks have rotated)",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "a60Zv",
+                  "name": "States row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "L2sJW",
+                      "name": "Checking (waiting on Plex), t = 3 s: dot density breathes",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ZdeBx",
+                          "name": "Still Checking (waiting on Plex), t = 3 s: dot density breathes",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/1-noise-field-checking-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "tNLXX",
+                          "name": "Caption Checking (waiting on Plex), t = 3 s: dot density breathes",
+                          "fill": "#1A1400",
+                          "content": "Checking (waiting on Plex), t = 3 s: dot density breathes",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "B9ZWZG",
+                      "name": "Refused (wrong owner), t = 3 s: drift stops, two inks left",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "C8uDx",
+                          "name": "Still Refused (wrong owner), t = 3 s: drift stops, two inks left",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/1-noise-field-refused-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "keZpU",
+                          "name": "Caption Refused (wrong owner), t = 3 s: drift stops, two inks left",
+                          "fill": "#1A1400",
+                          "content": "Refused (wrong owner), t = 3 s: drift stops, two inks left",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "P6KLsB",
+                  "name": "Phone and notes row",
+                  "gap": 48,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "phTLY",
+                      "name": "Phone 390 wide, idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "rRgMa",
+                          "name": "Still Phone 390 wide, idle, t = 2 s",
+                          "width": 390,
+                          "height": 844,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/1-noise-field-phone-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "BlbPD",
+                          "name": "Caption Phone 390 wide, idle, t = 2 s",
+                          "fill": "#1A1400",
+                          "content": "Phone 390 wide, idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "TgEiG",
+                      "name": "Notes",
+                      "width": 640,
+                      "layout": "vertical",
+                      "gap": 14,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "pZWsC",
+                          "name": "Note 1",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Every pixel samples three layers of smooth random noise: a sky of sideways cloud bands above a wavy horizon, and a ripple plane below it that squeezes toward the horizon like water in perspective. Brightness falls off with distance from the horizon, then an 8x8 ordered dither snaps each pixel to one of five inks, with fixed ink and paper specks on top so it reads as print.",
+                          "lineHeight": 1.45,
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 18,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "zbCj0",
+                          "name": "Note 2",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Motion: clouds drift sideways about 40 px a second; the three middle inks swap places once a minute.",
+                          "lineHeight": 1.45,
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 18,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "EzCAE",
+                          "name": "Note 3",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Checking: the field brightens and darkens every 2.6 s, so the dot density breathes. Refused: drift stops within a second and the inks drop to two, ink and rust.",
+                          "lineHeight": 1.45,
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 18,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "YCiTE",
+                          "name": "Note 4",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Palette: #12140F, #1F4A43, #8A341E, #4B3A6B, #D9A02A, #EFE3C8, rust #B4482B. Font: IBM Plex Mono.",
+                          "lineHeight": 1.45,
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 18,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "kR8BU",
+                          "name": "Note 5",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Cost: drawn at half resolution, about 15.5 ms a frame at 1440x900, so roughly 60 fps. Next: move the pixel loop into a WebGL shader to free the main thread.",
+                          "lineHeight": 1.45,
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 18,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "AXVK4",
+              "name": "Lane 2",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "QBf3E",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 2 — Silk current",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "z47UE",
+                  "name": "Idle row 1",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "AXBZU",
+                      "name": "Still Idle, t = 0.5 s (trails still building)",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "hJCp4",
+                          "name": "Image Idle, t = 0.5 s (trails still building)",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2-flow-field-idle-t0.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "BcnNJ",
+                          "name": "Caption Idle, t = 0.5 s (trails still building)",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 0.5 s (trails still building)",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "klqnh",
+                      "name": "Still Idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ue5cp",
+                          "name": "Image Idle, t = 2 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2-flow-field-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "mt9tG",
+                          "name": "Caption Idle, t = 2 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "hlJRo",
+                  "name": "Idle row 2",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "IlNbI",
+                      "name": "Still Idle, t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "P5gxn",
+                          "name": "Image Idle, t = 6 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2-flow-field-idle-t6.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Tw71C",
+                          "name": "Caption Idle, t = 6 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 6 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "nQQZL",
+                      "name": "Still Idle, t = 12 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "noArN",
+                          "name": "Image Idle, t = 12 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2-flow-field-idle-t12.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Kaf0R",
+                          "name": "Caption Idle, t = 12 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 12 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "sG70I",
+                  "name": "States row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "t2bgA",
+                      "name": "Still Checking, t = 3 s: the current bends into one spiral that drains toward the button",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "VEy91",
+                          "name": "Image Checking, t = 3 s: the current bends into one spiral that drains toward the button",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2-flow-field-checking-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "khnXb",
+                          "name": "Caption Checking, t = 3 s: the current bends into one spiral that drains toward the button",
+                          "fill": "#4A4A4A",
+                          "content": "Checking, t = 3 s: the current bends into one spiral that drains toward the button",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ftsqn",
+                      "name": "Still Refused, t = 3 s: the flow reverses and threads are thrown outward, then it settles",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "AIaN3",
+                          "name": "Image Refused, t = 3 s: the flow reverses and threads are thrown outward, then it settles",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2-flow-field-refused-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "NzdzH",
+                          "name": "Caption Refused, t = 3 s: the flow reverses and threads are thrown outward, then it settles",
+                          "fill": "#4A4A4A",
+                          "content": "Refused, t = 3 s: the flow reverses and threads are thrown outward, then it settles",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "tSmMl",
+                  "name": "Phone and notes row",
+                  "gap": 48,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "E8Wej",
+                      "name": "Still Phone 390 wide, idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "wBeTn",
+                          "name": "Image Phone 390 wide, idle, t = 2 s",
+                          "width": 312,
+                          "height": 675,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2-flow-field-phone-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "y0eSm",
+                          "name": "Caption Phone 390 wide, idle, t = 2 s",
+                          "fill": "#4A4A4A",
+                          "content": "Phone 390 wide, idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "aReyH",
+                      "name": "Notes",
+                      "width": 640,
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "gz2qD",
+                          "name": "Notes heading",
+                          "fill": "#1A1400",
+                          "content": "Notes",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "iem5C",
+                          "name": "Notes body",
+                          "fill": "#1A1A1A",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "About 30,000 points drift through a curl-noise field: a smooth random pattern whose swirl gives a flow that never bunches up or thins out. Each point leaves a trail that fades a little every frame, so the paths build into silk.\n\nThe main current runs left to right at about 34 px a second and parts around the sign-in, which sits in still water. The swirls reshape over roughly 25 seconds.\n\nChecking: the current bends into one slow spiral that drains toward the button; old trails clear faster and the amber threads brighten. Refused: the flow reverses and threads are flung outward from the sign-in, then settle within about 4 seconds.\n\nPalette: ink #07090C, silver-blue #B2C7DB, Plex amber #E5A00D (2% of threads, plus the button). Font: Söhne Mono for the wordmark, Söhne for copy.\n\nCost: about 4.5 ms a frame on one CPU core at half resolution, so 60 fps.\n\nNext: let the cursor stir the field.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ZEmPY",
+              "name": "Lane 3",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "wwqPW",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 3 — Oxblood coral (Gray-Scott reaction-diffusion)",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "X7gDl",
+                  "name": "Idle row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "T6gQPU",
+                      "name": "Still Idle, t = 0.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "U5fsEs",
+                          "name": "Image Idle, t = 0.5 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/3-reaction-diffusion-idle-t0.5.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C4",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "HKGXW",
+                          "name": "Caption Idle, t = 0.5 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 0.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "K4U3I3",
+                      "name": "Still Idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "hEmhi",
+                          "name": "Image Idle, t = 2 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/3-reaction-diffusion-idle-t2.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C4",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "UUhcx",
+                          "name": "Caption Idle, t = 2 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "nqPfJ",
+                  "name": "Idle row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "A5mTxl",
+                      "name": "Still Idle, t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "k5RAs",
+                          "name": "Image Idle, t = 6 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/3-reaction-diffusion-idle-t6.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C4",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "KMTwF",
+                          "name": "Caption Idle, t = 6 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 6 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "mwYom",
+                      "name": "Still Idle, t = 12 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "k1T8T",
+                          "name": "Image Idle, t = 12 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/3-reaction-diffusion-idle-t12.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C4",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "p24SmQ",
+                          "name": "Caption Idle, t = 12 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 12 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "DKAzC",
+                  "name": "States row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "faPmy",
+                      "name": "Still Checking (waiting on Plex), t = 3 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "kPVeg",
+                          "name": "Image Checking (waiting on Plex), t = 3 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/3-reaction-diffusion-checking-t3.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C4",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "qOiCc",
+                          "name": "Caption Checking (waiting on Plex), t = 3 s",
+                          "fill": "#4A4A4A",
+                          "content": "Checking (waiting on Plex), t = 3 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "iXU0I",
+                      "name": "Still Refused (not the owner), t = 3 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "a5qB1W",
+                          "name": "Image Refused (not the owner), t = 3 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/3-reaction-diffusion-refused-t3.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C4",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "g9CAN",
+                          "name": "Caption Refused (not the owner), t = 3 s",
+                          "fill": "#4A4A4A",
+                          "content": "Refused (not the owner), t = 3 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "N9GY3",
+                  "name": "Phone and notes row",
+                  "gap": 48,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "DdhPi",
+                      "name": "Still Phone",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "PZoGI",
+                          "name": "Image Phone",
+                          "width": 390,
+                          "height": 844,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/3-reaction-diffusion-phone-idle-t2.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C4",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "WtUdN",
+                          "name": "Caption Phone",
+                          "fill": "#4A4A4A",
+                          "content": "Phone, 390 wide, idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "spB9o",
+                      "name": "Notes",
+                      "width": 640,
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "X7Mxke",
+                          "name": "Notes heading",
+                          "fill": "#1A1400",
+                          "content": "Notes",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Zr9pz",
+                          "name": "Notes body",
+                          "fill": "#2A2A2A",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Two simulated chemicals on a grid one-third the screen's size (Gray-Scott reaction-diffusion): one is fed in, the other consumes it and multiplies. Feed and kill rates decide dots that split, worms or coral; colour comes from the second chemical's amount plus a fixed paper grain.\n\nIdle: 200 steps a second. The rates drift slowly and a small seed lands in a bare patch every 2.5 s, so dots keep splitting. A higher kill rate keeps a clearing behind the card.\nChecking: feed rises in rings sent out from the card every 1.6 s; the pattern thickens and darkens.\nRefused: kill rate rises in a circle widening from the card; the pattern dies back to the edges.\n\nBone #E9E1CF, oxblood #5A1018, ink #1E0A0C, Plex #E5A00D. Font: GT Sectra italic.\nCost: about 11 ms a frame idle, 13 checking, drawn at half resolution.\nNext: move the simulation into a WebGL shader for a finer grid.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 15,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "wVY06",
+              "name": "Lane 4",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "I2783q",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 4 — Glyph Grid",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "R2NOIb",
+                  "name": "Idle row 1",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Io87x",
+                      "name": "Idle · t = 0.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ZJM0W",
+                          "name": "Idle · t = 0.5 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4-glyph-grid-idle-t0.5.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C0",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "G84NO9",
+                          "name": "Idle · t = 0.5 s caption",
+                          "fill": "#4A4430",
+                          "content": "Idle · t = 0.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "bZk0n",
+                      "name": "Idle · t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "iDH2l",
+                          "name": "Idle · t = 2 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4-glyph-grid-idle-t2.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C0",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "AZKiM",
+                          "name": "Idle · t = 2 s caption",
+                          "fill": "#4A4430",
+                          "content": "Idle · t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "hpY6w",
+                  "name": "Idle row 2",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "i0r46R",
+                      "name": "Idle · t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "UgIHE",
+                          "name": "Idle · t = 6 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4-glyph-grid-idle-t6.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C0",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "VoLlD",
+                          "name": "Idle · t = 6 s caption",
+                          "fill": "#4A4430",
+                          "content": "Idle · t = 6 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "h7QtGf",
+                      "name": "Idle · t = 12 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "yRJg5",
+                          "name": "Idle · t = 12 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4-glyph-grid-idle-t12.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C0",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "aADW7",
+                          "name": "Idle · t = 12 s caption",
+                          "fill": "#4A4430",
+                          "content": "Idle · t = 12 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ODuAf",
+                  "name": "States row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "RuJvd",
+                      "name": "Checking (waiting on Plex) · t = 3 s — amber rings run out from the button",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "iMbWW",
+                          "name": "Checking (waiting on Plex) · t = 3 s — amber rings run out from the button still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4-glyph-grid-checking-t3.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C0",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "u4zRH1",
+                          "name": "Checking (waiting on Plex) · t = 3 s — amber rings run out from the button caption",
+                          "fill": "#4A4430",
+                          "content": "Checking (waiting on Plex) · t = 3 s — amber rings run out from the button",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "UGjej",
+                      "name": "Refused (wrong account) · t = 3 s — the grid filled solid, now crumbling away",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ZC9Qj",
+                          "name": "Refused (wrong account) · t = 3 s — the grid filled solid, now crumbling away still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4-glyph-grid-refused-t3.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C0",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "Zcohw",
+                          "name": "Refused (wrong account) · t = 3 s — the grid filled solid, now crumbling away caption",
+                          "fill": "#4A4430",
+                          "content": "Refused (wrong account) · t = 3 s — the grid filled solid, now crumbling away",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "KczgI",
+                  "name": "Phone and notes row",
+                  "gap": 48,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "cy5Mh",
+                      "name": "Phone · 390 wide · idle t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "n4mY9",
+                          "name": "Phone · 390 wide · idle t = 2 s still",
+                          "width": 390,
+                          "height": 844,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4-glyph-grid-phone-idle-t2.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D8D2C0",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "I2yeq",
+                          "name": "Phone · 390 wide · idle t = 2 s caption",
+                          "fill": "#4A4430",
+                          "content": "Phone · 390 wide · idle t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "IUxx5",
+                      "name": "Notes",
+                      "fill": "#1A1400",
+                      "textGrowth": "fixed-width",
+                      "width": 640,
+                      "content": "A grid of monospace characters, about 200 by 60, redrawn every frame. Each cell picks a character and ink strength from drifting noise, two overlapping sine ripples, and a 3D ring traced per cell and lit from the upper left; denser characters read brighter.\n\nMotion: the ring turns once a minute, the noise drifts slower, and about one cell in a thousand blinks an amber cursor.\n\nChecking: the ring spins 2.6× faster and amber rings leave the button every 1.25 s.\nRefused: the grid fills solid with @ and % in half a second, crumbles top-down into × marks, goes blank, and returns after about 5 s.\n\nPalette: paper #11100E, ink #DCD5C3, accent #E5A00D (Plex amber).\nFont: IBM Plex Mono.\nCost: 11–14 ms a frame at retina density, about 60 fps; 7 ms at half resolution (MAX_DPR = 1).\nNext: try a light-paper version, dark ink on #ECE7D8.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Schibsted Grotesk",
+                      "fontSize": 18,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "JkUeb",
+              "name": "Lane 5",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "nucbf",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 5 — Contour Sheet",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "E3oaO",
+                  "name": "Idle row 1",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "WpQH4",
+                      "name": "Idle · t = 0.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "BtugV",
+                          "name": "Still 5-line-fields-idle-t0.5.png",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/5-line-fields-idle-t0.5.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D9D9D9",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "WvPVm",
+                          "name": "Caption",
+                          "fill": "#3A3A3A",
+                          "content": "Idle · t = 0.5 s",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "sgJrB",
+                      "name": "Idle · t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "GesUx",
+                          "name": "Still 5-line-fields-idle-t2.png",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/5-line-fields-idle-t2.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D9D9D9",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "PmyM0",
+                          "name": "Caption",
+                          "fill": "#3A3A3A",
+                          "content": "Idle · t = 2 s",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "l2pGTv",
+                  "name": "Idle row 2",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Cmwex",
+                      "name": "Idle · t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "hoeYx",
+                          "name": "Still 5-line-fields-idle-t6.png",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/5-line-fields-idle-t6.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D9D9D9",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "OvLqj",
+                          "name": "Caption",
+                          "fill": "#3A3A3A",
+                          "content": "Idle · t = 6 s",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YMuQu",
+                      "name": "Idle · t = 12 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "yLfqx",
+                          "name": "Still 5-line-fields-idle-t12.png",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/5-line-fields-idle-t12.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D9D9D9",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "IzQjz",
+                          "name": "Caption",
+                          "fill": "#3A3A3A",
+                          "content": "Idle · t = 12 s",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "JoNhl",
+                  "name": "States row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "iHdR3",
+                      "name": "Checking · t = 3 s · rings tighten around the button",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "dcYeK",
+                          "name": "Still 5-line-fields-checking-t3.png",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/5-line-fields-checking-t3.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D9D9D9",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "K4lbs",
+                          "name": "Caption",
+                          "fill": "#3A3A3A",
+                          "content": "Checking · t = 3 s · rings tighten around the button",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SbP3j",
+                      "name": "Refused · t = 3 s · grating crosses the contours, moiré peaks",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "MNujm",
+                          "name": "Still 5-line-fields-refused-t3.png",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/5-line-fields-refused-t3.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D9D9D9",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "xjHs6",
+                          "name": "Caption",
+                          "fill": "#3A3A3A",
+                          "content": "Refused · t = 3 s · grating crosses the contours, moiré peaks",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "JY6N6",
+                  "name": "Phone and notes row",
+                  "gap": 48,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "vAgZ1",
+                      "name": "Phone 390 · idle · t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "hfyPo",
+                          "name": "Still 5-line-fields-phone-idle-t2.png",
+                          "width": 390,
+                          "height": 844,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/5-line-fields-phone-idle-t2.png",
+                            "mode": "cover"
+                          },
+                          "stroke": "#D9D9D9",
+                          "strokeWidth": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "gjFhb",
+                          "name": "Caption",
+                          "fill": "#3A3A3A",
+                          "content": "Phone 390 · idle · t = 2 s",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "EfYCP",
+                      "name": "Notes",
+                      "width": 640,
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "f0SBD1",
+                          "name": "Notes heading",
+                          "fill": "#1A1400",
+                          "content": "Notes",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "sUpF9",
+                          "name": "Notes body",
+                          "fill": "#1A1A1A",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Algorithm: a height map built from three layers of smooth noise is sliced into contour lines every 0.045 units, like a topographic map. Marching squares on a 6 px grid turns each slice into line segments; every fifth line is drawn heavier.\n\nMotion: the terrain slides 5 px per second and reshapes slowly, so lines creep and never jitter.\n\nChecking: the ground around the button flattens into concentric rings that tighten from 34 to 11 px apart and pull inward; every fifth ring turns amber.\n\nRefused: a straight-line grating crosses the contours while the terrain tilts to almost match it, so a harsh moiré appears, holds 3.6 s, then relaxes.\n\nPalette: ground #0C1419, ink #9FB3BE, text #DDE6EA, accent Plex amber #E5A00D.\nFont: IBM Plex Mono.\nCost: about 7 ms a frame at 1440×900, so 60 fps with no half-res trick.\n\nNext: let the pointer press a slight dent into the terrain.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 15,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "D5PSas",
+          "name": "Round 3 title",
+          "fill": "#1A1400",
+          "content": "ROUND 3 — Concept 4 reshaped for downloading and streaming (4a, 4b) · Concept 2 as planets (2a, 2b)",
+          "fontFamily": "Schibsted Grotesk",
+          "fontSize": 36,
+          "fontWeight": "800"
+        },
+        {
+          "type": "frame",
+          "id": "eZsSg",
+          "name": "Lanes round 3",
+          "width": "fill_container",
+          "height": "fill_container",
+          "gap": 40,
+          "children": [
+            {
+              "type": "frame",
+              "id": "NSkKN",
+              "name": "Lane 4a",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Hwf3P",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 4a — Piece map",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "YMGaP",
+                  "name": "Idle row 0.5–2",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "x0IhA",
+                      "name": "Still Idle, t = 0.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "n26Ark",
+                          "name": "Image Idle, t = 0.5 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4a-stream-grid-idle-t0.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "dsfRy",
+                          "name": "Caption Idle, t = 0.5 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 0.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "LpcCh",
+                      "name": "Still Idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "O5f9Nj",
+                          "name": "Image Idle, t = 2 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4a-stream-grid-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "rODtd",
+                          "name": "Caption Idle, t = 2 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "puRd3",
+                  "name": "Idle row 6–12",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "h5W1y",
+                      "name": "Still Idle, t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "I6Bn7N",
+                          "name": "Image Idle, t = 6 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4a-stream-grid-idle-t6.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "dLbtR",
+                          "name": "Caption Idle, t = 6 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 6 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ruSij",
+                      "name": "Still Idle, t = 12 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "H4uoc",
+                          "name": "Image Idle, t = 12 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4a-stream-grid-idle-t12.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "SJbBw",
+                          "name": "Caption Idle, t = 12 s",
+                          "fill": "#4A4A4A",
+                          "content": "Idle, t = 12 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "y482C",
+                  "name": "States row",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "v7ZpH",
+                      "name": "Still Checking, t = 3 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "wuWDA",
+                          "name": "Image Checking, t = 3 s",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4a-stream-grid-checking-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "j7aRyM",
+                          "name": "Caption Checking, t = 3 s",
+                          "fill": "#4A4A4A",
+                          "content": "Checking, t = 3 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "O5sUDR",
+                      "name": "Still Refused, t = 3 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "j6DNv",
+                          "name": "Image Refused, t = 3 s",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4a-stream-grid-refused-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "cEjl6",
+                          "name": "Caption Refused, t = 3 s",
+                          "fill": "#4A4A4A",
+                          "content": "Refused, t = 3 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "qAdZv",
+                      "name": "Still Success, t = 1.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "TCDU0",
+                          "name": "Image Success, t = 1.5 s",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4a-stream-grid-success-t1.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "O8IpJG",
+                          "name": "Caption Success, t = 1.5 s",
+                          "fill": "#4A4A4A",
+                          "content": "Success, t = 1.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "z6S8g",
+                  "name": "Phone and notes row",
+                  "gap": 48,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "c4yhd",
+                      "name": "Still Phone 390 wide, idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "nlikM",
+                          "name": "Image Phone 390 wide, idle, t = 2 s",
+                          "width": 300,
+                          "height": 650,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4a-stream-grid-phone-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "AWt0U",
+                          "name": "Caption Phone 390 wide, idle, t = 2 s",
+                          "fill": "#4A4A4A",
+                          "content": "Phone 390 wide, idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "KO5Tx",
+                      "name": "Notes",
+                      "fill": "#1A1A1A",
+                      "textGrowth": "fixed-width",
+                      "width": 640,
+                      "content": "The screen is a grid of monospace characters cut into 6×3-cell blocks, the pieces of a torrent, grouped into up to 16 rectangles that stand for files. Each file loops: pieces land in a shuffled, clumped order with a short bright flash, the file holds complete, then a thin bar plays it left to right and the cells behind it thin back to dots.\n\nA file cycle takes 35–53 s; the bar crosses a file in about 10 s.\n\nChecking: the clock runs 2.2× faster and fresh pieces pile up beside the button. Refused: arrivals stop and pieces drop from the edges inward, marked ×. Success: a wave from the button completes every piece in about 1.6 s, lime on black, then holds.\n\nPaper #0C0D0A. Ink #34352D, #7D7B6D, #D8D4C4, #F6F3E8. Lime #C6F135, dim lime #5F7A16 on #000000. Font: Berkeley Mono.\n\nCost: 1.7 ms per frame at 1x, 4.2 ms at retina, 10 ms during the success wave. No half-resolution trick needed.\n\nNext: drive the piece arrivals from real rTorrent progress.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Schibsted Grotesk",
+                      "fontSize": 16,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "I7qKHJ",
+              "name": "Lane 4b",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "NJ3rO",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 4b — The stream",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "VoILi",
+                  "name": "Idle row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "z1MAo",
+                      "name": "Idle, t = 0.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "l58Lz",
+                          "name": "Idle, t = 0.5 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4b-stream-grid-idle-t0.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "SitS3",
+                          "name": "Idle, t = 0.5 s caption",
+                          "fill": "#4A4535",
+                          "content": "Idle, t = 0.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "X1hk6y",
+                      "name": "Idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "HQyG9",
+                          "name": "Idle, t = 2 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4b-stream-grid-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "SYJlw",
+                          "name": "Idle, t = 2 s caption",
+                          "fill": "#4A4535",
+                          "content": "Idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ZseBp",
+                  "name": "Idle row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "J6X1jm",
+                      "name": "Idle, t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "kGVSS",
+                          "name": "Idle, t = 6 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4b-stream-grid-idle-t6.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "YG0rl",
+                          "name": "Idle, t = 6 s caption",
+                          "fill": "#4A4535",
+                          "content": "Idle, t = 6 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HibWg",
+                      "name": "Idle, t = 12 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "O0d9Ls",
+                          "name": "Idle, t = 12 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4b-stream-grid-idle-t12.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "R9wscz",
+                          "name": "Idle, t = 12 s caption",
+                          "fill": "#4A4535",
+                          "content": "Idle, t = 12 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "diecs",
+                  "name": "States row",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "zQ1km",
+                      "name": "Checking, t = 3 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "m5jYA",
+                          "name": "Checking, t = 3 s still",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4b-stream-grid-checking-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "MrsaE",
+                          "name": "Checking, t = 3 s caption",
+                          "fill": "#4A4535",
+                          "content": "Checking, t = 3 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "GOx5H",
+                      "name": "Refused, t = 3 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "dOUxm",
+                          "name": "Refused, t = 3 s still",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4b-stream-grid-refused-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "bRJWy",
+                          "name": "Refused, t = 3 s caption",
+                          "fill": "#4A4535",
+                          "content": "Refused, t = 3 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "pSwTc",
+                      "name": "Success, t = 1.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "c0Cn5",
+                          "name": "Success, t = 1.5 s still",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4b-stream-grid-success-t1.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "uZ330",
+                          "name": "Success, t = 1.5 s caption",
+                          "fill": "#4A4535",
+                          "content": "Success, t = 1.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "hU68a",
+                  "name": "Phone and notes row",
+                  "gap": 40,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "CqLpP",
+                      "name": "Phone 390 wide, idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "h63fV",
+                          "name": "Phone 390 wide, idle, t = 2 s still",
+                          "width": 300,
+                          "height": 650,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/4b-stream-grid-phone-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "BayIs",
+                          "name": "Phone 390 wide, idle, t = 2 s caption",
+                          "fill": "#4A4535",
+                          "content": "Phone 390 wide, idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "G6WEPB",
+                      "name": "Notes",
+                      "fill": "#1A1400",
+                      "textGrowth": "fixed-width",
+                      "width": 640,
+                      "content": "How it works: a monospace grid (about 205 × 58 cells) where six horizontal bands of glyph density scroll left to right. Each band's thickness comes from 1D noise, so it reads like a bandwidth graph. A soft vertical buffer front sits at 70% width: behind it the bands are dense ink, at it they flicker as hex digits, ahead of it they are faint dots.\n\nMotion: bands flow at 4–7 cells a second. Faint dash lines between bands drift the other way at about 3 (upload). The front sways slowly.\n\nChecking: the front stops and the strip behind it swells to solid. Refused: static across the grid, then one flat line. Success: the front crosses the screen in 0.9 s, everything turns #C6F135 on #000000, then holds.\n\nPalette: paper #0E0F0D, ink #D8DBCE / #80847A / #3D4039. Font: Berkeley Mono.\nCost: 2.6 ms a frame at 1×, 5.6 ms at 2× (1440 × 900). Next: drive flow speed from the real download rate.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Schibsted Grotesk",
+                      "fontSize": 18,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "m0j5SJ",
+              "name": "Lane 2a",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bpkZ8",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 2a — Lit planets",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "qMnKo",
+                  "name": "Idle row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "I2VpnI",
+                      "name": "Idle · t = 0.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "uKfTh",
+                          "name": "Idle · t = 0.5 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2a-planets-idle-t0.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "ExFwc",
+                          "name": "Idle · t = 0.5 s caption",
+                          "fill": "#5A5240",
+                          "content": "Idle · t = 0.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "DCqsy",
+                      "name": "Idle · t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "SAZKN",
+                          "name": "Idle · t = 2 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2a-planets-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "v914i",
+                          "name": "Idle · t = 2 s caption",
+                          "fill": "#5A5240",
+                          "content": "Idle · t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "PNtdW",
+                  "name": "Idle row",
+                  "gap": 32,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "fKIt8",
+                      "name": "Idle · t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "CPXxs",
+                          "name": "Idle · t = 6 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2a-planets-idle-t6.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "f3zLQF",
+                          "name": "Idle · t = 6 s caption",
+                          "fill": "#5A5240",
+                          "content": "Idle · t = 6 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "P07dYH",
+                      "name": "Idle · t = 12 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "SA49C",
+                          "name": "Idle · t = 12 s still",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2a-planets-idle-t12.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "Kt6fj",
+                          "name": "Idle · t = 12 s caption",
+                          "fill": "#5A5240",
+                          "content": "Idle · t = 12 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "N8qF8",
+                  "name": "States row",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "So2AR",
+                      "name": "Checking · t = 3 s: spin speeds up, all globes pulse in step",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "C6RXxF",
+                          "name": "Checking · t = 3 s: spin speeds up, all globes pulse in step still",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2a-planets-checking-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "TkK1F",
+                          "name": "Checking · t = 3 s: spin speeds up, all globes pulse in step caption",
+                          "fill": "#5A5240",
+                          "content": "Checking · t = 3 s: spin speeds up, all globes pulse in step",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "eo3Zu",
+                      "name": "Refused · t = 3 s: globes drift apart, out of frame",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Z9LDZj",
+                          "name": "Refused · t = 3 s: globes drift apart, out of frame still",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2a-planets-refused-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "ave3D",
+                          "name": "Refused · t = 3 s: globes drift apart, out of frame caption",
+                          "fill": "#5A5240",
+                          "content": "Refused · t = 3 s: globes drift apart, out of frame",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fPLuU",
+                      "name": "Success · t = 1.5 s: lit sides turn #C6F135, near globe swells",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "aJa75",
+                          "name": "Success · t = 1.5 s: lit sides turn #C6F135, near globe swells still",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2a-planets-success-t1.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "agQFj",
+                          "name": "Success · t = 1.5 s: lit sides turn #C6F135, near globe swells caption",
+                          "fill": "#5A5240",
+                          "content": "Success · t = 1.5 s: lit sides turn #C6F135, near globe swells",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "GKbtY",
+                  "name": "Phone and notes row",
+                  "gap": 48,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "b8hXHT",
+                      "name": "Phone 390 wide · idle · t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "jLpHe",
+                          "name": "Phone 390 wide · idle · t = 2 s still",
+                          "width": 300,
+                          "height": 650,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2a-planets-phone-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "nKnHP",
+                          "name": "Phone 390 wide · idle · t = 2 s caption",
+                          "fill": "#5A5240",
+                          "content": "Phone 390 wide · idle · t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "H5i8V",
+                      "name": "Notes",
+                      "fill": "#1A1400",
+                      "textGrowth": "fixed-width",
+                      "width": 640,
+                      "content": "Four globes made of about 160,000 dots. Each dot sits on a sphere, is turned and projected with plain 3D maths, and its brightness is the globe's formula times how much it faces the light, so the globes read as solid and lit. Formulas: noise-bent bands, three crossing sine waves (a hex lattice), a 4x4 ordered dither on the rim, and a ringed globe whose ring dots orbit faster near the middle.\n\nMotion: one turn every 40 to 90 s; globes drift and pass in front of each other over minutes. Checking: spin 60% faster, every globe pulses in step every 1.3 s. Refused: globes drift away from the text and out of frame. Success: lit sides resolve to #C6F135 and the big globe swells forward over 2 s, then holds.\n\nPalette: space #0A0E1C, haze #1A1E3A, text #E8ECF4. Font: Berkeley Mono. Cost: 13 ms per frame at half resolution. Next: globes casting shadows on each other.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Schibsted Grotesk",
+                      "fontSize": 18,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "G9DTtk",
+              "name": "Lane 2b",
+              "width": 1680,
+              "height": "fill_container",
+              "fill": "#FFFFFF",
+              "stroke": "#E0A800",
+              "strokeWidth": 2,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "lUOhA",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 2b — Planets",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "wA9tB",
+                  "name": "Idle row",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "LYpEd",
+                      "name": "Still Idle, t = 0.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Hx1wH",
+                          "name": "Image Idle, t = 0.5 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2b-planets-idle-t0.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "ACMSf",
+                          "name": "Caption Idle, t = 0.5 s",
+                          "fill": "#3A3A3A",
+                          "content": "Idle, t = 0.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "DpUTS",
+                      "name": "Still Idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "jR9Mi",
+                          "name": "Image Idle, t = 2 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2b-planets-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "GwNAi",
+                          "name": "Caption Idle, t = 2 s",
+                          "fill": "#3A3A3A",
+                          "content": "Idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "V5Adn",
+                  "name": "Idle row",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Y5n5r",
+                      "name": "Still Idle, t = 6 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ufsXw",
+                          "name": "Image Idle, t = 6 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2b-planets-idle-t6.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "CtJHe",
+                          "name": "Caption Idle, t = 6 s",
+                          "fill": "#3A3A3A",
+                          "content": "Idle, t = 6 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "u4rxjS",
+                      "name": "Still Idle, t = 12 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "rHBmh",
+                          "name": "Image Idle, t = 12 s",
+                          "width": 800,
+                          "height": 500,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2b-planets-idle-t12.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "PGl46",
+                          "name": "Caption Idle, t = 12 s",
+                          "fill": "#3A3A3A",
+                          "content": "Idle, t = 12 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "kqilW",
+                  "name": "States row",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "TnDTv",
+                      "name": "Still Checking, t = 3 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "pdUnK",
+                          "name": "Image Checking, t = 3 s",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2b-planets-checking-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "mXQm2",
+                          "name": "Caption Checking, t = 3 s",
+                          "fill": "#3A3A3A",
+                          "content": "Checking, t = 3 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "VXZ2D",
+                      "name": "Still Refused, t = 3 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ADBeQ",
+                          "name": "Image Refused, t = 3 s",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2b-planets-refused-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "nVsSn",
+                          "name": "Caption Refused, t = 3 s",
+                          "fill": "#3A3A3A",
+                          "content": "Refused, t = 3 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "q3TMKP",
+                      "name": "Still Success, t = 1.5 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "d8rdmF",
+                          "name": "Image Success, t = 1.5 s",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2b-planets-success-t1.5.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "V3FNv",
+                          "name": "Caption Success, t = 1.5 s",
+                          "fill": "#3A3A3A",
+                          "content": "Success, t = 1.5 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "DdRyJ",
+                  "name": "Phone and notes row",
+                  "gap": 48,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Y3rUYF",
+                      "name": "Still Phone 390 wide, idle, t = 2 s",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "LZP9x",
+                          "name": "Image Phone 390 wide, idle, t = 2 s",
+                          "width": 300,
+                          "height": 650,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2b-planets-phone-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "J19hmu",
+                          "name": "Caption Phone 390 wide, idle, t = 2 s",
+                          "fill": "#3A3A3A",
+                          "content": "Phone 390 wide, idle, t = 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Hkej0",
+                      "name": "Notes",
+                      "width": 620,
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "UMSyK",
+                          "name": "Notes heading",
+                          "fill": "#1A1400",
+                          "content": "Notes",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 20,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "bBR40",
+                          "name": "Notes body",
+                          "fill": "#2A2A2A",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Five globes, each drawn pixel by pixel: the code finds the point on the sphere behind every pixel, turns it by the globe's spin and feeds it to that globe's formula (crossing ring waves, dots sized by latitude, contour lines, flipping Truchet tiles, bent bands). The result is lit from one side and dithered to six inks, over the faint particle current from concept 2.\n\nGlobes drift a few percent of the screen over 70–120 s and turn once every 42–86 s.\n\nChecking: formulas run 5x faster and the light circles the globes every 4 s. Refused: two inks only, globes drift off screen. Success: light swings to the front, lit sides go #C6F135, the near globe swells 1.5x over 2 s, then holds.\n\nInks: #0D1122 ground, #1A2341, #34446B, #6A7EA6, #AEBCD8, #EEF1F7.\nFont: Berkeley Mono.\nCost: 10–13 ms per frame at half resolution.\nNext: move the formulas to a WebGL shader and render at full resolution.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "T02yX",
+          "name": "Round 4 title",
+          "fill": "#1A1400",
+          "content": "ROUND 4 — WINNER: Concept 2d, the planet (Alec, 11 Oct 2026)",
+          "fontFamily": "Schibsted Grotesk",
+          "fontSize": 36,
+          "fontWeight": "800"
+        },
+        {
+          "type": "frame",
+          "id": "g71qX",
+          "name": "Lanes round 4",
+          "width": "fill_container",
+          "gap": 40,
+          "children": [
+            {
+              "type": "frame",
+              "id": "rEE91",
+              "name": "Lane 2d winner",
+              "width": 1680,
+              "fill": "#FFFFFF",
+              "stroke": "#1A1400",
+              "strokeWidth": 3,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "z6JqH",
+                  "name": "Lane label",
+                  "fill": "#1A1400",
+                  "content": "Concept 2d — Planet (winner)",
+                  "fontFamily": "Schibsted Grotesk",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "ZYuQv",
+                  "name": "Idle grid",
+                  "layout": "vertical",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "OhnKj",
+                      "name": "Idle row 1",
+                      "gap": 24,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "k7iVL",
+                          "name": "Idle t0.5",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "R2EkZ",
+                              "name": "Idle t0.5 image",
+                              "width": 800,
+                              "height": 500,
+                              "fill": {
+                                "type": "image",
+                                "enabled": true,
+                                "url": "discovery-stills/sign-in-generative/2d-planet-idle-t0.5.png",
+                                "mode": "cover"
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "hCYo9",
+                              "name": "Idle t0.5 caption",
+                              "fill": "#1A1400",
+                              "textGrowth": "fixed-width",
+                              "width": 800,
+                              "content": "Idle, 0.5 s",
+                              "fontFamily": "Schibsted Grotesk",
+                              "fontSize": 16,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "P8kkJ",
+                          "name": "Idle t2",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "NF6UU",
+                              "name": "Idle t2 image",
+                              "width": 800,
+                              "height": 500,
+                              "fill": {
+                                "type": "image",
+                                "enabled": true,
+                                "url": "discovery-stills/sign-in-generative/2d-planet-idle-t2.png",
+                                "mode": "cover"
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "Wgqpx",
+                              "name": "Idle t2 caption",
+                              "fill": "#1A1400",
+                              "textGrowth": "fixed-width",
+                              "width": 800,
+                              "content": "Idle, 2 s",
+                              "fontFamily": "Schibsted Grotesk",
+                              "fontSize": 16,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "vbe4R",
+                      "name": "Idle row 2",
+                      "gap": 24,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "lnL5B",
+                          "name": "Idle t20",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "JXWX9",
+                              "name": "Idle t20 image",
+                              "width": 800,
+                              "height": 500,
+                              "fill": {
+                                "type": "image",
+                                "enabled": true,
+                                "url": "discovery-stills/sign-in-generative/2d-planet-idle-t20.png",
+                                "mode": "cover"
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "v4s4H",
+                              "name": "Idle t20 caption",
+                              "fill": "#1A1400",
+                              "textGrowth": "fixed-width",
+                              "width": 800,
+                              "content": "Idle, 20 s",
+                              "fontFamily": "Schibsted Grotesk",
+                              "fontSize": 16,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "AGBqY",
+                          "name": "Idle t45",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "X88Ehg",
+                              "name": "Idle t45 image",
+                              "width": 800,
+                              "height": 500,
+                              "fill": {
+                                "type": "image",
+                                "enabled": true,
+                                "url": "discovery-stills/sign-in-generative/2d-planet-idle-t45.png",
+                                "mode": "cover"
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "xeJqD",
+                              "name": "Idle t45 caption",
+                              "fill": "#1A1400",
+                              "textGrowth": "fixed-width",
+                              "width": 800,
+                              "content": "Idle, 45 s (the slow turn)",
+                              "fontFamily": "Schibsted Grotesk",
+                              "fontSize": 16,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "aC2hd",
+                  "name": "State row",
+                  "gap": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "F7CJt",
+                      "name": "Checking t3",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "qZwD5",
+                          "name": "Checking t3 image",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2d-planet-checking-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "yUJty",
+                          "name": "Checking t3 caption",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": 528,
+                          "content": "Checking: approach begins, light swings to face the sign-in",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "A9f3P",
+                      "name": "Success t1",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "ygqnj",
+                          "name": "Success t1 image",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2d-planet-success-t1.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "MGO44",
+                          "name": "Success t1 caption",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": 528,
+                          "content": "Success, mid: jets lock, bands straighten",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "G8d2R",
+                      "name": "Success t3",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "iE0oB",
+                          "name": "Success t3 image",
+                          "width": 528,
+                          "height": 330,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2d-planet-success-t3.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "WNWfv",
+                          "name": "Success t3 caption",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": 528,
+                          "content": "Success, settled: ordered latitudes, faint green limb",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "fDY7Y",
+                  "name": "Phone and notes",
+                  "width": "fill_container",
+                  "gap": 40,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "VOWty",
+                      "name": "Phone idle t2",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "rK97H",
+                          "name": "Phone idle t2 image",
+                          "width": 300,
+                          "height": 650,
+                          "fill": {
+                            "type": "image",
+                            "enabled": true,
+                            "url": "discovery-stills/sign-in-generative/2d-planet-phone-idle-t2.png",
+                            "mode": "cover"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "iilIw",
+                          "name": "Phone idle t2 caption",
+                          "fill": "#1A1400",
+                          "textGrowth": "fixed-width",
+                          "width": 300,
+                          "content": "Phone, idle, 2 s",
+                          "fontFamily": "Schibsted Grotesk",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "wkdyB",
+                      "name": "Notes",
+                      "fill": "#1A1400",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "A WebGL shader draws a gas planet in slate and bone with one dark eddy below the equator. The light sits low and to the upper right, so a third of the disc is in shadow.\n\nFour alternating jets drag the cloud pattern sideways. The globe turns once every 90 seconds and the clouds drift slowly, so the scene looks almost still.\n\nChecking: over 4 seconds the light swings round to face the sign-in block, the planet moves 6% closer, and the eddy spins faster the longer it waits. On a phone the light swings down-left instead.\n\nSuccess: over 1.7 seconds the jets lock, the bands straighten into even stripes, and a faint green edge appears on the lit rim.\n\nPalette: #0B0D13, #1C2230, #3A4253, #6A7079, #A7A59C, #E2DDCF; haze #93C4D4; green #C6F135; background #07080B.\n\nRuns on the graphics chip at about 2.4% CPU idle; needs WebGL 2. The button never changes colour and reads \"Logging in\".",
+                      "lineHeight": 1.45,
+                      "fontFamily": "Schibsted Grotesk",
+                      "fontSize": 20,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "h8D8Qc",
+          "name": "Round 5 title",
+          "fill": "#1A1400",
+          "content": "ROUND 5 — SCREENS: Concept 2d in library components (11 Oct 2026)",
+          "fontFamily": "Schibsted Grotesk",
+          "fontSize": 36,
+          "fontWeight": "800"
+        },
+        {
+          "type": "frame",
+          "id": "UXzeY",
+          "name": "Screens round 5",
+          "width": "fill_container",
+          "gap": 40,
+          "children": [
+            {
+              "type": "frame",
+              "id": "E6NrVd",
+              "name": "v2 / Desktop / Sign in, planet — idle",
+              "clip": true,
+              "width": 1440,
+              "height": 900,
+              "fill": "$5:background",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "MKHyu",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Planet",
+                  "width": 1440,
+                  "height": 900,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "discovery-stills/sign-in-generative/2d-bare-desktop-idle.png",
+                    "mode": "cover"
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "S2ARL",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Scrim",
+                  "width": 1440,
+                  "height": 900,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 270,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#07080BE6",
+                        "position": 0
+                      },
+                      {
+                        "color": "#07080BB3",
+                        "position": 0.32
+                      },
+                      {
+                        "color": "#07080B00",
+                        "position": 0.55
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "ytdld",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "fill": "#07080B",
+                  "stroke": "#FFFFFF14",
+                  "enabled": false,
+                  "descendants": {
+                    "5:zLSZ8": {
+                      "fill": "#ECE9E1"
+                    },
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "pBVI8",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Sign-in block",
+                  "x": 120,
+                  "y": 667,
+                  "height": "fit_content",
+                  "width": 400,
+                  "flipX": false,
+                  "flipY": false,
+                  "layout": "vertical",
+                  "clip": true,
+                  "descendants": {
+                    "5:RreFa": {
+                      "enabled": false
+                    },
+                    "5:SKxTr": {
+                      "content": "media-manager-2",
+                      "fill": "#ECE9E1"
+                    },
+                    "5:Ij9sX": {
+                      "enabled": false
+                    },
+                    "5:BEk5a": {
+                      "content": "Only the owner's Plex account can open this app.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:UfeJ0": {
+                      "content": "You'll sign in on Plex, then return here. This app never receives your Plex password.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:Bs63D": {
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ],
+                      "layout": "none"
+                    },
+                    "5:lmLf2": {
+                      "fill": "#E5A00D",
+                      "opacity": 1
+                    },
+                    "5:a0PNj": {
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "logos/plex-icon.png",
+                        "mode": "contain"
+                      }
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "content": "Log in with Plex",
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "fill": "#1111111A",
+                      "stroke": "#11111133",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:T1Pftv/5:BvVhW": {
+                      "fill": "#111111"
+                    },
+                    "5:Bq7tJ": {
+                      "enabled": false,
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 659,
+                      "fill": "#B8B9B6"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "WKlND",
+              "name": "v2 / Desktop / Sign in, planet — logging in",
+              "clip": true,
+              "width": 1440,
+              "height": 900,
+              "fill": "$5:background",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "uU0lJ",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Planet",
+                  "width": 1440,
+                  "height": 900,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "discovery-stills/sign-in-generative/2d-bare-desktop-checking.png",
+                    "mode": "cover"
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "z4Unvb",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Scrim",
+                  "width": 1440,
+                  "height": 900,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 270,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#07080BE6",
+                        "position": 0
+                      },
+                      {
+                        "color": "#07080BB3",
+                        "position": 0.32
+                      },
+                      {
+                        "color": "#07080B00",
+                        "position": 0.55
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "Q5ymHE",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "fill": "#07080B",
+                  "stroke": "#FFFFFF14",
+                  "enabled": false,
+                  "descendants": {
+                    "5:zLSZ8": {
+                      "fill": "#ECE9E1"
+                    },
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "sM0TW",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Sign-in block",
+                  "x": 120,
+                  "y": 667,
+                  "height": "fit_content",
+                  "width": 400,
+                  "layout": "vertical",
+                  "clip": true,
+                  "descendants": {
+                    "5:RreFa": {
+                      "enabled": false
+                    },
+                    "5:RreFa/5:PMpjn": {
+                      "enabled": false,
+                      "fill": "#B8B9B6"
+                    },
+                    "5:RreFa/5:WnEQF": {
+                      "enabled": false,
+                      "fill": "#B8B9B6"
+                    },
+                    "5:SKxTr": {
+                      "content": "media-manager-2",
+                      "fill": "#ECE9E1"
+                    },
+                    "5:Ij9sX": {
+                      "enabled": false
+                    },
+                    "5:BEk5a": {
+                      "content": "Only the owner's Plex account can open this app.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:UfeJ0": {
+                      "content": "You'll sign in on Plex, then return here. This app never receives your Plex password.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:Bs63D": {
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "5:lmLf2": {
+                      "fill": "#E5A00D",
+                      "opacity": 0.78,
+                      "width": 180,
+                      "height": 48
+                    },
+                    "5:a0PNj": {
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "logos/plex-icon.png",
+                        "mode": "contain"
+                      },
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "type": "icon",
+                      "id": "jTQ25",
+                      "name": "Spinner",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "fill": "#1111111A",
+                      "stroke": "#11111133",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:T1Pftv/5:BvVhW": {
+                      "fill": "#111111",
+                      "flipX": false,
+                      "flipY": false,
+                      "width": 9,
+                      "height": 14,
+                      "x": 5,
+                      "y": 2,
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:iwvSz": {
+                      "enabled": false
+                    },
+                    "5:Bq7tJ": {
+                      "enabled": false,
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 659,
+                      "fill": "#B8B9B6"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Ic6V2",
+              "name": "v2 / Desktop / Sign in, planet — success",
+              "clip": true,
+              "width": 1440,
+              "height": 900,
+              "fill": "$5:background",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "nMxFH",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Planet",
+                  "width": 1440,
+                  "height": 900,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "discovery-stills/sign-in-generative/2d-bare-desktop-success.png",
+                    "mode": "cover"
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "YuhnB",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Scrim",
+                  "width": 1440,
+                  "height": 900,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 270,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#07080BE6",
+                        "position": 0
+                      },
+                      {
+                        "color": "#07080BB3",
+                        "position": 0.32
+                      },
+                      {
+                        "color": "#07080B00",
+                        "position": 0.55
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "U7H2JZ",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "fill": "#07080B",
+                  "stroke": "#FFFFFF14",
+                  "enabled": false,
+                  "descendants": {
+                    "5:zLSZ8": {
+                      "fill": "#ECE9E1"
+                    },
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "UKTGK",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Sign-in block",
+                  "x": 120,
+                  "y": 667,
+                  "height": "fit_content",
+                  "width": 400,
+                  "layout": "vertical",
+                  "clip": true,
+                  "descendants": {
+                    "5:RreFa": {
+                      "enabled": false
+                    },
+                    "5:RreFa/5:PMpjn": {
+                      "enabled": false,
+                      "fill": "#B8B9B6"
+                    },
+                    "5:RreFa/5:WnEQF": {
+                      "enabled": false,
+                      "fill": "#B8B9B6"
+                    },
+                    "5:RreFa/5:yO8o3": {
+                      "content": "Signed in. Opening your library",
+                      "fill": "#B8B9B6",
+                      "enabled": false
+                    },
+                    "5:SKxTr": {
+                      "content": "media-manager-2",
+                      "fill": "#ECE9E1"
+                    },
+                    "5:Ij9sX": {
+                      "enabled": false
+                    },
+                    "5:BEk5a": {
+                      "content": "Only the owner's Plex account can open this app.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:UfeJ0": {
+                      "content": "You'll sign in on Plex, then return here. This app never receives your Plex password.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:Bs63D": {
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "5:lmLf2": {
+                      "fill": "#E5A00D",
+                      "opacity": 0.78,
+                      "width": 180,
+                      "height": 48
+                    },
+                    "5:a0PNj": {
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "logos/plex-icon.png",
+                        "mode": "contain"
+                      },
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "type": "icon",
+                      "id": "laQkx",
+                      "name": "Spinner",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "fill": "#1111111A",
+                      "stroke": "#11111133",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:T1Pftv/5:BvVhW": {
+                      "fill": "#111111",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:iwvSz": {
+                      "enabled": false
+                    },
+                    "5:Bq7tJ": {
+                      "enabled": false,
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 659,
+                      "fill": "#B8B9B6"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "SYOuM",
+              "name": "v2 / Phone / Sign in, planet — idle",
+              "clip": true,
+              "width": 390,
+              "height": 844,
+              "fill": "#07080B",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Qbx2J",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Planet",
+                  "width": 390,
+                  "height": 844,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "discovery-stills/sign-in-generative/2d-bare-phone-idle.png",
+                    "mode": "cover"
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "qiNFN",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Scrim",
+                  "width": 390,
+                  "height": 844,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 180,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#07080B00",
+                        "position": 0
+                      },
+                      {
+                        "color": "#07080BCC",
+                        "position": 0.35
+                      },
+                      {
+                        "color": "#07080BE6",
+                        "position": 1
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "Mfzgp",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Sign-in block",
+                  "x": 24,
+                  "y": 648,
+                  "width": 342,
+                  "height": "fit_content",
+                  "clip": true,
+                  "flipX": false,
+                  "flipY": false,
+                  "descendants": {
+                    "5:RreFa": {
+                      "enabled": false
+                    },
+                    "5:SKxTr": {
+                      "content": "media-manager-2",
+                      "fill": "#ECE9E1"
+                    },
+                    "5:Ij9sX": {
+                      "enabled": false
+                    },
+                    "5:BEk5a": {
+                      "content": "Only the owner's Plex account can open this app.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:UfeJ0": {
+                      "content": "You'll sign in on Plex, then return here. This app never receives your Plex password.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:Bs63D": {
+                      "layout": "vertical",
+                      "justifyContent": "center",
+                      "alignItems": "end",
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "5:lmLf2": {
+                      "fill": "#E5A00D",
+                      "opacity": 1
+                    },
+                    "5:a0PNj": {
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "logos/plex-icon.png",
+                        "mode": "contain"
+                      }
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "content": "Log in with Plex",
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "fill": "#1111111A",
+                      "stroke": "#11111133",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:T1Pftv/5:BvVhW": {
+                      "fill": "#111111",
+                      "enabled": false
+                    },
+                    "5:Bq7tJ": {
+                      "enabled": false,
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 640,
+                      "width": 342,
+                      "fill": "#B8B9B6"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "hA5Gx",
+              "name": "v2 / Phone / Sign in, planet — logging in",
+              "clip": true,
+              "width": 390,
+              "height": 844,
+              "fill": "#07080B",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "o16RC",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Planet",
+                  "width": 390,
+                  "height": 844,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "discovery-stills/sign-in-generative/2d-bare-phone-checking.png",
+                    "mode": "cover"
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "g9y4f8",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Scrim",
+                  "width": 390,
+                  "height": 844,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 180,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#07080B00",
+                        "position": 0
+                      },
+                      {
+                        "color": "#07080BCC",
+                        "position": 0.35
+                      },
+                      {
+                        "color": "#07080BE6",
+                        "position": 1
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "jpye2",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Sign-in block",
+                  "x": 24,
+                  "y": 648,
+                  "width": 342,
+                  "height": "fit_content",
+                  "clip": true,
+                  "descendants": {
+                    "5:RreFa": {
+                      "enabled": false
+                    },
+                    "5:RreFa/5:PMpjn": {
+                      "enabled": false,
+                      "fill": "#B8B9B6"
+                    },
+                    "5:RreFa/5:WnEQF": {
+                      "enabled": true,
+                      "fill": "#B8B9B6"
+                    },
+                    "5:RreFa/5:yO8o3": {
+                      "content": "Waiting for Plex to confirm",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:SKxTr": {
+                      "content": "media-manager-2",
+                      "fill": "#ECE9E1"
+                    },
+                    "5:Ij9sX": {
+                      "enabled": false
+                    },
+                    "5:BEk5a": {
+                      "content": "Only the owner's Plex account can open this app.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:UfeJ0": {
+                      "content": "You'll sign in on Plex, then return here. This app never receives your Plex password.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:Bs63D": {
+                      "layout": "vertical",
+                      "justifyContent": "center",
+                      "alignItems": "end",
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "5:lmLf2": {
+                      "fill": "#E5A00D",
+                      "opacity": 0.78,
+                      "width": 180,
+                      "height": 48
+                    },
+                    "5:a0PNj": {
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "logos/plex-icon.png",
+                        "mode": "contain"
+                      },
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "type": "icon",
+                      "id": "HYFZt",
+                      "name": "Spinner",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "fill": "#1111111A",
+                      "stroke": "#11111133",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:T1Pftv/5:BvVhW": {
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:iwvSz": {
+                      "enabled": false
+                    },
+                    "5:Bq7tJ": {
+                      "enabled": false,
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 640,
+                      "width": 342,
+                      "fill": "#B8B9B6"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "yiIVA",
+              "name": "v2 / Phone / Sign in, planet — success",
+              "clip": true,
+              "width": 390,
+              "height": 844,
+              "fill": "#07080B",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "J4absJ",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Planet",
+                  "width": 390,
+                  "height": 844,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "discovery-stills/sign-in-generative/2d-bare-phone-success.png",
+                    "mode": "cover"
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "YnPzM",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Scrim",
+                  "width": 390,
+                  "height": 844,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 180,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#07080B00",
+                        "position": 0
+                      },
+                      {
+                        "color": "#07080BCC",
+                        "position": 0.35
+                      },
+                      {
+                        "color": "#07080BE6",
+                        "position": 1
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "ukxHm",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Sign-in block",
+                  "x": 24,
+                  "y": 648,
+                  "width": 342,
+                  "height": "fit_content",
+                  "clip": true,
+                  "descendants": {
+                    "5:RreFa": {
+                      "enabled": false
+                    },
+                    "5:RreFa/5:PMpjn": {
+                      "enabled": true,
+                      "fill": "#B8B9B6"
+                    },
+                    "5:RreFa/5:WnEQF": {
+                      "enabled": false,
+                      "fill": "#B8B9B6"
+                    },
+                    "5:RreFa/5:yO8o3": {
+                      "content": "Signed in. Opening your library",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:SKxTr": {
+                      "content": "media-manager-2",
+                      "fill": "#ECE9E1"
+                    },
+                    "5:Ij9sX": {
+                      "enabled": false
+                    },
+                    "5:BEk5a": {
+                      "content": "Only the owner's Plex account can open this app.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:UfeJ0": {
+                      "content": "You'll sign in on Plex, then return here. This app never receives your Plex password.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:Bs63D": {
+                      "layout": "vertical",
+                      "justifyContent": "center",
+                      "alignItems": "end",
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "5:lmLf2": {
+                      "fill": "#E5A00D",
+                      "opacity": 0.78,
+                      "width": 180,
+                      "height": 48
+                    },
+                    "5:a0PNj": {
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "logos/plex-icon.png",
+                        "mode": "contain"
+                      },
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "type": "icon",
+                      "id": "bteI9",
+                      "name": "Spinner",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "fill": "#1111111A",
+                      "stroke": "#11111133",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:T1Pftv/5:BvVhW": {
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:iwvSz": {
+                      "enabled": false
+                    },
+                    "5:Bq7tJ": {
+                      "enabled": false,
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 640,
+                      "width": 342,
+                      "fill": "#B8B9B6"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Pici7",
+              "name": "v2 / Desktop / Sign in, planet — error",
+              "clip": true,
+              "width": 1440,
+              "height": 900,
+              "fill": "$5:background",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "sgUjC",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Planet",
+                  "width": 1440,
+                  "height": 900,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "discovery-stills/sign-in-generative/2d-bare-desktop-idle.png",
+                    "mode": "cover"
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "L2NK86",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Scrim",
+                  "width": 1440,
+                  "height": 900,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 270,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#07080BE6",
+                        "position": 0
+                      },
+                      {
+                        "color": "#07080BB3",
+                        "position": 0.32
+                      },
+                      {
+                        "color": "#07080B00",
+                        "position": 0.55
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "TajF4",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "fill": "#07080B",
+                  "stroke": "#FFFFFF14",
+                  "enabled": false,
+                  "descendants": {
+                    "5:zLSZ8": {
+                      "fill": "#ECE9E1"
+                    },
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "Bjo8K",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Sign-in block",
+                  "x": 120,
+                  "y": 667,
+                  "height": "fit_content",
+                  "width": 400,
+                  "layout": "vertical",
+                  "clip": true,
+                  "descendants": {
+                    "5:RreFa": {
+                      "enabled": false
+                    },
+                    "5:SKxTr": {
+                      "content": "media-manager-2",
+                      "fill": "#ECE9E1"
+                    },
+                    "5:Ij9sX": {
+                      "enabled": false
+                    },
+                    "5:BEk5a": {
+                      "content": "Only the owner's Plex account can open this app.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:UfeJ0": {
+                      "content": "You'll sign in on Plex, then return here. This app never receives your Plex password.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:Bs63D": {
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "5:lmLf2": {
+                      "fill": "#E5A00D",
+                      "opacity": 1
+                    },
+                    "5:a0PNj": {
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "logos/plex-icon.png",
+                        "mode": "contain"
+                      }
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "content": "Log in with Plex",
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "fill": "#1111111A",
+                      "stroke": "#11111133",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:T1Pftv/5:BvVhW": {
+                      "fill": "#111111",
+                      "x": 5,
+                      "y": 2,
+                      "rotation": 0,
+                      "enabled": false
+                    },
+                    "5:Bq7tJ": {
+                      "enabled": false,
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 659,
+                      "fill": "#B8B9B6"
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "vqxyY",
+                  "x": 120,
+                  "y": 792,
+                  "name": "Error line",
+                  "fill": "#D9B38C",
+                  "textGrowth": "fixed-width",
+                  "width": 400,
+                  "content": "Couldn’t log you in. Try again.",
+                  "fontFamily": "$5:font-ui",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "R249zj",
+              "name": "v2 / Phone / Sign in, planet — error",
+              "clip": true,
+              "width": 390,
+              "height": 844,
+              "fill": "#07080B",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "GlXnv",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Planet",
+                  "width": 390,
+                  "height": 844,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "discovery-stills/sign-in-generative/2d-bare-phone-idle.png",
+                    "mode": "cover"
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "xI6aB",
+                  "x": 0,
+                  "y": 0,
+                  "name": "Scrim",
+                  "width": 390,
+                  "height": 844,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 180,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#07080B00",
+                        "position": 0
+                      },
+                      {
+                        "color": "#07080BCC",
+                        "position": 0.35
+                      },
+                      {
+                        "color": "#07080BE6",
+                        "position": 1
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "myzl4",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Sign-in block",
+                  "x": 24,
+                  "y": 648,
+                  "width": 342,
+                  "height": "fit_content",
+                  "clip": true,
+                  "descendants": {
+                    "5:RreFa": {
+                      "enabled": false
+                    },
+                    "5:SKxTr": {
+                      "content": "media-manager-2",
+                      "fill": "#ECE9E1"
+                    },
+                    "5:Ij9sX": {
+                      "enabled": false
+                    },
+                    "5:BEk5a": {
+                      "content": "Only the owner's Plex account can open this app.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:UfeJ0": {
+                      "content": "You'll sign in on Plex, then return here. This app never receives your Plex password.",
+                      "fill": "#B8B9B6"
+                    },
+                    "5:Bs63D": {
+                      "layout": "vertical",
+                      "justifyContent": "center",
+                      "alignItems": "end",
+                      "padding": [
+                        24,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "5:lmLf2": {
+                      "fill": "#E5A00D",
+                      "opacity": 1
+                    },
+                    "5:a0PNj": {
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "logos/plex-icon.png",
+                        "mode": "contain"
+                      }
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "content": "Log in with Plex",
+                      "fill": "#111111"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "fill": "#1111111A",
+                      "stroke": "#11111133",
+                      "enabled": false
+                    },
+                    "5:lmLf2/5:T1Pftv/5:BvVhW": {
+                      "fill": "#111111",
+                      "enabled": false
+                    },
+                    "5:Bq7tJ": {
+                      "enabled": false,
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 640,
+                      "width": 342,
+                      "fill": "#B8B9B6"
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "eZZYa",
+                  "x": 24,
+                  "y": 773,
+                  "name": "Error line",
+                  "fill": "#D9B38C",
+                  "textGrowth": "fixed-width",
+                  "width": 342,
+                  "content": "Couldn’t log you in. Try again.",
+                  "fontFamily": "$5:font-ui",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "variables": {
