@@ -1,12 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
-import { findGrab, type Grab, listQueue, type QueueItem, type Service } from './torrentGrabs.js';
+import { type ArrServices, type QueueItem, valueOrThrow } from './services/arr.js';
+import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
 import { listOpenProblems, RELEASE_LIMIT } from './problems.js';
 
 type Problems = ReturnType<typeof createProblems>;
-type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
 
 export type ImportCategory = 'replace' | 'matching' | 'not_better' | 'bad_release' | 'leftover' | 'temporary' | 'file_move' | 'setup' | 'unknown';
 
@@ -32,11 +32,6 @@ export const classifyImport = (messages: string[]): ImportCategory => {
 
 type Handling = { service: Service; downloadId: string; category: ImportCategory; firstSeenAt: number; attempts: number; lastAttemptAt: number | null; done: boolean };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-const labels: Record<Service, string> = { sonarr: 'Sonarr', radarr: 'Radarr' };
-
 const messagesOf = (items: QueueItem[]) => items
   .flatMap((item) => [item.errorMessage, ...item.statusMessages.flatMap((message) => [message.title, ...message.messages])])
   .filter((message) => message !== '');
@@ -47,7 +42,7 @@ const subjectsOf = (grab: Grab): Subject[] => (grab.movieId !== null
 
 export const createImportFix = (options: {
   database: DatabaseSync;
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   problems: Problems;
   events: EventHub;
   now?: () => number;
@@ -77,56 +72,6 @@ export const createImportFix = (options: {
     `).run(handling.service, handling.downloadId, handling.category, handling.firstSeenAt, handling.attempts, handling.lastAttemptAt, Number(handling.done));
   };
 
-  // Every queue removal leaves rTorrent alone: the torrent follows the hit and run rules, never the queue.
-  const removeFromQueue = async (items: QueueItem[], blocklist: boolean, skipRedownload: boolean) => {
-    for (const item of items) {
-      const { status } = await arr[item.service].request(
-        `/api/v3/queue/${item.queueId}?removeFromClient=false&blocklist=${blocklist}&skipRedownload=${skipRedownload}`,
-        { method: 'DELETE' },
-      );
-      if (status < 200 || status > 299) throw new Error(`${labels[item.service]} refused to remove the download from its queue.`);
-    }
-  };
-
-  const refreshDownloads = async (service: Service) => {
-    const { status } = await arr[service].request('/api/v3/command', { method: 'POST', body: { name: 'RefreshMonitoredDownloads' } });
-    if (status < 200 || status > 299) throw new Error(`${labels[service]} refused to check its downloads again.`);
-  };
-
-  // Forces the import only onto what the grab record says was grabbed; any file outside it stops the whole import.
-  const forceImport = async (service: Service, grab: Grab): Promise<string | null> => {
-    const { status, body } = await arr[service].request(`/api/v3/manualimport?downloadId=${grab.hash}&filterExistingFiles=false`);
-    if (status < 200 || status > 299 || !Array.isArray(body)) throw new Error(`${labels[service]} could not list the download's files.`);
-    const allowed = new Set(grab.episodeIds);
-    const files: Record<string, unknown>[] = [];
-    for (const candidate of body) {
-      if (!isRecord(candidate) || typeof candidate.path !== 'string') continue;
-      const base = {
-        path: candidate.path,
-        quality: candidate.quality,
-        languages: candidate.languages,
-        releaseGroup: candidate.releaseGroup,
-        downloadId: grab.hash,
-      };
-      if (grab.movieId !== null) {
-        files.push({ ...base, movieId: grab.movieId });
-        continue;
-      }
-      const parsed = Array.isArray(candidate.episodes)
-        ? candidate.episodes.flatMap((episode) => (isRecord(episode) && typeof episode.id === 'number' ? [episode.id] : []))
-        : [];
-      const episodeIds = parsed.length > 0 ? parsed : grab.episodeIds.length === 1 ? grab.episodeIds : [];
-      if (episodeIds.length === 0 || episodeIds.some((id) => !allowed.has(id))) {
-        return `${candidate.path} doesn't match the episodes that were grabbed.`;
-      }
-      files.push({ ...base, seriesId: grab.seriesId, episodeIds });
-    }
-    if (files.length === 0) return `${labels[service]} found no files to import.`;
-    const command = await arr[service].request('/api/v3/command', { method: 'POST', body: { name: 'ManualImport', files, importMode: 'copy' } });
-    if (command.status < 200 || command.status > 299) throw new Error(`${labels[service]} refused the import.`);
-    return null;
-  };
-
   const handle = async (service: Service, downloadId: string, items: QueueItem[], at: number) => {
     const messages = messagesOf(items);
     const grab = findGrab(database, downloadId);
@@ -147,6 +92,11 @@ export const createImportFix = (options: {
       saveHandling({ ...handling, done: true });
       problems.setState(problem.id, state, text);
     };
+    // A queue that no longer lists the download removes nothing; that is reported as a failure, never as a block.
+    const removeFromQueue = async (choice: 'nothing' | 'block' | 'block_and_search') => {
+      const { removed } = valueOrThrow(await arr[service].removeFromQueue({ downloadId }, choice));
+      if (removed === 0) throw new Error(`${service === 'sonarr' ? 'Sonarr' : 'Radarr'} no longer lists this download in its queue, so ${choice === 'nothing' ? 'it could not be cleared' : 'the release was not blocked'}.`);
+    };
 
     switch (category) {
       case 'setup':
@@ -157,11 +107,11 @@ export const createImportFix = (options: {
         finish('needs_you', 'media-manager-2 doesn\'t recognise this import problem.');
         return;
       case 'leftover':
-        await removeFromQueue(items, false, true);
+        await removeFromQueue('nothing');
         finish('resolved', 'Cleared the leftover from the queue; the torrent stays in rTorrent.');
         return;
       case 'not_better':
-        await removeFromQueue(items, false, true);
+        await removeFromQueue('nothing');
         finish('resolved', 'Not better than the current file, so it was not imported; removed from the queue, torrent left seeding.');
         return;
       case 'matching': {
@@ -169,16 +119,17 @@ export const createImportFix = (options: {
           finish('needs_you', 'No grab record to check the match against; finish this import by hand.');
           return;
         }
-        const refused = await forceImport(service, grab);
-        if (refused === null) finish('resolved', 'Imported to what was grabbed.');
-        else finish('needs_you', `${refused} Finish this import by hand.`);
+        const result = await arr[service].forceImport(grab);
+        if (result.kind === 'ok') finish('resolved', 'Imported to what was grabbed.');
+        else if (result.kind === 'refused') finish('needs_you', `${result.message} Finish this import by hand.`);
+        else valueOrThrow(result);
         return;
       }
       case 'bad_release': {
         const counts = grab === undefined ? [0] : subjectsOf(grab).map((item) => problems.recordReleaseAttempt(item, downloadId));
         const giveUp = Math.max(...counts) >= RELEASE_LIMIT;
         // Not skipping the redownload lets Sonarr or Radarr search again for this item straight away.
-        await removeFromQueue(items, true, giveUp);
+        await removeFromQueue(giveUp ? 'block' : 'block_and_search');
         if (giveUp) finish('needs_you', `Blocked the release; gave up after ${RELEASE_LIMIT} different releases.`);
         else finish('resolved', 'Blocked the release and searched again.');
         return;
@@ -192,7 +143,7 @@ export const createImportFix = (options: {
           saveHandling(handling);
           return;
         }
-        await refreshDownloads(service);
+        valueOrThrow(await arr[service].refreshMonitoredDownloads());
         saveHandling({ ...handling, attempts: handling.attempts + 1, lastAttemptAt: at });
         problems.step(problem.id, 'fix', 'Asked to try the import again.');
         return;
@@ -210,7 +161,7 @@ export const createImportFix = (options: {
           saveHandling(handling);
           return;
         }
-        await refreshDownloads(service);
+        valueOrThrow(await arr[service].refreshMonitoredDownloads());
         saveHandling({ ...handling, attempts: handling.attempts + 1, lastAttemptAt: at });
         problems.step(problem.id, 'fix', `Retried the file move (${handling.attempts + 1} of ${FILE_MOVE_RETRY_DELAYS_MS.length}).`);
         return;

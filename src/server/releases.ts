@@ -1,8 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-import type { createArr } from './services/arr.js';
-
-type Arr = Pick<ReturnType<typeof createArr>, 'request' | 'configured'>;
+import type { ArrServices, HistoryRecord } from './services/arr.js';
 
 export type ReleaseTarget =
   | { service: 'radarr'; kind: 'movie'; movieId: number }
@@ -136,17 +134,16 @@ const pastKinds: Record<string, PastEvent['kind']> = { grabbed: 'grabbed', downl
 
 // Earlier events are matched on the release's title, the one field history, blocklist
 // and a fresh search all carry the same way.
-const attachPast = (releases: Release[], history: unknown, blocklist: unknown) => {
+const attachPast = (releases: Release[], history: HistoryRecord[], blocklist: unknown) => {
   const events = new Map<string, PastEvent[]>();
   const add = (title: unknown, event: PastEvent) => {
     const key = text(title)?.toLowerCase();
     if (key === undefined) return;
     events.set(key, [...(events.get(key) ?? []), event]);
   };
-  const historyRecords = Array.isArray(history) ? history : isRecord(history) && Array.isArray(history.records) ? history.records : [];
-  for (const record of historyRecords) {
-    if (!isRecord(record) || typeof record.eventType !== 'string' || !(record.eventType in pastKinds)) continue;
-    add(record.sourceTitle, { kind: pastKinds[record.eventType], at: text(record.date) });
+  for (const record of history) {
+    if (!(record.eventType in pastKinds)) continue;
+    add(record.sourceTitle, { kind: pastKinds[record.eventType], at: record.date });
   }
   const blocklistRecords = isRecord(blocklist) && Array.isArray(blocklist.records) ? blocklist.records : [];
   for (const record of blocklistRecords) {
@@ -168,7 +165,7 @@ const readStored = (database: DatabaseSync, key: string): StoredSearch | null =>
 
 export const createReleases = (
   database: DatabaseSync,
-  services: { sonarr: Arr; radarr: Arr },
+  services: ArrServices,
   now: () => number = Date.now,
 ) => {
   const running = new Map<string, Promise<ReleaseResult>>();
@@ -177,7 +174,6 @@ export const createReleases = (
     if (target.kind === 'movie') {
       return {
         releases: `/api/v3/release?movieId=${target.movieId}`,
-        history: `/api/v3/history/movie?movieId=${target.movieId}`,
         blocklist: `/api/v3/blocklist/movie?movieId=${target.movieId}`,
       };
     }
@@ -186,7 +182,6 @@ export const createReleases = (
       : `seriesId=${target.seriesId}&seasonNumber=${target.seasonNumber}`;
     return {
       releases: `/api/v3/release?${query}`,
-      history: `/api/v3/history/series?seriesId=${target.seriesId}${target.kind === 'season' ? `&seasonNumber=${target.seasonNumber}` : ''}`,
       blocklist: `/api/v3/blocklist?page=1&pageSize=1000&seriesIds=${target.seriesId}`,
     };
   };
@@ -214,7 +209,13 @@ export const createReleases = (
       (result) => (result.status >= 200 && result.status <= 299 ? result.body : undefined),
       () => undefined,
     );
-    const [history, blocklist] = await Promise.all([optional(paths.history), optional(paths.blocklist)]);
+    const readHistory = async () => {
+      const result = target.kind === 'movie'
+        ? await services.radarr.history({ movieId: target.movieId })
+        : await services.sonarr.history({ seriesId: target.seriesId, ...(target.kind === 'season' ? { seasonNumber: target.seasonNumber } : {}) });
+      return result.kind === 'ok' ? result.value : [];
+    };
+    const [history, blocklist] = await Promise.all([readHistory(), optional(paths.blocklist)]);
     const search = { fetchedAt: now(), releases: attachPast(releases, history, blocklist) };
     database.prepare(`
       INSERT INTO release_searches (target, fetched_at, releases) VALUES (?, ?, ?)

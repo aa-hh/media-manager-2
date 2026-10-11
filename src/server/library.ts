@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { createArr } from './services/arr.js';
+import type { ArrServices, HistoryRecord, Result as ArrResult } from './services/arr.js';
 
-type Arr = Pick<ReturnType<typeof createArr>, 'request' | 'configured'>;
+type Arr = ArrServices[keyof ArrServices];
 type Service = 'sonarr' | 'radarr';
 
 export type Outcome =
@@ -483,19 +483,14 @@ const toTitle = (service: Service, raw: Record<string, unknown>, profiles: unkno
   }];
 };
 
-const historyEntries = (value: unknown): HistoryEntry[] => {
-  const list = isRecord(value) ? value.records : value;
-  const entries = records(list).map((record): HistoryEntry => {
-    const quality = isRecord(record.quality) && isRecord(record.quality.quality) ? text(record.quality.quality.name) : null;
-    const data = isRecord(record.data) ? record.data : {};
-    return {
-      at: text(record.date),
-      eventType: text(record.eventType) ?? 'unknown',
-      sourceTitle: text(record.sourceTitle),
-      quality,
-      detail: text(data.message) ?? text(data.reason) ?? text(data.indexer) ?? '',
-    };
-  });
+const historyEntries = (list: HistoryRecord[]): HistoryEntry[] => {
+  const entries = list.map((record): HistoryEntry => ({
+    at: record.date,
+    eventType: record.eventType === '' ? 'unknown' : record.eventType,
+    sourceTitle: record.sourceTitle,
+    quality: record.quality,
+    detail: [record.data.message, record.data.reason, record.data.indexer].find((part) => part !== undefined && part !== '') ?? '',
+  }));
   const time = (at: string | null) => {
     const parsed = at === null ? Number.NaN : Date.parse(at);
     return Number.isNaN(parsed) ? 0 : parsed;
@@ -503,7 +498,14 @@ const historyEntries = (value: unknown): HistoryEntry[] => {
   return entries.sort((a, b) => time(b.at) - time(a.at)).slice(0, 50);
 };
 
-export const createLibrary = (services: { sonarr: Arr; radarr: Arr }) => {
+// A Sonarr or Radarr refusal reads as unreachable here, with its message as the reason.
+const fromArr = <T>(result: ArrResult<T>): Result<T> => {
+  if (result.kind === 'ok') return result;
+  if (result.kind === 'refused') return { kind: 'unreachable', reason: result.message };
+  return { kind: result.kind };
+};
+
+export const createLibrary = (services: ArrServices) => {
   const outcome = <T>(result: Result<T[]>): Outcome => (
     result.kind === 'ok' ? { kind: 'ok', count: result.value.length } : { kind: result.kind === 'not_found' ? 'unreachable' : result.kind }
   );
@@ -572,12 +574,11 @@ export const createLibrary = (services: { sonarr: Arr; radarr: Arr }) => {
     },
 
     async history(subject: HistorySubject): Promise<Result<HistoryEntry[]>> {
-      const path = 'episodeId' in subject
-        ? `/api/v3/history?episodeId=${subject.episodeId}&page=1&pageSize=50&sortKey=date&sortDirection=descending`
+      const result = fromArr('episodeId' in subject
+        ? await services.sonarr.history({ episodeId: subject.episodeId })
         : 'seriesId' in subject
-          ? `/api/v3/history/series?seriesId=${subject.seriesId}`
-          : `/api/v3/history/movie?movieId=${subject.movieId}`;
-      const result = await read(services[subject.service], path);
+          ? await services.sonarr.history({ seriesId: subject.seriesId })
+          : await services.radarr.history({ movieId: subject.movieId }));
       return result.kind === 'ok' ? { kind: 'ok', value: historyEntries(result.value) } : result;
     },
 
@@ -596,17 +597,17 @@ export const createLibrary = (services: { sonarr: Arr; radarr: Arr }) => {
     },
 
     async search(request: Target): Promise<Result<void>> {
-      if (request.kind === 'series') return write(services.sonarr, '/api/v3/command', 'POST', { name: 'SeriesSearch', seriesId: request.seriesId });
+      if (request.kind === 'series') return fromArr(await services.sonarr.searchAutomatically({ seriesId: request.seriesId }));
       if (request.kind === 'season') {
-        return write(services.sonarr, '/api/v3/command', 'POST', { name: 'SeasonSearch', seriesId: request.seriesId, seasonNumber: request.seasonNumber });
+        return fromArr(await services.sonarr.searchAutomatically({ seriesId: request.seriesId, seasonNumber: request.seasonNumber }));
       }
-      if (request.kind === 'episodes') return write(services.sonarr, '/api/v3/command', 'POST', { name: 'EpisodeSearch', episodeIds: request.episodeIds });
-      return write(services.radarr, '/api/v3/command', 'POST', { name: 'MoviesSearch', movieIds: [request.movieId] });
+      if (request.kind === 'episodes') return fromArr(await services.sonarr.searchAutomatically({ episodeIds: request.episodeIds }));
+      return fromArr(await services.radarr.searchAutomatically({ movieIds: [request.movieId] }));
     },
 
     async refresh(request: RefreshRequest): Promise<Result<void>> {
-      if (request.kind === 'series') return write(services.sonarr, '/api/v3/command', 'POST', { name: 'RefreshSeries', seriesId: request.seriesId });
-      return write(services.radarr, '/api/v3/command', 'POST', { name: 'RefreshMovie', movieIds: [request.movieId] });
+      if (request.kind === 'series') return fromArr(await services.sonarr.refreshTitle(request.seriesId));
+      return fromArr(await services.radarr.refreshTitle(request.movieId));
     },
 
     async calendar(start: string, end: string): Promise<{ entries: CalendarEntry[]; services: { sonarr: Outcome; radarr: Outcome } }> {

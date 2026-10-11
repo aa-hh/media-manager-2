@@ -36,6 +36,14 @@ _Avoid_: result, file, torrent (for something not yet grabbed)
 Sending a chosen release to rTorrent to download. Sonarr's and Radarr's own term. Normally done through Sonarr or Radarr; a grab for a second version goes from media-manager-2 to rTorrent directly.
 _Avoid_: snatch, queue, download (as a verb for this step)
 
+**Queue**:
+The downloads Sonarr or Radarr is tracking in rTorrent, from grab until import or removal. Sonarr's and Radarr's own term; media-manager-2 keeps its own copy and reads that between checks.
+_Avoid_: active downloads, in-progress list, download list
+
+**Blocklist**:
+The releases Sonarr or Radarr will never grab again, each with why and when it was added. Sonarr's and Radarr's own term.
+_Avoid_: blacklist, banned releases, ignore list
+
 **Replace**:
 The user's choice to swap the tracked version for a hand-picked release. Always carried out, even when Sonarr or Radarr would not count the release as an upgrade.
 _Avoid_: upgrade (Sonarr's and Radarr's automatic replacement, which follows the quality profile), overwrite
@@ -47,6 +55,10 @@ _Avoid_: protected item, locked, pinned
 **Import**:
 Placing a finished download into the library folder. Sonarr's and Radarr's own term.
 _Avoid_: move, copy, process
+
+**History**:
+Sonarr's or Radarr's own record of what happened to each movie or episode: grabs, imports, failures, deletions and renames. Separate from the problems media-manager-2 records itself.
+_Avoid_: event log, activity, timeline
 
 **Library folder**:
 The final folder Plex reads from. A movie or episode may have several versions in it; an upgrade replaces only the version Sonarr or Radarr tracks.

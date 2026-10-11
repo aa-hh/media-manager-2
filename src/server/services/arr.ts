@@ -1,9 +1,39 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { createCommands, type ForceImport, type SearchTarget } from './arr/commands.js';
+import { createHistory, type HistoryRead, type HistoryRecord } from './arr/history.js';
+import { createQueue, type QueueItem } from './arr/queue.js';
+import { classify, labels, notConfigured, type Result, type Send, type Service, unreachable, valueOrThrow } from './arr/result.js';
 import { type ConnectionStatus, readSetting, requestWithTimeout, type ServiceOptions } from './connection.js';
 
-const labels = { sonarr: 'Sonarr', radarr: 'Radarr' } as const;
+export { valueOrThrow };
+export type { HistoryRecord, QueueItem, Result, Service };
 
-export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, options: ServiceOptions = {}) => {
+export type Arr<S extends Service> = {
+  check: () => Promise<ConnectionStatus>;
+  request: (
+    path: string,
+    init?: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; timeoutMs?: number },
+  ) => Promise<{ status: number; body: unknown }>;
+  download: (path: string) => Promise<{ status: number; contentType: string; bytes: Uint8Array }>;
+  configured: () => boolean;
+  queue: () => Promise<Result<QueueItem[]>>;
+  removeFromQueue: (
+    target: { downloadId: string } | { queueId: number },
+    choice: 'block' | 'block_and_search' | 'nothing',
+  ) => Promise<Result<{ removed: number }>>;
+  removeFromQueueAndClient: (downloadId: string) => Promise<Result<{ removed: number }>>;
+  grabFromQueue: (queueId: number) => Promise<Result<void>>;
+  history: HistoryRead<S>;
+  markFailed: (historyId: number) => Promise<Result<void>>;
+  searchAutomatically: (target: SearchTarget<S>) => Promise<Result<void>>;
+  refreshTitle: (id: number) => Promise<Result<void>>;
+  refreshMonitoredDownloads: () => Promise<Result<void>>;
+  forceImport: ForceImport;
+};
+
+export type ArrServices = { sonarr: Arr<'sonarr'>; radarr: Arr<'radarr'> };
+
+export const createArr = <S extends Service>(service: S, database: DatabaseSync, options: ServiceOptions = {}): Arr<S> => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const label = labels[service];
 
@@ -74,5 +104,28 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
     return { kind: 'ok', version };
   };
 
-  return { check, request, download, configured: () => readConfiguration() !== undefined };
+  const configured = () => readConfiguration() !== undefined;
+
+  // Every named operation answers with a Result; the two throws from request become not_configured and unreachable.
+  const send: Send = async (operation, path, init) => {
+    if (!configured()) return notConfigured(label, operation);
+    let answer: { status: number; body: unknown };
+    try {
+      answer = await request(path, init);
+    } catch {
+      return configured() ? unreachable(label, operation) : notConfigured(label, operation);
+    }
+    return classify(label, operation, answer);
+  };
+
+  const parts = { service, label, send };
+  return {
+    check,
+    request,
+    download,
+    configured,
+    ...createQueue(parts),
+    ...createHistory(parts),
+    ...createCommands(parts),
+  };
 };

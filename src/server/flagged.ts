@@ -4,9 +4,9 @@ import type { createLabels } from './labels.js';
 import { listOpenProblems, type Problem, type Subject } from './problems.js';
 import type { ReleaseTarget } from './releases.js';
 import { searchDueAt } from './searches.js';
+import type { ArrServices } from './services/arr.js';
 import { findGrab, listGrabs, listQueue, type Grab, type Service } from './torrentGrabs.js';
 
-type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
 type Labels = ReturnType<typeof createLabels>;
 type WantedType = 'movie' | 'episode';
 
@@ -49,7 +49,7 @@ const key = (service: Service, type: WantedType, id: number) => `${service}:${ty
 
 export const createFlagged = (options: {
   database: DatabaseSync;
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   labels: Labels;
   isManualDownload: (subject: Subject) => boolean;
   now?: () => number;
@@ -224,13 +224,11 @@ export const createFlagged = (options: {
   };
 
   const search = async (service: Service, type: WantedType, ids: number[]): Promise<'ok' | 'refused' | 'unavailable'> => {
-    const body = service === 'sonarr' ? { name: 'EpisodeSearch', episodeIds: ids } : { name: 'MoviesSearch', movieIds: ids };
-    try {
-      const { status } = await arr[service].request('/api/v3/command', { method: 'POST', body });
-      if (status < 200 || status > 299) return 'refused';
-    } catch {
-      return 'unavailable';
-    }
+    const result = service === 'sonarr'
+      ? await arr.sonarr.searchAutomatically({ episodeIds: ids })
+      : await arr.radarr.searchAutomatically({ movieIds: ids });
+    if (result.kind === 'not_configured' || result.kind === 'unreachable') return 'unavailable';
+    if (result.kind !== 'ok') return 'refused';
     const at = now();
     for (const id of ids) {
       database.prepare(`

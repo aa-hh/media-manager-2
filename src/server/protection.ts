@@ -4,10 +4,9 @@ import { Hono } from 'hono';
 import type { GrabRecord } from './grabs.js';
 import { getPreference, setPreference } from './preferences.js';
 import type { Subject } from './problems.js';
-import type { createArr } from './services/arr.js';
+import { type ArrServices, valueOrThrow } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 
-type Arr = Pick<ReturnType<typeof createArr>, 'request' | 'configured'>;
 type Service = 'sonarr' | 'radarr';
 
 export type ProtectedItem =
@@ -96,7 +95,7 @@ const rowToItem = (row: Record<string, unknown>): ProtectedItem => (
 
 export const createProtection = (
   database: DatabaseSync,
-  services: Record<Service, Arr>,
+  services: ArrServices,
   options: { now?: () => number; recentGrabTitles?: (service: Service, since: number) => string[] } = {},
 ) => {
   const now = options.now ?? Date.now;
@@ -331,12 +330,8 @@ export const createProtection = (
       if (title !== undefined && own.some((ownTitle) => ownTitle.toLowerCase() === title)) return 'allowed';
       const downloadId = typeof payload.downloadId === 'string' ? payload.downloadId.toLowerCase() : undefined;
       if (downloadId === undefined) return 'not_found';
-      const queue = await call(service, '/api/v3/queue?page=1&pageSize=500&includeUnknownSeriesItems=true&includeUnknownMovieItems=true');
-      const records = isRecord(queue) && Array.isArray(queue.records) ? queue.records : [];
-      const item = records.find((entry) => isRecord(entry) && typeof entry.downloadId === 'string' && entry.downloadId.toLowerCase() === downloadId);
-      if (!isRecord(item) || !positiveInteger(item.id)) return 'not_found';
-      await call(service, `/api/v3/queue/${item.id}?removeFromClient=true&blocklist=true`, 'DELETE');
-      return 'vetoed';
+      const { removed } = valueOrThrow(await services[service].removeFromQueueAndClient(downloadId));
+      return removed === 0 ? 'not_found' : 'vetoed';
     },
   };
 };

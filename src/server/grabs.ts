@@ -1,9 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { parseTarget, targetKey, type Releases, type ReleaseTarget } from './releases.js';
-import type { createArr } from './services/arr.js';
-
-type Arr = Pick<ReturnType<typeof createArr>, 'request' | 'configured'>;
+import type { ArrServices } from './services/arr.js';
 
 export type GrabIntent = 'grab' | 'replace';
 export type GrabState = 'sending' | 'sent' | 'importing' | 'failed' | 'completed';
@@ -59,9 +57,6 @@ export const handGrab = (record: GrabRecord & { downloadId: string }) => {
 };
 
 const GRAB_TIMEOUT_MS = 60_000;
-// Sonarr and Radarr keep their grab history paged newest first; a grab media-manager-2
-// just sent is on the first page unless dozens of grabs landed in between.
-const HISTORY_PAGE = '/api/v3/history?page=1&pageSize=50&sortKey=date&sortDirection=descending&eventType=1';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -125,7 +120,7 @@ const overriddenTarget = (searched: ReleaseTarget, overrides: Overrides): GrabTa
 
 export const createGrabs = (
   database: DatabaseSync,
-  services: { sonarr: Arr; radarr: Arr },
+  services: ArrServices,
   releases: Releases,
   options: { now?: () => number; onChange?: (record: GrabRecord) => void } = {},
 ) => {
@@ -158,19 +153,13 @@ export const createGrabs = (
   };
 
   const resolveDownloadId = async (record: GrabRecord) => {
-    let response: { status: number; body: unknown };
-    try {
-      response = await services[record.service].request(HISTORY_PAGE);
-    } catch {
-      return record;
-    }
-    if (response.status < 200 || response.status > 299 || !isRecord(response.body) || !Array.isArray(response.body.records)) return record;
-    for (const event of response.body.records) {
-      if (!isRecord(event) || !isRecord(event.data)) continue;
-      if (event.data.guid !== record.guid || typeof event.downloadId !== 'string' || event.downloadId === '') continue;
-      return update(record.id, { downloadId: event.downloadId });
-    }
-    return record;
+    // Sonarr and Radarr keep their grab history paged newest first; a grab media-manager-2
+    // just sent is on the first page unless dozens of grabs landed in between.
+    const filter = { eventType: 'grabbed', page: 1, pageSize: 50 } as const;
+    const result = record.service === 'sonarr' ? await services.sonarr.history(filter) : await services.radarr.history(filter);
+    if (result.kind !== 'ok') return record;
+    const event = result.value.records.find((entry) => entry.data.guid === record.guid && entry.downloadId !== null);
+    return event === undefined ? record : update(record.id, { downloadId: event.downloadId! });
   };
 
   const seasonEpisodeIds = async (seriesId: number, seasonNumber: number) => {
