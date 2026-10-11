@@ -1007,7 +1007,7 @@
                       "content": "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "2 files"
@@ -1055,7 +1055,7 @@
                       "content": "Paul Atreides travels to the desert planet Arrakis after his family is handed control of its spice harvest."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "1 file"
@@ -1103,7 +1103,7 @@
                       "content": "Two Harkonnen sisters shape the Bene Gesserit order ten thousand years before Paul Atreides is born."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "6 files"
@@ -1151,7 +1151,7 @@
                       "content": "Paul Atreides, now emperor, faces the cost of the holy war fought in his name."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "No file yet"
@@ -3929,7 +3929,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "2 files",
@@ -3988,7 +3988,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "1 file",
@@ -4047,7 +4047,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "6 files",
@@ -4106,7 +4106,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "No file yet",
@@ -4836,7 +4836,7 @@
                       "content": "Two Harkonnen sisters shape the Bene Gesserit order ten thousand years before Paul Atreides is born."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "6 files"
@@ -5277,7 +5277,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "2 files",
@@ -5336,7 +5336,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "1 file",
@@ -5395,7 +5395,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "6 files",
@@ -5454,7 +5454,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "No file yet",
@@ -6304,7 +6304,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "1 file",
@@ -6480,7 +6480,7 @@
                     },
                     "5:aQCYB": {
                       "opacity": 0.6,
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "1 file",
@@ -6605,7 +6605,7 @@
                       "content": "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "2 files"
@@ -6660,7 +6660,7 @@
                       "content": "Two Harkonnen sisters shape the Bene Gesserit order ten thousand years before Paul Atreides is born."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "6 files"
@@ -6760,7 +6760,7 @@
                       "content": "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "2 files"
@@ -6814,7 +6814,7 @@
                       "content": "Two Harkonnen sisters shape the Bene Gesserit order ten thousand years before Paul Atreides is born."
                     },
                     "5:aQCYB": {
-                      "enabled": false
+                      "enabled": true
                     },
                     "5:Y0SG2": {
                       "content": "6 files"
