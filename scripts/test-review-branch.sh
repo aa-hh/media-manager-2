@@ -150,6 +150,7 @@ prompt=$(printf '%s\n' "$OUT" | sed -n 's/^cheap .* prompt=\(.*\)  save reply to
 if expect_rc "round 2 after a main merge" 3; then
   if ! printf '%s\n' "$OUT" | grep -q 'round 2$' || [ -z "$prompt" ]; then fail "round 2 after a main merge: wanted one cheap round 2 pass, got: $OUT"
   elif ! grep -q 'TWO-fix' "$prompt" || grep -q 'b-unrelated-main-line' "$prompt" || grep -q 'c-newer-main-line' "$prompt"; then fail "round 2 after a main merge: prompt is not just the fix"
+  elif [ "$(g cat-file -t "$(sed -n 's/^base: \([0-9a-f]*\) tip: .*/\1/p' "$prompt")" 2>/dev/null)" != commit ]; then fail "round 2 after a main merge: the base is not a commit the history pass can blame"
   else ok "round 2 after a main merge reviews only the fix"
   fi
 fi
