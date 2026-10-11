@@ -33,6 +33,7 @@ type Attempt = {
 type Session = {
   ownerId: number;
   expiresAt: number;
+  plexToken: string;
 };
 
 type Configuration = {
@@ -331,7 +332,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     if (sessions.size >= MAX_SESSIONS) return { kind: 'unavailable' };
     const session = randomBytes(32).toString('base64url');
     const expiresAt = options.now() + SESSION_LIFETIME_MS;
-    sessions.set(hash(session), { ownerId: configuration.ownerId, expiresAt });
+    sessions.set(hash(session), { ownerId: configuration.ownerId, expiresAt, plexToken: checkBody.authToken });
     return { kind: 'success', session, expiresAt };
   };
 
@@ -364,6 +365,11 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return { kind: 'success', expiresAt: stored.expiresAt };
   };
 
+  // The owner's Plex account token from sign-in, kept only in this in-memory session so setup can connect Plex without a pasted token.
+  const plexToken = (session?: string): string | undefined => (
+    validateSession(session).kind === 'success' ? sessions.get(hash(session as string))?.plexToken : undefined
+  );
+
   return {
     configured: configuration !== undefined,
     secure: configuration?.secure ?? false,
@@ -374,5 +380,6 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     cancel,
     logout,
     validateSession,
+    plexToken,
   };
 };
