@@ -35,8 +35,8 @@ type RowDownloadProps = Omit<TableRowProps, 'progress' | 'marker'> & {
   title: ReactNode;
   /** Release name and size, in the data font. */
   detail?: ReactNode;
-  /** 0 to 100. */
-  progress: number;
+  /** 0 to 100. Leave out while the release is not in rTorrent yet: the cell stays, empty, so the columns line up. */
+  progress?: number;
   speed?: ReactNode;
   eta?: ReactNode;
   tracker?: string;
@@ -57,8 +57,12 @@ function RowDownload({ title, detail, progress, speed, eta, tracker, state, stat
         {detail !== undefined && <span className="w-full truncate text-[13px] text-muted-foreground">{detail}</span>}
       </TableCell>
       <TableCell className={cn(w.progress, 'gap-2.5')}>
-        <Progress value={progress} tone={look.bar} className="w-30" />
-        <span className="font-semibold">{Math.round(progress)}%</span>
+        {progress !== undefined && (
+          <>
+            <Progress value={progress} tone={look.bar} className="w-30" />
+            <span className="font-semibold">{Math.round(progress)}%</span>
+          </>
+        )}
       </TableCell>
       <TableCell align="end" className={cn(w.speed, look.speed)}>{speed}</TableCell>
       <TableCell align="end" className={cn(w.eta, 'text-muted-foreground')}>{eta}</TableCell>

@@ -25,10 +25,12 @@ type RowSeasonProps = Omit<TableRowProps, 'progress'> & {
   size?: ReactNode;
   actions?: ReactNode;
   monitored?: boolean;
+  /** Monitored summary in the spacer, such as "9 of 10 monitored · S02E03 off". */
+  summary?: ReactNode;
 };
 
 /** Season header row that opens its episodes; the chevron turns 90 degrees as it opens. */
-function RowSeason({ open = false, bookmark, title, progress, progressTone, count, status, size, actions, monitored = true, className, ...props }: RowSeasonProps) {
+function RowSeason({ open = false, bookmark, title, progress, progressTone, count, status, size, actions, monitored = true, summary, className, ...props }: RowSeasonProps) {
   return (
     <TableRow aria-expanded={open} className={cn('h-12', className)} {...props}>
       <TableCell className={w.chevron}>
@@ -47,7 +49,7 @@ function RowSeason({ open = false, bookmark, title, progress, progressTone, coun
       </TableCell>
       <TableCell className={w.status}>{status !== undefined && <Badge className="bg-transparent">{status}</Badge>}</TableCell>
       <TableCell align="end" className={cn(w.size, 'text-muted-foreground')}>{size}</TableCell>
-      <TableCell fill />
+      <TableCell fill className="text-muted-foreground">{summary !== undefined && <span className="truncate">{summary}</span>}</TableCell>
       <TableCell align="end" className={cn(w.actions, 'gap-0.5')}>{actions}</TableCell>
     </TableRow>
   );

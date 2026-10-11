@@ -4,12 +4,15 @@
 // v2/Table/Cell — design/design-system.lib.pen I73rkQ
 import { ArrowDown } from 'lucide-react';
 import type { ComponentProps, CSSProperties } from 'react';
-import { Logo, trackerLogo } from '@/components/ui/logo';
+import { Logo, trackerLogo, trackerName } from '@/components/ui/logo';
 import { cn } from '@/lib/utils';
 
-/** White, 1 px edge, radius 10, clips its rows. Children: a TableHeader, then rows; the last row drops its line. */
+/**
+ * White, 1 px edge, radius 10, clips its rows. Children: a TableHeader, then rows. The last child sits 1 px under
+ * the bottom edge, so the last row's line is clipped even when that row is nested inside a group or panel.
+ */
 function Table({ className, ...props }: ComponentProps<'div'>) {
-  return <div role="table" className={cn('flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card *:last:border-b-0', className)} {...props} />;
+  return <div role="table" className={cn('flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card *:last:-mb-px', className)} {...props} />;
 }
 
 /** Column header row, 32 px, white, line under. Children are TableHead cells with the widths of the rows below. */
@@ -98,13 +101,13 @@ function TableRow({ selected = false, marker, best = false, progress, className,
   );
 }
 
-/** Tracker cell content shared by the release, version, download and blocklist rows: the real logo at 16 px, then the name. */
+/** Tracker cell content shared by the release, version, download and blocklist rows: the real logo at 16 px, then the name as the design writes it. */
 function TableCellTracker({ name, className }: { name: string; className?: string }) {
   const logo = trackerLogo(name);
   return (
     <span className={cn('flex min-w-0 items-center gap-1.5 text-muted-foreground', className)}>
       {logo !== undefined && <Logo name={logo} alt="" className="size-4" />}
-      <span className="truncate">{name}</span>
+      <span className="truncate">{trackerName(name)}</span>
     </span>
   );
 }

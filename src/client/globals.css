@@ -249,6 +249,68 @@
   font-feature-settings: "tnum";
 }
 
+/*
+ * Text styles from the DESIGN.md typography front matter: family, size and weight in one class.
+ *   text-title-hero   36/800 font-ui
+ *   text-page-title   26/700 font-ui
+ *   text-section      16/700 font-ui
+ *   text-body         14/400 font-ui
+ *   text-label        13/600 font-ui
+ *   text-caption      11/600 font-ui
+ *   text-data         14/400 font-data, tabular figures
+ *   text-data-small   13/500 font-data, tabular figures
+ * cn() registers these names as font sizes in tailwind-merge (src/client/lib/utils.ts), so they survive text colour classes.
+ */
+@utility text-title-hero {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 36px;
+  font-weight: 800;
+}
+
+@utility text-page-title {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+@utility text-section {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+@utility text-body {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+@utility text-label {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@utility text-caption {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@utility text-data {
+  font-family: var(--font-data), sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  font-feature-settings: "tnum";
+}
+
+@utility text-data-small {
+  font-family: var(--font-data), sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  font-feature-settings: "tnum";
+}
+
 /* 2px ring with a 2px gap (DESIGN.md "Focus"). The Kbd and bars use the white ring. */
 @utility focus-ring {
   &:focus-visible {

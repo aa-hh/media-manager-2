@@ -11,6 +11,8 @@ type HeaderTitleProps = {
   /** A Breadcrumb. */
   breadcrumb: ReactNode;
   bookmark?: { state: BookmarkState; onToggle?: () => void };
+  /** A StatusInline beside the title, such as a monitor change Sonarr refused. */
+  status?: ReactNode;
   /** Plain meta line in the data font, such as "TV · Apple TV+ · 2022". */
   meta?: ReactNode;
   /** Status Badges. */
@@ -24,6 +26,8 @@ type HeaderTitleProps = {
   more?: ReactNode;
   /** Up to four Fact elements. */
   facts?: ReactNode;
+  /** Title page overview band layout: the backdrop fills the header, poster and title block sit at the bottom, and the actions sit at the right, bottom-aligned. Overview and facts are not shown. */
+  actionsRight?: boolean;
   /** The page has scrolled: one 72 px strip with a poster thumb, breadcrumb over a 20/700 title, and the same actions. */
   compact?: boolean;
   className?: string;
@@ -47,6 +51,7 @@ function HeaderTitle({
   posterUrl,
   breadcrumb,
   bookmark,
+  status,
   meta,
   badges,
   overview,
@@ -54,11 +59,12 @@ function HeaderTitle({
   secondary,
   more,
   facts,
+  actionsRight = false,
   compact = false,
   className,
 }: HeaderTitleProps) {
   const actions = (
-    <div className={cn('flex items-center gap-2', !compact && 'pt-2')}>
+    <div className={cn('flex items-center gap-2', !compact && (actionsRight ? 'shrink-0 items-end justify-end' : 'pt-2'))}>
       {primary}
       {secondary}
       {more}
@@ -80,26 +86,28 @@ function HeaderTitle({
   }
 
   return (
-    <header className={cn('relative flex w-full flex-col overflow-hidden bg-background px-10 pt-25 pb-6', className)}>
+    <header className={cn('relative flex w-full flex-col overflow-hidden bg-background px-10', actionsRight ? 'pt-10 pb-8' : 'pt-25 pb-6', className)}>
       {backdropUrl !== undefined && (
-        <div aria-hidden="true" className="absolute inset-x-0 top-0 h-55 bg-cover bg-center" style={{ backgroundImage: `url(${JSON.stringify(backdropUrl)})` }}>
-          <div className="size-full bg-linear-to-b from-transparent via-background/55 via-55% to-background" />
+        <div aria-hidden="true" className={cn('absolute inset-x-0 top-0 bg-cover bg-center', actionsRight ? 'bottom-0' : 'h-55')} style={{ backgroundImage: `url(${JSON.stringify(backdropUrl)})` }}>
+          <div className={cn('size-full bg-linear-to-b', actionsRight ? 'from-background/20 via-background/70 via-45% to-background' : 'from-transparent via-background/55 via-55% to-background')} />
         </div>
       )}
-      <div className="relative flex w-full gap-8">
+      <div className={cn('relative flex w-full gap-8', actionsRight && 'items-end')}>
         <Poster url={posterUrl} className="h-66 w-44 rounded-md" />
         <div className="flex min-w-0 flex-1 flex-col gap-3 pt-15">
           {breadcrumb}
           <div className="flex items-center gap-2.5">
             {bookmark !== undefined && <ToggleBookmark state={bookmark.state} onToggle={bookmark.onToggle} className="size-9" />}
             <h1 className="font-ui text-4xl font-extrabold tracking-[-0.6px] text-foreground">{title}</h1>
+            {status}
           </div>
           {meta !== undefined && <p className="font-data text-[15px] font-normal text-muted-foreground">{meta}</p>}
           {badges !== undefined && <div className="flex flex-wrap items-center gap-1.5">{badges}</div>}
-          {overview !== undefined && <p className="max-w-170 font-ui text-[15px] leading-[1.55] font-normal text-muted-foreground">{overview}</p>}
-          {actions}
+          {!actionsRight && overview !== undefined && <p className="max-w-170 font-ui text-[15px] leading-[1.55] font-normal text-muted-foreground">{overview}</p>}
+          {!actionsRight && actions}
         </div>
-        {facts !== undefined && <dl className="flex w-60 shrink-0 flex-col gap-4 pt-34">{facts}</dl>}
+        {actionsRight && actions}
+        {!actionsRight && facts !== undefined && <dl className="flex w-60 shrink-0 flex-col gap-4 pt-34">{facts}</dl>}
       </div>
     </header>
   );

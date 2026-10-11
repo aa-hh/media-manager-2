@@ -15,8 +15,15 @@ type DialogProps = {
   subject?: ReactNode;
   /** Card/choice options inside a RadioGroup. */
   children?: ReactNode;
-  /** A Callout under the options. */
+  /** A Callout under the options, inside the scrolling middle. */
   callout?: ReactNode;
+  /** A Callout fixed between the middle and the actions, so it stays visible while the middle scrolls. */
+  footerCallout?: ReactNode;
+  /**
+   * Long content (v2 "Delete show, dialog scrolls"): the subject stays fixed under the title and `children` scroll between a 1px line and a faint inner shadow
+   * at the top and bottom edge, with 16px above and below and 20px between sections. Always drawn, not only while overflowing.
+   */
+  scrollEdges?: boolean;
   /** Right-aligned buttons: an outline Cancel, then the large main action. */
   actions: ReactNode;
   closeLabel?: string;
@@ -26,7 +33,7 @@ type DialogProps = {
  * Centred confirmation over the scrim for rare, destructive or lossy actions.
  * Scrim and dialog fade in and the dialog scales from --motion-scale-dialog to 1 (duration-base, ease-out); the reverse at duration-fast, ease-in.
  */
-function Dialog({ open, onOpenChange, title, subject, children, callout, actions, closeLabel = 'Close' }: DialogProps) {
+function Dialog({ open, onOpenChange, title, subject, children, callout, footerCallout, scrollEdges = false, actions, closeLabel = 'Close' }: DialogProps) {
   const motion = 'duration-(--duration-base) ease-out data-ending-style:duration-(--duration-fast) data-ending-style:ease-in';
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(next) => onOpenChange(next)}>
@@ -51,13 +58,23 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, actions
               render={<Button variant="ghost" icon={<X />} kbd="Esc" aria-label={closeLabel} className="px-2.5 [&>svg]:text-muted-foreground" />}
             />
           </div>
-          <div className="min-h-0 w-full flex-1 overflow-y-auto">
-            {subject !== undefined && (
+          {scrollEdges && subject !== undefined && (
+            <DialogPrimitive.Description className="w-full pt-2 font-ui text-sm leading-normal font-normal text-muted-foreground">{subject}</DialogPrimitive.Description>
+          )}
+          <div
+            className={cn(
+              'min-h-0 w-full flex-1 overflow-y-auto',
+              scrollEdges &&
+                'border-y border-border shadow-[inset_0_8px_10px_color-mix(in_srgb,var(--foreground)_8%,transparent),inset_0_-8px_10px_color-mix(in_srgb,var(--foreground)_8%,transparent)]',
+            )}
+          >
+            {!scrollEdges && subject !== undefined && (
               <DialogPrimitive.Description className="pt-2 font-ui text-sm leading-normal font-normal text-muted-foreground">{subject}</DialogPrimitive.Description>
             )}
-            {children !== undefined && <div className="flex w-full flex-col gap-2 pt-5">{children}</div>}
+            {children !== undefined && <div className={cn('flex w-full flex-col', scrollEdges ? 'gap-5 py-4' : 'gap-2 pt-5')}>{children}</div>}
             {callout !== undefined && <div className="w-full pt-3">{callout}</div>}
           </div>
+          {footerCallout !== undefined && <div className="w-full pt-3">{footerCallout}</div>}
           <div className="flex w-full items-center justify-end gap-2 pt-6">{actions}</div>
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>

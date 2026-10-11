@@ -38,5 +38,11 @@ function trackerLogo(text: string): LogoName | undefined {
   return undefined;
 }
 
-export { Logo, trackerLogo };
+/** Tracker name as the design writes it, or the text unchanged when it matches none. */
+function trackerName(text: string): string {
+  const logo = trackerLogo(text);
+  return logo === undefined ? text : logos[logo].alt;
+}
+
+export { Logo, trackerLogo, trackerName };
 export type { LogoName };

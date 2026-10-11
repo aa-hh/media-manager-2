@@ -423,9 +423,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
     initial: ['Only the owner’s Plex account can open this app.', 'You’ll sign in on Plex, then return here. This app never receives your Plex password.'],
     preparing: ['You’ll continue on Plex in this tab.'],
     checking: ['Please wait while the server verifies the account with Plex.'],
-    pending: [plexInWindow
-      ? 'Plex is open in a new window. Finish signing in there, then check again if this page hasn’t updated.'
-      : 'Finish signing in on Plex, then check again.'],
+    pending: [plexInWindow ? 'Plex is open in a new window. Finish signing in there, then check again if this page hasn’t updated.' : 'Finish signing in on Plex, then check again.'],
     interrupted: ['Start again to return to Plex, or cancel this attempt.'],
     'wrong-owner': ['Sign in with the owner’s account.'],
     unavailable: ['Try again.'],

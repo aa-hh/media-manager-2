@@ -1,15 +1,27 @@
 import { useState } from 'react';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { LabelGroup } from '@/components/ui/label-group';
+import { Table } from '@/components/ui/table';
+import { formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import type { MovieDetail } from '../library/api';
+import type { OwnedMovieDetail } from '../library/api';
 import { seedingFacts, type SubjectProgress } from '../library/progress';
 import { PickRelease, type ReleaseTarget } from '../PickRelease';
-import { VersionTable } from './EpisodeDetails';
+import { statusLabel } from '../Search';
+import { TrackedVersion } from './EpisodeDetails';
 import { History } from './History';
 import { movieWord } from './rows';
-import { ActionButton, sendAction, TitleHeader } from './TitleHeader';
+import { sendAction, TitleHeader, type TitleFact } from './TitleHeader';
+
+const wordLook = (word: string, live: boolean): BadgeVariant => {
+  if (live) return 'live';
+  if (word === 'deleted') return 'risk';
+  if (word === 'missing' || word === 'below cutoff') return 'warning';
+  return 'neutral';
+};
 
 export function MovieOverview({ detail: loaded, downloads, progress, onUnauthenticated }: {
-  detail: MovieDetail;
+  detail: OwnedMovieDetail;
   downloads: DownloadsState;
   progress: Map<string, SubjectProgress>;
   onUnauthenticated: () => void;
@@ -20,6 +32,8 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
   // Held in state so live progress redraws never hand Pick a release a new target, which would search again.
   const [target] = useState<ReleaseTarget>({ service: 'radarr', kind: 'movie', movieId: loaded.id });
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
+  const live = progress.get(`movie:${detail.id}`);
+  const word = movieWord(detail, live);
 
   // Optimistic: the bookmark flips at once and flips back with a reason if Radarr refuses.
   const toggleMonitored = async () => {
@@ -31,29 +45,51 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
     setProblem("Radarr didn't answer.");
   };
 
+  const availableWhen = statusLabel(detail.minimumAvailability);
+  const file = detail.file === null ? '' : [detail.file.quality, detail.file.releaseGroup].filter((part) => part !== null && part !== '').join(' · ');
+  const facts: TitleFact[] = [
+    { label: 'Monitoring', value: detail.monitored ? 'Monitored' : 'Not monitored' },
+    ...(availableWhen === null ? [] : [{ label: 'Available when', value: availableWhen }]),
+    ...(detail.qualityProfile === null ? [] : [{ label: 'Quality profile', value: detail.qualityProfile.name }]),
+    ...(file === '' ? [] : [{ label: 'File', value: file }]),
+    { label: 'On disk', value: detail.hasFile ? `${formatBytes(detail.sizeOnDisk)} · 1 file` : 'Nothing yet' },
+  ];
+
   return (
     <>
       <TitleHeader
         subject={{ type: 'movie', detail }}
         owned
-        statusWord={movieWord(detail, progress.get(`movie:${detail.id}`))}
+        compact={picking}
+        badges={(
+          <>
+            <Badge variant="strong">In library</Badge>
+            {word !== null && <Badge variant={wordLook(word, live !== undefined)}>{word.charAt(0).toUpperCase() + word.slice(1)}</Badge>}
+          </>
+        )}
+        facts={facts}
+        onPick={() => setPicking(!picking)}
+        picking={picking}
         monitored={detail.monitored ? 'all' : 'none'}
         onToggleMonitored={() => void toggleMonitored()}
         monitorProblem={problem}
-        history={<History query={`service=radarr&movieId=${detail.id}`} service="Radarr" onUnauthenticated={onUnauthenticated} />}
         onUnauthenticated={onUnauthenticated}
       />
-      <div className="mt-5 flex gap-2">
-        <ActionButton onClick={() => setPicking(!picking)}>{picking ? 'Close Pick a release' : 'Pick a release'}</ActionButton>
-      </div>
       {picking && (
-        // Pick a release keeps its light styling, so it sits on a light surface.
-        <div className="mt-3 bg-[var(--control)] pb-2 text-[var(--ink)]">
+        <div className="pt-2">
           <PickRelease target={target} title={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} />
         </div>
       )}
       {/* Hand-off to AA-32: second version row and delete. */}
-      <VersionTable label="Your file" file={detail.file} seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { movieId: detail.id })} />
+      <div className="flex flex-col pt-2 pb-10">
+        <LabelGroup count={detail.file === null ? 0 : 1}>Versions</LabelGroup>
+        <Table>
+          {detail.file === null
+            ? <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">No file yet.</p>
+            : <TrackedVersion file={detail.file} seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { movieId: detail.id })} indent />}
+        </Table>
+        <History query={`service=radarr&movieId=${detail.id}`} service="Radarr" onUnauthenticated={onUnauthenticated} />
+      </div>
     </>
   );
 }

@@ -5,13 +5,13 @@ import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type Tab
 import { cn } from '@/lib/utils';
 
 // Fixed widths, the same on every release table: Quality 104, Release fill, Compared 72, Fit 112, Size 72,
-// Seeders 64, Tracker 112, Hit and run 128, Audio and HDR 140, Action 88.
-const w = { quality: 'w-26', comparison: 'w-18', fit: 'w-28', size: 'w-18', seeders: 'w-16', tracker: 'w-28', hitAndRun: 'w-32', audio: 'w-35', action: 'w-22' };
+// Age 64, Seeders 64, Tracker 112, Hit and run 128, Audio and HDR 140, Action 88.
+const w = { quality: 'w-26', comparison: 'w-18', fit: 'w-28', size: 'w-18', age: 'w-16', seeders: 'w-16', tracker: 'w-28', hitAndRun: 'w-32', audio: 'w-35', action: 'w-22' };
 
-type OptionalColumns = { comparison?: boolean; hitAndRun?: boolean; audio?: boolean };
+type OptionalColumns = { comparison?: boolean; age?: boolean; hitAndRun?: boolean; audio?: boolean };
 
 /** Header for release tables. Turn on the optional columns the rows below fill. */
-function RowReleaseHeader({ comparison = false, hitAndRun = false, audio = false }: OptionalColumns) {
+function RowReleaseHeader({ comparison = false, age = false, hitAndRun = false, audio = false }: OptionalColumns) {
   return (
     <TableHeader>
       <TableHead className={w.quality}>Quality</TableHead>
@@ -19,6 +19,7 @@ function RowReleaseHeader({ comparison = false, hitAndRun = false, audio = false
       {comparison && <TableHead className={w.comparison}>Compared</TableHead>}
       <TableHead className={w.fit}>Fit</TableHead>
       <TableHead align="end" className={w.size}>Size</TableHead>
+      {age && <TableHead align="end" className={w.age}>Age</TableHead>}
       <TableHead align="end" className={w.seeders}>Seeders</TableHead>
       <TableHead className={w.tracker}>Tracker</TableHead>
       {hitAndRun && <TableHead className={w.hitAndRun}>Hit and run</TableHead>}
@@ -39,6 +40,8 @@ type RowReleaseProps = Omit<TableRowProps, 'progress'> & {
   /** A CellProfileFit. */
   fit: ReactNode;
   size: ReactNode;
+  /** Age such as "3 d"; the column shows only when given. */
+  age?: ReactNode;
   seeders: ReactNode;
   tracker: string;
   hitAndRun?: ReactNode;
@@ -53,7 +56,7 @@ type RowReleaseProps = Omit<TableRowProps, 'progress'> & {
   yours?: boolean;
 };
 
-function RowRelease({ quality, name, group, comparison, fit, size, seeders, tracker, hitAndRun, audio, actions, grabbed, rejected = false, yours = false, className, ...props }: RowReleaseProps) {
+function RowRelease({ quality, name, group, comparison, fit, size, age, seeders, tracker, hitAndRun, audio, actions, grabbed, rejected = false, yours = false, className, ...props }: RowReleaseProps) {
   const dim = rejected && 'text-subtle-foreground';
   return (
     <TableRow progress={grabbed} className={cn(yours && 'bg-muted', className)} {...props}>
@@ -69,6 +72,7 @@ function RowRelease({ quality, name, group, comparison, fit, size, seeders, trac
       {comparison !== undefined && <TableCell className={w.comparison}>{comparison}</TableCell>}
       <TableCell className={cn(w.fit, 'min-w-0')}>{fit}</TableCell>
       <TableCell align="end" className={cn(w.size, dim)}>{size}</TableCell>
+      {age !== undefined && <TableCell align="end" className={cn(w.age, dim)}>{age}</TableCell>}
       <TableCell align="end" className={cn(w.seeders, 'font-bold', rejected && 'font-medium text-subtle-foreground')}>{seeders}</TableCell>
       <TableCell className={w.tracker}>
         <TableCellTracker name={tracker} className={cn(dim)} />

@@ -1,5 +1,15 @@
+import { ArrowDown, ArrowUp, CornerDownLeft, Plus, SearchX } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { EmptyState } from '@/components/ui/empty-state';
+import { HeaderResults } from '@/components/ui/header-results';
+import { Kbd } from '@/components/ui/kbd';
+import { LabelGroup } from '@/components/ui/label-group';
+import { RowSearchResult } from '@/components/ui/row-search-result';
+import { Spinner } from '@/components/ui/spinner';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 
 export type SearchResult = {
@@ -114,7 +124,7 @@ export function useDebouncedSearch(query: string, run: (query: string) => void) 
 export function Poster({ url, className }: { url: string | null; className?: string }) {
   const [failed, setFailed] = useState(false);
   if (url === null || failed) {
-    return <div aria-hidden="true" className={cn('shrink-0 bg-[var(--quiet-hover)]', className)} />;
+    return <div aria-hidden="true" className={cn('shrink-0 bg-muted', className)} />;
   }
   return (
     <img
@@ -123,7 +133,7 @@ export function Poster({ url, className }: { url: string | null; className?: str
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      className={cn('shrink-0 bg-[var(--quiet-hover)] object-cover', className)}
+      className={cn('shrink-0 bg-muted object-cover', className)}
     />
   );
 }
@@ -133,39 +143,50 @@ export const statusLabel = (status: string | null) => (status === null ? null : 
 function ResultRow({ result, onOpen, onKeyDown }: {
   result: SearchResult;
   onOpen: (result: SearchResult) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const status = statusLabel(result.status);
+  const meta = [
+    result.type === 'tv' ? 'TV' : 'Movie',
+    result.network,
+    status,
+    result.rating === null ? null : `★ ${result.rating.toFixed(1)}`,
+  ].filter((part) => part !== null).join(' · ');
   return (
     <li>
-      <button
-        type="button"
+      <RowSearchResult
         data-result-row
+        role="link"
+        tabIndex={0}
         onClick={() => onOpen(result)}
         onKeyDown={onKeyDown}
-        className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-[var(--control-hover)] focus-visible:bg-[var(--control-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus)] sm:px-6"
-      >
-        <Poster url={result.posterUrl} className="h-[4.5rem] w-12 rounded-sm" />
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="font-semibold text-[var(--ink)]">{result.title}</span>
-            {result.year !== null && <span className="tabular-nums text-[var(--secondary-ink)]">{result.year}</span>}
-            <Badge>{result.type === 'tv' ? 'TV' : 'Movie'}</Badge>
-            {result.network !== null && <span className="text-sm text-[var(--secondary-ink)]">{result.network}</span>}
-            {status !== null && <Badge>{status}</Badge>}
-            {result.rating !== null && <Badge>{`${result.rating.toFixed(1)} ★`}</Badge>}
-          </span>
-          {result.overview !== null && (
-            <span className="mt-1 block truncate text-sm text-[var(--secondary-ink)]">{result.overview}</span>
-          )}
-        </span>
-        {result.inLibrary && (
-          <span className="shrink-0 self-center">
-            <Badge variant="strong">✓ In library</Badge>
-          </span>
-        )}
-      </button>
+        poster={result.posterUrl ?? undefined}
+        title={result.title}
+        year={result.year ?? undefined}
+        meta={meta}
+        overview={result.overview ?? undefined}
+        status={result.inLibrary ? <Badge variant="strong">In library</Badge> : undefined}
+        // The row already opens the title page, where adding happens; the button only shows the way and passes its click to the row.
+        action={result.inLibrary ? undefined : <Button variant="outline" icon={<Plus aria-hidden="true" />} tabIndex={-1} aria-hidden="true">Add</Button>}
+      />
     </li>
+  );
+}
+
+function ResultGroup({ label, results, onOpen, onKeyDown }: {
+  label: string;
+  results: SearchResult[];
+  onOpen: (result: SearchResult) => void;
+  onKeyDown: (result: SearchResult) => (event: KeyboardEvent<HTMLDivElement>) => void;
+}) {
+  if (results.length === 0) return null;
+  return (
+    <>
+      <LabelGroup count={results.length}>{label}</LabelGroup>
+      <ul>
+        {results.map((result) => <ResultRow key={result.key} result={result} onOpen={onOpen} onKeyDown={onKeyDown(result)} />)}
+      </ul>
+    </>
   );
 }
 
@@ -175,7 +196,7 @@ export function SearchResults({ state, onOpen, onRetry }: {
   onRetry: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>('all');
-  const listRef = useRef<HTMLUListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const response = state.kind === 'done' ? state.response : state.kind === 'searching' ? state.previous : undefined;
   const results = useMemo(() => response?.results ?? [], [response]);
   const counts = useMemo(() => ({
@@ -185,19 +206,26 @@ export function SearchResults({ state, onOpen, onRetry }: {
   }), [results]);
   const visible = filter === 'all' ? results : results.filter((result) => result.type === filter);
 
-  const moveFocus = (event: KeyboardEvent<HTMLButtonElement>) => {
+  const rowKeys = (result: SearchResult) => (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      onOpen(result);
+      return;
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
-    const rows = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('[data-result-row]') ?? [])];
+    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-result-row]') ?? [])];
     const index = rows.indexOf(event.currentTarget);
     rows[Math.min(rows.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)))]?.focus();
   };
 
   if (state.kind === 'idle') {
     return (
-      <p className="px-4 py-10 text-[var(--secondary-ink)] sm:px-6">
-        Search by name, or paste an IMDb id (tt…), tmdb:… or tvdb:…
-      </p>
+      <div className="pt-12 pl-41">
+        <p className="w-220 max-w-full font-ui text-base text-muted-foreground">
+          Search by name, or paste an IMDb id (tt…), tmdb:… or tvdb:…
+        </p>
+      </div>
     );
   }
 
@@ -206,55 +234,61 @@ export function SearchResults({ state, onOpen, onRetry }: {
     serviceProblem('Radarr', response.services.radarr),
   ].filter((problem): problem is string => problem !== undefined);
   const bothFailed = response !== undefined && problems.length === 2;
+  const retry = <Button variant="outline" onClick={onRetry}>Try again</Button>;
 
   return (
-    <section aria-labelledby="search-heading" className="pb-16">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-6 sm:px-6">
-        <h2 id="search-heading" className="text-lg font-semibold text-[var(--ink)]">
-          Results for “{state.query}”
-        </h2>
-        <div role="group" aria-label="Show" className="flex rounded-md border border-[var(--border)] p-0.5">
-          {(['all', 'tv', 'movie'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={filter === value}
-              onClick={() => setFilter(value)}
-              className={cn(
-                'h-7 rounded px-2.5 text-sm font-medium tabular-nums',
-                filter === value ? 'bg-[var(--ink)] text-[var(--control)]' : 'text-[var(--secondary-ink)] hover:text-[var(--ink)]',
-              )}
+    <section aria-label="Search results" className="pt-2 pb-6 pl-41">
+      <div className="flex w-220 max-w-full flex-col">
+        <HeaderResults
+          count={state.kind === 'searching'
+            ? <span className="flex items-center gap-2"><Spinner className="size-4.5" />Searching Sonarr and Radarr…</span>
+            : response === undefined ? 'Results for' : `${results.length} ${results.length === 1 ? 'result' : 'results'} for`}
+          query={`“${state.query}”`}
+          filter={(
+            <ToggleGroup aria-label="Show" value={filter} onValueChange={(value) => setFilter(value as Filter)}>
+              <ToggleGroupItem value="all" count={counts.all}>All</ToggleGroupItem>
+              <ToggleGroupItem value="tv" count={counts.tv}>TV</ToggleGroupItem>
+              <ToggleGroupItem value="movie" count={counts.movie}>Movies</ToggleGroupItem>
+            </ToggleGroup>
+          )}
+        />
+        <p className="sr-only" aria-live="polite">
+          {state.kind === 'searching' ? 'Searching…' : state.kind === 'done' ? `${results.length} results` : ''}
+        </p>
+        {(state.kind === 'failed' || problems.length > 0) && (
+          <div className="flex flex-col gap-2 pt-1 pb-3">
+            {state.kind === 'failed' && <Callout title="The search didn't reach media-manager-2's server." action={retry} />}
+            {problems.map((problem) => <Callout key={problem} title={problem} action={retry} />)}
+          </div>
+        )}
+        {state.kind === 'done' && results.length === 0 && !bothFailed && (
+          <div className="flex justify-center pt-16">
+            <EmptyState icon={<SearchX aria-hidden="true" />} title={`Nothing matches “${state.query}” in Sonarr or Radarr.`} className="w-130" />
+          </div>
+        )}
+        {visible.length > 0 && (
+          <>
+            <div
+              ref={listRef}
+              className={cn('transition-opacity duration-(--duration-base) ease-out', state.kind === 'searching' && 'opacity-60')}
             >
-              {value === 'all' ? 'All' : value === 'tv' ? 'TV' : 'Movies'} {counts[value]}
-            </button>
-          ))}
-        </div>
+              <ResultGroup label="In your library" results={visible.filter((result) => result.inLibrary)} onOpen={onOpen} onKeyDown={rowKeys} />
+              <ResultGroup label="From Sonarr and Radarr" results={visible.filter((result) => !result.inLibrary)} onOpen={onOpen} onKeyDown={rowKeys} />
+            </div>
+            <div className="flex items-center gap-5 px-4 pt-4 text-label font-normal text-subtle-foreground">
+              <span className="flex items-center gap-1">
+                <Kbd icon={<ArrowUp aria-hidden="true" />} aria-label="Up arrow" />
+                <Kbd icon={<ArrowDown aria-hidden="true" />} aria-label="Down arrow" />
+                Move
+              </span>
+              <span className="flex items-center gap-1">
+                <Kbd icon={<CornerDownLeft aria-hidden="true" />} aria-label="Enter" />
+                Open
+              </span>
+            </div>
+          </>
+        )}
       </div>
-      <p className="sr-only" aria-live="polite">
-        {state.kind === 'searching' ? 'Searching…' : state.kind === 'done' ? `${results.length} results` : ''}
-      </p>
-      {state.kind === 'searching' && (
-        <p className="px-4 pb-2 text-sm text-[var(--secondary-ink)] sm:px-6">Searching Sonarr and Radarr…</p>
-      )}
-      {state.kind === 'failed' && (
-        <div role="alert" className="flex flex-wrap items-center gap-3 px-4 py-3 text-[#b42318] sm:px-6">
-          The search didn't reach media-manager-2's server.
-          <button type="button" onClick={onRetry} className="font-semibold underline underline-offset-2">Try again</button>
-        </div>
-      )}
-      {problems.map((problem) => (
-        <p key={problem} role="alert" className="px-4 py-1 text-sm text-[#b42318] sm:px-6">{problem}</p>
-      ))}
-      {state.kind === 'done' && results.length === 0 && !bothFailed && (
-        <p className="px-4 py-6 text-[var(--secondary-ink)] sm:px-6">Nothing matches “{state.query}” in Sonarr or Radarr.</p>
-      )}
-      {visible.length > 0 && (
-        <ul ref={listRef} className={cn('divide-y divide-[var(--border)] border-y border-[var(--border)]', state.kind === 'searching' && 'opacity-60')}>
-          {visible.map((result) => (
-            <ResultRow key={result.key} result={result} onOpen={onOpen} onKeyDown={moveFocus} />
-          ))}
-        </ul>
-      )}
     </section>
   );
 }
