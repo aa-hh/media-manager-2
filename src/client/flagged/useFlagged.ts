@@ -24,6 +24,8 @@ export type Wanted = {
   nextSearchAt: number | null;
   lastResult: string;
   inQueue: boolean;
+  // The search scheduler never searches a subject listed in search_backlog.
+  backlog: boolean;
 };
 
 export type WantedLists = { missing: Wanted[]; cutoff: Wanted[] };

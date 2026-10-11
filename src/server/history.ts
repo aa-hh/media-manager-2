@@ -236,7 +236,8 @@ export const createHistory = (options: {
   const list = async (query: HistoryQuery): Promise<{ events: HistoryEvent[]; hasMore: boolean }> => {
     const { filter, page, movieId, seriesId, episodeId } = query;
     // A title filter belongs to one service, so the other one's whole history is never mixed in.
-    const services = (query.service === 'all' ? ['sonarr', 'radarr'] as const : [query.service]).filter((service) => (
+    // Automatic fixes show no Sonarr or Radarr events, so their pages are not read and steps page by before alone.
+    const services = filter === 'fixes' ? [] : (query.service === 'all' ? ['sonarr', 'radarr'] as const : [query.service]).filter((service) => (
       service === 'sonarr' ? movieId === undefined : seriesId === undefined && episodeId === undefined
     ));
     const base = `/api/v3/history?page=${page}&pageSize=${PAGE_SIZE}&sortKey=date&sortDirection=descending`;

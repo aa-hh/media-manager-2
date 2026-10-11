@@ -90,10 +90,7 @@ const docsUrl = (value: unknown) => {
   return null;
 };
 
-// The backup_runs table belongs to the backup work, which may not be installed yet.
 const lastBackupAt = (database: DatabaseSync): number | null => {
-  const table = database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'backup_runs'").get();
-  if (table === undefined) return null;
   const row = database.prepare("SELECT MAX(finished_at) AS at FROM backup_runs WHERE outcome = 'ok'").get();
   return row === undefined || row.at === null ? null : Number(row.at);
 };
@@ -216,7 +213,8 @@ export const createHealth = (options: {
           if (previous !== undefined && account.hitAndRuns > previous) {
             ours(`hnr:${stats.tracker}`, 'warning', 'tracker', `${label} hit-and-run count rose from ${previous} to ${account.hitAndRuns} (lifetime count)`);
           }
-          lastHitAndRuns.set(stats.tracker, account.hitAndRuns);
+          // The first count since start stays the baseline, so the warning lasts until restart.
+          if (previous === undefined) lastHitAndRuns.set(stats.tracker, account.hitAndRuns);
         }
       }
       if (stats.kind === 'not_configured' || [...hosts].some((host) => trackerOf(host) === stats.tracker)) continue;

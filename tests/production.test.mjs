@@ -4775,6 +4775,11 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     assert.deepEqual(second.problems.map(({ id, level, message }) => ({ id, level, message })), [
       { id: 'hnr:blutopia', level: 'warning', message: 'Blutopia hit-and-run count rose from 2 to 3 (lifetime count)' },
     ]);
+    // Moving the baseline to the latest count on every check, so the warning clears at the next check, turns this red.
+    const third = await health.check();
+    assert.deepEqual(third.problems.map(({ id, message }) => ({ id, message })), [
+      { id: 'hnr:blutopia', message: 'Blutopia hit-and-run count rose from 2 to 3 (lifetime count)' },
+    ]);
   });
 
   // Leaving the health routes outside the sign-in guard, or not running the checks on demand, turns this red.
@@ -4885,6 +4890,7 @@ test('flagged lists what automation gave up on with the right next step, and wan
   assert.equal(needsYou.handledThisWeek, 1);
   assert.equal(needsYou.handlingCount, 1);
 
+  database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?)').run('sonarr:episode:51', clock.value);
   // Filtering manual downloads out of the missing list, keeping them in cutoff, or losing the search schedule turns this red.
   const { missing, cutoff } = await flagged.wanted();
   assert.deepEqual(missing.map((item) => `${item.service}:${item.id}`), ['sonarr:51', 'sonarr:50', 'radarr:7', 'radarr:8']);
@@ -4893,6 +4899,8 @@ test('flagged lists what automation gave up on with the right next step, and wan
   assert.equal(never.lastResult, 'never searched');
   assert.equal(never.nextSearchAt, searchDueAt({ availableAt: Date.parse('2026-10-01T00:00:00Z'), addedAt: Date.parse(added), lastSearchAt: null }));
   assert.equal(missing.find((item) => item.id === 51).lastResult, 'grabbed Andor.S02E02.2160p');
+  // Showing a next search time for a subject in search_backlog, which the search scheduler skips, turns this red.
+  assert.deepEqual([missing.find((item) => item.id === 51).nextSearchAt, missing.find((item) => item.id === 51).backlog, never.backlog], [null, true, false]);
   assert.equal(missing.find((item) => item.id === 7).availableAt, clock.value - 3 * day);
   assert.equal(missing.find((item) => item.id === 8).nextSearchAt, null);
   // Checking the search history before the download queue makes a queued, never-searched movie read "never searched".
@@ -5064,6 +5072,12 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   const afterCrowded = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: crowdedOldestStep });
   // Ignoring before on page 2, or cutting the newest steps instead of the oldest, turns this red.
   assert.deepEqual(newer(afterCrowded.events), Array.from({ length: 51 }, (_, index) => `Newer step ${50 - index}`));
+  // A full Sonarr page whose every grab is newer than every step.
+  sonarrRecords = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 400 + index, date: new Date(Date.parse('2026-10-11T10:00:00Z') - index * 60_000).toISOString() }));
+  const requestsBeforeFixes = requests.length;
+  const fixesPastFull = await history.list({ filter: 'fixes', service: 'all', page: 1 });
+  // Reading Sonarr pages under the Automatic fixes filter, and so starting steps at its oldest record, turns this red.
+  assert.deepEqual([fixesPastFull.events[0]?.detail, fixesPastFull.events.length, requests.length], ['Newer step 149', 100, requestsBeforeFixes]);
   sonarrRecords = [grabbed, imported];
 
   const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, history }) });

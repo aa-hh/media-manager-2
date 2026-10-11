@@ -137,7 +137,8 @@ function NeedsYouRow({ item, index, selected, open, dimmed, onSelect, onOpen, on
 
 const searchedText = (item: Wanted, now: number) => [
   item.lastSearchAt === null ? 'never' : `last ${formatDuration(now - item.lastSearchAt)} ago`,
-  item.nextSearchAt === null ? 'not available yet' : `next in ${formatDuration(item.nextSearchAt - now)}`,
+  item.backlog ? 'not searched automatically'
+    : item.nextSearchAt === null ? 'not available yet' : `next in ${formatDuration(item.nextSearchAt - now)}`,
 ].join(' · ');
 
 const dateText = (at: number | null) => (at === null ? '' : new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));

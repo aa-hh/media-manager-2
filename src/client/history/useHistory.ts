@@ -64,7 +64,8 @@ const readLink = () => {
 };
 
 // While active, reads one list page by page; later pages send before, and steps at exactly that time come back again, so a page only adds ids not already shown.
-const usePaged = <T,>(onUnauthorized: () => void, active: boolean, url: string, read: (body: unknown) => { items: T[]; hasMore: boolean }, idOf: (item: T) => string, nextQuery?: (shown: T[]) => string) => {
+// A later page can hold steps newer than the oldest Sonarr or Radarr event already shown, so the list is sorted newest first after each page.
+const usePaged = <T extends { at: number },>(onUnauthorized: () => void, active: boolean, url: string, read: (body: unknown) => { items: T[]; hasMore: boolean }, idOf: (item: T) => string, nextQuery?: (shown: T[]) => string) => {
   const [state, setState] = useState<Paged<T>>({ kind: 'loading' });
   const unauthorizedRef = useRef(onUnauthorized);
   unauthorizedRef.current = onUnauthorized;
@@ -87,7 +88,7 @@ const usePaged = <T,>(onUnauthorized: () => void, active: boolean, url: string, 
       setState((current) => {
         const previous = page > 1 && current.kind === 'ready' ? current.items : [];
         const seen = new Set(previous.map(idOf));
-        return { kind: 'ready', items: [...previous, ...items.filter((item) => !seen.has(idOf(item)))], hasMore, page, loadingMore: false };
+        return { kind: 'ready', items: [...previous, ...items.filter((item) => !seen.has(idOf(item)))].sort((a, b) => b.at - a.at), hasMore, page, loadingMore: false };
       });
     } catch {
       if (version !== versionRef.current) return;

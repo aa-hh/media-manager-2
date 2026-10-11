@@ -29,6 +29,8 @@ export type Wanted = {
   nextSearchAt: number | null;
   lastResult: string;
   inQueue: boolean;
+  // The search scheduler never searches a subject listed in search_backlog.
+  backlog: boolean;
 };
 
 const PAGE_SIZE = 500;
@@ -190,6 +192,7 @@ export const createFlagged = (options: {
       nextSearchAt: record.availableAt === null ? null : searchDueAt({ availableAt: record.availableAt, addedAt: record.addedAt, lastSearchAt }),
       lastResult,
       inQueue,
+      backlog: false,
     };
   };
 
@@ -213,7 +216,11 @@ export const createFlagged = (options: {
     const queue = listQueue(database);
     const grabs = listGrabs(database);
     const [missing, cutoff] = await Promise.all([list('missing', queue, grabs), list('cutoff', queue, grabs)]);
-    return { missing, cutoff };
+    const backlog = new Set(database.prepare('SELECT subject FROM search_backlog').all().map((row) => String(row.subject)));
+    const mark = (items: Wanted[]) => items.map((item) => (
+      backlog.has(key(item.service, item.type, item.id)) ? { ...item, nextSearchAt: null, backlog: true } : item
+    ));
+    return { missing: mark(missing), cutoff: mark(cutoff) };
   };
 
   const search = async (service: Service, type: WantedType, ids: number[]): Promise<'ok' | 'refused' | 'unavailable'> => {
