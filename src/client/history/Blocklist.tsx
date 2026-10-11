@@ -1,6 +1,6 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { Ban, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Collapsible } from '@/components/ui/collapsible-trigger';
@@ -53,7 +53,7 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
   const [selected, setSelected] = useState<string | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState<BlockEntry | null>(null);
-  const pendingRef = useRef<{ entry: BlockEntry; toast: string } | null>(null);
+  const pendingRef = useRef<{ entry: BlockEntry; toast: string; timer: number } | null>(null);
 
   const show = (key: string, visible: boolean) => setHidden((current) => {
     const next = new Set(current);
@@ -63,41 +63,51 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
   });
 
   // The delete goes out only once the Undo window has passed; Sonarr and Radarr cannot put an entry back.
-  const commit = async (entry: BlockEntry) => {
-    const { status } = await sendJson(`/api/blocklist/${entry.service}/${entry.id}`, 'DELETE').catch(() => ({ status: 0 }));
-    if (status === 204) return;
-    show(keyOf(entry), true);
-    setFailed(entry);
+  // Clearing pendingRef first makes a second call (the toast's onClose firing from close below) a no-op.
+  const commit = () => {
+    const current = pendingRef.current;
+    if (current === null) return;
+    pendingRef.current = null;
+    window.clearTimeout(current.timer);
+    toasts.close(current.toast);
+    const { entry } = current;
+    void sendJson(`/api/blocklist/${entry.service}/${entry.id}`, 'DELETE').catch(() => ({ status: 0 })).then(({ status }) => {
+      if (status === 204) return;
+      show(keyOf(entry), true);
+      setFailed(entry);
+    });
   };
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  // Leaving the screen sends a pending delete straight away rather than dropping it.
+  useEffect(() => () => commitRef.current(), []);
 
   const undo = () => {
     const current = pendingRef.current;
     if (current === null) return;
     pendingRef.current = null;
+    window.clearTimeout(current.timer);
     toasts.close(current.toast);
     show(keyOf(current.entry), true);
   };
 
   const unblock = (entry: BlockEntry) => {
-    const previous = pendingRef.current;
-    if (previous !== null) toasts.close(previous.toast);
+    commit();
     show(keyOf(entry), false);
     setSelected(null);
     setFailed(null);
-    // The Undo window is the toast's own life, which pauses while hovered: the delete goes out when the toast closes
-    // by timing out or being dismissed, never while Undo is still on screen.
+    // The Undo window runs on a window timer, not the toast's own timeout: Base UI pauses toast timers while the
+    // window is out of focus, which would hold the delete back. The toast only shows Undo; dismissing it commits early.
     const toast = toasts.add({
       title: `Unblocked ${entry.release}`,
       description: `${serviceWords[entry.service]} can grab that release again on the next search.`,
-      timeout: UNDO_MS,
+      timeout: 0,
       actionProps: { children: 'Undo', onClick: undo },
       onClose: () => {
-        if (pendingRef.current?.entry !== entry) return;
-        pendingRef.current = null;
-        void commit(entry);
+        if (pendingRef.current?.entry === entry) commit();
       },
     });
-    pendingRef.current = { entry, toast };
+    pendingRef.current = { entry, toast, timer: window.setTimeout(commit, UNDO_MS) };
   };
 
   const entries = state.kind === 'ready' ? state.items.filter((entry) => !hidden.has(keyOf(entry))) : [];
