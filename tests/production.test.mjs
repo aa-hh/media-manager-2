@@ -64,6 +64,8 @@ const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url)
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const torrentFilesModuleUrl = new URL('../dist/server/torrentFiles.js', import.meta.url).href;
+const titleDeleteModuleUrl = new URL('../dist/server/titleDelete.js', import.meta.url).href;
+const historyModuleUrl = new URL('../dist/server/history.js', import.meta.url).href;
 const manualImportModuleUrl = new URL('../dist/server/manualImport.js', import.meta.url).href;
 const s3ModuleUrl = new URL('../dist/server/services/s3.js', import.meta.url).href;
 const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js', import.meta.url).href;
@@ -405,7 +407,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api, library, images } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks, api, library, titleDelete, images } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -421,6 +423,7 @@ const makeApp = async (input = {}) => {
     webhooks,
     api,
     library,
+    titleDelete,
     images,
   });
   return { app, clock, fixture };
@@ -2484,7 +2487,8 @@ test('the settings screen sets a tracker\'s site software and account credential
 // Beyond-HD and PrivateHD sign-ins turns this red.
 test('the Blutopia token moves to the blutopia.cc tracker and the Beyond-HD and PrivateHD sign-ins are dropped', async () => {
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
-  const before = applicationMigrations.length - 1;
+  const before = applicationMigrations.findIndex((migration) => migration.includes('blutopia.apiToken'));
+  assert.ok(before > 0);
   const migrate = (rows) => {
     const database = new DatabaseSync(':memory:');
     migrateDatabase(database, applicationMigrations.slice(0, before));
@@ -8256,4 +8260,368 @@ test('backup commands upload, list and restore through a bucket or a folder from
   assert.equal(fromFolder.code, 0, fromFolder.stderr);
   assert.match(fromFolder.stdout, new RegExp(`^restored ${folderKey} to `));
   for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey));
+});
+
+test('deleting a movie or a show maps its files first, keeps seeding unless chosen, and stops when Sonarr or Radarr refuses', async (t) => {
+  const { rmSync } = await import('node:fs');
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTorrentPoller } = await import(torrentsModuleUrl);
+  const { createTorrentFiles } = await import(torrentFilesModuleUrl);
+  const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
+  const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE } = await import(titleDeleteModuleUrl);
+  const { createHistory } = await import(historyModuleUrl);
+  const roots = [];
+  const databases = [];
+  t.after(async () => {
+    for (const database of databases) database.close();
+    for (const root of roots) await rm(root, { recursive: true, force: true });
+  });
+  const exists = async (path) => lstat(path).then(() => true, () => false);
+  const [CUR, OLD, SHARED, V1, V2, PACK, SINGLE, OTHER] = ['A1', 'A2', 'A3', 'B1', 'B2', 'C1', 'C2', 'C3'].map((pair) => pair.repeat(20));
+
+  const world = async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'media-manager-2-title-delete-')));
+    roots.push(root);
+    const at = (...parts) => join(root, ...parts);
+    for (const folder of ['downloads', 'library/movies', 'library/tv', 'versions/movies', 'versions/tv']) await mkdir(at(folder), { recursive: true });
+    const database = openDatabase(at('db', 'media-manager.sqlite'));
+    databases.push(database);
+    for (const service of ['radarr', 'sonarr']) setSetting(database, 'hostPaths', `downloads.${service}`, at('downloads'));
+    setSetting(database, 'hostPaths', 'library.radarr', at('library/movies'));
+    setSetting(database, 'hostPaths', 'library.sonarr', at('library/tv'));
+    setSetting(database, 'hostPaths', 'versions.radarr', at('versions/movies'));
+    setSetting(database, 'hostPaths', 'versions.sonarr', at('versions/tv'));
+    const fake = { torrents: [], calls: [] };
+    const rtorrent = {
+      call: async (method, params) => {
+        fake.calls.push(method);
+        if (method === 'd.multicall2' && params.length === 5) return fake.torrents.map((torrent) => [torrent.hash, torrent.hash, at(torrent.directory)]);
+        if (method === 'd.multicall2') return fake.torrents.map((torrent) => [torrent.hash, torrent.hash, 1, 1, 0, 0, 1, 1, 1, 1, '', 0, 0, 0, 0, at(torrent.directory)]);
+        if (method === 't.multicall') return [];
+        const torrent = fake.torrents.find((candidate) => candidate.hash === params[0]);
+        if (torrent === undefined) throw new Error('rTorrent fault -501: Could not find info-hash.');
+        if (method === 'f.multicall') return torrent.files.map((file) => [file, 1]);
+        if (method === 'd.directory') return at(torrent.directory);
+        if (method === 'd.is_multi_file') return torrent.files.length > 1 ? 1 : 0;
+        if (method === 'd.erase') {
+          fake.torrents = fake.torrents.filter((candidate) => candidate !== torrent);
+          return 0;
+        }
+        throw new Error(`Unexpected ${method}`);
+      },
+    };
+    const { fake: arrFake, ...arr } = connectArr(database);
+    const poller = createTorrentPoller({ database, rtorrent, events: createEventHub() });
+    const torrentFiles = createTorrentFiles({ database, rtorrent, arr });
+    const deleteVersion = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: async () => {} });
+    const clock = { value: 1_800_000_000_000, sleeps: 0 };
+    const routes = createTitleDeleteRoutes(createTitleDelete({
+      database,
+      arr,
+      torrentFiles,
+      deleteVersion,
+      advise: async (hash) => ({ recommendation: 'safe', reason: `advice for ${hash.slice(0, 2)}`, globalRatio: null }),
+      now: () => clock.value,
+      sleep: async (ms) => {
+        clock.value += ms;
+        clock.sleeps += 1;
+      },
+    }));
+    const addTorrent = async (hash, directory, files) => {
+      for (const file of files) {
+        await mkdir(dirname(at(directory, file)), { recursive: true });
+        await writeFile(at(directory, file), `${hash} ${file}`);
+      }
+      fake.torrents.push({ hash, directory, files });
+    };
+    const hardlink = async (source, destination) => {
+      await mkdir(dirname(destination), { recursive: true });
+      await link(source, destination);
+      return destination;
+    };
+    let nextVersion = 0;
+    const addVersion = async (hash, subject, source, destination) => {
+      nextVersion += 1;
+      await hardlink(source, destination);
+      const stats = await stat(destination, { bigint: true });
+      database.prepare(`
+        INSERT INTO second_versions (id, service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, file_path, file_inode, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'Release-GRP', 'g', 'Blutopia', 'Bluray-2160p', ?, 'imported', ?, ?, 1, 1)
+      `).run(nextVersion, subject.movieId === undefined ? 'sonarr' : 'radarr', subject.movieId ?? null, subject.movieId === undefined ? 5 : null,
+        subject.episodeId ?? null, hash, destination, `${stats.dev}:${stats.ino}`);
+      return nextVersion;
+    };
+    // Sonarr's or Radarr's answer to one DELETE; on success it deletes `removes` from disk, as it does in the background.
+    const onDelete = (service, path, { status = 200, removes = [] } = {}) => arrFake[service].routes.push((method, url) => {
+      if (method !== 'DELETE' || url.pathname !== path) return undefined;
+      if (status === 200) for (const file of removes) rmSync(file, { force: true });
+      return status === 200 ? { status, body: {} } : { status, body: { message: 'Root folder does not exist' } };
+    });
+    const plan = async (path) => {
+      const response = await routes.request(`${path}/delete-plan`);
+      return { status: response.status, body: await response.json() };
+    };
+    const remove = async (path, body) => {
+      const response = await routes.request(`${path}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    const requests = (service) => arrFake[service].requests.map((request) => `${request.method} ${request.path}${request.params.size > 0 ? `?${request.params}` : ''}`);
+    const versionState = (id) => database.prepare('SELECT state FROM second_versions WHERE id = ?').get(id).state;
+    const deletions = async () => (await createHistory({ database, arr, labels: { subject: async () => 'label' } })
+      .list({ filter: 'deletions', service: 'all', page: 1 })).events.filter((event) => event.eventType.startsWith('mm2_title_'));
+    const steps = (body) => body.steps.map((step) => `${step.step}:${step.outcome}`);
+    return { at, database, fake, arrFake, poller, clock, addTorrent, hardlink, addVersion, onDelete, plan, remove, requests, versionState, deletions, steps };
+  };
+
+  // Dune: its file is a hardlink of CUR; OLD and SHARED were imported before an upgrade, and SHARED's data also backs another movie's file.
+  const dune = async () => {
+    const w = await world();
+    await w.addTorrent(CUR, 'downloads', ['Dune.2160p.mkv']);
+    await w.addTorrent(OLD, 'downloads', ['Dune.720p.mkv']);
+    await w.addTorrent(SHARED, 'downloads', ['Dune.1080p.mkv']);
+    await w.addTorrent(V1, 'downloads', ['Dune.Remux.mkv']);
+    const file = await w.hardlink(w.at('downloads/Dune.2160p.mkv'), w.at('library/movies/Dune (2021)/Dune.mkv'));
+    await w.hardlink(w.at('downloads/Dune.1080p.mkv'), w.at('library/movies/Other (2020)/Other.mkv'));
+    const version = await w.addVersion(V1, { movieId: 1 }, w.at('downloads/Dune.Remux.mkv'), w.at('versions/movies/Dune (2021)/Dune.Remux.mkv'));
+    w.arrFake.radarr.state.movies.push(movieRecord({ id: 1, title: 'Dune', year: 2021, hasFile: true, movieFile: { id: 11, path: file, size: 10 } }));
+    for (const hash of [OLD, SHARED]) {
+      w.arrFake.radarr.state.history.push(historyRecord({ eventType: 'downloadFolderImported', downloadId: hash.toLowerCase(), movieId: 1, data: { fileId: '9' } }));
+    }
+    await w.poller.poll();
+    return { ...w, file, version };
+  };
+
+  // Listing an upgraded-away torrent ticked or not at all, offering one that still backs a kept file, or dropping the recycle bin turns this red.
+  await t.test('the movie plan lists its torrents unticked with advice, refuses one that backs a kept file, and ticks its second versions', async () => {
+    const w = await dune();
+    w.arrFake.radarr.routes.push((method, url) => (url.pathname === '/api/v3/config/mediamanagement' ? { status: 200, body: { recycleBin: '/data/recycle' } } : undefined));
+    const { status, body } = await w.plan('/movie/1');
+    assert.equal(status, 200);
+    assert.equal(body.title, 'Dune (2021)');
+    assert.equal(body.recycleBin, '/data/recycle');
+    assert.deepEqual(body.files.map((file) => [file.fileId, file.state, file.hashes, file.note]), [[11, 'linked', [CUR], null]]);
+    assert.deepEqual(body.torrents.map((torrent) => [torrent.hash, torrent.upgradedAway, torrent.ticked, torrent.removal.allowed, torrent.advice.reason]),
+      [[CUR, false, false, true, 'advice for A1'], [OLD, true, false, true, 'advice for A2'], [SHARED, true, false, false, 'advice for A3']]);
+    assert.match(body.torrents[2].removal.reason, /shares its data with the library file .*Other\.mkv/);
+    assert.deepEqual(body.secondVersions.map((row) => [row.id, row.ticked, row.torrent.hash, row.torrent.removal.allowed]), [[w.version, true, V1, true]]);
+  });
+
+  // Deleting before mapping, adding an import list exclusion, or removing a torrent or second version that was not chosen turns this red.
+  await t.test('removing the movie maps first, deletes it in Radarr without an exclusion, then removes only the chosen torrent', async () => {
+    const w = await dune();
+    w.onDelete('radarr', '/api/v3/movie/1', { removes: [w.file] });
+    const { status, body } = await w.remove('/movie/1', { mode: 'remove', removeTorrents: [CUR.toLowerCase()], secondVersions: [] });
+    assert.equal(status, 200);
+    assert.equal(body.deleted, true);
+    assert.deepEqual(w.steps(body), ['map:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:skipped', 'history:done']);
+    const radarr = w.requests('radarr');
+    const mappedAt = radarr.indexOf('GET /api/v3/history/movie?movieId=1');
+    assert.ok(mappedAt !== -1 && mappedAt < radarr.indexOf('DELETE /api/v3/movie/1?deleteFiles=true&addImportExclusion=false'));
+    assert.deepEqual(radarr.filter((request) => request.startsWith('DELETE') || request.includes('xclusion')), ['DELETE /api/v3/movie/1?deleteFiles=true&addImportExclusion=false']);
+    assert.deepEqual(body.steps[3].torrents, [{ hash: CUR, name: CUR, removed: true, reason: null }]);
+    assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [OLD, SHARED, V1]);
+    assert.equal(await exists(w.at('downloads/Dune.2160p.mkv')), false);
+    assert.equal(w.versionState(w.version), 'imported');
+    assert.equal(await exists(w.at('versions/movies/Dune (2021)/Dune.Remux.mkv')), true);
+    const [event] = await w.deletions();
+    assert.deepEqual([event.title, event.event, event.source], ['Dune (2021)', 'Movie deleted', 'media-manager-2']);
+    assert.match(event.detail, /1 torrent removed, 2 kept seeding/);
+  });
+
+  // Deleting the file before unmonitoring, or deleting the movie record in this mode, turns this red.
+  await t.test('keeping the record unmonitors the movie before deleting its file, and deletes a ticked second version with its torrent', async () => {
+    const w = await dune();
+    w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
+    const { body } = await w.remove('/movie/1', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [{ id: w.version, removeTorrent: true }] });
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:skipped', 'secondVersions:done', 'history:done']);
+    const radarr = w.requests('radarr');
+    const unmonitoredAt = radarr.indexOf('PUT /api/v3/movie/editor');
+    assert.ok(unmonitoredAt !== -1 && unmonitoredAt < radarr.indexOf('DELETE /api/v3/moviefile/11'));
+    assert.equal(radarr.some((request) => request.startsWith('DELETE /api/v3/movie/')), false);
+    assert.equal(w.arrFake.radarr.state.movies[0].monitored, false);
+    assert.deepEqual(body.steps[5].secondVersions, [{ id: w.version, deleted: true, torrentRemoved: true, reason: null }]);
+    assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [CUR, OLD, SHARED]);
+    assert.equal((await w.deletions())[0].event, 'Movie file deleted');
+  });
+
+  // Carrying on after Radarr refuses (removing a torrent, a second version, or writing history) turns this red.
+  await t.test('a Radarr refusal stops everything else', async () => {
+    const w = await dune();
+    w.onDelete('radarr', '/api/v3/movie/1', { status: 500 });
+    const callsBefore = w.fake.calls.length;
+    const { status, body } = await w.remove('/movie/1', { mode: 'remove', removeTorrents: [CUR], secondVersions: [{ id: w.version, removeTorrent: true }] });
+    assert.equal(status, 200);
+    assert.equal(body.deleted, false);
+    assert.deepEqual(w.steps(body), ['map:done', 'delete:failed']);
+    assert.match(body.steps[1].message, /Radarr refused the movie delete with HTTP 500: Root folder does not exist/);
+    assert.equal(w.requests('radarr').at(-1), 'DELETE /api/v3/movie/1?deleteFiles=true&addImportExclusion=false');
+    assert.deepEqual(w.fake.calls.slice(callsBefore), []);
+    assert.equal(w.versionState(w.version), 'imported');
+    assert.equal(w.clock.sleeps, 0);
+    assert.deepEqual(await w.deletions(), []);
+  });
+
+  // Removing a torrent while the library file is still there, or waiting without a ceiling, turns this red.
+  await t.test('files still there after 2 minutes keep every torrent and say so', async () => {
+    const w = await dune();
+    w.onDelete('radarr', '/api/v3/movie/1');
+    const started = w.clock.value;
+    const { body } = await w.remove('/movie/1', { mode: 'remove', removeTorrents: [CUR], secondVersions: [{ id: w.version, removeTorrent: true }] });
+    assert.deepEqual(w.steps(body), ['map:done', 'delete:done', 'wait:failed', 'torrents:failed', 'secondVersions:done', 'history:done']);
+    assert.ok(w.clock.value - started >= 120_000 && w.clock.value - started < 125_000);
+    assert.match(body.steps[2].message, /still had 1 library file after 2 minutes, so every torrent was kept/);
+    assert.deepEqual(body.steps[3].torrents.map((torrent) => [torrent.removed, /every torrent was kept/.test(torrent.reason)]), [[false, true]]);
+    assert.deepEqual(body.steps[4].secondVersions.map((row) => [row.deleted, row.torrentRemoved]), [[true, false]]);
+    assert.equal(w.fake.calls.includes('d.erase'), false);
+    assert.equal(w.fake.torrents.length, 4);
+  });
+
+  // Calling an unproven file linked, dropping its text, offering a torrent for it, or losing the copy label turns this red.
+  await t.test('an unlinked file says so and offers no torrent, and a copy traced through Radarr history is labelled', async () => {
+    const w = await world();
+    await w.addTorrent(CUR, 'downloads', ['Heat.mkv']);
+    const file = w.at('library/movies/Heat (1995)/Heat.mkv');
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, 'a copy');
+    w.arrFake.radarr.state.movies.push(movieRecord({ id: 2, title: 'Heat', year: 1995, hasFile: true, movieFile: { id: 12, path: file, size: 6 } }));
+    await w.poller.poll();
+    const unlinked = (await w.plan('/movie/2')).body;
+    assert.deepEqual(unlinked.files.map((entry) => [entry.state, entry.note]), [['none', UNLINKED_FILE]]);
+    assert.equal(UNLINKED_FILE, "Can't link this file to a torrent. Its torrent, if any, keeps seeding.");
+    assert.deepEqual(unlinked.torrents, []);
+    const stale = await w.remove('/movie/2', { mode: 'remove', removeTorrents: [CUR], secondVersions: [] });
+    assert.equal(stale.status, 409);
+    assert.equal(stale.body.error, 'plan_changed');
+    assert.equal(w.requests('radarr').some((request) => request.startsWith('DELETE')), false);
+
+    w.arrFake.radarr.state.history.push(historyRecord({ eventType: 'downloadFolderImported', downloadId: CUR, movieId: 2, data: { fileId: '12' } }));
+    const copied = (await w.plan('/movie/2')).body;
+    assert.deepEqual(copied.files.map((entry) => [entry.state, entry.note]), [['copied', null]]);
+    assert.deepEqual(copied.torrents.map((torrent) => [torrent.hash, torrent.label, torrent.upgradedAway, torrent.removal.allowed]), [[CUR, 'imported by copy', false, true]]);
+  });
+
+  // Accepting a choice the server never offered, or a movie delete without its mode, turns this red.
+  await t.test('a delete request must name its mode for a movie only, and well-formed choices the plan still offers', async () => {
+    const w = await dune();
+    const bad = [
+      ['/movie/1', { removeTorrents: [], secondVersions: [] }],
+      ['/movie/1', { mode: 'archive', removeTorrents: [], secondVersions: [] }],
+      ['/series/1', { mode: 'remove', removeTorrents: [], secondVersions: [] }],
+      ['/movie/1', { mode: 'remove', removeTorrents: ['xyz'], secondVersions: [] }],
+      ['/movie/1', { mode: 'remove', removeTorrents: [CUR, CUR.toLowerCase()], secondVersions: [] }],
+      ['/movie/1', { mode: 'remove', removeTorrents: [], secondVersions: [{ id: 1 }] }],
+      ['/movie/0', { mode: 'remove', removeTorrents: [], secondVersions: [] }],
+    ];
+    for (const [path, body] of bad) assert.equal((await w.remove(path, body)).status, 400, JSON.stringify(body));
+    assert.equal((await w.remove('/movie/1', { mode: 'remove', removeTorrents: [SHARED], secondVersions: [] })).status, 409);
+    assert.equal((await w.remove('/movie/1', { mode: 'remove', removeTorrents: [], secondVersions: [{ id: 99, removeTorrent: false }] })).status, 409);
+    assert.equal(w.requests('radarr').some((request) => request.startsWith('DELETE')), false);
+  });
+
+  // Andor: a season pack backs three episode files; SINGLE backs one episode and also a file of another show.
+  const andor = async () => {
+    const w = await world();
+    await w.addTorrent(PACK, 'downloads/Andor.S01', ['e1.mkv', 'e2.mkv', 'e3.mkv']);
+    await w.addTorrent(SINGLE, 'downloads', ['Andor.S02E01.mkv']);
+    await w.addTorrent(V1, 'downloads', ['Andor.S01E01.2160p.mkv']);
+    await w.addTorrent(V2, 'downloads', ['Andor.S01E02.2160p.mkv']);
+    await w.addTorrent(OTHER, 'downloads', ['Unrelated.mkv']);
+    const files = [];
+    for (const n of [1, 2, 3]) files.push(await w.hardlink(w.at(`downloads/Andor.S01/e${n}.mkv`), w.at(`library/tv/Andor/Season 01/Andor - S01E0${n}.mkv`)));
+    files.push(await w.hardlink(w.at('downloads/Andor.S02E01.mkv'), w.at('library/tv/Andor/Season 02/Andor - S02E01.mkv')));
+    await w.hardlink(w.at('downloads/Andor.S02E01.mkv'), w.at('library/tv/Other Show/Season 01/Other - S01E01.mkv'));
+    const versions = [
+      await w.addVersion(V1, { episodeId: 101 }, w.at('downloads/Andor.S01E01.2160p.mkv'), w.at('versions/tv/Andor/Andor - S01E01.2160p.mkv')),
+      await w.addVersion(V2, { episodeId: 102 }, w.at('downloads/Andor.S01E02.2160p.mkv'), w.at('versions/tv/Andor/Andor - S01E02.2160p.mkv')),
+    ];
+    w.arrFake.sonarr.state.series.push(seriesRecord({ id: 5, title: 'Andor' }));
+    w.arrFake.sonarr.state.episodeFiles.push(...files.map((path, index) => ({ id: 21 + index, seriesId: 5, path, size: 1 })));
+    await w.poller.poll();
+    return { ...w, files, versions };
+  };
+
+  // Splitting a pack into one choice per file, or offering a torrent another show still uses, turns this red.
+  await t.test('the show plan gives a pack one choice and refuses a torrent another show still uses', async () => {
+    const w = await andor();
+    const { body } = await w.plan('/series/5');
+    assert.equal(body.recycleBin, null);
+    assert.deepEqual(body.files.map((file) => [file.state, file.hashes]), [...[1, 2, 3].map(() => ['linked', [PACK]]), ['linked', [SINGLE]]]);
+    assert.deepEqual(body.torrents.map((torrent) => [torrent.hash, torrent.libraryPaths.length, torrent.ticked, torrent.removal.allowed]),
+      [[PACK, 3, false, true], [SINGLE, 1, false, false]]);
+    assert.match(body.torrents[1].removal.reason, /shares its data with the library file .*Other Show/);
+    assert.deepEqual(body.secondVersions.map((row) => [row.id, row.ticked]), w.versions.map((id) => [id, true]));
+    const refused = await w.remove('/series/5', { removeTorrents: [SINGLE], secondVersions: [] });
+    assert.equal(refused.status, 409);
+    assert.match(refused.body.reason, /shares its data with the library file .*Other Show/);
+    assert.equal(w.requests('sonarr').some((request) => request.startsWith('DELETE')), false);
+  });
+
+  // Deleting before mapping, adding an import list exclusion, touching an unticked second version or skipping history turns this red.
+  await t.test('deleting the show removes the chosen pack, deletes only ticked second versions and writes history', async () => {
+    const w = await andor();
+    w.onDelete('sonarr', '/api/v3/series/5', { removes: w.files });
+    const { body } = await w.remove('/series/5', { removeTorrents: [PACK], secondVersions: [{ id: w.versions[0], removeTorrent: false }] });
+    assert.deepEqual(w.steps(body), ['map:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:done', 'history:done']);
+    const sonarr = w.requests('sonarr');
+    const mappedAt = sonarr.indexOf('GET /api/v3/history/series?seriesId=5');
+    assert.ok(mappedAt !== -1 && mappedAt < sonarr.indexOf('DELETE /api/v3/series/5?deleteFiles=true&addImportListExclusion=false'));
+    assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [SINGLE, V1, V2, OTHER]);
+    assert.deepEqual([w.versionState(w.versions[0]), w.versionState(w.versions[1])], ['deleted', 'imported']);
+    assert.deepEqual(body.steps[4].secondVersions, [{ id: w.versions[0], deleted: true, torrentRemoved: false, reason: null }]);
+    const [event] = await w.deletions();
+    assert.deepEqual([event.title, event.event, event.subject], ['Andor', 'Show deleted', null]);
+  });
+
+  // Carrying on after Sonarr refuses turns this red.
+  await t.test('a Sonarr refusal means no other call is made', async () => {
+    const w = await andor();
+    w.onDelete('sonarr', '/api/v3/series/5', { status: 500 });
+    const callsBefore = w.fake.calls.length;
+    const { body } = await w.remove('/series/5', { removeTorrents: [PACK], secondVersions: [{ id: w.versions[0], removeTorrent: true }] });
+    assert.deepEqual(w.steps(body), ['map:done', 'delete:failed']);
+    assert.equal(w.requests('sonarr').at(-1), 'DELETE /api/v3/series/5?deleteFiles=true&addImportListExclusion=false');
+    assert.deepEqual(w.fake.calls.slice(callsBefore), []);
+    assert.deepEqual(w.versions.map(w.versionState), ['imported', 'imported']);
+    assert.deepEqual(await w.deletions(), []);
+  });
+
+  // Removing the pack while Sonarr has silently kept the show's files turns this red.
+  await t.test('show files that never disappear keep the torrents and the result says so', async () => {
+    const w = await andor();
+    w.onDelete('sonarr', '/api/v3/series/5');
+    const { body } = await w.remove('/series/5', { removeTorrents: [PACK], secondVersions: [] });
+    assert.deepEqual(w.steps(body), ['map:done', 'delete:done', 'wait:failed', 'torrents:failed', 'secondVersions:skipped', 'history:done']);
+    assert.match(body.steps[2].message, /Sonarr still had 4 library files after 2 minutes, so every torrent was kept/);
+    assert.equal(body.steps[3].torrents[0].removed, false);
+    assert.equal(w.fake.calls.includes('d.erase'), false);
+    for (const file of w.files) assert.equal(await exists(file), true);
+  });
+});
+
+// Leaving the routes unmounted, or the 1 KB body limit on a long show's choices, turns this red.
+test('the delete routes sit under the owner guard at /api/library and take a long list of choices', async () => {
+  const calls = [];
+  const { app } = await makeApp({
+    titleDelete: {
+      plan: async (target) => ({ kind: 'ok', value: { target } }),
+      run: async (target, choices, mode) => {
+        calls.push([target, choices.removeTorrents.length, mode]);
+        return { kind: 'ran', deleted: true, steps: [] };
+      },
+    },
+  });
+  assert.equal((await app.request('/api/library/movie/1/delete-plan')).status, 401);
+  const { session } = await signIn(app);
+  const planned = await app.request('/api/library/series/7/delete-plan', { headers: { Cookie: session } });
+  assert.deepEqual(await planned.json(), { target: { service: 'sonarr', seriesId: 7 } });
+  const removeTorrents = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0').repeat(20));
+  const response = await app.request('/api/library/movie/3/delete', {
+    method: 'POST',
+    headers: { ...jsonHeaders(), Cookie: session },
+    body: JSON.stringify({ mode: 'keepUnmonitored', removeTorrents, secondVersions: [] }),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls, [[{ service: 'radarr', movieId: 3 }, 60, 'keepUnmonitored']]);
 });

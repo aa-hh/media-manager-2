@@ -269,6 +269,20 @@ stored in an `images` folder beside the database. No Sonarr or Radarr key
 reaches the browser. Sonarr and Radarr search results are kept in memory for
 ten minutes per service and search term; a failed lookup is never kept.
 
+### Deleting a movie or show
+
+`GET /api/library/{movie|series}/{id}/delete-plan` lists the title's files,
+which torrents hold them, each torrent's hit-and-run advice and whether it may
+be removed (or why not), torrents imported for the title before an upgrade,
+and its second versions. `POST /api/library/{movie|series}/{id}/delete` carries
+out the owner's choices. Torrents keep seeding unless chosen; one that still
+holds a kept file is never removed. Deleting never adds an import list
+exclusion. Sonarr and Radarr delete files in the background, so the server
+waits up to two minutes for them to go and keeps every torrent if any file is
+still there. If Sonarr or Radarr has a recycle bin set, deleted files move
+there and free no space until it is emptied; the plan reports its path. Each
+delete is listed in History under Deletions.
+
 ## Backups (optional)
 
 Backups are your choice. The app runs the same without them; until you set

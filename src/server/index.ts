@@ -43,6 +43,8 @@ import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
 import { createStallFix } from './stalls.js';
 import { createTorrentFiles } from './torrentFiles.js';
+import { createTitleDelete } from './titleDelete.js';
+import { adviseRemoval } from './advice.js';
 import { createImageRoutes, createTitleCache } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
@@ -143,6 +145,20 @@ if (database !== undefined) {
       if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
     }
   });
+  const secondVersionDelete = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan });
+  const titleDelete = createTitleDelete({
+    database,
+    arr,
+    torrentFiles,
+    deleteVersion: secondVersionDelete,
+    advise: (hash) => adviseRemoval(openedDatabase, hash, {
+      now: Date.now(),
+      accountStats: async (tracker) => {
+        const account = await trackerAccounts.connection(tracker);
+        return account.kind === 'ok' ? account.stats : null;
+      },
+    }),
+  });
   const search = createSearch(arr);
   const add = createAdd(database, arr);
   const app = createApp({
@@ -168,7 +184,8 @@ if (database !== undefined) {
     releases,
     grabs,
     secondVersions,
-    secondVersionDelete: createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan }),
+    secondVersionDelete,
+    titleDelete,
     owned: createOwned(arr),
     protection,
     library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title)),
