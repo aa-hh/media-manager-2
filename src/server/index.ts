@@ -27,6 +27,7 @@ import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
+import { createTitleStore } from './titleStore.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
@@ -160,8 +161,9 @@ if (database !== undefined) {
       },
     }),
   });
-  const search = createSearch(arr);
-  const add = createAdd(database, arr);
+  const titleStore = createTitleStore(database);
+  const search = createSearch(database, arr, titleStore);
+  const add = createAdd(database, arr, titleStore);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
@@ -189,7 +191,7 @@ if (database !== undefined) {
     titleDelete,
     owned: createOwned(arr),
     protection,
-    library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title)),
+    library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore),
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
       arr,
