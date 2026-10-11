@@ -183,7 +183,8 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
     }
     if (event.key === ' ' || event.key === 'm') {
       event.preventDefault();
-      if (selected.size > 0) {
+      // Acts on the selection only while the selection bar shows it; one selected row elsewhere must not steal the key from the focused row.
+      if (selected.size >= 2) {
         const anchorEpisode = detail.episodes.find((episode) => episodeKey(episode.id) === anchorKey)
           ?? detail.episodes.find((episode) => selected.has(episode.id));
         setSelection([...selected], !(anchorEpisode?.monitored ?? false));
@@ -228,8 +229,19 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   };
   const tabStop = (key: string) => (key === (indexOf(focusKey) >= 0 ? focusKey : rows[0]?.key) ? 0 : -1);
   const pickOpen = (key: string) => panel?.key === key && panel.panel === 'pick';
+  // The show was read once when the page opened; an import since then shows only as a grab marked imported in the
+  // live snapshot. Pick a release needs the current hasFile to offer replace or second version.
+  const imported = new Set((snapshot?.grabs ?? []).filter((grab) => grab.importedAt !== null).flatMap((grab) => grab.episodeIds));
   const pickBand = (key: string) => (panel !== null && panel.key === key && panel.panel === 'pick'
-    ? <PickBand panel={panel} name={detail.title} episodes={detail.episodes} onClose={() => setPanel(null)} onUnauthenticated={onUnauthenticated} />
+    ? (
+      <PickBand
+        panel={panel}
+        name={detail.title}
+        episodes={detail.episodes.map((episode) => (!episode.hasFile && imported.has(episode.id) ? { ...episode, hasFile: true } : episode))}
+        onClose={() => setPanel(null)}
+        onUnauthenticated={onUnauthenticated}
+      />
+    )
     : null);
 
   if (seasons.length === 0) {

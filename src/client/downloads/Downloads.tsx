@@ -85,7 +85,9 @@ const detailText = (row: Row) => {
   return text === '' ? undefined : text;
 };
 
-function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; row: Row; item: QueueItem; onDone: () => void; onCancel: () => void }) {
+function RemoveDialog({ open, row, item, onDone, onCancel, onUnauthenticated }: {
+  open: boolean; row: Row; item: QueueItem; onDone: () => void; onCancel: () => void; onUnauthenticated: () => void;
+}) {
   const [release, setRelease] = useState<Release>(row.byHand ? 'keep' : 'blocklist_search');
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -97,7 +99,8 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
     setFailed(false);
     const status = await postAction(`/api/queue/${item.service}/${item.queueId}/remove`, { release }).catch(() => 0);
     setSending(false);
-    if (status === 204) onDone();
+    if (status === 401) onUnauthenticated();
+    else if (status === 204) onDone();
     else setFailed(true);
   };
   const cancel = () => { setFailed(false); onCancel(); };
@@ -157,7 +160,8 @@ function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onCl
     setGrabFailed(false);
     const status = await postAction(`/api/queue/${item.service}/${item.queueId}/grab`).catch(() => 0);
     setGrabbing(false);
-    if (status === 204) onChanged();
+    if (status === 401) onUnauthenticated();
+    else if (status === 204) onChanged();
     else setGrabFailed(true);
   };
   const canGrab = delayed && item !== null;
@@ -200,7 +204,7 @@ function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onCl
           {grabFailed && item !== null && <StatusInline status="failed">{serviceName(item)} did not grab it. Try again.</StatusInline>}
         </div>
       )}
-      {selected && item !== null && <RemoveDialog open={panel === 'remove'} row={row} item={item} onDone={onChanged} onCancel={onClose} />}
+      {selected && item !== null && <RemoveDialog open={panel === 'remove'} row={row} item={item} onDone={onChanged} onCancel={onClose} onUnauthenticated={onUnauthenticated} />}
       {panel === 'import' && row.importable !== null && (
         <div className="w-full border-b border-border bg-selected px-4 pt-1 pb-4">
           <ImportPanel

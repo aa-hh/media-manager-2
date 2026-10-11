@@ -214,7 +214,15 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
   const requested = params.get('view');
   const view: View = requested === 'month' || requested === 'forecast' ? requested : 'week';
   const at = params.get('at');
-  const anchor = useMemo(() => parseDay(at) ?? new Date(), [at]);
+  // With no ?at= the calendar follows the clock, so a tab left open past midnight moves to the new day.
+  const [today, setToday] = useState(() => isoDay(new Date()));
+  useEffect(() => {
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    const timer = setTimeout(() => setToday(isoDay(new Date())), midnight.getTime() - Date.now());
+    return () => clearTimeout(timer);
+  }, [today]);
+  const anchor = useMemo(() => parseDay(at) ?? parseDay(today) ?? new Date(), [at, today]);
   const window = useMemo(() => windowFor(view, anchor), [view, anchor]);
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
 

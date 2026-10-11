@@ -6,7 +6,7 @@ import { formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
 import type { OwnedMovieDetail, SecondVersion } from '../library/api';
 import { seedingFacts, type SubjectProgress } from '../library/progress';
-import { PickRelease, type ReleaseTarget } from '../PickRelease';
+import { PickRelease } from '../PickRelease';
 import { statusLabel } from '../Search';
 import { TrackedVersion } from './EpisodeDetails';
 import { History } from './History';
@@ -30,8 +30,6 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
   const [detail, setDetail] = useState(loaded);
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [picking, setPicking] = useState(false);
-  // Held in state so live progress redraws never hand Pick a release a new target, which would search again.
-  const [target] = useState<ReleaseTarget>({ service: 'radarr', kind: 'movie', movieId: loaded.id });
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
   const live = progress.get(`movie:${detail.id}`);
   const word = movieWord(detail, live);
@@ -81,7 +79,7 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         picking={picking}
         pickPanel={picking && (
           <div className="pt-2">
-            <PickRelease target={target} title={detail.title} name={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} />
+            <PickRelease target={{ service: 'radarr', kind: 'movie', movieId: detail.id }} title={detail.title} name={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} />
           </div>
         )}
         monitored={detail.monitored ? 'all' : 'none'}
