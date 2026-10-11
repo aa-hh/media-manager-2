@@ -1219,6 +1219,9 @@ test('database initialization is repeatable and its default path is stable', asy
   first.close();
   const second = openDatabase(explicitPath);
   assert.equal(readUserVersion(second), initialized);
+  // Dropping the journal pragmas from openDatabase turns this red: every commit would fsync the file four times again.
+  assert.equal(second.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
+  assert.equal(second.prepare('PRAGMA synchronous').get().synchronous, 1);
   second.close();
 
   const home = join(root, 'home');
