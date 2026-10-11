@@ -10,11 +10,11 @@ type RowSearchResultProps = ComponentProps<'div'> & {
   /** One plain line: TV or Movie, network, status, rating. */
   meta?: ReactNode;
   overview?: ReactNode;
-  /** The strong "In library" Badge, when in the library. */
+  /** "In library" as the plain Badge with a check, when in the library. */
   status?: ReactNode;
   /** File count in its fixed 80 px column; give it with status. */
   files?: ReactNode;
-  /** The 40 px outline Add button, when not in the library. */
+  /** The row-size outline Add button, when not in the library; the same 28 px as the Badge. */
   action?: ReactNode;
   /** Highlighted by keyboard; looks like hover. */
   highlighted?: boolean;

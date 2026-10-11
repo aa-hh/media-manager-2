@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, CornerDownLeft, Plus, SearchX } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CornerDownLeft, Plus, SearchX } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -225,13 +225,13 @@ function ResultRow({ result, onOpen, onKeyDown }: {
         year={result.year ?? undefined}
         meta={meta}
         overview={result.overview ?? undefined}
-        status={result.inLibrary ? <Badge variant="strong">In library</Badge> : undefined}
+        status={result.inLibrary ? <Badge variant="plain" icon={<Check aria-hidden="true" />}>In library</Badge> : undefined}
         // The row already opens the title page, where adding happens; this only looks like the outline Add button, so it is
         // neither a button nor focusable, and its click falls through to the row.
         action={result.inLibrary ? undefined : (
           <span
             aria-hidden="true"
-            className="inline-flex h-(--control-h-default) shrink-0 items-center justify-center gap-2 rounded-(--control-radius-default) border border-input bg-card px-(--control-px-default) font-ui text-(length:--control-text-default) font-semibold whitespace-nowrap text-foreground [&>svg]:size-(--control-icon-default)"
+            className="inline-flex h-(--control-h-row) shrink-0 items-center justify-center gap-1.5 rounded-(--control-radius-row) border border-input bg-card px-(--control-px-row) font-ui text-(length:--control-text-row) font-semibold whitespace-nowrap text-foreground [&>svg]:size-(--control-icon-row)"
           >
             <Plus />
             Add
