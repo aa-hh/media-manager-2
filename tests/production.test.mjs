@@ -1766,12 +1766,13 @@ test('tracker accounts read saved settings and classify each outcome', async (t)
       },
       ok: [
         {
-          body: '{"username":"alec","group":"User","uploaded":"1.5 TiB","downloaded":"600 GiB","ratio":"2.56","buffer":"900 GiB","seeding":12,"leeching":0,"seedbonus":1234.5,"hit_and_runs":1}',
-          stats: { username: 'alec', group: 'User', uploaded: '1.5 TiB', downloaded: '600 GiB', ratio: 2.56, buffer: '900 GiB', seeding: 12, leeching: 0, seedbonus: 1234.5, hitAndRuns: 1 },
+          // Blutopia's /api/user sends byte counts and ratio as numbers and seedbonus as a string; reading the byte counts as text turns this red.
+          body: '{"username":"alec","group":"User","uploaded":1649267441664,"downloaded":644245094400,"ratio":2.56,"buffer":966367641600,"seeding":12,"leeching":0,"seedbonus":"1234.50","hit_and_runs":1}',
+          stats: { username: 'alec', group: 'User', uploaded: 1649267441664, downloaded: 644245094400, ratio: 2.56, buffer: 966367641600, seeding: 12, leeching: 0, seedbonus: 1234.5, hitAndRuns: 1 },
         },
         {
           body: '{"username":"alec"}',
-          stats: { username: 'alec', group: '', uploaded: '', downloaded: '', ratio: null, buffer: '', seeding: null, leeching: null, seedbonus: null, hitAndRuns: null },
+          stats: { username: 'alec', group: '', uploaded: null, downloaded: null, ratio: null, buffer: null, seeding: null, leeching: null, seedbonus: null, hitAndRuns: null },
         },
       ],
       rejected: [],

@@ -100,12 +100,12 @@ prove controlled behaviour only.
 `getTrackerAccountStats(database)` in `src/server/services/trackerAccounts.ts`
 returns one entry per tracker (Blutopia, PrivateHD, Beyond-HD, in that order).
 `GET /api/trackers` (owner session) returns the same JSON. Only Blutopia
-returns stats (`username, group, uploaded, downloaded, ratio, buffer, seeding,
-leeching, seedbonus, hitAndRuns`); PrivateHD and Beyond-HD return
-`stats: "unsupported"`. The three trackers are used through their APIs only
-(AA-23). Live tracker evidence is still owed: no live keys exist and the tests
-use fixtures. Acceptance needs the owner's `connections check` showing three
-tracker `ok` lines.
+returns stats: `username` and `group` as text, and `uploaded`, `downloaded`
+and `buffer` (bytes), `ratio`, `seeding`, `leeching`, `seedbonus` and
+`hitAndRuns` as numbers, each `null` when Blutopia leaves it out. PrivateHD and
+Beyond-HD return `stats: "unsupported"`. The three trackers are used through
+their APIs only (AA-23). All three answered `ok` live on the slot on
+2026-10-11.
 
 ### Title cache
 

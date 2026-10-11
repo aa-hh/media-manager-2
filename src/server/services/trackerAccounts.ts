@@ -7,10 +7,10 @@ export const trackers: readonly Tracker[] = ['blutopia', 'privatehd', 'beyondhd'
 export type BlutopiaAccount = {
   username: string;
   group: string;
-  uploaded: string;
-  downloaded: string;
+  uploaded: number | null;
+  downloaded: number | null;
   ratio: number | null;
-  buffer: string;
+  buffer: number | null;
   seeding: number | null;
   leeching: number | null;
   seedbonus: number | null;
@@ -68,10 +68,10 @@ export const createTrackerAccounts = (database: DatabaseSync, options: ServiceOp
       stats: {
         username: asText(body.username),
         group: asText(body.group),
-        uploaded: asText(body.uploaded),
-        downloaded: asText(body.downloaded),
+        uploaded: asNumber(body.uploaded),
+        downloaded: asNumber(body.downloaded),
         ratio: asNumber(body.ratio),
-        buffer: asText(body.buffer),
+        buffer: asNumber(body.buffer),
         seeding: asNumber(body.seeding),
         leeching: asNumber(body.leeching),
         seedbonus: asNumber(body.seedbonus),
