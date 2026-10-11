@@ -47,6 +47,12 @@ export const createCommands = <S extends Service>({ service, label, send }: { se
     );
   };
 
+  // A forced import drops every rejection, and a sample imported after the real file would replace it.
+  const isSample = (candidate: Record<string, unknown>) => Array.isArray(candidate.rejections) && candidate.rejections.some((rejection) => {
+    const reason = isRecord(rejection) ? rejection.reason : rejection;
+    return typeof reason === 'string' && /sample/i.test(reason);
+  });
+
   // Forces the import only onto what the grab record says was grabbed; any file outside it stops the whole import.
   const grabFiles = async (grab: ForceImportGrab): Promise<Result<unknown[]>> => {
     const answer = await send(operation, `/api/v3/manualimport?downloadId=${grab.hash}&filterExistingFiles=false`);
@@ -56,7 +62,7 @@ export const createCommands = <S extends Service>({ service, label, send }: { se
     const allowed = new Set(grab.episodeIds);
     const files: Record<string, unknown>[] = [];
     for (const candidate of body) {
-      if (!isRecord(candidate) || typeof candidate.path !== 'string') continue;
+      if (!isRecord(candidate) || typeof candidate.path !== 'string' || isSample(candidate)) continue;
       const base = {
         path: candidate.path,
         quality: candidate.quality,

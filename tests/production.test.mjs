@@ -5559,17 +5559,18 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     replace.database.close();
   });
 
-  // Importing a file onto an episode outside the grab record turns this red.
+  // Importing a file onto an episode outside the grab record, or forcing in a file Sonarr rejected as a sample, turns this red.
   await t.test('matching doubts are forced only onto what was grabbed', async () => {
     const good = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
       { path: '/files/Sonarr/a.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }] },
       { path: '/files/Sonarr/b.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 32 }] },
+      { path: '/files/Sonarr/a.sample.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }], rejections: [{ reason: 'Sample', type: 'permanent' }] },
     ] });
     await good.fix.check();
     const [command] = good.fake.sonarr.state.commands;
     assert.equal(command.name, 'ManualImport');
     assert.equal(command.importMode, 'copy');
-    assert.deepEqual(command.files.map((file) => file.episodeIds), [[31], [32]]);
+    assert.deepEqual(command.files.map((file) => [file.path, file.episodeIds]), [['/files/Sonarr/a.mkv', [31]], ['/files/Sonarr/b.mkv', [32]]]);
     good.database.close();
 
     const stray = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
