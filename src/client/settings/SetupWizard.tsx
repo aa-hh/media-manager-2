@@ -16,7 +16,7 @@ import { useToastManager } from '@/components/ui/toast';
 import { navigate } from '../navigation';
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
-import { isConfigured, list, pillFor, savedAddress, stripSummary } from './model';
+import { isConfigured, list, pillFor, savedAddress } from './model';
 import { Editor, PiecesStrip } from './Settings';
 import {
   backupPill, backupWords, firstStep, nextStep, type OptionalPart, previousStep, type RequiredPart, requiredParts, type SetupStatus, wantedParts, type WizardStep, wizardSummary,
@@ -414,15 +414,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           </Callout>
         ) : (
           <>
-            <PiecesStrip
-              summary={step === 'done' ? 'Every link answers. Search for something, pick a release, and watch it download live.' : stripSummary(checks)}
-              trackers={trackers}
-              noTrackers="Optional, no tracker yet"
-              checks={checks}
-              editedOf={editedOf}
-              folders={folders}
-              look={step === 'done' ? 'done' : 'setup'}
-            />
+            <PiecesStrip checks={checks} editedOf={editedOf} folders={folders} look={step === 'done' ? 'done' : 'setup'} />
             <div className="flex items-start gap-8">
               <nav aria-label="Setup steps" className="flex w-80 shrink-0 flex-col">
                 <TrackerListRow

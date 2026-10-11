@@ -49,30 +49,18 @@ function TrackerMark({ host, size }: { host: string; size: 'row' | 'header' }) {
   );
 }
 
-/** The pill a tracker shows in its row and the strip: a failed account connection, unsaved edits, or its rule state. */
-export function TrackerPill({ row, edited, strip = false }: { row: TrackerRow; edited: boolean; strip?: boolean }) {
-  const { name, logo } = trackerInfo(row.host);
-  const leading = strip ? (
-    <>
-      {logo !== undefined && <span className="flex shrink-0 [&>img]:size-4"><Logo name={logo} alt="" /></span>}
-      <span className="font-ui text-[13px] font-semibold text-foreground">{name}</span>
-    </>
-  ) : undefined;
-  if (connectionFailed(row) || (edited && !strip)) {
+/** The pill a tracker shows in its row: a failed account connection, unsaved edits, or its rule state. */
+export function TrackerPill({ row, edited }: { row: TrackerRow; edited: boolean }) {
+  if (connectionFailed(row) || edited) {
     const state = connectionFailed(row) ? 'failed' : 'unsaved';
     return (
-      <StatusServicePill
-        logo={strip && logo !== undefined ? <Logo name={logo} alt="" /> : null}
-        name={strip ? name : null}
-        state={state}
-        className={strip ? (logo === undefined ? '[&>span:first-child]:hidden pl-2' : undefined) : pillOnly}
-      >
+      <StatusServicePill logo={null} name={null} state={state} className={pillOnly}>
         {state === 'failed' ? connectionFailure(row) : 'Unsaved edits'}
       </StatusServicePill>
     );
   }
   const pill = rulePill(row);
-  return <StatusRulePill tone={pill.warning ? 'warning' : 'default'} leading={leading}>{pill.text}</StatusRulePill>;
+  return <StatusRulePill tone={pill.warning ? 'warning' : 'default'}>{pill.text}</StatusRulePill>;
 }
 
 type TrackerListRowProps = { host: string; title: ReactNode; subline: ReactNode; pill?: ReactNode; selected: boolean; adding?: boolean; icon?: ReactNode; onClick: () => void };

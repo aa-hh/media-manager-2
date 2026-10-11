@@ -209,7 +209,7 @@ export const rulePill = (row: TrackerRow): { text: string; warning: boolean } =>
   ? { text: 'No rule', warning: true }
   : { text: row.status === 'configured_env' ? 'Configured (env file)' : 'Configured', warning: false });
 
-/** Whether this tracker counts towards "n of m connected": only software with an account connection does. */
+/** Whether this tracker has an account connection to check: only some software does. */
 export const hasConnection = (row: TrackerRow) => row.software !== 'other';
 export const connectionFailed = (row: TrackerRow) => row.connection.kind === 'rejected' || row.connection.kind === 'unreachable';
 
@@ -225,7 +225,7 @@ export const trackerSummary = (rows: TrackerRow[], adding: boolean) => {
   if (noRule.length === 1) notes.push(`${name(noRule[0])} has no hit and run rule`);
   if (noRule.length > 1) notes.push(`${noRule.length} trackers have no hit and run rule`);
   // One note at most, the first in this order, so the header stays one line.
-  return { ok: counted.filter((row) => row.connection.kind === 'ok').length, total: counted.length, failed: counted.filter(connectionFailed).map(name), notes: notes.slice(0, 1) };
+  return { failed: counted.filter(connectionFailed).map(name), notes: notes.slice(0, 1) };
 };
 
 /** The failure words a pill shows, as for services. */
