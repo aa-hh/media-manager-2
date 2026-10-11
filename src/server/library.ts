@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import {
   type ArrServices,
+  type Credit,
   type Episode,
   type FileDetail,
   type HistoryRecord,
   type Movie,
   parseFile,
+  type Ratings,
   type Result as ArrResult,
   type Series,
 } from './services/arr.js';
@@ -65,15 +67,22 @@ type ProfileDetail = { id: number; name: string; cutoff: string | null };
 export type SeriesDetail = {
   id: number | null;
   title: string;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   ended: boolean;
+  airTime: string | null;
+  firstAired: string | null;
+  lastAired: string | null;
+  nextAiring: string | null;
+  previousAiring: string | null;
   network: string | null;
   language: string | null;
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
+  ratingVotes: number | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -84,7 +93,8 @@ export type SeriesDetail = {
   monitorNewItems: string | null;
   qualityProfile: ProfileDetail | null;
   added: string | null;
-  statistics: { seasonCount: number; episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; sizeOnDisk: number };
+  statistics: Series['statistics'];
+  releaseGroups: string[];
   seasons: Array<{
     seasonNumber: number;
     monitored: boolean;
@@ -104,12 +114,20 @@ export type SeriesDetail = {
 export type MovieDetail = {
   id: number | null;
   title: string;
+  originalTitle: string | null;
+  originalLanguage: string | null;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
+  // Kept until the client reads ratings instead.
   rating: number | null;
+  ratings: Ratings;
+  keywords: string[];
+  youTubeTrailerId: string | null;
+  website: string | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -127,7 +145,14 @@ export type MovieDetail = {
   lastSearchTime: string | null;
   sizeOnDisk: number;
   releaseDates: { inCinemas: string | null; digital: string | null; physical: string | null };
+  releaseDate: string | null;
+  releaseGroups: string[];
   file: FileDetail | null;
+};
+
+export type Credits = {
+  cast: Array<{ name: string; character: string | null; order: number | null; photoUrl: string | null; tmdbId: number | null }>;
+  crew: Array<{ name: string; job: string | null; department: string | null; photoUrl: string | null; tmdbId: number | null }>;
 };
 
 export type HistoryEntry = {
@@ -213,18 +238,23 @@ const read = async (service: Arr, path: string): Promise<Result<unknown>> => {
   return { kind: 'ok', value: response.body };
 };
 
+const webUrl = (value: unknown): string | null => {
+  const url = text(value);
+  if (url === null) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
+};
+
 // Only an absolute http(s) remoteUrl may reach the browser: the local url is served by the service and needs its key.
 export const imageUrl = (images: unknown, coverType: string): string | null => {
   for (const image of records(images)) {
     if (image.coverType !== coverType) continue;
-    const url = text(image.remoteUrl);
-    if (url === null) continue;
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return parsed.href;
-    } catch {
-      continue;
-    }
+    const url = webUrl(image.remoteUrl);
+    if (url !== null) return url;
   }
   return null;
 };
@@ -289,15 +319,22 @@ const episodeDetails = (episodes: Episode[]): EpisodeDetail[] => episodes
 const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unknown; episodes?: Episode[]; owned: boolean }): SeriesDetail => ({
   id: extras.owned ? record.id : null,
   title: record.title,
+  alternateTitles: record.alternateTitles,
   year: record.year,
   status: record.status,
   ended: record.ended,
+  airTime: record.airTime,
+  firstAired: record.firstAired,
+  lastAired: record.lastAired,
+  nextAiring: record.nextAiring,
+  previousAiring: record.previousAiring,
   network: record.network,
   language: record.language,
   overview: record.overview,
   posterUrl: imageUrl(record.images, 'poster'),
   backdropUrl: imageUrl(record.images, 'fanart'),
   rating: record.rating,
+  ratingVotes: record.ratingVotes,
   certification: record.certification,
   genres: record.genres,
   runtime: record.runtime,
@@ -309,6 +346,7 @@ const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unkno
   qualityProfile: extras.owned ? profileById(extras.profiles, record.qualityProfileId) : null,
   added: record.added,
   statistics: record.statistics,
+  releaseGroups: record.releaseGroups,
   seasons: record.seasons.map((season) => ({
     seasonNumber: season.seasonNumber,
     monitored: season.monitored,
@@ -321,12 +359,19 @@ const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unkno
 const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown; owned: boolean }): MovieDetail => ({
   id: extras.owned ? record.id : null,
   title: record.title,
+  originalTitle: record.originalTitle,
+  originalLanguage: record.originalLanguage,
+  alternateTitles: record.alternateTitles,
   year: record.year,
   status: record.status,
   overview: record.overview,
   posterUrl: imageUrl(record.images, 'poster'),
   backdropUrl: imageUrl(record.images, 'fanart'),
   rating: record.rating,
+  ratings: record.ratings,
+  keywords: record.keywords,
+  youTubeTrailerId: record.youTubeTrailerId,
+  website: webUrl(record.website),
   certification: record.certification,
   genres: record.genres,
   runtime: record.runtime,
@@ -344,7 +389,18 @@ const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown
   lastSearchTime: record.lastSearchTime,
   sizeOnDisk: record.sizeOnDisk,
   releaseDates: { inCinemas: record.inCinemas, digital: record.digitalRelease, physical: record.physicalRelease },
+  releaseDate: record.releaseDate,
+  releaseGroups: record.releaseGroups,
   file: extras.owned ? record.file : null,
+});
+
+// A headshot's url is Radarr's own proxy path, so only its public remoteUrl may reach the browser.
+const creditList = (credits: Credit[]): Credits => ({
+  cast: credits.filter((credit) => credit.type === 'cast')
+    .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+    .map(({ name, character, order, images, tmdbId }) => ({ name, character, order, photoUrl: imageUrl(images, 'headshot'), tmdbId })),
+  crew: credits.filter((credit) => credit.type === 'crew')
+    .map(({ name, job, department, images, tmdbId }) => ({ name, job, department, photoUrl: imageUrl(images, 'headshot'), tmdbId })),
 });
 
 const toTitle = (service: Service, record: Series | Movie, profiles: unknown): LibraryTitle[] => {
@@ -459,14 +515,23 @@ export const createLibrary = (services: ArrServices, versionRows: VersionRows = 
       };
     },
 
-    async movie(id: number): Promise<Result<MovieDetail & { secondVersions: SecondVersionRow[] }>> {
-      const [record, profiles, tags] = await Promise.all([
+    // Credits cost one more Radarr call, so only this route asks for them; a failed read leaves them empty.
+    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[] }>> {
+      const [record, profiles, tags, credits] = await Promise.all([
         services.radarr.movie(id).then(fromArr),
         optional('radarr', '/api/v3/qualityprofile'),
         optional('radarr', '/api/v3/tag'),
+        services.radarr.credits(id),
       ]);
       if (record.kind !== 'ok') return record;
-      return { kind: 'ok', value: { ...movieDetail(record.value, { profiles, tags, owned: true }), secondVersions: versionRows({ service: 'radarr', movieId: id }) } };
+      return {
+        kind: 'ok',
+        value: {
+          ...movieDetail(record.value, { profiles, tags, owned: true }),
+          credits: creditList(credits.kind === 'ok' ? credits.value : []),
+          secondVersions: versionRows({ service: 'radarr', movieId: id }),
+        },
+      };
     },
 
     async preview(service: Service, id: number): Promise<Result<SeriesDetail | MovieDetail>> {

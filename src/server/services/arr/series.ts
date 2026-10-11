@@ -1,17 +1,24 @@
-import { count, finiteNumber, idList, type Image, parseImages, positiveInteger, records, stringList, text } from './files.js';
+import { count, finiteNumber, idList, type Image, otherTitles, parseImages, positiveInteger, records, stringList, text } from './files.js';
 import { isRecord, refusal, type Result, type Send } from './result.js';
 
 export type Series = {
   id: number | null;
   title: string;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   ended: boolean;
+  airTime: string | null;
+  firstAired: string | null;
+  lastAired: string | null;
+  nextAiring: string | null;
+  previousAiring: string | null;
   network: string | null;
   language: string | null;
   overview: string | null;
   images: Image[];
   rating: number | null;
+  ratingVotes: number | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -24,7 +31,15 @@ export type Series = {
   monitorNewItems: string | null;
   qualityProfileId: number | null;
   added: string | null;
-  statistics: { seasonCount: number; episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; sizeOnDisk: number };
+  statistics: {
+    seasonCount: number;
+    episodeFileCount: number;
+    episodeCount: number;
+    totalEpisodeCount: number;
+    sizeOnDisk: number;
+    percentOfEpisodes: number | null;
+  };
+  releaseGroups: string[];
   seasons: {
     seasonNumber: number;
     monitored: boolean;
@@ -43,17 +58,26 @@ export type Series = {
 export const parseSeries = (value: unknown): Series | null => {
   if (!isRecord(value)) return null;
   const statistics = isRecord(value.statistics) ? value.statistics : {};
+  const ratings = isRecord(value.ratings) ? value.ratings : {};
+  const title = text(value.title) ?? '';
   return {
     id: positiveInteger(value.id),
-    title: text(value.title) ?? '',
+    title,
+    alternateTitles: otherTitles(value.alternateTitles, title),
     year: finiteNumber(value.year),
     status: text(value.status),
     ended: value.ended === true,
+    airTime: text(value.airTime),
+    firstAired: text(value.firstAired),
+    lastAired: text(value.lastAired),
+    nextAiring: text(value.nextAiring),
+    previousAiring: text(value.previousAiring),
     network: text(value.network),
     language: isRecord(value.originalLanguage) ? text(value.originalLanguage.name) : null,
     overview: text(value.overview),
     images: parseImages(value.images),
-    rating: isRecord(value.ratings) ? finiteNumber(value.ratings.value) : null,
+    rating: finiteNumber(ratings.value),
+    ratingVotes: finiteNumber(ratings.votes),
     certification: text(value.certification),
     genres: stringList(value.genres),
     runtime: finiteNumber(value.runtime),
@@ -72,7 +96,9 @@ export const parseSeries = (value: unknown): Series | null => {
       episodeCount: count(statistics.episodeCount),
       totalEpisodeCount: count(statistics.totalEpisodeCount),
       sizeOnDisk: count(statistics.sizeOnDisk),
+      percentOfEpisodes: finiteNumber(statistics.percentOfEpisodes),
     },
+    releaseGroups: stringList(statistics.releaseGroups),
     seasons: records(value.seasons).flatMap((season) => {
       const seasonNumber = finiteNumber(season.seasonNumber);
       if (seasonNumber === null) return [];

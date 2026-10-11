@@ -6866,6 +6866,18 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
         { id: 5, title: 'Dune', year: 2024, monitored: true, inCinemas: '2026-10-02T00:00:00Z', digitalRelease: '2026-10-05T00:00:00Z', physicalRelease: '2026-12-01T00:00:00Z' },
       ],
       '/api/v3/qualityprofile': [],
+      // Radarr points a credit's url at its own proxy and keeps TMDB's address in remoteUrl.
+      '/api/v3/credit?movieId=5': [
+        {
+          personName: 'Zendaya', character: 'Chani', order: 2, type: 'cast', personTmdbId: 505710,
+          images: [{ coverType: 'headshot', url: '/MediaCoverProxy/abc/z.jpg?apikey=test-key', remoteUrl: 'https://image.tmdb.org/t/p/original/z.jpg' }],
+        },
+        { personName: 'Timothée Chalamet', character: 'Paul', order: 0, type: 'cast', images: [{ coverType: 'headshot', url: '/MediaCoverProxy/def/t.jpg' }] },
+        { personName: 'Denis Villeneuve', job: 'Director', department: 'Directing', type: 'crew', order: 0, images: [] },
+        { personName: '', type: 'cast' },
+        { personName: 'Nobody', type: 'guest' },
+      ],
+      '/api/v3/credit?movieId=6': { message: 'not a list' },
     },
   };
   const { fake, ...services } = connectArr(database);
@@ -6873,7 +6885,25 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     id: 3, title: 'Andor', monitored: true, qualityProfileId: 4, tags: [9],
     images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://img/p.jpg' }],
     seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
+    airTime: '21:00', firstAired: '2022-09-21T00:00:00Z', lastAired: '2025-05-13T00:00:00Z',
+    nextAiring: '2026-11-01T01:00:00Z', previousAiring: '2025-05-13T01:00:00Z',
+    alternateTitles: [{ title: 'Star Wars: Andor', seasonNumber: -1 }, { title: 'Star Wars: Andor', sceneSeasonNumber: 1 }, { title: 'Andor' }],
+    ratings: { votes: 1234, value: 8.4 },
+    statistics: { episodeFileCount: 1, episodeCount: 2, releaseGroups: ['NTb', 'FLUX'], percentOfEpisodes: 50 },
   })];
+  fake.radarr.state.movies = [
+    movieRecord({
+      id: 5, title: 'Dune', originalTitle: 'Dune: Part Two', originalLanguage: { id: 1, name: 'English' },
+      alternateTitles: [{ sourceType: 'tmdb', title: 'Dune 2' }, { sourceType: 'tmdb', title: 'Dune' }],
+      ratings: {
+        imdb: { votes: 600000, value: 8.5, type: 'user' }, tmdb: { votes: 7000, value: 8.2, type: 'user' },
+        metacritic: { votes: 0, value: 79, type: 'user' }, rottenTomatoes: { votes: 0, value: 92, type: 'user' }, trakt: { votes: 0, value: 0, type: 'user' },
+      },
+      keywords: ['desert', 'prophecy'], youTubeTrailerId: 'Way9Dexny3w', website: 'https://www.dunemovie.com/',
+      releaseDate: '2024-05-14T00:00:00Z', statistics: { movieFileCount: 1, sizeOnDisk: 10, releaseGroups: ['FLUX'] },
+    }),
+    movieRecord({ id: 6, title: 'Bare', website: 'javascript:alert(1)', ratings: { imdb: 'nope' } }),
+  ];
   fake.sonarr.state.episodes = [
     {
       id: 32, seriesId: 3, seasonNumber: 1, episodeNumber: 2, title: 'Two', hasFile: false, monitored: true,
@@ -6961,6 +6991,60 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     ]);
     assert.equal((await routes.request('/calendar?start=2026-10-01T00:00:00Z&end=2026-11-16T00:00:00Z')).status, 400);
     assert.equal((await routes.request('/calendar?start=2026-10-01T00:00:00Z&end=2026-10-08T00:00:00Z')).status, 200);
+  });
+
+  await t.test('title pages carry the facts the redesigned overview binds, and missing ones read as empty', async () => {
+    // Dropping or renaming a field, or reading the wrong Sonarr or Radarr key, turns this red.
+    const series = (await library.series(3)).value;
+    assert.deepEqual(
+      [series.airTime, series.firstAired, series.lastAired, series.nextAiring, series.previousAiring],
+      ['21:00', '2022-09-21T00:00:00Z', '2025-05-13T00:00:00Z', '2026-11-01T01:00:00Z', '2025-05-13T01:00:00Z'],
+    );
+    assert.deepEqual(series.alternateTitles, ['Star Wars: Andor']);
+    assert.deepEqual([series.rating, series.ratingVotes], [8.4, 1234]);
+    assert.deepEqual([series.releaseGroups, series.statistics.percentOfEpisodes], [['NTb', 'FLUX'], 50]);
+    const movie = (await library.movie(5)).value;
+    assert.deepEqual(movie.ratings, {
+      imdb: { value: 8.5, votes: 600000 }, tmdb: { value: 8.2, votes: 7000 }, metacritic: { value: 79, votes: 0 }, rottenTomatoes: { value: 92, votes: 0 }, trakt: null,
+    });
+    assert.equal(movie.rating, 8.2);
+    assert.deepEqual(
+      [movie.originalTitle, movie.originalLanguage, movie.alternateTitles, movie.keywords, movie.youTubeTrailerId, movie.website, movie.releaseDate, movie.releaseGroups],
+      ['Dune: Part Two', 'English', ['Dune 2'], ['desert', 'prophecy'], 'Way9Dexny3w', 'https://www.dunemovie.com/', '2024-05-14T00:00:00Z', ['FLUX']],
+    );
+    const bare = (await library.movie(6)).value;
+    assert.deepEqual(
+      [bare.originalTitle, bare.originalLanguage, bare.alternateTitles, bare.keywords, bare.youTubeTrailerId, bare.website, bare.releaseDate, bare.releaseGroups, bare.rating],
+      [null, null, [], [], null, null, null, [], null],
+    );
+    assert.deepEqual(Object.values(bare.ratings), [null, null, null, null, null]);
+    fake.sonarr.state.series.push(seriesRecord({ id: 4, title: 'Bare show' }));
+    const bareShow = (await library.series(4)).value;
+    assert.deepEqual(
+      [bareShow.airTime, bareShow.firstAired, bareShow.lastAired, bareShow.nextAiring, bareShow.previousAiring, bareShow.alternateTitles, bareShow.ratingVotes, bareShow.releaseGroups, bareShow.statistics.percentOfEpisodes],
+      [null, null, null, null, null, [], null, [], null],
+    );
+  });
+
+  await t.test('cast and crew come only with the movie page, with public photos and no Radarr key', async () => {
+    // Asking for credits on the library list, sending Radarr's proxy url, or failing the page on a bad credit reply turns this red.
+    fake.radarr.requests.length = 0;
+    await library.titles();
+    await library.preview('radarr', 438631);
+    assert.equal(fake.radarr.requests.some(({ path }) => path === '/api/v3/credit'), false);
+    const { credits } = (await library.movie(5)).value;
+    assert.deepEqual(fake.radarr.requests.filter(({ path }) => path === '/api/v3/credit').map(({ params }) => params.get('movieId')), ['5']);
+    assert.deepEqual(credits, {
+      cast: [
+        { name: 'Timothée Chalamet', character: 'Paul', order: 0, photoUrl: null, tmdbId: null },
+        { name: 'Zendaya', character: 'Chani', order: 2, photoUrl: 'https://image.tmdb.org/t/p/original/z.jpg', tmdbId: 505710 },
+      ],
+      crew: [{ name: 'Denis Villeneuve', job: 'Director', department: 'Directing', photoUrl: null, tmdbId: null }],
+    });
+    assert.doesNotMatch(JSON.stringify(credits), /test-key|MediaCoverProxy|127\.0\.0\.1/);
+    const bare = await library.movie(6);
+    assert.equal(bare.kind, 'ok');
+    assert.deepEqual(bare.value.credits, { cast: [], crew: [] });
   });
 
   await t.test('the library routes need a session', async () => {

@@ -42,6 +42,10 @@ export const stringList = (value: unknown): string[] => (Array.isArray(value) ? 
   const entry = text(item);
   return entry === null ? [] : [entry];
 }) : []);
+// Sonarr repeats an alternate title once per scene season; each comes through once, and never the main title.
+export const otherTitles = (value: unknown, title: string): string[] => (
+  [...new Set(records(value).flatMap((item) => text(item.title) ?? []))].filter((entry) => entry !== title)
+);
 export const idList = (value: unknown): number[] => (Array.isArray(value) ? value.flatMap((item) => {
   const id = positiveInteger(item);
   return id === null ? [] : [id];
