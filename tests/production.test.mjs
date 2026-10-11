@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createHash, createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
+import { createCipheriv, createHash, createPublicKey, generateKeyPairSync, randomBytes, verify } from 'node:crypto';
 import { once } from 'node:events';
 import {
   chmod,
@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const serverPath = fileURLToPath(new URL('../dist/server/index.js', import.meta.url));
@@ -4962,7 +4962,7 @@ test('R2 requests are signed with AWS Signature V4 and stored path-style', async
   assert.deepEqual(r2ConfigFromEnvironment(env), config);
 });
 
-// Snapshotting with a plain file copy during a write, skipping after a failed upload, pruning by the wrong day, or restoring a snapshot without checking its hash or schema version turns this red.
+// Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, or restoring a snapshot without checking its key, hash or schema version turns this red.
 test('backups snapshot a changing database and restore it consistently', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -5002,7 +5002,14 @@ test('backups snapshot a changing database and restore it consistently', async (
   };
   let configured = false;
   let clock = Date.UTC(2026, 9, 11, 12, 0, 0);
-  const backup = createBackup({ database, events, store: () => (configured ? store : undefined), now: () => clock });
+  const backupKey = randomBytes(32);
+  // Same layout as the server writes: 12-byte nonce, ciphertext, 16-byte tag.
+  const seal = (plain) => {
+    const nonce = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', backupKey, nonce);
+    return Buffer.concat([nonce, cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
+  };
+  const backup = createBackup({ database, events, store: () => (configured ? store : undefined), key: () => backupKey, now: () => clock });
   const outcome = (run) => [run.outcome, run.detail];
 
   assert.deepEqual(outcome(await backup.run()), ['skipped', 'not_configured']);
@@ -5044,12 +5051,13 @@ test('backups snapshot a changing database and restore it consistently', async (
   const writerResult = await writer;
   assert.equal(writerResult.code, 0, writerResult.stderr);
   assert.deepEqual(outcome(written), ['ok', '']);
-  assert.match(written.objectKey, /^backups\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z-[0-9a-f]{12}\.sqlite\.gz$/);
+  assert.match(written.objectKey, /^backups\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z-[0-9a-f]{12}\.sqlite\.gz\.enc$/);
+  assert.throws(() => gunzipSync(objects.get(written.objectKey)));
   assert.equal(written.bytes, objects.get(written.objectKey).byteLength);
   assert.equal(JSON.parse(Buffer.from(objects.get('backups/latest.json')).toString()).key, written.objectKey);
 
   const restoredPath = join(root, 'restored', 'media-manager.sqlite');
-  const restoredResult = await restoreBackup({ store, target: restoredPath });
+  const restoredResult = await restoreBackup({ store, target: restoredPath, key: backupKey });
   assert.equal(restoredResult.key, written.objectKey);
   const restored = new DatabaseSync(restoredPath, { readOnly: true });
   t.after(() => restored.close());
@@ -5087,7 +5095,7 @@ test('backups snapshot a changing database and restore it consistently', async (
   assert.equal(published.length, listBackupRuns(database).length);
 
   clock += 5 * 60_000;
-  const keyAt = (offset) => `backups/${new Date(clock + offset).toISOString().replace(/:/g, '-')}-aaaaaaaaaaaa.sqlite.gz`;
+  const keyAt = (offset) => `backups/${new Date(clock + offset).toISOString().replace(/:/g, '-')}-aaaaaaaaaaaa.sqlite.gz.enc`;
   const hour = 3_600_000;
   const aged = { kept: [keyAt(-2 * hour), keyAt(-30 * hour), keyAt(-72 * hour)], dropped: [keyAt(-31 * hour), keyAt(-216 * hour)] };
   for (const key of [...aged.kept, ...aged.dropped]) objects.set(key, new Uint8Array([0]));
@@ -5096,32 +5104,38 @@ test('backups snapshot a changing database and restore it consistently', async (
   for (const key of [...aged.kept, pruned.objectKey, written.objectKey, 'backups/latest.json']) assert.ok(objects.has(key), key);
   for (const key of aged.dropped) assert.equal(objects.has(key), false, key);
 
-  const refusal = (options) => restoreBackup({ store, ...options }).then(() => 'restored', (error) => error.message);
+  const refusal = (options) => restoreBackup({ store, key: backupKey, ...options }).then(() => 'restored', (error) => error.message);
   assert.equal(await refusal({ target: restoredPath }), 'Restore target already exists.');
   assert.equal(await refusal({ target: join(projectDirectory, 'restored.sqlite') }), 'Database path must be an absolute file path outside the application directory.');
-  objects.set(written.objectKey, gzipSync(Buffer.from('not the snapshot')));
+  assert.equal(
+    await refusal({ target: join(root, 'wrong-key.sqlite'), objectKey: written.objectKey, key: randomBytes(32) }),
+    'Downloaded snapshot could not be decrypted with BACKUP_KEY.',
+  );
+  objects.set(written.objectKey, seal(gzipSync(Buffer.from('not the snapshot'))));
   assert.equal(await refusal({ target: join(root, 'tampered.sqlite'), objectKey: written.objectKey }), 'Downloaded snapshot does not match its name.');
   const futurePath = join(root, 'future.sqlite');
   const future = new DatabaseSync(futurePath);
   future.exec('PRAGMA user_version = 99;');
   future.close();
   const futureBytes = await readFile(futurePath);
-  const futureKey = `backups/2026-10-11T00-00-00.000Z-${sha256Hex(futureBytes).slice(0, 12)}.sqlite.gz`;
-  objects.set(futureKey, gzipSync(futureBytes));
+  const futureKey = `backups/2026-10-11T00-00-00.000Z-${sha256Hex(futureBytes).slice(0, 12)}.sqlite.gz.enc`;
+  objects.set(futureKey, seal(gzipSync(futureBytes)));
   assert.equal(await refusal({ target: join(root, 'future-restored.sqlite'), objectKey: futureKey }), 'Database schema version is newer than this application.');
 });
 
-// Opening the database before listing or restoring, printing a secret, or restoring over an existing file turns this red.
+// Opening the database before listing or restoring, printing a secret, running without a valid BACKUP_KEY, or restoring over an existing file turns this red.
 test('backup commands upload, list and restore through R2 from the command line', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backup-cli-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const s3 = await startFakeS3(t);
   const base = { ...process.env, NODE_NO_WARNINGS: '1' };
-  for (const name of ['R2_ENDPOINT', 'R2_BUCKET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY']) delete base[name];
-  const withDatabase = { ...base, DB_PATH: join(root, 'live', 'media-manager.sqlite') };
+  for (const name of ['R2_ENDPOINT', 'R2_BUCKET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'BACKUP_KEY']) delete base[name];
+  const backupKey = randomBytes(32).toString('hex');
+  const withoutKey = { ...base, DB_PATH: join(root, 'live', 'media-manager.sqlite') };
+  const withDatabase = { ...withoutKey, BACKUP_KEY: backupKey };
   const secret = `secret-${process.pid}-distinctive`;
   const keyId = `key-id-${process.pid}-distinctive`;
-  const withR2 = { ...base, R2_ENDPOINT: s3.endpoint, R2_BUCKET: 'mm2-backups', R2_ACCESS_KEY_ID: keyId, R2_SECRET_ACCESS_KEY: secret };
+  const withR2 = { ...base, R2_ENDPOINT: s3.endpoint, R2_BUCKET: 'mm2-backups', R2_ACCESS_KEY_ID: keyId, R2_SECRET_ACCESS_KEY: secret, BACKUP_KEY: backupKey };
   const outputs = [];
   const cli = async (args, env, stdin) => {
     const result = await runCli(args, { env, stdin });
@@ -5142,9 +5156,14 @@ test('backup commands upload, list and restore through R2 from the command line'
     const saved = await cli(['settings', 'set', category, key], withDatabase, value);
     assert.equal(saved.code, 0, saved.stderr);
   }
+  const keyless = await cli(['backup', 'now'], withoutKey);
+  assert.equal(keyless.stdout, 'backup: skipped not_configured\n');
+  const malformed = await cli(['backup', 'now'], { ...withoutKey, BACKUP_KEY: 'not-hex' });
+  assert.equal(malformed.code, 1);
+  assert.equal(malformed.stdout, 'backup: failed BACKUP_KEY must be 64 hex characters.\n');
   const uploaded = await cli(['backup', 'now'], withDatabase);
   assert.equal(uploaded.code, 0, uploaded.stderr);
-  const key = uploaded.stdout.match(/^backup: ok (backups\/\S+\.sqlite\.gz) \d+ bytes\n$/)?.[1];
+  const key = uploaded.stdout.match(/^backup: ok (backups\/\S+\.sqlite\.gz\.enc) \d+ bytes\n$/)?.[1];
   assert.ok(key, uploaded.stdout);
 
   const listed = await cli(['backup', 'list'], withR2);
@@ -5159,6 +5178,10 @@ test('backup commands upload, list and restore through R2 from the command line'
     `restored ${key} to ${target}\nsettings 4\ntorrents 0\ntorrent_grabs 0\ngrabs 0\nproblems 0\nprotected_items 0\npreferences 0\n`,
   );
 
+  const { BACKUP_KEY: _, ...r2Only } = withR2;
+  const unkeyed = await cli(['backup', 'restore', '--to', join(root, 'unkeyed.sqlite')], r2Only);
+  assert.equal(unkeyed.code, 1);
+  assert.equal(unkeyed.stderr, 'BACKUP_KEY must be set.\n');
   const again = await cli(['backup', 'restore', '--to', target, '--object', key], withR2);
   assert.equal(again.code, 1);
   assert.equal(again.stderr, 'Restore target already exists.\n');
@@ -5173,5 +5196,5 @@ test('backup commands upload, list and restore through R2 from the command line'
     assert.equal(missing.code, 1);
     assert.equal(missing.stderr, 'R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY must be set.\n');
   }
-  for (const output of outputs) assert.equal(output.includes(secret), false);
+  for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey));
 });
