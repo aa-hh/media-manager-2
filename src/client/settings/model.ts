@@ -2,7 +2,7 @@
 import type { LogoName } from '../components/ui/logo';
 import type { ServiceState } from '../components/ui/status-service-pill';
 
-export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'beyondhd' | 'privatehd' | 'blutopia';
+export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'blutopia';
 
 // Shapes served by /api/settings; src/server/connections.ts is the source of truth.
 export type SavedService = { service: ServiceName; serviceAddresses: Record<string, string>; credentials: Record<string, boolean> };
@@ -36,6 +36,8 @@ const login = (service: string, help: string): Credential[] => [
   { key: `${service}.password`, label: 'Password', short: 'password', placeholder: 'Password', help, secret: true },
 ];
 
+// The screen's services, in list order. /api/settings still returns Beyond-HD and PrivateHD, whose server integrations are being removed
+// (they only checked the login); leaving them out here keeps their cards off the screen.
 export const services: ServiceInfo[] = [
   { name: 'sonarr', label: 'Sonarr', logo: 'sonarr', tracker: false, addressPlaceholder: 'e.g. http://localhost:8989', usedFor: 'TV searches, grabs and imports', refused: 'API key', credentials: [apiKey('Sonarr')] },
   { name: 'radarr', label: 'Radarr', logo: 'radarr', tracker: false, addressPlaceholder: 'e.g. http://localhost:7878', usedFor: 'Movie searches, grabs and imports', refused: 'API key', credentials: [apiKey('Radarr')] },
@@ -46,20 +48,6 @@ export const services: ServiceInfo[] = [
   {
     name: 'plex', label: 'Plex', logo: 'plex', tracker: false, addressPlaceholder: 'e.g. http://localhost:32400', usedFor: 'Playing the library to you and friends', refused: 'token',
     credentials: [{ key: 'plex.token', label: 'Plex token', short: 'token', placeholder: 'Paste the Plex token', help: 'The X-Plex-Token of your Plex server.', secret: true }],
-  },
-  {
-    name: 'beyondhd', label: 'Beyond-HD', logo: 'beyond-hd', tracker: true, addressPlaceholder: 'e.g. https://beyond-hd.me', usedFor: 'Checks the login works', refused: 'API key',
-    credentials: [
-      { key: 'beyondhd.apiKey', label: 'API key', short: 'key', placeholder: 'Paste the API key', help: 'From your Beyond-HD account settings.', secret: true },
-      { key: 'beyondhd.rssKey', label: 'RSS key', short: 'key', placeholder: 'Paste the RSS key', help: 'From your Beyond-HD account settings.', secret: true },
-    ],
-  },
-  {
-    name: 'privatehd', label: 'PrivateHD', logo: 'privatehd', tracker: true, addressPlaceholder: 'e.g. https://privatehd.to', usedFor: 'Checks the login works', refused: 'login',
-    credentials: [
-      ...login('privatehd', 'Your PrivateHD login.'),
-      { key: 'privatehd.pid', label: 'PID', short: 'PID', placeholder: 'Paste the PID', help: 'From your PrivateHD account settings.', secret: true },
-    ],
   },
   {
     name: 'blutopia', label: 'Blutopia', logo: 'blutopia', tracker: true, addressPlaceholder: 'e.g. https://blutopia.cc', usedFor: 'Account ratio and hit and runs in Health', refused: 'API token',
@@ -135,7 +123,7 @@ export const headerSummary = (checks: Record<ServiceName, Check>, edited: Servic
 
 /** The columns of the "How the pieces connect" strip, left to right. Trackers stand apart: they feed nothing, so no link follows them. */
 export const chain: { caption: string; names: ServiceName[]; linked: boolean }[] = [
-  { caption: 'Check accounts', names: ['beyondhd', 'privatehd', 'blutopia'], linked: false },
+  { caption: 'Check accounts', names: ['blutopia'], linked: false },
   { caption: 'Find and grab', names: ['sonarr', 'radarr'], linked: true },
   { caption: 'Download and seed', names: ['rtorrent'], linked: true },
   { caption: 'Play', names: ['plex'], linked: false },
