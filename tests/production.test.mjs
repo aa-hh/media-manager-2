@@ -2302,8 +2302,9 @@ test('the settings screen adds trackers and saves, clears and removes their hit 
   const unset = { ratio: null, logic: null, minGlobalRatio: null, partial: { exemptBelow: null, ratio: null, maxHours: null } };
   const blutopiaEnv = { ...unset, seedHours: [{ hours: 168 }], minGlobalRatio: 0.4 };
   const noAccount = { software: 'other', credentialSet: false, connection: { kind: 'unsupported' } };
-  const blutopia = (fields) => ({ host: 'blutopia.cc', margins: defaultMargins, problem: null, ...noAccount, ...fields });
-  const example = (fields) => ({ host: 'example.net', margins: defaultMargins, problem: null, ...noAccount, ...fields });
+  // envRule follows TRACKER_RULES alone: dropping it, or deriving it from ruleSource so a Settings rule hides it, turns this red.
+  const blutopia = (fields) => ({ host: 'blutopia.cc', envRule: true, margins: defaultMargins, problem: null, ...noAccount, ...fields });
+  const example = (fields) => ({ host: 'example.net', envRule: false, margins: defaultMargins, problem: null, ...noAccount, ...fields });
 
   assert.deepEqual(await list(), [blutopia({ status: 'configured_env', rule: blutopiaEnv, ruleSource: 'env' })]);
 
