@@ -14,15 +14,24 @@
 # files, so a fresh checkout works the same: every comment this script posts
 # starts with a marker line
 #   <!-- agent-review round=<n> head=<sha> level=<level> high=<k> changes=<id> -->
-# and the next run reads the PR's comments, highest round wins. <id> is the
+# and the next run reads the PR's comments: highest round wins, and the
+# newest of equal rounds. <id> is the
 # patch id of the branch's own non-Markdown changes against origin/main
-# (`none` when there are none). A push that leaves it unchanged, such as
-# merging main in or a docs-only commit, uses no round: the run re-posts that
-# round's status on the new HEAD and exits with its result. Round 2
-# reviews only what was committed since round 1's head (the fix for its HIGH
-# findings) and never skips; a third run refuses. No PR yet means round 1
-# against main. Only a HIGH finding fails the status; MEDIUM and LOW are
-# posted and do not block.
+# (`none` when there are none). A push that leaves it unchanged, such as a
+# docs-only commit, uses no round: the run re-posts that round's status on
+# the new HEAD and exits with its result. Round 2 reviews only what was
+# committed since round 1's head (the fix for its HIGH findings) and never
+# skips; a third run refuses. No PR yet means round 1 against main. Only a
+# HIGH finding fails the status; MEDIUM and LOW are posted and do not block.
+#
+# Merging origin/main in uses no round either, even after round 2: when every
+# commit since the marker's head is on origin/main or is a merge whose second
+# parent is, the run checks only how those merges resolved their conflicts
+# (`git show --remerge-diff`, git 2.36 or newer). No resolutions, or a last
+# round that already failed, re-posts that round's status; otherwise one
+# merge-resolution pass runs and its result is posted with level=merge-check
+# and the same round number. A rebase or force-push (the marker's head is not
+# an ancestor of HEAD) gets no such exception.
 #
 # The reviewers run as subagents of the Claude session that owns the branch,
 # because headless Claude CLI runs are refused on this account. The script hands
@@ -134,7 +143,7 @@ if [ -n "$pr" ]; then
   bodies=$($GH api --paginate "repos/$REPO/issues/$pr/comments" --jq '.[].body') \
     || { echo "Could not read the comments on PR #$pr, so the review round is unknown." >&2; exit 2; }
   last=$(printf '%s\n' "$bodies" | grep '^<!-- agent-review round=[0-9]' \
-    | sed 's/^<!-- agent-review round=\([0-9]*\)/\1	&/' | sort -n | tail -n 1 | cut -f2-)
+    | sed 's/^<!-- agent-review round=\([0-9]*\)/\1	&/' | sort -s -n -k1,1 | tail -n 1 | cut -f2-)
   marker_field() { printf '%s\n' "$last" | sed -n "s/.* $1=\([^ ]*\).*/\1/p"; }
   if [ -n "$last" ]; then
     prev_round=$(marker_field round); prev_head=$(marker_field head)
@@ -143,21 +152,43 @@ if [ -n "$pr" ]; then
   fi
 fi
 round=$((prev_round + 1))
-# Same head, or the same own changes as the last round (main merged in, a
-# docs-only commit, a failed status post): post that round's status on this
-# HEAD again rather than review again.
+# Same head, or the same own changes as the last round (a docs-only commit, a
+# failed status post): post that round's status on this HEAD again rather
+# than review again. Only origin/main merged in since the last head: the
+# same, unless a merge resolved a conflict and the last round passed; then
+# merge_diff holds the resolutions for the merge check.
+reuse=0; merge_only=0; merge_diff=""
 if [ -n "$prev_head" ] && { [ "$prev_head" = "$tip" ] || [ "$prev_changes" = "$changes" ]; }; then
+  reuse=1
+elif [ -n "$prev_head" ] && git merge-base --is-ancestor "$prev_head" "$tip" 2>/dev/null; then
+  revs=$(git rev-list "$tip" "^$prev_head" ^origin/main) \
+    || { echo "Could not list the commits since $prev_head." >&2; exit 2; }
+  merge_only=1
+  for c in $revs; do
+    p2=$(git rev-parse -q --verify "$c^2") && [ -z "$(git rev-parse -q --verify "$c^3")" ] \
+      && git merge-base --is-ancestor "$p2" origin/main || { merge_only=0; break; }
+    d=$(git show --remerge-diff --format= "$c" -- . ':!*.md') \
+      || { echo "Could not check how merge ${c:0:12} resolved its conflicts: git show --remerge-diff failed (it needs git 2.36 or newer)." >&2; exit 2; }
+    [ -n "$d" ] && merge_diff+="### Merge $c"$'\n\n'"$d"$'\n\n'
+  done
+  if [ "$merge_only" = 1 ] && { [ -z "$merge_diff" ] || [ "$prev_high" -gt 0 ]; }; then reuse=1; fi
+fi
+if [ "$reuse" = 1 ]; then
   echo "This branch's changes were already reviewed in round $prev_round (PR #$pr)."
+  [ "$merge_only" = 1 ] && echo "Since then only origin/main was merged in."
   if [ "$prev_level" = skip ]; then d=skip; else d="$prev_level, round $prev_round, $prev_high HIGH"; fi
   if [ "$prev_high" -gt 0 ]; then post_status failure "$d"; exit 1; fi
   post_status success "$d"
   exit 0
 fi
-if [ "$round" -gt 2 ] && [ "$mode" != --continue ]; then
+if [ "$merge_only" = 1 ]; then
+  # The merge check keeps the last round's number and reviews only merge_diff.
+  round=$prev_round; base=$prev_head
+  hash=merge-$(printf '%s' "$merge_diff" | git hash-object --stdin)
+elif [ "$round" -gt 2 ] && [ "$mode" != --continue ]; then
   echo "two rounds done; remaining findings are on the PR"
   exit 1
-fi
-if [ "$round" = 2 ]; then
+elif [ "$round" = 2 ]; then
   base=$prev_head
   git rev-parse --verify -q "$base^{commit}" > /dev/null \
     || { echo "Round 1's head $base (from PR #$pr) is not in this clone; git fetch, then run again." >&2; exit 2; }
@@ -166,14 +197,17 @@ else
 fi
 # Keys the pending review to the reviewed changes, so a commit between the
 # handover and --continue is caught.
-hash=$(git diff -U0 --no-renames "$base" "$tip" | git patch-id --stable | cut -d' ' -f1)
-[ -n "$hash" ] || hash=empty
+if [ "$merge_only" = 0 ]; then
+  hash=$(git diff -U0 --no-renames "$base" "$tip" | git patch-id --stable | cut -d' ' -f1)
+  [ -n "$hash" ] || hash=empty
+fi
 
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "Warning: uncommitted changes are not part of this review; it covers committed work only." >&2
 fi
 
 # --no-renames so a renamed file shows its real new path to the risk check.
+# The merge check counts only the files its resolutions touch.
 lines=0; files=0; risk=(); changed=()
 while IFS=$'\t' read -r added deleted path; do
   [ "$added" = "-" ] && added=0
@@ -181,9 +215,12 @@ while IFS=$'\t' read -r added deleted path; do
   files=$((files + 1)); changed+=("$path")
   is_product_path "$path" && lines=$((lines + added + deleted))
   is_risk_path "$path" && risk+=("$path")
-done < <(git diff --numstat --no-renames "$base" "$tip")
+done < <(if [ "$merge_only" = 1 ]; then
+           printf '%s' "$merge_diff" | sed -n 's|^diff --git a/.* b/|0	0	|p' | sort -u
+         else git diff --numstat --no-renames "$base" "$tip"; fi)
 
-if [ ${#risk[@]} -gt 0 ]; then level=full
+if [ "$merge_only" = 1 ]; then level=merge-check
+elif [ ${#risk[@]} -gt 0 ]; then level=full
 elif [ "$lines" -lt "$SKIP_UNDER_LINES" ] && [ "$round" = 1 ]; then level=skip
 elif [ "$lines" -lt "$SKIP_UNDER_LINES" ]; then level=cheap
 elif [ "$lines" -gt "$FULL_OVER_LINES" ]; then level=full
@@ -207,7 +244,8 @@ if [ "$mode" = --continue ]; then
 fi
 
 summary="$lines product lines"
-if [ ${#risk[@]} -gt 0 ]; then
+[ "$merge_only" = 1 ] && summary="conflict resolutions from merging origin/main since ${prev_head:0:12}"
+if [ "$merge_only" = 0 ] && [ ${#risk[@]} -gt 0 ]; then
   joined=$(printf ', %s' "${risk[@]}")
   summary="$summary, risk: ${joined:2}"
 fi
@@ -249,7 +287,7 @@ fi
 
 pass_model() {
   case "$1" in
-    cheap)    echo "$CHEAP_MODEL" ;;
+    cheap|merge-resolution) echo "$CHEAP_MODEL" ;;
     deep)     echo "$DEEP_MODEL" ;;
     rules)    echo "$RULES_MODEL" ;;
     history)  echo "$HISTORY_MODEL" ;;
@@ -327,11 +365,17 @@ if [ "$mode" != --continue ]; then
       printf '\n### %s\n\n' "$a"
       git show "$tip:$a" 2>/dev/null
     done
-    printf '\n## Diff\n\nbase: %s tip: %s\n\n' "$base" "$tip"
-    git diff "$base" "$tip"
+    if [ "$level" = merge-check ]; then
+      printf '\n## Conflict resolutions\n\n`git show --remerge-diff` of each merge of origin/main after %s, up to %s\n\n' "$base" "$tip"
+      printf '%s' "$merge_diff"
+    else
+      printf '\n## Diff\n\nbase: %s tip: %s\n\n' "$base" "$tip"
+      git diff "$base" "$tip"
+    fi
   } > "$state/tail" || exit 2
 
   if [ "$level" = cheap ]; then plan_reviewers cheap cheap
+  elif [ "$level" = merge-check ]; then plan_reviewers merge-check merge-resolution
   else plan_reviewers full "${REVIEWERS[@]}"
   fi
 fi
@@ -369,14 +413,14 @@ count() {
   esac
 }
 
-if [ "$level" = cheap ]; then
-  if grep -q '^ESCALATE:' "$state/cheap.out"; then
+if [ "$level" = cheap ] || [ "$level" = merge-check ]; then
+  if [ "$level" = cheap ] && grep -q '^ESCALATE:' "$state/cheap.out"; then
     grep '^ESCALATE:' "$state/cheap.out"
     plan_reviewers full-escalated "${REVIEWERS[@]}"
   fi
   while IFS= read -r line; do
-    echo "  [cheap] $line"; count "$line"
-  done < <(grep -E '^(HIGH|MEDIUM|LOW) \|' "$state/cheap.out")
+    echo "  [${passes[0]}] $line"; count "$line"
+  done < <(grep -E '^(HIGH|MEDIUM|LOW) \|' "$state/${passes[0]}.out")
 else
   # razor: no cross-reviewer dedupe; two passes reporting the same defect show
   # twice. Upgrade path: merge findings on their path:line key before scoring.
