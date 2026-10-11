@@ -16,6 +16,12 @@ type HomeProps = {
   onUnauthenticated: () => void;
   downloadsState: DownloadsState;
   downloads?: ReactNode;
+  flagged?: ReactNode;
+  history?: ReactNode;
+  blocklist?: ReactNode;
+  health?: ReactNode;
+  needsYou: number;
+  healthBadge: string | null;
   renderBar?: (showDownloads: () => void) => ReactNode;
 };
 
@@ -30,9 +36,16 @@ const writeSearchQuery = (query: string) => {
   if (url.href !== window.location.href) replace(`${url.pathname}${url.search}`);
 };
 
-const navItems = [{ label: 'Library', path: '/' }, { label: 'Calendar', path: '/calendar' }, { label: 'Downloads', path: '/downloads' }];
+const navItems = [
+  { label: 'Library', path: '/' },
+  { label: 'Calendar', path: '/calendar' },
+  { label: 'Downloads', path: '/downloads' },
+  { label: 'Flagged', path: '/flagged' },
+  { label: 'History', path: '/history' },
+  { label: 'Health', path: '/health' },
+];
 
-export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloadsState, downloads, renderBar }: HomeProps) {
+export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloadsState, downloads, flagged, history, blocklist, health, needsYou, healthBadge, renderBar }: HomeProps) {
   const [query, setQuery] = useState(readSearchQuery);
   const { pathname } = useLocation();
   const { state, run } = useSearch(onUnauthenticated);
@@ -52,6 +65,10 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
 
   const view = pathname === '/search' || query.trim() !== '' ? 'search'
     : pathname === '/downloads' ? 'downloads'
+      : pathname === '/flagged' ? 'flagged'
+      : pathname === '/history' ? 'history'
+      : pathname === '/blocklist' ? 'blocklist'
+      : pathname === '/health' ? 'health'
       : pathname === '/calendar' ? 'calendar'
         : /^\/(series|movie|title)\//.test(pathname) ? 'title'
           : 'library';
@@ -84,6 +101,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
                 className={current ? 'text-sm font-semibold text-[var(--ink)]' : 'text-sm text-[var(--secondary-ink)] hover:text-[var(--ink)]'}
               >
                 {item.label}
+                {item.path === '/flagged' && needsYou > 0 && ` ${needsYou}`}
+                {item.path === '/health' && healthBadge !== null && <span className="ml-1 text-[var(--mm-risk)]">{healthBadge}</span>}
               </a>
             );
           })}
@@ -100,6 +119,10 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'
             ? downloads
+            : view === 'flagged' ? flagged
+            : view === 'history' ? history
+            : view === 'blocklist' ? blocklist
+            : view === 'health' ? health
             : view === 'calendar'
               ? <Calendar downloads={downloadsState} onUnauthenticated={onUnauthenticated} />
               : view === 'title'

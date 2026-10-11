@@ -6,13 +6,18 @@ import { serve } from '@hono/node-server';
 import { createAdd } from './add.js';
 import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
+import { createBlocklist } from './blocklist.js';
 import { createBackup } from './backup.js';
 import { defaultDatabasePath, openDatabase } from './database.js';
 import { createEventHub } from './events.js';
+import { createFlagged } from './flagged.js';
 import { createGrabs, handGrab } from './grabs.js';
+import { createHealth } from './health.js';
+import { createHistory } from './history.js';
 import { createImportFix } from './imports.js';
 import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
+import { createLabels } from './labels.js';
 import { createLibrary } from './library.js';
 import { createOwned } from './owned.js';
 import { createProblems } from './problems.js';
@@ -24,6 +29,7 @@ import { createSearch } from './search.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { createPlex } from './services/plex.js';
 import { createR2Store, readR2Config } from './services/r2.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
@@ -86,6 +92,7 @@ if (database !== undefined) {
     },
   });
   const protection = createProtection(database, arr, { recentGrabTitles: (service, since) => grabs.recentTitles(service, since) });
+  const labels = createLabels(arr);
   const replaces = createReplaces(arr, grabs, { onCompleted: (grab) => protection.protect(grab) });
   const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected });
   runner.register('stall-fix', 60_000, stalls.check);
@@ -98,6 +105,10 @@ if (database !== undefined) {
     await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr')]);
     await protection.reconcile();
   });
+  const plex = createPlex(database);
+  const trackerAccounts = createTrackerAccounts(database);
+  const health = createHealth({ database, arr, rtorrent, plex, jobs: runner, trackerAccounts, events });
+  runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
   runner.register('replace-completion', 60_000, () => replaces.run());
   runner.register('grab-download-ids', 30_000, async () => {
     // A grab that never shows up in history within an hour is left for the owner to see, not polled forever.
@@ -135,8 +146,12 @@ if (database !== undefined) {
     api: createApiRoutes(database, {
       arr,
       refresh: torrentGrabs.refresh,
-      trackers: createTrackerAccounts(database),
+      trackers: trackerAccounts,
       manualImport: createManualImport({ database, arr, problems }),
+      health,
+      flagged: createFlagged({ database, arr, labels, isManualDownload: protection.isProtected }),
+      history: createHistory({ database, arr, labels }),
+      blocklist: createBlocklist({ database, arr, isManualDownload: protection.isProtected }),
     }),
     images: createImageRoutes(titles),
     webhooks: {
