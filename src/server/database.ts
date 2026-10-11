@@ -399,7 +399,11 @@ export const openDatabase = (path?: string): DatabaseSync => {
     throw new DatabaseError('Database could not be opened.');
   }
   try {
+    // Most writers commit one statement at a time. In the default rollback journal each commit fsyncs four times
+    // (about 200 ms on the Whatbox disk) and locks readers out; WAL with NORMAL fsyncs only at checkpoints, and a
+    // power cut can lose the last commits but never corrupt the file.
     migrateDatabase(database, applicationMigrations);
+    database.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
     return database;
   } catch (error) {
     database.close();

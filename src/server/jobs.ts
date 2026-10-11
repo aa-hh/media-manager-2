@@ -18,6 +18,8 @@ type Job = {
   lastFailed: boolean;
 };
 
+const STOP_LIMIT_MS = 20_000;
+
 export const createJobRunner = (timers: Timers = globalTimers, now: () => number = Date.now) => {
   const jobs = new Map<string, Job>();
   const handles: unknown[] = [];
@@ -73,7 +75,12 @@ export const createJobRunner = (timers: Timers = globalTimers, now: () => number
       if (!started) return;
       for (const handle of handles.splice(0)) timers.clearInterval(handle);
       started = false;
-      await Promise.all([...jobs.values()].map((job) => job.inFlight));
+      // No job holds a transaction across an await, so abandoning a slow run cannot leave a half-written commit;
+      // the limit keeps shutdown inside deploy.sh's 30 seconds.
+      let limit: unknown;
+      const timedOut = new Promise<void>((resolve) => { limit = timers.setInterval(resolve, STOP_LIMIT_MS); });
+      await Promise.race([Promise.all([...jobs.values()].map((job) => job.inFlight)), timedOut]);
+      timers.clearInterval(limit);
     },
   };
 };
