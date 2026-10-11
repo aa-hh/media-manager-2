@@ -149,17 +149,19 @@ export const createSeries = ({ label, send }: { label: string; send: Send }) => 
     return parsed === null ? refusal(`${label} sent no record for ${operation}.`) : { kind: 'ok', value: parsed };
   };
 
-  const lookupSeries = (term: string) => list('the series lookup', `/api/v3/series/lookup?term=${encodeURIComponent(term)}`);
+  // Whole records, not parsed ones: an add posts the lookup's own record back, so unparsed fields must survive.
+  const lookupSeries = async (term: string): Promise<Result<Record<string, unknown>[]>> => {
+    const operation = 'the series lookup';
+    const answer = await send(operation, `/api/v3/series/lookup?term=${encodeURIComponent(term)}`);
+    if (answer.kind !== 'ok') return answer;
+    const { body } = answer.value;
+    return Array.isArray(body) ? { kind: 'ok', value: body.filter(isRecord) } : refusal(`${label} sent no list of records for ${operation}.`);
+  };
 
   // The add body must be the lookup's own record: Sonarr takes the title, images and seasons from it.
-  const addSeries = async (tvdbId: number, fields: Record<string, unknown>): Promise<Result<{ id: number }>> => {
+  const addSeries = async (record: Record<string, unknown>, fields: Record<string, unknown>): Promise<Result<{ id: number }>> => {
     const operation = 'the series add';
-    const found = await send(operation, `/api/v3/series/lookup?term=${encodeURIComponent(`tvdb:${tvdbId}`)}`);
-    if (found.kind !== 'ok') return found;
-    if (!Array.isArray(found.value.body)) return refusal(`${label} sent no list of records for ${operation}.`);
-    const match = found.value.body.find((item) => isRecord(item) && item.tvdbId === tvdbId);
-    if (match === undefined) return { kind: 'not_found', message: `${label} has no such item for ${operation}.` };
-    const added = await send(operation, '/api/v3/series', { method: 'POST', body: { ...match, ...fields } });
+    const added = await send(operation, '/api/v3/series', { method: 'POST', body: { ...record, ...fields } });
     if (added.kind !== 'ok') return added;
     const id = isRecord(added.value.body) ? positiveInteger(added.value.body.id) : null;
     return id === null ? refusal(`${label} sent no id for ${operation}.`) : { kind: 'ok', value: { id } };

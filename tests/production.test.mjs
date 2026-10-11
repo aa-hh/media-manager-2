@@ -70,6 +70,7 @@ const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js'
 const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).href;
 const setupModuleUrl = new URL('../dist/server/setup.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
+const titleStoreModuleUrl = new URL('../dist/server/titleStore.js', import.meta.url).href;
 // The owner's confirmed rules (AA-23). The code ships none, so tests that judge these trackers supply them.
 const ownerRules = {
   'blutopia.cc': { minHours: 168, minGlobalRatio: 0.4 },
@@ -2725,7 +2726,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
 // Beyond-HD and PrivateHD sign-ins turns this red.
 test('the Blutopia token moves to the blutopia.cc tracker and the Beyond-HD and PrivateHD sign-ins are dropped', async () => {
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
-  const before = applicationMigrations.length - 1;
+  const before = applicationMigrations.findIndex((migration) => migration.includes('trackers.blutopia.cc'));
   const migrate = (rows) => {
     const database = new DatabaseSync(':memory:');
     migrateDatabase(database, applicationMigrations.slice(0, before));
@@ -5255,6 +5256,7 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   const { openDatabase } = await import(databaseModuleUrl);
   const { deleteSetting, setSetting } = await import(settingsModuleUrl);
   const { createSearch, LOOKUP_CACHE_MS, parseSearchQuery } = await import(searchModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-search-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -5291,7 +5293,7 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
     fake.radarr.requests.length = 0;
   };
   const clock = { value: 1_800_000_000_000 };
-  const search = createSearch(services, { now: () => clock.value });
+  const search = createSearch(database, services, createTitleStore(database, { now: () => clock.value }));
   const lookUp = async (text) => {
     clearCalls();
     return search.search(parseSearchQuery(text));
@@ -5392,6 +5394,7 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
 test('adding a title sends the monitor decision and remembers it as the next default', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createAdd, parseMovieChoices, parseSeriesChoices } = await import(addModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-add-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -5408,7 +5411,7 @@ test('adding a title sends the monitor decision and remembers it as the next def
   fake.sonarr.state.lookup = [{ title: 'Other', tvdbId: 1 }, { title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }] }];
   fake.radarr.state.lookup = [{ title: 'Dune', tmdbId: 438631, images: [] }];
   const posts = (service) => fake[service].requests.filter((request) => request.method === 'POST').map(({ path, body }) => ({ path, body }));
-  const add = createAdd(database, services);
+  const add = createAdd(database, services, createTitleStore(database));
   const series = {
     monitor: 'none', monitorNewSeasons: true, qualityProfileId: 6, rootFolderPath: '/home/owner/TV',
     seasonFolder: true, seriesType: 'standard', searchOnAdd: false,
@@ -5453,6 +5456,85 @@ test('adding a title sends the monitor decision and remembers it as the next def
   assert.equal(parseSeriesChoices({ ...series, monitor: 'everything' }), undefined);
   assert.equal(parseSeriesChoices({ ...series, qualityProfileId: '6' }), undefined);
   assert.equal(parseMovieChoices({ ...movie, minimumAvailability: 'tba' }), undefined);
+});
+
+// Making the title page or add ask Sonarr again instead of reading the saved lookup, or saving search results under a
+// key the title page and add do not use, turns this red.
+test('search, the title page and add for one title ask Sonarr for it once', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createSearch, parseSearchQuery } = await import(searchModuleUrl);
+  const { createLibrary } = await import(libraryModuleUrl);
+  const { createAdd } = await import(addModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-title-flow-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const { fake, ...services } = connectArr(database);
+  fake.sonarr.state.lookup = [{ title: 'Severance', tvdbId: 371980, tmdbId: 95396, seasons: [{ seasonNumber: 1 }] }];
+  const store = createTitleStore(database);
+  const search = createSearch(database, services, store);
+  const library = createLibrary(services, () => [], store);
+  const add = createAdd(database, services, store);
+
+  assert.deepEqual((await search.search(parseSearchQuery('Severance'))).results.map((result) => result.key), ['tvdb:371980']);
+  assert.equal((await library.preview('sonarr', 371980)).value.title, 'Severance');
+  const choices = {
+    monitor: 'all', monitorNewSeasons: true, qualityProfileId: 1, rootFolderPath: '/tv', seasonFolder: true, seriesType: 'standard', searchOnAdd: false,
+  };
+  assert.equal((await add.addSeries(371980, choices)).kind, 'added');
+  assert.equal(fake.sonarr.requests.filter((request) => request.path === '/api/v3/series/lookup').length, 1);
+  assert.deepEqual(fake.sonarr.requests.find((request) => request.method === 'POST').body.seasons, [{ seasonNumber: 1 }]);
+});
+
+// Using one max age for every part, saving a failed load, letting a second caller start its own load while one runs,
+// finding a show only by its TVDB id, or keeping parts in memory instead of the database turns this red.
+test('the title store refetches a part only once it is older than that part\'s max age', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-title-store-'));
+  const databasePath = join(root, 'media-manager.sqlite');
+  let database = openDatabase(databasePath);
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const clock = { value: 1_800_000_000_000 };
+  const store = createTitleStore(database, { now: () => clock.value });
+  const show = { type: 'tv', tvdbId: 371980, tmdbId: 95396 };
+
+  for (const [part, maxAgeMs] of [['sonarr-lookup', 10 * 60_000], ['tmdb-details', 7 * 86_400_000]]) {
+    let loads = 0;
+    const load = async () => ({ kind: 'ok', value: { loads: (loads += 1) } });
+    await store.fetch(show, part, maxAgeMs, load);
+    clock.value += maxAgeMs - 1;
+    assert.deepEqual(await store.fetch(show, part, maxAgeMs, load), { kind: 'ok', value: { loads: 1 } }, part);
+    clock.value += 1;
+    assert.deepEqual(await store.fetch(show, part, maxAgeMs, load), { kind: 'ok', value: { loads: 2 } }, part);
+  }
+
+  const movie = { type: 'movie', tmdbId: 438631 };
+  assert.equal((await store.fetch(movie, 'radarr-lookup', 60_000, async () => ({ kind: 'unreachable', message: 'down' }))).kind, 'unreachable');
+  assert.equal(store.get(movie, 'radarr-lookup'), undefined);
+
+  let starts = 0;
+  let finish;
+  const slow = () => {
+    starts += 1;
+    return new Promise((resolve) => { finish = () => resolve({ kind: 'ok', value: 'Dune' }); });
+  };
+  const waiting = Promise.all([store.fetch(movie, 'radarr-lookup', 60_000, slow), store.fetch(movie, 'radarr-lookup', 60_000, slow)]);
+  finish();
+  assert.deepEqual(await waiting, [{ kind: 'ok', value: 'Dune' }, { kind: 'ok', value: 'Dune' }]);
+  assert.equal(starts, 1);
+
+  database.close();
+  database = openDatabase(databasePath);
+  const reopened = createTitleStore(database, { now: () => clock.value });
+  assert.deepEqual(reopened.get({ type: 'tv', tmdbId: 95396 }, 'tmdb-details')?.value, { loads: 2 });
+  assert.deepEqual(reopened.get(movie, 'radarr-lookup'), { value: 'Dune', fetchedAt: clock.value });
 });
 
 // Searching again when results are stored, losing stored results on a failed refresh, dropping rejected releases, misreading either service's indexer flags, running two searches for one target at once, or sending a release's download link (it holds the indexer API key) to the browser breaks Pick a release.
@@ -7683,6 +7765,7 @@ test('marking a grab failed keeps the file and the torrent, blocklists and searc
 test('the library reads Sonarr and Radarr, orders titles newest first and forwards monitoring changes', async (t) => {
   const { createLibrary, createLibraryRoutes, newestFirst, imageUrl } = await import(libraryModuleUrl);
   const { openDatabase } = await import(databaseModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-library-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -7763,7 +7846,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     });
   }
   const calls = () => ['sonarr', 'radarr'].flatMap((name) => fake[name].requests.map(({ method, path, body }) => ({ name, method, path, body })));
-  const library = createLibrary(services);
+  const library = createLibrary(services, () => [], createTitleStore(database));
   const routes = createLibraryRoutes(library);
   const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
