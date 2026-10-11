@@ -79,7 +79,8 @@ is_risk_path() {
     src/server/titleDelete.ts|src/server/secondVersionDelete.ts|src/server/versionImport.ts) return 0 ;;
     src/server/torrentFiles.ts|src/server/relink.ts|src/server/trackerRules.ts) return 0 ;;
     src/server/services/arr/queue.ts|src/server/services/arr/commands.ts) return 0 ;;
-    .githooks/*|scripts/*|.github/*|.claude/hooks/*) return 0 ;;
+    # settings.json registers the hooks, so it is as dangerous as the hooks themselves.
+    .githooks/*|scripts/*|.github/*|.claude/hooks/*|.claude/settings.json) return 0 ;;
   esac
   return 1
 }

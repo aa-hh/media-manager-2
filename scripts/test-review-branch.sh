@@ -177,7 +177,8 @@ if expect_rc "round 2 after a conflicted main merge" 3; then
 fi
 
 # Size count: review data under .impeccable/ and .claude/ does not count as
-# product lines, .claude/hooks/ does. Breaks if *.json pulls them back in.
+# product lines, .claude/hooks/ does, and settings.json is still a risk path.
+# Breaks if *.json pulls them back in or settings.json leaves is_risk_path.
 setup
 : > "$STUB/comments"
 mkdir -p "$W/.impeccable/review" "$W/.claude/hooks"
@@ -186,8 +187,8 @@ printf '{"a": %s}\n' $(seq 5) > "$W/.claude/settings.json"
 printf '#!/bin/sh\nexit 0\n' > "$W/.claude/hooks/guard.sh"
 g add -A; g commit -qm data
 run_review
-case "$OUT" in *"Review level: full (2 product lines, risk: .claude/hooks/guard.sh), round 1"*) ok ".impeccable/ and .claude/ data stay out of the size count" ;;
-  *) fail "size count: wanted 2 product lines from the hook only, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
+case "$OUT" in *"Review level: full (2 product lines, risk: .claude/hooks/guard.sh, .claude/settings.json), round 1"*) ok ".impeccable/ and .claude/ data stay out of the size count" ;;
+  *) fail "size count: wanted 2 product lines from the hook only and settings.json as a risk path, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
 
 # A commit of the branch's own after round 2 still refuses.
 setup
