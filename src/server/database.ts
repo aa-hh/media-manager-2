@@ -330,6 +330,17 @@ export const applicationMigrations = [
   DELETE FROM settings
     WHERE (category = 'serviceAddresses' AND key IN ('blutopia.url', 'privatehd.url', 'beyondhd.url'))
       OR (category = 'credentials' AND key IN ('blutopia.apiToken', 'privatehd.username', 'privatehd.password', 'privatehd.pid', 'beyondhd.apiKey', 'beyondhd.rssKey'));`,
+  // Deleting a movie or show, for history. The title is kept as text because Sonarr and Radarr forget it.
+  `CREATE TABLE title_events (
+    id INTEGER PRIMARY KEY,
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    title_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX title_events_at ON title_events (at);`,
 ] as const;
 
 class DatabaseError extends Error {}
