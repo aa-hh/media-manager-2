@@ -94,17 +94,9 @@ on disk, through these saved settings:
 | `hostPaths` | `downloads.versions` | Absolute folder rTorrent downloads second versions into |
 | `hostPaths` | `versions.radarr` | Absolute folder finished movie second versions are hardlinked into. Must be on the same drive as `downloads.versions` and inside a Plex Movies library |
 | `hostPaths` | `versions.sonarr` | Same as above for episodes, inside a Plex TV library. Episode second versions wait until it is set |
-| `serviceAddresses` | `blutopia.url` | Optional. Blutopia base URL with scheme, such as `https://blutopia.cc` |
-| `credentials` | `blutopia.apiToken` | Optional. Blutopia API token from the site's API settings |
-| `serviceAddresses` | `privatehd.url` | Optional. PrivateHD base URL with scheme |
-| `credentials` | `privatehd.username` | Optional. PrivateHD account username |
-| `credentials` | `privatehd.password` | Optional. PrivateHD account password |
-| `credentials` | `privatehd.pid` | Optional. PrivateHD PID |
-| `serviceAddresses` | `beyondhd.url` | Optional. Beyond-HD base URL with scheme |
-| `credentials` | `beyondhd.apiKey` | Optional. Beyond-HD API key |
-| `credentials` | `beyondhd.rssKey` | Optional. Beyond-HD RSS key |
-
-The backup settings are listed under [Backups](#backups-optional).
+The backup settings are listed under [Backups](#backups-optional); tracker
+settings under [Tracker accounts](#tracker-accounts) and
+[Tracker hit-and-run rules](#tracker-hit-and-run-rules).
 
 Until a settings screen exists, save and check settings with the command-line
 tool, run from the app folder with the same `DB_PATH` as the server:
@@ -132,24 +124,76 @@ trailing line break is removed. `settings list` prints each saved category and
 key, never a value.
 
 `connections check` prints one line per service, in the order sonarr, radarr,
-rtorrent, plex, blutopia, privatehd, beyondhd, and exits 0 only when all seven
-are `ok`. Tracker lines print `ok` without a version.
+rtorrent, plex, then one `<host>: <result>` line per added tracker. It exits 0
+only when every service is `ok` and every tracker `ok` or `unsupported`.
+Tracker lines print `ok` without a version.
 
 - `ok <version>`: the service accepted the saved credentials and reported its version.
 - `not_configured`: the URL or a credential for that service is missing or empty.
 - `rejected`: the service refused the saved credentials.
 - `unreachable`: the request failed, timed out after 10 seconds, or returned an unexpected answer.
+- `too_old` (trackers only): the site's UNIT3D is older than v8.3.4, which added its account API.
+- `unsupported` (trackers only): the tracker's software is "other", which has no account connection.
 
 The output never contains a URL or a setting value.
 
 ### Tracker accounts
 
-`GET /api/trackers` returns one entry per tracker (Blutopia, PrivateHD,
-Beyond-HD, in that order). Only Blutopia returns stats: `username` and `group`
-as text, and `uploaded`, `downloaded` and `buffer` (bytes), `ratio`,
-`seeding`, `leeching`, `seedbonus` and `hitAndRuns` as numbers, each `null`
-when Blutopia leaves it out. PrivateHD and Beyond-HD return
-`stats: "unsupported"`. Trackers are only ever reached through their APIs.
+Each added tracker has a site software, and one account connection per
+software covers every tracker running it. The app reaches the site at
+`https://<host>` and only through its API; the credential goes in a header,
+never in a URL, a log or an answer to the browser.
+
+| Category | Key | Meaning |
+| --- | --- | --- |
+| `trackerConfiguration` | `software.<host>` | `unit3d`, `gazelle`, `nexusphp` or `other` (the default) |
+| `credentials` | `trackers.<host>` | The account credential for that software |
+
+| Software | Credential | Request |
+| --- | --- | --- |
+| UNIT3D | API token from the site's API settings | `GET /api/user`, `Authorization: Bearer <token>`. Needs UNIT3D v8.3.4 or later |
+| Gazelle (Orpheus code, Redacted) | API key from the site's user settings | `GET /ajax.php?action=index`, `Authorization: token <key>`, then the bare key if that is refused (Redacted); the form that worked is remembered until restart |
+| NexusPHP | API token from the site | `GET /api/profile`, `Authorization: Bearer <token>` |
+| Other | none | no account connection; only the hit-and-run rule applies |
+
+Each tracker is checked at most once every five minutes, unless its software
+or credential changes. A check gives `{ kind: "ok", stats }` or
+`not_configured`, `rejected`, `unreachable`, `too_old` or `unsupported`, as
+for `connections check`. `stats` has `ratio`, `uploadedBytes`,
+`downloadedBytes`, `bufferBytes`, `seeding`, `leeching`, `bonus`,
+`hitAndRuns` (`{ count, kind: "lifetime" }`) and `requiredRatio`, each `null`
+where the software reports no such field:
+
+- UNIT3D fills all but `requiredRatio`. Sizes sent as text such as
+  "1.23 TiB" count binary units in 1024s and decimal units in 1000s.
+  `hitAndRuns` counts every hit and run the account ever had; Health warns
+  when it rises, until the next restart.
+- Gazelle fills `ratio`, the byte counts, `bonus` and `requiredRatio`; that
+  required ratio is the account's minimum in removal advice and Health, ahead
+  of the rule's `minGlobalRatio`. `seeding` stays `null`: the call that
+  reports it allows 4 requests a minute.
+- NexusPHP fills `ratio` (worked out from the byte counts), the byte counts
+  and `bonus`.
+
+`GET /api/trackers` returns `{ host, software, connection }` per added
+tracker. The settings screen uses these routes under the owner guard:
+
+- `GET /api/settings/trackers` rows also carry `software`, `credentialSet`
+  (whether a credential is saved, never the credential) and `connection`.
+- `PUT /api/settings/trackers/<host>/software` `{ software }` saves the
+  software; an unknown one gets 400.
+- `PUT /api/settings/trackers/<host>/credential` `{ value }` saves the
+  credential; a blank value keeps the saved one.
+- `POST /api/settings/trackers/<host>/test` `{ software?, credential? }`
+  checks the form's values over the saved ones without saving either.
+
+Removing a tracker removes its software and credential too. The Beyond-HD
+and PrivateHD sign-ins are gone: neither site's API reports account stats.
+An older install's Blutopia token (`blutopia.apiToken`) moves to
+`trackers.blutopia.cc` once, at the first start of this version, which adds
+blutopia.cc as a tracker running UNIT3D. A blutopia.cc tracker or rule saved
+in settings with no token gets UNIT3D too; one only in `TRACKER_RULES` does not. `blutopia.url` and the Beyond-HD and PrivateHD settings
+are deleted.
 
 ### Tracker hit-and-run rules
 

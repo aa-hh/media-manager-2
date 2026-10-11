@@ -315,6 +315,19 @@ export const applicationMigrations = [
     detail TEXT NOT NULL
   ) STRICT;
   CREATE INDEX version_events_at ON version_events (at);`,
+  // Tracker accounts moved from one fixed set of keys per tracker to one credential and software per added tracker.
+  // Blutopia's token becomes blutopia.cc's credential (adding the tracker); blutopia.cc runs UNIT3D whenever it is
+  // added or had a token. The Beyond-HD and PrivateHD sign-ins and blutopia.url are gone: the address is now https://<host>.
+  `INSERT OR IGNORE INTO settings (category, key, value)
+    SELECT 'credentials', 'trackers.blutopia.cc', value FROM settings WHERE category = 'credentials' AND key = 'blutopia.apiToken' AND value <> '';
+  INSERT OR IGNORE INTO settings (category, key, value)
+    SELECT 'trackerConfiguration', 'trackers.blutopia.cc', 'added' FROM settings WHERE category = 'credentials' AND key = 'trackers.blutopia.cc';
+  INSERT OR IGNORE INTO settings (category, key, value)
+    SELECT 'trackerConfiguration', 'software.blutopia.cc', 'unit3d' WHERE EXISTS (
+      SELECT 1 FROM settings WHERE category = 'trackerConfiguration' AND key IN ('trackers.blutopia.cc', 'rules.blutopia.cc'));
+  DELETE FROM settings
+    WHERE (category = 'serviceAddresses' AND key IN ('blutopia.url', 'privatehd.url', 'beyondhd.url'))
+      OR (category = 'credentials' AND key IN ('blutopia.apiToken', 'privatehd.username', 'privatehd.password', 'privatehd.pid', 'beyondhd.apiKey', 'beyondhd.rssKey'));`,
 ] as const;
 
 class DatabaseError extends Error {}
