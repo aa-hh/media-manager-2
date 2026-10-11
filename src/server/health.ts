@@ -4,6 +4,8 @@ import { readDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import type { createJobRunner } from './jobs.js';
 import type { ConnectionStatus } from './services/connection.js';
+import { type Tracker, type TrackerAccountStats, trackers as trackerNames } from './services/trackerAccounts.js';
+import { indexerMatchesHost } from './stalls.js';
 import type { Service } from './torrentGrabs.js';
 import { type Cooldown, listCooldowns, listIssues } from './trackers.js';
 import { listTorrents } from './torrents.js';
@@ -19,12 +21,16 @@ export type HealthProblem = {
 };
 type JobStatus = ReturnType<ReturnType<typeof createJobRunner>['status']>;
 type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex';
+export type TrackerAccount =
+  | { kind: 'not_set_up' }
+  | { kind: 'unavailable'; reason: 'rejected' | 'unreachable' | 'unsupported' }
+  | { kind: 'ok'; ratio: number | null; ratioMinimum: number | null; hitAndRuns: number | null; hitAndRunsIsLifetime: boolean };
 export type HealthSnapshot = {
   checkedAt: number;
   level: HealthLevel;
   problems: HealthProblem[];
   services: { name: ServiceName; label: string; status: ConnectionStatus; update: string | null }[];
-  trackers: { host: string; reachable: boolean; cooldown: Cooldown | null; account: { kind: 'not_set_up' } }[];
+  trackers: { host: string; reachable: boolean; cooldown: Cooldown | null; account: TrackerAccount }[];
   disks: { path: string; label: string; freeBytes: number; totalBytes: number; sources: Service[] }[];
   jobs: JobStatus;
   backup: { kind: 'not_set_up' } | { kind: 'ok' | 'stale'; lastAt: number };
@@ -39,6 +45,17 @@ type ArrClient = {
 const ranks: Record<HealthLevel, number> = { ok: 0, notice: 1, warning: 2, error: 3 };
 const labels: Record<ServiceName, string> = { sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex' };
 const arrServices: Service[] = ['sonarr', 'radarr'];
+const trackerLabels: Record<Tracker, string> = { blutopia: 'Blutopia', privatehd: 'PrivateHD', beyondhd: 'BeyondHD' };
+// Each tracker's own minimum global ratio, copied from its rules; PrivateHD publishes none.
+const RATIO_MINIMUMS: Partial<Record<Tracker, number>> = { blutopia: 0.4, beyondhd: 0.25 };
+
+const accountOf = (stats: TrackerAccountStats | undefined): TrackerAccount => {
+  if (stats === undefined || stats.kind === 'not_configured') return { kind: 'not_set_up' };
+  if (stats.kind !== 'ok') return { kind: 'unavailable', reason: stats.kind };
+  if (stats.stats === 'unsupported') return { kind: 'unavailable', reason: 'unsupported' };
+  // Blutopia's API reports hit-and-runs as a lifetime count, not the currently open ones.
+  return { kind: 'ok', ratio: stats.stats.ratio, ratioMinimum: RATIO_MINIMUMS[stats.tracker] ?? null, hitAndRuns: stats.stats.hitAndRuns, hitAndRunsIsLifetime: true };
+};
 const GB = 1_000_000_000;
 const DISK_FREE_MINIMUM = 25 * GB;
 const BACKUP_STALE_MS = 26 * 60 * 60_000;
@@ -87,12 +104,15 @@ export const createHealth = (options: {
   rtorrent: { check(): Promise<ConnectionStatus> };
   plex: { check(): Promise<ConnectionStatus> };
   jobs: { status(): JobStatus };
+  trackerAccounts: { stats(): Promise<TrackerAccountStats[]> };
   events: EventHub;
   now?: () => number;
 }) => {
-  const { database, arr, rtorrent, plex, jobs, events } = options;
+  const { database, arr, rtorrent, plex, jobs, trackerAccounts, events } = options;
   const now = options.now ?? Date.now;
   let snapshot: HealthSnapshot | undefined;
+  // Kept in memory only: the first check after a restart records the count without warning.
+  const lastHitAndRuns = new Map<Tracker, number>();
 
   const read = async (service: Service, path: string) => {
     const { status, body } = await arr[service].request(path);
@@ -104,7 +124,7 @@ export const createHealth = (options: {
   const check = async (): Promise<HealthSnapshot> => {
     const checkedAt = now();
     const configured = arrServices.filter((service) => arr[service].configured());
-    const [statuses, arrReads] = await Promise.all([
+    const [statuses, arrReads, accountStats] = await Promise.all([
       Promise.allSettled([arr.sonarr.check(), arr.radarr.check(), rtorrent.check(), plex.check()]),
       Promise.all(configured.map(async (service) => {
         const [health, disks, updates] = await Promise.allSettled([
@@ -114,6 +134,7 @@ export const createHealth = (options: {
         ]);
         return { service, health: settled(health, []), disks: settled(disks, []), updates: settled(updates, []) };
       })),
+      Promise.allSettled([trackerAccounts.stats()]).then(([result]) => settled(result, [])),
     ]);
     const problems: HealthProblem[] = [];
     const ours = (id: string, level: HealthProblem['level'], check: string, message: string) => {
@@ -182,6 +203,25 @@ export const createHealth = (options: {
     }
     const hosts = new Set<string>(cooldowns.map((cooldown) => cooldown.host));
     for (const torrent of torrents) if (torrent.trackerHost) hosts.add(torrent.trackerHost);
+    const trackerOf = (host: string) => trackerNames.find((name) => indexerMatchesHost(name, host));
+    for (const stats of accountStats) {
+      const account = accountOf(stats);
+      if (account.kind === 'ok') {
+        const label = trackerLabels[stats.tracker];
+        if (account.ratio !== null && account.ratioMinimum !== null && account.ratio < account.ratioMinimum) {
+          ours(`ratio:${stats.tracker}`, 'warning', 'tracker', `${label} ratio ${account.ratio.toFixed(2)} is below its minimum ${account.ratioMinimum}`);
+        }
+        const previous = lastHitAndRuns.get(stats.tracker);
+        if (account.hitAndRuns !== null) {
+          if (previous !== undefined && account.hitAndRuns > previous) {
+            ours(`hnr:${stats.tracker}`, 'warning', 'tracker', `${label} hit-and-run count rose from ${previous} to ${account.hitAndRuns} (lifetime count)`);
+          }
+          lastHitAndRuns.set(stats.tracker, account.hitAndRuns);
+        }
+      }
+      if (stats.kind === 'not_configured' || [...hosts].some((host) => trackerOf(host) === stats.tracker)) continue;
+      hosts.add(stats.tracker);
+    }
     const trackers = [...hosts].sort().map((host) => {
       const cooldown = cooldowns.find((entry) => entry.host === host) ?? null;
       if (cooldown?.known === true) {
@@ -191,7 +231,9 @@ export const createHealth = (options: {
       }
       const count = down.get(host) ?? 0;
       if (count > 0) ours(`tracker:${host}`, 'warning', 'tracker', `${host} isn't answering (${count} torrent${count === 1 ? '' : 's'})`);
-      return { host, reachable: count === 0, cooldown, account: { kind: 'not_set_up' as const } };
+      const tracker = trackerOf(host);
+      const account = accountOf(accountStats.find((stats) => stats.tracker === tracker));
+      return { host, reachable: count === 0, cooldown, account };
     });
 
     const jobStatus = jobs.status();

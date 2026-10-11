@@ -105,7 +105,8 @@ if (database !== undefined) {
     await protection.reconcile();
   });
   const plex = createPlex(database);
-  const health = createHealth({ database, arr, rtorrent, plex, jobs: runner, events });
+  const trackerAccounts = createTrackerAccounts(database);
+  const health = createHealth({ database, arr, rtorrent, plex, jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
   runner.register('replace-completion', 60_000, () => replaces.run());
   runner.register('grab-download-ids', 30_000, async () => {
@@ -143,7 +144,7 @@ if (database !== undefined) {
     api: createApiRoutes(database, {
       arr,
       refresh: torrentGrabs.refresh,
-      trackers: createTrackerAccounts(database),
+      trackers: trackerAccounts,
       manualImport: createManualImport({ database, arr, problems }),
       health,
       flagged: createFlagged({ database, arr, labels, isManualDownload: protection.isProtected }),

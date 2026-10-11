@@ -23,6 +23,14 @@ function SectionHeader({ children }: { children: ReactNode }) {
   );
 }
 
+type TrackerAccount = HealthSnapshot['trackers'][number]['account'];
+const unavailableWords = { rejected: 'credentials refused', unreachable: 'not answering', unsupported: 'not available from this tracker' };
+
+function AccountCell({ account, value }: { account: TrackerAccount; value: (account: Extract<TrackerAccount, { kind: 'ok' }>) => string }) {
+  if (account.kind === 'ok') return <span className="text-[var(--mm-ink)]">{value(account)}</span>;
+  return <span className="text-[var(--mm-ink-3)]">{account.kind === 'not_set_up' ? 'not set up yet' : unavailableWords[account.reason]}</span>;
+}
+
 function Line({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn('flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-[var(--mm-seam)] px-5 py-2 text-[13px]', className)}>{children}</div>;
 }
@@ -68,8 +76,15 @@ function Sections({ snapshot, now }: { snapshot: HealthSnapshot; now: number }) 
               {tracker.host}
               {!tracker.reachable && <span className="text-[var(--mm-risk)]"> · not answering</span>}
             </span>
-            <span className="text-[var(--mm-ink-3)]">not set up yet</span>
-            <span className="text-[var(--mm-ink-3)]">not set up yet</span>
+            <AccountCell account={tracker.account} value={(account) => {
+              if (account.ratio === null) return '—';
+              const ratio = account.ratio.toFixed(2);
+              return account.ratioMinimum === null ? ratio : `${ratio} of minimum ${account.ratioMinimum}`;
+            }} />
+            <AccountCell account={tracker.account} value={(account) => {
+              if (account.hitAndRuns === null) return '—';
+              return account.hitAndRunsIsLifetime ? `${account.hitAndRuns} lifetime` : String(account.hitAndRuns);
+            }} />
             <span className={tracker.cooldown?.known === false ? 'text-[var(--mm-risk)]' : 'text-[var(--mm-ink-2)]'}>
               {tracker.cooldown === null ? '' : `since ${new Date(tracker.cooldown.since).toLocaleString()} · "${tracker.cooldown.text}"`}
             </span>

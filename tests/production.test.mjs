@@ -4628,6 +4628,11 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 2_000_000_000_000, totalSpace: 4_000_000_000_000 }],
     '/api/v3/update': [],
   };
+  const blutopiaStats = (ratio, hitAndRuns) => ({
+    tracker: 'blutopia',
+    kind: 'ok',
+    stats: { username: 'owner', group: 'User', uploaded: '', downloaded: '', ratio, buffer: '', seeding: null, leeching: null, seedbonus: null, hitAndRuns },
+  });
   let caseNumber = 0;
   const run = async (input = {}) => {
     caseNumber += 1;
@@ -4640,11 +4645,15 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     if (input.cooldown !== undefined) {
       database.prepare('INSERT INTO tracker_cooldowns VALUES (?, ?, ?, ?, ?)').run('blutopia.cc', now - hour, input.cooldown.text, input.cooldown.known ? 1 : 0, 'AB'.repeat(20));
     }
+    if (input.torrentHost !== undefined) {
+      database.prepare("INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, ?, 1, 1, NULL, 0)").run(input.torrentHost);
+    }
     const fake = (service) => ({
       configured: () => true,
       check: async () => input.statuses?.[service] ?? ok,
       request: async (path) => ({ status: 200, body: { ...healthy, ...input.arr?.[service] }[path] }),
     });
+    const notConfigured = ['blutopia', 'privatehd', 'beyondhd'].map((tracker) => ({ tracker, kind: 'not_configured' }));
     const published = [];
     const health = createHealth({
       database,
@@ -4652,6 +4661,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       rtorrent: { check: async () => ok },
       plex: { check: async () => ok },
       jobs: { status: () => input.jobs ?? [] },
+      trackerAccounts: { stats: async () => input.accounts ?? notConfigured },
       events: { publish: (type, data) => { published.push({ type, data }); } },
       now: () => now,
     });
@@ -4693,9 +4703,30 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     },
     { name: 'no ok backup yet', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Cloudflare R2 backups are not set up yet' },
     { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last Cloudflare R2 backup finished 30h 0m ago' },
+    // Mapping tracker account stats to the wrong account kind, or warning on a first look at a ratio above its minimum, turns these rows red.
+    {
+      name: 'tracker with no account stats', input: { torrentHost: 'blutopia.cc' }, level: 'ok', errors: 0, warnings: 0, message: undefined,
+      host: 'blutopia.cc', account: { kind: 'not_set_up' },
+    },
+    {
+      name: 'Blutopia account ok',
+      input: { torrentHost: 'blutopia.cc', accounts: [blutopiaStats(1.5, 2)] },
+      level: 'ok', errors: 0, warnings: 0, message: undefined,
+      host: 'blutopia.cc', account: { kind: 'ok', ratio: 1.5, ratioMinimum: 0.4, hitAndRuns: 2, hitAndRunsIsLifetime: true },
+    },
+    {
+      name: 'PrivateHD stats unsupported, no torrent yet', input: { accounts: [{ tracker: 'privatehd', kind: 'ok', stats: 'unsupported' }] },
+      level: 'ok', errors: 0, warnings: 0, message: undefined,
+      host: 'privatehd', account: { kind: 'unavailable', reason: 'unsupported' },
+    },
+    {
+      name: 'Blutopia ratio below its minimum', input: { torrentHost: 'blutopia.cc', accounts: [blutopiaStats(0.3, 0)] },
+      level: 'warning', errors: 0, warnings: 1, message: 'Blutopia ratio 0.30 is below its minimum 0.4',
+    },
   ];
-  for (const { name, input, level, errors, warnings, message, docsUrl } of cases) {
+  for (const { name, input, level, errors, warnings, message, docsUrl, host, account } of cases) {
     const { snapshot, badge } = await run(input);
+    if (host !== undefined) assert.deepEqual(snapshot.trackers.find((tracker) => tracker.host === host)?.account, account, name);
     assert.equal(snapshot.level, level, name);
     assert.deepEqual(badge, { type: 'health', data: { checkedAt: now, level, errors, warnings } }, name);
     if (message === undefined) {
@@ -4705,6 +4736,18 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       if (docsUrl !== undefined) assert.equal(snapshot.problems[0].docsUrl, docsUrl, name);
     }
   }
+
+  // Dropping the remembered hit-and-run count, or warning on the first check after a start, turns this red.
+  await t.test('a rise in the Blutopia hit-and-run count warns on the next check', async () => {
+    const input = { accounts: [blutopiaStats(1.5, 2)] };
+    const { snapshot: first, health } = await run(input);
+    assert.deepEqual(first.problems, []);
+    input.accounts = [blutopiaStats(1.5, 3)];
+    const second = await health.check();
+    assert.deepEqual(second.problems.map(({ id, level, message }) => ({ id, level, message })), [
+      { id: 'hnr:blutopia', level: 'warning', message: 'Blutopia hit-and-run count rose from 2 to 3 (lifetime count)' },
+    ]);
+  });
 
   // Leaving the health routes outside the sign-in guard, or not running the checks on demand, turns this red.
   await t.test('the health routes need the owner session and run the checks on demand', async () => {

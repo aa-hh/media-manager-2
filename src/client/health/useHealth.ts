@@ -25,7 +25,10 @@ export type HealthSnapshot = {
     host: string;
     reachable: boolean;
     cooldown: { host: string; since: number; text: string; known: boolean; triggerHash: string } | null;
-    account: { kind: 'not_set_up' };
+    account:
+      | { kind: 'not_set_up' }
+      | { kind: 'unavailable'; reason: 'rejected' | 'unreachable' | 'unsupported' }
+      | { kind: 'ok'; ratio: number | null; ratioMinimum: number | null; hitAndRuns: number | null; hitAndRunsIsLifetime: boolean };
   }[];
   disks: { path: string; label: string; freeBytes: number; totalBytes: number; sources: ('sonarr' | 'radarr')[] }[];
   jobs: { name: string; intervalMs: number; lastStartedAt: number | null; lastFinishedAt: number | null; lastFailed: boolean; late: boolean }[];
