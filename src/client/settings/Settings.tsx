@@ -1,4 +1,4 @@
-import { ChevronRight, DatabaseBackup, Folder, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
+import { ChevronRight, DatabaseBackup, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -19,7 +19,7 @@ import { StatusServicePill } from '@/components/ui/status-service-pill';
 import { useToastManager } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import {
-  ago, chain, changedCount, changes, type Check, type Draft, emptyDraft, failureTitle, headerSummary, isConfigured, linkTone, pillFor,
+  ago, chain, changedCount, changes, type Check, type Draft, emptyDraft, failureTitle, fieldWords, headerSummary, isConfigured, linkTone, pillFor,
   savedAddress, type SavedService, type ServiceInfo, type ServiceName, services, stripSummary, type TestResult,
 } from './model';
 import { BackupEditor } from './BackupEditor';
@@ -361,6 +361,20 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
 
   const row = (other: ServiceInfo) => {
     const pill = pillFor(other, checks[other.name], editedOf(other.name));
+    if (other.logo === null || other.addressPlaceholder === undefined) {
+      return (
+        <TrackerListRow
+          key={other.name}
+          host=""
+          title={other.label}
+          subline={isConfigured(saved[other.name]) ? `${other.refused} saved` : <span className="text-subtle-foreground">No {other.refused} yet</span>}
+          icon={other.logo === null ? <Globe /> : <Logo name={other.logo} alt="" />}
+          pill={<StatusServicePill logo={null} name={null} state={pill.state} className={pillOnly}>{pill.text}</StatusServicePill>}
+          selected={other.name === selected}
+          onClick={() => setSelected(other.name)}
+        />
+      );
+    }
     const address = savedAddress(saved[other.name]) || draftOf(other.name).address.trim();
     return (
       <RowService
@@ -418,7 +432,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
                     {column.names.map((name) => {
                       const member = infoOf(name);
                       const pill = pillFor(member, checks[name], editedOf(name));
-                      return <StatusServicePill key={name} logo={<Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
+                      return <StatusServicePill key={name} logo={member.logo === null ? null : <Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
                     })}
                   </div>
                 </div>
@@ -442,7 +456,8 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
 
       <div className="flex items-start gap-8">
         <nav aria-label="Services" className="flex w-105 shrink-0 flex-col">
-          {group('Services', services, true)}
+          {group('Services', services.filter((member) => member.group === 'Services'), true)}
+          {group('Metadata', services.filter((member) => member.group === 'Metadata'), false)}
           <LabelGroup count={storageConfigured === 2 ? 2 : `${storageConfigured} of 2`}>Storage</LabelGroup>
           <TrackerListRow
             host=""
@@ -587,7 +602,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
             <Callout title={failureTitle(others[0], checks[others[0].name], '')}>
               {[
                 checks[others[0].name].kind === 'unreachable'
-                  ? `Check that ${others[0].label} is running and that its address is right.`
+                  ? (others[0].addressPlaceholder === undefined ? `Check that the seedbox can reach ${others[0].label} over the internet.` : `Check that ${others[0].label} is running and that its address is right.`)
                   : `Open ${others[0].label} and enter a new ${others[0].refused}.`,
                 ...others.slice(1).map((other) => (checks[other.name].kind === 'unreachable'
                   ? `${other.label} also failed: no answer within 10 seconds.`
@@ -655,7 +670,7 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
     ? `Testing ${address || info.label}${typedSecret ? ` with this ${info.refused}` : anySecretSaved ? ` with the saved ${info.refused}` : ''}. Takes up to 10 seconds.`
     : formFailed && edits > 0 ? 'The test failed, so nothing was saved.'
       : edits > 0 ? `Connect tests the new ${words}, then saves. If the test fails, nothing changes.`
-        : !configured ? `Connect tests the address and ${info.refused}, then saves them.`
+        : !configured ? `Connect tests the ${fieldWords(info)}, then saves.`
           : 'Nothing to save. Change a field and Connect tests it before saving.';
 
   return (
@@ -664,7 +679,9 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
       className="flex flex-col gap-6 rounded-lg border border-border p-6 transition-opacity duration-(--duration-base) ease-out starting:opacity-0"
     >
       <div className="flex items-center gap-3">
-        <Logo name={info.logo} alt="" className="size-8" />
+        {info.logo === null
+          ? <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground [&>svg]:size-4"><Globe /></span>
+          : <Logo name={info.logo} alt="" className="size-8" />}
         <h2 id={`${info.name}-editor`} className="font-ui text-base font-bold text-foreground">{info.label}</h2>
         <StatusServicePill logo={null} name={null} state={pill.state} className={pillOnly}>{pill.text}</StatusServicePill>
       </div>
@@ -692,7 +709,7 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
       )}
 
       <div className="grid grid-cols-2 gap-4">
-        <FieldLabelled
+        {info.addressPlaceholder !== undefined && <FieldLabelled
           label="Address"
           error={check.kind === 'unreachable' ? 'Nothing answered at this address within 10 seconds. Check the port.' : undefined}
           help={savedUrl !== '' && address !== savedUrl
@@ -711,7 +728,7 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
             aria-invalid={check.kind === 'unreachable' || undefined}
             onValueChange={(value) => onDraft({ ...draft, address: value })}
           />
-        </FieldLabelled>
+        </FieldLabelled>}
         {!signIn && info.credentials.map((credential, index) => {
           const isSaved = saved.credentials[credential.key] === true;
           const locked = isSaved && !replacing[credential.key];
@@ -764,7 +781,7 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
       <dl className="flex flex-col">
         {check.kind === 'ok' && check.version !== undefined && <FactRow label="Version">{check.version}</FactRow>}
         {'at' in check && check.ofSaved && (
-          <FactRow label="Last checked" note={`${ago(check.at, now)}${edits > 0 && check.ofSaved ? `, with the saved address and ${info.refused}` : ''}`}>
+          <FactRow label="Last checked" note={`${ago(check.at, now)}${edits > 0 && check.ofSaved ? `, with the saved ${fieldWords(info)}` : ''}`}>
             Today {timeOf(check.at)}
           </FactRow>
         )}
@@ -791,9 +808,9 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
           action={<Button variant="outline" icon={<RefreshCw />} onClick={signIn || edits > 0 || !configured ? onConnect : onCheck}>Try again</Button>}
         >
           {check.kind === 'unreachable'
-            ? `Check that ${info.label} is running and that the port is right.`
-            : check.kind === 'rejected' ? (signIn ? 'Plex refused your sign-in token. Check that this is your own Plex server, or paste a token instead.' : info.credentials[0].help) : `Fill in the address and ${info.refused}, then Connect again.`}
-          {!check.ofSaved && check.kind !== 'not_configured' ? (signIn ? ' The address above is kept so you can fix it.' : ` The address and ${info.refused} above are kept so you can fix them.`) : ''}
+            ? (info.addressPlaceholder === undefined ? `Check that the seedbox can reach ${info.label} over the internet.` : `Check that ${info.label} is running and that the port is right.`)
+            : check.kind === 'rejected' ? (signIn ? 'Plex refused your sign-in token. Check that this is your own Plex server, or paste a token instead.' : info.credentials[0].help) : `Fill in the ${fieldWords(info)}, then Connect again.`}
+          {!check.ofSaved && check.kind !== 'not_configured' ? (signIn ? ' The address above is kept so you can fix it.' : (info.addressPlaceholder === undefined ? ` The ${info.refused} above is kept so you can fix it.` : ` The address and ${info.refused} above are kept so you can fix them.`)) : ''}
         </Callout>
       )}
     </section>
