@@ -249,8 +249,10 @@ export const createImportFix = (options: {
       for (const downloadId of cleared) {
         const handling = readHandling(service, downloadId) as Handling;
         saveHandling({ ...handling, done: true });
-        const problem = open.find((item) => item.kind === `import_${handling.category}` && item.subject.type === 'torrent' && item.subject.id === downloadId);
-        if (problem !== undefined) problems.setState(problem.id, 'resolved', 'The import went through after the retry.');
+        // A block can change kind between retries (locked, then a failed move), so every import problem on the download closes.
+        for (const problem of open.filter((item) => item.kind.startsWith('import_') && item.subject.type === 'torrent' && item.subject.id === downloadId)) {
+          problems.setState(problem.id, 'resolved', 'The import went through after the retry.');
+        }
       }
     }
   };

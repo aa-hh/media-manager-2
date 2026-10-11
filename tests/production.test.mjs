@@ -2836,6 +2836,22 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     }
   });
 
+  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move.
+  await t.test('a block that changes kind before clearing resolves every import problem on the download', async () => {
+    const run = await setup({ message: 'File is locked by another process' });
+    await run.fix.check();
+    run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Failed to move file'] }];
+    await run.grabs.reconcile();
+    run.clock.value += 5 * minute;
+    await run.fix.check();
+    assert.ok(listOpenProblems(run.database).length >= 1);
+    run.queue.length = 0;
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
   // Letting import fixes run while setup is broken, or never resuming them, turns this red.
   await t.test('a setup problem pauses import fixes until it is gone', async () => {
     const run = await setup({ message: 'Not enough free space' });
