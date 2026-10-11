@@ -101,7 +101,7 @@ while :; do
     [ "$i" -le 60 ] || fail "no answer on port $PORT after 30 seconds"
     sleep 0.5
 done
-echo "Slot check: the server (pid $pid) answers on port $PORT."
+echo "Host check: the server (pid $pid) answers on port $PORT."
 
 node dist/server/cli.js connections check || true
 

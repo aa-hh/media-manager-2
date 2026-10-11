@@ -5538,7 +5538,7 @@ const startFakeS3 = async (t) => {
   return { endpoint: `http://127.0.0.1:${server.address().port}`, objects, requests, state, close };
 };
 
-// Encoding the secret's "+" wrongly, sorting query parameters by original order, hashing a body other than the one sent, or naming the endpoint or key id in an error turns this red.
+// Encoding the secret's "+" wrongly, sorting query parameters by original order, hashing a body other than the one sent, signing with a region other than the configured one, or naming the endpoint or key id in an error turns this red.
 test('S3 requests are signed with AWS Signature V4 and stored path-style', async (t) => {
   const { createS3Store, signRequest } = await import(s3ModuleUrl);
 
@@ -5570,7 +5570,7 @@ test('S3 requests are signed with AWS Signature V4 and stored path-style', async
   const config = {
     endpoint: s3.endpoint,
     bucket: 'mm2-backups',
-    region: 'auto',
+    region: 'us-west-004',
     accessKeyId: `key-id-${process.pid}-distinctive`,
     secretAccessKey: `secret-${process.pid}-distinctive`,
   };
@@ -5587,7 +5587,7 @@ test('S3 requests are signed with AWS Signature V4 and stored path-style', async
   assert.deepEqual(await store.list('backups/'), []);
   assert.equal(s3.requests.length, 7);
   for (const request of s3.requests) {
-    assert.ok(request.headers.authorization.startsWith(`AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/20261011/auto/s3/aws4_request, SignedHeaders=`));
+    assert.ok(request.headers.authorization.startsWith(`AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/20261011/us-west-004/s3/aws4_request, SignedHeaders=`));
     assert.equal(request.headers['x-amz-content-sha256'], sha256Hex(request.body));
   }
 
