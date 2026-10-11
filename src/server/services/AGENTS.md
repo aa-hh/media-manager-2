@@ -2,7 +2,7 @@
 
 ## Purpose
 
-HTTP clients for Sonarr, Radarr, rTorrent, Plex, TMDB, MDBList, tracker sites and S3. Only Plex sign-in (`auth.ts`) and .torrent downloads (`secondVersions.ts`) request from elsewhere, capping their own requests. No business decisions here; writes only its own settings.
+HTTP clients for Sonarr, Radarr, rTorrent, Plex, TMDB, MDBList, tracker sites and S3. Plex sign-in (`auth.ts`), .torrent downloads (`secondVersions.ts`) and TMDB images (`titles.ts`) request from elsewhere, capped the same way. No business decisions; writes only its own settings.
 
 ## Rules
 
@@ -28,7 +28,7 @@ HTTP clients for Sonarr, Radarr, rTorrent, Plex, TMDB, MDBList, tracker sites an
 - `arr/movies.ts` → movies.
 - `arr/files.ts` → file details.
 - `connection.ts` → timeout helper, settings.
-- `rtorrent.ts` → rTorrent XML-RPC client.
+- `rtorrent.ts` → rTorrent client.
 - `plex.ts` → Plex client.
 - `tmdb.ts` → TMDB client.
 - `mdblist.ts` → MDBList client.

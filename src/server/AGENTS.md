@@ -17,13 +17,13 @@ Routes, background jobs and the SQLite database that act on Sonarr, Radarr, rTor
 
 ## Map
 
-- `index.ts`, `app.ts`, `cli.ts`, `auth.ts`, `events.ts`, `jobs.ts` -> startup, routes, command line, sign-in, event stream, jobs.
-- `database.ts`, `settings.ts`, `preferences.ts`, `dependencies.ts`, `backup.ts`, `backupDestination.ts` -> storage and backups.
-- `setup.ts`, `connections.ts`, `trackerSettings.ts` -> setup and settings routes.
-- `grabs.ts`, `replace.ts`, `protection.ts`, `releases.ts`, `releaseDetails.ts`, `searches.ts` -> searching, grabbing, replace, protection.
-- `torrents.ts`, `torrentGrabs.ts`, `torrentFiles.ts`, `stalls.ts`, `trackers.ts`, `relink.ts` -> rTorrent poll, stall and tracker fixes, torrent removal.
-- `imports.ts`, `manualImport.ts`, `assignments.ts` -> blocked imports, import by hand.
-- `secondVersions.ts`, `versionImport.ts`, `secondVersionRows.ts`, `secondVersionDelete.ts` -> second versions.
-- `titleDelete.ts`, `advice.ts`, `trackerRules.ts`, `health.ts` -> title delete, removal advice, hit and run, health.
-- `problems.ts`, `flagged.ts`, `blocklist.ts`, `history.ts`, `api.ts` -> problems, blocklist, History, queue actions.
-- `library.ts`, `owned.ts`, `add.ts`, `search.ts`, `labels.ts`, `titles.ts`, `titleStore.ts`, `tmdbTitles.ts`, `discover.ts` -> library, adding, lookup, TMDB, Discover.
+- `index.ts`, `app.ts`, `cli.ts`, `auth.ts`, `events.ts`, `jobs.ts` → startup, routes, sign-in, jobs.
+- `database.ts`, `settings.ts`, `preferences.ts`, `dependencies.ts`, `backup.ts`, `backupDestination.ts` → storage and backups.
+- `setup.ts`, `connections.ts`, `trackerSettings.ts` → setup and settings routes.
+- `grabs.ts`, `replace.ts`, `protection.ts`, `releases.ts`, `releaseDetails.ts`, `searches.ts` → searching, grabbing, replace, protection.
+- `torrents.ts`, `torrentGrabs.ts`, `torrentFiles.ts`, `stalls.ts`, `trackers.ts`, `relink.ts` → rTorrent poll, fixes, removal.
+- `imports.ts`, `manualImport.ts`, `assignments.ts` → blocked imports, import by hand.
+- `secondVersions.ts`, `versionImport.ts`, `secondVersionRows.ts`, `secondVersionDelete.ts` → second versions.
+- `titleDelete.ts`, `advice.ts`, `trackerRules.ts`, `health.ts` → deletion, removal advice, health.
+- `problems.ts`, `flagged.ts`, `blocklist.ts`, `history.ts`, `api.ts` → problems, blocklist, History, queue actions.
+- `library.ts`, `owned.ts`, `add.ts`, `search.ts`, `labels.ts`, `titles.ts`, `titleStore.ts`, `tmdbTitles.ts`, `discover.ts` → library.

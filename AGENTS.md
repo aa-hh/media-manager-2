@@ -94,10 +94,11 @@ symbol you cannot find in source, believe the source and fix the doc.
 - **Every request to Sonarr, Radarr, rTorrent, Plex's media API, TMDB,
   MDBList, tracker sites and S3 goes through `src/server/services/`.** The
   service clients hold the timeouts, paging and error mapping; a second
-  caller skips all three. Two exceptions exist: Plex sign-in in
-  `src/server/auth.ts` and .torrent downloads from indexers in
-  `src/server/secondVersions.ts`. The two exceptions cap their own requests
-  the same way (time limit, redirects); keep those caps when editing them.
+  caller skips all three. Three exceptions exist: Plex sign-in in
+  `src/server/auth.ts`, .torrent downloads from indexers in
+  `src/server/secondVersions.ts`, and TMDB image downloads in
+  `src/server/titles.ts`. Each caps its own requests the same way (time
+  limit, redirects); keep those caps when editing them.
 
 ## Tests
 
