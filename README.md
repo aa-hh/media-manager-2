@@ -267,8 +267,10 @@ both full lists every five minutes. Between runs, Sonarr and Radarr webhooks
 `Rename` events and Radarr's `MovieAdded`, `Download`, `MovieFileDelete` and
 `Rename` events, and drop it on `SeriesDelete` or `MovieDelete`. Images are
 stored in an `images` folder beside the database. No Sonarr or Radarr key
-reaches the browser. Sonarr and Radarr search results are kept in memory for
-ten minutes per service and search term; a failed lookup is never kept.
+reaches the browser. Sonarr and Radarr lookups of titles outside the library,
+and which titles each search term returned, are saved in SQLite and reused for
+ten minutes; a failed lookup is never saved. Adding a title clears that
+service's saved lookups.
 
 ### Deleting a movie or show
 
