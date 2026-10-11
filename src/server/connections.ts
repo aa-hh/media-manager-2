@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { applicationMigrations, migrateDatabase } from './database.js';
 import { createArr } from './services/arr.js';
 import { type ConnectionStatus, readSetting, type ServiceOptions } from './services/connection.js';
+import { createMdblist } from './services/mdblist.js';
 import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTmdb } from './services/tmdb.js';
@@ -19,6 +20,7 @@ const serviceKeys = {
   plex: { serviceAddresses: ['plex.url'], credentials: ['plex.token'] },
   // TMDB has one fixed address, so the owner enters only its key.
   tmdb: { serviceAddresses: [], credentials: ['tmdb.apiKey'] },
+  mdblist: { serviceAddresses: [], credentials: ['mdblist.apiKey'] },
 } satisfies Record<string, Record<Category, string[]>>;
 type ServiceName = keyof typeof serviceKeys;
 
@@ -29,6 +31,7 @@ const checks: Record<ServiceName, (database: DatabaseSync, options: ServiceOptio
   rtorrent: (database, options) => createRtorrent(database, options).check(),
   plex: (database, options) => createPlex(database, options).check(),
   tmdb: (database, options) => createTmdb(database, options).check(),
+  mdblist: (database, options) => createMdblist(database, options).check(),
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (

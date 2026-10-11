@@ -27,6 +27,7 @@ import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
+import { createDiscover } from './discover.js';
 import { createTitleStore } from './titleStore.js';
 import { createTmdbTitles } from './tmdbTitles.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
@@ -37,6 +38,7 @@ import { createVersionImport } from './versionImport.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { createMdblist } from './services/mdblist.js';
 import { createPlex } from './services/plex.js';
 import { createTmdb } from './services/tmdb.js';
 import { createRtorrent } from './services/rtorrent.js';
@@ -137,7 +139,8 @@ if (database !== undefined) {
   });
   const trackerAccounts = createTrackerAccounts(database);
   const tmdb = createTmdb(database);
-  const health = createHealth({ database, arr, rtorrent, plex, tmdb, jobs: runner, trackerAccounts, events });
+  const mdblist = createMdblist(database);
+  const health = createHealth({ database, arr, rtorrent, plex, tmdb, mdblist, jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
   runner.register('replace-completion', 60_000, () => replaces.run());
   runner.register('grab-download-ids', 30_000, async () => {
@@ -161,6 +164,7 @@ if (database !== undefined) {
     }),
   });
   const titleStore = createTitleStore(database);
+  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist);
   const search = createSearch(database, arr, titleStore);
   const add = createAdd(database, arr, titleStore);
   const app = createApp({
@@ -190,7 +194,8 @@ if (database !== undefined) {
     titleDelete,
     owned: createOwned(arr),
     protection,
-    library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore),
+    library,
+    discover: createDiscover({ tmdb, store: titleStore, libraryTitles: library.titles }),
     tmdbTitles: createTmdbTitles({ database, tmdb, store: titleStore }),
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {

@@ -33,6 +33,7 @@ const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
 const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
+const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
@@ -411,7 +412,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api, library, titleDelete, images, setup } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks, api, library, discover, titleDelete, images, setup } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -427,6 +428,7 @@ const makeApp = async (input = {}) => {
     webhooks,
     api,
     library,
+    discover,
     titleDelete,
     images,
     setup,
@@ -2275,6 +2277,132 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
   });
 });
 
+test('MDBList ratings fill the show page by site, are saved for a week and never fail the page', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createLibrary, createLibraryRoutes } = await import(libraryModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createMdblist, ratingsBySite } = await import(mdblistModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-mdblist-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const key = `mdblist-key-${process.pid}-distinctive`;
+  const { fake, ...services } = connectArr(database);
+  fake.sonarr.state.series = [seriesRecord({ id: 7, title: 'Severance', tvdbId: 371980, tmdbId: 95396 })];
+  fake.sonarr.state.lookup = [{ title: 'Severance', tvdbId: 371980, tmdbId: 95396, seasons: [] }];
+  // The real MDBList reply for Severance (/tvdb/show/371980), 11 Oct 2026.
+  const severance = {
+    ids: { imdb: 'tt11280740', trakt: 154997, tmdb: 95396, tvdb: 371980, mal: null, mdblist: 'x' },
+    ratings: [
+      { source: 'imdb', value: 8.6, score: 86, votes: 410881, url: 63 },
+      { source: 'metacritic', value: 85, score: 85, votes: 82, url: null },
+      { source: 'metacriticuser', value: 8.3, score: 83, votes: 1048, url: null },
+      { source: 'trakt', value: 86, score: 86, votes: 25373, url: null },
+      { source: 'tomatoes', value: 95, score: 95, votes: 242, url: null, fresh: 1 },
+      { source: 'popcorn', value: 80, score: 80, votes: null, url: null },
+      { source: 'tmdb', value: 84, score: 84, votes: 3008, url: null },
+      { source: 'letterboxd', value: null, score: null, votes: null, url: null },
+      { source: 'rogerebert', value: null, score: null, votes: null, url: null },
+      { source: 'myanimelist', value: null, score: null, votes: null, url: null },
+    ],
+  };
+  const expected = {
+    imdb: { value: 8.6, votes: 410881 },
+    rottenTomatoes: { value: 95, votes: 242 },
+    rottenTomatoesAudience: { value: 80, votes: null },
+    metacritic: { value: 85, votes: 82 },
+  };
+  const none = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null };
+  const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
+  const clock = { value: 1_800_000_000_000 };
+  const connect = (respond) => {
+    database.prepare("DELETE FROM title_store_parts WHERE part = 'mdblistRatings'").run();
+    const calls = [];
+    const mdblist = createMdblist(database, { now: () => clock.value, fetch: async (url, init) => {
+      calls.push(new URL(String(url)));
+      assert.equal(init.redirect, 'error');
+      return respond(new URL(String(url)));
+    } });
+    const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value }), mdblist));
+    const page = async (path = '/series/7') => {
+      const response = await routes.request(path);
+      return { status: response.status, text: await response.text() };
+    };
+    return { mdblist, calls, page };
+  };
+
+  // Reading score instead of value, mapping a source to the wrong site, or dropping the old rating field turns this red.
+  await t.test('the Severance reply maps to each site, on the library page and the preview', async () => {
+    setSetting(database, 'credentials', 'mdblist.apiKey', key);
+    const { calls, page } = connect(() => json(severance));
+    const body = JSON.parse((await page()).text);
+    assert.deepEqual(body.ratingsBySite, expected);
+    assert.equal('rating' in body, true);
+    assert.equal(calls[0].origin + calls[0].pathname, 'https://api.mdblist.com/tvdb/show/371980');
+    assert.equal(calls[0].searchParams.get('apikey'), key);
+    assert.deepEqual(JSON.parse((await page('/preview/sonarr/371980')).text).ratingsBySite, expected);
+  });
+
+  // Not falling back to the TMDB id when MDBList has no such TVDB id turns this red.
+  await t.test('a TVDB id MDBList does not know falls back to the TMDB id', async () => {
+    const { calls, page } = connect((url) => (url.pathname.startsWith('/tvdb/') ? json({ error: 'not found' }, 404) : json(severance)));
+    assert.deepEqual(JSON.parse((await page()).text).ratingsBySite, expected);
+    assert.deepEqual(calls.map((url) => url.pathname), ['/tvdb/show/371980', '/tmdb/show/95396']);
+  });
+
+  // Turning a missing site or a site with a null value into anything but null turns this red.
+  await t.test('a missing site and a site whose fields are all null both give null', () => {
+    const ratings = severance.ratings
+      .filter((rating) => rating.source !== 'metacritic')
+      .map((rating) => (rating.source === 'imdb' ? { source: 'imdb', value: null, score: null, votes: null, url: null } : rating));
+    assert.deepEqual(ratingsBySite(ratings), { ...expected, imdb: null, metacritic: null });
+  });
+
+  // Failing the page when MDBList fails, saving a failure, or putting the key in a message or log line turns this red.
+  await t.test('an unset, rejected, rate-limited or unreachable MDBList leaves every site null and the page 200', async () => {
+    const logged = [];
+    const originals = { error: console.error, warn: console.warn, log: console.log };
+    for (const name of Object.keys(originals)) console[name] = (...args) => { logged.push(args.map(String).join(' ')); };
+    try {
+      const cases = [
+        { name: 'unset', set: '', respond: () => json(severance), status: { kind: 'not_configured' } },
+        { name: 'rejected', set: key, respond: () => json({ error: `Invalid API key ${key}` }, 403), status: { kind: 'rejected' } },
+        { name: 'rate-limited', set: key, respond: () => json({ error: 'limit' }, 429, { 'Retry-After': '3600' }), status: { kind: 'ok', version: 'daily request limit reached' } },
+        { name: 'unreachable', set: key, respond: () => { throw new TypeError(`fetch failed for ${key}`); }, status: { kind: 'unreachable' } },
+      ];
+      for (const entry of cases) {
+        setSetting(database, 'credentials', 'mdblist.apiKey', entry.set);
+        const { mdblist, page } = connect(entry.respond);
+        const answer = await page();
+        assert.equal(answer.status, 200, entry.name);
+        assert.deepEqual(JSON.parse(answer.text).ratingsBySite, none, entry.name);
+        const status = await mdblist.check();
+        assert.deepEqual(status, entry.status, entry.name);
+        for (const text of [answer.text, JSON.stringify(status)]) assert.equal(text.includes(key), false, entry.name);
+      }
+      assert.equal(logged.some((line) => line.includes(key)), false);
+    } finally {
+      Object.assign(console, originals);
+    }
+  });
+
+  // Asking MDBList again within seven days, or not refreshing a saved copy once it is a week old, turns this red.
+  await t.test('a second request within seven days makes no MDBList call', async () => {
+    setSetting(database, 'credentials', 'mdblist.apiKey', key);
+    const { calls, page } = connect(() => json(severance));
+    await page();
+    clock.value += 7 * 86_400_000 - 1;
+    assert.deepEqual(JSON.parse((await page()).text).ratingsBySite, expected);
+    assert.equal(calls.length, 1);
+    clock.value += 1;
+    assert.deepEqual(JSON.parse((await page()).text).ratingsBySite, expected);
+    assert.equal(calls.length, 2);
+  });
+});
+
 test('a title page gets top cast, keywords and similar titles from TMDB, saved for seven days', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting, deleteSetting } = await import(settingsModuleUrl);
@@ -2403,12 +2531,14 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   for (const secret of [...secrets, 'test-key']) assert.equal(text.includes(secret), false, secret);
   const { services } = JSON.parse(text);
   // Tracker accounts live with their trackers; listing the old Blutopia, PrivateHD or Beyond-HD sign-ins here turns this red.
-  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb']);
+  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist']);
   assert.deepEqual(services[0], { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65201' }, credentials: { 'sonarr.apiKey': true } });
   assert.deepEqual(services[2].credentials, { 'rtorrent.username': false, 'rtorrent.password': true });
   assert.deepEqual(services[3].credentials, { 'plex.token': false });
   // Asking for a TMDB address, which is fixed, turns this red.
   assert.deepEqual(services[4], { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } });
+  // Asking for an MDBList address, which is fixed, turns this red.
+  assert.deepEqual(services[5], { service: 'mdblist', serviceAddresses: {}, credentials: { 'mdblist.apiKey': false } });
 
   // Saving a blank credential over the stored one, or accepting a key no service reads, turns this red.
   const before = listSettingKeys(database);
@@ -7453,6 +7583,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       rtorrent: { check: async () => ok },
       plex: { check: async () => ok },
       tmdb: { check: async () => input.statuses?.tmdb ?? ok },
+      mdblist: { check: async () => input.statuses?.mdblist ?? ok },
       jobs: { status: () => input.jobs ?? [] },
       trackerAccounts: { stats: async () => input.accounts ?? notConfigured },
       events: { publish: (type, data) => { published.push({ type, data }); } },
@@ -7468,6 +7599,8 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     { name: 'Sonarr unreachable', input: { statuses: { sonarr: { kind: 'unreachable' } } }, level: 'error', errors: 1, warnings: 0, message: 'Sonarr is unreachable.' },
     // Leaving TMDB out of the service checks turns this row red.
     { name: 'TMDB key rejected', input: { statuses: { tmdb: { kind: 'rejected' } } }, level: 'error', errors: 1, warnings: 0, message: 'TMDB refused the credentials.' },
+    // Leaving MDBList out of the service checks turns this row red.
+    { name: 'MDBList unreachable', input: { statuses: { mdblist: { kind: 'unreachable' } } }, level: 'error', errors: 1, warnings: 0, message: 'MDBList is unreachable.' },
     {
       name: 'arr warning row with a string wikiUrl',
       input: { arr: { radarr: { '/api/v3/health': [{ source: 'IndexerStatusCheck', type: 'warning', message: 'Indexers unavailable: Blutopia', wikiUrl: 'https://wiki.servarr.com/radarr/1' }] } } },
@@ -9288,4 +9421,71 @@ test('the delete routes sit under the owner guard at /api/library and take a lon
   });
   assert.equal(response.status, 200);
   assert.deepEqual(calls, [[{ service: 'radarr', movieId: 3 }, 60, 'keepUnmonitored']]);
+});
+
+test('the discover routes check every value, mark library titles and turn a missing TMDB key into a readable error', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTmdb } = await import(tmdbModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createDiscover } = await import(new URL('../dist/server/discover.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-discover-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const calls = [];
+  const tmdb = createTmdb(database, { fetch: async (url) => {
+    calls.push(new URL(String(url)));
+    return new Response(JSON.stringify({ page: 2, total_pages: 3, results: [
+      { id: 438631, title: 'Dune', release_date: '2021-09-15', poster_path: '/d5NX.jpg', backdrop_path: null, vote_average: 7.8, overview: 'Paul travels. Then more.' },
+      { id: 999, name: 'Severance', media_type: 'tv', first_air_date: '2022-02-17', poster_path: null, backdrop_path: '/bg.jpg' },
+    ] }));
+  } });
+  const store = createTitleStore(database);
+  const libraryTitles = async () => ({ titles: [{ type: 'movie', id: 7, tmdbId: 438631 }, { type: 'tv', id: 999, tmdbId: null }] });
+  const { app } = await makeApp({ discover: createDiscover({ tmdb, store, libraryTitles }) });
+  const { session } = await signIn(app);
+  const get = async (path) => {
+    const response = await app.request(path, { headers: { Cookie: session } });
+    return { status: response.status, body: await response.json() };
+  };
+
+  // Mounting /api/discover outside the private guard turns this red.
+  assert.equal((await app.request('/api/discover/movie')).status, 401);
+
+  // Answering a missing TMDB key with a 500 or without its reason turns this red.
+  const unconfigured = await get('/api/discover/movie');
+  assert.equal(unconfigured.status, 503);
+  assert.equal(unconfigured.body.error, 'not_configured');
+  assert.match(unconfigured.body.reason, /TMDB is not configured/);
+
+  // Letting any one of these values through to TMDB turns its row red.
+  setSetting(database, 'credentials', 'tmdb.apiKey', 'tmdb-key');
+  for (const path of [
+    'movie?sort=trending', 'movie?region=usa', 'movie?region=us', 'movie?yearFrom=2020&yearTo=2019', 'movie?genres=18,abc',
+    'movie?providers=8|9', 'movie?page=0', 'movie?page=501', 'movie?minRating=11', 'person', 'providers/tv?region=GBR',
+  ]) {
+    assert.equal((await get(`/api/discover/${path}`)).status, 400, path);
+  }
+  assert.equal(calls.length, 0);
+
+  // Matching the library by anything but type and TMDB id, building image URLs other than the agreed route, or not saving the summary turns this red.
+  const page = await get('/api/discover/movie?genres=18,878&providers=8,9&region=GB&yearFrom=2020&minRating=6.5&page=2');
+  assert.equal(page.status, 200);
+  assert.deepEqual({ page: page.body.page, totalPages: page.body.totalPages }, { page: 2, totalPages: 3 });
+  assert.deepEqual(page.body.results[0], {
+    tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, posterUrl: '/api/images/tmdb/w342/d5NX.jpg', backdropUrl: null,
+    rating: 7.8, overview: 'Paul travels.', libraryId: 7,
+  });
+  assert.equal(page.body.results[1].backdropUrl, '/api/images/tmdb/w1920_and_h800_multi_faces/bg.jpg');
+  assert.equal(page.body.results[1].libraryId, null);
+  assert.equal(store.get({ type: 'movie', tmdbId: 438631 }, 'tmdbSummary').value.title, 'Dune');
+  assert.equal(store.get({ type: 'tv', tmdbId: 999 }, 'tmdbSummary').value.title, 'Severance');
+  const sent = calls.at(-1).searchParams;
+  assert.deepEqual(
+    ['sort_by', 'with_genres', 'with_watch_providers', 'watch_region', 'primary_release_date.gte', 'vote_average.gte', 'page'].map((name) => sent.get(name)),
+    ['popularity.desc', '18,878', '8|9', 'GB', '2020-01-01', '6.5', '2'],
+  );
 });
