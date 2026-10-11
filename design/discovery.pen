@@ -2560,168 +2560,48 @@
               "alignItems": "center",
               "children": [
                 {
-                  "type": "frame",
-                  "id": "zTRri",
+                  "id": "o82OIa",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Science Fiction",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "MORqM",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Science Fiction",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "Sh0HM",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Science Fiction"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "Fxne2",
+                  "id": "qaJaK",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Drama",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "i4uAUO",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Drama",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "eP8h1",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Drama"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "pv7qW",
+                  "id": "hkYjU",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip 2006–2024",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "W5Dky",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "2006–2024",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "Ygxh8",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "2006–2024"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "qlDBE",
+                  "id": "b0Qbs",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Rating 7 and above",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "OGEIs",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Rating 7 and above",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "wozeF",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Rating 7 and above"
                     }
-                  ]
+                  }
                 },
                 {
                   "id": "Hfykp",
@@ -3677,168 +3557,48 @@
               "alignItems": "center",
               "children": [
                 {
-                  "type": "frame",
-                  "id": "TDOJq",
+                  "id": "MfsJo",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Drama",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "H08GzR",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Drama",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "jx4OE",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Drama"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "DvLyJ",
+                  "id": "XPedI",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Sci-Fi & Fantasy",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "X7iZ1",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Sci-Fi & Fantasy",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "xn3oT",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Sci-Fi & Fantasy"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "knTQJ",
+                  "id": "pFzjB",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip 2011–2025",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "HXXUQ",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "2011–2025",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "R30GaB",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "2011–2025"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "INMlA",
+                  "id": "J9Rk1",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Rating 7 and above",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "W3ZMnR",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Rating 7 and above",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "o9uHhv",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Rating 7 and above"
                     }
-                  ]
+                  }
                 },
                 {
                   "id": "uiSKh",
@@ -8444,168 +8204,48 @@
               "alignItems": "center",
               "children": [
                 {
-                  "type": "frame",
-                  "id": "Cj3hH",
+                  "id": "uRYc0",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Science Fiction",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "K4dH4",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Science Fiction",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "Ov6Bl",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Science Fiction"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "VwPxI",
+                  "id": "YU1Pf",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Drama",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "OYtbH",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Drama",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "G8FUjp",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Drama"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "Z4c0I",
+                  "id": "E6LzAm",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip 2006–2024",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "mZrjS",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "2006–2024",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "pATFG",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "2006–2024"
                     }
-                  ]
+                  }
                 },
                 {
-                  "type": "frame",
-                  "id": "YDfD0",
+                  "id": "OhF1a",
+                  "type": "ref",
+                  "ref": "b:yDjSk",
                   "name": "Chip Rating 7 and above",
-                  "context": "Removable filter",
-                  "height": 28,
-                  "fill": "$b:card",
-                  "cornerRadius": "$b:radius-full",
-                  "stroke": "$b:border",
-                  "strokeWidth": 1,
-                  "gap": 4,
-                  "padding": [
-                    0,
-                    6,
-                    0,
-                    10
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "n0a6AV",
-                      "name": "Chip label",
-                      "fill": "$b:foreground",
-                      "content": "Rating 7 and above",
-                      "fontFamily": "$b:font-ui",
-                      "fontSize": 13,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "icon",
-                      "id": "DvD3K",
-                      "name": "Remove",
-                      "width": 14,
-                      "height": 14,
-                      "icon": "x",
-                      "library": "lucide",
-                      "fill": "$b:muted-foreground"
+                  "descendants": {
+                    "b:BRjxi": {
+                      "content": "Rating 7 and above"
                     }
-                  ]
+                  }
                 },
                 {
                   "id": "W2oWl",
@@ -35588,44 +35228,15 @@
                   "alignItems": "center",
                   "children": [
                     {
-                      "type": "frame",
-                      "id": "B3OGN",
+                      "id": "zVTzZ",
+                      "type": "ref",
+                      "ref": "b:yDjSk",
                       "name": "Chip Rating",
-                      "height": 28,
-                      "fill": "$b:card",
-                      "cornerRadius": "$b:radius-full",
-                      "stroke": "$b:border",
-                      "strokeWidth": 1,
-                      "gap": 4,
-                      "padding": [
-                        0,
-                        6,
-                        0,
-                        10
-                      ],
-                      "alignItems": "center",
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "y39Pm",
-                          "name": "Chip label",
-                          "fill": "$b:foreground",
-                          "content": "Rating 7 and above",
-                          "fontFamily": "$b:font-ui",
-                          "fontSize": 13,
-                          "fontWeight": "500"
-                        },
-                        {
-                          "type": "icon",
-                          "id": "ej70L",
-                          "name": "Remove",
-                          "width": 14,
-                          "height": 14,
-                          "icon": "x",
-                          "library": "lucide",
-                          "fill": "$b:muted-foreground"
+                      "descendants": {
+                        "b:BRjxi": {
+                          "content": "Rating 7 and above"
                         }
-                      ]
+                      }
                     },
                     {
                       "id": "Rj9rn",
