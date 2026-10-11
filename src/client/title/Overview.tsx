@@ -84,8 +84,6 @@ function PreviewSeasons({ detail }: { detail: SeriesDetail }) {
   );
 }
 
-const day = (iso: string | null) => (iso === null ? null : new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
-
 export function Overview({ downloads, onUnauthenticated }: { downloads: DownloadsState; onUnauthenticated: () => void }) {
   const { pathname } = useLocation();
   const route = useMemo(() => parseRoute(pathname), [pathname]);
@@ -192,11 +190,8 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
           badges={<Badge>Not in library</Badge>}
           facts={[
             { label: 'Monitoring', value: 'Not monitored' },
+            { label: load.kind === 'preview-tv' ? 'New seasons' : 'Available when', value: 'Chosen when adding' },
             { label: 'Quality profile', value: 'Chosen when adding' },
-            ...(load.kind === 'preview-tv'
-              ? load.detail.network === null ? [] : [{ label: 'Network', value: load.detail.network }]
-              : load.detail.studio === null ? [] : [{ label: 'Studio', value: load.detail.studio }]),
-            ...(load.kind === 'preview-movie' ? [{ label: 'Digital release', value: day(load.detail.releaseDates.digital) ?? 'Not announced' }] : []),
           ]}
           add={(
             <div className="flex flex-col gap-4">
