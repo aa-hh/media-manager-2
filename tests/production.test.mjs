@@ -5535,6 +5535,20 @@ test('library files are traced to the torrents holding them, and a torrent is re
     for (const path of ['downloads/A.mkv', 'downloads/Shared.mkv', 'elsewhere/E.mkv']) assert.equal(await exists(world.at(path)), true);
   });
 
+  // Walking the library inside every removal check instead of using the read it was given turns this red.
+  await t.test('a plan reads the library once and every removal check uses that read', async () => {
+    const world = await setup([{ n: 1, directory: 'downloads', files: [['A.mkv', 10]] }]);
+    const kept = world.at('library', 'Show', 'e1.mkv');
+    await link(world.at('downloads', 'A.mkv'), kept);
+    assert.deepEqual(world.canRemoveTorrent(hashOf(1), { after: [], library: { inodes: new Map(), blocked: null } }), { allowed: true });
+    const blocked = 'x links to a folder, so the files under it cannot be checked.';
+    assert.deepEqual(world.canRemoveTorrent(hashOf(1), { after: [], library: { inodes: new Map(), blocked } }), { allowed: false, reason: blocked });
+    const library = world.readLibraryInodes([]);
+    const stats = await stat(kept, { bigint: true });
+    assert.equal(library.inodes.get(`${stats.dev}:${stats.ino}`), kept);
+    assert.equal(library.blocked, null);
+  });
+
   // Removing a single-file torrent's folder, or a file the torrent does not list, turns this red.
   await t.test('removing a single-file torrent deletes its file and leaves the shared folder and its other files', async () => {
     const world = await setup([
