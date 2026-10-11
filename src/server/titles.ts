@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { type Context, Hono } from 'hono';
@@ -11,6 +11,9 @@ import type { ArrServices, Image, Movie, Series } from './services/arr.js';
 export type Service = 'sonarr' | 'radarr';
 export type ImageKind = 'poster' | 'fanart';
 export const TITLE_REFRESH_INTERVAL_MS = 5 * 60_000;
+
+const imageContentType = (header: string, extension: string) =>
+  header.split(';')[0].trim().toLowerCase().startsWith('image/') ? header : `image/${extension === 'jpg' ? 'jpeg' : extension}`;
 
 export type CachedTitle = {
   service: Service;
@@ -57,6 +60,19 @@ const positiveInteger = (value: unknown) => (
 );
 const isSuccess = (status: number) => status >= 200 && status <= 299;
 const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
+
+// Written beside the target and renamed over it, so a reader never sees half a file; a failure removes the partial copy.
+const saveImage = (directory: string, file: string, bytes: Uint8Array) => {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const temporary = join(directory, `${file}.${randomUUID()}.tmp`);
+  try {
+    writeFileSync(temporary, bytes, { mode: 0o600 });
+    renameSync(temporary, join(directory, file));
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    throw error;
+  }
+};
 
 const toTitle = (row: TitleRow): CachedTitle => ({
   service: row.service,
@@ -181,16 +197,13 @@ export const createTitleCache = (options: {
         if (!titleExists(service, id)) return;
         const extension = match[1].toLowerCase();
         const file = `${service}-${id}-${kind}.${extension}`;
-        mkdirSync(imageDirectory, { recursive: true, mode: 0o700 });
-        const temporary = join(imageDirectory, `${file}.${randomUUID()}.tmp`);
-        writeFileSync(temporary, response.bytes, { mode: 0o600 });
-        renameSync(temporary, join(imageDirectory, file));
+        saveImage(imageDirectory, file, response.bytes);
         if (stored !== undefined && stored.file !== file) removeImageFile(stored.file);
         database.prepare(`INSERT INTO title_images (service, id, kind, source, content_type, etag, file, fetched_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (service, id, kind) DO UPDATE SET source = excluded.source, content_type = excluded.content_type,
             etag = excluded.etag, file = excluded.file, fetched_at = excluded.fetched_at`)
-          .run(service, id, kind, source, response.contentType || `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+          .run(service, id, kind, source, imageContentType(response.contentType, extension),
             sha256(response.bytes), file, startedAt);
       } catch {
         continue;
@@ -318,6 +331,9 @@ const TMDB_IMAGE_SIZES = new Set(['w342', 'w1920_and_h800_multi_faces']);
 const TMDB_IMAGE_FILE = /^[A-Za-z0-9]+\.(jpg|png)$/;
 // TMDB's terms cap how long a copy may be kept at six months; 180 days stays inside that.
 const TMDB_IMAGE_MAX_AGE_MS = 180 * 24 * 60 * 60_000;
+// A partial file this old belongs to no write still running.
+const PARTIAL_IMAGE_MAX_AGE_MS = 24 * 60 * 60_000;
+export const IMAGE_SWEEP_INTERVAL_MS = 24 * 60 * 60_000;
 
 type StoredImage = { path: string; contentType: string; etag: string };
 
@@ -344,10 +360,7 @@ export const createTmdbImages = (options: {
       return 'unreachable';
     }
     const stored = `tmdb-${size}-${file}`;
-    mkdirSync(imageDirectory, { recursive: true, mode: 0o700 });
-    const temporary = join(imageDirectory, `${stored}.${randomUUID()}.tmp`);
-    writeFileSync(temporary, bytes, { mode: 0o600 });
-    renameSync(temporary, join(imageDirectory, stored));
+    saveImage(imageDirectory, stored, bytes);
     const contentType = file.endsWith('.png') ? 'image/png' : 'image/jpeg';
     const tag = sha256(bytes);
     database.prepare(`INSERT INTO tmdb_images (size, path, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
@@ -379,7 +392,22 @@ export const createTmdbImages = (options: {
     return fetching;
   };
 
-  return { image };
+  // A copy nobody asks for again would otherwise outlive TMDB's limit, and partial files from a crash would never go.
+  const sweep = () => {
+    const cutoff = now() - TMDB_IMAGE_MAX_AGE_MS;
+    const expired = database.prepare('SELECT file FROM tmdb_images WHERE fetched_at <= ?').all(cutoff) as { file: string }[];
+    database.prepare('DELETE FROM tmdb_images WHERE fetched_at <= ?').run(cutoff);
+    for (const { file } of expired) rmSync(join(imageDirectory, file), { force: true });
+    if (!existsSync(imageDirectory)) return;
+    for (const name of readdirSync(imageDirectory)) {
+      if (!name.endsWith('.tmp')) continue;
+      const path = join(imageDirectory, name);
+      const modified = statSync(path, { throwIfNoEntry: false })?.mtimeMs;
+      if (modified !== undefined && now() - modified > PARTIAL_IMAGE_MAX_AGE_MS) rmSync(path, { force: true });
+    }
+  };
+
+  return { image, sweep };
 };
 
 const serveImage = (context: Context, found: StoredImage) => {

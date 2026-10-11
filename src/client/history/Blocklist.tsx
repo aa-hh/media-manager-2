@@ -72,7 +72,11 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
     toasts.close(current.toast);
     const { entry } = current;
     void sendJson(`/api/blocklist/${entry.service}/${entry.id}`, 'DELETE').catch(() => ({ status: 0 })).then(({ status }) => {
-      if (status === 204) return;
+      if (status === 204) {
+        // The server pages by position, so a gone entry would shift the next page by one and skip an entry; start the list over.
+        if (state.kind === 'ready' && state.hasMore) void reload();
+        return;
+      }
       show(keyOf(entry), true);
       setFailed(entry);
     });

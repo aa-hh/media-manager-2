@@ -85,7 +85,9 @@ const detailText = (row: Row) => {
   return text === '' ? undefined : text;
 };
 
-function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; row: Row; item: QueueItem; onDone: () => void; onCancel: () => void }) {
+function RemoveDialog({ open, row, item, onDone, onCancel, onUnauthenticated }: {
+  open: boolean; row: Row; item: QueueItem; onDone: () => void; onCancel: () => void; onUnauthenticated: () => void;
+}) {
   const [release, setRelease] = useState<Release>(row.byHand ? 'keep' : 'blocklist_search');
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -97,7 +99,8 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
     setFailed(false);
     const status = await postAction(`/api/queue/${item.service}/${item.queueId}/remove`, { release }).catch(() => 0);
     setSending(false);
-    if (status === 204) onDone();
+    if (status === 401) onUnauthenticated();
+    else if (status === 204) onDone();
     else setFailed(true);
   };
   const cancel = () => { setFailed(false); onCancel(); };
@@ -143,9 +146,9 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
 
 type Panel = 'remove' | 'import';
 
-function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged }: {
+function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged, onUnauthenticated }: {
   row: Row; now: number; selected: boolean; dimmed: boolean; panel: Panel | null;
-  onSelect: () => void; onOpen: (panel: Panel) => void; onClose: () => void; onChanged: () => void;
+  onSelect: () => void; onOpen: (panel: Panel) => void; onClose: () => void; onChanged: () => void; onUnauthenticated: () => void;
 }) {
   const [grabbing, setGrabbing] = useState(false);
   const [grabFailed, setGrabFailed] = useState(false);
@@ -157,7 +160,8 @@ function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onCl
     setGrabFailed(false);
     const status = await postAction(`/api/queue/${item.service}/${item.queueId}/grab`).catch(() => 0);
     setGrabbing(false);
-    if (status === 204) onChanged();
+    if (status === 401) onUnauthenticated();
+    else if (status === 204) onChanged();
     else setGrabFailed(true);
   };
   const canGrab = delayed && item !== null;
@@ -200,7 +204,7 @@ function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onCl
           {grabFailed && item !== null && <StatusInline status="failed">{serviceName(item)} did not grab it. Try again.</StatusInline>}
         </div>
       )}
-      {selected && item !== null && <RemoveDialog open={panel === 'remove'} row={row} item={item} onDone={onChanged} onCancel={onClose} />}
+      {selected && item !== null && <RemoveDialog open={panel === 'remove'} row={row} item={item} onDone={onChanged} onCancel={onClose} onUnauthenticated={onUnauthenticated} />}
       {panel === 'import' && row.importable !== null && (
         <div className="w-full border-b border-border bg-selected px-4 pt-1 pb-4">
           <ImportPanel
@@ -208,6 +212,7 @@ function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onCl
             downloadId={row.importable.downloadId}
             onDone={onChanged}
             onCancel={onClose}
+            onUnauthenticated={onUnauthenticated}
           />
         </div>
       )}
@@ -220,8 +225,8 @@ const headerSummary = (rows: Row[], groups: Group[]) => {
   return [`${rows.length} ${rows.length === 1 ? 'item' : 'items'}`, `${count('needs_you')} needs you`, `${count('handling')} being handled`].join(' · ');
 };
 
-export function DownloadsScreen({ state, reload, headingRef }: {
-  state: DownloadsState; reload: () => Promise<void>; headingRef: RefObject<HTMLHeadingElement | null>;
+export function DownloadsScreen({ state, reload, headingRef, onUnauthenticated }: {
+  state: DownloadsState; reload: () => Promise<unknown>; headingRef: RefObject<HTMLHeadingElement | null>; onUnauthenticated: () => void;
 }) {
   const now = useClock();
   const rows = useMemo(() => (state.kind === 'ready' ? buildRows(state.snapshot) : []), [state]);
@@ -289,6 +294,7 @@ export function DownloadsScreen({ state, reload, headingRef }: {
                 onOpen={(panel) => { setSelected(row.key); setOpen({ key: row.key, panel }); }}
                 onClose={() => setOpen(null)}
                 onChanged={changed}
+                onUnauthenticated={onUnauthenticated}
               />
             ))}
           </Table>

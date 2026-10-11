@@ -39,8 +39,9 @@ const serviceName = (service: Service) => (service === 'sonarr' ? 'Sonarr' : 'Ra
 const dim = (dimmed: boolean) => cn('transition-all', dimmed && 'opacity-35');
 const actionsLine = 'flex h-(--row) w-full shrink-0 items-center gap-2 border-b border-border bg-selected pr-4';
 
-const sendSearch = async (service: Service, type: 'movie' | 'episode', ids: number[]) => {
+const sendSearch = async (service: Service, type: 'movie' | 'episode', ids: number[], onUnauthenticated: () => void) => {
   const status = await postAction('/api/flagged/search', { service, type, ids }).catch(() => 0);
+  if (status === 401) onUnauthenticated();
   return status === 204;
 };
 
@@ -109,7 +110,7 @@ function NeedsYouRow({ item, selected, open, dimmed, onSelect, onOpen, onClose, 
     else if (action.kind === 'open_health') onOpenHealth();
     else {
       setSearching(true);
-      const ok = await sendSearch(action.service, action.type, action.ids);
+      const ok = await sendSearch(action.service, action.type, action.ids, onUnauthenticated);
       setSearching(false);
       setSearched({ ok, service: action.service });
     }
@@ -151,6 +152,7 @@ function NeedsYouRow({ item, selected, open, dimmed, onSelect, onOpen, onClose, 
           downloadId={manual.downloadId}
           onDone={onChanged}
           onCancel={onClose}
+          onUnauthenticated={onUnauthenticated}
         />
       )}
     </>
@@ -195,7 +197,7 @@ function WantedList({ items, empty, now, open, setOpen, onChanged, onUnauthentic
     for (const item of chosen) groups.set(`${item.service}:${item.type}`, [...(groups.get(`${item.service}:${item.type}`) ?? []), item]);
     const results = await Promise.all([...groups.values()].map(async (group) => ({
       service: group[0].service,
-      ok: await sendSearch(group[0].service, group[0].type, group.map((item) => item.id)),
+      ok: await sendSearch(group[0].service, group[0].type, group.map((item) => item.id), onUnauthenticated),
     })));
     setSearching(false);
     setRefused(results.filter((result) => !result.ok).map((result) => result.service));

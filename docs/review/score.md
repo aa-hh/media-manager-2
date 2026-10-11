@@ -1,6 +1,6 @@
 # Confidence score
 
-You receive one code-review finding about an {{PROJECT_NAME}} branch, the branch diff, and the text of the relevant `AGENTS.md` files. Score the finding 0-100 for confidence that it is a real issue worth fixing in this branch. For issues that were flagged due to CLAUDE.md instructions, the agent should double check that the CLAUDE.md actually calls out that issue specifically. (`AGENTS.md` plays the CLAUDE.md role here.)
+You receive one code-review finding about a media-manager-2 branch, the branch diff, and the text of the relevant `AGENTS.md` files. Score the finding 0-100 for confidence that it is a real issue worth fixing in this branch. For issues that were flagged due to CLAUDE.md instructions, the agent should double check that the CLAUDE.md actually calls out that issue specifically. (`AGENTS.md` plays the CLAUDE.md role here.)
 
 The scale (from Anthropic's code-review plugin, verbatim):
 a. 0: Not confident at all. This is a false positive that doesn't stand up to light scrutiny, or is a pre-existing issue.

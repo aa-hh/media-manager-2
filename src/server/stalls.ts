@@ -185,11 +185,12 @@ export const createStallFix = (options: {
       return 'Asked Sonarr to search automatically for these episodes.';
     }
     const query = grab.movieId !== null ? `movieId=${grab.movieId}` : `episodeId=${grab.episodeIds[0]}`;
-    const { status, body } = await client.request(`/api/v3/release?${query}`);
+    // An interactive search asks every tracker and takes about 20 seconds; the 10 second default cuts it off.
+    const { status, body } = await client.request(`/api/v3/release?${query}`, { timeoutMs: 120_000 });
     if (status < 200 || status > 299) throw new Error(`${labels[grab.service]} search failed.`);
     const release = pickRelease(parseReleases(body), grab);
     if (release === undefined) return 'Searched again and found no other usable release; the regular search keeps looking.';
-    const grabbed = await client.request('/api/v3/release', { method: 'POST', body: { guid: release.guid, indexerId: release.indexerId } });
+    const grabbed = await client.request('/api/v3/release', { method: 'POST', body: { guid: release.guid, indexerId: release.indexerId }, timeoutMs: 60_000 });
     if (grabbed.status < 200 || grabbed.status > 299) throw new Error(`${labels[grab.service]} refused the grab of ${release.title}.`);
     return `Grabbed ${release.title} from ${release.indexer || 'another tracker'}.`;
   };

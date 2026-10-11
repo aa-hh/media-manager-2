@@ -328,6 +328,7 @@ export const createHistory = (options: {
         : filter === 'fixes' ? readSteps(since)
           : [...readVersionEvents(since).filter((record) => deletionKinds.has(record.kind ?? '')), ...readTitleEvents(since, query.service)].sort((a, b) => b.at - a.at);
       const matched = own.filter((record) => (query.before === undefined || record.at <= query.before)
+        && (query.service === 'all' || record.subject?.service == null || record.subject.service === query.service)
         && (record.subject === null ? movieId === undefined && seriesId === undefined && episodeId === undefined : matches(record.subject)));
       moreSteps = matched.length > PAGE_SIZE;
       ownEvents = await Promise.all(matched.slice(0, PAGE_SIZE).map((record) => record.event()));

@@ -179,8 +179,11 @@ export const createGrabTracker = (options: {
   };
 
   const readCheckpoint = (service: Service) => {
-    const row = database.prepare('SELECT history_checked_at FROM grab_checkpoints WHERE service = ?').get(service);
-    return row === undefined ? undefined : Number(row.history_checked_at);
+    const row = database.prepare('SELECT history_checked_at, outcomes_checked_at FROM grab_checkpoints WHERE service = ?').get(service);
+    return {
+      grabs: row === undefined ? undefined : Number(row.history_checked_at),
+      outcomes: row?.outcomes_checked_at == null ? undefined : Number(row.outcomes_checked_at),
+    };
   };
 
   // A season pack is one history row per episode, all with the same downloadId.
@@ -234,19 +237,32 @@ export const createGrabTracker = (options: {
     const name = service;
     try {
       const checkpoint = readCheckpoint(service);
-      const since = Math.max(startedAt - HISTORY_LOOKBACK_MS, (checkpoint ?? 0) - HISTORY_OVERLAP_MS);
-      const filter = { since, eventType: 'grabbed' } as const;
+      const since = Math.max(startedAt - HISTORY_LOOKBACK_MS, (checkpoint.grabs ?? 0) - HISTORY_OVERLAP_MS);
+      // Outcomes keep their own bookmark so imports from before they were read get backfilled without widening the grab
+      // window: a new grab record would let the stall fix search again for a torrent it would otherwise only flag.
+      const outcomesSince = Math.max(startedAt - HISTORY_LOOKBACK_MS, (checkpoint.outcomes ?? 0) - HISTORY_OVERLAP_MS);
+      const filter = { since: Math.min(since, outcomesSince) };
       const [queue, history] = await Promise.all([
         arr[service].queue(),
         service === 'sonarr' ? arr.sonarr.history(filter) : arr.radarr.history(filter),
       ]);
       const items = valueOrThrow(queue);
-      for (const grab of mergeGrabs(service, valueOrThrow(history))) recordGrab(grab);
+      const records = valueOrThrow(history);
+      const grabbed = records.filter((record) => record.eventType === 'grabbed' && Date.parse(record.date ?? '') >= since);
+      for (const grab of mergeGrabs(service, grabbed)) recordGrab(grab);
+      // The Download webhook is not the only way to learn of an import: without it, finished torrents would read as downloading forever.
+      for (const record of records) {
+        const hash = normalizeHash(record.downloadId);
+        const at = Date.parse(record.date ?? '');
+        if (hash === null || Number.isNaN(at)) continue;
+        if (record.eventType === 'downloadFolderImported') markOutcome(hash, 'imported_at', at);
+        if (record.eventType === 'downloadFailed') markOutcome(hash, 'failed_at', at);
+      }
       storeQueue(service, items);
       database.prepare(`
-        INSERT INTO grab_checkpoints (service, history_checked_at) VALUES (?, ?)
-        ON CONFLICT (service) DO UPDATE SET history_checked_at = excluded.history_checked_at
-      `).run(service, startedAt);
+        INSERT INTO grab_checkpoints (service, history_checked_at, outcomes_checked_at) VALUES (?, ?, ?)
+        ON CONFLICT (service) DO UPDATE SET history_checked_at = excluded.history_checked_at, outcomes_checked_at = excluded.outcomes_checked_at
+      `).run(service, startedAt, startedAt);
       writeDependency(database, events, name, 'ok', now(), '');
     } catch (error) {
       const detail = error instanceof Error ? error.message : `${service} could not be read.`;

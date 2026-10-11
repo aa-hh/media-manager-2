@@ -33,6 +33,8 @@ export const POLL_INTERVAL_MS = 30_000;
 const TRACKER_LOOKUPS_PER_POLL = 20;
 // razor: same ceiling for file list reads; a full client fills in over a few minutes of polls.
 const FILE_LIST_READS_PER_POLL = 20;
+// A torrent that comes back inside a month keeps its first-seen time and seeding counter.
+const GONE_ROW_KEEP_MS = 30 * 24 * 60 * 60_000;
 
 export type TorrentFile = { path: string; sizeBytes: number };
 
@@ -255,6 +257,8 @@ export const createTorrentPoller = (options: {
         database.prepare('DELETE FROM torrent_files WHERE hash = ?').run(previous.hash);
         gone.push(previous.hash);
       }
+      database.prepare(`DELETE FROM torrents WHERE gone_at IS NOT NULL AND gone_at < ? AND hash NOT IN (SELECT hash FROM torrent_grabs)
+        AND hash NOT IN (SELECT hash FROM second_versions WHERE hash IS NOT NULL)`).run(at - GONE_ROW_KEEP_MS);
       database.exec('COMMIT;');
     } catch (error) {
       database.exec('ROLLBACK;');
