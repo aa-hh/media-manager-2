@@ -2,11 +2,13 @@ import {
   createCipheriv, createDecipheriv, createHash, createPrivateKey, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync,
   type KeyObject, randomBytes,
 } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { backup, DatabaseSync } from 'node:sqlite';
+import { promisify } from 'node:util';
+import { gunzipSync, gzip } from 'node:zlib';
 import { applicationMigrations, assertDatabasePath, openDatabase } from './database.js';
 import type { EventHub } from './events.js';
 import { getPreference, setPreference } from './preferences.js';
@@ -36,6 +38,7 @@ const snapshotKey = /^backups\/(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2}\.\d{3}
 const countedTables = ['settings', 'torrents', 'torrent_grabs', 'grabs', 'problems', 'protected_items', 'preferences', 'second_versions', 'version_events'];
 
 const sha256Hex = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
+const gzipAsync = promisify(gzip);
 
 // Turning backups off is the owner accepting the risk of running without them, so nothing reminds them while it holds.
 export const backupsAreOff = (database: DatabaseSync): boolean => getPreference(database, 'backups') === 'off';
@@ -182,13 +185,21 @@ export const createBackup = ({ database, events, store, key = backupKeyFromEnvir
       const path = join(directory, 'snapshot.sqlite');
       // Read before the snapshot: a commit landing between the two then forces one extra upload instead of being skipped.
       marker = writeMarker();
-      database.prepare('VACUUM INTO ?').run(path);
-      raw = readFileSync(path);
+      // The copy runs off the main thread so requests keep moving. Its own read-only connection sees only committed writes,
+      // so it never catches half of a job's transaction; one step copies every page under a single read, so no write restarts it.
+      const file = String(database.prepare("SELECT file FROM pragma_database_list WHERE name = 'main'").get()?.file);
+      const source = new DatabaseSync(file, { readOnly: true });
+      try {
+        await backup(source, path, { rate: 2 ** 31 - 1 });
+      } finally {
+        source.close();
+      }
+      raw = await readFile(path);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
     const sha256 = sha256Hex(raw);
-    const body = seal(sealKey, gzipSync(raw));
+    const body = seal(sealKey, await gzipAsync(raw));
     const key = `backups/${new Date(startedAt).toISOString().replace(/:/g, '-')}-${sha256.slice(0, 12)}.sqlite.gz.enc`;
     await target.put(key, body, 'application/octet-stream');
     const pointer = { key, sha256, bytes: body.byteLength, uploadedAt: now() };

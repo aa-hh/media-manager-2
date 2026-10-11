@@ -10,7 +10,7 @@ signs in with their Plex account.
 
 ## What you need
 
-- Node.js 22.13 or newer. Node may print an experimental SQLite warning at
+- Node.js 22.16 or newer. Node may print an experimental SQLite warning at
   startup because its built-in SQLite module is still marked experimental.
 - Sonarr and Radarr, each with an API key.
 - rTorrent with its XML-RPC interface reachable over HTTP(S), as most
@@ -452,7 +452,7 @@ the app, run `npm ci --omit=dev`, and follow steps 3 to 6.
 
 `sh scripts/deploy.sh` builds the current checkout on your machine and runs it
 on a Linux host you reach over ssh, replacing whatever copy was running there.
-`DEPLOY_HOST` must name that host as ssh knows it; the script stops without it. The host needs Node 22.13 or newer,
+`DEPLOY_HOST` must name that host as ssh knows it; the script stops without it. The host needs Node 22.16 or newer,
 `rsync`, `curl`, `flock` and `setsid`, and something that serves `APP_ORIGIN`
 over HTTPS and forwards it to `PORT` on the host, such as a reverse proxy or a
 seedbox's custom app link. `/api/events` is a plain HTTP stream; WebSockets are

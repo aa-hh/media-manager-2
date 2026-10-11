@@ -13,3 +13,7 @@ A background job inside the server process runs every 5 minutes. It writes a con
 ## Consequences
 
 Backups need nothing on the slot beyond the app itself and four settings. The snapshot and gzip run synchronously and pause the event loop briefly; that is acceptable while the database stays small. There is no point-in-time replay of individual writes: the worst case is losing the last 5 minutes. A future health screen reads `backup_runs` rather than asking R2. Restoring is a command-line step the owner runs with the server stopped, described in the README.
+
+## Update, 11 Oct 2026
+
+The pause was 250 to 320 ms on the Whatbox slot. The app now requires Node 22.16, where `node:sqlite`'s `backup()` exists, so the snapshot copies through that from its own read-only connection and gzip runs asynchronously; both work off the main thread. The longest pause measured on the slot fell to about 30 ms, mostly the SHA-256 of the copy. The copy keeps free pages that `VACUUM INTO` dropped, so the upload grew from 1.24 MB to 1.50 MB.
