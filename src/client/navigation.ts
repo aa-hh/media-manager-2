@@ -74,8 +74,9 @@ const changeScreen = (update: () => void, scrollTop: number, morph?: HTMLElement
     // A newer screen change owns the hold and the scroll now.
     if (hold !== current) return;
     hold = undefined;
-    // A screen still loading keeps its scroll until its content is drawn (useScreenReady, Arrival).
-    if (drawn) restoreScroll(!current.claimed);
+    // A drawn screen with no data takes its scroll whatever its height. A screen still loading takes it now if its skeleton
+    // can reach it (a new screen's top always can), else keeps it until its content is drawn (useScreenReady, Arrival).
+    restoreScroll(drawn && !current.claimed);
   };
   if (!animate()) {
     void run();
