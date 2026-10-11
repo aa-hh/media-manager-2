@@ -95,6 +95,33 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
 
   useEffect(() => { void read(); }, [read]);
 
+  // A step change unmounts the button that caused it. Focus moves to the new pane's heading, unless the owner picked the
+  // step from the list (focus stays there), and the pane scrolls into view when its top is above the screen.
+  const paneRef = useRef<HTMLDivElement>(null);
+  const firstStepRef = useRef(true);
+  useEffect(() => {
+    if (firstStepRef.current) {
+      firstStepRef.current = false;
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const box = paneRef.current;
+      if (box === null) return;
+      const active = document.activeElement;
+      if (active === null || active === document.body || box.contains(active)) {
+        const heading = [...box.querySelectorAll('h2')].find((element) => element.offsetParent !== null);
+        if (heading !== undefined) {
+          heading.tabIndex = -1;
+          heading.focus({ preventScroll: true });
+        }
+      }
+      if (box.getBoundingClientRect().top < 0) {
+        box.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [step]);
+
   /** Reads /api/setup again after a save; undefined, with a toast, when it fails. */
   const refresh = async () => {
     try {
@@ -158,6 +185,9 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   const folders = status.required.folders === 'done' ? { state: 'connected' as const, text: 'Confirmed' } : { state: 'not-set-up' as const, text: 'Not set' };
   const backupSkipped = status.optional.backup.status === 'skipped';
   const backupState = backupPill(status.backup);
+  // The finished strip is the payoff for the whole chain answering, so it waits for every connection test, not just for Done.
+  const chainLit = step === 'done' && status.required.folders === 'done' && (['sonarr', 'radarr', 'rtorrent', 'plex'] as const).every((name) => checks[name].kind === 'ok');
+  const foldersReady = step === 'folders' || (['sonarr', 'radarr', 'rtorrent'] as const).every((part) => status.required[part] === 'done');
 
   const connectStep = async (name: ServiceStep) => {
     const signIn = name === 'plex' && connections.usingSignIn(status.plexSignInTokenAvailable);
@@ -178,8 +208,9 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           <div className="flex flex-col gap-2">
             <h3 className="font-ui text-sm font-semibold text-foreground">Required before the library opens. Have these ready:</h3>
             <dl className="flex flex-col">
-              {serviceSteps.map((service) => <FactRow key={service.name} label={infoOf(service.name).label}>{service.needs}</FactRow>)}
-              <FactRow label="Folders">Nothing to type: read from Sonarr, Radarr and rTorrent for you to confirm</FactRow>
+              {requiredParts.map((part) => (part === 'folders'
+                ? <FactRow key={part} label="Folders">Nothing to type: read from Sonarr, Radarr and rTorrent for you to confirm</FactRow>
+                : <FactRow key={part} label={infoOf(part).label}>{serviceSteps.find((service) => service.name === part)!.needs}</FactRow>))}
             </dl>
           </div>
           <div className="flex flex-col gap-2">
@@ -207,17 +238,6 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           />
           {problem !== undefined && <Callout title={problem} />}
         </section>
-      );
-    }
-    if (step === 'folders') {
-      return (
-        <FoldersEditor
-          key="folders"
-          request={setupRequest}
-          wizard={{ title: 'Confirm folders', step: requiredStep('folders'), onBack: back, onContinue: () => void advance('folders') }}
-          // A warning stays on screen; Continue then moves on.
-          onSaved={(_, warnings) => (Object.keys(warnings).length === 0 ? void advance('folders') : void refresh())}
-        />
       );
     }
     if (step === 'backup') {
@@ -349,7 +369,8 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
         </section>
       );
     }
-    if (saved === undefined) return null;
+    // Folders renders outside this function so it can stay mounted.
+    if (step === 'folders' || saved === undefined) return null;
     const info = infoOf(step);
     const signIn = connections.usingSignIn(status.plexSignInTokenAvailable);
     return (
@@ -395,13 +416,13 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
         ) : (
           <>
             <PiecesStrip
-              summary={step === 'done' ? 'Every link answers. Search for something, pick a release, and watch it download live.' : stripSummary(checks)}
+              summary={chainLit ? 'Every link answers. Search for something, pick a release, and watch it download live.' : stripSummary(checks)}
               trackers={trackers}
               noTrackers="Optional, no tracker yet"
               checks={checks}
               editedOf={editedOf}
               folders={folders}
-              look={step === 'done' ? 'done' : 'setup'}
+              look={chainLit ? 'done' : 'setup'}
             />
             <div className="flex items-start gap-8">
               <nav aria-label="Setup steps" className="flex w-80 shrink-0 flex-col">
@@ -415,32 +436,37 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
                   onClick={() => setStep('what')}
                 />
                 <LabelGroup count={`${doneCount} of 5`}>Required</LabelGroup>
-                {serviceSteps.map(({ name, about }) => {
-                  const member = infoOf(name);
-                  const state = pillFor(member, checks[name], editedOf(name));
-                  const address = savedAddress(saved?.[name]);
+                {requiredParts.map((part) => {
+                  if (part === 'folders') {
+                    return (
+                      <TrackerListRow
+                        key={part}
+                        host=""
+                        icon={<Folder />}
+                        title="Folders"
+                        subline={status.required.folders === 'done' ? '6 folders' : 'Where files go'}
+                        pill={pill(folders.state, folders.text)}
+                        selected={step === 'folders'}
+                        onClick={() => setStep('folders')}
+                      />
+                    );
+                  }
+                  const member = infoOf(part);
+                  const state = pillFor(member, checks[part], editedOf(part));
+                  const address = savedAddress(saved?.[part]);
                   return (
                     <RowService
-                      key={name}
+                      key={part}
                       logo={member.logo!}
                       name={member.label}
-                      address={address === '' ? about : address}
+                      address={address === '' ? serviceSteps.find((service) => service.name === part)!.about : address}
                       state={state.state}
                       stateText={state.text}
-                      selected={step === name}
-                      onClick={() => setStep(name)}
+                      selected={step === part}
+                      onClick={() => setStep(part)}
                     />
                   );
                 })}
-                <TrackerListRow
-                  host=""
-                  icon={<Folder />}
-                  title="Folders"
-                  subline={status.required.folders === 'done' ? '6 folders' : 'Where files go'}
-                  pill={pill(folders.state, folders.text)}
-                  selected={step === 'folders'}
-                  onClick={() => setStep('folders')}
-                />
                 <LabelGroup count="can wait">Optional</LabelGroup>
                 <TrackerListRow
                   host=""
@@ -462,8 +488,23 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
                   onClick={() => setStep('backup')}
                 />
               </nav>
-              <div className="flex min-w-0 flex-1 flex-col gap-4">
-                {load.kind === 'loading' ? <div><SkeletonRowTwoLine /><SkeletonRowTwoLine /></div> : pane()}
+              <div ref={paneRef} className="flex min-w-0 flex-1 scroll-mt-20 flex-col gap-4">
+                {load.kind === 'loading' ? <div><SkeletonRowTwoLine /><SkeletonRowTwoLine /></div> : (
+                  <>
+                    {/* Stays mounted once the services it reads from are saved, so coming back keeps the folders and any edits without reading them again. */}
+                    {foldersReady && (
+                      <div hidden={step !== 'folders'}>
+                        <FoldersEditor
+                          request={setupRequest}
+                          wizard={{ title: 'Confirm folders', step: requiredStep('folders'), onBack: back, onContinue: () => void advance('folders') }}
+                          // A warning stays on screen; Continue then moves on.
+                          onSaved={(_, warnings) => (Object.keys(warnings).length === 0 ? void advance('folders') : void refresh())}
+                        />
+                      </div>
+                    )}
+                    {step !== 'folders' && pane()}
+                  </>
+                )}
               </div>
             </div>
           </>

@@ -33,7 +33,7 @@ function StatusServicePill({ logo, name, state, compact = false, look = 'plain',
   const lit = state === 'connected' && look !== 'plain' ? look : undefined;
   return (
     <span
-      className={cn('inline-flex h-6.5 shrink-0 items-center gap-1.5 rounded-sm pr-2 pl-1.25', compact ? 'bg-transparent px-1' : lit === 'dark' ? 'bg-bar' : lit === 'lime' ? 'bg-live' : fills[state], className)}
+      className={cn('inline-flex h-6.5 shrink-0 items-center gap-1.5 rounded-sm pr-2 pl-1.25 transition-colors duration-(--duration-base) ease-out [&>span]:transition-colors [&>span]:duration-(--duration-base)', compact ? 'bg-transparent px-1' : lit === 'dark' ? 'bg-bar' : lit === 'lime' ? 'bg-live' : fills[state], className)}
       {...props}
     >
       <span className="flex shrink-0 [&>img]:size-4">{logo}</span>

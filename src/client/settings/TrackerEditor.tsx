@@ -85,12 +85,13 @@ export function TrackerListRow({ host, title, subline, pill, selected, adding = 
       aria-current={selected || undefined}
       onClick={onClick}
       className={cn(
-        'flex h-14 w-full items-center gap-3 rounded-sm px-4 text-left',
+        'relative flex h-14 w-full items-center gap-3 rounded-sm px-4 text-left',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         selected ? 'bg-selected' : 'hover:bg-surface-hover active:bg-surface-pressed',
       )}
     >
-      {selected && <span aria-hidden="true" className="h-10 w-0.75 shrink-0 rounded-[2px] bg-foreground" />}
+      {/* Always present and out of the flow, so selecting a row moves nothing; only its opacity changes. */}
+      <span aria-hidden="true" className={cn('absolute top-2 bottom-2 left-0 w-0.75 rounded-[2px] bg-foreground transition-opacity duration-(--duration-fast) ease-out', !selected && 'opacity-0')} />
       {adding
         ? <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-4"><Plus /></span>
         : icon !== undefined

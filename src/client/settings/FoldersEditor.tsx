@@ -45,7 +45,20 @@ export function FoldersEditor({ request, onSaved, wizard }: {
 
   useEffect(() => { void read(); }, [read]);
 
-  if (state.kind === 'loading') return <div><SkeletonRowTwoLine /><SkeletonRowTwoLine /></div>;
+  // The pane's own frame and heading while the services answer, so the fields arrive in place instead of pushing in.
+  if (state.kind === 'loading') {
+    return (
+      <section aria-labelledby="folders-editor" aria-busy="true" className="flex flex-col gap-6 rounded-lg border border-border p-6">
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground [&>svg]:size-4"><Folder /></span>
+          <h2 id="folders-editor" className="font-ui text-base font-bold text-foreground">{wizard?.title ?? 'Folders'}</h2>
+          {wizard !== undefined && <span className="ml-auto font-data text-[13px] text-muted-foreground">{wizard.step}</span>}
+        </div>
+        <p className="font-ui text-sm text-muted-foreground">Reading the folders from Sonarr, Radarr and rTorrent. This can take a few seconds.</p>
+        <div className="grid grid-cols-2 gap-x-4"><SkeletonRowTwoLine /><SkeletonRowTwoLine /><SkeletonRowTwoLine /><SkeletonRowTwoLine /><SkeletonRowTwoLine /><SkeletonRowTwoLine /></div>
+      </section>
+    );
+  }
   if (state.kind === 'failed') {
     return (
       <Callout title="Folders could not be read" action={<Button variant="outline" icon={<RefreshCw />} onClick={() => void read()}>Retry</Button>}>

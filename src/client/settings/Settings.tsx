@@ -430,7 +430,8 @@ export function PiecesStrip({ summary, trackers, checks, editedOf, noTrackers = 
           const tone = next === undefined ? 'idle' : linkTone(column.names.map((name) => checks[name]), next.names.map((name) => checks[name]));
           return (
             <Fragment key={column.caption}>
-              <div className="flex shrink-0 flex-col gap-2">
+              {/* A floor wide enough for "Connected · 4.0.10", so a pill changing state does not reflow the strip. */}
+              <div className="flex min-w-48 shrink-0 flex-col gap-2">
                 <h3 className={caption}>{column.caption}</h3>
                 <div className="flex h-23.5 flex-col items-stretch justify-center gap-2">
                   {column.names.map((name) => {
