@@ -62,24 +62,24 @@ export function Discover({ onUnauthenticated }: { onUnauthenticated: () => void 
 
 function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) {
   const { search } = useLocation();
-  // A bare address starts from the last filters used; the address catches up right after the first render.
-  const [seed, setSeed] = useState(() => (window.location.search === '' ? readStoredState() : undefined));
-  const state = useMemo(() => seed ?? readState(search), [seed, search]);
+  // A bare address, including the nav item clicked while already here, starts from the last filters used.
+  const state = useMemo(() => (search === '' ? readStoredState() : undefined) ?? readState(search), [search]);
   const [services, setServices] = useState(readServices);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const options = useOptions('both', 'movie', onUnauthenticated);
 
+  // The address catches up right after the render; stored defaults give a bare address again, so the check stops a loop.
   useEffect(() => {
-    if (seed === undefined) return;
-    replace(homeAddress(seed));
-    setSeed(undefined);
-  }, [seed]);
+    if (search !== '' || homeAddress(state) === '/discover') return;
+    replace(homeAddress(state));
+  }, [search, state]);
 
   const change = (next: HomeState) => {
-    replace(homeAddress(next));
+    // Stored first: a bare address re-reads the stored filters.
     writeStoredState(next);
+    replace(homeAddress(next));
   };
 
   const query = homeQuery(state, services);

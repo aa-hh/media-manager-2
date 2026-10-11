@@ -2703,7 +2703,7 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
   const none = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null };
   const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
   const clock = { value: 1_800_000_000_000 };
-  const connect = (respond, tvdbIdOf = async () => 371980) => {
+  const connect = (respond, tvdbIdOf = async () => ({ kind: 'ok', value: 371980 })) => {
     database.prepare("DELETE FROM title_store_parts WHERE part = 'mdblistRatings'").run();
     const calls = [];
     const mdblist = createMdblist(database, { now: () => clock.value, fetch: async (url, init) => {
@@ -2731,13 +2731,19 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
     assert.deepEqual(JSON.parse((await page('/preview/sonarr/371980')).text).ratingsBySite, expected);
   });
 
-  // Previewing anything but the TVDB id TMDB names, or answering a show TMDB has no TVDB id for with anything but 404, turns this red.
-  await t.test('a show preview by TMDB id serves the TVDB preview, or 404 when TMDB knows no TVDB id', async () => {
+  // Previewing anything but the TVDB id TMDB names, answering a show TMDB has no TVDB id for with anything but 404, or answering a TMDB failure with 404, turns this red.
+  await t.test('a show preview by TMDB id serves the TVDB preview, 404 when TMDB knows no TVDB id, and TMDB failures as themselves', async () => {
     const { page } = connect(() => json(severance));
     const byTmdb = await page('/preview/sonarr/tmdb/95396');
     assert.equal(byTmdb.status, 200);
     assert.equal(byTmdb.text, (await page('/preview/sonarr/371980')).text);
-    assert.equal((await connect(() => json(severance), async () => null).page('/preview/sonarr/tmdb/95396')).status, 404);
+    assert.equal((await connect(() => json(severance), async () => ({ kind: 'ok', value: null })).page('/preview/sonarr/tmdb/95396')).status, 404);
+    const failing = (kind) => connect(() => json(severance), async () => ({ kind, message: `TMDB ${kind}` })).page('/preview/sonarr/tmdb/95396');
+    const down = await failing('unreachable');
+    assert.equal(down.status, 502);
+    assert.deepEqual(JSON.parse(down.text), { error: 'unreachable', reason: 'TMDB unreachable' });
+    assert.equal((await failing('rejected')).status, 502);
+    assert.equal((await failing('not_configured')).status, 503);
     // Answering a server with no TMDB at all with anything but 503 turns this red.
     const noTmdb = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value })));
     assert.equal((await noTmdb.request('/preview/sonarr/tmdb/95396')).status, 503);
@@ -2855,12 +2861,14 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     assert.equal((await routes.request('/tmdb/person/1')).status, 400);
   });
 
-  // Reading the TVDB id from anywhere but TMDB's external_ids, or answering a show without one with anything but null, turns this red.
-  await t.test('tvdbIdOf reads the TVDB id from external_ids and gives null without one', async () => {
+  // Reading the TVDB id from anywhere but TMDB's external_ids, answering a show without one with anything but null, or folding a TMDB outage into null, turns this red.
+  await t.test('tvdbIdOf reads the TVDB id from external_ids, gives null without one, and passes a TMDB failure on', async () => {
     respond = json({ id: 95396, name: 'Severance', external_ids: { tvdb_id: 371980 } });
-    assert.equal(await titles.tvdbIdOf(95396), 371980);
+    assert.deepEqual(await titles.tvdbIdOf(95396), { kind: 'ok', value: 371980 });
     respond = json({ id: 50, name: 'Unknown to TVDB' });
-    assert.equal(await titles.tvdbIdOf(50), null);
+    assert.deepEqual(await titles.tvdbIdOf(50), { kind: 'ok', value: null });
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.equal((await titles.tvdbIdOf(51)).kind, 'unreachable');
   });
 
   // Throwing or dropping a section when TMDB omits keywords, credits or recommendations turns this red.
