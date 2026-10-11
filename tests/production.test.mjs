@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
+import { createHash, createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 import { once } from 'node:events';
 import {
   chmod,
@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
+import { gzipSync } from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const serverPath = fileURLToPath(new URL('../dist/server/index.js', import.meta.url));
@@ -48,6 +49,8 @@ const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url)
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const manualImportModuleUrl = new URL('../dist/server/manualImport.js', import.meta.url).href;
+const r2ModuleUrl = new URL('../dist/server/services/r2.js', import.meta.url).href;
+const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).href;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -3877,4 +3880,358 @@ test('a hand grab marks its torrent grab record as by hand, whichever record arr
     assert.deepEqual([grab.seriesId, grab.episodeIds, grab.grabbedAt], [3, [31], 1_000]);
     database.close();
   }
+});
+
+const sha256Hex = (data) => createHash('sha256').update(data).digest('hex');
+
+// An S3-compatible bucket in memory: path-style PUT, GET, DELETE and ListObjectsV2, with a switch that answers every request with one status.
+const startFakeS3 = async (t) => {
+  const { createServer } = await import('node:http');
+  const objects = new Map();
+  const requests = [];
+  const state = { failWith: undefined };
+  const server = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    requests.push({ method: request.method, url: request.url, headers: request.headers, body });
+    if (state.failWith !== undefined) {
+      response.writeHead(state.failWith).end();
+      return;
+    }
+    const url = new URL(request.url, 'http://fake');
+    const [, bucket, ...rest] = url.pathname.split('/');
+    const key = rest.map(decodeURIComponent).join('/');
+    if (request.method === 'GET' && url.searchParams.get('list-type') === '2') {
+      const prefix = url.searchParams.get('prefix') ?? '';
+      const contents = [...objects]
+        .filter(([name]) => name.startsWith(prefix))
+        .map(([name, value]) => `<Contents><Key>${name}</Key><Size>${value.length}</Size></Contents>`)
+        .join('');
+      response.writeHead(200, { 'content-type': 'application/xml' })
+        .end(`<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><Name>${bucket}</Name>${contents}</ListBucketResult>`);
+    } else if (request.method === 'PUT') {
+      objects.set(key, body);
+      response.writeHead(200).end();
+    } else if (request.method === 'GET') {
+      if (objects.has(key)) response.writeHead(200).end(objects.get(key));
+      else response.writeHead(404).end();
+    } else if (request.method === 'DELETE') {
+      objects.delete(key);
+      response.writeHead(204).end();
+    } else {
+      response.writeHead(405).end();
+    }
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const close = () => {
+    if (!server.listening) return;
+    server.closeAllConnections();
+    server.close();
+  };
+  t.after(close);
+  return { endpoint: `http://127.0.0.1:${server.address().port}`, objects, requests, state, close };
+};
+
+// Encoding the secret's "+" wrongly, sorting query parameters by original order, hashing a body other than the one sent, or naming the endpoint or key id in an error turns this red.
+test('R2 requests are signed with AWS Signature V4 and stored path-style', async (t) => {
+  const { createR2Store, r2ConfigFromEnvironment, readR2Config, signRequest } = await import(r2ModuleUrl);
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+
+  const vector = {
+    method: 'GET',
+    payloadHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    accessKeyId: 'AKIDEXAMPLE',
+    secretAccessKey: 'wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY',
+    region: 'us-east-1',
+    service: 'service',
+    date: '20150830T123600Z',
+  };
+  for (const [path, signature] of [
+    ['/', '5fa00fa31553b73ebf1942676e86291e8372ff2a2260956d9b8aae1d763fbf31'],
+    ['/?Param2=value2&Param1=value1', 'b97d918cfa904a5beff61c982a1b6f458b799221646efd99d3219ec94cdf2500'],
+  ]) {
+    assert.equal(
+      signRequest({
+        ...vector,
+        url: new URL(`https://example.amazonaws.com${path}`),
+        headers: { host: 'example.amazonaws.com', 'x-amz-date': vector.date },
+      }),
+      `AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=host;x-amz-date, Signature=${signature}`,
+      path,
+    );
+  }
+
+  const s3 = await startFakeS3(t);
+  const config = {
+    endpoint: s3.endpoint,
+    bucket: 'mm2-backups',
+    accessKeyId: `key-id-${process.pid}-distinctive`,
+    secretAccessKey: `secret-${process.pid}-distinctive`,
+  };
+  const store = createR2Store(config, { now: () => Date.UTC(2026, 9, 11, 4, 7, 33) });
+  const body = new Uint8Array([1, 2, 3]);
+  await store.put('backups/a.sqlite.gz', body, 'application/gzip');
+  await store.put('other/b', new Uint8Array([4]), 'text/plain');
+  assert.equal(s3.requests[0].method, 'PUT');
+  assert.equal(s3.requests[0].url, '/mm2-backups/backups/a.sqlite.gz');
+  assert.deepEqual(new Uint8Array(await store.get('backups/a.sqlite.gz')), body);
+  assert.equal(await store.get('backups/missing.sqlite.gz'), undefined);
+  assert.deepEqual(await store.list('backups/'), [{ key: 'backups/a.sqlite.gz', size: 3 }]);
+  await store.delete('backups/a.sqlite.gz');
+  assert.deepEqual(await store.list('backups/'), []);
+  assert.equal(s3.requests.length, 7);
+  for (const request of s3.requests) {
+    assert.ok(request.headers.authorization.startsWith(`AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/20261011/auto/s3/aws4_request, SignedHeaders=`));
+    assert.equal(request.headers['x-amz-content-sha256'], sha256Hex(request.body));
+  }
+
+  s3.state.failWith = 503;
+  const answered = await store.put('backups/c.sqlite.gz', body, 'application/gzip').catch((error) => error);
+  assert.equal(answered.message, 'R2 answered 503.');
+  s3.close();
+  const unreachable = await store.get('backups/c.sqlite.gz').catch((error) => error);
+  assert.equal(unreachable.message, 'R2 is unreachable.');
+  for (const error of [answered, unreachable]) {
+    for (const secret of [config.secretAccessKey, config.accessKeyId, config.endpoint]) assert.equal(error.message.includes(secret), false);
+  }
+
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-r2-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const settings = [
+    ['serviceAddresses', 'r2.endpoint', config.endpoint],
+    ['serviceAddresses', 'r2.bucket', config.bucket],
+    ['credentials', 'r2.accessKeyId', config.accessKeyId],
+    ['credentials', 'r2.secretAccessKey', config.secretAccessKey],
+  ];
+  const env = { R2_ENDPOINT: config.endpoint, R2_BUCKET: config.bucket, R2_ACCESS_KEY_ID: config.accessKeyId, R2_SECRET_ACCESS_KEY: config.secretAccessKey };
+  for (const [index, [category, key, value]] of settings.entries()) {
+    assert.equal(readR2Config(database), undefined, `before ${key}`);
+    const partial = { ...env };
+    delete partial[Object.keys(env)[index]];
+    assert.equal(r2ConfigFromEnvironment(partial), undefined, `without ${Object.keys(env)[index]}`);
+    setSetting(database, category, key, value);
+  }
+  assert.deepEqual(readR2Config(database), config);
+  assert.deepEqual(r2ConfigFromEnvironment(env), config);
+});
+
+// Snapshotting with a plain file copy during a write, skipping after a failed upload, pruning by the wrong day, or restoring a snapshot without checking its hash or schema version turns this red.
+test('backups snapshot a changing database and restore it consistently', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createBackup, listBackupRuns, restoreBackup } = await import(backupModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backup-'));
+  const databasePath = join(root, 'live', 'media-manager.sqlite');
+  const database = openDatabase(databasePath);
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const events = createEventHub();
+  const published = [];
+  events.subscribe((event) => published.push(event));
+  const objects = new Map();
+  const calls = [];
+  let failPut = false;
+  const store = {
+    async put(key, body) {
+      calls.push(['put', key]);
+      if (failPut) throw new Error('R2 answered 503.');
+      objects.set(key, Uint8Array.from(body));
+    },
+    async get(key) {
+      calls.push(['get', key]);
+      return objects.get(key);
+    },
+    async list(prefix) {
+      calls.push(['list', prefix]);
+      return [...objects].filter(([key]) => key.startsWith(prefix)).map(([key, body]) => ({ key, size: body.byteLength }));
+    },
+    async delete(key) {
+      calls.push(['delete', key]);
+      objects.delete(key);
+    },
+  };
+  let configured = false;
+  let clock = Date.UTC(2026, 9, 11, 12, 0, 0);
+  const backup = createBackup({ database, events, store: () => (configured ? store : undefined), now: () => clock });
+  const outcome = (run) => [run.outcome, run.detail];
+
+  assert.deepEqual(outcome(await backup.run()), ['skipped', 'not_configured']);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(published.map((event) => event.type), ['backup']);
+
+  for (const [key, value] of [['sonarr.url', 'http://127.0.0.1:8989'], ['radarr.url', 'http://127.0.0.1:7878']]) {
+    setSetting(database, 'serviceAddresses', key, value);
+  }
+  setSetting(database, 'credentials', 'sonarr.apiKey', 'sonarr-key');
+  database.exec(`INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0);
+    INSERT INTO grabs VALUES (1, 'radarr', 'movie:1', 'movie:1', 'movie:1', 'movie:1', 'guid-1', 'Some.Movie', 'grab', 'sent', NULL, NULL, 1, 1);`);
+
+  const stopPath = join(root, 'stop-writer');
+  const writer = runNode(`
+    import { existsSync } from 'node:fs';
+    import { DatabaseSync } from 'node:sqlite';
+    const database = new DatabaseSync(${JSON.stringify(databasePath)}, { timeout: 5_000 });
+    const write = database.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)');
+    for (let count = 1; !existsSync(${JSON.stringify(stopPath)}); count += 1) {
+      database.exec('BEGIN IMMEDIATE');
+      write.run('counter', String(count));
+      write.run('counter-copy', String(count));
+      database.exec('COMMIT');
+      // A writer that retakes the lock at once starves every other connection's busy wait.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
+    }
+    database.close();
+  `);
+  const counter = () => database.prepare("SELECT value FROM preferences WHERE key = 'counter'").get()?.value;
+  for (const deadline = Date.now() + 10_000; counter() === undefined;) {
+    assert.ok(Date.now() < deadline, 'writer never wrote');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  configured = true;
+  clock += 60_000;
+  const written = await backup.run();
+  await writeFile(stopPath, '');
+  const writerResult = await writer;
+  assert.equal(writerResult.code, 0, writerResult.stderr);
+  assert.deepEqual(outcome(written), ['ok', '']);
+  assert.match(written.objectKey, /^backups\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z-[0-9a-f]{12}\.sqlite\.gz$/);
+  assert.equal(written.bytes, objects.get(written.objectKey).byteLength);
+  assert.equal(JSON.parse(Buffer.from(objects.get('backups/latest.json')).toString()).key, written.objectKey);
+
+  const restoredPath = join(root, 'restored', 'media-manager.sqlite');
+  const restoredResult = await restoreBackup({ store, target: restoredPath });
+  assert.equal(restoredResult.key, written.objectKey);
+  const restored = new DatabaseSync(restoredPath, { readOnly: true });
+  t.after(() => restored.close());
+  assert.equal(restored.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+  for (const table of ['settings', 'torrents', 'grabs']) {
+    const rows = (source) => source.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all();
+    assert.deepEqual(rows(restored), rows(database), table);
+  }
+  const preferences = Object.fromEntries(restored.prepare('SELECT key, value FROM preferences').all().map((row) => [row.key, row.value]));
+  assert.ok(Number(preferences.counter) >= 1);
+  assert.equal(preferences['counter-copy'], preferences.counter);
+  assert.deepEqual(restoredResult.counts.find(({ table }) => table === 'settings'), { table: 'settings', count: 3 });
+
+  clock += 5 * 60_000;
+  assert.deepEqual(outcome(await backup.run({ force: true })), ['ok', '']);
+  clock += 5 * 60_000;
+  assert.deepEqual(outcome(await backup.run()), ['skipped', 'unchanged']);
+  const otherProcess = await runNode(`
+    import { DatabaseSync } from 'node:sqlite';
+    const database = new DatabaseSync(${JSON.stringify(databasePath)}, { timeout: 5_000 });
+    database.prepare("INSERT OR REPLACE INTO preferences (key, value) VALUES ('theme', 'dark')").run();
+    database.close();
+  `);
+  assert.equal(otherProcess.code, 0, otherProcess.stderr);
+  clock += 5 * 60_000;
+  assert.deepEqual(outcome(await backup.run()), ['ok', '']);
+
+  failPut = true;
+  clock += 5 * 60_000;
+  assert.deepEqual(outcome(await backup.run({ force: true })), ['failed', 'R2 answered 503.']);
+  failPut = false;
+  clock += 5 * 60_000;
+  assert.deepEqual(outcome(await backup.run()), ['ok', '']);
+  assert.deepEqual(listBackupRuns(database).slice(0, 3).map((run) => run.outcome), ['ok', 'failed', 'ok']);
+  assert.equal(published.length, listBackupRuns(database).length);
+
+  clock += 5 * 60_000;
+  const keyAt = (offset) => `backups/${new Date(clock + offset).toISOString().replace(/:/g, '-')}-aaaaaaaaaaaa.sqlite.gz`;
+  const hour = 3_600_000;
+  const aged = { kept: [keyAt(-2 * hour), keyAt(-30 * hour), keyAt(-72 * hour)], dropped: [keyAt(-31 * hour), keyAt(-216 * hour)] };
+  for (const key of [...aged.kept, ...aged.dropped]) objects.set(key, new Uint8Array([0]));
+  const pruned = await backup.run({ force: true });
+  assert.deepEqual(outcome(pruned), ['ok', '']);
+  for (const key of [...aged.kept, pruned.objectKey, written.objectKey, 'backups/latest.json']) assert.ok(objects.has(key), key);
+  for (const key of aged.dropped) assert.equal(objects.has(key), false, key);
+
+  const refusal = (options) => restoreBackup({ store, ...options }).then(() => 'restored', (error) => error.message);
+  assert.equal(await refusal({ target: restoredPath }), 'Restore target already exists.');
+  assert.equal(await refusal({ target: join(projectDirectory, 'restored.sqlite') }), 'Database path must be an absolute file path outside the application directory.');
+  objects.set(written.objectKey, gzipSync(Buffer.from('not the snapshot')));
+  assert.equal(await refusal({ target: join(root, 'tampered.sqlite'), objectKey: written.objectKey }), 'Downloaded snapshot does not match its name.');
+  const futurePath = join(root, 'future.sqlite');
+  const future = new DatabaseSync(futurePath);
+  future.exec('PRAGMA user_version = 99;');
+  future.close();
+  const futureBytes = await readFile(futurePath);
+  const futureKey = `backups/2026-10-11T00-00-00.000Z-${sha256Hex(futureBytes).slice(0, 12)}.sqlite.gz`;
+  objects.set(futureKey, gzipSync(futureBytes));
+  assert.equal(await refusal({ target: join(root, 'future-restored.sqlite'), objectKey: futureKey }), 'Database schema version is newer than this application.');
+});
+
+// Opening the database before listing or restoring, printing a secret, or restoring over an existing file turns this red.
+test('backup commands upload, list and restore through R2 from the command line', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backup-cli-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const s3 = await startFakeS3(t);
+  const base = { ...process.env, NODE_NO_WARNINGS: '1' };
+  for (const name of ['R2_ENDPOINT', 'R2_BUCKET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY']) delete base[name];
+  const withDatabase = { ...base, DB_PATH: join(root, 'live', 'media-manager.sqlite') };
+  const secret = `secret-${process.pid}-distinctive`;
+  const keyId = `key-id-${process.pid}-distinctive`;
+  const withR2 = { ...base, R2_ENDPOINT: s3.endpoint, R2_BUCKET: 'mm2-backups', R2_ACCESS_KEY_ID: keyId, R2_SECRET_ACCESS_KEY: secret };
+  const outputs = [];
+  const cli = async (args, env, stdin) => {
+    const result = await runCli(args, { env, stdin });
+    outputs.push(result.stdout, result.stderr);
+    return result;
+  };
+
+  const notConfigured = await cli(['backup', 'now'], withDatabase);
+  assert.equal(notConfigured.code, 0, notConfigured.stderr);
+  assert.equal(notConfigured.stdout, 'backup: skipped not_configured\n');
+
+  for (const [category, key, value] of [
+    ['serviceAddresses', 'r2.endpoint', s3.endpoint],
+    ['serviceAddresses', 'r2.bucket', 'mm2-backups'],
+    ['credentials', 'r2.accessKeyId', keyId],
+    ['credentials', 'r2.secretAccessKey', secret],
+  ]) {
+    const saved = await cli(['settings', 'set', category, key], withDatabase, value);
+    assert.equal(saved.code, 0, saved.stderr);
+  }
+  const uploaded = await cli(['backup', 'now'], withDatabase);
+  assert.equal(uploaded.code, 0, uploaded.stderr);
+  const key = uploaded.stdout.match(/^backup: ok (backups\/\S+\.sqlite\.gz) \d+ bytes\n$/)?.[1];
+  assert.ok(key, uploaded.stdout);
+
+  const listed = await cli(['backup', 'list'], withR2);
+  assert.equal(listed.code, 0, listed.stderr);
+  assert.equal(listed.stdout, `${key} ${s3.objects.get(key).length} bytes (latest)\n`);
+
+  const target = join(root, 'restored', 'media-manager.sqlite');
+  const restored = await cli(['backup', 'restore', '--to', target], withR2);
+  assert.equal(restored.code, 0, restored.stderr);
+  assert.equal(
+    restored.stdout,
+    `restored ${key} to ${target}\nsettings 4\ntorrents 0\ntorrent_grabs 0\ngrabs 0\nproblems 0\nprotected_items 0\npreferences 0\n`,
+  );
+
+  const again = await cli(['backup', 'restore', '--to', target, '--object', key], withR2);
+  assert.equal(again.code, 1);
+  assert.equal(again.stderr, 'Restore target already exists.\n');
+  const inside = await cli(['backup', 'restore', '--to', join(projectDirectory, 'restored.sqlite')], withR2);
+  assert.equal(inside.code, 1);
+  assert.equal(inside.stderr, 'Database path must be an absolute file path outside the application directory.\n');
+  const relative = await cli(['backup', 'restore', '--to', 'restored.sqlite'], withR2);
+  assert.equal(relative.code, 2);
+  assert.match(relative.stderr, /usage:/);
+  for (const args of [['backup', 'list'], ['backup', 'restore', '--to', join(root, 'other.sqlite')]]) {
+    const missing = await cli(args, base);
+    assert.equal(missing.code, 1);
+    assert.equal(missing.stderr, 'R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY must be set.\n');
+  }
+  for (const output of outputs) assert.equal(output.includes(secret), false);
 });
