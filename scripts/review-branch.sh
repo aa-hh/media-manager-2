@@ -19,10 +19,14 @@
 # patch id of the branch's own non-Markdown changes against origin/main
 # (`none` when there are none). A push that leaves it unchanged, such as a
 # docs-only commit, uses no round: the run re-posts that round's status on
-# the new HEAD and exits with its result. Round 2 reviews only what was
-# committed since round 1's head (the fix for its HIGH findings) and never
-# skips; a third run refuses. No PR yet means round 1 against main. Only a
-# HIGH finding fails the status; MEDIUM and LOW are posted and do not block.
+# the new HEAD and exits with its result. Round 2 reviews only the fix for
+# round 1's HIGH findings: its base is round 1's head with the branch's merge
+# base with origin/main merged in (`git merge-tree --write-tree`, git 2.38 or
+# newer, wrapped in a commit), so a merge of main between rounds adds nothing
+# to the diff, and main moving on after that merge shows nothing reversed; after
+# a rebase the base stays round 1's head. It never skips; a third run
+# refuses. No PR yet means round 1 against main. Only a HIGH finding fails
+# the status; MEDIUM and LOW are posted and do not block.
 #
 # Merging origin/main in uses no round either, even after round 2: when every
 # commit since the marker's head is on origin/main or is a merge whose second
@@ -70,19 +74,22 @@ SCORE_MODEL=haiku
 # Any touched path here makes the review full, whatever its size.
 is_risk_path() {
   case "$1" in
-    # Fill in per project: the code where a small diff can do large harm
-    # (persistence formats, auth/licensing, concurrency, hooks). Example:
-    # src/storage/*|src/auth/*|.githooks/*) return 0 ;;
-    __none__) return 0 ;;
+    src/server/auth.ts|src/server/database.ts|src/server/backup.ts|src/server/backupDestination.ts) return 0 ;;
+    src/server/grabs.ts|src/server/replace.ts|src/server/stalls.ts|src/server/protection.ts|src/server/advice.ts) return 0 ;;
+    src/server/titleDelete.ts|src/server/secondVersionDelete.ts|src/server/versionImport.ts) return 0 ;;
+    src/server/torrentFiles.ts|src/server/relink.ts|src/server/trackerRules.ts) return 0 ;;
+    src/server/services/arr/queue.ts|src/server/services/arr/commands.ts) return 0 ;;
+    .githooks/*|scripts/*|.github/*|.claude/hooks/*) return 0 ;;
   esac
   return 1
 }
 
-# Lines in these paths count toward the size thresholds; tests and docs do not.
+# Lines in these paths count toward the size thresholds; Markdown, the lockfile and
+# *Test*-named files do not (tests/production.test.mjs counts).
 is_product_path() {
-  case "$1" in *Tests/*|*.md) return 1 ;; esac
+  case "$1" in *Tests/*|*.md|package-lock.json) return 1 ;; esac
   case "${1##*/}" in *Test*) return 1 ;; esac
-  case "$1" in .githooks/*|*.swift|*.c|*.h|*.m|*.sh|*.py|*.ts|*.tsx|*.js|*.go|*.rs|*.rb|*.java|*.kt) return 0 ;; esac
+  case "$1" in .githooks/*|*.swift|*.c|*.h|*.m|*.sh|*.py|*.ts|*.tsx|*.js|*.mjs|*.go|*.rs|*.rb|*.java|*.kt|*.yml|*.yaml|*.json) return 0 ;; esac
   return 1
 }
 
@@ -192,6 +199,18 @@ elif [ "$round" = 2 ]; then
   base=$prev_head
   git rev-parse --verify -q "$base^{commit}" > /dev/null \
     || { echo "Round 1's head $base (from PR #$pr) is not in this clone; git fetch, then run again." >&2; exit 2; }
+  if git merge-base --is-ancestor "$prev_head" "$tip" 2>/dev/null; then
+    # Exit 1 means conflicts, and the tree (first line) still exists with markers, so the
+    # round 2 diff then shows the branch's resolutions and its fix, nothing of main's.
+    # The tree is wrapped in a commit so the history pass can blame and log the base.
+    merged=$(git merge-tree --write-tree "$main_base" "$prev_head" 2>/dev/null); rc=$?
+    if [ "$rc" -le 1 ] && [ -n "$merged" ] \
+      && base=$(git commit-tree "${merged%%$'\n'*}" -p "$prev_head" -m "round 1 head with main merged in" 2>/dev/null); then :
+    else
+      base=$prev_head
+      echo "Warning: could not merge main into round 1's head (git older than 2.38?); the round 2 diff may include changes merged in from main." >&2
+    fi
+  fi
 else
   base=$main_base
 fi

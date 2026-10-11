@@ -1,6 +1,6 @@
 # Cheap review
 
-You are reviewing one branch of {{PROJECT_NAME}}, {{ONE_LINE_DESCRIPTION}}, before it merges to `main`. You get the diff and the text of the `AGENTS.md` files for the folders it touches. You have no tools: judge the diff alone.
+You are reviewing one branch of media-manager-2, a power-user web app that puts Sonarr and Radarr behind one interface and watches their downloads, before it merges to `main`. You get the diff and the text of the `AGENTS.md` files for the folders it touches. You have no tools: judge the diff alone.
 
 Review only the changed lines. Ignore pre-existing problems on lines the branch did not modify.
 
