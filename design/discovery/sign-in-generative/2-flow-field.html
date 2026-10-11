@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · media-manager-2</title>
+<style>
+  :root {
+    --ink: #07090c;
+    --text: #e6edf3;
+    --text-dim: #93a4b5;
+    --accent: #e5a00d;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--ink); color: var(--text); overflow: hidden; }
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .signin {
+    position: absolute; left: max(24px, 11vw); top: 50%; transform: translateY(-50%);
+    width: 380px; display: flex; flex-direction: column; gap: 18px;
+  }
+  .mark {
+    font: 500 12px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  h1 {
+    font: 600 40px/1.05 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -.03em;
+    color: var(--text); margin-bottom: 6px;
+  }
+  p { color: var(--text-dim); max-width: 34ch; }
+  p strong { color: var(--text); font-weight: 500; }
+  button {
+    margin-top: 10px; align-self: flex-start; display: inline-flex; align-items: center; gap: 12px;
+    height: 48px; padding: 0 22px 0 18px; border: 0; border-radius: 4px; cursor: pointer;
+    background: var(--accent); color: #0b0b0b; font: 600 15px/1 inherit; font-family: inherit;
+    transition: filter .2s, opacity .2s;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+  button[disabled] { cursor: progress; opacity: .85; }
+  button svg { width: 14px; height: 14px; fill: currentColor; }
+  .status { min-height: 1.5em; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-dim); }
+  .status[data-state="refused"] { color: var(--text); }
+  @media (max-width: 600px) {
+    .signin { left: 24px; right: 24px; width: auto; }
+    h1 { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<main class="signin" id="signin">
+  <div class="mark">Owner sign-in</div>
+  <h1>media-manager-2</h1>
+  <p><strong>Only the owner's Plex account can open this app.</strong></p>
+  <p>Plex is used only to confirm who you are. It never sees your password.</p>
+  <button id="go" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    <span id="go-label">Sign in with Plex</span>
+  </button>
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+</main>
+<script>
+// ---- Tunable constants ----
+const SEED          = 7;        // seed for every random choice; same seed, same picture
+const RES           = 0.5;      // canvas resolution as a fraction of CSS pixels (0.5 = half-res, scaled up)
+const N_BASE        = 30000;    // particle count at 1440x900; scales with screen area
+const ACCENT_SHARE  = 0.02;     // fraction of particles drawn in the accent colour
+const SPEED         = 34;       // base current speed, CSS px per second
+const FLOW_ANGLE    = -0.22;    // direction of the main current in radians (0 = left to right)
+const NOISE_SCALE   = 420;      // size of the swirls in the field, CSS px
+const NOISE_AMOUNT  = 1.15;     // how strongly the noise bends the main current
+const EVOLVE        = 0.035;    // how fast the field itself changes (noise units per second)
+const CELL          = 10;       // field grid spacing in canvas pixels; particles interpolate between nodes
+const FADE          = 0.9955;   // trail persistence per frame (the "translucent rect" opacity is 1 - FADE)
+const DEPOSIT       = 0.032;    // brightness one particle adds per frame
+const GAIN          = 0.9;      // tone curve strength; higher = brighter silk
+const LIFE_MIN      = 5;        // particle lifetime range, seconds
+const LIFE_MAX      = 14;
+const CALM_PAD      = 1.15;     // calm zone size relative to the sign-in block
+const CALM_SOFT     = [0.95, 1.55]; // calm zone edge: flow is still inside the first value, free beyond the second
+const SPIRAL_SWIRL  = 2.6;      // checking: sideways speed around the button (multiples of SPEED)
+const SPIRAL_PULL   = 1.1;      // checking: inward speed toward the button
+const CHECK_RAMP    = [0.2, 1.8]; // checking: seconds over which the spiral takes over
+const CHECK_CLEAR   = 3;        // checking: old trails fade this many times faster while the spiral forms
+const REFUSE_AT     = 1.0;      // refused: seconds after load when the field flips
+const REFUSE_DECAY  = 2.8;      // refused: seconds for the flip to die away
+const SCATTER       = 5.0;      // refused: outward burst speed (multiples of SPEED)
+const GRAIN         = 7;        // static print grain, +/- RGB levels
+const BG     = [7, 9, 12];      // #07090c ink
+const SILK   = [178, 199, 219]; // #b2c7db cold silver-blue, the dominant colour
+const ACCENT = [229, 160, 13];  // #e5a00d Plex amber, the accent
+const STEP = 1 / 60;            // fixed simulation step
+
+// ---- URL params ----
+const qs = new URLSearchParams(location.search);
+let state = ['idle', 'checking', 'refused'].includes(qs.get('state')) ? qs.get('state') : 'idle';
+const fixedT = qs.has('t') ? Math.max(0, parseFloat(qs.get('t')) || 0) : null;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---- seeded random + Perlin noise ----
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+let rnd = mulberry32(SEED);
+const perm = new Uint8Array(512);
+{ const p = [...Array(256).keys()]; const r = mulberry32(SEED * 31 + 1);
+  for (let i = 255; i > 0; i--) { const j = (r() * (i + 1)) | 0; [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255]; }
+const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+function grad(h, x, y, z) { h &= 15; const u = h < 8 ? x : y, v = h < 4 ? y : (h === 12 || h === 14 ? x : z); return ((h & 1) ? -u : u) + ((h & 2) ? -v : v); }
+function perlin(x, y, z) {
+  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+  x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+  const u = fade(x), v = fade(y), w = fade(z);
+  const A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z, B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z;
+  const l = (a, b, t) => a + t * (b - a);
+  return l(l(l(grad(perm[AA], x, y, z), grad(perm[BA], x - 1, y, z), u), l(grad(perm[AB], x, y - 1, z), grad(perm[BB], x - 1, y - 1, z), u), v),
+           l(l(grad(perm[AA + 1], x, y, z - 1), grad(perm[BA + 1], x - 1, y, z - 1), u), l(grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1), u), v), w);
+}
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+// ---- setup ----
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const block = document.getElementById('signin'), btn = document.getElementById('go');
+let W, H, N, px, py, life, spd, img, silkBuf, accBuf, tex, gw, gh, psi, gvx, gvy, scale = 1;
+let calm, btnC, t = 0, stateT0 = 0, burstDone = false;
+const LUT = new Float32Array(2048); for (let i = 0; i < 2048; i++) LUT[i] = 1 - Math.exp(-(i / 256) * GAIN);
+
+function measure() {
+  const r = block.getBoundingClientRect(), b = btn.getBoundingClientRect();
+  const pad = innerWidth < 600 ? 0.8 : CALM_PAD;   // phones: tighter calm zone so the flow still shows
+  calm = { x: (r.left + r.width / 2) * RES, y: (r.top + r.height / 2) * RES,
+           rx: (r.width / 2 * pad + 30) * RES, ry: (r.height / 2 * pad + 30) * RES };
+  btnC = { x: (b.left + b.width / 2) * RES, y: (b.top + b.height / 2) * RES };
+}
+const calmDist = (x, y) => Math.hypot((x - calm.x) / calm.rx, (y - calm.y) / calm.ry);
+
+function spawn(i) {
+  life[i] = (LIFE_MIN + rnd() * (LIFE_MAX - LIFE_MIN)) / STEP;
+  if (state === 'checking' && t - stateT0 > CHECK_RAMP[0]) {   // checking: feed the spiral from the screen edge
+    const e = rnd() * 2 * (W + H);
+    if (e < W) { px[i] = e; py[i] = 0.5; } else if (e < 2 * W) { px[i] = e - W; py[i] = H - 1.5; }
+    else if (e < 2 * W + H) { px[i] = 0.5; py[i] = e - 2 * W; } else { px[i] = W - 1.5; py[i] = e - 2 * W - H; }
+    life[i] *= 3; return;
+  }
+  for (let k = 0; k < 6; k++) { px[i] = rnd() * W; py[i] = rnd() * H; if (calmDist(px[i], py[i]) > CALM_SOFT[0] + 0.3) break; }
+}
+
+function init() {
+  rnd = mulberry32(SEED);
+  W = Math.max(2, Math.round(innerWidth * RES)); H = Math.max(2, Math.round(innerHeight * RES));
+  cv.width = W; cv.height = H;
+  img = ctx.createImageData(W, H);
+  silkBuf = new Float32Array(W * H); accBuf = new Float32Array(W * H); scale = 1;
+  tex = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const v = Math.hypot(x / W - 0.5, y / H - 0.5);
+    tex[y * W + x] = (rnd() * 2 - 1) * GRAIN - v * v * 30; // grain + vignette
+  }
+  gw = Math.ceil(W / CELL) + 3; gh = Math.ceil(H / CELL) + 3;
+  psi = new Float32Array(gw * gh); gvx = new Float32Array(gw * gh); gvy = new Float32Array(gw * gh);
+  N = Math.max(6000, Math.round(N_BASE * innerWidth * innerHeight / (1440 * 900)));
+  px = new Float32Array(N); py = new Float32Array(N); life = new Float32Array(N); spd = new Float32Array(N);
+  measure();
+  for (let i = 0; i < N; i++) { spawn(i); life[i] *= rnd(); spd[i] = 0.6 + rnd() * 0.8; }
+}
+
+// ---- the field: masked stream function -> curl, plus state overlays ----
+function buildField() {
+  const U = SPEED * RES * STEP;                          // canvas px per step
+  const s = 1 / (NOISE_SCALE * RES), A = NOISE_AMOUNT * U / s, z = t * EVOLVE;
+  const ca = Math.cos(FLOW_ANGLE), sa = Math.sin(FLOW_ANGLE);
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const x = (i - 1) * CELL, y = (j - 1) * CELL, dx = x - calm.x, dy = y - calm.y;
+    const n = perlin(x * s, y * s, z) + 0.35 * perlin(x * s * 2.1 + 17, y * s * 2.1, z * 1.7);
+    psi[j * gw + i] = (U * (dy * ca - dx * sa) + A * n) * smooth(CALM_SOFT[0], CALM_SOFT[1], calmDist(x, y));
+  }
+  const el = t - stateT0;
+  const w = state === 'checking' ? smooth(CHECK_RAMP[0], CHECK_RAMP[1], el) : 0;
+  const tau = el - REFUSE_AT;
+  const p = state === 'refused' && tau > 0 ? (1 - Math.exp(-tau / 0.2)) * Math.exp(-tau / REFUSE_DECAY) : 0;
+  const flip = 1 - 0.92 * w - 2.3 * p;
+  for (let j = 1; j < gh - 1; j++) for (let i = 1; i < gw - 1; i++) {
+    const k = j * gw + i, x = (i - 1) * CELL, y = (j - 1) * CELL;
+    let vx = (psi[k + gw] - psi[k - gw]) / (2 * CELL), vy = -(psi[k + 1] - psi[k - 1]) / (2 * CELL);
+    vx *= flip; vy *= flip;
+    if (w > 0) {
+      const dx = x - btnC.x, dy = y - btnC.y, r = Math.hypot(dx, dy) + 1e-3;
+      const f = U * Math.min(1, r / (90 * RES)) * (0.55 + 0.45 * Math.exp(-r / (500 * RES)));
+      vx += w * f * (-dy * SPIRAL_SWIRL - dx * SPIRAL_PULL) / r;
+      vy += w * f * (dx * SPIRAL_SWIRL - dy * SPIRAL_PULL) / r;
+    }
+    if (p > 0) {
+      const dx = (x - calm.x) / calm.rx, dy = (y - calm.y) / calm.ry, d = Math.hypot(dx, dy) + 1e-3;
+      const f = U * SCATTER * p / (0.6 + d * d * 0.5);
+      vx += f * dx / d; vy += f * dy / d;
+    }
+    gvx[k] = vx; gvy[k] = vy;
+  }
+}
+
+function step() {
+  buildField();
+  const el = t - stateT0;
+  const w = state === 'checking' ? smooth(CHECK_RAMP[0], CHECK_RAMP[1], el) : 0;
+  const pr = state === 'refused' && el > REFUSE_AT ? Math.exp(-(el - REFUSE_AT) / REFUSE_DECAY) : 0;
+  if (state === 'refused' && !burstDone && el >= REFUSE_AT) {   // throw a third of the particles onto the calm zone's rim
+    burstDone = true;
+    for (let i = 0; i < N; i += 3) {
+      const a = rnd() * Math.PI * 2, d = 1.05 + rnd() * 0.6;
+      px[i] = calm.x + Math.cos(a) * calm.rx * d; py[i] = calm.y + Math.sin(a) * calm.ry * d;
+    }
+  }
+  scale *= Math.pow(FADE, 1 + CHECK_CLEAR * w * (1 - smooth(4, 7, el)));
+  if (scale < 1e-3) { for (let i = 0; i < W * H; i++) { silkBuf[i] *= scale; accBuf[i] *= scale; } scale = 1; }
+  const dep = DEPOSIT / scale, nAcc = N * ACCENT_SHARE;
+  const accDep = dep * (1 + 1.6 * w) * (1 - 0.85 * pr) * 1.4;
+  const kill2 = (40 * RES) ** 2;
+  for (let i = 0; i < N; i++) {
+    let x = px[i], y = py[i];
+    const gx = x / CELL + 1, gy = y / CELL + 1, ix = gx | 0, iy = gy | 0, fx = gx - ix, fy = gy - iy;
+    if (ix < 1 || iy < 1 || ix >= gw - 2 || iy >= gh - 2 || --life[i] <= 0) { spawn(i); continue; }
+    const k = iy * gw + ix;
+    const vx = (gvx[k] * (1 - fx) + gvx[k + 1] * fx) * (1 - fy) + (gvx[k + gw] * (1 - fx) + gvx[k + gw + 1] * fx) * fy;
+    const vy = (gvy[k] * (1 - fx) + gvy[k + 1] * fx) * (1 - fy) + (gvy[k + gw] * (1 - fx) + gvy[k + gw + 1] * fx) * fy;
+    x += vx * spd[i]; y += vy * spd[i]; px[i] = x; py[i] = y;
+    if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) { spawn(i); continue; }
+    const cd = calmDist(x, y);
+    if (cd < CALM_SOFT[0] * 0.75 || (w > 0 && (x - btnC.x) ** 2 + (y - btnC.y) ** 2 < kill2)) { spawn(i); continue; }
+    const m = smooth(CALM_SOFT[0], CALM_SOFT[1] + 0.1, cd);
+    if (m <= 0) continue;
+    const buf = i < nAcc ? accBuf : silkBuf, a = (i < nAcc ? accDep : dep) * m;
+    const xi = x | 0, yi = y | 0, ax = x - xi, ay = y - yi, o = yi * W + xi;   // bilinear splat
+    buf[o] += a * (1 - ax) * (1 - ay); buf[o + 1] += a * ax * (1 - ay);
+    buf[o + W] += a * (1 - ax) * ay; buf[o + W + 1] += a * ax * ay;
+  }
+  t += STEP;
+}
+
+function render() {
+  const d = img.data, k = 256 * scale;
+  for (let i = 0, j = 0; i < W * H; i++, j += 4) {
+    const a = LUT[Math.min(2047, (silkBuf[i] * k) | 0)], b = LUT[Math.min(2047, (accBuf[i] * k) | 0)], g = tex[i];
+    let r = BG[0] + (SILK[0] - BG[0]) * a, gg = BG[1] + (SILK[1] - BG[1]) * a, bb = BG[2] + (SILK[2] - BG[2]) * a;
+    r += (ACCENT[0] - r) * b; gg += (ACCENT[1] - gg) * b; bb += (ACCENT[2] - bb) * b;
+    d[j] = r + g; d[j + 1] = gg + g; d[j + 2] = bb + g; d[j + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---- state copy ----
+const label = document.getElementById('go-label'), status = document.getElementById('status');
+function applyState() {
+  status.dataset.state = state;
+  btn.disabled = state === 'checking';
+  label.textContent = state === 'checking' ? 'Waiting for Plex…' : state === 'refused' ? 'Try another Plex account' : 'Sign in with Plex';
+  status.textContent = state === 'checking' ? 'Confirming your Plex account.' : state === 'refused' ? 'That Plex account is not the owner of this app.' : '';
+}
+applyState();
+
+// ---- run ----
+init();
+if (fixedT !== null || reduced) {
+  const T = fixedT ?? 6, n = Math.round(T / STEP);
+  for (let i = 0; i < n; i++) step();
+  render();
+} else {
+  let last = performance.now(), acc = 0, frames = 0, sum = 0;
+  const bench = qs.has('bench');
+  const loop = now => {
+    acc = Math.min(acc + (now - last) / 1000, STEP * 3); last = now;
+    const t0 = performance.now();
+    while (acc >= STEP) { step(); acc -= STEP; }
+    render();
+    if (bench && ++frames % 120 === 0) { sum = performance.now() - t0; document.title = 'ms/frame ' + sum.toFixed(2); console.log(document.title); }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+  btn.addEventListener('click', () => { if (state !== 'checking') { state = 'checking'; stateT0 = t; burstDone = false; applyState(); } });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const tt = t; init(); t = tt; }, 150); });
+}
+</script>
+</body>
+</html>

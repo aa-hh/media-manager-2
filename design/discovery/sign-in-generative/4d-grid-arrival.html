@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>media-manager-2 — sign in</title>
+<style>
+  :root {
+    --paper: #11100E;
+    --ink: #DCD5C3;
+    --ink-2: #A39C8A;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--paper); color: var(--ink); overflow: hidden; }
+  body { font-family: var(--mono); -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; left: 0; top: 0; display: block; }
+
+  .panel {
+    position: fixed; left: 7vw; top: 50%; transform: translateY(-50%);
+    width: min(440px, calc(100vw - 32px));
+    padding: 32px 0;
+  }
+  .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  h1 {
+    font-size: clamp(30px, 3.4vw, 44px); font-weight: 500; letter-spacing: -.02em;
+    line-height: 1.05; margin-top: 14px; white-space: nowrap;
+  }
+  .copy { margin-top: 22px; font-size: 14px; line-height: 1.6; color: var(--ink-2); max-width: 38ch; }
+  .copy p + p { margin-top: 8px; }
+  .copy strong { color: var(--ink); font-weight: 500; }
+
+  #go {
+    margin-top: 30px; display: inline-flex; align-items: center; gap: 12px;
+    height: 52px; padding: 0 22px 0 18px; border: 0; border-radius: 2px;
+    background: var(--ink); color: var(--btn-fg, var(--paper));
+    font: 600 15px/1 var(--mono); letter-spacing: .01em; cursor: pointer;
+  }
+  #go svg { width: 16px; height: 16px; fill: currentColor; }
+  #go:hover { filter: brightness(1.08); }
+  #go:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+  /* the button keeps its idle colours in every state */
+  #go:disabled { cursor: default; filter: none; }
+  .bench { position: fixed; left: 8px; bottom: 6px; font: 11px var(--mono); color: var(--ink-2); z-index: 6; }
+
+  /* tweak panel (T toggles) */
+  .tw { position: fixed; right: 12px; bottom: 12px; width: 260px; font: 11px/1.4 var(--mono);
+        background: var(--paper); color: var(--ink-2); border: 1px solid #3a3730; padding: 10px 12px; z-index: 5; }
+  .tw.hide .body { display: none; }
+  .tw .head { display: flex; justify-content: space-between; cursor: pointer; color: var(--ink); }
+  .tw label { display: grid; grid-template-columns: 1fr 44px; margin-top: 8px; }
+  .tw input[type=range] { grid-column: 1 / 3; width: 100%; accent-color: var(--ink-2); }
+  .tw output { text-align: right; color: var(--ink); }
+  .tw pre { margin-top: 8px; white-space: pre-wrap; word-break: break-all; color: var(--ink-2); font-size: 10px; }
+  .tw button { margin-top: 8px; font: 11px var(--mono); background: none; color: var(--ink); border: 1px solid var(--ink-2); padding: 4px 8px; cursor: pointer; }
+
+  @media (max-width: 640px) {
+    .panel { left: 16px; right: 16px; top: auto; bottom: 28px; transform: none; width: auto; padding: 24px 0 8px; }
+    h1 { font-size: 30px; }
+    .copy { font-size: 13px; }
+    #go { width: 100%; justify-content: center; }
+    .tw { top: 12px; bottom: auto; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+
+<main class="panel" id="panel">
+  <div class="kicker">Owner sign-in</div>
+  <h1>media-manager-2</h1>
+  <div class="copy">
+    <p><strong>Only the owner's Plex account can open this app.</strong></p>
+    <p>Plex is used only to confirm it's you. This app never sees your password.</p>
+  </div>
+  <button id="go" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    <span id="lbl">Sign in with Plex</span>
+  </button>
+</main>
+
+<aside class="tw hide" id="tw">
+  <div class="head" id="twHead"><span>tweaks</span><span>T</span></div>
+  <div class="body">
+    <div id="sliders"></div>
+    <button id="copy" type="button">Copy values</button>
+    <pre id="json"></pre>
+  </div>
+</aside>
+
+<script>
+// ---- Tunable constants ---------------------------------------------------
+const FONT_PX        = 12;      // glyph size in CSS px; sets grid density
+const LINE           = 1.3;     // row height as a multiple of FONT_PX
+const RAMP           = ' .·:-=+*#%@'; // glyphs from empty to dense
+const HEX            = '0123456789abcdef'; // arrival flicker glyphs
+const BG_LEVEL       = 0.05;    // floor brightness of the background field
+const BG_NOISE       = 0.22;    // how much noise adds to the background
+const BG_WAVES       = 0.09;    // how much the two-source sine interference adds
+const NOISE_DRIFT    = 0.05;    // how fast the noise field drifts (per second)
+const WAVE_LEN       = 70;      // interference wavelength, CSS px
+const WAVE_SPEED     = 0.5;     // interference phase speed (radians per second)
+const PANEL_CLEAR    = 44;      // px of soft clearance around the sign-in block
+const MAX_LIVE       = 5;       // most arrival runs alive at once
+const REDUCED_T      = 4;       // still frame time used for reduced motion
+const MAX_DPR        = 2;       // pixel density cap; set 1 to render at half resolution on retina
+// states
+const CHECK_RATE     = 1.5;     // arrival rate multiplier while waiting on Plex
+const CHECK_BLEND    = 0.6;     // s, idle -> checking blend
+const CHECK_DIM      = 0.35;    // how much the field away from the queue column dims while checking
+const QUEUE_STEPS    = 8;       // arrivals per pass of the queue, far to near
+const QUEUE_ROWS     = 14;      // furthest queue arrival, rows from the button
+const SUCCESS_WAVE   = 1.5;     // s, wave from the button to the furthest row
+const SUCCESS_HOLD   = 0.7;     // brightness the green runs settle to and hold
+const CHECK_TO_SUCCESS = 4;     // s after the click before Plex "confirms" (demo)
+const GREEN          = [198, 241, 53]; // #C6F135
+const FPS_IDLE       = 24;      // frames per second once nothing fast is moving
+const FPS_FAST       = 60;      // frames per second during a state change and the success wave
+
+// live-tunable values (tweak panel)
+const V = { arrivalRate: 0.7, runLength: 12, flickerMs: 300, decayS: 3, noiseScale: 0.045, inkHue: 42, paperHue: 40 };
+const SLIDERS = [
+  ['arrivalRate', 'arrival rate /s', 0.05, 3, 0.05],
+  ['runLength',   'run length',      6, 20, 1],
+  ['flickerMs',   'flicker ms',      60, 900, 10],
+  ['decayS',      'decay s',         0.5, 8, 0.1],
+  ['noiseScale',  'noise scale',     0.01, 0.12, 0.001],
+  ['inkHue',      'ink hue',         0, 360, 1],
+  ['paperHue',    'paper hue',       0, 360, 1],
+];
+
+// ---- Setup ---------------------------------------------------------------
+const q = new URLSearchParams(location.search);
+const fixedT = q.has('t') ? parseFloat(q.get('t')) || 0 : null;
+const bench = q.get('bench') === '1';
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono');
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const panel = document.getElementById('panel'), go = document.getElementById('go'), lbl = document.getElementById('lbl');
+
+// seeded randomness so ?t= stills and benches repeat exactly
+let seed = 0x4d4d32;
+const rng = () => { seed = seed + 0x6D2B79F5 | 0; let x = Math.imul(seed ^ seed >>> 15, 1 | seed); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; };
+
+let W, H, dpr, cw, ch, cols, rows, gw, gh, aw, glyphA, tint, tintC, panelR, btn;
+let ov, ovG, mask, focusC, focusR, prevKey, qCol, qRow, qSide, full = true;
+const CHARS = RAMP + HEX;
+function hsl(h, s, l) { // -> [r,g,b] 0..255
+  const f = n => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)];
+}
+const mix = (a, b, t) => a.map((v, k) => Math.round(v + (b[k] - v) * t));
+const hex = c => '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+
+// colours from the hue sliders; s = 0 idle bone, 1 success green on darker paper
+let colourS = -1;
+function buildColours(s) {
+  colourS = s;
+  const P = mix(hsl(V.paperHue, 0.096, 0.061), hsl(V.paperHue, 0.08, 0.04), s);
+  const INK = [hsl(V.inkHue, 0.088, 0.267), hsl(V.inkHue, 0.083, 0.475), hsl(V.inkHue, 0.26, 0.814)];
+  const GI = [mix(P, GREEN, 0.3), mix(P, GREEN, 0.55), GREEN];
+  // tinted glyph atlas: rows 0-2 ink levels, rows 3-5 green levels; the canvas is transparent
+  // and the page background is the paper, so a glyph's alpha mixes paper and ink as before
+  const id = tintC.createImageData(aw, 6 * gh), d = id.data, n = aw * gh * 4;
+  for (let row = 0; row < 6; row++) {
+    const C = row < 3 ? mix(INK[row], GI[row], s) : GI[row - 3], o = row * n;
+    for (let k = 0; k < n; k += 4) { d[o + k] = C[0]; d[o + k + 1] = C[1]; d[o + k + 2] = C[2]; d[o + k + 3] = glyphA[k >> 2]; }
+  }
+  tintC.putImageData(id, 0, 0);
+  const r = document.documentElement.style;
+  r.setProperty('--paper', hex(P)); r.setProperty('--btn-fg', hex(hsl(V.paperHue, 0.096, 0.061))); r.setProperty('--ink', hex(INK[2])); r.setProperty('--ink-2', hex(hsl(V.inkHue, 0.09, 0.59)));
+  full = true;
+}
+
+function build() {
+  dpr = Math.max(1, Math.min(MAX_DPR, Math.round(window.devicePixelRatio || 1)));
+  W = innerWidth; H = innerHeight;
+  ctx.font = `${FONT_PX}px ${MONO}`;
+  cw = Math.max(6, Math.round(ctx.measureText('M').width));
+  ch = Math.round(FONT_PX * LINE);
+  cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+  gw = cw * dpr; gh = ch * dpr;
+  cv.width = cols * gw; cv.height = rows * gh;
+  cv.style.width = cols * cw + 'px'; cv.style.height = rows * ch + 'px';
+  const n = cols * rows;
+  ov = new Float32Array(n).fill(-1); ovG = new Uint8Array(n); prevKey = new Int16Array(n); mask = new Float32Array(n);
+  // glyph atlas: render each glyph once and keep its alpha; faint edge pixels drop to paper
+  aw = CHARS.length * gw;
+  const a = document.createElement('canvas'); a.width = aw; a.height = gh;
+  const ac = a.getContext('2d');
+  ac.scale(dpr, dpr); ac.font = `${FONT_PX}px ${MONO}`; ac.textAlign = 'center'; ac.textBaseline = 'middle'; ac.fillStyle = '#fff';
+  [...CHARS].forEach((g, i) => ac.fillText(g, i * cw + cw / 2, ch / 2 + 0.5));
+  const px = ac.getImageData(0, 0, aw, gh).data;
+  glyphA = new Uint8Array(aw * gh);
+  for (let k = 0; k < glyphA.length; k++) { const v = px[k * 4 + 3]; glyphA[k] = v > 8 ? v : 0; }
+  tint = document.createElement('canvas'); tint.width = aw; tint.height = 6 * gh;
+  tintC = tint.getContext('2d');
+  const p = panel.getBoundingClientRect(), b = go.getBoundingClientRect();
+  panelR = { x0: p.left, y0: p.top, x1: p.right, y1: p.bottom };
+  btn = { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 };
+  // per-cell clearance around the sign-in block, computed once instead of per frame
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const pd = panelDist(i * cw + cw / 2, j * ch + ch / 2);
+    mask[j * cols + i] = pd < PANEL_CLEAR ? smooth(0, PANEL_CLEAR, pd) : 1;
+  }
+  // the checking queue: a loose column right of the block, or above it when the screen is narrow
+  const colAt = Math.ceil((panelR.x1 + PANEL_CLEAR * 1.6) / cw);
+  qSide = cols - colAt >= 28;
+  qCol = qSide ? colAt : Math.max(0, Math.round(btn.x / cw) - 6);
+  qRow = qSide ? Math.round(btn.y / ch) : Math.floor((panelR.y0 - PANEL_CLEAR * 1.6) / ch);
+  focusC = new Float32Array(cols).fill(1); focusR = new Float32Array(rows).fill(1);
+  if (qSide) for (let i = 0; i < cols; i++) { const d = (i - qCol - 8) / 26; focusC[i] = Math.exp(-d * d); }
+  else for (let j = 0; j < rows; j++) { const d = (j - qRow + QUEUE_ROWS / 2) / 12; focusR[j] = Math.exp(-d * d); }
+  buildColours(Math.max(0, colourS));
+}
+
+// ---- Maths ---------------------------------------------------------------
+function hash3(x, y, z) {
+  let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1103515245); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+// per-column / per-row lattice index and eased fraction for one noise octave, rebuilt when the scale or grid changes
+function octave(sx, sy) {
+  const o = { xi: new Int32Array(cols), u: new Float64Array(cols), yi: new Int32Array(rows), v: new Float64Array(rows) };
+  for (let i = 0; i < cols; i++) { const x = i * sx, f = Math.floor(x), t = x - f; o.xi[i] = f; o.u[i] = t * t * (3 - 2 * t); }
+  for (let j = 0; j < rows; j++) { const y = j * sy, f = Math.floor(y), t = y - f; o.yi[j] = f; o.v[j] = t * t * (3 - 2 * t); }
+  o.nx = o.xi[cols - 1] + 2; o.g = new Float64Array(o.nx * (o.yi[rows - 1] + 2));
+  return o;
+}
+// blend the two z slices of corner hashes once per frame; per cell the noise is then a bilinear lookup
+function octaveZ(o, z) {
+  const zi = Math.floor(z); let w = z - zi; w = w * w * (3 - 2 * w);
+  const ny = o.g.length / o.nx;
+  for (let y = 0; y < ny; y++) for (let x = 0; x < o.nx; x++) {
+    const a = hash3(x, y, zi); o.g[y * o.nx + x] = a + (hash3(x, y, zi + 1) - a) * w;
+  }
+}
+let oct1, oct2, octFor = '';
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function panelDist(x, y) {
+  const dx = Math.max(panelR.x0 - x, 0, x - panelR.x1), dy = Math.max(panelR.y0 - y, 0, y - panelR.y1);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// ---- State ---------------------------------------------------------------
+// tChk / tSuc are the animation times the state was entered; blends run off them
+let state = 'idle', tChk = Infinity, tSuc = Infinity, lastChange = -Infinity;
+
+// ---- Arrival runs: short runs of cells on one row that land like file pieces ----
+const runs = []; // {r, c0, len, born, green}
+let queueN = 0;
+function freeRow(r, c0, len) {
+  for (const o of runs) if (o.r === r && c0 < o.c0 + o.len + 2 && o.c0 < c0 + len + 2) return false;
+  return true;
+}
+const runLen = () => clamp(Math.round(V.runLength * (0.6 + rng() * 0.8)), 6, 20);
+function spawnRun(t) {
+  for (let tries = 0; tries < 12; tries++) {
+    const len = runLen();
+    const r = Math.floor(rng() * rows), c0 = Math.floor(rng() * Math.max(1, cols - len));
+    const y = r * ch + ch / 2;
+    if (panelDist(c0 * cw, y) < PANEL_CLEAR * 1.5 || panelDist((c0 + len) * cw, y) < PANEL_CLEAR * 1.5) continue;
+    if (!freeRow(r, c0, len)) continue;
+    runs.push({ r, c0, len, born: t, green: false }); return;
+  }
+}
+// checking: each arrival lands a little nearer the button than the last, then the queue starts again far out
+function spawnQueued(t) {
+  const k = queueN % QUEUE_STEPS, far = 1 - k / QUEUE_STEPS; queueN++;
+  const len = runLen(), d = 1 + Math.round(far * QUEUE_ROWS + (rng() - 0.5) * 2);
+  for (let tries = 0; tries < 6; tries++) {
+    let r, c0;
+    if (qSide) {
+      r = qRow + (queueN & 1 ? d : -d) + (tries >> 1) * (queueN & 1 ? 1 : -1);
+      c0 = qCol + Math.round(far * 7 + rng() * 3);
+    } else {
+      r = qRow - d - tries;
+      c0 = qCol + Math.round((rng() - 0.5) * 6);
+    }
+    r = clamp(r, 0, rows - 1); c0 = clamp(c0, 0, Math.max(0, cols - len));
+    if (freeRow(r, c0, len)) { runs.push({ r, c0, len, born: t, green: false }); return; }
+  }
+}
+// success: one run per row, timed by its distance from the button, all green
+function spawnWave(t0) {
+  let dmax = 1;
+  for (const [x, y] of [[0, 0], [W, 0], [0, H], [W, H]]) dmax = Math.max(dmax, Math.hypot(x - btn.x, y - btn.y));
+  for (let r = 0; r < rows; r++) for (let tries = 0; tries < 10; tries++) {
+    const len = runLen(), c0 = Math.floor(rng() * Math.max(1, cols - len)), y = r * ch + ch / 2;
+    if (panelDist(c0 * cw, y) < PANEL_CLEAR * 1.5 || panelDist((c0 + len) * cw, y) < PANEL_CLEAR * 1.5) continue;
+    const d = Math.hypot((c0 + len / 2) * cw - btn.x, y - btn.y);
+    runs.push({ r, c0, len, born: t0 + SUCCESS_WAVE * d / dmax, green: true }); break;
+  }
+}
+function updateRuns(t, dt) {
+  const life = V.flickerMs / 1000 + V.decayS;
+  let live = 0, n = 0;
+  for (const o of runs) if (o.green || t - o.born < life) { runs[n++] = o; if (!o.green) live++; }
+  runs.length = n;
+  if (state === 'success') return; // no new arrivals once Plex has confirmed
+  const rate = V.arrivalRate * (state === 'checking' ? 1 + (CHECK_RATE - 1) * blendChk(t) : 1);
+  if (live < MAX_LIVE && rng() < 1 - Math.exp(-rate * dt)) state === 'checking' ? spawnQueued(t) : spawnRun(t);
+}
+const blendChk = t => smooth(0, CHECK_BLEND, t - tChk);
+const blendSuc = t => smooth(0, SUCCESS_WAVE, t - tSuc);
+
+// ---- Frame ---------------------------------------------------------------
+function frame(t) {
+  const suc = blendSuc(t);
+  const sq = Math.round(suc * 48) / 48; // palette steps; rebuilt only when the step changes
+  if (sq !== colourS) buildColours(sq);
+  if (full) { ctx.clearRect(0, 0, cv.width, cv.height); prevKey.fill(0); full = false; }
+
+  const NOISE_SCALE = V.noiseScale, flick = V.flickerMs / 1000;
+  for (const o of runs) {
+    const base = o.r * cols + o.c0;
+    for (let k = 0; k < o.len; k++) {
+      // cells land left to right across the first part of the flicker
+      const age = t - o.born - (k / o.len) * flick * 0.4;
+      if (age < 0) continue;
+      ov[base + k] = age; ovG[base + k] = o.green ? 1 : 0;
+    }
+  }
+
+  const s1x = W * (0.25 + 0.08 * Math.sin(t * 0.05)), s1y = H * (0.2 + 0.06 * Math.cos(t * 0.04));
+  const s2x = W * (0.85 + 0.05 * Math.cos(t * 0.03)), s2y = H * (0.9 + 0.05 * Math.sin(t * 0.06));
+  const kw = 2 * Math.PI / WAVE_LEN, ph = t * WAVE_SPEED, nz = t * NOISE_DRIFT;
+  const nRamp = RAMP.length - 1, hexSlot = Math.floor(t * 30);
+  const sx = NOISE_SCALE, sy = NOISE_SCALE * LINE * 1.6, sx2 = NOISE_SCALE * 2.3, sy2 = NOISE_SCALE * 3.7, nz2 = nz * 1.7 + 9;
+  const of = NOISE_SCALE + ',' + cols + ',' + rows;
+  if (of !== octFor) { oct1 = octave(sx, sy); oct2 = octave(sx2, sy2); octFor = of; }
+  octaveZ(oct1, nz); octaveZ(oct2, nz2);
+  const X1 = oct1.xi, U1 = oct1.u, G1 = oct1.g, N1 = oct1.nx, X2 = oct2.xi, U2 = oct2.u, G2 = oct2.g, N2 = oct2.nx;
+  const focus = blendChk(t) * (1 - suc) * CHECK_DIM, decay = V.decayS;
+
+  for (let j = 0; j < rows; j++) {
+    const y = j * ch + ch / 2, dy1 = (y - s1y) * (y - s1y), dy2 = (y - s2y) * (y - s2y), fr = focusR[j];
+    const r1 = oct1.yi[j] * N1, v1 = oct1.v[j], r2 = oct2.yi[j] * N2, v2 = oct2.v[j];
+    for (let i = 0; i < cols; i++) {
+      const idx = j * cols + i, m = mask[idx];
+      let b, glyph = -1, green = 0;
+      if (m === 0) { ov[idx] = -1; b = 0; }
+      else {
+        const x = i * cw + cw / 2;
+        // background: drifting value noise + two-source sine interference
+        let k = r1 + X1[i], u = U1[i], p = G1[k] + (G1[k + 1] - G1[k]) * u, pq = G1[k + N1] + (G1[k + N1 + 1] - G1[k + N1]) * u;
+        const n1 = p + (pq - p) * v1;
+        k = r2 + X2[i]; u = U2[i]; p = G2[k] + (G2[k + 1] - G2[k]) * u; pq = G2[k + N2] + (G2[k + N2 + 1] - G2[k + N2]) * u;
+        const n = n1 * 0.65 + (p + (pq - p) * v2) * 0.35;
+        const wv = (Math.sin(Math.sqrt((x - s1x) * (x - s1x) + dy1) * kw - ph)
+                  + Math.sin(Math.sqrt((x - s2x) * (x - s2x) + dy2) * kw - ph)) * 0.5;
+        b = BG_LEVEL + BG_NOISE * n * n * 1.6 + BG_WAVES * wv;
+        if (focus > 0) b *= 1 - focus * (1 - focusC[i] * fr);
+
+        // arrival: flicker through hex digits, then settle at full brightness and decay
+        const age = ov[idx];
+        if (age > -1) {
+          ov[idx] = -1; green = ovG[idx];
+          if (age < flick) { glyph = RAMP.length + ((hash3(i, j, hexSlot) * 16) | 0); b = 1; }
+          else if (green) { const e = 1 - clamp((age - flick) / 1.2, 0, 1); b = Math.max(b, SUCCESS_HOLD + (1 - SUCCESS_HOLD) * e * e); }
+          else { const e = 1 - clamp((age - flick) / decay, 0, 1); b = b + (1 - b) * e * e; }
+        }
+        // keep the sign-in block on clean paper
+        if (m < 1) { b *= m; if (m < 0.5) glyph = -1; }
+        b = clamp(b, 0, 1);
+        if (glyph < 0) glyph = Math.min(nRamp, (b * (nRamp + 0.999)) | 0);
+      }
+      const L = b < 0.34 ? 0 : b < 0.62 ? 1 : 2;
+      const key = glyph > 0 ? (glyph << 3 | L << 1 | green) : 0;
+      const pk = prevKey[idx];
+      if (key === pk) continue; // unchanged cell: leave its pixels alone
+      prevKey[idx] = key;
+      const dx = i * gw, dy = j * gh;
+      if (pk) ctx.clearRect(dx, dy, gw, gh);
+      if (key) ctx.drawImage(tint, glyph * gw, (green * 3 + L) * gh, gw, gh, dx, dy, gw, gh);
+    }
+  }
+}
+
+// ---- State changes -------------------------------------------------------
+let now = 0, still = null;
+function setState(s, t) {
+  state = s; lastChange = t;
+  if (s === 'checking') { tChk = t; queueN = 0; }
+  if (s === 'success') { tSuc = t; spawnWave(t); }
+  go.disabled = s !== 'idle';
+  go.className = s;
+  lbl.textContent = s === 'idle' ? 'Sign in with Plex' : s === 'checking' ? 'Logging in…' : 'Logging in';
+}
+// a still frame: run the arrivals forward to t so it shows runs at different ages
+function simulate(t) {
+  for (let s = t - 8; s < t; s += 1 / 30) updateRuns(s, 1 / 30);
+}
+go.addEventListener('click', () => {
+  if (state !== 'idle') return;
+  if (still !== null) { // reduced motion: jump straight to each state, colour still changes
+    setState('checking', still - 10); simulate(still); frame(still);
+    setTimeout(() => { setState('success', still - 10); frame(still); }, CHECK_TO_SUCCESS * 1000);
+    return;
+  }
+  setState('checking', now);
+  setTimeout(() => setState('success', now), CHECK_TO_SUCCESS * 1000);
+});
+
+// ---- Tweak panel ---------------------------------------------------------
+const tw = document.getElementById('tw'), jsonEl = document.getElementById('json');
+const showJson = () => jsonEl.textContent = JSON.stringify(V);
+SLIDERS.forEach(([key, label, min, max, step]) => {
+  const l = document.createElement('label');
+  l.innerHTML = `<span>${label}</span><output>${V[key]}</output><input type="range" min="${min}" max="${max}" step="${step}" value="${V[key]}">`;
+  const inp = l.querySelector('input'), out = l.querySelector('output');
+  inp.addEventListener('input', () => {
+    V[key] = +inp.value; out.textContent = inp.value; showJson();
+    if (key === 'inkHue' || key === 'paperHue') buildColours(colourS);
+    if (still !== null) frame(still);
+  });
+  document.getElementById('sliders').appendChild(l);
+});
+showJson();
+document.getElementById('twHead').addEventListener('click', () => tw.classList.toggle('hide'));
+addEventListener('keydown', e => { if ((e.key === 't' || e.key === 'T') && !e.metaKey && !e.ctrlKey) tw.classList.toggle('hide'); });
+document.getElementById('copy').addEventListener('click', () => navigator.clipboard?.writeText(JSON.stringify(V, null, 2)));
+
+// ---- Loop ----------------------------------------------------------------
+const startState = ['checking', 'success'].includes(q.get('state')) ? q.get('state') : 'idle';
+function enterStart(tSuccess) {
+  if (startState !== 'idle') setState('checking', -10);
+  if (startState === 'success') setState('success', tSuccess);
+}
+function runBench() {
+  enterStart(0);
+  const ms = new Float64Array(300);
+  for (let i = 0; i < 300; i++) {
+    const t = i / 60; updateRuns(t, 1 / 60);
+    const a = performance.now(); frame(t); ms[i] = performance.now() - a;
+  }
+  ms.sort();
+  const avg = ms.reduce((a, b) => a + b, 0) / 300, p99 = ms[296];
+  window.__bench = { state: startState, dpr, avg, p99, cols, rows };
+  const line = `bench ${startState} dpr ${dpr}: avg ${avg.toFixed(2)} ms, worst 1% ${p99.toFixed(2)} ms`;
+  document.title = line;
+  const d = document.createElement('div'); d.className = 'bench'; d.textContent = line; document.body.appendChild(d);
+}
+let raf = 0, timer = 0, t0 = performance.now(), last = 0, lastDraw = -1e9;
+function tick(ms) {
+  const t = (ms - t0) / 1000, fast = t - lastChange <= SUCCESS_WAVE + 1;
+  // 24 fps unless a state change is playing; accumulate so the cadence stays even
+  const step = 1000 / (fast ? FPS_FAST : FPS_IDLE);
+  if (ms - lastDraw < step - 1) { raf = requestAnimationFrame(tick); return; }
+  lastDraw = ms - lastDraw < 2 * step ? lastDraw + step : ms; now = t;
+  updateRuns(t, Math.min(0.1, Math.max(0, t - last))); last = t;
+  frame(t);
+  // between slow frames, sleep instead of waking on every display refresh
+  if (fast) raf = requestAnimationFrame(tick);
+  else timer = setTimeout(() => { raf = requestAnimationFrame(tick); }, lastDraw + step - performance.now() - 12);
+}
+function run() {
+  build();
+  if (bench) return runBench();
+  if (fixedT !== null || reduced) {
+    still = fixedT ?? REDUCED_T;
+    enterStart(fixedT !== null ? 0 : still - 10);
+    simulate(still); frame(still); return;
+  }
+  enterStart(0);
+  raf = requestAnimationFrame(tick);
+}
+document.addEventListener('visibilitychange', () => {
+  if (still !== null || bench) return;
+  if (document.hidden) { cancelAnimationFrame(raf); clearTimeout(timer); }
+  else { last = (performance.now() - t0) / 1000; raf = requestAnimationFrame(tick); }
+});
+addEventListener('resize', () => {
+  build(); runs.length = 0;
+  if (state === 'success') spawnWave(tSuc);
+  if (still !== null) { simulate(still); frame(still); }
+});
+if (document.readyState === 'complete') run(); else addEventListener('load', run);
+</script>
+</body>
+</html>
