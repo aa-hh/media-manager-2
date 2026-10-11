@@ -2,7 +2,7 @@
 import type { ServiceState } from '../components/ui/status-service-pill';
 
 // Shapes served by /api/setup; src/server/setup.ts is the source of truth.
-export type FolderField = 'downloads' | 'librarySonarr' | 'libraryRadarr' | 'versionsSonarr' | 'versionsRadarr';
+export type FolderField = 'downloadsSonarr' | 'downloadsRadarr' | 'librarySonarr' | 'libraryRadarr' | 'versionsSonarr' | 'versionsRadarr';
 export type FolderValues = Record<FolderField, string>;
 export type FoldersRead = { saved: Record<FolderField, string | null>; suggested: Record<FolderField, string | null> };
 
@@ -10,15 +10,16 @@ export type BackupDestination = { kind: 'folder'; folder: string } | { kind: 's3
 export type SetupStatus = {
   required: { folders: 'done' | 'not_done' };
   plexSignInTokenAvailable: boolean;
-  backup: { destination: BackupDestination; problem: string | null; key: 'set' | 'missing' | 'invalid' };
+  backup: { destination: BackupDestination; problem: string | null; key: 'pair' | 'env' | 'missing' | 'invalid'; keyCreatedAt: number | null };
 };
 
 export const folderFields: { field: FolderField; label: string; help: string }[] = [
-  { field: 'downloads', label: 'Downloads folder', help: 'Where rTorrent puts finished downloads. Read from rTorrent\'s default folder.' },
+  { field: 'downloadsSonarr', label: 'TV downloads', help: 'Where Sonarr\'s download client puts TV. Read from Sonarr.' },
+  { field: 'downloadsRadarr', label: 'Movies downloads', help: 'Where Radarr\'s download client puts movies. Read from Radarr.' },
   { field: 'librarySonarr', label: 'TV library', help: 'Read from Sonarr\'s root folders.' },
   { field: 'libraryRadarr', label: 'Movies library', help: 'Read from Radarr\'s root folders.' },
-  { field: 'versionsSonarr', label: 'TV second versions', help: 'Second versions of episodes. Must be on the same drive as the downloads folder.' },
-  { field: 'versionsRadarr', label: 'Movies second versions', help: 'Second versions of movies. Must be on the same drive as the downloads folder.' },
+  { field: 'versionsSonarr', label: 'TV second versions', help: 'Second versions of episodes. Must be on the same drive as the TV downloads folder.' },
+  { field: 'versionsRadarr', label: 'Movies second versions', help: 'Second versions of movies. Must be on the same drive as the Movies downloads folder.' },
 ];
 
 /** Each folder as saved, else as suggested, else blank. */
@@ -75,11 +76,11 @@ export const backupEdited = (draft: BackupDraft, destination: BackupDestination)
 export const backupWords = (destination: BackupDestination) => (destination === null ? undefined
   : destination.kind === 'folder' ? destination.folder : `${destination.bucket} at ${destination.endpoint}`);
 
-/** No destination, then a bad destination, then a missing or bad BACKUP_KEY. */
+/** No destination, then a bad destination, then a missing restore key or a bad BACKUP_KEY. */
 export const backupPill = (backup: SetupStatus['backup']): { state: ServiceState; text: string } => {
   if (backup.destination === null) return { state: 'not-set-up', text: 'Not set up' };
   if (backup.problem !== null) return { state: 'failed', text: 'Can\'t run: bad destination' };
-  if (backup.key === 'missing') return { state: 'failed', text: 'Can\'t run: BACKUP_KEY not set' };
+  if (backup.key === 'missing') return { state: 'failed', text: 'Can\'t run: no key yet' };
   if (backup.key === 'invalid') return { state: 'failed', text: 'Can\'t run: BACKUP_KEY invalid' };
   return { state: 'connected', text: 'On · every 5 min' };
 };

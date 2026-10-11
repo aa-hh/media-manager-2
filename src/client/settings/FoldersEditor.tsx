@@ -16,7 +16,7 @@ const pillOnly = '[&>span:nth-child(-n+2)]:hidden';
 
 type Read = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; read: FoldersRead };
 
-/** The pane for the five host folders. `request` sends one request under /api/setup. */
+/** The pane for the six host folders. `request` sends one request under /api/setup. */
 export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; onSaved: (saved: FolderValues) => void }) {
   const [state, setState] = useState<Read>({ kind: 'loading' });
   const [draft, setDraft] = useState<FolderValues>();
@@ -111,7 +111,7 @@ export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; o
 
       <div className="grid grid-cols-2 gap-4">
         {folderFields.map(({ field, label, help }) => (
-          <FieldLabelled key={field} label={label} help={help} error={fieldErrors[field]} className={field === 'downloads' ? 'col-span-2' : undefined}>
+          <FieldLabelled key={field} label={label} help={help} error={fieldErrors[field]}>
             <InputSearch
               variant="field"
               className="font-data"

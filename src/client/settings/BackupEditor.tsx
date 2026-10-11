@@ -1,14 +1,14 @@
-import { DatabaseBackup, Lock, Save } from 'lucide-react';
+import { Copy, DatabaseBackup, Download, KeyRound, Lock, Save } from 'lucide-react';
 import { useState } from 'react';
 import { BarBottomAction } from '@/components/ui/bar-bottom-action';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
-import { CardChoice } from '@/components/ui/card-choice';
 import { FactRow } from '@/components/ui/fact';
 import { FieldLabelled } from '@/components/ui/field-labelled';
 import { FieldLabelledOptional } from '@/components/ui/field-labelled-optional';
 import { InputSearch } from '@/components/ui/input-search';
-import { RadioGroup } from '@/components/ui/radio';
+import { OptionRow } from '@/components/ui/option-row';
+import { Radio, RadioGroup } from '@/components/ui/radio';
 import { StatusServicePill } from '@/components/ui/status-service-pill';
 import { backupBody, backupComplete, type BackupDraft, backupEdited, backupPill, emptyBackupDraft, type SetupStatus } from './setup';
 import type { TrackerRequest } from './TrackerEditor';
@@ -21,12 +21,15 @@ type BackupField = 'folder' | 'endpoint' | 'bucket' | 'accessKeyId' | 'secretAcc
 type KeyField = 'accessKeyId' | 'secretAccessKey';
 
 /** The pane for the backup destination. `request` sends one request under /api/setup. */
-export function BackupEditor({ backup, request, onSaved }: { backup: SetupStatus['backup']; request: TrackerRequest; onSaved: () => void }) {
+export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backup: SetupStatus['backup']; request: TrackerRequest; onSaved: () => void; onKeyCreated: () => void }) {
   const [draft, setDraft] = useState(() => emptyBackupDraft(backup.destination));
   const [replacing, setReplacing] = useState<Record<KeyField, boolean>>({ accessKeyId: false, secretAccessKey: false });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<BackupField, string>>>({});
   const [problem, setProblem] = useState<string>();
   const [pending, setPending] = useState(false);
+  const [created, setCreated] = useState<{ restoreKey: string; createdAt: number }>();
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const edited = backupEdited(draft, backup.destination);
   const complete = backupComplete(draft);
@@ -64,6 +67,24 @@ export function BackupEditor({ backup, request, onSaved }: { backup: SetupStatus
     }
   };
 
+  const createKey = async () => {
+    setCreatingKey(true);
+    setProblem(undefined);
+    try {
+      const response = await request('POST', '/backup/key');
+      if (response.status === 201) {
+        setCreated(await response.json() as { restoreKey: string; createdAt: number });
+        onKeyCreated();
+        return;
+      }
+      setProblem('The restore key could not be created. Try again.');
+    } catch {
+      setProblem(noAnswer);
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
   const summary = pending ? 'Saving the destination.'
     : anyError ? 'Not saved. Fix the field marked in red.'
       : !complete ? (draft.kind === 'folder' ? 'Enter the folder, then Confirm.' : 'Fill in the endpoint, bucket and both keys, then Confirm.')
@@ -72,6 +93,9 @@ export function BackupEditor({ backup, request, onSaved }: { backup: SetupStatus
             : 'Confirm saves the bucket and turns backups on. It is not tested here; the next backup run and the health check report a bucket that refuses.';
 
   const plain = { autoComplete: 'off', spellCheck: false, readOnly: pending };
+  // The restore-key callouts wait for a destination, and give way to the key once it is created.
+  const keyCallout = backup.destination !== null && created === undefined;
+  const createButton = <Button variant="outline" icon={<KeyRound />} loading={creatingKey} disabled={pending} onClick={() => void createKey()}>Create key</Button>;
 
   const keyField = (key: KeyField, label: string, type: 'text' | 'password') => {
     const locked = savedBucket && !replacing[key];
@@ -123,15 +147,55 @@ export function BackupEditor({ backup, request, onSaved }: { backup: SetupStatus
         <StatusServicePill logo={null} name={null} state={pill.state} className={pillOnly}>{pill.text}</StatusServicePill>
       </div>
 
-      {backup.key === 'missing' && (
-        <Callout look="warning" title="Backups can't run yet: BACKUP_KEY is not set">
-          Add BACKUP_KEY to the env file on the server (64 hex characters; the README's Backups section shows how to make one), then restart media-manager-2. Every backup is encrypted with it, and a restore needs the same key.
+      {keyCallout && backup.key === 'missing' && (
+        <Callout look="warning" title="Backups can't run until you create a key" action={createButton}>
+          The key locks every backup. You see its restore key once, so have your password manager ready.
         </Callout>
       )}
-      {backup.key === 'invalid' && (
-        <Callout title="Backups can't run: BACKUP_KEY is not valid">
-          It must be 64 hex characters. Fix it in the env file on the server, then restart media-manager-2.
+      {keyCallout && backup.key === 'invalid' && (
+        <Callout title="Backups can't run: BACKUP_KEY is not valid" action={createButton}>
+          Create a restore key here instead. Once one exists the env file's key is no longer read.
         </Callout>
+      )}
+      {keyCallout && backup.key === 'env' && (
+        <Callout look="info" title="Using BACKUP_KEY from the env file" action={createButton}>
+          Backups keep using it until you create a key here. Backups made before then still need BACKUP_KEY to restore.
+        </Callout>
+      )}
+      {created !== undefined && (
+        <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <h3 className="font-ui text-sm font-semibold">Save your restore key</h3>
+          <p className="font-ui text-[13px] text-muted-foreground">
+            You need this key to restore a backup. It is shown once and never stored on this server, so save it in your password manager now.
+          </p>
+          <InputSearch variant="field" className="font-data" aria-label="Restore key" readOnly value={created.restoreKey} />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              icon={<Copy />}
+              onClick={() => void navigator.clipboard.writeText(created.restoreKey).then(
+                () => setCopied(true),
+                () => setProblem('The key could not be copied. Select it and copy it by hand, or download it.'),
+              )}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+            <Button
+              variant="outline"
+              icon={<Download />}
+              onClick={() => {
+                const url = URL.createObjectURL(new Blob([`${created.restoreKey}\n`], { type: 'text/plain' }));
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = 'media-manager-2-restore-key.txt';
+                anchor.click();
+                setTimeout(() => URL.revokeObjectURL(url));
+              }}
+            >
+              Download
+            </Button>
+          </div>
+        </section>
       )}
       {backup.problem !== null && <Callout title={backup.problem}>Confirm a destination to replace it.</Callout>}
 
@@ -144,8 +208,18 @@ export function BackupEditor({ backup, request, onSaved }: { backup: SetupStatus
           setFieldErrors({});
         }}
       >
-        <CardChoice value="folder" title="A folder" description="On this server, or a drive or share mounted on it." />
-        <CardChoice value="s3" title="An S3-compatible bucket" description="Cloudflare R2, Backblaze B2, Amazon S3, Wasabi, MinIO or any other S3 API." />
+        <OptionRow
+          control={<Radio value="folder" />}
+          title="A folder"
+          description="On this server, or a drive or share mounted on it."
+          className="rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]"
+        />
+        <OptionRow
+          control={<Radio value="s3" />}
+          title="An S3-compatible bucket"
+          description="Cloudflare R2, Backblaze B2, Amazon S3, Wasabi, MinIO or any other S3 API."
+          className="rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]"
+        />
       </RadioGroup>
 
       {draft.kind === 'folder' ? (
@@ -197,14 +271,18 @@ export function BackupEditor({ backup, request, onSaved }: { backup: SetupStatus
 
       <dl className="flex flex-col">
         <FactRow label="How often">Every 5 minutes</FactRow>
-        <FactRow label="Encryption">BACKUP_KEY from the env file</FactRow>
+        {backup.key === 'pair' && backup.keyCreatedAt !== null && (
+          <FactRow label="Restore key">
+            Created {new Date(backup.keyCreatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, not stored here
+          </FactRow>
+        )}
       </dl>
 
       <BarBottomAction
         summary={summary}
         unsavedNote={edited && !pending ? 'Unsaved edits' : undefined}
         action={(
-          <Button size="large" icon={<Save />} loading={pending} disabled={!complete || !edited || pending} onClick={() => void save()}>
+          <Button size="large" icon={<Save />} loading={pending} disabled={!complete || !edited || pending || creatingKey || created !== undefined} onClick={() => void save()}>
             Confirm
           </Button>
         )}
