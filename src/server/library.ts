@@ -486,7 +486,7 @@ export const createLibrary = (
   versionRows: VersionRows,
   store: TitleStore,
   mdblist?: Pick<Mdblist, 'showRatings'>,
-  tvdbIdOf?: (tmdbId: number) => Promise<number | null>,
+  tvdbIdOf?: (tmdbId: number) => Promise<ArrResult<number | null>>,
 ) => {
   const showRatings = (record: Series) => (
     mdblist === undefined ? Promise.resolve(noRatings) : mdblist.showRatings(store, { tvdbId: record.tvdbId, tmdbId: record.tmdbId })
@@ -567,9 +567,10 @@ export const createLibrary = (
     // Discover cards know a show only by its TMDB id; Sonarr looks shows up by TVDB id.
     async previewShowByTmdbId(tmdbId: number): Promise<Result<SeriesDetail | MovieDetail>> {
       if (tvdbIdOf === undefined) return { kind: 'not_configured', reason: notConfigured('TMDB', 'the show preview').message };
-      const tvdbId = await tvdbIdOf(tmdbId);
-      if (tvdbId === null) return { kind: 'not_found', reason: 'TMDB knows no TVDB id for this show.' };
-      return this.preview('sonarr', tvdbId);
+      const found = await tvdbIdOf(tmdbId);
+      if (found.kind !== 'ok') return { kind: found.kind === 'refused' ? 'unreachable' : found.kind, reason: found.message };
+      if (found.value === null) return { kind: 'not_found', reason: 'TMDB knows no TVDB id for this show.' };
+      return this.preview('sonarr', found.value);
     },
 
     async history(subject: HistorySubject): Promise<Result<HistoryEntry[]>> {

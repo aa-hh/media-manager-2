@@ -296,8 +296,8 @@ export const createOrchestrator = (options: {
     if (spec.kind === 'row') return buildRow(spec);
     if (spec.sort === 'trending') {
       // razor: filters are applied after fetching because TMDB's trending endpoint takes none; this keeps TMDB's trending order and
-      // works for the mixed movie and TV list, at the cost of pages holding fewer than 20 titles (the client keeps paging to
-      // totalPages); upgrade path is a server-side merged page.
+      // works for the mixed movie and TV list, at the cost of pages holding fewer than 20 titles (the client stops after
+      // 5 empty pages in a row, EMPTY_PAGE_LIMIT in Grid.tsx); upgrade path is a server-side merged page.
       const trending = await tmdb.trending(spec.type, 'week', spec.page);
       if (trending.kind !== 'ok') return { result: trending, partial: false };
       let entries = fromTmdb(trending.value.results).filter(({ item }) => passes(item, spec.filters));
