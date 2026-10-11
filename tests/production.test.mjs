@@ -2832,6 +2832,24 @@ test('tracker account connectors read UNIT3D, Gazelle and NexusPHP accounts and 
   assert.deepEqual(await advice.json(), { recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null });
   const posted = await app.request('/api/trackers', { method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: '{}' });
   assert.notEqual(posted.status, 200);
+
+  // Gazelle's "Rate limit exceeded" (HTTP 200) or a 429 says nothing about the key: reading it as rejected, trying the
+  // other header form, or reusing it for five minutes turns this red.
+  for (const handler of [respond(200, { status: 'failure', error: 'Rate limit exceeded' }), respond(429, '')]) {
+    const limited = await run('gazelle', handler);
+    assert.deepEqual([limited.result, limited.calls.length], [{ kind: 'unreachable' }, 1]);
+  }
+  let gazelleAnswer = { status: 'failure', error: 'Rate limit exceeded' };
+  const limitedCalls = [];
+  const limitedAccounts = createTrackerAccounts(database, { env: {}, now: () => clock, fetch: fakeFetch(() => respond(200, gazelleAnswer)(), limitedCalls) });
+  setSetting(database, 'trackerConfiguration', 'trackers.limited.example', 'added');
+  saveTrackerSoftware(database, 'limited.example', 'gazelle');
+  saveTrackerCredential(database, 'limited.example', token);
+  assert.deepEqual(await limitedAccounts.connection('limited.example'), { kind: 'unreachable' });
+  gazelleAnswer = gazelleOk;
+  assert.deepEqual(await limitedAccounts.connection('limited.example'), { kind: 'ok', stats: gazelleStats });
+  assert.deepEqual(await limitedAccounts.connection('limited.example'), { kind: 'ok', stats: gazelleStats });
+  assert.equal(limitedCalls.length, 2);
 });
 
 // Dropping an escape, mis-reading a scalar, or resolving a fault or malformed response corrupts every rTorrent call.
@@ -4914,6 +4932,7 @@ test('operator command stores settings from stdin and checks connections without
     'rtorrent.username': `rtorrent-user-${pid}-distinctive`,
     'rtorrent.password': `rtorrent-password-${pid}-distinctive`,
     'plex.token': `plex-token-${pid}-distinctive`,
+    'trackers.unreachable.invalid': `tracker-token-${pid}-distinctive`,
   };
 
   const usage = await cli([]);
@@ -4958,9 +4977,20 @@ test('operator command stores settings from stdin and checks connections without
     }
   }
 
+  // One line per added tracker, by hostname: "other" software has no account connection, a tracker with no credential is
+  // not configured, and a UNIT3D one at a name that never resolves (.invalid) is unreachable.
+  for (const [category, key, value] of [
+    ['trackerConfiguration', 'trackers.example.net', 'added'],
+    ['trackerConfiguration', 'trackers.notset.example', 'added'], ['trackerConfiguration', 'software.notset.example', 'gazelle'],
+    ['trackerConfiguration', 'trackers.unreachable.invalid', 'added'], ['trackerConfiguration', 'software.unreachable.invalid', 'unit3d'],
+  ]) {
+    const result = await cli(['settings', 'set', category, key], value);
+    assert.equal(result.code, 0, result.stderr);
+  }
+
   const rejected = await cli(['connections', 'check']);
   assert.equal(rejected.code, 1, rejected.stderr);
-  assert.equal(rejected.stdout, 'sonarr: rejected\nradarr: rejected\nrtorrent: rejected\nplex: rejected\n');
+  assert.equal(rejected.stdout, 'sonarr: rejected\nradarr: rejected\nrtorrent: rejected\nplex: rejected\nexample.net: unsupported\nnotset.example: not_configured\nunreachable.invalid: unreachable\n');
   for (const value of Object.values(credentials)) {
     assert.equal(rejected.stdout.includes(value), false);
     assert.equal(rejected.stderr.includes(value), false);

@@ -128,6 +128,7 @@ export const createTrackerRoutes = (
   });
 
   // Tests the form's values over the saved ones without saving either; a left-out or blank credential means the saved one.
+  // A Gazelle test still remembers which header form worked.
   routes.post('/settings/trackers/:host/test', async (context) => {
     const host = context.req.param('host');
     if (!listed(host)) return context.json({ error: 'not_found' }, 404);

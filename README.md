@@ -157,7 +157,8 @@ never in a URL, a log or an answer to the browser.
 | Other | none | no account connection; only the hit-and-run rule applies |
 
 Each tracker is checked at most once every five minutes, unless its software
-or credential changes. A check gives `{ kind: "ok", stats }` or
+or credential changes. A Gazelle "Rate limit exceeded" answer (or HTTP 429)
+reads as `unreachable` and is not reused, so the next call checks again. A check gives `{ kind: "ok", stats }` or
 `not_configured`, `rejected`, `unreachable`, `too_old` or `unsupported`, as
 for `connections check`. `stats` has `ratio`, `uploadedBytes`,
 `downloadedBytes`, `bufferBytes`, `seeding`, `leeching`, `bonus`,

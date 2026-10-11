@@ -138,13 +138,16 @@ const unit3d = async (fetchImpl: Fetch, base: string, token: string): Promise<Tr
 };
 
 // Gazelle's ajax.php?action=index. Orpheus wants "token <key>", Redacted the bare key; a refused key comes back as
-// HTTP 200 with status "failure". The answer also carries the account's passkey and authkey, so only numbers are kept.
+// HTTP 200 with status "failure", and so does "Rate limit exceeded", which says nothing about the key.
+// The answer also carries the account's passkey and authkey, so only numbers are kept.
 // razor: seeding is null; the upgrade path is action=user&id=<id> (community.seeding), limited to 4 calls a minute.
 type GazelleForm = 'token' | 'bare';
-const gazelleOnce = async (fetchImpl: Fetch, base: string, key: string, form: GazelleForm): Promise<TrackerConnection> => {
+type Checked = TrackerConnection | 'rate_limited';
+const gazelleOnce = async (fetchImpl: Fetch, base: string, key: string, form: GazelleForm): Promise<Checked> => {
   const reply = await send(fetchImpl, `${base}/ajax.php?action=index`, form === 'token' ? `token ${key}` : key);
-  const failed = failure(reply);
   const body = asRecord(reply?.body);
+  if (reply?.status === 429 || (body?.status === 'failure' && typeof body.error === 'string' && /rate limit/i.test(body.error))) return 'rate_limited';
+  const failed = failure(reply);
   if (failed !== undefined || body === undefined) return failed ?? { kind: 'unreachable' };
   if (body.status === 'failure') return { kind: 'rejected' };
   const stats = asRecord(asRecord(body.response)?.userstats);
@@ -193,8 +196,9 @@ export const createTrackerAccounts = (database: DatabaseSync, options: ServiceOp
   const gazelleForms = new Map<string, GazelleForm>();
   const recent = new Map<string, { at: number; software: Software; credential: string | undefined; connection: Promise<TrackerConnection> }>();
 
-  // Checks with the given values; nothing is saved or cached. The credential never appears in a URL.
-  const test = async (host: string, software: Software, credential: string | undefined): Promise<TrackerConnection> => {
+  // Checks with the given values and caches nothing, except that a Gazelle check remembers which header form worked
+  // until restart. The credential never appears in a URL.
+  const check = async (host: string, software: Software, credential: string | undefined): Promise<Checked> => {
     if (software === 'other') return { kind: 'unsupported' };
     if (credential === undefined || credential.trim() === '') return { kind: 'not_configured' };
     const base = `https://${host}`;
@@ -202,14 +206,19 @@ export const createTrackerAccounts = (database: DatabaseSync, options: ServiceOp
     if (software === 'nexusphp') return nexusphp(fetchImpl, base, credential);
     const first = gazelleForms.get(host) ?? 'token';
     const result = await gazelleOnce(fetchImpl, base, credential, first);
-    if (result.kind !== 'rejected') {
-      if (result.kind === 'ok') gazelleForms.set(host, first);
+    if (result === 'rate_limited' || result.kind !== 'rejected') {
+      if (result !== 'rate_limited' && result.kind === 'ok') gazelleForms.set(host, first);
       return result;
     }
     const second: GazelleForm = first === 'token' ? 'bare' : 'token';
     const retried = await gazelleOnce(fetchImpl, base, credential, second);
-    if (retried.kind === 'ok') gazelleForms.set(host, second);
+    if (retried !== 'rate_limited' && retried.kind === 'ok') gazelleForms.set(host, second);
     return retried;
+  };
+  const unreachable: TrackerConnection = { kind: 'unreachable' };
+  const test = async (host: string, software: Software, credential: string | undefined): Promise<TrackerConnection> => {
+    const result = await check(host, software, credential);
+    return result === 'rate_limited' ? unreachable : result;
   };
 
   // The saved values' result, reused for CHECK_INTERVAL_MS unless the software or credential changed since. A check
@@ -219,9 +228,14 @@ export const createTrackerAccounts = (database: DatabaseSync, options: ServiceOp
     const credential = trackerCredential(database, host);
     const last = recent.get(host);
     if (last !== undefined && last.software === software && last.credential === credential && now() - last.at < CHECK_INTERVAL_MS) return last.connection;
-    const result = test(host, software, credential);
-    recent.set(host, { at: now(), software, credential, connection: result });
-    return result;
+    const checked = check(host, software, credential);
+    const entry = { at: now(), software, credential, connection: checked.then((result) => (result === 'rate_limited' ? unreachable : result)) };
+    recent.set(host, entry);
+    // A rate-limited answer says nothing about the credential, so it is not reused.
+    void checked.then((result) => {
+      if (result === 'rate_limited' && recent.get(host) === entry) recent.delete(host);
+    });
+    return entry.connection;
   };
 
   return {
