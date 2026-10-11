@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import type { Assignment } from './assignments.js';
+import { createFlaggedRoutes, type Flagged } from './flagged.js';
 import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import { createHealthRoutes, type Health } from './health.js';
 import type { createManualImport } from './manualImport.js';
@@ -14,6 +15,7 @@ export type ApiActions = {
   refresh(service: Service): Promise<void>;
   manualImport: ReturnType<typeof createManualImport>;
   health?: Health;
+  flagged?: Flagged;
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -164,5 +166,6 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     return context.body(null, 204);
   });
   if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
+  if (actions?.flagged !== undefined) api.route('/flagged', createFlaggedRoutes(actions.flagged));
   return api;
 };

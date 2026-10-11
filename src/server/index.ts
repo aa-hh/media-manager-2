@@ -7,11 +7,13 @@ import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
+import { createFlagged } from './flagged.js';
 import { createGrabs, handGrab } from './grabs.js';
 import { createHealth } from './health.js';
 import { createImportFix } from './imports.js';
 import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
+import { createLabels } from './labels.js';
 import { createOwned } from './owned.js';
 import { createProblems } from './problems.js';
 import { createProtection, vetoInBackground } from './protection.js';
@@ -85,6 +87,7 @@ if (database !== undefined) {
       if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
     }
   });
+  const labels = createLabels(arr);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
@@ -102,6 +105,7 @@ if (database !== undefined) {
       refresh: torrentGrabs.refresh,
       manualImport: createManualImport({ database, arr, problems }),
       health,
+      flagged: createFlagged({ database, arr, labels, isManualDownload: protection.isProtected }),
     }),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),

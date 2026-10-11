@@ -3904,3 +3904,127 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     assert.equal((await response.json()).checkedAt, now);
   });
 });
+
+test('flagged lists what automation gave up on with the right next step, and wanted lists with their search times', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { searchDueAt } = await import(searchesModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createLabels } = await import(new URL('../dist/server/labels.js', import.meta.url).href);
+  const { createFlagged } = await import(new URL('../dist/server/flagged.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-flagged-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const day = 24 * 60 * 60_000;
+  const clock = { value: Date.parse('2026-10-08T12:00:00Z') };
+  const added = '2026-01-01T00:00:00Z';
+  const bodies = {
+    '/api/v3/movie/7': { title: 'Dune', year: 2021 },
+    '/api/v3/episode/31': { seriesId: 3, seasonNumber: 2, episodeNumber: 9, series: { title: 'Andor' } },
+    '/api/v3/episode/32': { seriesId: 5, seasonNumber: 1, episodeNumber: 2, series: { title: 'Severance' } },
+    '/api/v3/wanted/missing?page=1&pageSize=500&monitored=true&includeSeries=true': { totalRecords: 2, records: [
+      { id: 50, seriesId: 3, seasonNumber: 2, episodeNumber: 1, airDateUtc: '2026-10-01T00:00:00Z', series: { title: 'Andor', added } },
+      { id: 51, seriesId: 3, seasonNumber: 2, episodeNumber: 2, airDateUtc: '2026-09-01T00:00:00Z', lastSearchTime: '2026-10-07T00:00:00Z', series: { title: 'Andor', added } },
+    ] },
+    '/api/v3/wanted/cutoff?page=1&pageSize=500&monitored=true&includeSeries=true': { totalRecords: 0, records: [] },
+    '/api/v3/wanted/missing?page=1&pageSize=500&monitored=true': { totalRecords: 2, records: [
+      { id: 8, title: 'Arrival', year: 2016, added },
+      { id: 7, title: 'Dune', year: 2021, added },
+    ] },
+    '/api/v3/wanted/cutoff?page=1&pageSize=500&monitored=true': { totalRecords: 2, records: [
+      { id: 7, title: 'Dune', year: 2021, added },
+      { id: 9, title: 'Heat', year: 1995, added },
+    ] },
+  };
+  const sent = [];
+  const fake = (service) => ({
+    request: async (path, init = {}) => {
+      if (init.method === undefined) return path in bodies ? { status: 200, body: bodies[path] } : { status: 404, body: undefined };
+      sent.push({ service, method: init.method, path, body: init.body });
+      return { status: 201, body: {} };
+    },
+  });
+  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const events = createEventHub();
+  const problems = createProblems({ database, events, now: () => clock.value });
+  const grabs = createGrabTracker({ database, arr, events });
+  const grab = { publishedAt: null, byHand: false, indexer: 'Blutopia', grabbedAt: clock.value - 60 * 60_000 };
+  grabs.recordGrab({ ...grab, hash: 'AA'.repeat(20), service: 'radarr', movieId: 7, seriesId: null, episodeIds: [], releaseTitle: 'Dune.2021' });
+  grabs.recordGrab({ ...grab, hash: 'BB'.repeat(20), service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [31], releaseTitle: 'Andor.S02E09' });
+  grabs.recordGrab({ ...grab, hash: 'CC'.repeat(20), service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [33, 34], releaseTitle: 'Andor.S02E11E12' });
+  grabs.recordGrab({ ...grab, hash: 'DD'.repeat(20), service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [51], releaseTitle: 'Andor.S02E02.2160p' });
+  database.prepare('INSERT INTO availability_seen (subject, seen_at) VALUES (?, ?)').run('radarr:movie:7', clock.value - 3 * day);
+  database.prepare(`
+    INSERT INTO arr_queue (service, queue_id, movie_id, title, status, tracked_status, tracked_state, status_messages, error_message,
+      indexer, protocol, quality, formats, format_score, size_bytes, size_left_bytes)
+    VALUES ('radarr', 1, 8, 'Arrival.2016', 'downloading', 'ok', 'downloading', '[]', '', 'Blutopia', 'torrent', 'Bluray-1080p', '[]', 0, 1, 1)
+  `).run();
+
+  const torrent = (hash) => ({ type: 'torrent', service: null, id: hash });
+  for (const ago of [8 * day, 2 * day]) {
+    clock.value -= ago;
+    const old = problems.open({ kind: 'missed_search', subject: { type: 'episode', service: 'sonarr', id: '40' }, summary: 'Out but never searched.' });
+    problems.setState(old.id, 'resolved', 'Searched automatically.');
+    clock.value += ago;
+  }
+  problems.open({ kind: 'stalled', subject: torrent('AA'.repeat(20)), hash: 'AA'.repeat(20), summary: 'No seeders.', state: 'needs_you' });
+  problems.open({ kind: 'import_matching', subject: torrent('BB'.repeat(20)), hash: 'BB'.repeat(20), summary: 'No match.', state: 'needs_you' });
+  problems.open({ kind: 'stalled', subject: torrent('CC'.repeat(20)), hash: 'CC'.repeat(20), summary: 'No seeders.', state: 'needs_you' });
+  problems.open({ kind: 'stalled', subject: torrent('EE'.repeat(20)), hash: 'EE'.repeat(20), summary: 'No grab.', state: 'needs_you' });
+  problems.open({ kind: 'tracker_cooldown', subject: { type: 'tracker', service: null, id: 'blutopia.cc' }, summary: 'Slow down.', state: 'needs_you' });
+  problems.open({ kind: 'dependency_down', subject: { type: 'dependency', service: null, id: 'rtorrent' }, summary: 'rTorrent is unreachable.', state: 'needs_you' });
+  problems.open({ kind: 'missed_search', subject: { type: 'episode', service: 'sonarr', id: '32' }, summary: 'Out but never searched.', state: 'needs_you' });
+  problems.open({ kind: 'unfinished', subject: torrent('FF'.repeat(20)), hash: 'FF'.repeat(20), summary: 'Still going.' });
+
+  const isManualDownload = (subject) => subject.type === 'movie' && subject.id === '7';
+  const flagged = createFlagged({ database, arr, labels: createLabels(arr), isManualDownload, now: () => clock.value });
+
+  // Mapping a problem to the wrong next step, offering a manual import for a non-import problem, or a pick for several episodes turns this red.
+  const needsYou = await flagged.needsYou();
+  assert.deepEqual(needsYou.items.map((item) => [item.problem.kind, item.label, item.actions.map((action) => action.kind)]), [
+    ['stalled', 'Dune (2021)', ['pick_release', 'search']],
+    ['import_matching', 'Andor S02E09', ['manual_import', 'pick_release', 'search']],
+    ['stalled', 'Sonarr episode 33 + 1 more', ['search']],
+    ['stalled', 'EE'.repeat(20), []],
+    ['tracker_cooldown', 'blutopia.cc', ['open_health']],
+    ['dependency_down', 'rtorrent', ['open_health']],
+    ['missed_search', 'Severance S01E02', ['pick_release', 'search']],
+  ]);
+  assert.equal(needsYou.items[1].kindWord, 'IMPORT MATCHING');
+  assert.deepEqual(needsYou.items[1].actions[0], { kind: 'manual_import', service: 'sonarr', downloadId: 'BB'.repeat(20) });
+  assert.deepEqual(needsYou.items[2].actions[0], { kind: 'search', service: 'sonarr', type: 'episode', ids: [33, 34] });
+  assert.deepEqual(needsYou.items[6].actions[0].target, { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 32 });
+  // Counting resolutions older than a week, or counting open problems as handled, turns this red.
+  assert.equal(needsYou.handledThisWeek, 1);
+  assert.equal(needsYou.handlingCount, 1);
+
+  // Filtering manual downloads out of the missing list, keeping them in cutoff, or losing the search schedule turns this red.
+  const { missing, cutoff } = await flagged.wanted();
+  assert.deepEqual(missing.map((item) => `${item.service}:${item.id}`), ['sonarr:51', 'sonarr:50', 'radarr:7', 'radarr:8']);
+  assert.deepEqual(cutoff.map((item) => `${item.service}:${item.id}`), ['radarr:9']);
+  const never = missing.find((item) => item.id === 50);
+  assert.equal(never.lastResult, 'never searched');
+  assert.equal(never.nextSearchAt, searchDueAt({ availableAt: Date.parse('2026-10-01T00:00:00Z'), addedAt: Date.parse(added), lastSearchAt: null }));
+  assert.equal(missing.find((item) => item.id === 51).lastResult, 'grabbed Andor.S02E02.2160p');
+  assert.equal(missing.find((item) => item.id === 7).availableAt, clock.value - 3 * day);
+  assert.equal(missing.find((item) => item.id === 8).nextSearchAt, null);
+  // Checking the search history before the download queue makes a queued, never-searched movie read "never searched".
+  assert.deepEqual([missing.find((item) => item.id === 8).lastResult, missing.find((item) => item.id === 8).inQueue], ['in queue', true]);
+
+  // Sending a search without recording it, sending it twice, or accepting an episode search aimed at Radarr turns this red.
+  const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, flagged }) });
+  const { session } = await signIn(app);
+  const post = (body) => app.request('/api/flagged/search', {
+    method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: JSON.stringify(body),
+  });
+  assert.equal((await post({ service: 'sonarr', type: 'episode', ids: [50] })).status, 204);
+  assert.deepEqual(sent, [{ service: 'sonarr', method: 'POST', path: '/api/v3/command', body: { name: 'EpisodeSearch', episodeIds: [50] } }]);
+  assert.equal(database.prepare('SELECT searched_at FROM search_log WHERE subject = ?').get('sonarr:episode:50').searched_at, clock.value);
+  for (const body of [{ service: 'radarr', type: 'episode', ids: [50] }, { service: 'sonarr', type: 'episode', ids: [] }, { service: 'sonarr', type: 'episode', ids: [50], extra: 1 }]) {
+    assert.equal((await post(body)).status, 400);
+  }
+  assert.equal(sent.length, 1);
+});
