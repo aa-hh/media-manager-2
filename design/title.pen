@@ -1,0 +1,1376 @@
+{
+  "version": "2.21",
+  "children": [
+    {
+      "type": "frame",
+      "id": "LdNGY",
+      "x": 13600,
+      "y": 6000,
+      "name": "v2 / Desktop / TV overview, in library",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "kFVa6",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "AppBar",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "u7JBK5",
+          "name": "Viewport",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "oYsy1",
+              "name": "Content",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "id": "oY1qb",
+                  "type": "ref",
+                  "ref": "5:NaDkI",
+                  "name": "Title header",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xEb57": {
+                      "fill": [
+                        {
+                          "type": "gradient",
+                          "gradientType": "linear",
+                          "enabled": true,
+                          "rotation": 135,
+                          "size": {
+                            "height": 1
+                          },
+                          "colors": [
+                            {
+                              "color": "#1F3A4D",
+                              "position": 0
+                            },
+                            {
+                              "color": "#3F6E8C",
+                              "position": 0.55
+                            },
+                            {
+                              "color": "#9FBCCC",
+                              "position": 1
+                            }
+                          ]
+                        },
+                        {
+                          "type": "gradient",
+                          "gradientType": "linear",
+                          "enabled": true,
+                          "rotation": 180,
+                          "size": {
+                            "height": 1
+                          },
+                          "colors": [
+                            {
+                              "color": "#FFFFFF00",
+                              "position": 0
+                            },
+                            {
+                              "color": "#FFFFFF99",
+                              "position": 0.6
+                            },
+                            {
+                              "color": "#FFFFFF",
+                              "position": 1
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "5:NHI7F": {
+                      "content": "TV · Apple TV+ · 2022 · Continuing · ★ 8.4 · 3 seasons · 19 episodes · Drama, Mystery"
+                    },
+                    "5:DDcyp/5:rMeqR": {
+                      "content": "In library · 15 of 19 episodes"
+                    },
+                    "5:Q4k0W/5:rMeqR": {
+                      "content": "Downloading S02E07 64%"
+                    },
+                    "5:s1z88/5:rMeqR": {
+                      "content": "Missing S02E08"
+                    },
+                    "5:CGFSb/5:isf6G": {
+                      "content": "All, except S02E03"
+                    },
+                    "5:NMYJB/5:isf6G": {
+                      "content": "64.6 GB · 16 files"
+                    },
+                    "5:HMSFP/5:isf6G": {
+                      "content": "S02E09 · Fri 17 Oct"
+                    }
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "EhExz",
+                  "name": "Seasons",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "padding": [
+                    8,
+                    40,
+                    40,
+                    40
+                  ],
+                  "children": [
+                    {
+                      "id": "mHniH",
+                      "type": "ref",
+                      "ref": "5:gp6Kh",
+                      "name": "Seasons table",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:KFz5s": {
+                          "enabled": false
+                        },
+                        "5:KSG7I": {
+                          "type": "frame",
+                          "id": "a9w6oa",
+                          "name": "Body",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "id": "tDw0U",
+                              "type": "ref",
+                              "ref": "5:C5GiQ",
+                              "name": "Season 3",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:xjKps/5:dacHK": {
+                                  "content": "Season 3",
+                                  "fontSize": 16
+                                },
+                                "5:sagg2": {
+                                  "width": 240
+                                },
+                                "5:ESqXp": {
+                                  "width": 64
+                                },
+                                "5:ESqXp/5:zJG1E": {
+                                  "width": 0
+                                },
+                                "5:UmM2u": {
+                                  "content": "No episodes listed yet",
+                                  "fill": "$5:muted-foreground",
+                                  "fontWeight": "500"
+                                },
+                                "5:cd208/5:rMeqR": {
+                                  "content": "Upcoming · 2027"
+                                },
+                                "5:RWOuu/5:dacHK": {
+                                  "content": "–"
+                                },
+                                "5:g6hCd1/5:HQLEf": {
+                                  "fill": "$5:faint-foreground"
+                                },
+                                "5:L8nMP/5:HQLEf": {
+                                  "fill": "$5:faint-foreground"
+                                }
+                              }
+                            },
+                            {
+                              "id": "HEsAZ",
+                              "type": "ref",
+                              "ref": "5:C5GiQ",
+                              "name": "Season 2, open, partly monitored",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:K212gD": {
+                                  "icon": "chevron-down"
+                                },
+                                "5:IGecB": {
+                                  "fill": "$5:muted"
+                                },
+                                "5:IGecB/5:S8E4Wf": {
+                                  "enabled": false
+                                },
+                                "5:IGecB/5:fme94": {
+                                  "enabled": true,
+                                  "icon": "bookmark-minus",
+                                  "fill": "$5:foreground"
+                                },
+                                "5:xjKps/5:dacHK": {
+                                  "fontSize": 16
+                                },
+                                "5:sagg2": {
+                                  "width": 240
+                                },
+                                "5:ESqXp": {
+                                  "width": 64
+                                },
+                                "5:ESqXp/5:zJG1E": {
+                                  "width": 38
+                                },
+                                "5:UmM2u": {
+                                  "content": "6 of 10 · 1 downloading"
+                                },
+                                "5:cd208/5:rMeqR": {
+                                  "content": "Airing"
+                                },
+                                "5:RWOuu/5:dacHK": {
+                                  "content": "26.6 GB"
+                                },
+                                "5:lJqIO/5:dacHK": {
+                                  "content": "9 of 10 monitored · S02E03 off",
+                                  "fill": "$5:muted-foreground"
+                                }
+                              }
+                            },
+                            {
+                              "id": "PeXa7",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E10 not out yet",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E10"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Cold Harbor"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "fill": "$5:foreground",
+                                  "content": "Fri 24 Oct"
+                                },
+                                "5:jpIpZ": {
+                                  "enabled": false
+                                },
+                                "5:o2E18n": {
+                                  "fill": "#FFFFFF00",
+                                  "stroke": "$5:input",
+                                  "strokeWidth": 1
+                                },
+                                "5:o2E18n/5:rMeqR": {
+                                  "content": "Not out yet",
+                                  "fill": "$5:muted-foreground"
+                                },
+                                "5:zYfZW/5:HQLEf": {
+                                  "fill": "$5:faint-foreground"
+                                },
+                                "5:m5ybP8/5:HQLEf": {
+                                  "fill": "$5:faint-foreground"
+                                }
+                              }
+                            },
+                            {
+                              "id": "ogz9w",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E09 not out yet",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E09"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "The After Hours"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "fill": "$5:foreground",
+                                  "content": "Fri 17 Oct"
+                                },
+                                "5:jpIpZ": {
+                                  "enabled": false
+                                },
+                                "5:o2E18n": {
+                                  "fill": "#FFFFFF00",
+                                  "stroke": "$5:input",
+                                  "strokeWidth": 1
+                                },
+                                "5:o2E18n/5:rMeqR": {
+                                  "content": "Not out yet",
+                                  "fill": "$5:muted-foreground"
+                                },
+                                "5:zYfZW/5:HQLEf": {
+                                  "fill": "$5:faint-foreground"
+                                },
+                                "5:m5ybP8/5:HQLEf": {
+                                  "fill": "$5:faint-foreground"
+                                }
+                              }
+                            },
+                            {
+                              "id": "kfECK",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E08 missing",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:WvmaB": {
+                                  "enabled": true,
+                                  "fill": "$5:warning"
+                                },
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E08"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Sweet Vitriol"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "content": "Fri 10 Oct"
+                                },
+                                "5:jpIpZ": {
+                                  "enabled": false
+                                },
+                                "5:o2E18n": {
+                                  "fill": "$5:warning-soft"
+                                },
+                                "5:o2E18n/5:rMeqR": {
+                                  "content": "Missing · searched 3 times",
+                                  "fill": "$5:warning"
+                                }
+                              }
+                            },
+                            {
+                              "id": "is7Bi",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E07 downloading",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E07"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Chikhai Bardo"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "content": "Fri 3 Oct"
+                                },
+                                "5:jpIpZ": {
+                                  "enabled": false
+                                },
+                                "5:o2E18n": {
+                                  "fill": "$5:live"
+                                },
+                                "5:o2E18n/5:CTVTW": {
+                                  "enabled": true
+                                },
+                                "5:o2E18n/5:rMeqR": {
+                                  "content": "Downloading 64% · 6 min",
+                                  "fill": "$5:foreground"
+                                }
+                              }
+                            },
+                            {
+                              "id": "FrjuM",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E06",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E06"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Attila"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "content": "Fri 26 Sep"
+                                },
+                                "5:jpIpZ/5:rMeqR": {
+                                  "content": "2160p WEB-DL"
+                                },
+                                "5:o2E18n": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "R5dmMx",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E05",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E05"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Trojan's Horse"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "content": "Fri 19 Sep"
+                                },
+                                "5:jpIpZ/5:rMeqR": {
+                                  "content": "2160p WEB-DL"
+                                },
+                                "5:o2E18n": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "TWXkg",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E04 two versions",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E04"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Woe's Hollow"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "content": "Fri 12 Sep"
+                                },
+                                "5:jpIpZ/5:rMeqR": {
+                                  "content": "2160p WEB-DL"
+                                },
+                                "5:o2E18n/5:rMeqR": {
+                                  "content": "2 versions"
+                                }
+                              }
+                            },
+                            {
+                              "id": "q5xJB6",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E03 not monitored",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:HnCAB/5:S8E4Wf": {
+                                  "enabled": false
+                                },
+                                "5:HnCAB/5:fme94": {
+                                  "enabled": true
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E03"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Who Is Alive?",
+                                  "fill": "$5:muted-foreground"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "content": "Fri 5 Sep"
+                                },
+                                "5:jpIpZ/5:rMeqR": {
+                                  "content": "2160p WEB-DL"
+                                },
+                                "5:o2E18n": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "yYgZQ",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E02 manual download",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E02"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Goodbye, Mrs. Selvig"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "content": "Fri 29 Aug"
+                                },
+                                "5:jpIpZ/5:rMeqR": {
+                                  "content": "1080p WEB-DL"
+                                },
+                                "5:o2E18n/5:rMeqR": {
+                                  "content": "Manual download"
+                                }
+                              }
+                            },
+                            {
+                              "id": "GPvc5",
+                              "type": "ref",
+                              "ref": "5:rjunT",
+                              "name": "S02E01",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:IsHnU": {
+                                  "padding": [
+                                    0,
+                                    0,
+                                    0,
+                                    36
+                                  ]
+                                },
+                                "5:y59Lp/5:dacHK": {
+                                  "content": "E01"
+                                },
+                                "5:kK8Nf/5:dacHK": {
+                                  "content": "Hello, Ms. Cobel"
+                                },
+                                "5:Yxlkr/5:dacHK": {
+                                  "content": "Fri 22 Aug"
+                                },
+                                "5:jpIpZ/5:rMeqR": {
+                                  "content": "2160p WEB-DL"
+                                },
+                                "5:o2E18n": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "Pjlwv",
+                              "type": "ref",
+                              "ref": "5:C5GiQ",
+                              "name": "Season 1",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:xjKps/5:dacHK": {
+                                  "content": "Season 1",
+                                  "fontSize": 16
+                                },
+                                "5:sagg2": {
+                                  "width": 240
+                                },
+                                "5:ESqXp": {
+                                  "width": 64
+                                },
+                                "5:ESqXp/5:zJG1E": {
+                                  "width": 64,
+                                  "fill": "$5:subtle-foreground"
+                                },
+                                "5:UmM2u": {
+                                  "content": "9 of 9"
+                                },
+                                "5:cd208/5:rMeqR": {
+                                  "content": "Aired"
+                                },
+                                "5:RWOuu/5:dacHK": {
+                                  "content": "38.0 GB"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "tedb0",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "RxIN2",
+      "x": 13600,
+      "y": 7060,
+      "name": "v2 / Desktop / Episode details, expanded",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "RfA0I",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "AppBar",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "GDTeT",
+          "name": "Viewport, scrolled to Season 2",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "A7bUU",
+              "name": "Sticky title strip",
+              "width": "fill_container",
+              "height": 48,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": {
+                "bottom": 1
+              },
+              "padding": [
+                0,
+                40
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "id": "StEoW",
+                  "type": "ref",
+                  "ref": "5:K5LLLh",
+                  "name": "Breadcrumb",
+                  "descendants": {
+                    "5:TwIAg": {
+                      "content": "Season 2"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "jHiDX",
+              "name": "Seasons",
+              "width": "fill_container",
+              "layout": "vertical",
+              "padding": [
+                16,
+                40,
+                40,
+                40
+              ],
+              "children": [
+                {
+                  "id": "Q6ex9t",
+                  "type": "ref",
+                  "ref": "5:gp6Kh",
+                  "name": "Seasons table",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:KFz5s": {
+                      "enabled": false
+                    },
+                    "5:KSG7I": {
+                      "type": "frame",
+                      "id": "L04j2",
+                      "name": "Body",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "id": "kNr8D",
+                          "type": "ref",
+                          "ref": "5:C5GiQ",
+                          "name": "Season 2, open, partly monitored",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:K212gD": {
+                              "icon": "chevron-down"
+                            },
+                            "5:IGecB": {
+                              "fill": "$5:muted"
+                            },
+                            "5:IGecB/5:S8E4Wf": {
+                              "enabled": false
+                            },
+                            "5:IGecB/5:fme94": {
+                              "enabled": true,
+                              "icon": "bookmark-minus",
+                              "fill": "$5:foreground"
+                            },
+                            "5:xjKps/5:dacHK": {
+                              "fontSize": 16
+                            },
+                            "5:sagg2": {
+                              "width": 240
+                            },
+                            "5:ESqXp": {
+                              "width": 64
+                            },
+                            "5:ESqXp/5:zJG1E": {
+                              "width": 38
+                            },
+                            "5:UmM2u": {
+                              "content": "6 of 10 · 1 downloading"
+                            },
+                            "5:cd208/5:rMeqR": {
+                              "content": "Airing"
+                            },
+                            "5:RWOuu/5:dacHK": {
+                              "content": "26.6 GB"
+                            },
+                            "5:lJqIO/5:dacHK": {
+                              "content": "9 of 10 monitored · S02E03 off",
+                              "fill": "$5:muted-foreground"
+                            }
+                          }
+                        },
+                        {
+                          "id": "czTEr",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "S02E06",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IsHnU": {
+                              "padding": [
+                                0,
+                                0,
+                                0,
+                                36
+                              ]
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E06"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Attila"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 26 Sep"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "nyreT",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "S02E05",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IsHnU": {
+                              "padding": [
+                                0,
+                                0,
+                                0,
+                                36
+                              ]
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E05"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Trojan's Horse"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 19 Sep"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "AqzQI",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "S02E04 two versions, selected",
+                          "width": "fill_container",
+                          "fill": "$5:selected",
+                          "descendants": {
+                            "5:WvmaB": {
+                              "enabled": true
+                            },
+                            "5:IsHnU": {
+                              "padding": [
+                                0,
+                                0,
+                                0,
+                                36
+                              ]
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E04"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Woe's Hollow"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 12 Sep"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:o2E18n/5:rMeqR": {
+                              "content": "2 versions"
+                            },
+                            "5:y0qXbK": {
+                              "fill": "$5:surface-pressed"
+                            },
+                            "5:y0qXbK/5:HQLEf": {
+                              "icon": "chevron-up",
+                              "fill": "$5:foreground"
+                            }
+                          }
+                        },
+                        {
+                          "id": "Q7lux7",
+                          "type": "ref",
+                          "ref": "5:WwDvp",
+                          "name": "S02E04 details",
+                          "width": "fill_container"
+                        },
+                        {
+                          "id": "vCy2y",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "S02E03 not monitored",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IsHnU": {
+                              "padding": [
+                                0,
+                                0,
+                                0,
+                                36
+                              ]
+                            },
+                            "5:HnCAB/5:S8E4Wf": {
+                              "enabled": false
+                            },
+                            "5:HnCAB/5:fme94": {
+                              "enabled": true
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E03"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Who Is Alive?",
+                              "fill": "$5:muted-foreground"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 5 Sep"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "ws4nW",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "S02E02 manual download",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IsHnU": {
+                              "padding": [
+                                0,
+                                0,
+                                0,
+                                36
+                              ]
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E02"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Goodbye, Mrs. Selvig"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 29 Aug"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:o2E18n/5:rMeqR": {
+                              "content": "Manual download"
+                            }
+                          }
+                        },
+                        {
+                          "id": "l5s0uX",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "S02E01",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IsHnU": {
+                              "padding": [
+                                0,
+                                0,
+                                0,
+                                36
+                              ]
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E01"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Hello, Ms. Cobel"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 22 Aug"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "C0A20c",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "row": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "best": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "font-ui": {
+      "type": "string",
+      "value": "Schibsted Grotesk"
+    },
+    "font-data": {
+      "type": "string",
+      "value": "Barlow Semi Condensed"
+    },
+    "best-soft": {
+      "type": "color",
+      "value": "#F3FCD6"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "selected": {
+      "type": "color",
+      "value": "#EDEDE9"
+    },
+    "background": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "card": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "muted": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "surface-hover": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "surface-pressed": {
+      "type": "color",
+      "value": "#EAEAE6"
+    },
+    "foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": "#55554F"
+    },
+    "subtle-foreground": {
+      "type": "color",
+      "value": "#686862"
+    },
+    "faint-foreground": {
+      "type": "color",
+      "value": "#A3A39D"
+    },
+    "border": {
+      "type": "color",
+      "value": "#E3E3DE"
+    },
+    "input": {
+      "type": "color",
+      "value": "#8C8C85"
+    },
+    "primary": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": "#2E2E2C"
+    },
+    "primary-pressed": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "best-foreground": {
+      "type": "color",
+      "value": "#3D5600"
+    },
+    "live": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "destructive": {
+      "type": "color",
+      "value": "#CC1F17"
+    },
+    "destructive-hover": {
+      "type": "color",
+      "value": "#AD1912"
+    },
+    "destructive-pressed": {
+      "type": "color",
+      "value": "#8E140E"
+    },
+    "destructive-soft": {
+      "type": "color",
+      "value": "#FDE9E7"
+    },
+    "warning": {
+      "type": "color",
+      "value": "#A15C00"
+    },
+    "warning-soft": {
+      "type": "color",
+      "value": "#FDF0D9"
+    },
+    "ring": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "focus-on-dark": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "bar-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar-muted-foreground": {
+      "type": "color",
+      "value": "#B5B5AE"
+    },
+    "scrim": {
+      "type": "color",
+      "value": "#1111114D"
+    },
+    "shadow": {
+      "type": "color",
+      "value": "#1111111F"
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-full": {
+      "type": "number",
+      "value": 999
+    },
+    "row-header": {
+      "type": "number",
+      "value": 32
+    },
+    "row-two-line": {
+      "type": "number",
+      "value": 56
+    },
+    "topbar": {
+      "type": "number",
+      "value": 64
+    },
+    "livebar": {
+      "type": "number",
+      "value": 40
+    },
+    "space-1": {
+      "type": "number",
+      "value": 4
+    },
+    "space-2": {
+      "type": "number",
+      "value": 8
+    },
+    "space-3": {
+      "type": "number",
+      "value": 12
+    },
+    "space-4": {
+      "type": "number",
+      "value": 16
+    },
+    "space-5": {
+      "type": "number",
+      "value": 20
+    },
+    "space-6": {
+      "type": "number",
+      "value": 24
+    },
+    "space-8": {
+      "type": "number",
+      "value": 32
+    },
+    "space-10": {
+      "type": "number",
+      "value": 40
+    },
+    "space-12": {
+      "type": "number",
+      "value": 48
+    },
+    "space-16": {
+      "type": "number",
+      "value": 64
+    },
+    "page-margin": {
+      "type": "number",
+      "value": 40
+    },
+    "page-margin-phone": {
+      "type": "number",
+      "value": 16
+    },
+    "poster-gutter": {
+      "type": "number",
+      "value": 20
+    },
+    "poster-width": {
+      "type": "number",
+      "value": 152
+    },
+    "control-h-row": {
+      "type": "number",
+      "value": 28
+    },
+    "control-h-default": {
+      "type": "number",
+      "value": 40
+    },
+    "control-h-large": {
+      "type": "number",
+      "value": 48
+    },
+    "control-px-row": {
+      "type": "number",
+      "value": 10
+    },
+    "control-px-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-px-large": {
+      "type": "number",
+      "value": 20
+    },
+    "control-text-row": {
+      "type": "number",
+      "value": 13
+    },
+    "control-text-default": {
+      "type": "number",
+      "value": 14
+    },
+    "control-text-large": {
+      "type": "number",
+      "value": 15
+    },
+    "control-radius-row": {
+      "type": "number",
+      "value": 6
+    },
+    "control-radius-default": {
+      "type": "number",
+      "value": 8
+    },
+    "control-radius-large": {
+      "type": "number",
+      "value": 10
+    },
+    "control-icon-row": {
+      "type": "number",
+      "value": 14
+    },
+    "control-icon-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-icon-large": {
+      "type": "number",
+      "value": 18
+    },
+    "card-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "popover": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "popover-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "secondary": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "secondary-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "accent-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "destructive-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "warning-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "radius": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "detail-indent": {
+      "type": "number",
+      "value": 133
+    }
+  },
+  "imports": {
+    "5": "design-system.lib.pen"
+  },
+  "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"
+}

@@ -1,0 +1,2423 @@
+{
+  "version": "2.21",
+  "children": [
+    {
+      "type": "frame",
+      "id": "r62o3J",
+      "x": 16800,
+      "y": 6000,
+      "name": "v2 / Desktop / Settings, all connected",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "A1Qvc",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:v5RcYX": {
+              "fill": "$5:selected"
+            },
+            "5:v5RcYX/5:HQLEf": {
+              "fill": "$5:foreground"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "DXxOB",
+          "name": "Body",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            "$page-margin",
+            24,
+            "$page-margin"
+          ],
+          "children": [
+            {
+              "id": "HYxzT",
+              "type": "ref",
+              "ref": "5:pLro9",
+              "name": "Page header",
+              "width": "fill_container",
+              "descendants": {
+                "5:P9FCIC": {
+                  "content": "Settings"
+                },
+                "5:SUWts": {
+                  "content": "7 of 7 connected · last checked 2 min ago"
+                }
+              }
+            },
+            {
+              "type": "frame",
+              "id": "LrqjA",
+              "name": "How the pieces connect",
+              "width": "fill_container",
+              "cornerRadius": "$5:radius-lg",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "gap": 32,
+              "padding": [
+                20,
+                24
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "LwgzZ",
+                  "name": "Strip intro",
+                  "width": 220,
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "R45zZ0",
+                      "name": "Strip title",
+                      "fill": "$5:foreground",
+                      "content": "How the pieces connect",
+                      "fontFamily": "$5:font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "o9wPkI",
+                      "name": "Strip summary",
+                      "fill": "$5:muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Every link answers. Releases flow from the trackers to Plex.",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$5:font-ui",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "UNmE8",
+                  "name": "Chain",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "a4F4S",
+                      "name": "Find releases column",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "IjQdN",
+                          "name": "Caption",
+                          "fill": "$5:subtle-foreground",
+                          "content": "FIND RELEASES",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "q3rhx2",
+                          "name": "Pills",
+                          "height": 94,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "id": "gtLgc",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Beyond-HD status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "YhMvU",
+                                  "type": "ref",
+                                  "ref": "5:dofWM",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Beyond-HD"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected"
+                                }
+                              }
+                            },
+                            {
+                              "id": "TpPpY",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "PrivateHD status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "UoOga",
+                                  "type": "ref",
+                                  "ref": "5:i2QZW",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "PrivateHD"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected"
+                                }
+                              }
+                            },
+                            {
+                              "id": "fYM3s",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Blutopia status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "g0SQN",
+                                  "type": "ref",
+                                  "ref": "5:z7AOoy",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Blutopia"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Jx9f6",
+                      "name": "Link trackers to Sonarr and Radarr",
+                      "width": "fill_container",
+                      "height": 117,
+                      "padding": [
+                        23,
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "id": "hLgD1",
+                          "name": "Line",
+                          "fill": "$5:input",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "icon",
+                          "id": "WHsi0",
+                          "name": "Arrow",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$5:input"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "T2LsB",
+                      "name": "Choose and grab column",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Z78Se",
+                          "name": "Caption",
+                          "fill": "$5:subtle-foreground",
+                          "content": "CHOOSE AND GRAB",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "i89NOI",
+                          "name": "Pills",
+                          "height": 94,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "id": "BsYzz",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Sonarr status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "zuELu",
+                                  "type": "ref",
+                                  "ref": "5:u3D0O5",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Sonarr"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected · 4.0.10"
+                                }
+                              }
+                            },
+                            {
+                              "id": "fN2XL",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Radarr status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "YjCjE",
+                                  "type": "ref",
+                                  "ref": "5:T1cDmD",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Radarr"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected · 5.8.3"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Sf1UD",
+                      "name": "Link Sonarr and Radarr to rTorrent",
+                      "width": "fill_container",
+                      "height": 117,
+                      "padding": [
+                        23,
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "id": "f2pFk",
+                          "name": "Line",
+                          "fill": "$5:input",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "icon",
+                          "id": "a116Be",
+                          "name": "Arrow",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$5:input"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "d3gZT",
+                      "name": "Download and seed column",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "xcjdj",
+                          "name": "Caption",
+                          "fill": "$5:subtle-foreground",
+                          "content": "DOWNLOAD AND SEED",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "HkFYg",
+                          "name": "Pills",
+                          "height": 94,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "id": "zymue",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "rTorrent status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "j6BlcY",
+                                  "type": "ref",
+                                  "ref": "5:YJlCi",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "rTorrent"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected · 0.9.8"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "zpSOq",
+                      "name": "Link rTorrent to Plex",
+                      "width": "fill_container",
+                      "height": 117,
+                      "padding": [
+                        23,
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "id": "N4o7Nw",
+                          "name": "Line",
+                          "fill": "$5:input",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "icon",
+                          "id": "spzQl",
+                          "name": "Arrow",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$5:input"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "lH6jA",
+                      "name": "Play column",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Ahz2f",
+                          "name": "Caption",
+                          "fill": "$5:subtle-foreground",
+                          "content": "PLAY",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "U4cZMk",
+                          "name": "Pills",
+                          "height": 94,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "id": "RHrsz",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Plex status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "NCDA7",
+                                  "type": "ref",
+                                  "ref": "5:hNlc0",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Plex"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected · 1.41.0"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "puWD9",
+              "name": "Main",
+              "width": "fill_container",
+              "height": "fill_container",
+              "gap": 32,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "c3Y7HJ",
+                  "name": "Service list",
+                  "width": 420,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "id": "mJpPQ",
+                      "type": "ref",
+                      "ref": "5:mk4uT",
+                      "name": "Services label",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        0,
+                        8,
+                        0
+                      ],
+                      "descendants": {
+                        "5:xTran": {
+                          "content": "Services"
+                        },
+                        "5:sx2YK": {
+                          "content": "4"
+                        }
+                      }
+                    },
+                    {
+                      "id": "GB2Vc",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Sonarr row",
+                      "width": "fill_container",
+                      "fill": "$5:selected",
+                      "descendants": {
+                        "5:FDiAB": {
+                          "enabled": true
+                        },
+                        "5:o0swt6": {
+                          "id": "RFevX",
+                          "type": "ref",
+                          "ref": "5:u3D0O5",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Sonarr"
+                        },
+                        "5:Fdc5N": {
+                          "content": "http://localhost:8989"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected · 4.0.10"
+                        }
+                      }
+                    },
+                    {
+                      "id": "U4QcD",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Radarr row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "y2UuD",
+                          "type": "ref",
+                          "ref": "5:T1cDmD",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Radarr"
+                        },
+                        "5:Fdc5N": {
+                          "content": "http://localhost:7878"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected · 5.8.3"
+                        }
+                      }
+                    },
+                    {
+                      "id": "T0ma6",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "rTorrent row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "SwJr9",
+                          "type": "ref",
+                          "ref": "5:YJlCi",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "rTorrent"
+                        },
+                        "5:Fdc5N": {
+                          "content": "https://shenzhou.whatbox.ca/xmlrpc"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected · 0.9.8"
+                        }
+                      }
+                    },
+                    {
+                      "id": "MXy48",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Plex row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "SYCpW",
+                          "type": "ref",
+                          "ref": "5:hNlc0",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Plex"
+                        },
+                        "5:Fdc5N": {
+                          "content": "http://localhost:32400"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected · 1.41.0"
+                        }
+                      }
+                    },
+                    {
+                      "id": "vsS1V",
+                      "type": "ref",
+                      "ref": "5:mk4uT",
+                      "name": "Trackers label",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:xTran": {
+                          "content": "Tracker accounts"
+                        },
+                        "5:sx2YK": {
+                          "content": "3"
+                        }
+                      }
+                    },
+                    {
+                      "id": "J17Il",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Beyond-HD row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "bl8R8",
+                          "type": "ref",
+                          "ref": "5:dofWM",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Beyond-HD"
+                        },
+                        "5:Fdc5N": {
+                          "content": "https://beyond-hd.me"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected"
+                        }
+                      }
+                    },
+                    {
+                      "id": "ouCcA",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "PrivateHD row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "BS4sp",
+                          "type": "ref",
+                          "ref": "5:i2QZW",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "PrivateHD"
+                        },
+                        "5:Fdc5N": {
+                          "content": "https://privatehd.to"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected"
+                        }
+                      }
+                    },
+                    {
+                      "id": "TCoNZ",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Blutopia row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "W7dxDZ",
+                          "type": "ref",
+                          "ref": "5:z7AOoy",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Blutopia"
+                        },
+                        "5:Fdc5N": {
+                          "content": "https://blutopia.cc"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "o7mNV",
+                  "name": "Sonarr editor",
+                  "width": "fill_container",
+                  "cornerRadius": "$5:radius-lg",
+                  "stroke": "$5:border",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Uh5w5",
+                      "name": "Editor header",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "UXaky",
+                          "type": "ref",
+                          "ref": "5:u3D0O5",
+                          "name": "Logo",
+                          "width": 32,
+                          "height": 32
+                        },
+                        {
+                          "type": "text",
+                          "id": "mZfDN",
+                          "name": "Service name",
+                          "fill": "$5:foreground",
+                          "content": "Sonarr",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "id": "hHaVZ",
+                          "type": "ref",
+                          "ref": "5:hpQjk",
+                          "name": "Status",
+                          "descendants": {
+                            "5:LnsLt": {
+                              "enabled": false
+                            },
+                            "5:RCe28": {
+                              "enabled": false
+                            },
+                            "5:bX27S": {
+                              "content": "Connected · 4.0.10.2544"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "eoWA1",
+                      "name": "Fields",
+                      "width": "fill_container",
+                      "gap": 16,
+                      "children": [
+                        {
+                          "id": "vFAlM",
+                          "type": "ref",
+                          "ref": "5:N61zp",
+                          "name": "Address field",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:HA4ko": {
+                              "content": "Address"
+                            },
+                            "5:Jxm3h/5:RigzS": {
+                              "content": "http://localhost:8989"
+                            },
+                            "5:RPLCk": {
+                              "content": "Where media-manager-2 reaches Sonarr on the seedbox."
+                            }
+                          }
+                        },
+                        {
+                          "id": "idKZW",
+                          "type": "ref",
+                          "ref": "5:N61zp",
+                          "name": "API key field",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:HA4ko": {
+                              "content": "API key"
+                            },
+                            "5:Jxm3h": {
+                              "fill": "$5:muted"
+                            },
+                            "5:Jxm3h/5:gyqge": {
+                              "enabled": true,
+                              "icon": "lock"
+                            },
+                            "5:Jxm3h/5:RigzS": {
+                              "content": "••••••••••••••••••••",
+                              "fill": "$5:muted-foreground"
+                            },
+                            "5:DgJKB": {
+                              "enabled": true
+                            },
+                            "5:RPLCk": {
+                              "content": "Saved. In Sonarr: Settings > General > API Key."
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "tcEwb",
+                      "name": "Facts",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "id": "MDhef",
+                          "type": "ref",
+                          "ref": "5:e95lV",
+                          "name": "Version fact",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:EY0GR": {
+                              "content": "Version"
+                            },
+                            "5:AslXb": {
+                              "content": "4.0.10.2544"
+                            }
+                          }
+                        },
+                        {
+                          "id": "CegVq",
+                          "type": "ref",
+                          "ref": "5:e95lV",
+                          "name": "Last checked fact",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:EY0GR": {
+                              "content": "Last checked"
+                            },
+                            "5:AslXb": {
+                              "content": "Today 14:02"
+                            },
+                            "5:Qn7Y4": {
+                              "enabled": true,
+                              "content": "2 min ago, every 5 min"
+                            }
+                          }
+                        },
+                        {
+                          "id": "PCp76",
+                          "type": "ref",
+                          "ref": "5:e95lV",
+                          "name": "Used for fact",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:EY0GR": {
+                              "content": "Used for"
+                            },
+                            "5:AslXb": {
+                              "content": "TV searches, grabs and imports"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "caQtB",
+                      "type": "ref",
+                      "ref": "5:z2z0d",
+                      "name": "Editor footer",
+                      "width": "fill_container",
+                      "height": 48,
+                      "padding": 0,
+                      "fill": "#FFFFFF00",
+                      "strokeWidth": 0,
+                      "descendants": {
+                        "5:pAiKf": {
+                          "content": "Nothing to save. Change a field and Connect tests it before saving.",
+                          "fontFamily": "$5:font-ui"
+                        },
+                        "5:xDbxM": {
+                          "enabled": true,
+                          "fill": "#FFFFFF00",
+                          "strokeWidth": 0
+                        },
+                        "5:xDbxM/5:HQLEf": {
+                          "icon": "refresh-cw"
+                        },
+                        "5:xDbxM/5:OXVvv": {
+                          "content": "Check now"
+                        },
+                        "5:H9zIOH": {
+                          "fill": "$5:muted"
+                        },
+                        "5:H9zIOH/5:HQLEf": {
+                          "icon": "plug",
+                          "fill": "$5:faint-foreground"
+                        },
+                        "5:H9zIOH/5:OXVvv": {
+                          "content": "Connect",
+                          "fill": "$5:faint-foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "WDnWP",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        },
+        {
+          "id": "m5RIq6",
+          "type": "ref",
+          "ref": "5:Dslj1",
+          "name": "Toast Plex connected",
+          "layoutPosition": "absolute",
+          "x": 1020,
+          "y": 780,
+          "width": 380,
+          "descendants": {
+            "5:M0qgwJ": {
+              "icon": "check"
+            },
+            "5:eNCqd": {
+              "content": "Plex connected · 1.41.0"
+            },
+            "5:ENTTo": {
+              "content": "Tested, then saved. All 7 connections answer."
+            },
+            "5:xPnqq": {
+              "enabled": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "Fv2CA",
+      "x": 16800,
+      "y": 7060,
+      "name": "v2 / Desktop / Settings, problems and unsaved edits",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "T2nZC",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:KEW4D/5:UqFiV": {
+              "enabled": true,
+              "fill": "$5:destructive-soft"
+            },
+            "5:KEW4D/5:HSPSn": {
+              "content": "2",
+              "fill": "$5:destructive"
+            },
+            "5:v5RcYX": {
+              "fill": "$5:selected"
+            },
+            "5:v5RcYX/5:HQLEf": {
+              "fill": "$5:foreground"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "L073b",
+          "name": "Body",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            "$page-margin",
+            24,
+            "$page-margin"
+          ],
+          "children": [
+            {
+              "id": "pEHqb",
+              "type": "ref",
+              "ref": "5:pLro9",
+              "name": "Page header",
+              "width": "fill_container",
+              "descendants": {
+                "5:P9FCIC": {
+                  "content": "Settings"
+                },
+                "5:SUWts": {
+                  "content": "5 of 7 connected · 2 failed · Radarr has unsaved edits"
+                }
+              }
+            },
+            {
+              "type": "frame",
+              "id": "n7vYy",
+              "name": "How the pieces connect",
+              "width": "fill_container",
+              "cornerRadius": "$5:radius-lg",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "gap": 32,
+              "padding": [
+                20,
+                24
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "UYCsa",
+                  "name": "Strip intro",
+                  "width": 220,
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "vn1i7",
+                      "name": "Strip title",
+                      "fill": "$5:foreground",
+                      "content": "How the pieces connect",
+                      "fontFamily": "$5:font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "uGd78",
+                      "name": "Strip summary",
+                      "fill": "$5:muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "rTorrent is not answering, so nothing new downloads. Blutopia refused its API token.",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$5:font-ui",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "SLhAe",
+                  "name": "Chain",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "BZgOW",
+                      "name": "Find releases column",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Es1VP",
+                          "name": "Caption",
+                          "fill": "$5:subtle-foreground",
+                          "content": "FIND RELEASES",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "YZ5VZ",
+                          "name": "Pills",
+                          "height": 94,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "id": "dR9VA",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Beyond-HD status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "kdBvS",
+                                  "type": "ref",
+                                  "ref": "5:dofWM",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Beyond-HD"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected"
+                                }
+                              }
+                            },
+                            {
+                              "id": "JcIIi",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "PrivateHD status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "RXrso",
+                                  "type": "ref",
+                                  "ref": "5:i2QZW",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "PrivateHD"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected"
+                                }
+                              }
+                            },
+                            {
+                              "id": "y1qf6",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Blutopia status",
+                              "fill": "$5:destructive-soft",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "Zvn0t",
+                                  "type": "ref",
+                                  "ref": "5:z7AOoy",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Blutopia"
+                                },
+                                "5:hKu9E": {
+                                  "fill": "$5:destructive"
+                                },
+                                "5:bX27S": {
+                                  "content": "Failed: API token refused",
+                                  "fill": "$5:destructive"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "hxaf1",
+                      "name": "Link trackers to Sonarr and Radarr",
+                      "width": "fill_container",
+                      "height": 117,
+                      "padding": [
+                        23,
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "id": "J9wpG",
+                          "name": "Line",
+                          "fill": "$5:input",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "icon",
+                          "id": "II52v",
+                          "name": "Arrow",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$5:input"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ahOiw",
+                      "name": "Choose and grab column",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "tkn21",
+                          "name": "Caption",
+                          "fill": "$5:subtle-foreground",
+                          "content": "CHOOSE AND GRAB",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "K5LpWE",
+                          "name": "Pills",
+                          "height": 94,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "id": "C5bK3",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Sonarr status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "SqIiz",
+                                  "type": "ref",
+                                  "ref": "5:u3D0O5",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Sonarr"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected · 4.0.10"
+                                }
+                              }
+                            },
+                            {
+                              "id": "nluha",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Radarr status",
+                              "fill": "$5:warning-soft",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "C5tUB",
+                                  "type": "ref",
+                                  "ref": "5:T1cDmD",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Radarr"
+                                },
+                                "5:hKu9E": {
+                                  "fill": "$5:warning",
+                                  "enabled": false
+                                },
+                                "5:YxJjn": {
+                                  "enabled": true
+                                },
+                                "5:bX27S": {
+                                  "content": "Unsaved edits",
+                                  "fill": "$5:warning"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "d29ll",
+                      "name": "Link Sonarr and Radarr to rTorrent",
+                      "width": "fill_container",
+                      "height": 117,
+                      "padding": [
+                        23,
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "id": "kQvRj",
+                          "name": "Line",
+                          "fill": "$5:destructive",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "icon",
+                          "id": "Y5Gk6",
+                          "name": "Arrow",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$5:destructive"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ymFAm",
+                      "name": "Download and seed column",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "FGD5B",
+                          "name": "Caption",
+                          "fill": "$5:subtle-foreground",
+                          "content": "DOWNLOAD AND SEED",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "v1w6d",
+                          "name": "Pills",
+                          "height": 94,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "id": "SRH2j",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "rTorrent status",
+                              "fill": "$5:destructive-soft",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "Pkbny",
+                                  "type": "ref",
+                                  "ref": "5:YJlCi",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "rTorrent"
+                                },
+                                "5:hKu9E": {
+                                  "fill": "$5:destructive"
+                                },
+                                "5:bX27S": {
+                                  "content": "Failed: no answer in 10 s",
+                                  "fill": "$5:destructive"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "yWhs4",
+                      "name": "Link rTorrent to Plex",
+                      "width": "fill_container",
+                      "height": 117,
+                      "padding": [
+                        23,
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "id": "eB8ae",
+                          "name": "Line",
+                          "fill": "$5:destructive",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "icon",
+                          "id": "Ob5Az",
+                          "name": "Arrow",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "chevron-right",
+                          "library": "lucide",
+                          "fill": "$5:destructive"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ZEyzN",
+                      "name": "Play column",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "rHmxD",
+                          "name": "Caption",
+                          "fill": "$5:subtle-foreground",
+                          "content": "PLAY",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "PpVKS",
+                          "name": "Pills",
+                          "height": 94,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "id": "FGyuJ",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Plex status",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "id": "GVQRX",
+                                  "type": "ref",
+                                  "ref": "5:hNlc0",
+                                  "name": "Logo",
+                                  "width": 16,
+                                  "height": 16
+                                },
+                                "5:RCe28": {
+                                  "content": "Plex"
+                                },
+                                "5:bX27S": {
+                                  "content": "Connected · 1.41.0"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "G2rOF",
+              "name": "Main",
+              "width": "fill_container",
+              "height": "fill_container",
+              "gap": 32,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "wFdqe",
+                  "name": "Service list",
+                  "width": 420,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "id": "zSaWG",
+                      "type": "ref",
+                      "ref": "5:mk4uT",
+                      "name": "Services label",
+                      "width": "fill_container",
+                      "padding": [
+                        0,
+                        0,
+                        8,
+                        0
+                      ],
+                      "descendants": {
+                        "5:xTran": {
+                          "content": "Services"
+                        },
+                        "5:sx2YK": {
+                          "content": "4"
+                        }
+                      }
+                    },
+                    {
+                      "id": "O2boq",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Sonarr row",
+                      "width": "fill_container",
+                      "fill": "#FFFFFF00",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "xSDEE",
+                          "type": "ref",
+                          "ref": "5:u3D0O5",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Sonarr"
+                        },
+                        "5:Fdc5N": {
+                          "content": "http://localhost:8989"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected · 4.0.10"
+                        }
+                      }
+                    },
+                    {
+                      "id": "Aa4FY",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Radarr row",
+                      "width": "fill_container",
+                      "fill": "$5:selected",
+                      "descendants": {
+                        "5:FDiAB": {
+                          "enabled": true
+                        },
+                        "5:o0swt6": {
+                          "id": "jsSyP",
+                          "type": "ref",
+                          "ref": "5:T1cDmD",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Radarr"
+                        },
+                        "5:Fdc5N": {
+                          "content": "http://localhost:7878"
+                        },
+                        "5:aqYd6": {
+                          "fill": "$5:warning-soft"
+                        },
+                        "5:aqYd6/5:hKu9E": {
+                          "enabled": false
+                        },
+                        "5:aqYd6/5:YxJjn": {
+                          "enabled": true
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Unsaved edits",
+                          "fill": "$5:warning"
+                        }
+                      }
+                    },
+                    {
+                      "id": "t8oFBX",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "rTorrent row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "t8Wd8",
+                          "type": "ref",
+                          "ref": "5:YJlCi",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "rTorrent"
+                        },
+                        "5:Fdc5N": {
+                          "content": "https://shenzhou.whatbox.ca/xmlrpc"
+                        },
+                        "5:aqYd6": {
+                          "fill": "$5:destructive-soft"
+                        },
+                        "5:aqYd6/5:hKu9E": {
+                          "fill": "$5:destructive"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Failed: no answer in 10 s",
+                          "fill": "$5:destructive"
+                        }
+                      }
+                    },
+                    {
+                      "id": "mf5Xp",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Plex row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "BnPEu",
+                          "type": "ref",
+                          "ref": "5:hNlc0",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Plex"
+                        },
+                        "5:Fdc5N": {
+                          "content": "http://localhost:32400"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected · 1.41.0"
+                        }
+                      }
+                    },
+                    {
+                      "id": "VVSB1",
+                      "type": "ref",
+                      "ref": "5:mk4uT",
+                      "name": "Trackers label",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:xTran": {
+                          "content": "Tracker accounts"
+                        },
+                        "5:sx2YK": {
+                          "content": "3"
+                        }
+                      }
+                    },
+                    {
+                      "id": "UwBbe",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Beyond-HD row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "H6K3x9",
+                          "type": "ref",
+                          "ref": "5:dofWM",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Beyond-HD"
+                        },
+                        "5:Fdc5N": {
+                          "content": "https://beyond-hd.me"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected"
+                        }
+                      }
+                    },
+                    {
+                      "id": "w3MbQ",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "PrivateHD row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "Q7pl9",
+                          "type": "ref",
+                          "ref": "5:i2QZW",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "PrivateHD"
+                        },
+                        "5:Fdc5N": {
+                          "content": "https://privatehd.to"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Connected"
+                        }
+                      }
+                    },
+                    {
+                      "id": "r3rvNG",
+                      "type": "ref",
+                      "ref": "5:okfXn",
+                      "name": "Blutopia row",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:o0swt6": {
+                          "id": "qt9tq",
+                          "type": "ref",
+                          "ref": "5:z7AOoy",
+                          "name": "Logo",
+                          "width": 24,
+                          "height": 24
+                        },
+                        "5:x6gOz": {
+                          "content": "Blutopia"
+                        },
+                        "5:Fdc5N": {
+                          "content": "https://blutopia.cc"
+                        },
+                        "5:aqYd6": {
+                          "fill": "$5:destructive-soft"
+                        },
+                        "5:aqYd6/5:hKu9E": {
+                          "fill": "$5:destructive"
+                        },
+                        "5:aqYd6/5:bX27S": {
+                          "content": "Failed: API token refused",
+                          "fill": "$5:destructive"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Q5GcM",
+                  "name": "Right column",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "d3quY",
+                      "name": "Radarr editor",
+                      "width": "fill_container",
+                      "cornerRadius": "$5:radius-lg",
+                      "stroke": "$5:border",
+                      "strokeWidth": 1,
+                      "layout": "vertical",
+                      "gap": 24,
+                      "padding": 24,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "hY98O",
+                          "name": "Editor header",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "efmuO",
+                              "type": "ref",
+                              "ref": "5:T1cDmD",
+                              "name": "Logo",
+                              "width": 32,
+                              "height": 32
+                            },
+                            {
+                              "type": "text",
+                              "id": "I9c0a",
+                              "name": "Service name",
+                              "fill": "$5:foreground",
+                              "content": "Radarr",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "id": "ex72c",
+                              "type": "ref",
+                              "ref": "5:hpQjk",
+                              "name": "Status",
+                              "fill": "$5:warning-soft",
+                              "descendants": {
+                                "5:LnsLt": {
+                                  "enabled": false
+                                },
+                                "5:RCe28": {
+                                  "enabled": false
+                                },
+                                "5:hKu9E": {
+                                  "fill": "$5:warning",
+                                  "enabled": false
+                                },
+                                "5:YxJjn": {
+                                  "enabled": true
+                                },
+                                "5:bX27S": {
+                                  "content": "Unsaved edits · 2 fields",
+                                  "fill": "$5:warning"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "sMkLH",
+                          "name": "Fields",
+                          "width": "fill_container",
+                          "gap": 16,
+                          "children": [
+                            {
+                              "id": "KS6MC",
+                              "type": "ref",
+                              "ref": "5:N61zp",
+                              "name": "Address field",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:HA4ko": {
+                                  "content": "Address"
+                                },
+                                "5:Jxm3h/5:RigzS": {
+                                  "content": "http://localhost:7879"
+                                },
+                                "5:RPLCk": {
+                                  "content": "Changed from http://localhost:7878. Not saved yet.",
+                                  "fill": "$5:muted-foreground"
+                                }
+                              }
+                            },
+                            {
+                              "id": "GjXfp",
+                              "type": "ref",
+                              "ref": "5:N61zp",
+                              "name": "API key field",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:HA4ko": {
+                                  "content": "API key"
+                                },
+                                "5:Jxm3h": {
+                                  "fill": "$5:card"
+                                },
+                                "5:Jxm3h/5:gyqge": {
+                                  "enabled": false,
+                                  "icon": "lock"
+                                },
+                                "5:Jxm3h/5:RigzS": {
+                                  "content": "••••••••••••••••••••",
+                                  "fill": "$5:foreground"
+                                },
+                                "5:DgJKB": {
+                                  "enabled": true
+                                },
+                                "5:DgJKB/5:OXVvv": {
+                                  "content": "Keep saved key"
+                                },
+                                "5:RPLCk": {
+                                  "content": "New key, not saved yet. In Radarr: Settings > General > API Key.",
+                                  "fill": "$5:muted-foreground"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "CectI",
+                          "name": "Facts",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "id": "efWl7",
+                              "type": "ref",
+                              "ref": "5:e95lV",
+                              "name": "Version fact",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:EY0GR": {
+                                  "content": "Version"
+                                },
+                                "5:AslXb": {
+                                  "content": "5.8.3.8933"
+                                }
+                              }
+                            },
+                            {
+                              "id": "VZSbt",
+                              "type": "ref",
+                              "ref": "5:e95lV",
+                              "name": "Last checked fact",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:EY0GR": {
+                                  "content": "Last checked"
+                                },
+                                "5:AslXb": {
+                                  "content": "Today 14:02"
+                                },
+                                "5:Qn7Y4": {
+                                  "enabled": true,
+                                  "content": "2 min ago, with the saved address and key"
+                                }
+                              }
+                            },
+                            {
+                              "id": "pWS84",
+                              "type": "ref",
+                              "ref": "5:e95lV",
+                              "name": "Used for fact",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:EY0GR": {
+                                  "content": "Used for"
+                                },
+                                "5:AslXb": {
+                                  "content": "Movie searches, grabs and imports"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "id": "XqEWb",
+                          "type": "ref",
+                          "ref": "5:z2z0d",
+                          "name": "Editor footer",
+                          "width": "fill_container",
+                          "height": 48,
+                          "padding": 0,
+                          "fill": "#FFFFFF00",
+                          "strokeWidth": 0,
+                          "descendants": {
+                            "5:pAiKf": {
+                              "content": "Connect tests the new address and key, then saves. If the test fails, nothing changes.",
+                              "fontFamily": "$5:font-ui"
+                            },
+                            "5:K0r2J": {
+                              "enabled": true
+                            },
+                            "5:xDbxM": {
+                              "enabled": true
+                            },
+                            "5:H9zIOH/5:HQLEf": {
+                              "icon": "plug"
+                            },
+                            "5:H9zIOH/5:OXVvv": {
+                              "content": "Connect"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "uPdYa",
+                      "type": "ref",
+                      "ref": "5:BXgoa",
+                      "name": "Failed connections callout",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:tPrsU": {
+                          "icon": "circle-x"
+                        },
+                        "5:hDbgA": {
+                          "content": "rTorrent did not answer within 10 seconds"
+                        },
+                        "5:EcQDN": {
+                          "content": "Check that rTorrent is running on Whatbox and that its address is right. Blutopia also failed: it refused the API token."
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "MGC96",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:SKfVZ": {
+              "fill": "$5:bar-muted-foreground"
+            },
+            "5:jmHWs": {
+              "content": "No live status"
+            },
+            "5:HkJFl": {
+              "enabled": false
+            },
+            "5:cmM33": {
+              "enabled": false
+            },
+            "5:hIeuW": {
+              "enabled": false
+            },
+            "5:T71bf": {
+              "enabled": false
+            },
+            "5:Hhfs6": {
+              "enabled": true
+            },
+            "5:pho5s": {
+              "content": "rTorrent not answering · last update 14:01"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "row": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "best": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "font-ui": {
+      "type": "string",
+      "value": "Schibsted Grotesk"
+    },
+    "font-data": {
+      "type": "string",
+      "value": "Barlow Semi Condensed"
+    },
+    "best-soft": {
+      "type": "color",
+      "value": "#F3FCD6"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "selected": {
+      "type": "color",
+      "value": "#EDEDE9"
+    },
+    "background": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "card": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "muted": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "surface-hover": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "surface-pressed": {
+      "type": "color",
+      "value": "#EAEAE6"
+    },
+    "foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": "#55554F"
+    },
+    "subtle-foreground": {
+      "type": "color",
+      "value": "#686862"
+    },
+    "faint-foreground": {
+      "type": "color",
+      "value": "#A3A39D"
+    },
+    "border": {
+      "type": "color",
+      "value": "#E3E3DE"
+    },
+    "input": {
+      "type": "color",
+      "value": "#8C8C85"
+    },
+    "primary": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": "#2E2E2C"
+    },
+    "primary-pressed": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "best-foreground": {
+      "type": "color",
+      "value": "#3D5600"
+    },
+    "live": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "destructive": {
+      "type": "color",
+      "value": "#CC1F17"
+    },
+    "destructive-hover": {
+      "type": "color",
+      "value": "#AD1912"
+    },
+    "destructive-pressed": {
+      "type": "color",
+      "value": "#8E140E"
+    },
+    "destructive-soft": {
+      "type": "color",
+      "value": "#FDE9E7"
+    },
+    "warning": {
+      "type": "color",
+      "value": "#A15C00"
+    },
+    "warning-soft": {
+      "type": "color",
+      "value": "#FDF0D9"
+    },
+    "ring": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "focus-on-dark": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "bar-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar-muted-foreground": {
+      "type": "color",
+      "value": "#B5B5AE"
+    },
+    "scrim": {
+      "type": "color",
+      "value": "#1111114D"
+    },
+    "shadow": {
+      "type": "color",
+      "value": "#1111111F"
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-full": {
+      "type": "number",
+      "value": 999
+    },
+    "row-header": {
+      "type": "number",
+      "value": 32
+    },
+    "row-two-line": {
+      "type": "number",
+      "value": 56
+    },
+    "topbar": {
+      "type": "number",
+      "value": 64
+    },
+    "livebar": {
+      "type": "number",
+      "value": 40
+    },
+    "space-1": {
+      "type": "number",
+      "value": 4
+    },
+    "space-2": {
+      "type": "number",
+      "value": 8
+    },
+    "space-3": {
+      "type": "number",
+      "value": 12
+    },
+    "space-4": {
+      "type": "number",
+      "value": 16
+    },
+    "space-5": {
+      "type": "number",
+      "value": 20
+    },
+    "space-6": {
+      "type": "number",
+      "value": 24
+    },
+    "space-8": {
+      "type": "number",
+      "value": 32
+    },
+    "space-10": {
+      "type": "number",
+      "value": 40
+    },
+    "space-12": {
+      "type": "number",
+      "value": 48
+    },
+    "space-16": {
+      "type": "number",
+      "value": 64
+    },
+    "page-margin": {
+      "type": "number",
+      "value": 40
+    },
+    "page-margin-phone": {
+      "type": "number",
+      "value": 16
+    },
+    "poster-gutter": {
+      "type": "number",
+      "value": 20
+    },
+    "poster-width": {
+      "type": "number",
+      "value": 152
+    },
+    "control-h-row": {
+      "type": "number",
+      "value": 28
+    },
+    "control-h-default": {
+      "type": "number",
+      "value": 40
+    },
+    "control-h-large": {
+      "type": "number",
+      "value": 48
+    },
+    "control-px-row": {
+      "type": "number",
+      "value": 10
+    },
+    "control-px-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-px-large": {
+      "type": "number",
+      "value": 20
+    },
+    "control-text-row": {
+      "type": "number",
+      "value": 13
+    },
+    "control-text-default": {
+      "type": "number",
+      "value": 14
+    },
+    "control-text-large": {
+      "type": "number",
+      "value": 15
+    },
+    "control-radius-row": {
+      "type": "number",
+      "value": 6
+    },
+    "control-radius-default": {
+      "type": "number",
+      "value": 8
+    },
+    "control-radius-large": {
+      "type": "number",
+      "value": 10
+    },
+    "control-icon-row": {
+      "type": "number",
+      "value": 14
+    },
+    "control-icon-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-icon-large": {
+      "type": "number",
+      "value": 18
+    },
+    "card-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "popover": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "popover-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "secondary": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "secondary-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "accent-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "destructive-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "warning-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "radius": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "detail-indent": {
+      "type": "number",
+      "value": 133
+    }
+  },
+  "imports": {
+    "5": "design-system.lib.pen"
+  },
+  "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"
+}

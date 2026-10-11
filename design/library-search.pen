@@ -1,0 +1,1851 @@
+{
+  "version": "2.21",
+  "children": [
+    {
+      "type": "frame",
+      "id": "m4XuKw",
+      "x": 12000,
+      "y": 6000,
+      "name": "v2 / Desktop / Library",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "vklKh",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "descendants": {
+            "5:qGq1V/5:HSPSn": {
+              "content": "2"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "FAtpa",
+          "name": "Page",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            0,
+            "$page-margin"
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "l3n33",
+              "name": "Page head",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "id": "G46zpI",
+                  "type": "ref",
+                  "ref": "5:pLro9",
+                  "name": "Header",
+                  "width": "fill_container",
+                  "padding": [
+                    24,
+                    0,
+                    0,
+                    0
+                  ],
+                  "descendants": {
+                    "5:P9FCIC": {
+                      "content": "Library"
+                    },
+                    "5:SUWts": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "yZhOW",
+                  "type": "ref",
+                  "ref": "5:mBarH",
+                  "name": "Totals"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "FdcTw",
+              "name": "Toolbar",
+              "width": "fill_container",
+              "gap": 8,
+              "padding": [
+                16,
+                0,
+                20,
+                0
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "id": "chlb1",
+                  "type": "ref",
+                  "ref": "5:cofqY",
+                  "name": "Type filter",
+                  "descendants": {
+                    "5:rk0Z8/5:IkgcV": {
+                      "content": "214"
+                    },
+                    "5:M9EEU9/5:IkgcV": {
+                      "content": "142"
+                    },
+                    "5:hmSso/5:IkgcV": {
+                      "content": "72"
+                    }
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "bBc2j",
+                  "name": "Spacer",
+                  "width": "fill_container",
+                  "height": 1
+                },
+                {
+                  "id": "afjfO",
+                  "type": "ref",
+                  "ref": "5:v8Swg",
+                  "name": "Sort"
+                },
+                {
+                  "id": "QuZF2",
+                  "type": "ref",
+                  "ref": "5:v8Swg",
+                  "name": "Show",
+                  "descendants": {
+                    "5:RO3rw": {
+                      "content": "Show"
+                    },
+                    "5:kJomG": {
+                      "content": "All titles"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "w4LLn",
+              "name": "Poster grid",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "QiuOh",
+                  "name": "Row 1",
+                  "width": "fill_container",
+                  "gap": "$5:poster-gutter",
+                  "children": [
+                    {
+                      "id": "Jz4CB",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Severance",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#3F6E8C",
+                                "position": 0
+                              },
+                              {
+                                "color": "#1F3A4D",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:EtzrT": {
+                          "enabled": true
+                        },
+                        "5:GmaGP": {
+                          "enabled": true,
+                          "width": 97
+                        },
+                        "5:B9wRy": {
+                          "content": "Severance"
+                        },
+                        "5:aUm15": {
+                          "content": "2022 · 16 of 19 · 42.1 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:best"
+                        },
+                        "5:cEGE4/5:CTVTW": {
+                          "enabled": true,
+                          "fill": "$5:foreground"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "Downloading 64%",
+                          "fill": "$5:foreground"
+                        }
+                      }
+                    },
+                    {
+                      "id": "W2A3z",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Dune: Part Two",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#D9A45B",
+                                "position": 0
+                              },
+                              {
+                                "color": "#7A4A1E",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Dune: Part Two"
+                        },
+                        "5:aUm15": {
+                          "content": "2024 · 9.6 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:muted"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "2 versions",
+                          "fill": "$5:muted-foreground"
+                        }
+                      }
+                    },
+                    {
+                      "id": "DRwas",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Andor",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#5B5F66",
+                                "position": 0
+                              },
+                              {
+                                "color": "#202226",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:EtzrT": {
+                          "enabled": true
+                        },
+                        "5:GmaGP": {
+                          "enabled": true,
+                          "width": 152
+                        },
+                        "5:e2ErO4": {
+                          "enabled": true
+                        },
+                        "5:B9wRy": {
+                          "content": "Andor"
+                        },
+                        "5:aUm15": {
+                          "content": "2022 · 24 of 24 · 121 GB"
+                        }
+                      }
+                    },
+                    {
+                      "id": "q8GVK",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card The Bear",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#2F6FB3",
+                                "position": 0
+                              },
+                              {
+                                "color": "#123459",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:EtzrT": {
+                          "enabled": true
+                        },
+                        "5:GmaGP": {
+                          "enabled": true,
+                          "width": 35
+                        },
+                        "5:B9wRy": {
+                          "content": "The Bear"
+                        },
+                        "5:aUm15": {
+                          "content": "2022 · 18 of 38 · 36.4 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:best"
+                        },
+                        "5:cEGE4/5:CTVTW": {
+                          "enabled": true,
+                          "fill": "$5:foreground"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "10 downloading · 23%",
+                          "fill": "$5:foreground"
+                        }
+                      }
+                    },
+                    {
+                      "id": "aHysh",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Dune",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#C9A37A",
+                                "position": 0
+                              },
+                              {
+                                "color": "#5E4126",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Dune"
+                        },
+                        "5:aUm15": {
+                          "content": "2021 · 58.3 GB"
+                        }
+                      }
+                    },
+                    {
+                      "id": "m320J",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Dune: Prophecy",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#8E7A5C",
+                                "position": 0
+                              },
+                              {
+                                "color": "#2B241A",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Dune: Prophecy"
+                        },
+                        "5:aUm15": {
+                          "content": "2024 · 6 of 6 · 41.0 GB"
+                        }
+                      }
+                    },
+                    {
+                      "id": "s7KTx",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Oppenheimer",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#E07A2E",
+                                "position": 0
+                              },
+                              {
+                                "color": "#3A1608",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Oppenheimer"
+                        },
+                        "5:aUm15": {
+                          "content": "2023 · 72.8 GB"
+                        }
+                      }
+                    },
+                    {
+                      "id": "KsCxK",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Shōgun",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#A3262A",
+                                "position": 0
+                              },
+                              {
+                                "color": "#2A0A0B",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Shōgun"
+                        },
+                        "5:aUm15": {
+                          "content": "2024 · 10 of 10 · 48.2 GB"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "t1l08",
+                  "name": "Row 2",
+                  "width": "fill_container",
+                  "gap": "$5:poster-gutter",
+                  "children": [
+                    {
+                      "id": "MYo42",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Past Lives",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#7FA7B5",
+                                "position": 0
+                              },
+                              {
+                                "color": "#2F4E5A",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Past Lives"
+                        },
+                        "5:aUm15": {
+                          "content": "2023 · 14.1 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:muted"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "Manual download",
+                          "fill": "$5:muted-foreground"
+                        }
+                      }
+                    },
+                    {
+                      "id": "JZULB",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Slow Horses",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#6A7B4E",
+                                "position": 0
+                              },
+                              {
+                                "color": "#262E18",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Slow Horses"
+                        },
+                        "5:aUm15": {
+                          "content": "2022 · 22 of 24 · 39.7 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:warning-soft"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "Missing 2 episodes",
+                          "fill": "$5:warning"
+                        }
+                      }
+                    },
+                    {
+                      "id": "OGaiq",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Civil War",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#B54A2E",
+                                "position": 0
+                              },
+                              {
+                                "color": "#2C120B",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Civil War"
+                        },
+                        "5:aUm15": {
+                          "content": "2024"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:destructive-soft"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "Gave up searching",
+                          "fill": "$5:destructive"
+                        }
+                      }
+                    },
+                    {
+                      "id": "NA8lT",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Poor Things",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#D98BA6",
+                                "position": 0
+                              },
+                              {
+                                "color": "#5A2440",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Poor Things"
+                        },
+                        "5:aUm15": {
+                          "content": "2023 · 22.5 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:muted"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "2 versions",
+                          "fill": "$5:muted-foreground"
+                        }
+                      }
+                    },
+                    {
+                      "id": "mzmqq",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card The Last of Us",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#4E6B4A",
+                                "position": 0
+                              },
+                              {
+                                "color": "#1A2618",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "The Last of Us"
+                        },
+                        "5:aUm15": {
+                          "content": "2023 · 9 of 16 · 27.9 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:warning-soft"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "Missing 7 episodes",
+                          "fill": "$5:warning"
+                        }
+                      }
+                    },
+                    {
+                      "id": "Xsjv6",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card House of the Dragon",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#9C7A3C",
+                                "position": 0
+                              },
+                              {
+                                "color": "#2A1E0C",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "House of the Dragon"
+                        },
+                        "5:aUm15": {
+                          "content": "2022 · 16 of 18 · 88.0 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:muted"
+                        },
+                        "5:cEGE4/5:htpMr": {
+                          "enabled": true,
+                          "icon": "bookmark-x",
+                          "fill": "$5:muted-foreground"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "Not monitored",
+                          "fill": "$5:muted-foreground"
+                        }
+                      }
+                    },
+                    {
+                      "id": "YllMl",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Arcane",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#3BA3A0",
+                                "position": 0
+                              },
+                              {
+                                "color": "#3A1C5C",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Arcane"
+                        },
+                        "5:aUm15": {
+                          "content": "2021 · 18 of 18 · 96.4 GB"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "$5:muted"
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "4 versions",
+                          "fill": "$5:muted-foreground"
+                        }
+                      }
+                    },
+                    {
+                      "id": "g7EEc",
+                      "type": "ref",
+                      "ref": "5:Z0OVp",
+                      "name": "Card Dune: Part Three",
+                      "descendants": {
+                        "5:Useiw": {
+                          "fill": {
+                            "type": "gradient",
+                            "gradientType": "linear",
+                            "enabled": true,
+                            "rotation": 180,
+                            "size": {
+                              "height": 1
+                            },
+                            "colors": [
+                              {
+                                "color": "#B9875A",
+                                "position": 0
+                              },
+                              {
+                                "color": "#3B2614",
+                                "position": 1
+                              }
+                            ]
+                          }
+                        },
+                        "5:B9wRy": {
+                          "content": "Dune: Part Three"
+                        },
+                        "5:aUm15": {
+                          "content": "2026"
+                        },
+                        "5:cEGE4": {
+                          "enabled": true,
+                          "fill": "#FFFFFF00",
+                          "stroke": "$5:input",
+                          "strokeWidth": 1
+                        },
+                        "5:cEGE4/5:rMeqR": {
+                          "content": "Not out yet",
+                          "fill": "$5:muted-foreground"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "MTbIy",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "descendants": {
+            "5:jmHWs": {
+              "content": "2 downloading"
+            },
+            "5:T71bf": {
+              "enabled": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "MHUEJ",
+      "x": 12000,
+      "y": 7060,
+      "name": "v2 / Desktop / Search results",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "WR9kv",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "descendants": {
+            "5:OIwjX/5:RigzS": {
+              "content": "dune",
+              "fill": "$5:foreground"
+            },
+            "5:OIwjX/5:xMUu8": {
+              "enabled": true
+            },
+            "5:OIwjX/5:Fxbk0": {
+              "enabled": false
+            },
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:qGq1V/5:HSPSn": {
+              "content": "2"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "m1v7kj",
+          "name": "Page",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            8,
+            40,
+            0,
+            204
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "OYUDl",
+              "name": "Results column",
+              "width": 880,
+              "layout": "vertical",
+              "children": [
+                {
+                  "id": "Uz2g6",
+                  "type": "ref",
+                  "ref": "5:RiBvU",
+                  "name": "Results header",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:A3zSxH": {
+                      "content": "7 results for"
+                    },
+                    "5:quYRR/5:rk0Z8/5:IkgcV": {
+                      "content": "7"
+                    },
+                    "5:quYRR/5:M9EEU9/5:IkgcV": {
+                      "content": "2"
+                    },
+                    "5:quYRR/5:hmSso/5:IkgcV": {
+                      "content": "5"
+                    }
+                  }
+                },
+                {
+                  "id": "QLFIY",
+                  "type": "ref",
+                  "ref": "5:mk4uT",
+                  "name": "Group IN YOUR LIBRARY",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xTran": {
+                      "content": "In your library"
+                    },
+                    "5:sx2YK": {
+                      "content": "4"
+                    }
+                  }
+                },
+                {
+                  "id": "z4QfD2",
+                  "type": "ref",
+                  "ref": "5:g073R",
+                  "name": "Result Dune: Part Two 2024",
+                  "width": "fill_container",
+                  "fill": "$5:surface-hover",
+                  "descendants": {
+                    "5:zE5bv": {
+                      "fill": {
+                        "type": "gradient",
+                        "gradientType": "linear",
+                        "enabled": true,
+                        "rotation": 180,
+                        "size": {
+                          "height": 1
+                        },
+                        "colors": [
+                          {
+                            "color": "#D9A45B",
+                            "position": 0
+                          },
+                          {
+                            "color": "#7A4A1E",
+                            "position": 1
+                          }
+                        ]
+                      }
+                    },
+                    "5:xMdKg": {
+                      "content": "Dune: Part Two"
+                    },
+                    "5:N1GeR": {
+                      "content": "2024"
+                    },
+                    "5:uguQ1": {
+                      "content": "Movie · Legendary · Released · ★ 8.1"
+                    },
+                    "5:BDAgJ": {
+                      "content": "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family."
+                    },
+                    "5:Y0SG2": {
+                      "content": "2 files"
+                    }
+                  }
+                },
+                {
+                  "id": "eWaXS",
+                  "type": "ref",
+                  "ref": "5:g073R",
+                  "name": "Result Dune 2021",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:zE5bv": {
+                      "fill": {
+                        "type": "gradient",
+                        "gradientType": "linear",
+                        "enabled": true,
+                        "rotation": 180,
+                        "size": {
+                          "height": 1
+                        },
+                        "colors": [
+                          {
+                            "color": "#C9A37A",
+                            "position": 0
+                          },
+                          {
+                            "color": "#5E4126",
+                            "position": 1
+                          }
+                        ]
+                      }
+                    },
+                    "5:xMdKg": {
+                      "content": "Dune"
+                    },
+                    "5:N1GeR": {
+                      "content": "2021"
+                    },
+                    "5:uguQ1": {
+                      "content": "Movie · Legendary · Released · ★ 8.0"
+                    },
+                    "5:BDAgJ": {
+                      "content": "Paul Atreides travels to the desert planet Arrakis after his family is handed control of its spice harvest."
+                    },
+                    "5:Y0SG2": {
+                      "content": "1 file"
+                    }
+                  }
+                },
+                {
+                  "id": "F9IaM",
+                  "type": "ref",
+                  "ref": "5:g073R",
+                  "name": "Result Dune: Prophecy 2024",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:zE5bv": {
+                      "fill": {
+                        "type": "gradient",
+                        "gradientType": "linear",
+                        "enabled": true,
+                        "rotation": 180,
+                        "size": {
+                          "height": 1
+                        },
+                        "colors": [
+                          {
+                            "color": "#8E7A5C",
+                            "position": 0
+                          },
+                          {
+                            "color": "#2B241A",
+                            "position": 1
+                          }
+                        ]
+                      }
+                    },
+                    "5:xMdKg": {
+                      "content": "Dune: Prophecy"
+                    },
+                    "5:N1GeR": {
+                      "content": "2024"
+                    },
+                    "5:uguQ1": {
+                      "content": "TV · HBO · Continuing · ★ 7.3 · 1 season"
+                    },
+                    "5:BDAgJ": {
+                      "content": "Two Harkonnen sisters shape the Bene Gesserit order ten thousand years before Paul Atreides is born."
+                    },
+                    "5:Y0SG2": {
+                      "content": "6 files"
+                    }
+                  }
+                },
+                {
+                  "id": "MDYH5",
+                  "type": "ref",
+                  "ref": "5:g073R",
+                  "name": "Result Dune: Part Three 2026",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:zE5bv": {
+                      "fill": {
+                        "type": "gradient",
+                        "gradientType": "linear",
+                        "enabled": true,
+                        "rotation": 180,
+                        "size": {
+                          "height": 1
+                        },
+                        "colors": [
+                          {
+                            "color": "#B9875A",
+                            "position": 0
+                          },
+                          {
+                            "color": "#3B2614",
+                            "position": 1
+                          }
+                        ]
+                      }
+                    },
+                    "5:xMdKg": {
+                      "content": "Dune: Part Three"
+                    },
+                    "5:N1GeR": {
+                      "content": "2026"
+                    },
+                    "5:uguQ1": {
+                      "content": "Movie · Legendary · Announced · Not rated yet"
+                    },
+                    "5:BDAgJ": {
+                      "content": "Paul Atreides, now emperor, faces the cost of the holy war fought in his name."
+                    },
+                    "5:Y0SG2": {
+                      "content": "No file yet"
+                    }
+                  }
+                },
+                {
+                  "id": "i8dND",
+                  "type": "ref",
+                  "ref": "5:mk4uT",
+                  "name": "Group FROM SONARR AND RADARR",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xTran": {
+                      "content": "From Sonarr and Radarr"
+                    },
+                    "5:sx2YK": {
+                      "content": "3"
+                    }
+                  }
+                },
+                {
+                  "id": "IcUVy",
+                  "type": "ref",
+                  "ref": "5:g073R",
+                  "name": "Result Jodorowsky's Dune 2013",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:zE5bv": {
+                      "fill": {
+                        "type": "gradient",
+                        "gradientType": "linear",
+                        "enabled": true,
+                        "rotation": 180,
+                        "size": {
+                          "height": 1
+                        },
+                        "colors": [
+                          {
+                            "color": "#C23B6E",
+                            "position": 0
+                          },
+                          {
+                            "color": "#3A0F22",
+                            "position": 1
+                          }
+                        ]
+                      }
+                    },
+                    "5:xMdKg": {
+                      "content": "Jodorowsky's Dune"
+                    },
+                    "5:N1GeR": {
+                      "content": "2013"
+                    },
+                    "5:uguQ1": {
+                      "content": "Movie · Sony Pictures Classics · Released · ★ 8.0"
+                    },
+                    "5:BDAgJ": {
+                      "content": "How Alejandro Jodorowsky planned a film of Frank Herbert's novel in the 1970s, and why it was never made."
+                    },
+                    "5:aQCYB": {
+                      "enabled": false
+                    },
+                    "5:Y0SG2": {
+                      "enabled": false
+                    },
+                    "5:uEzii": {
+                      "enabled": true
+                    }
+                  }
+                },
+                {
+                  "id": "BiZww",
+                  "type": "ref",
+                  "ref": "5:g073R",
+                  "name": "Result Dune 1984",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:zE5bv": {
+                      "fill": {
+                        "type": "gradient",
+                        "gradientType": "linear",
+                        "enabled": true,
+                        "rotation": 180,
+                        "size": {
+                          "height": 1
+                        },
+                        "colors": [
+                          {
+                            "color": "#4A6FA5",
+                            "position": 0
+                          },
+                          {
+                            "color": "#1A2A44",
+                            "position": 1
+                          }
+                        ]
+                      }
+                    },
+                    "5:xMdKg": {
+                      "content": "Dune"
+                    },
+                    "5:N1GeR": {
+                      "content": "1984"
+                    },
+                    "5:uguQ1": {
+                      "content": "Movie · Universal · Released · ★ 6.3"
+                    },
+                    "5:BDAgJ": {
+                      "content": "David Lynch's film of Frank Herbert's novel: Paul Atreides, the spice and the war for Arrakis."
+                    },
+                    "5:aQCYB": {
+                      "enabled": false
+                    },
+                    "5:Y0SG2": {
+                      "enabled": false
+                    },
+                    "5:uEzii": {
+                      "enabled": true
+                    }
+                  }
+                },
+                {
+                  "id": "fjCVS",
+                  "type": "ref",
+                  "ref": "5:g073R",
+                  "name": "Result Children of Dune 2003",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:zE5bv": {
+                      "fill": {
+                        "type": "gradient",
+                        "gradientType": "linear",
+                        "enabled": true,
+                        "rotation": 180,
+                        "size": {
+                          "height": 1
+                        },
+                        "colors": [
+                          {
+                            "color": "#8A6A9E",
+                            "position": 0
+                          },
+                          {
+                            "color": "#2A1F33",
+                            "position": 1
+                          }
+                        ]
+                      }
+                    },
+                    "5:xMdKg": {
+                      "content": "Children of Dune"
+                    },
+                    "5:N1GeR": {
+                      "content": "2003"
+                    },
+                    "5:uguQ1": {
+                      "content": "TV · Sci Fi · Ended · ★ 7.9 · 1 season"
+                    },
+                    "5:BDAgJ": {
+                      "content": "Paul's twins, Leto and Ghanima, inherit the empire their father left behind and the plots around it."
+                    },
+                    "5:aQCYB": {
+                      "enabled": false
+                    },
+                    "5:Y0SG2": {
+                      "enabled": false
+                    },
+                    "5:uEzii": {
+                      "enabled": true
+                    }
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "IHer5",
+                  "name": "Keyboard hints",
+                  "gap": 20,
+                  "padding": [
+                    16,
+                    16,
+                    0,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "w65Sjp",
+                      "name": "Hint Move",
+                      "gap": 4,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "OxFq4",
+                          "type": "ref",
+                          "ref": "5:NAj8m",
+                          "name": "Key arrow-up",
+                          "descendants": {
+                            "5:ZAsf3": {
+                              "enabled": true,
+                              "icon": "arrow-up"
+                            },
+                            "5:BvVhW": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "O6JxQ",
+                          "type": "ref",
+                          "ref": "5:NAj8m",
+                          "name": "Key arrow-down",
+                          "descendants": {
+                            "5:ZAsf3": {
+                              "enabled": true,
+                              "icon": "arrow-down"
+                            },
+                            "5:BvVhW": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "A3Mve9",
+                          "name": "Hint label",
+                          "fill": "$5:subtle-foreground",
+                          "content": "Move",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "GG9w2",
+                      "name": "Hint Open",
+                      "gap": 4,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "j7NBS",
+                          "type": "ref",
+                          "ref": "5:NAj8m",
+                          "name": "Key corner-down-left",
+                          "descendants": {
+                            "5:ZAsf3": {
+                              "enabled": true,
+                              "icon": "corner-down-left"
+                            },
+                            "5:BvVhW": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "XyM55",
+                          "name": "Hint label",
+                          "fill": "$5:subtle-foreground",
+                          "content": "Open",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "U2i4P9",
+                      "name": "Hint Add to library",
+                      "gap": 4,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "E4e1Ec",
+                          "type": "ref",
+                          "ref": "5:NAj8m",
+                          "name": "Key A",
+                          "descendants": {
+                            "5:BvVhW": {
+                              "content": "A"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "G6Py1",
+                          "name": "Hint label",
+                          "fill": "$5:subtle-foreground",
+                          "content": "Add to library",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "wcMMa",
+                      "name": "Hint Clear search",
+                      "gap": 4,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "xaO3v",
+                          "type": "ref",
+                          "ref": "5:NAj8m",
+                          "name": "Key Esc",
+                          "descendants": {
+                            "5:ZAsf3": {
+                              "enabled": false,
+                              "icon": "Esc"
+                            },
+                            "5:BvVhW": {
+                              "enabled": true,
+                              "content": "Esc"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "ct61t",
+                          "name": "Hint label",
+                          "fill": "$5:subtle-foreground",
+                          "content": "Clear search",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "EijMl",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "descendants": {
+            "5:jmHWs": {
+              "content": "2 downloading"
+            },
+            "5:T71bf": {
+              "enabled": false
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "row": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "best": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "font-ui": {
+      "type": "string",
+      "value": "Schibsted Grotesk"
+    },
+    "font-data": {
+      "type": "string",
+      "value": "Barlow Semi Condensed"
+    },
+    "best-soft": {
+      "type": "color",
+      "value": "#F3FCD6"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "selected": {
+      "type": "color",
+      "value": "#EDEDE9"
+    },
+    "background": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "card": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "muted": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "surface-hover": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "surface-pressed": {
+      "type": "color",
+      "value": "#EAEAE6"
+    },
+    "foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": "#55554F"
+    },
+    "subtle-foreground": {
+      "type": "color",
+      "value": "#686862"
+    },
+    "faint-foreground": {
+      "type": "color",
+      "value": "#A3A39D"
+    },
+    "border": {
+      "type": "color",
+      "value": "#E3E3DE"
+    },
+    "input": {
+      "type": "color",
+      "value": "#8C8C85"
+    },
+    "primary": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": "#2E2E2C"
+    },
+    "primary-pressed": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "best-foreground": {
+      "type": "color",
+      "value": "#3D5600"
+    },
+    "live": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "destructive": {
+      "type": "color",
+      "value": "#CC1F17"
+    },
+    "destructive-hover": {
+      "type": "color",
+      "value": "#AD1912"
+    },
+    "destructive-pressed": {
+      "type": "color",
+      "value": "#8E140E"
+    },
+    "destructive-soft": {
+      "type": "color",
+      "value": "#FDE9E7"
+    },
+    "warning": {
+      "type": "color",
+      "value": "#A15C00"
+    },
+    "warning-soft": {
+      "type": "color",
+      "value": "#FDF0D9"
+    },
+    "ring": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "focus-on-dark": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "bar-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar-muted-foreground": {
+      "type": "color",
+      "value": "#B5B5AE"
+    },
+    "scrim": {
+      "type": "color",
+      "value": "#1111114D"
+    },
+    "shadow": {
+      "type": "color",
+      "value": "#1111111F"
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-full": {
+      "type": "number",
+      "value": 999
+    },
+    "row-header": {
+      "type": "number",
+      "value": 32
+    },
+    "row-two-line": {
+      "type": "number",
+      "value": 56
+    },
+    "topbar": {
+      "type": "number",
+      "value": 64
+    },
+    "livebar": {
+      "type": "number",
+      "value": 40
+    },
+    "space-1": {
+      "type": "number",
+      "value": 4
+    },
+    "space-2": {
+      "type": "number",
+      "value": 8
+    },
+    "space-3": {
+      "type": "number",
+      "value": 12
+    },
+    "space-4": {
+      "type": "number",
+      "value": 16
+    },
+    "space-5": {
+      "type": "number",
+      "value": 20
+    },
+    "space-6": {
+      "type": "number",
+      "value": 24
+    },
+    "space-8": {
+      "type": "number",
+      "value": 32
+    },
+    "space-10": {
+      "type": "number",
+      "value": 40
+    },
+    "space-12": {
+      "type": "number",
+      "value": 48
+    },
+    "space-16": {
+      "type": "number",
+      "value": 64
+    },
+    "page-margin": {
+      "type": "number",
+      "value": 40
+    },
+    "page-margin-phone": {
+      "type": "number",
+      "value": 16
+    },
+    "poster-gutter": {
+      "type": "number",
+      "value": 20
+    },
+    "poster-width": {
+      "type": "number",
+      "value": 152
+    },
+    "control-h-row": {
+      "type": "number",
+      "value": 28
+    },
+    "control-h-default": {
+      "type": "number",
+      "value": 40
+    },
+    "control-h-large": {
+      "type": "number",
+      "value": 48
+    },
+    "control-px-row": {
+      "type": "number",
+      "value": 10
+    },
+    "control-px-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-px-large": {
+      "type": "number",
+      "value": 20
+    },
+    "control-text-row": {
+      "type": "number",
+      "value": 13
+    },
+    "control-text-default": {
+      "type": "number",
+      "value": 14
+    },
+    "control-text-large": {
+      "type": "number",
+      "value": 15
+    },
+    "control-radius-row": {
+      "type": "number",
+      "value": 6
+    },
+    "control-radius-default": {
+      "type": "number",
+      "value": 8
+    },
+    "control-radius-large": {
+      "type": "number",
+      "value": 10
+    },
+    "control-icon-row": {
+      "type": "number",
+      "value": 14
+    },
+    "control-icon-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-icon-large": {
+      "type": "number",
+      "value": 18
+    },
+    "card-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "popover": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "popover-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "secondary": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "secondary-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "accent-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "destructive-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "warning-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "radius": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "detail-indent": {
+      "type": "number",
+      "value": 133
+    }
+  },
+  "imports": {
+    "5": "design-system.lib.pen"
+  },
+  "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"
+}

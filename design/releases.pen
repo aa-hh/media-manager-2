@@ -1,0 +1,3870 @@
+{
+  "version": "2.21",
+  "children": [
+    {
+      "type": "frame",
+      "id": "UourQ",
+      "x": 15200,
+      "y": 6000,
+      "name": "v2 / Desktop / Pick a release, inline under episode",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "K8Die7",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "JaWEa",
+          "name": "Page",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            20,
+            40,
+            0,
+            40
+          ],
+          "children": [
+            {
+              "id": "M7sx6p",
+              "type": "ref",
+              "ref": "5:K5LLLh",
+              "name": "Breadcrumb"
+            },
+            {
+              "type": "frame",
+              "id": "t1KPfM",
+              "name": "Episodes with open panel",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 8,
+              "children": [
+                {
+                  "id": "E1LswO",
+                  "type": "ref",
+                  "ref": "5:gp6Kh",
+                  "name": "Season 2 episodes, top",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:KFz5s": {
+                      "enabled": false
+                    },
+                    "5:KSG7I": {
+                      "type": "frame",
+                      "id": "SCBzu",
+                      "name": "Body",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "id": "M1xcK",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "Episode E07",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E07"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Chikhai Bardo"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 28 Feb"
+                            },
+                            "5:jpIpZ": {
+                              "enabled": false
+                            },
+                            "5:o2E18n": {
+                              "fill": "$5:live"
+                            },
+                            "5:o2E18n/5:CTVTW": {
+                              "enabled": true
+                            },
+                            "5:o2E18n/5:rMeqR": {
+                              "content": "Downloading 64% · 6 min",
+                              "fill": "$5:foreground"
+                            }
+                          }
+                        },
+                        {
+                          "id": "Y6yPMD",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "Episode E08",
+                          "width": "fill_container",
+                          "fill": "$5:selected",
+                          "descendants": {
+                            "5:WvmaB": {
+                              "enabled": true
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E08"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Sweet Vitriol"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 7 Mar"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "fill": "$5:warning-soft"
+                            },
+                            "5:o2E18n/5:rMeqR": {
+                              "content": "Below cutoff · Manual download",
+                              "fill": "$5:warning"
+                            },
+                            "5:m5ybP8": {
+                              "fill": "$5:surface-pressed"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "id": "AtaqY",
+                  "type": "ref",
+                  "ref": "5:cZb0Z",
+                  "name": "Pick a release panel",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:eIxb4": {
+                      "content": "Pick a release for S02E08 · Sweet Vitriol"
+                    },
+                    "5:X6lxb": {
+                      "type": "frame",
+                      "id": "DgUh3",
+                      "name": "Content",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "vAktW",
+                          "name": "Results bar",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "padding": [
+                            0,
+                            20,
+                            16,
+                            20
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "RyDCr",
+                              "type": "ref",
+                              "ref": "5:cofqY",
+                              "name": "Quality filter",
+                              "descendants": {
+                                "5:rk0Z8": {
+                                  "fill": "$5:card",
+                                  "stroke": "$5:border",
+                                  "strokeWidth": 1
+                                },
+                                "5:rk0Z8/5:DC0sr": {
+                                  "content": "All",
+                                  "fill": "$5:foreground",
+                                  "fontWeight": "600"
+                                },
+                                "5:rk0Z8/5:IkgcV": {
+                                  "content": "8",
+                                  "fill": "$5:muted-foreground"
+                                },
+                                "5:M9EEU9/5:DC0sr": {
+                                  "content": "2160p"
+                                },
+                                "5:M9EEU9/5:IkgcV": {
+                                  "content": "4"
+                                },
+                                "5:hmSso/5:DC0sr": {
+                                  "content": "1080p"
+                                },
+                                "5:hmSso/5:IkgcV": {
+                                  "content": "3"
+                                },
+                                "5:aA5uG": {
+                                  "enabled": true
+                                },
+                                "5:aA5uG/5:DC0sr": {
+                                  "content": "720p"
+                                },
+                                "5:aA5uG/5:IkgcV": {
+                                  "content": "1"
+                                }
+                              }
+                            },
+                            {
+                              "type": "frame",
+                              "id": "u5A3xM",
+                              "name": "Spacer",
+                              "width": "fill_container",
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "z1hfy",
+                              "name": "Results age",
+                              "fill": "$5:muted-foreground",
+                              "content": "Results from 14 min ago",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "id": "x5NsoH",
+                              "type": "ref",
+                              "ref": "5:ht3RN",
+                              "name": "Refresh",
+                              "fill": "$5:card",
+                              "stroke": "$5:input",
+                              "strokeWidth": 1,
+                              "descendants": {
+                                "5:HQLEf": {
+                                  "fill": "$5:foreground",
+                                  "enabled": true,
+                                  "icon": "refresh-cw"
+                                },
+                                "5:OXVvv": {
+                                  "fill": "$5:foreground",
+                                  "content": "Refresh"
+                                },
+                                "5:T1Pftv": {
+                                  "fill": "$5:muted",
+                                  "stroke": "$5:border",
+                                  "strokeWidth": {
+                                    "top": 1,
+                                    "right": 1,
+                                    "bottom": 2,
+                                    "left": 1
+                                  },
+                                  "enabled": true
+                                },
+                                "5:T1Pftv/5:BvVhW": {
+                                  "fill": "$5:muted-foreground",
+                                  "content": "Shift R"
+                                }
+                              }
+                            },
+                            {
+                              "id": "on6PO",
+                              "type": "ref",
+                              "ref": "5:U5XiTa",
+                              "name": "Previous and next episode",
+                              "descendants": {
+                                "5:QLDOy/5:OXVvv": {
+                                  "content": "S02E07"
+                                },
+                                "5:KGKN3/5:OXVvv": {
+                                  "content": "S02E09"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "id": "eDled",
+                          "type": "ref",
+                          "ref": "5:Fj6GM",
+                          "name": "Release table header",
+                          "width": "fill_container",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "YhfgT",
+                              "name": "Cells",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "gap": 16,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "id": "A2ZFw",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head QUALITY",
+                                  "width": 104,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "QUALITY"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "gAGKo",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head RELEASE",
+                                  "width": "fill_container",
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "RELEASE"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "VBGpl",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head action",
+                                  "width": 72,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "COMPARED"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "C9OU8c",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head FIT",
+                                  "width": 112,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "FIT"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "L1SNi",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head SIZE",
+                                  "width": 72,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "SIZE"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "SIb9t",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head SEEDERS",
+                                  "width": 64,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "SEEDERS"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "nWZ4Y",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head TRACKER",
+                                  "width": 112,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "TRACKER"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "kQJ1X",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head HIT AND RUN",
+                                  "width": 128,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "HIT AND RUN"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "nukeU",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head AUDIO · HDR",
+                                  "width": 140,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "AUDIO · HDR"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "s2Lv6",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head action",
+                                  "width": 88,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": ""
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "XTZWg",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release yours (pinned)",
+                          "width": "fill_container",
+                          "fill": "$5:muted",
+                          "descendants": {
+                            "5:IRXYj": {
+                              "fill": "$5:card"
+                            },
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLOS"
+                            },
+                            "5:AhF9M": {
+                              "stroke": "$5:foreground",
+                              "strokeWidth": 1
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "enabled": false
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "yours"
+                            },
+                            "5:T56nH/5:C07ADa": {
+                              "icon": "triangle-alert",
+                              "fill": "$5:warning"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "below cutoff",
+                              "fill": "$5:warning"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "176"
+                            },
+                            "5:ERtPX": {
+                              "id": "cSml6",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "seeded 31 h of 120 h"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "YmEEJ",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 1 best, FLUX",
+                          "width": "fill_container",
+                          "fill": "$5:best-soft",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.ATVP.WEB-DL.DV.HDR10.DDP5.1.Atmos-"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLUX"
+                            },
+                            "5:AhF9M": {
+                              "fill": "$5:best"
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "enabled": false
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "best"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+1600"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "8.9 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "312"
+                            },
+                            "5:ERtPX": {
+                              "id": "tatvL",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "Atmos 5.1 · DV HDR10"
+                            }
+                          }
+                        },
+                        {
+                          "id": "onsi4",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 2, NTb 2160p",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.ATVP.WEB-DL.HDR10.DDP5.1-"
+                            },
+                            "5:HKHi2": {
+                              "content": "NTb"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+1500"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "7.4 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "188"
+                            },
+                            "5:ERtPX": {
+                              "id": "p8hJTd",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1 · HDR10"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "j64BpL",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 3, NTb 1080p",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "NTb"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+950"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.0 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "233"
+                            },
+                            "5:ERtPX": {
+                              "id": "dIXlN",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "kvBm8",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 4, SuccessfulCrab",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.WEB.H265-"
+                            },
+                            "5:HKHi2": {
+                              "content": "SuccessfulCrab"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+900"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "5.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "96"
+                            },
+                            "5:ERtPX": {
+                              "id": "ZUPsH",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1 · HDR10"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "TdAx8",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 5, playWEB, cooldown",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "playWEB"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+850"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "57"
+                            },
+                            "5:ERtPX": {
+                              "id": "Rc6Kn",
+                              "type": "ref",
+                              "ref": "5:z7AOoy",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Blutopia"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "cooldown 3 h left",
+                              "fill": "$5:destructive"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV": {
+                              "fill": "$5:muted"
+                            },
+                            "5:PjaRV/5:OXVvv": {
+                              "fill": "$5:faint-foreground"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "NH4rg",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 6, FLOS same",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLOS"
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "enabled": false
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "same",
+                              "fill": "$5:subtle-foreground",
+                              "fontWeight": "500"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+800"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "22"
+                            },
+                            "5:ERtPX": {
+                              "id": "anjAG",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "Cl1qX",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 7, HHWEB",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.ATVP.WEB-DL.DV.DDP5.1-"
+                            },
+                            "5:HKHi2": {
+                              "content": "HHWEB"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+700"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "8.2 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "41"
+                            },
+                            "5:ERtPX": {
+                              "id": "pjWUo",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1 · DV"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "W6hJh",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 8, rejected 720p",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "720p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "720p.ATVP.WEB-DL.DDP5.1.H.264-",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLUX",
+                              "fill": "$5:subtle-foreground",
+                              "fontWeight": "500"
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "icon": "arrow-down",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "worse",
+                              "fill": "$5:subtle-foreground",
+                              "fontWeight": "500"
+                            },
+                            "5:T56nH/5:C07ADa": {
+                              "icon": "x",
+                              "fill": "$5:destructive"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "720p not wanted",
+                              "fill": "$5:destructive"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "1.9 GB",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "64",
+                              "fill": "$5:subtle-foreground",
+                              "fontWeight": "500"
+                            },
+                            "5:ERtPX": {
+                              "id": "e7cWYW",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:PjaRV": {
+                              "fill": "$5:muted"
+                            },
+                            "5:PjaRV/5:OXVvv": {
+                              "fill": "$5:faint-foreground"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "5:PkkWK": {
+                      "type": "frame",
+                      "id": "P1Xnht",
+                      "name": "Footer",
+                      "width": "fill_container",
+                      "gap": 20,
+                      "padding": [
+                        12,
+                        20,
+                        14,
+                        20
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "zl227",
+                          "name": "Hint move",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "f7M2NG",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd arrow-up",
+                              "descendants": {
+                                "5:ZAsf3": {
+                                  "enabled": true,
+                                  "icon": "arrow-up"
+                                },
+                                "5:BvVhW": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "L10F1",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd arrow-down",
+                              "descendants": {
+                                "5:ZAsf3": {
+                                  "enabled": true,
+                                  "icon": "arrow-down"
+                                },
+                                "5:BvVhW": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "FoERJ",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "choose a release",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "wFyZp",
+                          "name": "Hint grab",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "UQYEh",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd ↵",
+                              "descendants": {
+                                "5:BvVhW": {
+                                  "content": "↵"
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZAVpX",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "grab the chosen release",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "B95CTh",
+                          "name": "Hint grab best",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "AqUkf",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd G",
+                              "descendants": {
+                                "5:BvVhW": {
+                                  "content": "G"
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "CP6lS",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "grab the best",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "R7aBs",
+                          "name": "Spacer",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "FPdI0",
+                          "name": "Sort note",
+                          "fill": "$5:subtle-foreground",
+                          "content": "Sorted by profile fit. Rejected releases last.",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "id": "O9aLH",
+                  "type": "ref",
+                  "ref": "5:gp6Kh",
+                  "name": "Season 2 episodes, after panel",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:KFz5s": {
+                      "enabled": false
+                    },
+                    "5:KSG7I": {
+                      "type": "frame",
+                      "id": "N5FVc7",
+                      "name": "Body",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "id": "ES430",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "Episode E09",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E09"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "The After Hours"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 14 Mar"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "UIjc9",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "uKtnA",
+      "x": 15200,
+      "y": 7060,
+      "name": "v2 / Desktop / Grab, already owned",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "QPDLs",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "VS7WD",
+          "name": "Page",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            20,
+            40,
+            0,
+            40
+          ],
+          "children": [
+            {
+              "id": "yt49v",
+              "type": "ref",
+              "ref": "5:K5LLLh",
+              "name": "Breadcrumb"
+            },
+            {
+              "type": "frame",
+              "id": "di7Sh",
+              "name": "Episodes with open panel",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 8,
+              "children": [
+                {
+                  "id": "kgMgr",
+                  "type": "ref",
+                  "ref": "5:gp6Kh",
+                  "name": "Season 2 episodes, top",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:KFz5s": {
+                      "enabled": false
+                    },
+                    "5:KSG7I": {
+                      "type": "frame",
+                      "id": "Sx0GM",
+                      "name": "Body",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "id": "v41X7j",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "Episode E08",
+                          "width": "fill_container",
+                          "fill": "$5:selected",
+                          "descendants": {
+                            "5:WvmaB": {
+                              "enabled": true
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E08"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Sweet Vitriol"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 7 Mar"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "fill": "$5:warning-soft"
+                            },
+                            "5:o2E18n/5:rMeqR": {
+                              "content": "Below cutoff · Manual download",
+                              "fill": "$5:warning"
+                            },
+                            "5:m5ybP8": {
+                              "fill": "$5:surface-pressed"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "id": "yzMB3",
+                  "type": "ref",
+                  "ref": "5:cZb0Z",
+                  "name": "Pick a release panel",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:eIxb4": {
+                      "content": "Pick a release for S02E08 · Sweet Vitriol"
+                    },
+                    "5:X6lxb": {
+                      "type": "frame",
+                      "id": "ClyWf",
+                      "name": "Content",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "dj19H",
+                          "name": "Results bar",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "padding": [
+                            0,
+                            20,
+                            16,
+                            20
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "KEnkT",
+                              "type": "ref",
+                              "ref": "5:cofqY",
+                              "name": "Quality filter",
+                              "descendants": {
+                                "5:rk0Z8": {
+                                  "fill": "$5:card",
+                                  "stroke": "$5:border",
+                                  "strokeWidth": 1
+                                },
+                                "5:rk0Z8/5:DC0sr": {
+                                  "content": "All",
+                                  "fill": "$5:foreground",
+                                  "fontWeight": "600"
+                                },
+                                "5:rk0Z8/5:IkgcV": {
+                                  "content": "8",
+                                  "fill": "$5:muted-foreground"
+                                },
+                                "5:M9EEU9/5:DC0sr": {
+                                  "content": "2160p"
+                                },
+                                "5:M9EEU9/5:IkgcV": {
+                                  "content": "4"
+                                },
+                                "5:hmSso/5:DC0sr": {
+                                  "content": "1080p"
+                                },
+                                "5:hmSso/5:IkgcV": {
+                                  "content": "3"
+                                },
+                                "5:aA5uG": {
+                                  "enabled": true
+                                },
+                                "5:aA5uG/5:DC0sr": {
+                                  "content": "720p"
+                                },
+                                "5:aA5uG/5:IkgcV": {
+                                  "content": "1"
+                                }
+                              }
+                            },
+                            {
+                              "type": "frame",
+                              "id": "HOqGq",
+                              "name": "Spacer",
+                              "width": "fill_container",
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "wXF8U",
+                              "name": "Results age",
+                              "fill": "$5:muted-foreground",
+                              "content": "Results from 14 min ago",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "id": "UbBCY",
+                              "type": "ref",
+                              "ref": "5:ht3RN",
+                              "name": "Refresh",
+                              "fill": "$5:card",
+                              "stroke": "$5:input",
+                              "strokeWidth": 1,
+                              "descendants": {
+                                "5:HQLEf": {
+                                  "fill": "$5:foreground",
+                                  "enabled": true,
+                                  "icon": "refresh-cw"
+                                },
+                                "5:OXVvv": {
+                                  "fill": "$5:foreground",
+                                  "content": "Refresh"
+                                },
+                                "5:T1Pftv": {
+                                  "fill": "$5:muted",
+                                  "stroke": "$5:border",
+                                  "strokeWidth": {
+                                    "top": 1,
+                                    "right": 1,
+                                    "bottom": 2,
+                                    "left": 1
+                                  },
+                                  "enabled": true
+                                },
+                                "5:T1Pftv/5:BvVhW": {
+                                  "fill": "$5:muted-foreground",
+                                  "content": "Shift R"
+                                }
+                              }
+                            },
+                            {
+                              "id": "ddo5n",
+                              "type": "ref",
+                              "ref": "5:U5XiTa",
+                              "name": "Previous and next episode",
+                              "descendants": {
+                                "5:QLDOy/5:OXVvv": {
+                                  "content": "S02E07"
+                                },
+                                "5:KGKN3/5:OXVvv": {
+                                  "content": "S02E09"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "id": "JcFVr",
+                          "type": "ref",
+                          "ref": "5:Fj6GM",
+                          "name": "Release table header",
+                          "width": "fill_container",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "jP70K",
+                              "name": "Cells",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "gap": 16,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "id": "idtJe",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head QUALITY",
+                                  "width": 104,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "QUALITY"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "dgteZ",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head RELEASE",
+                                  "width": "fill_container",
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "RELEASE"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "lavYF",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head action",
+                                  "width": 72,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "COMPARED"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "FQzpf",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head FIT",
+                                  "width": 112,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "FIT"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "D8uw6U",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head SIZE",
+                                  "width": 72,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "SIZE"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "GRdcV",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head SEEDERS",
+                                  "width": 64,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "SEEDERS"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "HH8ab",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head TRACKER",
+                                  "width": 112,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "TRACKER"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "QUEKO",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head HIT AND RUN",
+                                  "width": 128,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "HIT AND RUN"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "PFXvq",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head AUDIO · HDR",
+                                  "width": 140,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "AUDIO · HDR"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "d0UPPT",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head action",
+                                  "width": 88,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": ""
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "W3RpyB",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release yours (pinned)",
+                          "width": "fill_container",
+                          "fill": "$5:muted",
+                          "descendants": {
+                            "5:IRXYj": {
+                              "fill": "$5:card"
+                            },
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLOS"
+                            },
+                            "5:AhF9M": {
+                              "stroke": "$5:foreground",
+                              "strokeWidth": 1
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "enabled": false
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "yours"
+                            },
+                            "5:T56nH/5:C07ADa": {
+                              "icon": "triangle-alert",
+                              "fill": "$5:warning"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "below cutoff",
+                              "fill": "$5:warning"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "176"
+                            },
+                            "5:ERtPX": {
+                              "id": "y9KpP",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "seeded 31 h of 120 h"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "Yfq1n",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 1 best, FLUX",
+                          "width": "fill_container",
+                          "fill": "$5:selected",
+                          "descendants": {
+                            "5:WvmaB": {
+                              "enabled": true
+                            },
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.ATVP.WEB-DL.DV.HDR10.DDP5.1.Atmos-"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLUX"
+                            },
+                            "5:AhF9M": {
+                              "fill": "$5:best"
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "enabled": false
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "best"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+1600"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "8.9 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "312"
+                            },
+                            "5:ERtPX": {
+                              "id": "RQPKg",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "Atmos 5.1 · DV HDR10"
+                            },
+                            "5:PjaRV": {
+                              "fill": "$5:primary-pressed"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "vUvzq",
+                          "name": "Grab choice",
+                          "width": "fill_container",
+                          "fill": "$5:card",
+                          "stroke": "$5:border",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "layout": "vertical",
+                          "gap": 16,
+                          "padding": [
+                            20,
+                            16
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "XsFJS",
+                              "name": "Choice heading",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 4,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "f5Ja1",
+                                  "name": "Choice title",
+                                  "fill": "$5:foreground",
+                                  "content": "Grab 2160p WEB-DL · FLUX · 8.9 GB from PrivateHD",
+                                  "fontFamily": "$5:font-ui",
+                                  "fontSize": 16,
+                                  "fontWeight": "700"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "paszV",
+                                  "name": "Choice question",
+                                  "fill": "$5:muted-foreground",
+                                  "content": "You already have 1080p WEB-DL · FLOS, below cutoff. What should this release do?",
+                                  "fontFamily": "$5:font-ui",
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "y5feH",
+                              "name": "Choices",
+                              "width": "fill_container",
+                              "gap": 12,
+                              "children": [
+                                {
+                                  "id": "vFtss",
+                                  "type": "ref",
+                                  "ref": "5:E7Mh6m",
+                                  "name": "Choice Replace (selected)",
+                                  "width": 420,
+                                  "stroke": "$5:foreground",
+                                  "strokeWidth": 2,
+                                  "height": 96,
+                                  "descendants": {
+                                    "5:ameDv": {
+                                      "fill": "$5:primary",
+                                      "stroke": "$5:primary"
+                                    },
+                                    "5:ameDv/5:hDXPq": {
+                                      "enabled": true
+                                    },
+                                    "5:eND9v": {
+                                      "content": "Replace"
+                                    },
+                                    "5:Evy0C/5:BvVhW": {
+                                      "content": "1"
+                                    },
+                                    "5:awp72": {
+                                      "content": "Sonarr swaps the library file. The episode becomes a manual download, so Sonarr will not upgrade over it."
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "bmdj4",
+                                  "type": "ref",
+                                  "ref": "5:E7Mh6m",
+                                  "name": "Choice Second version",
+                                  "width": 420,
+                                  "height": 96,
+                                  "descendants": {
+                                    "5:eND9v": {
+                                      "content": "Second version"
+                                    },
+                                    "5:Evy0C/5:BvVhW": {
+                                      "content": "2"
+                                    },
+                                    "5:awp72": {
+                                      "content": "Keeps both files; Plex lets you pick. media-manager-2 imports, tracks and later deletes the new one."
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "r52iR",
+                                  "type": "ref",
+                                  "ref": "5:BXgoa",
+                                  "name": "Seeding note",
+                                  "width": "fill_container",
+                                  "fill": "$5:muted",
+                                  "descendants": {
+                                    "5:tPrsU": {
+                                      "fill": "$5:muted-foreground",
+                                      "icon": "info"
+                                    },
+                                    "5:hDbgA": {
+                                      "content": "The current file's torrent keeps seeding either way."
+                                    },
+                                    "5:EcQDN": {
+                                      "content": "Beyond-HD asks for 120 h or ratio 1.0. It has seeded 31 h, so nothing is removed."
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "VQAYf",
+                              "name": "Choice actions",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "id": "px3F2",
+                                  "type": "ref",
+                                  "ref": "5:ht3RN",
+                                  "name": "Grab as replacement",
+                                  "height": 48,
+                                  "padding": [
+                                    0,
+                                    "$control-px-large"
+                                  ],
+                                  "cornerRadius": "$5:control-radius-large",
+                                  "descendants": {
+                                    "5:HQLEf": {
+                                      "enabled": true,
+                                      "icon": "download",
+                                      "width": 18,
+                                      "height": 18,
+                                      "fill": "$5:primary-foreground"
+                                    },
+                                    "5:OXVvv": {
+                                      "content": "Grab as replacement",
+                                      "fontSize": "$5:control-text-large"
+                                    },
+                                    "5:T1Pftv/5:BvVhW": {
+                                      "content": "↵"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "k3tH6",
+                                  "type": "ref",
+                                  "ref": "5:ht3RN",
+                                  "name": "Cancel",
+                                  "fill": "$5:card",
+                                  "stroke": "$5:input",
+                                  "strokeWidth": 1,
+                                  "descendants": {
+                                    "5:HQLEf": {
+                                      "enabled": false
+                                    },
+                                    "5:OXVvv": {
+                                      "content": "Cancel",
+                                      "fill": "$5:foreground"
+                                    },
+                                    "5:T1Pftv": {
+                                      "enabled": false
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "AdXe9",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 2, NTb 2160p",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.ATVP.WEB-DL.HDR10.DDP5.1-"
+                            },
+                            "5:HKHi2": {
+                              "content": "NTb"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+1500"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "7.4 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "188"
+                            },
+                            "5:ERtPX": {
+                              "id": "tFozY",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1 · HDR10"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "u5MOaQ",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 3, NTb 1080p",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "NTb"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+950"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.0 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "233"
+                            },
+                            "5:ERtPX": {
+                              "id": "SpHft",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "gvkHm",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 4, SuccessfulCrab",
+                          "width": "fill_container",
+                          "enabled": true,
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.WEB.H265-"
+                            },
+                            "5:HKHi2": {
+                              "content": "SuccessfulCrab"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+900"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "5.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "96"
+                            },
+                            "5:ERtPX": {
+                              "id": "OGv4T",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1 · HDR10"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "5:PkkWK": {
+                      "type": "frame",
+                      "id": "PwF1M",
+                      "name": "Footer",
+                      "width": "fill_container",
+                      "gap": 20,
+                      "padding": [
+                        12,
+                        20,
+                        14,
+                        20
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Ar7Sm",
+                          "name": "Hint choose",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "dOUHx",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd 1",
+                              "descendants": {
+                                "5:BvVhW": {
+                                  "content": "1"
+                                }
+                              }
+                            },
+                            {
+                              "id": "sYPKO",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd 2",
+                              "descendants": {
+                                "5:BvVhW": {
+                                  "content": "2"
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "Us7E9",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "choose Replace or Second version",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "XW8MW",
+                          "name": "Hint grab",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "HlGpe",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd ↵",
+                              "descendants": {
+                                "5:BvVhW": {
+                                  "content": "↵"
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZQhEz",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "grab",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "VAFlZ",
+                          "name": "Hint cancel",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "SoBce",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd Esc",
+                              "descendants": {
+                                "5:BvVhW": {
+                                  "content": "Esc"
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "a9K6Y",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "back to the list",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Ys01n",
+                          "name": "Spacer",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "QTRWh",
+                          "name": "More note",
+                          "fill": "$5:subtle-foreground",
+                          "content": "4 more releases below",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ihAQM",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "Vs2IJ",
+      "x": 15200,
+      "y": 8120,
+      "name": "v2 / Desktop / Pick a release, after Grab",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "T0N5U",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "TquSM",
+          "name": "Page",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            20,
+            40,
+            0,
+            40
+          ],
+          "children": [
+            {
+              "id": "Z1rPdd",
+              "type": "ref",
+              "ref": "5:K5LLLh",
+              "name": "Breadcrumb"
+            },
+            {
+              "type": "frame",
+              "id": "xurIK",
+              "name": "Episodes with open panel",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 8,
+              "children": [
+                {
+                  "id": "coDbU",
+                  "type": "ref",
+                  "ref": "5:gp6Kh",
+                  "name": "Season 2 episodes, top",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:KFz5s": {
+                      "enabled": false
+                    },
+                    "5:KSG7I": {
+                      "type": "frame",
+                      "id": "k1UL1",
+                      "name": "Body",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "id": "Ew1Lr",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "Episode E07",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E07"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Chikhai Bardo"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 28 Feb"
+                            },
+                            "5:jpIpZ": {
+                              "enabled": false
+                            },
+                            "5:o2E18n": {
+                              "fill": "$5:live"
+                            },
+                            "5:o2E18n/5:CTVTW": {
+                              "enabled": true
+                            },
+                            "5:o2E18n/5:rMeqR": {
+                              "content": "Downloading 64% · 6 min",
+                              "fill": "$5:foreground"
+                            }
+                          }
+                        },
+                        {
+                          "id": "hDn4t",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "Episode E08",
+                          "width": "fill_container",
+                          "fill": "$5:selected",
+                          "descendants": {
+                            "5:WvmaB": {
+                              "enabled": true
+                            },
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E08"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "Sweet Vitriol"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 7 Mar"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "fill": "$5:live"
+                            },
+                            "5:o2E18n/5:CTVTW": {
+                              "enabled": true
+                            },
+                            "5:o2E18n/5:rMeqR": {
+                              "content": "Downloading 18% · 9 min",
+                              "fill": "$5:foreground"
+                            },
+                            "5:m5ybP8": {
+                              "fill": "$5:surface-pressed"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "id": "zOQov",
+                  "type": "ref",
+                  "ref": "5:cZb0Z",
+                  "name": "Pick a release panel",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:eIxb4": {
+                      "content": "Pick a release for S02E08 · Sweet Vitriol"
+                    },
+                    "5:X6lxb": {
+                      "type": "frame",
+                      "id": "gTvp3",
+                      "name": "Content",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "UHSmm",
+                          "name": "Results bar",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "padding": [
+                            0,
+                            20,
+                            16,
+                            20
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "ZNNQd",
+                              "type": "ref",
+                              "ref": "5:cofqY",
+                              "name": "Quality filter",
+                              "descendants": {
+                                "5:rk0Z8": {
+                                  "fill": "$5:card",
+                                  "stroke": "$5:border",
+                                  "strokeWidth": 1
+                                },
+                                "5:rk0Z8/5:DC0sr": {
+                                  "content": "All",
+                                  "fill": "$5:foreground",
+                                  "fontWeight": "600"
+                                },
+                                "5:rk0Z8/5:IkgcV": {
+                                  "content": "8",
+                                  "fill": "$5:muted-foreground"
+                                },
+                                "5:M9EEU9/5:DC0sr": {
+                                  "content": "2160p"
+                                },
+                                "5:M9EEU9/5:IkgcV": {
+                                  "content": "4"
+                                },
+                                "5:hmSso/5:DC0sr": {
+                                  "content": "1080p"
+                                },
+                                "5:hmSso/5:IkgcV": {
+                                  "content": "3"
+                                },
+                                "5:aA5uG": {
+                                  "enabled": true
+                                },
+                                "5:aA5uG/5:DC0sr": {
+                                  "content": "720p"
+                                },
+                                "5:aA5uG/5:IkgcV": {
+                                  "content": "1"
+                                }
+                              }
+                            },
+                            {
+                              "type": "frame",
+                              "id": "P8rwZe",
+                              "name": "Spacer",
+                              "width": "fill_container",
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "dCI8Z",
+                              "name": "Results age",
+                              "fill": "$5:muted-foreground",
+                              "content": "Results from 14 min ago",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "id": "HFqMC",
+                              "type": "ref",
+                              "ref": "5:ht3RN",
+                              "name": "Refresh",
+                              "fill": "$5:card",
+                              "stroke": "$5:input",
+                              "strokeWidth": 1,
+                              "descendants": {
+                                "5:HQLEf": {
+                                  "fill": "$5:foreground",
+                                  "enabled": true,
+                                  "icon": "refresh-cw"
+                                },
+                                "5:OXVvv": {
+                                  "fill": "$5:foreground",
+                                  "content": "Refresh"
+                                },
+                                "5:T1Pftv": {
+                                  "fill": "$5:muted",
+                                  "stroke": "$5:border",
+                                  "strokeWidth": {
+                                    "top": 1,
+                                    "right": 1,
+                                    "bottom": 2,
+                                    "left": 1
+                                  },
+                                  "enabled": true
+                                },
+                                "5:T1Pftv/5:BvVhW": {
+                                  "fill": "$5:muted-foreground",
+                                  "content": "Shift R"
+                                }
+                              }
+                            },
+                            {
+                              "id": "t3IYq",
+                              "type": "ref",
+                              "ref": "5:U5XiTa",
+                              "name": "Previous and next episode",
+                              "descendants": {
+                                "5:QLDOy/5:OXVvv": {
+                                  "content": "S02E07"
+                                },
+                                "5:KGKN3/5:OXVvv": {
+                                  "content": "S02E09"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "id": "a6MxNk",
+                          "type": "ref",
+                          "ref": "5:Fj6GM",
+                          "name": "Release table header",
+                          "width": "fill_container",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "cKg3t",
+                              "name": "Cells",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "gap": 16,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "id": "PfvWr",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head QUALITY",
+                                  "width": 104,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "QUALITY"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "Y3S6u",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head RELEASE",
+                                  "width": "fill_container",
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "RELEASE"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "bHO0p",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head action",
+                                  "width": 72,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "COMPARED"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "t45vbD",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head FIT",
+                                  "width": 112,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "FIT"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "OIAtm",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head SIZE",
+                                  "width": 72,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "SIZE"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "u8NCF0",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head SEEDERS",
+                                  "width": 64,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "SEEDERS"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "nVXgK",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head TRACKER",
+                                  "width": 112,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "TRACKER"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "Ola4z",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head HIT AND RUN",
+                                  "width": 128,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "HIT AND RUN"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "wASkc",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head AUDIO · HDR",
+                                  "width": 140,
+                                  "height": "fill_container",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": "AUDIO · HDR"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "B8AwD",
+                                  "type": "ref",
+                                  "ref": "5:I73rkQ",
+                                  "name": "Head action",
+                                  "width": 88,
+                                  "height": "fill_container",
+                                  "justifyContent": "end",
+                                  "descendants": {
+                                    "5:dacHK": {
+                                      "fontFamily": "$5:font-ui",
+                                      "fontSize": 11,
+                                      "fontWeight": "600",
+                                      "fill": "$5:subtle-foreground",
+                                      "letterSpacing": 0.5,
+                                      "content": ""
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "PERGj",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release yours (pinned)",
+                          "width": "fill_container",
+                          "fill": "$5:muted",
+                          "descendants": {
+                            "5:IRXYj": {
+                              "fill": "$5:card"
+                            },
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLOS"
+                            },
+                            "5:AhF9M": {
+                              "stroke": "$5:foreground",
+                              "strokeWidth": 1
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "enabled": false
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "yours"
+                            },
+                            "5:T56nH/5:C07ADa": {
+                              "icon": "triangle-alert",
+                              "fill": "$5:warning"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "below cutoff",
+                              "fill": "$5:warning"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "176"
+                            },
+                            "5:ERtPX": {
+                              "id": "AWpgN",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "seeded 31 h of 120 h"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "ZVlL8",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 1 best, FLUX",
+                          "width": "fill_container",
+                          "fill": "$5:selected",
+                          "descendants": {
+                            "5:WvmaB": {
+                              "enabled": true
+                            },
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.ATVP.WEB-DL.DV.HDR10.DDP5.1.Atmos-"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLUX"
+                            },
+                            "5:AhF9M": {
+                              "fill": "$5:best"
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "enabled": false
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "best"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+1600"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "8.9 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "312"
+                            },
+                            "5:ERtPX": {
+                              "id": "VDOtx",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "Atmos 5.1 · DV HDR10"
+                            },
+                            "5:LoB6l": {
+                              "enabled": false
+                            },
+                            "5:SAFzY": {
+                              "enabled": true
+                            },
+                            "5:R1sz54": {
+                              "enabled": true
+                            }
+                          }
+                        },
+                        {
+                          "id": "RyDM2",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 2, NTb 2160p",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.ATVP.WEB-DL.HDR10.DDP5.1-"
+                            },
+                            "5:HKHi2": {
+                              "content": "NTb"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+1500"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "7.4 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "188"
+                            },
+                            "5:ERtPX": {
+                              "id": "Ax30k",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1 · HDR10"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "V9N8n",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 3, NTb 1080p",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "NTb"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+950"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.0 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "233"
+                            },
+                            "5:ERtPX": {
+                              "id": "GrpUN",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "jwvZ2",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 4, SuccessfulCrab",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.WEB.H265-"
+                            },
+                            "5:HKHi2": {
+                              "content": "SuccessfulCrab"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+900"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "5.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "96"
+                            },
+                            "5:ERtPX": {
+                              "id": "OvlmN",
+                              "type": "ref",
+                              "ref": "5:dofWM",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Beyond-HD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "120 h or ratio 1.0"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1 · HDR10"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "H9OpmK",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 5, playWEB, cooldown",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "playWEB"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+850"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "57"
+                            },
+                            "5:ERtPX": {
+                              "id": "aKchE",
+                              "type": "ref",
+                              "ref": "5:z7AOoy",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "Blutopia"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "cooldown 3 h left",
+                              "fill": "$5:destructive"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV": {
+                              "fill": "$5:muted"
+                            },
+                            "5:PjaRV/5:OXVvv": {
+                              "fill": "$5:faint-foreground"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "M9bgTC",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 6, FLOS same",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "1080p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "1080p.ATVP.WEB-DL.DDP5.1.H.264-"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLOS"
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "enabled": false
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "same",
+                              "fill": "$5:subtle-foreground",
+                              "fontWeight": "500"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+800"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "4.1 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "22"
+                            },
+                            "5:ERtPX": {
+                              "id": "xstEj",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "p6isdV",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 7, HHWEB",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "2160p.ATVP.WEB-DL.DV.DDP5.1-"
+                            },
+                            "5:HKHi2": {
+                              "content": "HHWEB"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "better"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "+700"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "8.2 GB"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "41"
+                            },
+                            "5:ERtPX": {
+                              "id": "B60z2",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1 · DV"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        },
+                        {
+                          "id": "FKMDa",
+                          "type": "ref",
+                          "ref": "5:NXfpc",
+                          "name": "Release 8, rejected 720p",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:IRXYj/5:rMeqR": {
+                              "content": "720p WEB-DL"
+                            },
+                            "5:T0ZqM": {
+                              "content": "720p.ATVP.WEB-DL.DDP5.1.H.264-",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:HKHi2": {
+                              "content": "FLUX",
+                              "fill": "$5:subtle-foreground",
+                              "fontWeight": "500"
+                            },
+                            "5:AhF9M/5:DaB5G": {
+                              "icon": "arrow-down",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:AhF9M/5:MQcnR": {
+                              "content": "worse",
+                              "fill": "$5:subtle-foreground",
+                              "fontWeight": "500"
+                            },
+                            "5:T56nH/5:C07ADa": {
+                              "icon": "x",
+                              "fill": "$5:destructive"
+                            },
+                            "5:T56nH/5:friTo": {
+                              "content": "720p not wanted",
+                              "fill": "$5:destructive"
+                            },
+                            "5:P2Ysfa/5:dacHK": {
+                              "content": "1.9 GB",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:E1lXGm/5:dacHK": {
+                              "content": "64",
+                              "fill": "$5:subtle-foreground",
+                              "fontWeight": "500"
+                            },
+                            "5:ERtPX": {
+                              "id": "hzHNc",
+                              "type": "ref",
+                              "ref": "5:i2QZW",
+                              "name": "Logo",
+                              "width": 16,
+                              "height": 16
+                            },
+                            "5:GCA9y": {
+                              "content": "PrivateHD",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:yjiPJ/5:dacHK": {
+                              "content": "72 h or ratio 0.9",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:I07YU/5:dacHK": {
+                              "content": "DDP 5.1",
+                              "fill": "$5:subtle-foreground"
+                            },
+                            "5:PjaRV": {
+                              "fill": "$5:muted"
+                            },
+                            "5:PjaRV/5:OXVvv": {
+                              "fill": "$5:faint-foreground"
+                            },
+                            "5:PjaRV/5:T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "5:PkkWK": {
+                      "type": "frame",
+                      "id": "x8dYu",
+                      "name": "Footer",
+                      "width": "fill_container",
+                      "gap": 20,
+                      "padding": [
+                        12,
+                        20,
+                        14,
+                        20
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "JgsTe",
+                          "name": "Hint move",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "GC6Ir",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd arrow-up",
+                              "descendants": {
+                                "5:ZAsf3": {
+                                  "enabled": true,
+                                  "icon": "arrow-up"
+                                },
+                                "5:BvVhW": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "MmeH9",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd arrow-down",
+                              "descendants": {
+                                "5:ZAsf3": {
+                                  "enabled": true,
+                                  "icon": "arrow-down"
+                                },
+                                "5:BvVhW": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "TJejm",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "choose a release",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "M59zw",
+                          "name": "Hint grab",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "oQvd1",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd ↵",
+                              "descendants": {
+                                "5:BvVhW": {
+                                  "content": "↵"
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "TAa9Q",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "grab the chosen release",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "B1uBj",
+                          "name": "Hint grab best",
+                          "gap": 4,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "d8dvbe",
+                              "type": "ref",
+                              "ref": "5:NAj8m",
+                              "name": "Kbd G",
+                              "descendants": {
+                                "5:BvVhW": {
+                                  "content": "G"
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "id": "xSUsz",
+                              "name": "Hint",
+                              "fill": "$5:subtle-foreground",
+                              "content": "grab the best",
+                              "fontFamily": "$5:font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ZHMdk",
+                          "name": "Spacer",
+                          "width": "fill_container",
+                          "height": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "yKhds",
+                          "name": "Sort note",
+                          "fill": "$5:subtle-foreground",
+                          "content": "Sorted by profile fit. Rejected releases last.",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "id": "AkU5F",
+                  "type": "ref",
+                  "ref": "5:gp6Kh",
+                  "name": "Season 2 episodes, after panel",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:KFz5s": {
+                      "enabled": false
+                    },
+                    "5:KSG7I": {
+                      "type": "frame",
+                      "id": "ckqy4",
+                      "name": "Body",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "id": "sIIjx",
+                          "type": "ref",
+                          "ref": "5:rjunT",
+                          "name": "Episode E09",
+                          "width": "fill_container",
+                          "descendants": {
+                            "5:y59Lp/5:dacHK": {
+                              "content": "E09"
+                            },
+                            "5:kK8Nf/5:dacHK": {
+                              "content": "The After Hours"
+                            },
+                            "5:Yxlkr/5:dacHK": {
+                              "content": "Fri 14 Mar"
+                            },
+                            "5:jpIpZ/5:rMeqR": {
+                              "content": "2160p WEB-DL"
+                            },
+                            "5:o2E18n": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "P6u2d4",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:jmHWs": {
+              "content": "4 downloading"
+            },
+            "5:HkJFl": {
+              "content": "58.2 MB/s down · 12.3 MB/s up"
+            },
+            "5:eY4Kz": {
+              "content": "Severance S02E08"
+            },
+            "5:vAnrZ": {
+              "width": 9
+            },
+            "5:C4Eq3": {
+              "content": "18%"
+            },
+            "5:n9qTil": {
+              "content": "Severance S02E07"
+            },
+            "5:umMnh": {
+              "width": 31
+            },
+            "5:GyhFG": {
+              "content": "64%"
+            },
+            "5:BSjyG": {
+              "content": "The Bear S03"
+            },
+            "5:oh7PB": {
+              "width": 11
+            },
+            "5:qMxmu": {
+              "content": "23%"
+            }
+          }
+        },
+        {
+          "id": "JDHTI",
+          "type": "ref",
+          "ref": "5:Dslj1",
+          "name": "Grab toast",
+          "layoutPosition": "absolute",
+          "x": 40,
+          "y": 752,
+          "descendants": {
+            "5:eNCqd": {
+              "content": "Grabbed 2160p WEB-DL from PrivateHD"
+            },
+            "5:ENTTo": {
+              "content": "Replaces your 1080p file when it finishes. Marked manual download."
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "row": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "best": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "font-ui": {
+      "type": "string",
+      "value": "Schibsted Grotesk"
+    },
+    "font-data": {
+      "type": "string",
+      "value": "Barlow Semi Condensed"
+    },
+    "best-soft": {
+      "type": "color",
+      "value": "#F3FCD6"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "selected": {
+      "type": "color",
+      "value": "#EDEDE9"
+    },
+    "background": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "card": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "muted": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "surface-hover": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "surface-pressed": {
+      "type": "color",
+      "value": "#EAEAE6"
+    },
+    "foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": "#55554F"
+    },
+    "subtle-foreground": {
+      "type": "color",
+      "value": "#686862"
+    },
+    "faint-foreground": {
+      "type": "color",
+      "value": "#A3A39D"
+    },
+    "border": {
+      "type": "color",
+      "value": "#E3E3DE"
+    },
+    "input": {
+      "type": "color",
+      "value": "#8C8C85"
+    },
+    "primary": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": "#2E2E2C"
+    },
+    "primary-pressed": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "best-foreground": {
+      "type": "color",
+      "value": "#3D5600"
+    },
+    "live": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "destructive": {
+      "type": "color",
+      "value": "#CC1F17"
+    },
+    "destructive-hover": {
+      "type": "color",
+      "value": "#AD1912"
+    },
+    "destructive-pressed": {
+      "type": "color",
+      "value": "#8E140E"
+    },
+    "destructive-soft": {
+      "type": "color",
+      "value": "#FDE9E7"
+    },
+    "warning": {
+      "type": "color",
+      "value": "#A15C00"
+    },
+    "warning-soft": {
+      "type": "color",
+      "value": "#FDF0D9"
+    },
+    "ring": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "focus-on-dark": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "bar-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar-muted-foreground": {
+      "type": "color",
+      "value": "#B5B5AE"
+    },
+    "scrim": {
+      "type": "color",
+      "value": "#1111114D"
+    },
+    "shadow": {
+      "type": "color",
+      "value": "#1111111F"
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-full": {
+      "type": "number",
+      "value": 999
+    },
+    "row-header": {
+      "type": "number",
+      "value": 32
+    },
+    "row-two-line": {
+      "type": "number",
+      "value": 56
+    },
+    "topbar": {
+      "type": "number",
+      "value": 64
+    },
+    "livebar": {
+      "type": "number",
+      "value": 40
+    },
+    "space-1": {
+      "type": "number",
+      "value": 4
+    },
+    "space-2": {
+      "type": "number",
+      "value": 8
+    },
+    "space-3": {
+      "type": "number",
+      "value": 12
+    },
+    "space-4": {
+      "type": "number",
+      "value": 16
+    },
+    "space-5": {
+      "type": "number",
+      "value": 20
+    },
+    "space-6": {
+      "type": "number",
+      "value": 24
+    },
+    "space-8": {
+      "type": "number",
+      "value": 32
+    },
+    "space-10": {
+      "type": "number",
+      "value": 40
+    },
+    "space-12": {
+      "type": "number",
+      "value": 48
+    },
+    "space-16": {
+      "type": "number",
+      "value": 64
+    },
+    "page-margin": {
+      "type": "number",
+      "value": 40
+    },
+    "page-margin-phone": {
+      "type": "number",
+      "value": 16
+    },
+    "poster-gutter": {
+      "type": "number",
+      "value": 20
+    },
+    "poster-width": {
+      "type": "number",
+      "value": 152
+    },
+    "control-h-row": {
+      "type": "number",
+      "value": 28
+    },
+    "control-h-default": {
+      "type": "number",
+      "value": 40
+    },
+    "control-h-large": {
+      "type": "number",
+      "value": 48
+    },
+    "control-px-row": {
+      "type": "number",
+      "value": 10
+    },
+    "control-px-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-px-large": {
+      "type": "number",
+      "value": 20
+    },
+    "control-text-row": {
+      "type": "number",
+      "value": 13
+    },
+    "control-text-default": {
+      "type": "number",
+      "value": 14
+    },
+    "control-text-large": {
+      "type": "number",
+      "value": 15
+    },
+    "control-radius-row": {
+      "type": "number",
+      "value": 6
+    },
+    "control-radius-default": {
+      "type": "number",
+      "value": 8
+    },
+    "control-radius-large": {
+      "type": "number",
+      "value": 10
+    },
+    "control-icon-row": {
+      "type": "number",
+      "value": 14
+    },
+    "control-icon-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-icon-large": {
+      "type": "number",
+      "value": 18
+    },
+    "card-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "popover": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "popover-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "secondary": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "secondary-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "accent-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "destructive-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "warning-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "radius": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "detail-indent": {
+      "type": "number",
+      "value": 133
+    }
+  },
+  "imports": {
+    "5": "design-system.lib.pen"
+  },
+  "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"
+}
