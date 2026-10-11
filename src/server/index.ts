@@ -27,6 +27,10 @@ import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
+import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
+import { createSecondVersionDelete } from './secondVersionDelete.js';
+import { createSecondVersions } from './secondVersions.js';
+import { createVersionImport } from './versionImport.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -34,9 +38,11 @@ import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller } from './torrents.js';
+import { trackerRulesFromEnvironment } from './trackerRules.js';
 import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
 import { createStallFix } from './stalls.js';
+import { createTorrentFiles } from './torrentFiles.js';
 import { createImageRoutes, createTitleCache } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
@@ -45,9 +51,16 @@ const port = Number(process.env.PORT ?? '3000');
 
 let database: DatabaseSync | undefined;
 try {
-  database = openDatabase();
-} catch {
-  console.error('Database initialization failed.');
+  // Checked once here so a bad TRACKER_RULES stops startup instead of failing each rule lookup later.
+  trackerRulesFromEnvironment();
+  try {
+    database = openDatabase();
+  } catch {
+    console.error('Database initialization failed.');
+    process.exitCode = 1;
+  }
+} catch (error) {
+  console.error((error as Error).message);
   process.exitCode = 1;
 }
 
@@ -58,7 +71,19 @@ if (database !== undefined) {
   const runner = createJobRunner();
   const rtorrent = createRtorrent(database);
   const poller = createTorrentPoller({ database, rtorrent, events });
-  runner.register('rtorrent-poll', poller.intervalMs, poller.poll);
+  const releases = createReleases(database, arr);
+  const secondVersions = createSecondVersions({ database, releases, rtorrent });
+  const problems = createProblems({ database, events });
+  const plex = createPlex(database);
+  const versionImport = createVersionImport({ database, rtorrent, arr, plex, problems });
+  // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them,
+  // and finished ones are imported after it.
+  runner.register('rtorrent-poll', poller.intervalMs, async () => {
+    const startedAt = Date.now();
+    if (!await poller.poll()) return;
+    await secondVersions.reconcile(startedAt);
+    await versionImport.run();
+  });
   const backup = createBackup({
     database,
     events,
@@ -70,7 +95,6 @@ if (database !== undefined) {
   runner.register('backup', 5 * 60_000, async () => { await backup.run(); });
   const torrentGrabs = createGrabTracker({ database, arr, events });
   runner.register('arr-reconcile', torrentGrabs.intervalMs, torrentGrabs.reconcile);
-  const problems = createProblems({ database, events });
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
   const trackers = createTrackerWatch({ database, rtorrent, problems, events });
   runner.register('tracker-watch', 30_000, trackers.check);
@@ -83,7 +107,6 @@ if (database !== undefined) {
   runner.register('title-refresh', titles.intervalMs, titles.reconcile);
   const imports = createImportFix({ database, arr, problems, events });
   runner.register('import-fix', 60_000, imports.check);
-  const releases = createReleases(database, arr);
   // 'grab' events carry torrent grab records for the Downloads screen, so a hand grab's own record goes out under its own name.
   const grabs = createGrabs(database, arr, releases, {
     onChange: (grab) => {
@@ -94,10 +117,15 @@ if (database !== undefined) {
   const protection = createProtection(database, arr, { recentGrabTitles: (service, since) => grabs.recentTitles(service, since) });
   const labels = createLabels(arr);
   const replaces = createReplaces(arr, grabs, { onCompleted: (grab) => protection.protect(grab) });
-  const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected });
+  const torrentFiles = createTorrentFiles({ database, rtorrent, arr });
+  const stalls = createStallFix({
+    database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected, labels, removeTorrent: torrentFiles.removeTorrent,
+  });
   runner.register('stall-fix', 60_000, stalls.check);
   const relink = createRelinkFix({ database, rtorrent, arr, problems, isManualDownload: protection.isProtected });
   runner.register('relink-fix', 60_000, relink.check);
+  const versionChecks = createSecondVersionChecks({ database, arr, problems });
+  runner.register('second-version-checks', VERSION_CHECK_INTERVAL_MS, versionChecks.check);
   // Two minutes keeps Radarr's whole-library read light while still searching close to each release time.
   const searches = createSearchScheduler({ database, arr, problems, isManualDownload: protection.isProtected });
   runner.register('search-schedule', 2 * 60_000, searches.check);
@@ -105,7 +133,6 @@ if (database !== undefined) {
     await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr')]);
     await protection.reconcile();
   });
-  const plex = createPlex(database);
   const trackerAccounts = createTrackerAccounts(database);
   const health = createHealth({ database, arr, rtorrent, plex, jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
@@ -140,9 +167,11 @@ if (database !== undefined) {
     },
     releases,
     grabs,
+    secondVersions,
+    secondVersionDelete: createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan }),
     owned: createOwned(arr),
     protection,
-    library: createLibrary(arr),
+    library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title)),
     api: createApiRoutes(database, {
       arr,
       refresh: torrentGrabs.refresh,

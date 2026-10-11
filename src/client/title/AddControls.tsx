@@ -222,7 +222,7 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
       setAdd({
         kind: 'refused',
         message: body.error === 'refused' && typeof body.reason === 'string'
-          ? `${serviceName} refused: ${body.reason}`
+          ? body.reason
           : failureMessage(serviceName, body.error, `${serviceName} didn't add it.`),
       });
     } catch {

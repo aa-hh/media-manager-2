@@ -1,4 +1,4 @@
-// A Sonarr or Radarr stand-in that keeps its Queue, History and Blocklist in memory, so tests assert on what the state became.
+// A Sonarr or Radarr stand-in that keeps its Queue, History, Blocklist, series, movies and episodes in memory, so tests assert on what the state became.
 import { createArr } from '../../dist/server/services/arr.js';
 import { setSetting } from '../../dist/server/settings.js';
 
@@ -50,6 +50,21 @@ export const importFile = (overrides = {}) => ({
   ...overrides,
 });
 
+export const seriesRecord = (overrides = {}) => {
+  const id = overrides.id ?? newId();
+  return { id, title: `Series ${id}`, year: 2024, monitored: true, tags: [], images: [], seasons: [], ...overrides };
+};
+
+export const movieRecord = (overrides = {}) => {
+  const id = overrides.id ?? newId();
+  return { id, title: `Movie ${id}`, year: 2024, monitored: true, hasFile: false, tags: [], images: [], ...overrides };
+};
+
+export const episodeRecord = (overrides = {}) => {
+  const id = overrides.id ?? newId();
+  return { id, seriesId: null, seasonNumber: 1, episodeNumber: id, title: `Episode ${id}`, monitored: true, hasFile: false, ...overrides };
+};
+
 const eventTypes = { 1: 'grabbed', 3: 'downloadFolderImported', 4: 'downloadFailed' };
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -67,6 +82,11 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     failed: [],
     erasedFromClient: [],
     manualImport: {},
+    series: [],
+    movies: [],
+    episodes: [],
+    episodeFiles: [],
+    lookup: [],
     copyUsingHardlinks: true,
     down: false,
   };
@@ -82,10 +102,61 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     };
   };
 
+  // Series and movies share one shape: a list, a lookup, a record by id, an add, a whole-record PUT and an editor PUT.
+  const titleRoute = (method, path, body, resource, records, idsKey) => {
+    const base = `/api/v3/${resource}`;
+    const id = Number(path.split('/').at(-1));
+    if (method === 'GET' && path === base) return { status: 200, body: records() };
+    if (method === 'GET' && path === `${base}/lookup`) return { status: 200, body: state.lookup };
+    if (method === 'POST' && path === base) {
+      const added = { ...body, id: newId() };
+      records().push(added);
+      return { status: 201, body: added };
+    }
+    if (method === 'PUT' && path === `${base}/editor`) {
+      const changed = records().filter((record) => body[idsKey].includes(record.id));
+      for (const record of changed) record.monitored = body.monitored;
+      return { status: 202, body: changed };
+    }
+    if (!new RegExp(`^${base}/-?\\d+$`).test(path)) return undefined;
+    const index = records().findIndex((record) => record.id === id);
+    if (index === -1) return undefined;
+    if (method === 'GET') return { status: 200, body: records()[index] };
+    if (method === 'PUT') {
+      records()[index] = body;
+      return { status: 202, body };
+    }
+    return undefined;
+  };
+
   const builtIn = (method, url, body) => {
     const { pathname: path, searchParams: params } = url;
     const id = Number(path.split('/').at(-1));
     if (method === 'GET' && path === '/api/v3/system/status') return { status: 200, body: { version: '4.0.0.0' } };
+    if (path.startsWith('/api/v3/series')) return titleRoute(method, path, body, 'series', () => state.series, 'seriesIds');
+    if (path.startsWith('/api/v3/movie')) return titleRoute(method, path, body, 'movie', () => state.movies, 'movieIds');
+    if (method === 'GET' && path === '/api/v3/episode') {
+      const seriesId = Number(params.get('seriesId'));
+      const season = params.has('seasonNumber') ? Number(params.get('seasonNumber')) : undefined;
+      return {
+        status: 200,
+        body: state.episodes.filter((episode) => episode.seriesId === seriesId && (season === undefined || episode.seasonNumber === season)),
+      };
+    }
+    if (method === 'GET' && path === '/api/v3/episodefile') {
+      return { status: 200, body: state.episodeFiles.filter((file) => file.seriesId === Number(params.get('seriesId'))) };
+    }
+    if (method === 'GET' && /^\/api\/v3\/episode\/-?\d+$/.test(path)) {
+      const episode = state.episodes.find((record) => record.id === id);
+      if (episode === undefined) return undefined;
+      const series = state.series.find((record) => record.id === episode.seriesId);
+      return { status: 200, body: series === undefined ? episode : { ...episode, series } };
+    }
+    if (method === 'PUT' && path === '/api/v3/episode/monitor') {
+      const changed = state.episodes.filter((episode) => body.episodeIds.includes(episode.id));
+      for (const episode of changed) episode.monitored = body.monitored;
+      return { status: 202, body: changed };
+    }
     if (method === 'GET' && path === '/api/v3/queue') {
       const unknown = params.get('includeUnknownSeriesItems') === 'true' || params.get('includeUnknownMovieItems') === 'true';
       const items = state.queue

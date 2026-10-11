@@ -269,6 +269,54 @@ export const applicationMigrations = [
   // Backups once went only to Cloudflare R2; the same four settings now describe any S3-compatible bucket.
   `UPDATE OR IGNORE settings SET key = 'backup.' || substr(key, 4)
     WHERE key IN ('r2.endpoint', 'r2.bucket', 'r2.accessKeyId', 'r2.secretAccessKey');`,
+  // One row per movie or episode: a pack's rows share one hash. Second versions never enter grabs, which Sonarr and Radarr drive.
+  `CREATE TABLE second_versions (
+    id INTEGER PRIMARY KEY,
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    movie_id INTEGER,
+    series_id INTEGER,
+    episode_id INTEGER,
+    release_title TEXT NOT NULL,
+    guid TEXT NOT NULL,
+    indexer TEXT NOT NULL,
+    quality TEXT NOT NULL,
+    size_bytes INTEGER,
+    hash TEXT,
+    state TEXT NOT NULL CHECK (state IN ('sending', 'downloading', 'importing', 'imported', 'failed', 'deleted')),
+    failure TEXT,
+    file_path TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    imported_at INTEGER,
+    deleted_at INTEGER,
+    CHECK (
+      (service = 'radarr' AND movie_id IS NOT NULL AND series_id IS NULL AND episode_id IS NULL)
+      OR (service = 'sonarr' AND movie_id IS NULL AND series_id IS NOT NULL AND episode_id IS NOT NULL)
+    ),
+    CHECK (hash IS NOT NULL OR state = 'failed')
+  ) STRICT;
+  CREATE INDEX second_versions_hash ON second_versions (hash);
+  CREATE INDEX second_versions_state ON second_versions (state);`,
+  // A hash's file list never changes, so it is read from rTorrent once and dropped when the torrent is gone.
+  `ALTER TABLE torrents ADD COLUMN directory TEXT NOT NULL DEFAULT '';
+  CREATE TABLE torrent_files (
+    hash TEXT NOT NULL,
+    "index" INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    PRIMARY KEY (hash, "index")
+  ) STRICT;`,
+  // What happened to each second version, for history. Kind has no CHECK so later kinds need no table rebuild.
+  `CREATE TABLE version_events (
+    id INTEGER PRIMARY KEY,
+    second_version_id INTEGER NOT NULL REFERENCES second_versions (id),
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX version_events_at ON version_events (at);`,
+  // The imported file's device and inode, so a delete removes only the file this app linked there.
+  'ALTER TABLE second_versions ADD COLUMN file_inode TEXT;',
 ] as const;
 
 class DatabaseError extends Error {}

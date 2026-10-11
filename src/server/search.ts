@@ -1,7 +1,5 @@
 import { Hono } from 'hono';
-
-type ArrRequest = (path: string) => Promise<{ status: number; body: unknown }>;
-type ArrService = { request: ArrRequest; configured: () => boolean };
+import type { ArrServices, Image, Movie, Result, Series } from './services/arr.js';
 
 export type SearchQuery =
   | { kind: 'name'; term: string }
@@ -42,15 +40,9 @@ export type SearchResponse = {
 const MAX_QUERY_LENGTH = 200;
 const MAX_RESULTS_PER_SERVICE = 20;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
-const text = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
 const positiveInteger = (value: unknown) => (
   typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
 );
-const finiteNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
 export const parseSearchQuery = (input: string): SearchQuery | undefined => {
   const term = input.trim().replace(/\s+/g, ' ');
@@ -64,11 +56,10 @@ export const parseSearchQuery = (input: string): SearchQuery | undefined => {
 
 // Lookup images carry a public remoteUrl and a local url; the local one is served by the
 // service itself and needs its key, so only an absolute http(s) remoteUrl may reach the browser.
-const posterUrl = (images: unknown): string | null => {
-  if (!Array.isArray(images)) return null;
+const posterUrl = (images: Image[]): string | null => {
   for (const image of images) {
-    if (!isRecord(image) || image.coverType !== 'poster') continue;
-    const url = text(image.remoteUrl);
+    if (image.coverType !== 'poster') continue;
+    const url = image.remoteUrl;
     if (url === null) continue;
     try {
       const parsed = new URL(url);
@@ -80,63 +71,47 @@ const posterUrl = (images: unknown): string | null => {
   return null;
 };
 
-const firstRating = (ratings: unknown, keys: string[]): number | null => {
-  if (!isRecord(ratings)) return null;
-  if (finiteNumber(ratings.value) !== null) return finiteNumber(ratings.value);
-  for (const key of keys) {
-    const rating = ratings[key];
-    if (isRecord(rating) && finiteNumber(rating.value) !== null && (rating.value as number) > 0) return rating.value as number;
-  }
-  return null;
-};
-
-const toSeries = (value: unknown): SearchResult | undefined => {
-  if (!isRecord(value)) return undefined;
-  const title = text(value.title);
-  const tvdbId = positiveInteger(value.tvdbId);
-  if (title === null || tvdbId === null) return undefined;
-  const libraryId = positiveInteger(value.id);
+const toSeries = (record: Series): SearchResult | undefined => {
+  const { title, tvdbId, id: libraryId } = record;
+  if (title === '' || tvdbId === null) return undefined;
   return {
     type: 'tv',
     service: 'sonarr',
     key: `tvdb:${tvdbId}`,
     title,
-    year: positiveInteger(value.year),
-    network: text(value.network),
-    status: text(value.status),
-    rating: firstRating(value.ratings, []),
-    overview: text(value.overview),
-    posterUrl: posterUrl(value.images),
+    year: positiveInteger(record.year),
+    network: record.network,
+    status: record.status,
+    rating: record.rating,
+    overview: record.overview,
+    posterUrl: posterUrl(record.images),
     inLibrary: libraryId !== null,
     libraryId,
     tvdbId,
-    tmdbId: positiveInteger(value.tmdbId),
-    imdbId: text(value.imdbId),
+    tmdbId: record.tmdbId,
+    imdbId: record.imdbId,
   };
 };
 
-const toMovie = (value: unknown): SearchResult | undefined => {
-  if (!isRecord(value)) return undefined;
-  const title = text(value.title);
-  const tmdbId = positiveInteger(value.tmdbId);
-  if (title === null || tmdbId === null) return undefined;
-  const libraryId = positiveInteger(value.id);
+const toMovie = (record: Movie): SearchResult | undefined => {
+  const { title, tmdbId, id: libraryId } = record;
+  if (title === '' || tmdbId === null) return undefined;
   return {
     type: 'movie',
     service: 'radarr',
     key: `tmdb:${tmdbId}`,
     title,
-    year: positiveInteger(value.year),
-    network: text(value.studio),
-    status: text(value.status),
-    rating: firstRating(value.ratings, ['tmdb', 'imdb', 'trakt']),
-    overview: text(value.overview),
-    posterUrl: posterUrl(value.images),
+    year: positiveInteger(record.year),
+    network: record.studio,
+    status: record.status,
+    rating: record.rating,
+    overview: record.overview,
+    posterUrl: posterUrl(record.images),
     inLibrary: libraryId !== null,
     libraryId,
     tvdbId: null,
     tmdbId,
-    imdbId: text(value.imdbId),
+    imdbId: record.imdbId,
   };
 };
 
@@ -147,27 +122,21 @@ const lookupTerm = (query: SearchQuery, service: 'sonarr' | 'radarr'): string | 
   return service === 'radarr' ? `tmdb:${query.id}` : undefined;
 };
 
-const lookup = async (
-  service: ArrService,
-  path: string,
+const lookup = async <T>(
   term: string | undefined,
-  normalize: (value: unknown) => SearchResult | undefined,
+  read: (term: string) => Promise<Result<T[]>>,
+  normalize: (record: T) => SearchResult | undefined,
 ): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
   if (term === undefined) return { outcome: { kind: 'skipped' }, results: [] };
-  if (!service.configured()) return { outcome: { kind: 'not_configured' }, results: [] };
-  let response: { status: number; body: unknown };
-  try {
-    response = await service.request(`${path}?term=${encodeURIComponent(term)}`);
-  } catch {
-    return { outcome: { kind: 'unreachable' }, results: [] };
+  const response = await read(term);
+  if (response.kind === 'not_configured' || response.kind === 'unreachable' || response.kind === 'rejected') {
+    return { outcome: { kind: response.kind }, results: [] };
   }
-  if (response.status === 401 || response.status === 403) return { outcome: { kind: 'rejected' }, results: [] };
-  if (response.status < 200 || response.status > 299 || !Array.isArray(response.body)) {
-    return { outcome: { kind: 'unreachable' }, results: [] };
-  }
+  // A non-2xx answer or a body that is not a list reads as unreachable, as it did before the adapter.
+  if (response.kind !== 'ok') return { outcome: { kind: 'unreachable' }, results: [] };
   const seen = new Set<string>();
   const results: SearchResult[] = [];
-  for (const item of response.body) {
+  for (const item of response.value) {
     const result = normalize(item);
     if (result === undefined || seen.has(result.key)) continue;
     seen.add(result.key);
@@ -190,16 +159,16 @@ const merge = (shows: SearchResult[], movies: SearchResult[]) => {
 
 export const LOOKUP_CACHE_MS = 10 * 60_000;
 
-export const createSearch = (services: { sonarr: ArrService; radarr: ArrService }, options: { now?: () => number } = {}) => {
+export const createSearch = (services: ArrServices, options: { now?: () => number } = {}) => {
   const now = options.now ?? Date.now;
   // razor: no size cap beyond purging stale entries after each successful lookup. Upgrade path: an LRU bound on entries.
   const cache = new Map<string, { fetchedAt: number; results: SearchResult[]; count: number }>();
 
-  const cachedLookup = async (
+  const cachedLookup = async <T>(
     service: 'sonarr' | 'radarr',
-    path: string,
     term: string | undefined,
-    normalize: (value: unknown) => SearchResult | undefined,
+    read: (term: string) => Promise<Result<T[]>>,
+    normalize: (record: T) => SearchResult | undefined,
   ): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
     const key = `${service}\n${term}`;
     if (term !== undefined && services[service].configured()) {
@@ -208,7 +177,7 @@ export const createSearch = (services: { sonarr: ArrService; radarr: ArrService 
         return { outcome: { kind: 'ok', count: entry.count }, results: entry.results };
       }
     }
-    const result = await lookup(services[service], path, term, normalize);
+    const result = await lookup(term, read, normalize);
     if (result.outcome.kind === 'ok') {
       const fetchedAt = now();
       cache.set(key, { fetchedAt, results: result.results, count: result.outcome.count });
@@ -224,8 +193,8 @@ export const createSearch = (services: { sonarr: ArrService; radarr: ArrService 
     },
     async search(query: SearchQuery): Promise<SearchResponse> {
       const [sonarr, radarr] = await Promise.all([
-        cachedLookup('sonarr', '/api/v3/series/lookup', lookupTerm(query, 'sonarr'), toSeries),
-        cachedLookup('radarr', '/api/v3/movie/lookup', lookupTerm(query, 'radarr'), toMovie),
+        cachedLookup('sonarr', lookupTerm(query, 'sonarr'), services.sonarr.lookupSeries, toSeries),
+        cachedLookup('radarr', lookupTerm(query, 'radarr'), services.radarr.lookupMovies, toMovie),
       ]);
       return {
         results: merge(sonarr.results, radarr.results),

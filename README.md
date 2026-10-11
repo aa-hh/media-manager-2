@@ -31,7 +31,8 @@ npm start
 
 The server prepares its database, then prints its listening address. If the
 database cannot be prepared it prints `Database initialization failed.` and
-exits unsuccessfully. Production runs the Hono server, which serves the
+exits unsuccessfully. An invalid `TRACKER_RULES` stops it the same way, with a
+message naming the tracker and field at fault. Production runs the Hono server, which serves the
 compiled React app; Vite's preview server is not used.
 
 ### Environment variables
@@ -44,6 +45,7 @@ compiled React app; Vite's preview server is not used.
 | `APP_ORIGIN` | yes | The public origin people open, such as `https://media.example.com` |
 | `PLEX_OWNER_ID` | yes | Your numeric Plex account ID; only this account can sign in |
 | `BACKUP_KEY` | for backups | 64 hex characters that encrypt every backup; see [Backups](#backups-optional) |
+| `TRACKER_RULES` | no | Hit-and-run rules as JSON keyed by tracker hostname; see [Tracker hit-and-run rules](#tracker-hit-and-run-rules) |
 
 `DB_PATH` must be absolute, outside the application folder, and inside a
 folder owned by the current user with no group or other access. A new folder
@@ -89,6 +91,9 @@ on disk, through these saved settings:
 | `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
 | `hostPaths` | `library.radarr` | Absolute Radarr library root, such as `/home/<user>/Movies`; same use as above |
+| `hostPaths` | `downloads.versions` | Absolute folder rTorrent downloads second versions into |
+| `hostPaths` | `versions.radarr` | Absolute folder finished movie second versions are hardlinked into. Must be on the same drive as `downloads.versions` and inside a Plex Movies library |
+| `hostPaths` | `versions.sonarr` | Same as above for episodes, inside a Plex TV library. Episode second versions wait until it is set |
 | `serviceAddresses` | `blutopia.url` | Optional. Blutopia base URL with scheme, such as `https://blutopia.cc` |
 | `credentials` | `blutopia.apiToken` | Optional. Blutopia API token from the site's API settings |
 | `serviceAddresses` | `privatehd.url` | Optional. PrivateHD base URL with scheme |
@@ -145,6 +150,67 @@ as text, and `uploaded`, `downloaded` and `buffer` (bytes), `ratio`,
 `seeding`, `leeching`, `seedbonus` and `hitAndRuns` as numbers, each `null`
 when Blutopia leaves it out. PrivateHD and Beyond-HD return
 `stats: "unsupported"`. Trackers are only ever reached through their APIs.
+
+### Tracker hit-and-run rules
+
+No tracker or rule is built in. Removal advice and the release columns judge a
+torrent only by a tracker you have added; a tracker with no rule gets "Can't
+tell; keep seeding". Rules come from two places, and a rule saved in settings
+wins over the env file's rule for the same host:
+
+| Category | Key | Meaning |
+| --- | --- | --- |
+| `trackerConfiguration` | `trackers.<host>` | The tracker was added, with or without a rule |
+| `trackerConfiguration` | `rules.<host>` | The tracker's saved rule, as JSON |
+| `trackerConfiguration` | `margins.<host>` | Optional. Removal-advice margins as JSON: `timeFactor` and `globalRatioFactor` (1 or more), `extraHours` and `ratioExtra` (0 or more); defaults 1.1, 1.25, 6 and 0.05 |
+
+`TRACKER_RULES` in the env file holds rules as one JSON object keyed by
+hostname. A tracker listed there counts as added and can only be removed there.
+Each rule has these fields. `seedHours` is required; any other left out means
+"none":
+
+- `seedHours`: the seed time that clears a finished torrent, as a list of rows
+  `{ upToGB, hours, perGB, lnGB }`. The first row whose `upToGB` is at or above
+  the torrent's size applies, and needs `hours + perGB × GB + lnGB × ln(GB)`
+  hours, with GB as 1000³ bytes; `perGB` and `lnGB` may be left out. Every row
+  but the last has an `upToGB`, rising row by row; the last has none and covers
+  every larger size. One row is a fixed time. A row that would need less than
+  0 hours anywhere from 0 to 10 000 GB is refused.
+- `ratio`: the torrent ratio that clears it, combined with the seed time by
+  `logic` (`"and"` or `"or"`).
+- `minGlobalRatio`: the account-wide ratio minimum.
+- `partial`: `{ exemptBelow, ratio, maxHours }` for a download left incomplete:
+  the fraction below which it owes nothing, and the ratio or seeding hours that
+  clear it otherwise.
+
+The owner's three trackers, as one line. Keep the single quotes: the env file
+is read by `sh`, which would strip the double quotes.
+
+```sh
+TRACKER_RULES='{"blutopia.cc":{"seedHours":[{"hours":168}],"minGlobalRatio":0.4},"beyond-hd.me":{"seedHours":[{"hours":120}],"ratio":1.0,"logic":"or","minGlobalRatio":0.25},"privatehd.to":{"seedHours":[{"upToGB":1,"hours":72},{"upToGB":50,"hours":72,"perGB":2},{"hours":-219.2023,"lnGB":100}],"ratio":0.9,"logic":"or","partial":{"exemptBelow":0.1,"ratio":0.9,"maxHours":1440}}}'
+```
+
+The older field names still work, in `TRACKER_RULES` and in saved rules, and
+are read as the matching table: `minHours` (one row), `minHoursFormula:
+"privatehd"` (the PrivateHD table above), `minRatio`, and `partialExemptBelow`,
+`partialRatio`, `partialMaxHours`. A rule can't mix old and new names. Saving
+a rule in settings always writes the new shape.
+
+The settings screen uses these routes under the owner guard:
+
+- `GET /api/settings/trackers` lists `{ host, status, rule, ruleSource, margins, problem }`
+  per tracker. `status` is `configured` (saved rule), `configured_env` (env
+  file rule only) or `no_rule`; `problem` names a saved value that fails
+  validation.
+- `POST /api/settings/trackers` `{ host }` adds a tracker. A URL is cut down to
+  its hostname; a duplicate gets 409, anything that is not a hostname 400.
+- `PUT /api/settings/trackers/<host>/rule` `{ rule, margins? }` saves a rule. An
+  invalid one gets 400 `{ error, field, reason }`; `field` is a path such as
+  `seedHours[1].perGB` or `partial.ratio`.
+- `DELETE /api/settings/trackers/<host>/rule` clears the saved rule and
+  margins; the env file's rule, if any, applies again.
+- `DELETE /api/settings/trackers/<host>` removes the tracker and everything
+  saved for it. A tracker in `TRACKER_RULES` gets 409 `in_environment`.
 
 ### Title cache
 
@@ -300,6 +366,7 @@ Set the host up once:
    APP_ORIGIN=<the public https address, no trailing slash>
    PLEX_OWNER_ID=<your numeric Plex account ID>
    BACKUP_KEY=<64 hex characters, only if you use backups>
+   TRACKER_RULES='<JSON, only if you keep tracker rules here>'
    ```
 
    Leave `DB_PATH` unset so the database stays at its default path outside the

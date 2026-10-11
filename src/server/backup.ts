@@ -30,7 +30,7 @@ const hour = 3_600_000;
 const day = 24 * hour;
 const pointerKey = 'backups/latest.json';
 const snapshotKey = /^backups\/(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2}\.\d{3})Z-([0-9a-f]{12})\.sqlite\.gz\.enc$/;
-const countedTables = ['settings', 'torrents', 'torrent_grabs', 'grabs', 'problems', 'protected_items', 'preferences'];
+const countedTables = ['settings', 'torrents', 'torrent_grabs', 'grabs', 'problems', 'protected_items', 'preferences', 'second_versions', 'version_events'];
 
 const sha256Hex = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 

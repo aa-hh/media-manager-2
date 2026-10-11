@@ -15,6 +15,8 @@ import { createOwnedRoutes, type Owned } from './owned.js';
 import { createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
 import { createSearchRoutes, type Search } from './search.js';
+import type { SecondVersionDelete } from './secondVersionDelete.js';
+import { createSecondVersionRoutes, type SecondVersions } from './secondVersions.js';
 
 export type CreateAppOptions = {
   clientDirectory: string;
@@ -29,6 +31,8 @@ export type CreateAppOptions = {
   add?: Add;
   releases?: Releases;
   grabs?: Grabs;
+  secondVersions?: SecondVersions;
+  secondVersionDelete?: SecondVersionDelete;
   owned?: Owned;
   protection?: Protection;
   library?: Library;
@@ -176,7 +180,7 @@ export const createApp = (options: CreateAppOptions) => {
       || contentType !== 'application/json'
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
-    if (context.req.path === '/api/grabs') return grabRequestLimit(context, next);
+    if (context.req.path === '/api/grabs' || context.req.path === '/api/second-versions') return grabRequestLimit(context, next);
     if (context.req.path.startsWith('/api/imports/')) return importRequestLimit(context, next);
     return requestLimit(context, next);
   };
@@ -363,6 +367,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.add !== undefined) app.route('/api/add', createAddRoutes(options.add));
   if (options.releases !== undefined) app.route('/api/releases', createReleaseRoutes(options.releases));
   if (options.grabs !== undefined) app.route('/api/grabs', createGrabRoutes(options.grabs));
+  if (options.secondVersions !== undefined) app.route('/api/second-versions', createSecondVersionRoutes(options.secondVersions, options.secondVersionDelete));
   if (options.owned !== undefined && options.grabs !== undefined) {
     app.route('/api/owned', createOwnedRoutes(options.owned, options.grabs.qualities));
   }

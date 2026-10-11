@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import { describeSearch } from './releaseDetails.js';
 import type { ArrServices, HistoryRecord } from './services/arr.js';
 
 export type ReleaseTarget =
@@ -29,6 +30,12 @@ export type Release = {
   // Sent back unchanged when a grab overrides what the release counts as.
   qualityModel: unknown;
   languages: unknown;
+  // Server only: the link carries the indexer's API key, so publicSearch strips it from every browser reply.
+  downloadUrl?: string | null;
+  // The episodes Sonarr maps the release to; a season pack lists every episode it covers.
+  episodeIds?: number[];
+  // Sonarr's and Radarr's own rank for the release within the quality profile; searches stored before it was kept lack it.
+  qualityWeight?: number | null;
 };
 
 export type StoredSearch = { fetchedAt: number; releases: Release[] };
@@ -127,6 +134,11 @@ const toRelease = (value: unknown): Release | undefined => {
     past: [],
     qualityModel: isRecord(value.quality) ? value.quality : null,
     languages: Array.isArray(value.languages) ? value.languages : [],
+    downloadUrl: text(value.downloadUrl),
+    episodeIds: Array.isArray(value.mappedEpisodeInfo)
+      ? value.mappedEpisodeInfo.flatMap((episode) => (isRecord(episode) && positiveInteger(episode.id) ? [episode.id] : []))
+      : [],
+    qualityWeight: typeof value.qualityWeight === 'number' && Number.isFinite(value.qualityWeight) ? value.qualityWeight : null,
   };
 };
 
@@ -224,20 +236,24 @@ export const createReleases = (
     return { kind: 'ok', search };
   };
 
+  const describe = async (target: ReleaseTarget, result: ReleaseResult): Promise<ReleaseResult> => (result.kind === 'ok'
+    ? { ...result, search: await describeSearch(database, services, target, result.search) }
+    : { ...result, stored: result.stored === null ? null : await describeSearch(database, services, target, result.stored) });
+
   const refresh = (target: ReleaseTarget) => {
     const key = targetKey(target);
     const existing = running.get(key);
     if (existing !== undefined) return existing;
-    const started = fresh(target).finally(() => running.delete(key));
+    const started = fresh(target).then((result) => describe(target, result)).finally(() => running.delete(key));
     running.set(key, started);
     return started;
   };
 
   return {
-    // Stored results come back at once with their age; a search runs only when nothing is stored.
+    // Stored results come back with their age after only the owned-file lookup; a search runs only when nothing is stored.
     async get(target: ReleaseTarget): Promise<ReleaseResult & { refreshing: boolean }> {
       const stored = readStored(database, targetKey(target));
-      if (stored !== null) return { kind: 'ok', search: stored, refreshing: running.has(targetKey(target)) };
+      if (stored !== null) return { ...(await describe(target, { kind: 'ok', search: stored })), refreshing: running.has(targetKey(target)) };
       return { ...(await refresh(target)), refreshing: false };
     },
     refresh,
@@ -249,13 +265,18 @@ export const createReleases = (
 
 export type Releases = ReturnType<typeof createReleases>;
 
+const publicSearch = (search: StoredSearch) => ({
+  ...search,
+  releases: search.releases.map(({ downloadUrl: _downloadUrl, ...release }) => release),
+});
+
 const respond = (result: ReleaseResult & { refreshing?: boolean }) => {
   if (result.kind === 'ok') {
-    return { status: 200 as const, body: { ...result.search, refreshing: result.refreshing ?? false } };
+    return { status: 200 as const, body: { ...publicSearch(result.search), refreshing: result.refreshing ?? false } };
   }
   return {
     status: (result.kind === 'not_configured' ? 503 : 502) as 503 | 502,
-    body: { error: result.kind, stored: result.stored },
+    body: { error: result.kind, stored: result.stored === null ? null : publicSearch(result.stored) },
   };
 };
 

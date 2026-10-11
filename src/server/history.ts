@@ -76,9 +76,15 @@ const howFoundWords: Record<string, string> = {
 };
 
 const stepWords: Record<StepKind, string> = { problem: 'Problem', fix: 'Fix', result: 'Result' };
+const versionWords: Record<string, string> = {
+  added: 'Second version added',
+  deleted: 'Second version deleted',
+  torrent_removed: 'Torrent removed',
+  torrent_kept: 'Torrent kept',
+};
+// Second version events that also show under Deletions.
+const deletionKinds: ReadonlySet<string> = new Set(['deleted', 'torrent_removed', 'torrent_kept']);
 
-const record = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
 const integer = (value: unknown) => (typeof value === 'number' && Number.isSafeInteger(value) ? value : null);
 const code = (season: unknown, episode: unknown) => `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
@@ -167,13 +173,8 @@ export const createHistory = (options: {
 
   // Episode ids of one series, so problems on single episodes can join that series' history.
   const seriesEpisodes = async (seriesId: number) => {
-    try {
-      const { status, body } = await arr.sonarr.request(`/api/v3/episode?seriesId=${seriesId}`);
-      if (status < 200 || status > 299 || !Array.isArray(body)) return new Set<string>();
-      return new Set(body.flatMap((episode) => integer(record(episode)?.id) ?? []).map(String));
-    } catch {
-      return new Set<string>();
-    }
+    const result = await arr.sonarr.episodes(seriesId);
+    return result.kind === 'ok' ? new Set(result.value.map((episode) => String(episode.id))) : new Set<string>();
   };
 
   const titleMatcher = async (query: HistoryQuery) => {
@@ -192,22 +193,70 @@ export const createHistory = (options: {
     };
   };
 
-  const readSteps = (since: number) => database.prepare(`
+  type OwnRecord = { at: number; subject: Subject; kind?: string; event: () => Promise<HistoryEvent> };
+
+  const ownEvent = async (subject: Subject, fields: Pick<HistoryEvent, 'id' | 'at' | 'event' | 'detail' | 'release' | 'quality' | 'eventType'>): Promise<HistoryEvent> => ({
+    ...fields,
+    service: subject.service,
+    source: 'media-manager-2',
+    subject,
+    title: await labels.subject(subject, database),
+    byHand: false,
+    details: emptyDetails,
+    markFailed: null,
+  });
+
+  const readSteps = (since: number): OwnRecord[] => database.prepare(`
     SELECT s.id AS step_id, s.at, s.kind AS step_kind, s.text, p.subject_type, p.service, p.subject_id, p.hash
     FROM problem_steps s JOIN problems p ON p.id = s.problem_id
     WHERE s.at >= ? ORDER BY s.at DESC, s.id DESC
-  `).all(since).map((row) => ({
-    stepId: Number(row.step_id),
-    at: Number(row.at),
-    kind: row.step_kind as StepKind,
-    text: String(row.text),
-    subject: {
+  `).all(since).map((row) => {
+    const subject: Subject = {
       type: row.subject_type as SubjectType,
       service: row.service === '' ? null : row.service as Service,
       id: String(row.subject_id),
-    } satisfies Subject,
-    hash: row.hash === null ? null : String(row.hash),
-  }));
+    };
+    const kind = row.step_kind as StepKind;
+    const at = Number(row.at);
+    return {
+      at,
+      subject,
+      event: () => ownEvent(subject, {
+        id: `mm2:${Number(row.step_id)}`,
+        at,
+        event: stepWords[kind],
+        detail: String(row.text),
+        release: row.hash === null ? null : findGrab(database, String(row.hash))?.releaseTitle ?? null,
+        quality: null,
+        eventType: `mm2_${kind}`,
+      }),
+    };
+  });
+
+  const readVersionEvents = (since: number): OwnRecord[] => database.prepare(`
+    SELECT e.id, e.at, e.kind, e.detail, v.service, v.movie_id, v.episode_id, v.release_title, v.quality
+    FROM version_events e JOIN second_versions v ON v.id = e.second_version_id
+    WHERE e.at >= ? ORDER BY e.at DESC, e.id DESC
+  `).all(since).map((row) => {
+    const subject: Subject = row.service === 'radarr'
+      ? { type: 'movie', service: 'radarr', id: String(row.movie_id) }
+      : { type: 'episode', service: 'sonarr', id: String(row.episode_id) };
+    const at = Number(row.at);
+    return {
+      at,
+      subject,
+      kind: String(row.kind),
+      event: () => ownEvent(subject, {
+        id: `mm2-version:${Number(row.id)}`,
+        at,
+        event: versionWords[String(row.kind)] ?? String(row.kind),
+        detail: String(row.detail),
+        release: String(row.release_title),
+        quality: row.quality === '' ? null : String(row.quality),
+        eventType: `mm2_version_${String(row.kind)}`,
+      }),
+    };
+  });
 
   const list = async (query: HistoryQuery): Promise<{ events: HistoryEvent[]; hasMore: boolean }> => {
     const { filter, page, movieId, seriesId, episodeId } = query;
@@ -230,30 +279,17 @@ export const createHistory = (options: {
 
     let ownEvents: HistoryEvent[] = [];
     let moreSteps = false;
-    if (filter === 'all' || filter === 'fixes') {
+    if (filter === 'all' || filter === 'fixes' || filter === 'deletions') {
       // Older steps belong to a later page while Sonarr or Radarr still has more; a later page starts at the oldest event already shown.
       const times = arrEvents.flatMap((event) => event?.at ?? []);
       const since = hasMore && times.length > 0 ? Math.min(...times) : 0;
       const matches = await titleMatcher(query);
-      const matched = readSteps(since).filter((step) => (query.before === undefined || step.at <= query.before) && matches(step.subject));
-      const steps = matched.slice(0, PAGE_SIZE);
+      // Second version events are not fixes; deleting one also shows under Deletions.
+      const own = filter === 'all' ? [...readSteps(since), ...readVersionEvents(since)].sort((a, b) => b.at - a.at)
+        : filter === 'fixes' ? readSteps(since) : readVersionEvents(since).filter((record) => deletionKinds.has(record.kind ?? ''));
+      const matched = own.filter((record) => (query.before === undefined || record.at <= query.before) && matches(record.subject));
       moreSteps = matched.length > PAGE_SIZE;
-      ownEvents = await Promise.all(steps.map(async (step): Promise<HistoryEvent> => ({
-        id: `mm2:${step.stepId}`,
-        at: step.at,
-        service: step.subject.service,
-        source: 'media-manager-2',
-        subject: step.subject,
-        title: await labels.subject(step.subject, database),
-        event: stepWords[step.kind],
-        detail: step.text,
-        release: step.hash === null ? null : findGrab(database, step.hash)?.releaseTitle ?? null,
-        quality: null,
-        byHand: false,
-        eventType: `mm2_${step.kind}`,
-        details: emptyDetails,
-        markFailed: null,
-      })));
+      ownEvents = await Promise.all(matched.slice(0, PAGE_SIZE).map((record) => record.event()));
     }
     return { events: [...kept, ...ownEvents].sort((a, b) => b.at - a.at), hasMore: hasMore || moreSteps };
   };

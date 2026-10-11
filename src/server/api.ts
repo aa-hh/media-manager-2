@@ -1,6 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import { adviseRemoval } from './advice.js';
 import type { Assignment } from './assignments.js';
+import { createConnectionRoutes } from './connections.js';
+import { createTrackerRoutes } from './trackerSettings.js';
 import { createFlaggedRoutes, type Flagged } from './flagged.js';
 import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import { createHealthRoutes, type Health } from './health.js';
@@ -10,7 +13,7 @@ import { type Blocklist, createBlocklistRoutes, createHistoryFailedRoute, record
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
 import type { ArrServices, Result } from './services/arr.js';
-import type { TrackerAccountStats } from './services/trackerAccounts.js';
+import type { Tracker, TrackerAccountStats } from './services/trackerAccounts.js';
 
 export type ApiActions = {
   arr: ArrServices;
@@ -20,7 +23,7 @@ export type ApiActions = {
   flagged?: Flagged;
   history?: History;
   blocklist?: Blocklist;
-  trackers?: { stats(): Promise<TrackerAccountStats[]> };
+  trackers?: { stats(): Promise<TrackerAccountStats[]>; check(tracker: Tracker): Promise<TrackerAccountStats> };
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -97,6 +100,19 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     return context.json(await actions.trackers.stats());
   });
 
+  // Whether a torrent can be removed under its tracker's hit and run rule; advice only, nothing is removed here.
+  api.get('/advice/:hash', async (context) => {
+    const hash = context.req.param('hash');
+    if (!downloadPattern.test(hash.toUpperCase())) return context.json({ error: 'invalid_request' }, 400);
+    return context.json(await adviseRemoval(database, hash.toUpperCase(), {
+      now: Date.now(),
+      accountRatio: async (tracker) => {
+        const account = await actions?.trackers?.check(tracker);
+        return account?.kind === 'ok' && account.stats !== 'unsupported' ? account.stats.ratio : null;
+      },
+    }));
+  });
+
   // Only items media-manager-2 has seen in the queue can be acted on, so a stray id never reaches Sonarr or Radarr.
   const queueItem = (service: string, id: string) => {
     if ((service !== 'sonarr' && service !== 'radarr') || !/^-?\d{1,18}$/.test(id)) return undefined;
@@ -169,6 +185,8 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     await actions.refresh(service);
     return context.body(null, 204);
   });
+  api.route('/', createConnectionRoutes(database));
+  api.route('/', createTrackerRoutes(database));
   if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
   if (actions?.flagged !== undefined) api.route('/flagged', createFlaggedRoutes(actions.flagged));
   if (actions?.history !== undefined) api.route('/history', createHistoryRoutes(actions.history));
