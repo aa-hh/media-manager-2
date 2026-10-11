@@ -33,6 +33,7 @@ const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
 const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
+const traktModuleUrl = new URL('../dist/server/services/trakt.js', import.meta.url).href;
 const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
@@ -2301,6 +2302,48 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
   });
 });
 
+test('the Trakt check sends the Client ID only to Trakt and classifies each answer', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTrakt } = await import(traktModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-trakt-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const clientId = `trakt-client-${process.pid}-distinctive`;
+  const check = async (respond) => {
+    const calls = [];
+    const status = await createTrakt(database, { fetch: async (url, init) => {
+      calls.push({ url: new URL(String(url)), init, headers: new Headers(init.headers) });
+      return respond();
+    } }).check();
+    return { status, calls };
+  };
+
+  // Asking Trakt before a Client ID is saved turns this red.
+  const unset = await check(() => assert.fail('unexpected request'));
+  assert.deepEqual(unset, { status: { kind: 'not_configured' }, calls: [] });
+
+  // Sending the Client ID anywhere but the trakt-api-key header to api.trakt.tv, or reading 403 as anything but rejected, turns this red.
+  setSetting(database, 'credentials', 'trakt.clientId', clientId);
+  const ok = await check(() => new Response('[]', { status: 200 }));
+  assert.deepEqual(ok.status, { kind: 'ok', version: 'key accepted' });
+  assert.equal(ok.calls[0].url.origin, 'https://api.trakt.tv');
+  assert.equal(ok.calls[0].url.href.includes(clientId), false);
+  assert.equal(ok.calls[0].headers.get('trakt-api-key'), clientId);
+  assert.equal(ok.calls[0].headers.get('trakt-api-version'), '2');
+  assert.equal(ok.calls[0].init.redirect, 'error');
+  const cases = [
+    [() => new Response('', { status: 403 }), 'rejected'],
+    [() => new Response('', { status: 401 }), 'rejected'],
+    [() => new Response('', { status: 500 }), 'unreachable'],
+    [() => { throw new TypeError(`fetch failed for ${clientId}`); }, 'unreachable'],
+  ];
+  for (const [respond, kind] of cases) assert.deepEqual((await check(respond)).status, { kind });
+});
+
 test('MDBList ratings fill the show page by site, are saved for a week and never fail the page', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -2555,7 +2598,7 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   for (const secret of [...secrets, 'test-key']) assert.equal(text.includes(secret), false, secret);
   const { services } = JSON.parse(text);
   // Tracker accounts live with their trackers; listing the old Blutopia, PrivateHD or Beyond-HD sign-ins here turns this red.
-  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist']);
+  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist', 'trakt']);
   assert.deepEqual(services[0], { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65201' }, credentials: { 'sonarr.apiKey': true } });
   assert.deepEqual(services[2].credentials, { 'rtorrent.username': false, 'rtorrent.password': true });
   assert.deepEqual(services[3].credentials, { 'plex.token': false });
@@ -2563,6 +2606,8 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   assert.deepEqual(services[4], { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } });
   // Asking for an MDBList address, which is fixed, turns this red.
   assert.deepEqual(services[5], { service: 'mdblist', serviceAddresses: {}, credentials: { 'mdblist.apiKey': false } });
+  // Asking for a Trakt address, which is fixed, turns this red.
+  assert.deepEqual(services[6], { service: 'trakt', serviceAddresses: {}, credentials: { 'trakt.clientId': false } });
 
   // Saving a blank credential over the stored one, or accepting a key no service reads, turns this red.
   const before = listSettingKeys(database);
@@ -9219,7 +9264,7 @@ test('the settings screen sends only changed fields and ranks each service state
   // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
-  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const { changes, pillFor, linkTone, services, stripSummary } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
   const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
 
   // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
@@ -9230,6 +9275,21 @@ test('the settings screen sends only changed fields and ranks each service state
       [{ address: 'http://localhost:8989', secrets: { 'sonarr.apiKey': 'new' } }, { credentials: { 'sonarr.apiKey': 'new' } }],
     ];
     for (const [draft, expected] of cases) assert.deepEqual(changes('sonarr', saved, draft), expected);
+  });
+
+  // Showing an Address field for TMDB, MDBList or Trakt, or sending an address for one, turns this red: the server refuses any key it does not expect.
+  await t.test('a service with a fixed address has no Address field and a save sends only its key', () => {
+    assert.deepEqual(services.filter((info) => info.addressPlaceholder === undefined).map((info) => info.name), ['tmdb', 'mdblist', 'trakt']);
+    const tmdb = { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } };
+    assert.deepEqual(changes('tmdb', tmdb, { address: 'https://api.themoviedb.org', secrets: { 'tmdb.apiKey': 'new' } }), { credentials: { 'tmdb.apiKey': 'new' } });
+    assert.deepEqual(changes('trakt', undefined, { address: '', secrets: {} }), {});
+  });
+
+  // Counting a metadata service in the strip turns this red: the strip shows only the chain from Sonarr and Radarr to Plex.
+  await t.test('the strip sentence ignores metadata services', () => {
+    const ok = { kind: 'ok', at: 0, ofSaved: true };
+    const checks = Object.fromEntries(services.map((info) => [info.name, info.group === 'Services' ? ok : { kind: 'idle' }]));
+    assert.match(stripSummary(checks), /^Every link answers\./);
   });
 
   // Letting unsaved edits hide a running test or a failure turns this red.
