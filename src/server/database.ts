@@ -297,6 +297,15 @@ export const applicationMigrations = [
   ) STRICT;
   CREATE INDEX second_versions_hash ON second_versions (hash);
   CREATE INDEX second_versions_state ON second_versions (state);`,
+  // A hash's file list never changes, so it is read from rTorrent once and dropped when the torrent is gone.
+  `ALTER TABLE torrents ADD COLUMN directory TEXT NOT NULL DEFAULT '';
+  CREATE TABLE torrent_files (
+    hash TEXT NOT NULL,
+    "index" INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    PRIMARY KEY (hash, "index")
+  ) STRICT;`,
   // What happened to each second version, for history. Kind has no CHECK so later kinds need no table rebuild.
   `CREATE TABLE version_events (
     id INTEGER PRIMARY KEY,

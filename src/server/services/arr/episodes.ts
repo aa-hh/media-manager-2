@@ -75,10 +75,19 @@ export const createEpisodes = ({ label, send }: { label: string; send: Send }) =
     return parsed === null ? refusal(`${label} sent no record for ${operation}.`) : { kind: 'ok', value: parsed };
   };
 
+  const episodeFiles = async (seriesId: number): Promise<Result<FileDetail[]>> => {
+    const operation = 'the episode file list';
+    const answer = await send(operation, `/api/v3/episodefile?seriesId=${seriesId}`);
+    if (answer.kind !== 'ok') return answer;
+    const { body } = answer.value;
+    if (!Array.isArray(body)) return refusal(`${label} sent no list of records for ${operation}.`);
+    return { kind: 'ok', value: body.flatMap((item) => parseFile(item) ?? []) };
+  };
+
   const monitorEpisodes = async (episodeIds: number[], monitored: boolean): Promise<Result<void>> => {
     const answer = await send('the episode monitor change', '/api/v3/episode/monitor', { method: 'PUT', body: { episodeIds, monitored } });
     return answer.kind === 'ok' ? { kind: 'ok', value: undefined } : answer;
   };
 
-  return { episodes, episode, monitorEpisodes };
+  return { episodes, episode, episodeFiles, monitorEpisodes };
 };

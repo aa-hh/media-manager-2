@@ -18,7 +18,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { gunzipSync, gzipSync } from 'node:zlib';
@@ -60,6 +60,7 @@ const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).hre
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
+const torrentFilesModuleUrl = new URL('../dist/server/torrentFiles.js', import.meta.url).href;
 const manualImportModuleUrl = new URL('../dist/server/manualImport.js', import.meta.url).href;
 const s3ModuleUrl = new URL('../dist/server/services/s3.js', import.meta.url).href;
 const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js', import.meta.url).href;
@@ -1684,7 +1685,7 @@ test('removal advice applies the hit and run rule with margins and proves time o
   const torrent = (input) => {
     const hash = (++count).toString(16).toUpperCase().padStart(40, '0');
     const row = { host: 'blutopia.cc', sizeBytes: 10 * GB, ratio: 0, seconds: 0, finishedAt: finished, firstSeenAt: (finished - hour) * 1000, goneAt: null, complete: 1, active: 1, ...input };
-    database.prepare("INSERT INTO torrents VALUES (?, 'Some.Movie', ?, ?, 0, 0, 1, 1, ?, ?, '', ?, ?, 0, 0, ?, ?, ?, ?, ?)")
+    database.prepare("INSERT INTO torrents VALUES (?, 'Some.Movie', ?, ?, 0, 0, 1, 1, ?, ?, '', ?, ?, 0, 0, ?, ?, ?, ?, ?, '')")
       .run(hash, row.sizeBytes, row.completedBytes ?? row.sizeBytes, row.active, row.complete, row.finishedAt, row.ratio, row.host, row.firstSeenAt, now, row.goneAt, row.seconds);
     return hash;
   };
@@ -2158,6 +2159,16 @@ test('Sonarr and Radarr operations answer with one result shape and never throw'
     assert.equal(result.value.find((item) => item.queueId === state.queue[1].id).downloadId, hash.toUpperCase());
   });
 
+  await t.test('the episode file list keeps each file\'s absolute path', async () => {
+    // Dropping path from the file parser or asking for another series' files turns this red.
+    state.episodeFiles = [
+      { id: 3, seriesId: 9, path: '/tv/Show/Season 1/e1.mkv', relativePath: 'Season 1/e1.mkv', size: 10 },
+      { id: 4, seriesId: 8, path: '/tv/Other/e1.mkv', relativePath: 'e1.mkv', size: 10 },
+    ];
+    const files = valueOrThrow(await sonarr.episodeFiles(9));
+    assert.deepEqual(files.map((file) => [file.id, file.path]), [[3, '/tv/Show/Season 1/e1.mkv']]);
+  });
+
   await t.test('queue removal maps each choice and is safe to repeat', async () => {
     // Mapping a removal choice to the wrong flags, counting an already-removed item, or telling rTorrent to erase on the wrong call turns this red.
     const hash = 'cd'.repeat(20);
@@ -2591,11 +2602,11 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
   const row = (hash, overrides = {}) => {
     const torrent = {
       hash, name: `Name ${hash.slice(0, 4)}`, size: 1000, completed: 1000, down: 0, up: 50,
-      state: 1, open: 1, active: 1, complete: 1, message: '', finished: 1_700_000_000, ratio: 1500, peers: 3, seeders: 1,
+      state: 1, open: 1, active: 1, complete: 1, message: '', finished: 1_700_000_000, ratio: 1500, peers: 3, seeders: 1, directory: '/downloads',
       ...overrides,
     };
     return [torrent.hash, torrent.name, torrent.size, torrent.completed, torrent.down, torrent.up, torrent.state,
-      torrent.open, torrent.active, torrent.complete, torrent.message, torrent.finished, torrent.ratio, torrent.peers, torrent.seeders];
+      torrent.open, torrent.active, torrent.complete, torrent.message, torrent.finished, torrent.ratio, torrent.peers, torrent.seeders, torrent.directory];
   };
 
   const setup = (databasePath) => {
@@ -2612,6 +2623,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
         if (method === 't.multicall') {
           return params[0] === hashC ? [] : [[`https://tracker.example/announce/secret-passkey-${params[0]}?pk=1`]];
         }
+        if (method === 'f.multicall') return [[`${params[0]}.mkv`, 1000]];
         if (fake.fail !== undefined) throw new Error(fake.fail);
         return fake.rows;
       },
@@ -2700,6 +2712,42 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     await second.poller.poll();
     assert.equal(listTorrents(second.database)[0].seedingSeconds, 105);
     second.database.close();
+  });
+
+  // Re-reading a stored file list, reading more than 20 per poll, or keeping the list of a gone torrent turns this red.
+  await t.test('file lists are read once, 20 per poll, and dropped when the torrent is gone', async () => {
+    const { database, fake, poller } = setup();
+    const hashes = Array.from({ length: 25 }, (_, index) => index.toString(16).toUpperCase().padStart(40, '0'));
+    fake.rows = hashes.map((hash) => row(hash));
+    const listed = () => database.prepare('SELECT hash, path, size_bytes FROM torrent_files ORDER BY hash').all().map((file) => ({ ...file }));
+    await poller.poll();
+    assert.equal(listed().length, 20);
+    assert.equal(listTorrents(database)[0].directory, '/downloads');
+    await poller.poll();
+    await poller.poll();
+    assert.equal(listed().length, 25);
+    assert.deepEqual(listed()[0], { hash: hashes[0], path: `${hashes[0]}.mkv`, size_bytes: 1000 });
+    assert.equal(fake.calls.filter(([method]) => method === 'f.multicall').length, 25);
+    fake.rows = hashes.slice(1).map((hash) => row(hash));
+    await poller.poll();
+    assert.equal(listed().length, 24);
+    assert.equal(listed().some((file) => file.hash === hashes[0]), false);
+    database.close();
+  });
+
+  // Spending list reads on torrents without metadata, or never reading one once it has metadata, turns this red.
+  await t.test('torrents without metadata do not use up list reads and are read once they have metadata', async () => {
+    const { database, fake, poller } = setup();
+    const waiting = Array.from({ length: 25 }, (_, index) => (index + 1).toString(16).toUpperCase().padStart(40, '0'));
+    fake.rows = [...waiting.map((hash) => row(hash, { size: 0 })), row(hashB)];
+    const listed = () => database.prepare('SELECT DISTINCT hash FROM torrent_files').all().map((file) => file.hash);
+    await poller.poll();
+    assert.deepEqual(listed(), [hashB]);
+    assert.deepEqual(fake.calls.filter(([method]) => method === 'f.multicall').map(([, params]) => params[0]), [hashB]);
+    fake.rows[0] = row(waiting[0]);
+    await poller.poll();
+    assert.deepEqual(listed().sort(), [waiting[0], hashB].sort());
+    database.close();
   });
 
   // Clearing the table on a failed poll, or never recording rTorrent as down and back up, turns this red.
@@ -3486,7 +3534,7 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
   const hash = (n) => String(n).repeat(40).slice(0, 40).toUpperCase();
   const row = (h, overrides = {}) => {
     const value = { name: h, size: 1000, completed: 100, state: 1, active: 1, complete: 0, message: '', ...overrides };
-    return [h, value.name, value.size, value.completed, 0, 0, value.state, 1, value.active, value.complete, value.message, 0, 0, 0, 0];
+    return [h, value.name, value.size, value.completed, 0, 0, value.state, 1, value.active, value.complete, value.message, 0, 0, 0, 0, '/downloads'];
   };
   const setup = () => {
     count += 1;
@@ -3498,6 +3546,7 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
       call: async (method, params) => {
         if (method === 't.multicall') return [['https://tracker.example/announce/passkey']];
         if (method === 'd.multicall2') return fake.rows;
+        if (method === 'f.multicall') return [];
         fake.calls.push([method, params[0]]);
         return 0;
       },
@@ -3641,7 +3690,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     const rtorrent = {
       call: async (method, params) => {
         if (method === 'd.multicall2') {
-          return [[hash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, message, 0, 0, torrent.seeders, torrent.seeders]];
+          return [[hash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, message, 0, 0, torrent.seeders, torrent.seeders, '/downloads']];
         }
         if (method === 't.multicall') return params[2] === 't.url=' ? [['https://tracker.blutopia.cc/announce/key']] : [[torrent.scrape]];
         if (method === 'f.multicall') return files;
@@ -3835,7 +3884,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     const calls = [];
     const rtorrent = {
       call: async (method, params) => {
-        if (method === 'd.multicall2') return [[hash, name, size, 0, 0, 0, 0, 0, 0, 0, message, 0, 0, 0, 0]];
+        if (method === 'd.multicall2') return [[hash, name, size, 0, 0, 0, 0, 0, 0, 0, message, 0, 0, 0, 0, directory]];
         if (method === 't.multicall') return [['https://tracker.example/announce/k']];
         if (method === 'f.multicall') return files;
         if (method === 'd.directory') return directory;
@@ -3924,6 +3973,223 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     assert.equal(run.writes.some(([method]) => method === 'd.start'), false);
     assert.equal(run.writes.some(([method]) => method === 'd.check_hash'), true);
     assert.ok(run.clock.value - start >= HASH_WAIT_LIMIT_MS);
+  });
+});
+
+test('library files are traced to the torrents holding them, and a torrent is removed only when nothing kept uses its files', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTorrentPoller } = await import(torrentsModuleUrl);
+  const { createTorrentFiles } = await import(torrentFilesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-torrent-files-'));
+  const databases = [];
+  t.after(async () => {
+    for (const database of databases) database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  let count = 0;
+  const hashOf = (n) => String(n).repeat(40);
+  const exists = async (path) => lstat(path).then(() => true, () => false);
+
+  // Each torrent: n (hash digit), directory under the case folder, files [[path, bytes]], multi, unreadable, size (0 = no metadata yet).
+  const setup = async (torrents) => {
+    count += 1;
+    const base = join(root, `case-${count}`);
+    const at = (...parts) => join(base, ...parts);
+    await mkdir(at('downloads'), { recursive: true });
+    await mkdir(at('library', 'Show'), { recursive: true });
+    for (const torrent of torrents) {
+      for (const [path, size] of torrent.files) {
+        await mkdir(dirname(at(torrent.directory, path)), { recursive: true });
+        await writeFile(at(torrent.directory, path), Buffer.alloc(size));
+      }
+    }
+    const database = openDatabase(at('db', 'media-manager.sqlite'));
+    databases.push(database);
+    setSetting(database, 'hostPaths', 'downloads.sonarr', at('downloads'));
+    setSetting(database, 'hostPaths', 'library.sonarr', at('library'));
+    const fake = { torrents, down: false, eraseFails: false, erased: [] };
+    const rtorrent = {
+      call: async (method, params) => {
+        if (fake.down) throw new Error('rTorrent is unreachable.');
+        if (method === 'd.multicall2' && params.length === 5) return fake.torrents.map((torrent) => [hashOf(torrent.n), `T${torrent.n}`, at(torrent.directory)]);
+        if (method === 'd.multicall2') {
+          return fake.torrents.map((torrent) => [hashOf(torrent.n), `T${torrent.n}`, torrent.size ?? 1, 1, 0, 0, 1, 1, 1, 1, '', 0, 0, 0, 0, at(torrent.directory)]);
+        }
+        if (method === 't.multicall') return [];
+        const torrent = fake.torrents.find((candidate) => hashOf(candidate.n) === params[0]);
+        if (torrent === undefined) throw new Error('rTorrent fault -501: Could not find info-hash.');
+        if (method === 'f.multicall') {
+          if (torrent.unreadable) throw new Error('rTorrent timed out.');
+          return torrent.files;
+        }
+        if (method === 'd.directory') return at(torrent.directory);
+        if (method === 'd.is_multi_file') return torrent.multi ? 1 : 0;
+        if (method === 'd.erase') {
+          if (fake.eraseFails) throw new Error('rTorrent fault -1: busy');
+          fake.erased.push(params[0]);
+          fake.torrents = fake.torrents.filter((candidate) => candidate !== torrent);
+          return 0;
+        }
+        throw new Error(`Unexpected ${method}`);
+      },
+    };
+    const { fake: arrFake, ...arr } = connectArr(database);
+    const poller = createTorrentPoller({ database, rtorrent, events: createEventHub() });
+    await poller.poll();
+    return { database, fake, arrFake, poller, at, ...createTorrentFiles({ database, rtorrent, arr }) };
+  };
+  const imported = (hash, fileId) => historyRecord({ eventType: 'downloadFolderImported', downloadId: hash.toLowerCase(), seriesId: 5, data: { fileId: String(fileId) } });
+  const states = (mapping) => mapping.files.map((file) => [file.state, file.hashes]);
+
+  // Calling a file none while a file list is unread or rTorrent is down, or ignoring the import record, turns this red.
+  await t.test('a hardlink is linked, a copy with an import record is copied, and an unexplained copy is none only when every list is read', async () => {
+    const world = await setup([
+      { n: 1, directory: 'downloads', files: [['A.mkv', 10]] },
+      { n: 2, directory: 'downloads', files: [['B.mkv', 20]] },
+    ]);
+    await link(world.at('downloads', 'A.mkv'), world.at('library', 'Show', 'e1.mkv'));
+    await writeFile(world.at('library', 'Show', 'e2.mkv'), Buffer.alloc(20));
+    await writeFile(world.at('library', 'Show', 'e3.mkv'), Buffer.alloc(30));
+    world.arrFake.sonarr.state.history.push(imported(hashOf(2), 2), historyRecord({ downloadId: hashOf(1), seriesId: 5, data: { fileId: '3' } }));
+    const library = [1, 2, 3].map((n) => ({ path: world.at('library', 'Show', `e${n}.mkv`), fileId: n }));
+
+    const mapping = await world.mapFiles(library, 'sonarr', 5);
+    assert.deepEqual(states(mapping), [['linked', [hashOf(1)]], ['copied', [hashOf(2)]], ['none', []]]);
+    assert.deepEqual(mapping.torrents.map((torrent) => [torrent.hash, torrent.files.map((file) => file.libraryPaths)]),
+      [[hashOf(1), [[library[0].path]]], [hashOf(2), [[]]]]);
+
+    world.fake.torrents.push({ n: 3, directory: 'downloads', files: [['C.mkv', 5]], unreadable: true });
+    await world.poller.poll();
+    const unread = await world.mapFiles(library, 'sonarr', 5);
+    assert.deepEqual(states(unread), [['linked', [hashOf(1)]], ['copied', [hashOf(2)]], ['unknown', []]]);
+    assert.match(unread.files[2].reason, /not all read/);
+
+    world.fake.torrents.at(-1).unreadable = false;
+    await world.poller.poll();
+    assert.equal((await world.mapFiles(library, 'sonarr', 5)).files[2].state, 'none');
+    world.fake.down = true;
+    await world.poller.poll();
+    assert.equal((await world.mapFiles(library, 'sonarr', 5)).files[2].state, 'unknown');
+  });
+
+  // Counting a torrent without metadata as unread, never reading its list once it has metadata, or skipping the live check before the erase turns this red.
+  await t.test('a torrent without metadata holds nothing until it has some, and is read from rTorrent before an erase', async () => {
+    const world = await setup([
+      { n: 1, directory: 'downloads', files: [['A.mkv', 10]] },
+      { n: 2, directory: 'downloads', files: [['B.mkv', 10]] },
+      { n: 7, directory: 'downloads', files: [], size: 0 },
+    ]);
+    await link(world.at('downloads', 'A.mkv'), world.at('library', 'Show', 'e1.mkv'));
+    await writeFile(world.at('library', 'Show', 'e3.mkv'), Buffer.alloc(30));
+    const library = [1, 3].map((n) => ({ path: world.at('library', 'Show', `e${n}.mkv`), fileId: n }));
+    assert.deepEqual(states(await world.mapFiles(library, 'sonarr', 5)), [['linked', [hashOf(1)]], ['none', []]]);
+    assert.deepEqual(world.canRemoveTorrent(hashOf(2)), { allowed: true });
+
+    Object.assign(world.fake.torrents[2], { size: 10, files: [['B.mkv', 10]] });
+    const refused = await world.removeTorrent(hashOf(2));
+    assert.equal(refused.removed, false);
+    assert.match(refused.reason, /B\.mkv is also used by the torrent T7/);
+    assert.deepEqual(world.fake.erased, []);
+    assert.equal(await exists(world.at('downloads', 'B.mkv')), true);
+
+    await world.poller.poll();
+    assert.equal(world.database.prepare('SELECT COUNT(*) AS n FROM torrent_files WHERE hash = ?').get(hashOf(7)).n, 1);
+    assert.match(world.canRemoveTorrent(hashOf(2)).reason, /B\.mkv is also used by the torrent T7/);
+  });
+
+  // Mapping a pack's files to separate torrents, or losing which library file shares each inode, turns this red.
+  await t.test('a season pack is one torrent holding all three library files', async () => {
+    const world = await setup([{ n: 4, directory: 'downloads/Pack', multi: true, files: [['e1.mkv', 1], ['Sub/e2.mkv', 2], ['e3.mkv', 3]] }]);
+    const library = [];
+    for (const [index, path] of ['e1.mkv', 'Sub/e2.mkv', 'e3.mkv'].entries()) {
+      library.push({ path: world.at('library', 'Show', `S01E0${index + 1}.mkv`), fileId: index + 1 });
+      await link(world.at('downloads/Pack', path), library[index].path);
+    }
+    const mapping = await world.mapFiles(library, 'sonarr', 5);
+    assert.deepEqual(states(mapping), [1, 2, 3].map(() => ['linked', [hashOf(4)]]));
+    assert.deepEqual(mapping.torrents.map((torrent) => torrent.files.map((file) => [file.path, file.libraryPaths])),
+      [[[world.at('downloads/Pack/e1.mkv'), [library[0].path]], [world.at('downloads/Pack/Sub/e2.mkv'), [library[1].path]],
+        [world.at('downloads/Pack/e3.mkv'), [library[2].path]]]]);
+  });
+
+  // Keeping a gone torrent's file list, or trusting an import record for a torrent rTorrent no longer has, turns this red.
+  await t.test('a torrent gone from rTorrent holds nothing', async () => {
+    const world = await setup([
+      { n: 1, directory: 'downloads', files: [['A.mkv', 10]] },
+      { n: 2, directory: 'downloads', files: [['B.mkv', 20]] },
+    ]);
+    await link(world.at('downloads', 'A.mkv'), world.at('library', 'Show', 'e1.mkv'));
+    await writeFile(world.at('library', 'Show', 'e2.mkv'), Buffer.alloc(20));
+    world.arrFake.sonarr.state.history.push(imported(hashOf(2), 2));
+    world.fake.torrents = [];
+    await world.poller.poll();
+    const mapping = await world.mapFiles([1, 2].map((n) => ({ path: world.at('library', 'Show', `e${n}.mkv`), fileId: n })), 'sonarr', 5);
+    assert.deepEqual(states(mapping), [['none', []], ['none', []]]);
+    assert.equal(world.database.prepare('SELECT COUNT(*) AS n FROM torrent_files').get().n, 0);
+  });
+
+  // Dropping any of the three checks, or erasing in rTorrent after a refusal, turns this red.
+  await t.test('removal is refused for a kept library or versions inode, a path another torrent lists, and a path outside downloads', async () => {
+    const world = await setup([
+      { n: 1, directory: 'downloads', files: [['A.mkv', 10]] },
+      { n: 2, directory: 'downloads', files: [['Shared.mkv', 10]] },
+      { n: 3, directory: 'downloads', files: [['Shared.mkv', 10]] },
+      { n: 5, directory: 'elsewhere', files: [['E.mkv', 10]] },
+    ]);
+    const kept = world.at('library', 'Show', 'e1.mkv');
+    await link(world.at('downloads', 'A.mkv'), kept);
+    assert.match(world.canRemoveTorrent(hashOf(1)).reason, /A\.mkv shares its data with the library file .*e1\.mkv/);
+    assert.deepEqual(world.canRemoveTorrent(hashOf(1), { after: [kept] }), { allowed: true });
+    await mkdir(world.at('versions'));
+    await link(kept, world.at('versions', 'e1.2160p.mkv'));
+    setSetting(world.database, 'hostPaths', 'versions.sonarr', world.at('versions'));
+    assert.match(world.canRemoveTorrent(hashOf(1), { after: [kept] }).reason, /shares its data with the library file .*e1\.2160p\.mkv/);
+    assert.match(world.canRemoveTorrent(hashOf(2)).reason, /Shared\.mkv is also used by the torrent T3/);
+    assert.match(world.canRemoveTorrent(hashOf(5)).reason, /E\.mkv is outside every hostPaths downloads folder/);
+
+    for (const n of [1, 2, 5]) assert.equal((await world.removeTorrent(hashOf(n))).removed, false);
+    assert.deepEqual(world.fake.erased, []);
+    for (const path of ['downloads/A.mkv', 'downloads/Shared.mkv', 'elsewhere/E.mkv']) assert.equal(await exists(world.at(path)), true);
+  });
+
+  // Removing a single-file torrent's folder, or a file the torrent does not list, turns this red.
+  await t.test('removing a single-file torrent deletes its file and leaves the shared folder and its other files', async () => {
+    const world = await setup([
+      { n: 1, directory: 'downloads', files: [['A.mkv', 10]] },
+      { n: 2, directory: 'downloads', files: [['B.mkv', 10]] },
+    ]);
+    assert.deepEqual(await world.removeTorrent(hashOf(1)), { removed: true, deleted: [world.at('downloads', 'A.mkv')], left: [] });
+    assert.deepEqual(await readdir(world.at('downloads')), ['B.mkv']);
+    await world.poller.poll();
+    assert.equal((await world.removeTorrent(hashOf(2))).removed, true);
+    assert.deepEqual(await readdir(world.at('downloads')), []);
+    assert.deepEqual(world.fake.erased, [hashOf(1), hashOf(2)]);
+  });
+
+  // Removing a folder above the torrent's own, or one still holding a file the torrent does not list, turns this red.
+  await t.test('removing a multi-file torrent deletes its files and its own emptied folders only', async () => {
+    const world = await setup([
+      { n: 4, directory: 'downloads/Pack', multi: true, files: [['e1.mkv', 1], ['Sub/e2.mkv', 2]] },
+      { n: 6, directory: 'downloads/Pack2', multi: true, files: [['Sub/x.mkv', 1]] },
+      { n: 1, directory: 'downloads', files: [['A.mkv', 10]] },
+    ]);
+    await writeFile(world.at('downloads', 'Pack2', 'notes.nfo'), 'kept');
+    assert.deepEqual((await world.removeTorrent(hashOf(4))).deleted, [world.at('downloads/Pack/e1.mkv'), world.at('downloads/Pack/Sub/e2.mkv')]);
+    assert.equal((await world.removeTorrent(hashOf(6))).removed, true);
+    assert.deepEqual((await readdir(world.at('downloads'))).sort(), ['A.mkv', 'Pack2']);
+    assert.deepEqual(await readdir(world.at('downloads', 'Pack2')), ['notes.nfo']);
+  });
+
+  // Deleting files before rTorrent confirms the erase turns this red.
+  await t.test('a failed erase in rTorrent deletes nothing', async () => {
+    const world = await setup([{ n: 1, directory: 'downloads', files: [['A.mkv', 10]] }]);
+    world.fake.eraseFails = true;
+    const result = await world.removeTorrent(hashOf(1));
+    assert.equal(result.removed, false);
+    assert.match(result.reason, /did not remove the torrent .*busy.*no files were deleted/);
+    assert.equal(await exists(world.at('downloads', 'A.mkv')), true);
   });
 });
 
@@ -4701,7 +4967,7 @@ test('pick a release shows the owned file with its seeding and compares each rel
   insertGrab.run('EF'.repeat(20), 'Show.S01E02.720p.HDTV-OLD', 1, 2);
   insertGrab.run(hash, 'Show.S01E02.1080p.WEB-DL.DDP5.1-OWN', 3, 4);
   database.prepare(`INSERT INTO torrents VALUES (?, 'Show.S01E02', 10000000000, 10000000000, 0, 0, 1, 1, 1, 1, '', 0, 450, 0, 0,
-    'tracker.privatehd.to', 1, 1, NULL, ?)`).run(hash, 31 * 3600 + 100);
+    'tracker.privatehd.to', 1, 1, NULL, ?, '')`).run(hash, 31 * 3600 + 100);
   database.prepare('INSERT INTO release_searches (target, fetched_at, releases) VALUES (?, ?, ?)').run('sonarr:episode:5:50', 500, JSON.stringify([{
     guid: 'old', indexerId: 3, indexer: null, title: 'Show.S01E02.2160p', quality: null, size: null, ageHours: null, seeders: null, leechers: null,
     approved: true, rejections: [], customFormatScore: 0, customFormats: [], flags: [], protocol: null, past: [], qualityModel: null, languages: [],
@@ -4940,7 +5206,7 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   };
   const rowCount = () => database.prepare('SELECT COUNT(*) AS n FROM second_versions').get().n;
   const states = (path) => secondVersions.byHash(files[path].hash).map((row) => [row.state, row.failure]);
-  const addTorrent = (path) => database.prepare("INSERT INTO torrents VALUES (?, 'down', 100, 0, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0)").run(files[path].hash);
+  const addTorrent = (path) => database.prepare("INSERT INTO torrents VALUES (?, 'down', 100, 0, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0, '')").run(files[path].hash);
 
   const unset = await post(movie, 'm/movie');
   assert.equal(unset.status, 409);
@@ -5097,7 +5363,7 @@ test('a finished second version is hardlinked into the versions folder and Plex 
       await writeFile(join(directory, file), `${hash} ${file}`);
     }
     torrents.set(hash, { directory, files });
-    database.prepare("INSERT INTO torrents VALUES (?, ?, 100, 100, 0, 0, 1, 1, 1, ?, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0)").run(hash, hash, complete);
+    database.prepare("INSERT INTO torrents VALUES (?, ?, 100, 100, 0, 0, 1, 1, 1, ?, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0, '')").run(hash, hash, complete);
     return directory;
   };
   const addRows = (hash, subjects, { quality = 'Bluray-2160p', releaseTitle = 'Release.2160p-GRP', state = 'downloading' } = {}) => {
@@ -5320,7 +5586,7 @@ test('second versions are served under their movie and series, and a check flags
   insert({ service: 'sonarr', series_id: 5, episode_id: 101, title: 'Show.S01E01.2160p-NTb', quality: 'WEBDL-2160p', hash: 'E'.repeat(40), state: 'imported', file_path: episodeFile, created_at: 300, imported_at: 400 });
   insert({ service: 'sonarr', series_id: 5, episode_id: 102, title: 'Show S01E02 [web]', quality: 'WEBDL-2160p', hash: 'F'.repeat(40), state: 'downloading', created_at: 500 });
   insert({ service: 'sonarr', series_id: 5, episode_id: 102, title: 'Show.S01E02-BAD', quality: 'WEBDL-2160p', hash: null, state: 'failed', failure: 'The download link returned a web page, not a torrent file.', created_at: 600 });
-  const torrent = database.prepare("INSERT INTO torrents VALUES (?, ?, 1000, ?, 0, 7, 1, 1, 1, ?, '', 0, ?, 0, 0, 'blutopia.cc', 1, 1, NULL, ?)");
+  const torrent = database.prepare("INSERT INTO torrents VALUES (?, ?, 1000, ?, 0, 7, 1, 1, 1, ?, '', 0, ?, 0, 0, 'blutopia.cc', 1, 1, NULL, ?, '')");
   torrent.run('M'.repeat(40), 'Dune', 1000, 1, 1500, 7200);
   torrent.run('F'.repeat(40), 'Show S01E02', 400, 0, 0, 0);
 
@@ -5926,7 +6192,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       database.prepare('INSERT INTO tracker_cooldowns VALUES (?, ?, ?, ?, ?)').run('blutopia.cc', now - hour, input.cooldown.text, input.cooldown.known ? 1 : 0, 'AB'.repeat(20));
     }
     if (input.torrentHost !== undefined) {
-      database.prepare("INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, ?, 1, 1, NULL, 0)").run(input.torrentHost);
+      database.prepare("INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, ?, 1, 1, NULL, 0, '')").run(input.torrentHost);
     }
     const fake = (service) => ({
       configured: () => true,
@@ -6890,7 +7156,7 @@ test('S3 requests are signed with AWS Signature V4 and stored path-style', async
 // Accepting half an S3 setup, accepting a folder and a bucket together, losing settings saved under the old r2.* keys,
 // creating a missing backup folder, or letting a key escape the folder turns this red.
 test('backups go to a folder or an S3-compatible bucket, chosen by settings or environment', async (t) => {
-  const { applicationMigrations, openDatabase } = await import(databaseModuleUrl);
+  const { applicationMigrations, migrateDatabase, openDatabase } = await import(databaseModuleUrl);
   const { listSettingKeys, setSetting } = await import(settingsModuleUrl);
   const { backupDestinationFromEnvironment, createFolderStore, readBackupDestination } = await import(backupDestinationModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-destination-'));
@@ -6911,15 +7177,16 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
 
   // A database saved before the rename keeps its bucket.
   const databasePath = join(root, 'data', 'media-manager.sqlite');
-  const old = openDatabase(databasePath);
+  await mkdir(join(root, 'data'), { mode: 0o700 });
+  const old = new DatabaseSync(databasePath);
+  await chmod(databasePath, 0o600);
+  migrateDatabase(old, applicationMigrations.slice(0, applicationMigrations.findIndex((migration) => migration.includes("'r2.endpoint'"))));
   for (const [category, key, value] of [
     ['serviceAddresses', 'r2.endpoint', s3.endpoint],
     ['serviceAddresses', 'r2.bucket', s3.bucket],
     ['credentials', 'r2.accessKeyId', s3.accessKeyId],
     ['credentials', 'r2.secretAccessKey', s3.secretAccessKey],
   ]) setSetting(old, category, key, value);
-  // Rewound to just before the rename, so the tables later migrations create are dropped first.
-  old.exec(`DROP TABLE version_events; DROP TABLE second_versions; PRAGMA user_version = ${applicationMigrations.findIndex((migration) => migration.includes("'r2.endpoint'"))};`);
   old.close();
   const database = openDatabase(databasePath);
   t.after(() => database.close());
@@ -7009,7 +7276,7 @@ test('backups snapshot a changing database and restore it consistently', async (
     setSetting(database, 'serviceAddresses', key, value);
   }
   setSetting(database, 'credentials', 'sonarr.apiKey', 'sonarr-key');
-  database.exec(`INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0);
+  database.exec(`INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0, '');
     INSERT INTO grabs VALUES (1, 'radarr', 'movie:1', 'movie:1', 'movie:1', 'movie:1', 'guid-1', 'Some.Movie', 'grab', 'sent', NULL, NULL, 1, 1);`);
 
   const stopPath = join(root, 'stop-writer');
