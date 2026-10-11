@@ -12,7 +12,7 @@ export type Answer = { status: number; body: unknown };
 export type Send = (
   operation: string,
   path: string,
-  init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown },
+  init?: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown },
 ) => Promise<Result<Answer>>;
 
 export const labels = { sonarr: 'Sonarr', radarr: 'Radarr' } as const;

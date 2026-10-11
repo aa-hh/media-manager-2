@@ -92,20 +92,21 @@ export const createManualImport = (options: { database: DatabaseSync; arr: ArrSe
     let target: ImportView['target'];
     if (service === 'sonarr') {
       if (title.seriesId === null) return undefined;
-      const episodes = await get(service, `/api/v3/episode?seriesId=${title.seriesId}`);
+      const episodes = await arr.sonarr.episodes(title.seriesId);
+      if (episodes.kind !== 'ok') throw new ServiceError(episodes.message);
       target = {
         kind: 'series',
         seriesId: title.seriesId,
-        episodes: (Array.isArray(episodes) ? episodes : []).flatMap((episode) => {
-          if (!isRecord(episode) || integer(episode.id) === null) return [];
+        episodes: episodes.value.map((episode) => {
           const code = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
-          return [{ id: episode.id as number, code, title: text(episode.title) }];
+          return { id: episode.id, code, title: episode.title ?? '' };
         }),
       };
     } else {
       if (title.movieId === null) return undefined;
-      const movie = await get(service, `/api/v3/movie/${title.movieId}`);
-      target = { kind: 'movie', movieId: title.movieId, title: isRecord(movie) ? text(movie.title) : title.label };
+      const movie = await arr.radarr.movie(title.movieId);
+      if (movie.kind !== 'ok') throw new ServiceError(movie.message);
+      target = { kind: 'movie', movieId: title.movieId, title: movie.value.title };
     }
     return {
       service,

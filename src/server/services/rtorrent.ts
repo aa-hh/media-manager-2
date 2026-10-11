@@ -15,10 +15,12 @@ const escapeText = (value: string) => value
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;');
 
-export type XmlRpcParam = string | number;
+// Bytes go as base64, which is how load.raw_start takes a .torrent file.
+export type XmlRpcParam = string | number | Uint8Array;
 
 const encodeParam = (param: XmlRpcParam) => {
   if (typeof param === 'string') return `<string>${escapeText(param)}</string>`;
+  if (param instanceof Uint8Array) return `<base64>${Buffer.from(param).toString('base64')}</base64>`;
   if (!Number.isSafeInteger(param)) throw new TypeError('XML-RPC integers must be safe integers.');
   return `<i8>${param}</i8>`;
 };
@@ -149,6 +151,9 @@ const parseMethodResponse = (text: string): { value: XmlRpcValue } | { faultCode
   return result;
 };
 
+// rTorrent answered and refused the call, as opposed to a transport failure where it may have acted anyway.
+export class RtorrentFault extends Error {}
+
 export const createRtorrent = (database: DatabaseSync, options: ServiceOptions = {}) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
@@ -188,7 +193,7 @@ export const createRtorrent = (database: DatabaseSync, options: ServiceOptions =
       case 'not_configured': throw new Error('rTorrent is not configured.');
       case 'rejected': throw new Error('rTorrent rejected the credentials.');
       case 'unreachable': throw new Error('rTorrent is unreachable.');
-      case 'fault': throw new Error(`rTorrent fault ${outcome.faultCode}: ${outcome.faultString}`);
+      case 'fault': throw new RtorrentFault(`rTorrent fault ${outcome.faultCode}: ${outcome.faultString}`);
     }
   };
 
