@@ -9,7 +9,6 @@ const allowed = (item: Item) => Number.isFinite(item.value) && item.value >= 0 &
 
 const queue: Item[] = [];
 let timer: ReturnType<typeof setTimeout> | undefined;
-let stopped = false;
 
 const flush = () => {
   clearTimeout(timer);
@@ -23,16 +22,14 @@ const flush = () => {
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'media-manager-2' },
       body,
     }).then((response) => {
-      // onUnauthenticated lives inside the React tree, out of reach here, so a 401 stops sending for the rest of the page instead.
-      if (response.status !== 401) return;
-      stopped = true;
-      queue.length = 0;
+      // Signed out: drop what is queued and keep collecting, since sign-in re-renders this page without a reload.
+      if (response.status === 401) queue.length = 0;
     }).catch(() => {});
   }
 };
 
 const push = (item: Item) => {
-  if (stopped || !allowed(item)) return;
+  if (!allowed(item)) return;
   queue.push(item);
   timer ??= setTimeout(flush, 5_000);
 };

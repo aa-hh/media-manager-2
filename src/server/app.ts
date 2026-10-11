@@ -180,10 +180,11 @@ export const createApp = (options: CreateAppOptions) => {
     deleteCookie(context, bindingCookieName, cookieOptions);
   };
 
-  // Times every API request. The event stream stays open for hours, and browser timings are logged by their own route.
+  // Times every API request but these: the event stream stays open for hours, browser timings are logged by their own route,
+  // and image loads would flood the log.
   app.use('*', async (context, next) => {
     const { path } = context.req;
-    if (!path.startsWith('/api') || path === '/api/events' || path === '/api/metrics') return next();
+    if (!path.startsWith('/api') || path === '/api/events' || path === '/api/metrics' || path.startsWith('/api/images/')) return next();
     const started = performance.now();
     await next();
     logEvent('api', { method: context.req.method, path, status: context.res.status, ms: Math.round((performance.now() - started) * 10) / 10 });

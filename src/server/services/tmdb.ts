@@ -179,7 +179,7 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
     let answer = await send(url.href);
     if (answer?.status === 429) {
       const seconds = Number.parseInt(answer.retryAfter ?? '', 10);
-      // A long Retry-After would hold a row build and one of the in-flight slots, so the wait is capped.
+      // A long Retry-After would hold a row build, so the wait is capped.
       await new Promise((resolve) => setTimeout(resolve, (seconds >= 0 ? Math.min(seconds, MAX_RETRY_AFTER_SECONDS) : DEFAULT_RETRY_AFTER_SECONDS) * 1000));
       answer = await send(url.href);
     }
