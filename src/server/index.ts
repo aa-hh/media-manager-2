@@ -13,7 +13,7 @@ import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
 import { createOwned } from './owned.js';
 import { createProblems } from './problems.js';
-import { createProtection } from './protection.js';
+import { createProtection, vetoInBackground } from './protection.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
@@ -52,11 +52,6 @@ if (database !== undefined) {
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
   const trackers = createTrackerWatch({ database, rtorrent, problems, events });
   runner.register('tracker-watch', 30_000, trackers.check);
-  const stalls = createStallFix({ database, rtorrent, arr, problems, trackers });
-  runner.register('stall-fix', 60_000, stalls.check);
-  // Two minutes keeps Radarr's whole-library read light while still searching close to each release time.
-  const searches = createSearchScheduler({ database, arr, problems });
-  runner.register('search-schedule', 2 * 60_000, searches.check);
   const imports = createImportFix({ database, arr, problems, events });
   runner.register('import-fix', 60_000, imports.check);
   const releases = createReleases(database, arr);
@@ -69,6 +64,11 @@ if (database !== undefined) {
   });
   const protection = createProtection(database, arr, { recentGrabTitles: (service, since) => grabs.recentTitles(service, since) });
   const replaces = createReplaces(arr, grabs, { onCompleted: (grab) => protection.protect(grab) });
+  const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected });
+  runner.register('stall-fix', 60_000, stalls.check);
+  // Two minutes keeps Radarr's whole-library read light while still searching close to each release time.
+  const searches = createSearchScheduler({ database, arr, problems, isManualDownload: protection.isProtected });
+  runner.register('search-schedule', 2 * 60_000, searches.check);
   runner.register('manual-download-protection', 10 * 60_000, async () => {
     await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr')]);
     await protection.reconcile();
@@ -99,7 +99,12 @@ if (database !== undefined) {
     }),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
-      receive: torrentGrabs.receiveWebhook,
+      // One receiver for both: live downloads record every event, and a Grab of a manual download is vetoed.
+      receive: (service, payload) => {
+        const result = torrentGrabs.receiveWebhook(service, payload);
+        if (result === 'ok') void vetoInBackground(protection, service, payload);
+        return result;
+      },
     },
   });
   runner.start();

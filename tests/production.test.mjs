@@ -3478,8 +3478,7 @@ test('manual downloads are protected with tags, release profiles and a grab veto
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
   const { createArr } = await import(arrModuleUrl);
-  const { createApp } = await import(appModuleUrl);
-  const { createProtection } = await import(protectionModuleUrl);
+  const { createProtection, vetoInBackground } = await import(protectionModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-protection-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -3569,14 +3568,31 @@ test('manual downloads are protected with tags, release profiles and a grab veto
   assert.deepEqual(state.sonarr.deleted, ['/api/v3/queue/31?removeFromClient=true&blocklist=true']);
   assert.equal(await protection.veto('sonarr', { eventType: 'Test' }), 'ignored');
 
-  const app = createApp({ clientDirectory: root, listeningHost: '127.0.0.1', protection });
-  const hook = (token, body = { eventType: 'Test' }) => app.request(`/hooks/grab/sonarr?token=${encodeURIComponent(token)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  // Grabs reach the veto through the one webhook receiver the live-downloads work owns.
+  const vetoes = [];
+  await vetoInBackground({ veto: async (service, payload) => { vetoes.push([service, payload.eventType]); return 'not_found'; } }, 'sonarr', grab, async () => {});
+  assert.deepEqual(vetoes, [['sonarr', 'Grab'], ['sonarr', 'Grab'], ['sonarr', 'Grab'], ['sonarr', 'Grab']], 'a veto retries while the queue entry is missing');
+  await vetoInBackground({ veto: async () => assert.fail('only a Grab is vetoed') }, 'sonarr', { eventType: 'Download' });
+
+  assert.equal(await protection.ensureWebhook('sonarr'), false, 'nothing is registered without the address and the webhook secret');
+  setSetting(database, 'serviceAddresses', 'mediaManager.hookUrl', 'http://mm2.lan:8080/');
+  setSetting(database, 'credentials', 'webhook.secret', 'hook-secret');
+  assert.equal(await protection.ensureWebhook('sonarr'), true);
+  assert.equal(state.sonarr.notifications.length, 1);
+  const [registered] = state.sonarr.notifications;
+  assert.equal(registered.onGrab, true);
+  assert.equal(registered.onDownload, true);
+  assert.deepEqual(Object.fromEntries(registered.fields.map(({ name, value }) => [name, value])), {
+    url: 'http://mm2.lan:8080/webhooks/sonarr', method: 1, username: 'media-manager-2', password: 'hook-secret',
   });
-  assert.equal((await hook('wrong')).status, 401);
-  assert.equal((await hook(protection.hookToken())).status, 204);
+  await protection.ensureWebhook('sonarr');
+  assert.equal(state.sonarr.notifications.length, 1, 'the webhook is registered once');
+
+  // The stall and missed-search fixes ask whether a movie or episode is a manual download.
+  assert.equal(protection.isProtected({ type: 'episode', service: 'sonarr', id: '50' }), true);
+  assert.equal(protection.isProtected({ type: 'episode', service: 'sonarr', id: '51' }), false);
+  assert.equal(protection.isProtected({ type: 'movie', service: 'radarr', id: '9' }), true);
+  assert.equal(protection.isProtected({ type: 'torrent', service: null, id: '9' }), false);
 
   state.radarr.records['/api/v3/movie/9'].hasFile = false;
   await protection.unprotect(protection.list().find((item) => item.kind === 'episode'));
