@@ -8,7 +8,7 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
   poster?: string;
   title: ReactNode;
   meta?: ReactNode;
-  /** One Badge on the poster's bottom-left corner, or nothing when normal; hidden while imported. */
+  /** One Badge on the poster's bottom-left corner, or nothing when normal; hidden while imported and while the overview shows. */
   status?: ReactNode;
   /** Downloading percent: the 4 px lime strip on the poster's bottom edge. */
   progress?: number;
@@ -67,7 +67,16 @@ function LibraryPosterCard({
             <span className="font-ui text-xs text-muted-foreground">No poster yet</span>
           </span>
         )}
-        {status !== undefined && !imported && <span className="absolute bottom-2 left-2 flex">{status}</span>}
+        {status !== undefined && !imported && (
+          <span
+            className={cn(
+              'absolute bottom-2 left-2 flex',
+              overview !== undefined && 'transition-opacity duration-(--duration-base) ease-out group-hover:opacity-0 group-focus-visible:opacity-0',
+            )}
+          >
+            {status}
+          </span>
+        )}
         <span
           aria-hidden="true"
           className={cn('pointer-events-none absolute inset-0 rounded-md ring-inset', selected ? 'ring-2 ring-foreground' : 'ring-1 ring-foreground/10')}
