@@ -11,6 +11,8 @@ export type DownloadsState =
 // Reads the snapshot once, then follows the event stream. The stream has no replay, so every (re)connect reads the snapshot again.
 export const useDownloads = (onUnauthorized: () => void) => {
   const [state, setState] = useState<DownloadsState>({ kind: 'loading' });
+  const [generation, setGeneration] = useState(0);
+  const reopenDelayRef = useRef(2_000);
   const unauthorizedRef = useRef(onUnauthorized);
   unauthorizedRef.current = onUnauthorized;
   const versionRef = useRef(0);
@@ -44,16 +46,25 @@ export const useDownloads = (onUnauthorized: () => void) => {
 
   useEffect(() => {
     const source = new EventSource('/api/events', { withCredentials: true });
+    let disposed = false;
+    let reopen: number | undefined;
     const setLive = (live: boolean) => setState((current) => (current.kind === 'ready' ? { ...current, live } : current));
     source.addEventListener('open', () => {
       openRef.current = true;
+      reopenDelayRef.current = 2_000;
       void load();
     });
     source.addEventListener('error', () => {
       openRef.current = false;
       setLive(false);
-      // A closed stream is usually an expired session; reading the snapshot tells the app.
-      if (source.readyState === EventSource.CLOSED) void load();
+      // The browser never reopens a closed stream, as after a proxy's 502 mid-deploy or the server's stream limit.
+      // Reading the snapshot reports an expired session to the app; otherwise the stream reopens after a growing wait.
+      if (source.readyState !== EventSource.CLOSED) return;
+      void load().then((result) => {
+        if (disposed || result === 'unauthorized') return;
+        reopen = window.setTimeout(() => setGeneration((current) => current + 1), reopenDelayRef.current);
+        reopenDelayRef.current = Math.min(reopenDelayRef.current * 2, 30_000);
+      });
     });
     for (const type of liveTypes) {
       source.addEventListener(type, (event) => {
@@ -68,11 +79,13 @@ export const useDownloads = (onUnauthorized: () => void) => {
       });
     }
     return () => {
+      disposed = true;
+      window.clearTimeout(reopen);
       source.close();
       openRef.current = false;
       versionRef.current += 1;
     };
-  }, [load]);
+  }, [load, generation]);
 
   return { state, reload: load };
 };
