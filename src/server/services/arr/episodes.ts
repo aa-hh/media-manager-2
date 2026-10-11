@@ -89,5 +89,11 @@ export const createEpisodes = ({ label, send }: { label: string; send: Send }) =
     return answer.kind === 'ok' ? { kind: 'ok', value: undefined } : answer;
   };
 
-  return { episodes, episode, episodeFiles, monitorEpisodes };
+  // One file per call: the adapter sends no body with DELETE, so Sonarr's bulk delete is out of reach.
+  const deleteEpisodeFile = async (fileId: number): Promise<Result<void>> => {
+    const answer = await send('the episode file delete', `/api/v3/episodefile/${fileId}`, { method: 'DELETE' });
+    return answer.kind === 'ok' ? { kind: 'ok', value: undefined } : answer;
+  };
+
+  return { episodes, episode, episodeFiles, monitorEpisodes, deleteEpisodeFile };
 };

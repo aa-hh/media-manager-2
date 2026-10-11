@@ -24,6 +24,7 @@ export type SonarrTitles = {
   episode: (episodeId: number) => Promise<Result<Episode>>;
   episodeFiles: (seriesId: number) => Promise<Result<FileDetail[]>>;
   monitorEpisodes: (episodeIds: number[], monitored: boolean) => Promise<Result<void>>;
+  deleteEpisodeFile: (fileId: number) => Promise<Result<void>>;
   deleteSeries: (seriesId: number) => Promise<Result<void>>;
 };
 
@@ -92,8 +93,9 @@ export const createArr = <S extends Service>(service: S, database: DatabaseSync,
         headers,
         body: sendsBody ? JSON.stringify(init.body) : undefined,
       }, init.timeoutMs);
-    } catch {
-      throw new Error(`${label} is unreachable.`);
+    } catch (error) {
+      // The cause lets a caller tell a timeout, which the service may still have acted on, from a refused connection.
+      throw new Error(`${label} is unreachable.`, { cause: error });
     }
     let body: unknown;
     try {

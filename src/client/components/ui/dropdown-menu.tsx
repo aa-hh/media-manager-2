@@ -149,6 +149,7 @@ export {
   DropdownMenuSubmenu,
   DropdownMenuSubmenuTrigger,
   DropdownMenuTrigger,
+  content as floatingSurface,
   SelectContent,
   SelectItem,
 };

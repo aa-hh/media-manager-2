@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>media-manager-2 — sign in</title>
+<style>
+  :root {
+    --paper: #11100E;
+    --ink: #DCD5C3;
+    --ink-2: #A39C8A;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--paper); color: var(--ink); overflow: hidden; }
+  body { font-family: var(--mono); -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; left: 0; top: 0; display: block; }
+
+  .panel {
+    position: fixed; left: 7vw; top: 50%; transform: translateY(-50%);
+    width: min(440px, calc(100vw - 32px));
+    padding: 32px 0;
+  }
+  .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  h1 {
+    font-size: clamp(30px, 3.4vw, 44px); font-weight: 500; letter-spacing: -.02em;
+    line-height: 1.05; margin-top: 14px; white-space: nowrap;
+  }
+  .copy { margin-top: 22px; font-size: 14px; line-height: 1.6; color: var(--ink-2); max-width: 38ch; }
+  .copy p + p { margin-top: 8px; }
+  .copy strong { color: var(--ink); font-weight: 500; }
+
+  #go {
+    margin-top: 30px; display: inline-flex; align-items: center; gap: 12px;
+    height: 52px; padding: 0 22px 0 18px; border: 0; border-radius: 2px;
+    background: var(--ink); color: var(--paper);
+    font: 600 15px/1 var(--mono); letter-spacing: .01em; cursor: pointer;
+  }
+  #go svg { width: 16px; height: 16px; fill: currentColor; }
+  #go:hover { filter: brightness(1.08); }
+  #go:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+  #go:disabled { cursor: default; filter: none; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  #bench { position: fixed; left: 12px; bottom: 10px; z-index: 5; font: 11px var(--mono); color: var(--ink-2); }
+
+  @media (max-width: 640px) {
+    .panel { left: 16px; right: 16px; top: auto; bottom: 28px; transform: none; width: auto; padding: 24px 0 8px; }
+    h1 { font-size: 30px; }
+    .copy { font-size: 13px; }
+    #go { width: 100%; justify-content: center; }
+    aside.tw { top: 12px; bottom: auto; }
+  }
+
+  /* tweak panel (T toggles) */
+  .tw {
+    position: fixed; right: 12px; bottom: 12px; width: 260px; z-index: 5;
+    background: rgba(17,16,14,.92); border: 1px solid #3a372f; color: #A39C8A;
+    font: 11px/1.4 var(--mono); padding: 8px 10px;
+  }
+  .tw.closed .tw-body { display: none; }
+  .tw-head { display: flex; justify-content: space-between; cursor: pointer; color: #DCD5C3; }
+  .tw label { display: grid; grid-template-columns: 1fr 44px; gap: 2px 6px; margin-top: 7px; }
+  .tw input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #A39C8A; }
+  .tw output { text-align: right; color: #DCD5C3; }
+  .tw button { margin-top: 8px; font: 11px var(--mono); background: #2a2822; color: #DCD5C3; border: 1px solid #3a372f; padding: 4px 8px; cursor: pointer; }
+  .tw pre { margin-top: 6px; white-space: pre-wrap; word-break: break-all; color: #837D6F; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+
+<main class="panel" id="panel">
+  <div class="kicker">Owner sign-in</div>
+  <h1>media-manager-2</h1>
+  <div class="copy">
+    <p><strong>Only the owner's Plex account can open this app.</strong></p>
+    <p>Plex is used only to confirm it's you. This app never sees your password.</p>
+  </div>
+  <button id="go" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    <span id="goLabel">Sign in with Plex</span>
+  </button>
+  <p class="sr" id="status" aria-live="polite"></p>
+</main>
+
+<aside class="tw" id="tw">
+  <div class="tw-head" id="twHead"><span>tweaks</span><span>T</span></div>
+  <div class="tw-body" id="twBody"></div>
+</aside>
+
+
+<script>
+// ---- Tunable constants (slider-backed ones live in P) ---------------------
+const P = {
+  sweep: 20,          // seconds for the playhead to cross the grid
+  decay: 3,           // seconds for a passed cell to fade back to the noise
+  behind: 1.15,       // noise density multiplier behind the playhead (played)
+  ahead: 0.6,         // noise density multiplier ahead of the playhead (buffering)
+  noiseScale: 0.045,  // noise frequency per cell
+  inkHue: 43,         // hue of the bone ink, degrees
+  paperHue: 40,       // hue of the dark paper, degrees
+};
+const SLIDERS = [
+  ['sweep', 'sweep duration (s)', 6, 60, 0.5],
+  ['decay', 'decay time (s)', 0.3, 10, 0.1],
+  ['behind', 'behind density', 0.2, 2, 0.01],
+  ['ahead', 'ahead density', 0, 1.5, 0.01],
+  ['noiseScale', 'noise scale', 0.01, 0.15, 0.001],
+  ['inkHue', 'ink hue', 0, 360, 1],
+  ['paperHue', 'paper hue', 0, 360, 1],
+];
+const FONT_PX        = 12;      // glyph size in CSS px; sets grid density
+const LINE           = 1.3;     // row height as a multiple of FONT_PX
+const RAMP           = ' .·:-=+*#%@'; // glyphs from empty to dense
+const BG_LEVEL       = 0.05;    // floor brightness of the background field
+const BG_NOISE       = 0.22;    // how much noise adds to the background
+const BG_WAVES       = 0.09;    // how much the two-source sine interference adds
+const NOISE_DRIFT    = 0.05;    // how fast the noise field drifts (per second)
+const WAVE_LEN       = 70;      // interference wavelength, CSS px
+const WAVE_SPEED     = 0.5;     // interference phase speed (radians per second)
+const EDGE_COLS      = 6;       // soft width of the played/buffering boundary, in columns
+const PANEL_CLEAR    = 44;      // px of soft clearance around the sign-in block
+const MAX_DPR        = 2;       // pixel density cap; set 1 to render at half resolution on retina
+// states
+const GREEN          = [198, 241, 53]; // #C6F135, success only
+const BLEND_S        = 0.8;     // seconds for the parked column to ease in
+const SEEK_TAU       = 0.3;     // checking: playhead eases to the button column with this time constant (s)
+const PLAY_TAU       = 0.2;     // time constant for a column's played density to follow its target (s)
+const HOLD_LVL       = 0.22;    // checking: steady extra brightness of the parked column (no blink)
+const FILL_S         = 45;      // checking: seconds for the buffering spread to reach the far edge
+const SPREAD_LVL     = 0.45;    // checking: how far the spread lifts density from "ahead" toward "behind"
+const SPREAD_EDGE    = 30;      // checking: soft width of the spread front, in columns
+const SUCCESS_S      = 1.5;     // success: seconds for the playhead to finish its sweep to the right edge
+const SUCCESS_PEAK   = 0.4;     // success: brightness a passed cell flashes to (idle trail is 1)
+const SUCCESS_DECAY  = 0.6;     // success: seconds for that flash to fade back to the noise
+const GREEN_FADE     = 0.7;     // success: time constant for a passed cell's green to settle to the cast
+const GREEN_CAST     = 0.2;     // success: share of green left mixed into the ink once settled
+const SUCCESS_DRIFT  = 0.35;    // success: noise and wave drift speed once settled (idle is 1)
+const AUTO_SUCCESS_S = 4;       // seconds from click to success in the gallery
+const IDLE_FPS       = 20;      // frame rate outside transitions; motion is slow, so more adds nothing visible
+const FAST_S         = 1;       // seconds at full frame rate after any state change
+const GSTEPS         = 16;      // colour steps between ink and green in the glyph atlas
+const SIN_N = 4096, EXP_N = 2048, EXP_MAX = 6; // lookup table sizes; EXP covers u in [0, EXP_MAX]
+
+// ---- Setup ---------------------------------------------------------------
+const Q = new URLSearchParams(location.search);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono');
+const cv = document.getElementById('c'), ctx = cv.getContext('2d', { alpha: false }); // opaque: the compositor skips blending the canvas
+const panel = document.getElementById('panel'), go = document.getElementById('go');
+const atlas = document.createElement('canvas'), actx = atlas.getContext('2d');
+let src = atlas, atlasGen = 0; // what cells are drawn from: the atlas canvas, then its bitmap once ready
+
+let W, H, dpr, cw, ch, cols, rows, gw, gh, glyphs, paperHex, panelR, btnCol;
+let rate, clearF, prevCode, nA0, nA1, nB0, nB1, keyA = NaN, keyB = NaN; // per-cell tables
+let passT, greenT, played;                                                  // per-column state
+let dirtyAll = true;
+const SIN = new Float32Array(SIN_N).map((_, i) => Math.sin(i / SIN_N * 2 * Math.PI));
+const EXP2 = new Float32Array(EXP_N).map((_, i) => Math.exp(-2 * i / EXP_N * EXP_MAX)); // f² of the decay
+function hsl(h, s, l) { // -> [r,g,b] 0..255
+  const a = s * Math.min(l, 1 - l), f = n => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)];
+}
+const hex = c => '#' + c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+
+// glyph atlas: one opaque tile per (glyph, dim/mid/full, green step), paper baked in, so a cell is one drawImage
+function buildColours() {
+  const Pp = hsl(P.paperHue, 0.1, 0.061), Ik = hsl(P.inkHue, 0.24, 0.814);
+  const mix = (A, B, f) => A.map((a, k) => a + (B[k] - a) * f);
+  const INK = [0.28, 0.57, 1].map(f => mix(Pp, Ik, f)), GRN = [0.28, 0.57, 1].map(f => mix(Pp, GREEN, f));
+  atlas.width = RAMP.length * gw; atlas.height = GSTEPS * 3 * gh;
+  const im = actx.createImageData(atlas.width, atlas.height), d = im.data;
+  for (let o = 0; o < d.length; o += 4) { d[o] = Pp[0]; d[o + 1] = Pp[1]; d[o + 2] = Pp[2]; d[o + 3] = 255; }
+  for (let g = 0; g < GSTEPS; g++) for (let l = 0; l < 3; l++) {
+    const C = mix(INK[l], GRN[l], g / (GSTEPS - 1)), ty = (g * 3 + l) * gh;
+    for (let k = 1; k < RAMP.length; k++) {
+      const G = glyphs[k];
+      for (let q = 0; q < G.x.length; q++) {
+        const o = ((ty + G.y[q]) * atlas.width + k * gw + G.x[q]) * 4, v = G.al[q] / 255;
+        d[o] = Pp[0] + (C[0] - Pp[0]) * v; d[o + 1] = Pp[1] + (C[1] - Pp[1]) * v; d[o + 2] = Pp[2] + (C[2] - Pp[2]) * v;
+      }
+    }
+  }
+  actx.putImageData(im, 0, 0);
+  src = atlas; const gen = ++atlasGen; createImageBitmap(atlas).then(b => { if (gen === atlasGen) src = b; }); // a bitmap blits faster than a canvas
+  paperHex = hex(Pp); dirtyAll = true;
+  const r = document.documentElement.style;
+  r.setProperty('--paper', paperHex); r.setProperty('--ink', hex(Ik)); r.setProperty('--ink-2', hex(mix(Pp, Ik, 0.72)));
+}
+
+function build() {
+  dpr = Math.max(1, Math.min(MAX_DPR, Math.round(window.devicePixelRatio || 1)));
+  W = innerWidth; H = innerHeight;
+  ctx.font = `${FONT_PX}px ${MONO}`;
+  cw = Math.max(6, Math.round(ctx.measureText('M').width));
+  ch = Math.round(FONT_PX * LINE);
+  cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+  gw = cw * dpr; gh = ch * dpr;
+  cv.width = cols * gw; cv.height = rows * gh;
+  cv.style.width = cols * cw + 'px'; cv.style.height = rows * ch + 'px';
+  ctx.imageSmoothingEnabled = false;
+  // render each glyph once in white, keep its inked pixels as (x, y, alpha) lists for the atlas
+  const a = document.createElement('canvas'); a.width = RAMP.length * gw; a.height = gh;
+  const ac = a.getContext('2d');
+  ac.scale(dpr, dpr); ac.font = `${FONT_PX}px ${MONO}`; ac.textAlign = 'center'; ac.textBaseline = 'middle'; ac.fillStyle = '#fff';
+  [...RAMP].forEach((g, i) => ac.fillText(g, i * cw + cw / 2, ch / 2 + 0.5));
+  const px = ac.getImageData(0, 0, a.width, a.height).data;
+  glyphs = [...RAMP].map((_, g) => {
+    const xs = [], ys = [], al = [];
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const v = px[(y * a.width + g * gw + x) * 4 + 3];
+      if (v > 8) { xs.push(x); ys.push(y); al.push(v); }
+    }
+    return { x: xs, y: ys, al };
+  });
+  const p = panel.getBoundingClientRect(), b = go.getBoundingClientRect();
+  panelR = { x0: p.left, y0: p.top, x1: p.right, y1: p.bottom };
+  btnCol = (b.left + b.width / 2) / cw;
+  // per-cell constants, column-major (cell = i * rows + j)
+  const n = cols * rows;
+  rate = new Float32Array(n); clearF = new Float32Array(n); prevCode = new Uint16Array(n);
+  nA0 = new Float32Array(n); nA1 = new Float32Array(n); nB0 = new Float32Array(n); nB1 = new Float32Array(n); keyA = keyB = NaN;
+  for (let i = 0, c = 0; i < cols; i++) for (let j = 0; j < rows; j++, c++) {
+    rate[c] = 0.5 + 2 * hash3(i, j, 5);
+    const pd = panelDist(i * cw + cw / 2, j * ch + ch / 2);
+    clearF[c] = pd < PANEL_CLEAR ? smooth(0, PANEL_CLEAR, pd) : 1;
+  }
+  passT = new Float64Array(cols).fill(-1e9); greenT = new Float64Array(cols).fill(1e9); played = new Float32Array(cols);
+  if (S.state === 'success') { for (let i = Math.floor(btnCol); i < cols; i++) greenT[i] = S.t - 10; S.rCol = cols; }
+  buildColours();
+}
+
+// ---- Maths ---------------------------------------------------------------
+function hash3(x, y, z) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1103515245); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+const fade = t => t * t * (3 - 2 * t);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function panelDist(x, y) {
+  const dx = Math.max(panelR.x0 - x, 0, x - panelR.x1), dy = Math.max(panelR.y0 - y, 0, y - panelR.y1);
+  return Math.hypot(dx, dy);
+}
+// one z-slice of the value noise (the 3D noise is a lerp between two such slices), refreshed only when z crosses an integer
+function slice(out, sx, sy, zi) {
+  for (let i = 0, c = 0; i < cols; i++) {
+    const x = i * sx, xi = Math.floor(x), u = fade(x - xi);
+    for (let j = 0; j < rows; j++, c++) {
+      const y = j * sy, yi = Math.floor(y), v = fade(y - yi);
+      const a = hash3(xi, yi, zi), b = hash3(xi + 1, yi, zi), d = hash3(xi, yi + 1, zi), e = hash3(xi + 1, yi + 1, zi);
+      const top = a + (b - a) * u;
+      out[c] = top + (d + (e - d) * u - top) * v;
+    }
+  }
+}
+function slices(zA, zB) {
+  const NS = P.noiseScale, ka = Math.floor(zA), kb = Math.floor(zB);
+  if (ka !== keyA) {
+    if (ka === keyA + 1) { const t = nA0; nA0 = nA1; nA1 = t; } else slice(nA0, NS, NS * LINE * 1.6, ka);
+    slice(nA1, NS, NS * LINE * 1.6, ka + 1); keyA = ka;
+  }
+  if (kb !== keyB) {
+    if (kb === keyB + 1) { const t = nB0; nB0 = nB1; nB1 = t; } else slice(nB0, NS * 2.3, NS * 3.7, kb);
+    slice(nB1, NS * 2.3, NS * 3.7, kb + 1); keyB = kb;
+  }
+}
+
+// ---- State simulation (scalars + one value per column; stepped, so ?t= is reproducible) ----
+// S.t is real time; S.anim is the drift clock for noise and waves, which slows down in success
+const S = { state: 'idle', t: 0, anim: 0, phase: 0, head: 0, tState: 0, tCheck: 0, h0: 0, rCol: 0, hold: 0 };
+function stamp(a, b, t) { // columns crossed moving right from a to b
+  for (let c = Math.max(0, Math.floor(a) + 1), e = Math.min(cols - 1, Math.floor(b)); c <= e; c++) passT[c] = t;
+}
+function setState(s) {
+  if (s === S.state) return;
+  if (s === 'checking') { S.tCheck = S.t; }
+  if (s === 'success') { S.h0 = S.head; S.rCol = Math.max(0, Math.floor(S.head)); }
+  S.state = s; S.tState = S.t;
+  document.body.dataset.state = s;
+  const label = { idle: 'Sign in with Plex', checking: 'Logging in…', success: 'Logging in' }[s];
+  document.getElementById('goLabel').textContent = label;
+  document.getElementById('status').textContent = s === 'idle' ? '' : label;
+  go.disabled = s !== 'idle';
+}
+function update(dt) {
+  const t = (S.t += dt), prev = S.head, a = 1 - Math.exp(-dt / PLAY_TAU);
+  let drift = 1;
+  if (S.state === 'idle') {
+    S.phase += dt / P.sweep;
+    if (S.phase >= 1) { stamp(prev, cols, t); S.phase %= 1; stamp(-1, S.phase * cols, t); }
+    else stamp(prev, S.phase * cols, t);
+    S.head = S.phase * cols;
+    const wrap = smooth(0.92, 1, S.phase);
+    for (let i = 0; i < cols; i++) played[i] += (smooth(-EDGE_COLS, 0, S.head - i) * (1 - wrap) - played[i]) * a;
+  } else if (S.state === 'checking') {
+    // playhead parks on the button column; the played density spreads outward slowly and only part of the way
+    S.head = prev + (btnCol - prev) * (1 - Math.exp(-dt / SEEK_TAU));
+    if (S.head > prev) stamp(prev, S.head, t);
+    S.hold = smooth(0, BLEND_S, t - S.tState);
+    const R = (t - S.tCheck) * Math.max(btnCol, cols - btnCol) / FILL_S;
+    for (let i = 0; i < cols; i++) {
+      const target = Math.max(smooth(-EDGE_COLS, 0, btnCol - i), SPREAD_LVL * smooth(R + SPREAD_EDGE, R, Math.abs(i - btnCol)));
+      if (target > played[i]) played[i] += (target - played[i]) * a;
+    }
+  } else { // success: the playhead finishes its sweep to the right edge in SUCCESS_S; each column it passes flashes green once
+    const u = smooth(0, SUCCESS_S, t - S.tState);
+    const r = S.h0 + (cols + 1 - S.h0) * u;
+    while (S.rCol < cols && S.rCol <= r) { greenT[S.rCol] = t; S.rCol++; }
+    S.head = r;
+    S.hold = Math.max(0, S.hold - dt / 0.4);
+    drift = 1 - (1 - SUCCESS_DRIFT) * u;
+  }
+  S.anim += dt * drift;
+}
+// start in a state: checking/success begin with the playhead already resting on the button column
+function reset(state) {
+  Object.assign(S, { state: 'idle', t: 0, anim: 0, phase: 0, head: 0, hold: 0 });
+  passT.fill(-1e9); greenT.fill(1e9); played.fill(0);
+  document.body.dataset.state = 'idle'; go.disabled = false;
+  if (state === 'idle') { setState('idle'); return; }
+  S.head = btnCol; S.hold = 1;
+  const colsPerSec = cols / P.sweep;
+  const ago = state === 'success' ? AUTO_SUCCESS_S : 0; // success starts after a checking wait, so the arrival trail has faded
+  for (let i = 0; i <= Math.min(cols - 1, Math.floor(btnCol)); i++) { passT[i] = -ago - (btnCol - i) / colsPerSec; played[i] = 1; }
+  setState('checking'); S.tState = -BLEND_S;
+  if (state === 'success') { S.tCheck = -8; setState('success'); }
+}
+function advance(to) { while (S.t < to - 1e-9) update(Math.min(1 / 60, to - S.t)); }
+
+// ---- Frame: work out every cell's glyph, draw only the cells whose glyph or colour changed ----
+function frame() {
+  const t = S.t, ta = S.anim;
+  if (dirtyAll) { ctx.fillStyle = paperHex; ctx.fillRect(0, 0, cv.width, cv.height); prevCode.fill(0); dirtyAll = false; }
+  const zA = ta * NOISE_DRIFT, zB = zA * 1.7 + 9;
+  slices(zA, zB);
+  const wA = fade(zA - keyA), wB = fade(zB - keyB);
+  const s1x = W * (0.25 + 0.08 * Math.sin(ta * 0.05)), s1y = H * (0.2 + 0.06 * Math.cos(ta * 0.04));
+  const s2x = W * (0.85 + 0.05 * Math.cos(ta * 0.03)), s2y = H * (0.9 + 0.05 * Math.sin(ta * 0.06));
+  const kT = SIN_N / WAVE_LEN, phT = ta * WAVE_SPEED * SIN_N / (2 * Math.PI), SM = SIN_N - 1;
+  const nRamp = RAMP.length - 1, expK = EXP_N / EXP_MAX / Math.max(0.05, P.decay), expS = EXP_N / EXP_MAX / SUCCESS_DECAY;
+  const holdCol = S.hold > 0 ? Math.floor(btnCol) : -1, holdF = S.hold * HOLD_LVL;
+
+  for (let i = 0, c = 0; i < cols; i++) {
+    const x = i * cw + cw / 2, dx1 = (x - s1x) * (x - s1x), dx2 = (x - s2x) * (x - s2x);
+    let ageK = Math.min(EXP_N * 4, (t - passT[i]) * expK), peak = 1, gs = 0;
+    if (greenT[i] <= t) { // passed in success: a softer, shorter flash, green settling to a faint cast
+      const ga = t - greenT[i];
+      ageK = Math.min(EXP_N * 4, ga * expS); peak = SUCCESS_PEAK;
+      gs = ((GREEN_CAST + (1 - GREEN_CAST) * Math.exp(-ga / GREEN_FADE)) * (GSTEPS - 1) + 0.5) | 0;
+    }
+    const dens = P.ahead + (P.behind - P.ahead) * played[i];
+    const isHold = i === holdCol, sx0 = gs * 3 * gh, dx = i * gw;
+
+    for (let j = 0; j < rows; j++, c++) {
+      const y = j * ch + ch / 2, e1 = y - s1y, e2 = y - s2y;
+      const na = nA0[c] + (nA1[c] - nA0[c]) * wA, nb = nB0[c] + (nB1[c] - nB0[c]) * wB;
+      const n = na * 0.65 + nb * 0.35;
+      const wv = (SIN[((Math.sqrt(dx1 + e1 * e1) * kT - phT) | 0) & SM] + SIN[((Math.sqrt(dx2 + e2 * e2) * kT - phT) | 0) & SM]) * 0.5;
+      let b = (BG_LEVEL + BG_NOISE * n * n * 1.6 + BG_WAVES * wv) * dens;
+      // passed cells brighten, then decay; each cell at its own rate so the trail dissolves into the noise
+      let ff = peak * EXP2[Math.min(EXP_N - 1, (ageK * rate[c]) | 0)];
+      if (isHold && holdF > ff) ff = holdF;
+      b = (b + (1 - b) * ff) * clearF[c];
+      if (b > 1) b = 1; else if (b < 0) b = 0;
+      const glyph = Math.min(nRamp, (b * (nRamp + 0.999)) | 0);
+      const L = glyph < 4 ? 0 : glyph < 7 ? 1 : 2; // dim/mid/full, stepped with the glyph so a fading cell redraws once per step
+      const code = glyph === 0 ? 0 : glyph | L << 4 | gs << 6;
+      if (code === prevCode[c]) continue; // cell unchanged since last drawn
+      prevCode[c] = code;
+      ctx.drawImage(src, glyph * gw, glyph === 0 ? 0 : sx0 + L * gh, gw, gh, dx, j * gh, gw, gh);
+    }
+  }
+}
+
+// ---- Tweak panel ---------------------------------------------------------
+const tw = document.getElementById('tw'), twBody = document.getElementById('twBody');
+if (innerWidth < 640) tw.classList.add('closed'); // on a phone the open panel would cover the button
+const json = () => JSON.stringify(P);
+let pre;
+SLIDERS.forEach(([key, label, min, max, step]) => {
+  const l = document.createElement('label');
+  l.innerHTML = `<span>${label}</span><output>${P[key]}</output><input type="range" min="${min}" max="${max}" step="${step}" value="${P[key]}">`;
+  const inp = l.querySelector('input'), out = l.querySelector('output');
+  inp.addEventListener('input', () => {
+    P[key] = +inp.value; out.textContent = inp.value; pre.textContent = json();
+    if (key.endsWith('Hue')) buildColours();
+    if (key === 'noiseScale') keyA = keyB = NaN;
+    if (reduced || stopped) still();
+  });
+  twBody.append(l);
+});
+const copyBtn = document.createElement('button'); copyBtn.textContent = 'Copy values';
+copyBtn.addEventListener('click', () => navigator.clipboard.writeText(json()).then(() => { copyBtn.textContent = 'Copied'; setTimeout(() => copyBtn.textContent = 'Copy values', 1200); }));
+pre = document.createElement('pre'); pre.textContent = json();
+twBody.append(copyBtn, pre);
+document.getElementById('twHead').addEventListener('click', () => tw.classList.toggle('closed'));
+addEventListener('keydown', e => { if ((e.key === 't' || e.key === 'T') && !e.metaKey && !e.ctrlKey && e.target.tagName !== 'INPUT') tw.classList.toggle('closed'); });
+
+// ---- Loop ----------------------------------------------------------------
+const START = ['idle', 'checking', 'success'].includes(Q.get('state')) ? Q.get('state') : 'idle';
+const STILL_T = { idle: () => P.sweep * 0.55, checking: () => 8, success: () => 4 };
+let raf = 0, last = 0, acc = 0, stopped = Q.has('t');
+// stills (reduced motion, ?t=): replay the state from its start to a fixed time, render once
+function still() {
+  const s = S.state, t = Q.has('t') ? +Q.get('t') || 0 : STILL_T[s]();
+  reset(s); advance(t); dirtyAll = true; frame();
+}
+// fixed timestep: IDLE_FPS normally, every display frame during the success sweep and for FAST_S after any state change
+function tick(now) {
+  raf = requestAnimationFrame(tick);
+  acc = Math.min(0.25, acc + (now - last) / 1000); last = now;
+  const since = S.t + acc - S.tState;
+  const fast = since < FAST_S || (S.state === 'success' && since < SUCCESS_S + 3 * GREEN_FADE);
+  if (fast) { update(acc); acc = 0; frame(); return; }
+  if (acc < 1 / IDLE_FPS) return;
+  update(1 / IDLE_FPS); acc -= 1 / IDLE_FPS;
+  frame();
+}
+function start() { if (!raf && !reduced && !stopped && !document.hidden) { last = performance.now(); acc = 0; raf = requestAnimationFrame(tick); } }
+function stop() { cancelAnimationFrame(raf); raf = 0; }
+document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
+
+function bench() {
+  const ts = [];
+  reset(START);
+  for (let n = 0; n < 300; n++) { const a = performance.now(); update(1 / IDLE_FPS); frame(); ts.push(performance.now() - a); }
+  ts.sort((a, b) => a - b);
+  const avg = ts.reduce((a, b) => a + b, 0) / ts.length, p99 = ts[Math.floor(ts.length * 0.99)];
+  window.__bench = { state: START, dpr, avg: +avg.toFixed(2), worst1pct: +p99.toFixed(2), frames: 300 };
+  const line = `bench ${START} dpr ${dpr}: avg ${avg.toFixed(2)} ms, worst 1% ${p99.toFixed(2)} ms`;
+  document.title = line;
+  const el = document.createElement('div'); el.id = 'bench'; el.textContent = line; document.body.append(el);
+}
+
+function run() {
+  document.body.dataset.state = 'idle';
+  build();
+  if (Q.has('bench')) { bench(); return; }
+  reset(START);
+  if (reduced || stopped) { still(); return; }
+  start();
+}
+go.addEventListener('click', () => {
+  if (S.state !== 'idle') return;
+  setState('checking'); if (reduced || stopped) still();
+  setTimeout(() => { setState('success'); if (reduced || stopped) still(); }, AUTO_SUCCESS_S * 1000);
+});
+addEventListener('resize', () => { build(); if (reduced || stopped) still(); });
+if (document.readyState === 'complete') run(); else addEventListener('load', run);
+</script>
+</body>
+</html>

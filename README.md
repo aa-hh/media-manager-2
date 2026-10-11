@@ -10,7 +10,7 @@ signs in with their Plex account.
 
 ## What you need
 
-- Node.js 22.13 or newer. Node may print an experimental SQLite warning at
+- Node.js 22.16 or newer. Node may print an experimental SQLite warning at
   startup because its built-in SQLite module is still marked experimental.
 - Sonarr and Radarr, each with an API key.
 - rTorrent with its XML-RPC interface reachable over HTTP(S), as most
@@ -44,7 +44,7 @@ compiled React app; Vite's preview server is not used.
 | `DB_PATH` | no | SQLite database location, default `~/.local/share/media-manager-2/media-manager.sqlite` |
 | `APP_ORIGIN` | yes | The public origin people open, such as `https://media.example.com` |
 | `PLEX_OWNER_ID` | yes | Your numeric Plex account ID; only this account can sign in |
-| `BACKUP_KEY` | for backups | 64 hex characters that encrypt every backup; see [Backups](#backups-optional) |
+| `BACKUP_KEY` | no | The older way to encrypt backups, 64 hex characters; a restore key made in the app takes over; see [Backups](#backups-optional) |
 | `TRACKER_RULES` | no | Hit-and-run rules as JSON keyed by tracker hostname; see [Tracker hit-and-run rules](#tracker-hit-and-run-rules) |
 
 `DB_PATH` must be absolute, outside the application folder, and inside a
@@ -87,13 +87,12 @@ on disk, through these saved settings:
 | `credentials` | `plex.token` | Plex Media Server token |
 | `serviceAddresses` | `mediaManager.hookUrl` | The address Sonarr and Radarr can reach this app at, such as `http://127.0.0.1:3000`. With `webhook.secret`, the server adds its own webhook to both and keeps it up to date |
 | `credentials` | `webhook.secret` | A long random password Sonarr and Radarr send with each webhook call |
-| `hostPaths` | `downloads.sonarr` | Absolute folder rTorrent downloads Sonarr's torrents into, such as `/home/<user>/files/Sonarr` |
-| `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into |
+| `hostPaths` | `downloads.sonarr` | Absolute folder rTorrent downloads Sonarr's torrents into, such as `/home/<user>/files/Sonarr`. TV second versions download here too |
+| `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into. Movie second versions download here too |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
 | `hostPaths` | `library.radarr` | Absolute Radarr library root, such as `/home/<user>/Movies`; same use as above |
-| `hostPaths` | `downloads.versions` | Absolute folder rTorrent downloads second versions into |
-| `hostPaths` | `versions.radarr` | Absolute folder finished movie second versions are hardlinked into. Must be on the same drive as `downloads.versions` and inside a Plex Movies library |
-| `hostPaths` | `versions.sonarr` | Same as above for episodes, inside a Plex TV library. Episode second versions wait until it is set |
+| `hostPaths` | `versions.radarr` | Absolute folder finished movie second versions are hardlinked into. Must be on the same drive as `downloads.radarr` and inside a Plex Movies library |
+| `hostPaths` | `versions.sonarr` | Same as above for episodes, on the same drive as `downloads.sonarr` and inside a Plex TV library. Episode second versions wait until it is set |
 The backup settings are listed under [Backups](#backups-optional); tracker
 settings under [Tracker accounts](#tracker-accounts) and
 [Tracker hit-and-run rules](#tracker-hit-and-run-rules).
@@ -286,6 +285,17 @@ still there. If Sonarr or Radarr has a recycle bin set, deleted files move
 there and free no space until it is emptied; the plan reports its path. Each
 delete is listed in History under Deletions.
 
+`GET /api/library/series/{id}/season/{n}/delete-plan` and `POST
+/api/library/series/{id}/season/{n}/delete` do the same for one season (0 is
+specials), with the same body as a show and the same plan and result shapes.
+The show stays in Sonarr. The plan carries `seasonNumber` and `willUnmonitor:
+true` (both `null` and `false` for a movie or show): the season's episodes and
+then the season are unmonitored first, and a failure there stops before any
+file is deleted. Each file is then deleted with its own Sonarr call; the
+`delete` step lists every file's answer in `files`, a refused file keeps the
+torrents that hold it, and the others still go. A torrent that also holds a
+file of another season (a full-series pack) is never offered for removal.
+
 Each torrent's advice here and from `GET /api/advice/<hash>` carries
 `recommendation`, `reason` and `globalRatio`, plus `host`, `requiredHours`
 (with margin), `seededHours`, `hoursLeft` and `detail` (`reason` without its
@@ -308,15 +318,17 @@ node dist/server/cli.js backup off   # no backups, no reminder
 node dist/server/cli.js backup on    # back on; a destination and key are then needed
 ```
 
-Once set up, every 5 minutes the server copies its database with SQLite's `VACUUM INTO`, gzips the
-copy, encrypts it with AES-256-GCM under `BACKUP_KEY`, and writes it to the
-destination you chose. The database holds every saved credential, so backups
+Once set up, every 5 minutes the server copies its database with `node:sqlite`'s `backup()`, gzips the
+copy, encrypts it with AES-256-GCM under the restore key made in the app (or,
+until one exists, under `BACKUP_KEY`), and writes it to the destination you
+chose. The database holds every saved credential, so backups
 are never written unencrypted.
 
 A run is skipped when backups are off, when no destination is set, and when
 nothing has written to the database since the last backup. Once a destination
-is set, a missing or malformed `BACKUP_KEY`, or a folder and a bucket set at
-the same time, fails the run, and the health screen warns until a backup
+is set, having neither a restore key nor `BACKUP_KEY`, a malformed
+`BACKUP_KEY` while no restore key exists, or a folder and a bucket set at the
+same time, fails the run, and the health screen warns until a backup
 succeeds.
 `backup now` runs one backup at once, even when nothing changed, and prints
 `backup: ok <key> <bytes> bytes`, `backup: skipped <reason>` or
@@ -355,8 +367,22 @@ Requests use path-style addresses (`<endpoint>/<bucket>/<key>`).
 
 ### Set up
 
+1. Open the app's setup, go to Backups, choose a destination, and create the
+   restore key. Copy it to a password manager: it is shown once, and the
+   server keeps only its public half, so without your copy no backup can be
+   read. Creating another restore key replaces the public half, so backups
+   made before it still need the older key.
+2. Check that the next run, or `node dist/server/cli.js backup now`, prints
+   `backup: ok`.
+
+#### The older way: BACKUP_KEY
+
+Backups are sealed with `BACKUP_KEY` only until a restore key exists; from
+then on the server seals with the restore key and no longer reads
+`BACKUP_KEY`.
+
 1. Make the key, and keep a copy somewhere safe such as a password manager.
-   Without it, no backup can be read.
+   Without it, no backup sealed with it can be read.
 
    ```sh
    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -384,7 +410,9 @@ health screen.
 host that has none. They read the destination from environment variables
 instead of the settings: either `BACKUP_FOLDER`, or `BACKUP_ENDPOINT`,
 `BACKUP_BUCKET`, `BACKUP_ACCESS_KEY_ID`, `BACKUP_SECRET_ACCESS_KEY` and,
-when needed, `BACKUP_REGION`. `backup restore` also needs `BACKUP_KEY`.
+when needed, `BACKUP_REGION`. `backup restore` also needs the key that
+sealed the backup: `BACKUP_RESTORE_KEY` (the restore key made in the app) or
+`BACKUP_KEY`.
 
 `backup restore` takes the newest backup (or `--object <key>`), decrypts it,
 checks its hash against its name, its integrity and its schema version, and
@@ -397,17 +425,19 @@ To restore after losing the database:
 1. Stop the server, and anything that restarts it (see
    [Keep it running](#keep-it-running) for how to hold the restart lock).
 2. Move the current database aside if there is one.
-3. Export the destination variables and `BACKUP_KEY` for this shell. `read -rs`
-   keeps secrets out of shell history:
+3. Export the destination variables and `BACKUP_RESTORE_KEY` or `BACKUP_KEY`
+   (or both) for this shell. `read -rs` keeps secrets out of shell history:
 
    ```sh
    export BACKUP_ENDPOINT=<endpoint> BACKUP_BUCKET=<bucket> BACKUP_ACCESS_KEY_ID=<access key id>
    read -rs BACKUP_SECRET_ACCESS_KEY && export BACKUP_SECRET_ACCESS_KEY
+   read -rs BACKUP_RESTORE_KEY && export BACKUP_RESTORE_KEY
    read -rs BACKUP_KEY && export BACKUP_KEY
    ```
 
    For a folder destination, replace the first two lines with
-   `export BACKUP_FOLDER=<path>`.
+   `export BACKUP_FOLDER=<path>`. `backup restore` picks from the snapshot
+   itself which key it needs, so skip whichever line you have no key for.
 4. Run `node dist/server/cli.js backup list` and check the `(latest)` backup
    is recent.
 5. Run `node dist/server/cli.js backup restore --to <your DB_PATH>` and check
@@ -422,7 +452,7 @@ the app, run `npm ci --omit=dev`, and follow steps 3 to 6.
 
 `sh scripts/deploy.sh` builds the current checkout on your machine and runs it
 on a Linux host you reach over ssh, replacing whatever copy was running there.
-`DEPLOY_HOST` must name that host as ssh knows it; the script stops without it. The host needs Node 22.13 or newer,
+`DEPLOY_HOST` must name that host as ssh knows it; the script stops without it. The host needs Node 22.16 or newer,
 `rsync`, `curl`, `flock` and `setsid`, and something that serves `APP_ORIGIN`
 over HTTPS and forwards it to `PORT` on the host, such as a reverse proxy or a
 seedbox's custom app link. `/api/events` is a plain HTTP stream; WebSockets are
@@ -437,7 +467,7 @@ Set the host up once:
    HOST=127.0.0.1
    APP_ORIGIN=<the public https address, no trailing slash>
    PLEX_OWNER_ID=<your numeric Plex account ID>
-   BACKUP_KEY=<64 hex characters, only if you use backups>
+   BACKUP_KEY=<64 hex characters, only if you still use BACKUP_KEY>
    TRACKER_RULES='<JSON, only if you keep tracker rules here>'
    ```
 
@@ -457,6 +487,14 @@ host and at `APP_ORIGIN`, prints `connections check`, and prints the branch and
 commit now live, which it also keeps in `~/media-manager-2/DEPLOYED`. Server
 output goes to `~/media-manager-2/server.log`; each deploy moves the previous
 log to `server.log.1`.
+
+Performance logs go to the same file, one JSON object per line. Every line
+with a `kind` field is a timing record: `api` is a request to this server,
+`upstream` a call to Sonarr, Radarr, TMDB, Trakt or another service,
+`discover` a Discover row served, `discover-build` a Discover row built, and
+`web` a page-speed number posted to `/api/metrics` by the browser. Query
+strings, headers and keys are never logged. Watch them with
+`ssh <host> 'tail -f ~/media-manager-2/server.log'`.
 
 Some seedbox hosts only accept a custom app port when something already
 answers on it. A placeholder that stops itself after 15 minutes does the job;

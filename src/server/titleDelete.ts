@@ -1,21 +1,24 @@
 import { lstatSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type { RemovalAdvice } from './advice.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { listSecondVersionRows, type SecondVersionRow } from './secondVersionRows.js';
 import type { ArrServices, FileDetail, Result } from './services/arr.js';
 import type { createTorrentFiles, LibraryFileState, RemovalCheck } from './torrentFiles.js';
 
-type TorrentFiles = Pick<ReturnType<typeof createTorrentFiles>, 'mapFiles' | 'canRemoveTorrent' | 'removeTorrent'>;
+type Library = ReturnType<ReturnType<typeof createTorrentFiles>['readLibraryInodes']>;
+type TorrentFiles = Pick<ReturnType<typeof createTorrentFiles>, 'mapFiles' | 'readLibraryInodes' | 'canRemoveTorrent' | 'removeTorrent'>;
 type Failure = Exclude<Result<never>, { kind: 'ok' }>;
 
-export type DeleteTarget = { service: 'radarr'; movieId: number } | { service: 'sonarr'; seriesId: number };
+// A Sonarr target with a seasonNumber deletes that season's files and keeps the show.
+export type DeleteTarget = { service: 'radarr'; movieId: number } | { service: 'sonarr'; seriesId: number; seasonNumber?: number };
 export type MovieMode = 'remove' | 'keepUnmonitored';
 export type Choices = { removeTorrents: string[]; secondVersions: { id: number; removeTorrent: boolean }[] };
 
 export const UNLINKED_FILE = "Can't link this file to a torrent. Its torrent, if any, keeps seeding.";
 export const IMPORTED_BY_COPY = 'imported by copy';
+export const OTHER_SEASONS = 'This torrent also holds files of other seasons of this show, which are kept.';
 // Sonarr and Radarr delete a title's files in the background after they answer.
 const WAIT_CEILING_MS = 2 * 60_000;
 const WAIT_STEP_MS = 2_000;
@@ -42,6 +45,10 @@ export type DeletePlan = {
   service: 'sonarr' | 'radarr';
   id: number;
   title: string;
+  // Set for a season delete only; the show itself stays in Sonarr.
+  seasonNumber: number | null;
+  // True for a season delete: its episodes and the season are unmonitored before any file is deleted.
+  willUnmonitor: boolean;
   // Set when Sonarr or Radarr moves deleted files to a recycle bin, so no space is freed until it is emptied.
   recycleBin: string | null;
   files: PlanFile[];
@@ -50,10 +57,13 @@ export type DeletePlan = {
 };
 
 type Outcome = 'done' | 'failed' | 'skipped';
+export type FileOutcome = { fileId: number; path: string; deleted: boolean; reason: string | null };
 export type TorrentOutcome = { hash: string; name: string; removed: boolean; reason: string | null };
 export type VersionOutcome = { id: number; deleted: boolean; torrentRemoved: boolean; reason: string | null };
 export type StepResult =
   | { step: 'map' | 'unmonitor' | 'delete' | 'wait' | 'history'; outcome: Outcome; message: string }
+  // A season delete sends one file delete per file and lists each answer.
+  | { step: 'delete'; outcome: Outcome; message: string; files: FileOutcome[] }
   | { step: 'torrents'; outcome: Outcome; message: string; torrents: TorrentOutcome[] }
   | { step: 'secondVersions'; outcome: Outcome; message: string; secondVersions: VersionOutcome[] };
 
@@ -97,34 +107,57 @@ export const createTitleDelete = (options: {
   const gather = async (target: DeleteTarget) => {
     let title: string;
     let details: FileDetail[];
+    // Only for a season: its episodes, and the files they use.
+    let episodeIds: number[] = [];
+    let seasonFiles: Set<number> | null = null;
     if (target.service === 'radarr') {
       const movie = await arr.radarr.movie(target.movieId);
       if (movie.kind !== 'ok') return movie;
       title = movie.value.year === null ? movie.value.title : `${movie.value.title} (${movie.value.year})`;
       details = movie.value.file === null ? [] : [movie.value.file];
     } else {
-      const [series, episodeFiles] = await Promise.all([arr.sonarr.series(target.seriesId), arr.sonarr.episodeFiles(target.seriesId)]);
+      const season = target.seasonNumber;
+      const [series, episodeFiles, episodes] = await Promise.all([
+        arr.sonarr.series(target.seriesId),
+        arr.sonarr.episodeFiles(target.seriesId),
+        season === undefined ? null : arr.sonarr.episodes(target.seriesId, { seasonNumber: season, withFiles: true }),
+      ]);
       if (series.kind !== 'ok') return series;
       if (episodeFiles.kind !== 'ok') return episodeFiles;
+      if (episodes !== null && episodes.kind !== 'ok') return episodes;
+      if (season !== undefined && !series.value.seasons.some((entry) => entry.seasonNumber === season)) {
+        return { kind: 'not_found' as const, message: `Sonarr has no season ${season} for ${series.value.title}.` };
+      }
       title = series.value.title;
       details = episodeFiles.value;
+      if (episodes !== null) {
+        episodeIds = episodes.value.map((episode) => episode.id);
+        seasonFiles = new Set(episodes.value.flatMap((episode) => episode.file?.id ?? []));
+      }
     }
     const files = details.flatMap((file) => (file.id === null || file.path === null ? [] : [{ path: file.path, fileId: file.id, sizeBytes: file.size }]));
+    // A season maps every file of the show, so a torrent that also holds another season's file (a full-series pack) is known.
     const mapping = await torrentFiles.mapFiles(files.map(({ path, fileId }) => ({ path, fileId })), target.service, titleId(target));
-    const secondVersions = listSecondVersionRows(database, target);
+    const inScope = (fileId: number) => seasonFiles === null || seasonFiles.has(fileId);
+    const mapped = mapping.files.filter((file) => inScope(file.fileId));
+    const otherSeasons = new Set(mapping.files.filter((file) => !inScope(file.fileId)).flatMap((file) => file.hashes));
+    const allVersions = listSecondVersionRows(database, target);
+    const episodeSet = new Set(episodeIds);
+    const secondVersions = seasonFiles === null ? allVersions : allVersions.filter((row) => row.episodeId !== null && episodeSet.has(row.episodeId));
 
     const live = new Map(database.prepare('SELECT hash, name, size_bytes FROM torrents WHERE gone_at IS NULL').all()
       .map((row) => [String(row.hash), { name: String(row.name), sizeBytes: Number(row.size_bytes) }]));
-    const holding = new Set(mapping.torrents.map((torrent) => torrent.hash));
-    const versionHashes = new Set(secondVersions.flatMap((row) => row.hash?.toUpperCase() ?? []));
-    const history = target.service === 'radarr' ? await arr.radarr.history({ movieId: target.movieId }) : await arr.sonarr.history({ seriesId: target.seriesId });
+    const holding = new Set(mapped.flatMap((file) => file.hashes));
+    const versionHashes = new Set(allVersions.flatMap((row) => row.hash?.toUpperCase() ?? []));
+    const history = target.service === 'radarr' ? await arr.radarr.history({ movieId: target.movieId })
+      : await arr.sonarr.history(target.seasonNumber === undefined ? { seriesId: target.seriesId } : { seriesId: target.seriesId, seasonNumber: target.seasonNumber });
     const upgradedAway = new Set(history.kind !== 'ok' ? [] : history.value.flatMap((record) => {
       const hash = record.downloadId?.toUpperCase();
       return record.eventType === 'downloadFolderImported' && hash !== undefined && live.has(hash) && !holding.has(hash) && !versionHashes.has(hash) ? [hash] : [];
     }));
 
     const torrents = [...holding, ...upgradedAway].map((hash) => {
-      const held = mapping.files.filter((file) => file.hashes.includes(hash));
+      const held = mapped.filter((file) => file.hashes.includes(hash));
       return {
         hash,
         name: live.get(hash)?.name ?? hash,
@@ -135,7 +168,7 @@ export const createTitleDelete = (options: {
       };
     });
     const sizes = new Map(files.map((file) => [file.fileId, file.sizeBytes]));
-    const planFiles: PlanFile[] = mapping.files.map((file) => ({
+    const planFiles: PlanFile[] = mapped.map((file) => ({
       fileId: file.fileId,
       path: file.path,
       sizeBytes: sizes.get(file.fileId) ?? 0,
@@ -144,15 +177,22 @@ export const createTitleDelete = (options: {
       note: file.state === 'none' || file.state === 'unknown' ? UNLINKED_FILE : null,
       reason: file.reason,
     }));
-    return { kind: 'ok' as const, value: { title, files: planFiles, torrents, secondVersions } };
+    return { kind: 'ok' as const, value: { title, files: planFiles, torrents, secondVersions, episodeIds, otherSeasons } };
   };
+
+  // A torrent that still holds another season's file is never offered, even when that file is a copy no link check would see.
+  const removalOf = (hash: string, after: string[], library: Library, otherSeasons: Set<string>): RemovalCheck => (
+    otherSeasons.has(hash.toUpperCase()) ? { allowed: false, reason: OTHER_SEASONS } : torrentFiles.canRemoveTorrent(hash, { after, library })
+  );
 
   const plan = async (target: DeleteTarget): Promise<Result<DeletePlan>> => {
     const gathered = await gather(target);
     if (gathered.kind !== 'ok') return gathered;
-    const { title, files, torrents, secondVersions } = gathered.value;
+    const { title, files, torrents, secondVersions, otherSeasons } = gathered.value;
+    const seasonNumber = target.service === 'sonarr' ? target.seasonNumber ?? null : null;
     // Second versions start ticked, so their files count as gone when checking whether a torrent is still needed.
     const after = [...files.map((file) => file.path), ...secondVersions.flatMap((row) => row.path ?? [])];
+    const library = torrentFiles.readLibraryInodes(after);
     const recycleBin = await arr[target.service].recycleBin();
     return {
       kind: 'ok',
@@ -160,12 +200,14 @@ export const createTitleDelete = (options: {
         service: target.service,
         id: titleId(target),
         title,
+        seasonNumber,
+        willUnmonitor: seasonNumber !== null,
         recycleBin: recycleBin.kind === 'ok' ? recycleBin.value : null,
         files,
         torrents: await Promise.all(torrents.map(async (torrent) => ({
           ...torrent,
           advice: await advise(torrent.hash),
-          removal: torrentFiles.canRemoveTorrent(torrent.hash, { after }),
+          removal: removalOf(torrent.hash, after, library, otherSeasons),
           ticked: false as const,
         }))),
         secondVersions: await Promise.all(secondVersions.map(async (row) => {
@@ -173,7 +215,7 @@ export const createTitleDelete = (options: {
           return {
             ...row,
             ticked: true as const,
-            torrent: hash === undefined ? null : { hash, advice: await advise(hash), removal: torrentFiles.canRemoveTorrent(hash, { after }) },
+            torrent: hash === undefined ? null : { hash, advice: await advise(hash), removal: removalOf(hash, after, library, otherSeasons) },
           };
         })),
       },
@@ -198,17 +240,18 @@ export const createTitleDelete = (options: {
     try {
       const gathered = await gather(target);
       if (gathered.kind !== 'ok') return gathered;
-      const { title, files, torrents, secondVersions } = gathered.value;
+      const { title, files, torrents, secondVersions, episodeIds, otherSeasons } = gathered.value;
       const changed = (reason: string) => ({ kind: 'plan_changed', reason }) as const;
 
       const rows = new Map(secondVersions.map((row) => [row.id, row]));
       for (const choice of choices.secondVersions) if (!rows.has(choice.id)) return changed(`Second version ${choice.id} is no longer listed for ${title}.`);
       const ticked = choices.secondVersions.map((choice) => ({ choice, row: rows.get(choice.id) as SecondVersionRow }));
       const after = [...files.map((file) => file.path), ...ticked.flatMap(({ row }) => row.path ?? [])];
+      const library = torrentFiles.readLibraryInodes(after);
       for (const hash of choices.removeTorrents) {
         const torrent = torrents.find((candidate) => candidate.hash === hash);
         if (torrent === undefined) return changed(`The torrent ${hash} is no longer listed for ${title}.`);
-        const check = torrentFiles.canRemoveTorrent(hash, { after });
+        const check = removalOf(hash, after, library, otherSeasons);
         if (!check.allowed) return changed(`${torrent.name} can no longer be removed: ${check.reason}`);
       }
       for (const { choice, row } of ticked) {
@@ -216,14 +259,47 @@ export const createTitleDelete = (options: {
         if (row.hash === null) return changed(`The second version ${row.releaseTitle} has no torrent to remove.`);
         // An unticked second version still uses this torrent: the delete keeps it and says why, so the request is not stale.
         if (secondVersions.some((other) => other.hash === row.hash && !choices.secondVersions.some((picked) => picked.id === other.id))) continue;
-        const check = torrentFiles.canRemoveTorrent(row.hash, { after });
+        const check = removalOf(row.hash, after, library, otherSeasons);
         if (!check.allowed) return changed(`The torrent of ${row.releaseTitle} can no longer be removed: ${check.reason}`);
       }
 
       const steps: StepResult[] = [{ step: 'map', outcome: 'done', message: `Checked which torrents hold ${plural(files.length, 'file')}.` }];
       const label = target.service === 'radarr' ? 'Radarr' : 'Sonarr';
       let summary: string;
-      if (target.service === 'sonarr') {
+      let gonePaths = files.map((file) => file.path);
+      // Torrents holding a file Sonarr would not delete stay, with the reason.
+      const keptFor = new Map<string, string>();
+      if (target.service === 'sonarr' && target.seasonNumber !== undefined) {
+        const season = target.seasonNumber;
+        const stop = (message: string): DeleteRun => ({ kind: 'ran', deleted: false, steps: [...steps, { step: 'unmonitor', outcome: 'failed', message }] });
+        // Unmonitored first, so Sonarr does not search for the episodes again once their files are gone.
+        if (episodeIds.length > 0) {
+          const episodes = await arr.sonarr.monitorEpisodes(episodeIds, false);
+          if (episodes.kind !== 'ok') return stop(episodes.message);
+        }
+        const unmonitored = await arr.sonarr.monitorSeason(target.seriesId, season, false);
+        if (unmonitored.kind !== 'ok') return stop(unmonitored.message);
+        steps.push({ step: 'unmonitor', outcome: 'done', message: `Unmonitored season ${season} and its episodes in Sonarr.` });
+        // One at a time, and every file is tried even after a refusal (409 when the root folder is missing).
+        const results: FileOutcome[] = [];
+        for (const file of files) {
+          const result = await arr.sonarr.deleteEpisodeFile(file.fileId);
+          results.push({ fileId: file.fileId, path: file.path, deleted: result.kind === 'ok', reason: result.kind === 'ok' ? null : result.message });
+        }
+        const failed = results.filter((result) => !result.deleted);
+        for (const result of failed) {
+          for (const hash of files.find((file) => file.fileId === result.fileId)?.hashes ?? []) keptFor.set(hash, `Kept: Sonarr did not delete ${result.path}.`);
+        }
+        gonePaths = results.filter((result) => result.deleted).map((result) => result.path);
+        if (files.length > 0 && failed.length === files.length) {
+          return { kind: 'ran', deleted: false, steps: [...steps, { step: 'delete', outcome: 'failed', message: `Sonarr deleted none of the season's ${plural(files.length, 'file')}. The season stays unmonitored.`, files: results }] };
+        }
+        summary = failed.length === 0 ? `Unmonitored season ${season} in Sonarr and deleted its files.`
+          : `Unmonitored season ${season} in Sonarr; deleted ${results.length - failed.length} of its ${plural(files.length, 'file')}.`;
+        steps.push(files.length === 0
+          ? { step: 'delete', outcome: 'skipped', message: 'Sonarr has no files for this season.', files: results }
+          : { step: 'delete', outcome: failed.length === 0 ? 'done' : 'failed', message: `Deleted ${results.length - failed.length} of ${plural(files.length, 'file')} in Sonarr.`, files: results });
+      } else if (target.service === 'sonarr') {
         const result = await arr.sonarr.deleteSeries(target.seriesId);
         if (result.kind !== 'ok') return { kind: 'ran', deleted: false, steps: [...steps, { step: 'delete', outcome: 'failed', message: result.message }] };
         summary = 'Removed from Sonarr with its files.';
@@ -253,17 +329,18 @@ export const createTitleDelete = (options: {
       }
       forget(target.service);
 
-      const left = await waitUntilGone(files.map((file) => file.path));
+      const left = await waitUntilGone(gonePaths);
       const keepAll = left.length > 0 ? `${label} still had ${plural(left.length, 'library file')} after 2 minutes, so every torrent was kept.` : null;
       steps.push(keepAll === null
-        ? { step: 'wait', outcome: 'done', message: `${label} deleted ${plural(files.length, 'library file')}.` }
+        ? { step: 'wait', outcome: 'done', message: `${label} deleted ${plural(gonePaths.length, 'library file')}.` }
         : { step: 'wait', outcome: 'failed', message: `${keepAll} Still there: ${left.join(', ')}` });
 
       const torrentResults: TorrentOutcome[] = [];
       for (const hash of choices.removeTorrents) {
         const name = torrents.find((candidate) => candidate.hash === hash)?.name ?? hash;
-        if (keepAll !== null) {
-          torrentResults.push({ hash, name, removed: false, reason: keepAll });
+        const kept = keepAll ?? keptFor.get(hash);
+        if (kept !== undefined) {
+          torrentResults.push({ hash, name, removed: false, reason: kept });
           continue;
         }
         const removal = await torrentFiles.removeTorrent(hash);
@@ -323,11 +400,12 @@ export const createTitleDelete = (options: {
         secondVersions: [...versionResults.values()],
       });
 
-      const kind = target.service === 'sonarr' ? 'series_deleted' : mode === 'remove' ? 'movie_deleted'
+      const season = target.service === 'sonarr' ? target.seasonNumber : undefined;
+      const kind = season !== undefined ? 'season_deleted' : target.service === 'sonarr' ? 'series_deleted' : mode === 'remove' ? 'movie_deleted'
         : files.length === 0 ? 'movie_unmonitored' : 'movie_file_deleted';
       const detail = [summary, keepAll, torrentsMessage, versionsMessage].filter((part) => part !== null).join(' ');
       database.prepare('INSERT INTO title_events (service, title_id, title, at, kind, detail) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(target.service, titleId(target), title, now(), kind, detail);
+        .run(target.service, titleId(target), season === undefined ? title : `${title} Season ${season}`, now(), kind, detail);
       steps.push({ step: 'history', outcome: 'done', message: 'Written to History under Deletions.' });
       return { kind: 'ran', deleted: true, steps };
     } finally {
@@ -371,32 +449,46 @@ export const createTitleDeleteRoutes = (titleDelete: TitleDelete) => {
     result.kind === 'not_found' ? 404 : result.kind === 'not_configured' ? 503 : 502,
   );
 
-  for (const [path, service] of [['movie', 'radarr'], ['series', 'sonarr']] as const) {
-    const target = (id: number): DeleteTarget => (service === 'radarr' ? { service, movieId: id } : { service, seriesId: id });
+  const planRoute = (targetOf: (context: Context) => DeleteTarget | null) => async (context: Context) => {
+    const target = targetOf(context);
+    if (target === null) return context.json(invalid, 400);
+    const result = await titleDelete.plan(target);
+    return result.kind === 'ok' ? context.json(result.value) : failed(context, result);
+  };
+  const deleteRoute = (targetOf: (context: Context) => DeleteTarget | null) => async (context: Context) => {
+    const target = targetOf(context);
+    let body: unknown;
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json(invalid, 400);
+    }
+    const choices = parseChoices(body, target?.service === 'radarr');
+    if (target === null || choices === undefined) return context.json(invalid, 400);
+    const result = await titleDelete.run(target, choices, choices.mode);
+    if (result.kind === 'ran') return context.json({ deleted: result.deleted, steps: result.steps });
+    if (result.kind === 'plan_changed') return context.json({ error: 'plan_changed', reason: result.reason }, 409);
+    if (result.kind === 'in_progress') return context.json({ error: 'in_progress' }, 409);
+    return failed(context, result);
+  };
 
-    routes.get(`/${path}/:id/delete-plan`, async (context) => {
-      const id = idOf(context.req.param('id'));
-      if (id === null) return context.json(invalid, 400);
-      const result = await titleDelete.plan(target(id));
-      return result.kind === 'ok' ? context.json(result.value) : failed(context, result);
-    });
-
-    routes.post(`/${path}/:id/delete`, async (context) => {
-      const id = idOf(context.req.param('id'));
-      let body: unknown;
-      try {
-        body = await context.req.json();
-      } catch {
-        return context.json(invalid, 400);
-      }
-      const choices = parseChoices(body, service === 'radarr');
-      if (id === null || choices === undefined) return context.json(invalid, 400);
-      const result = await titleDelete.run(target(id), choices, choices.mode);
-      if (result.kind === 'ran') return context.json({ deleted: result.deleted, steps: result.steps });
-      if (result.kind === 'plan_changed') return context.json({ error: 'plan_changed', reason: result.reason }, 409);
-      if (result.kind === 'in_progress') return context.json({ error: 'in_progress' }, 409);
-      return failed(context, result);
-    });
+  const movie = (context: Context): DeleteTarget | null => {
+    const id = idOf(context.req.param('id') ?? '');
+    return id === null ? null : { service: 'radarr', movieId: id };
+  };
+  const series = (context: Context): DeleteTarget | null => {
+    const id = idOf(context.req.param('id') ?? '');
+    return id === null ? null : { service: 'sonarr', seriesId: id };
+  };
+  // Season 0 holds a show's specials.
+  const season = (context: Context): DeleteTarget | null => {
+    const id = idOf(context.req.param('id') ?? '');
+    const text = context.req.param('n') ?? '';
+    return id === null || !/^\d{1,4}$/.test(text) ? null : { service: 'sonarr', seriesId: id, seasonNumber: Number(text) };
+  };
+  for (const [path, targetOf] of [['/movie/:id', movie], ['/series/:id', series], ['/series/:id/season/:n', season]] as const) {
+    routes.get(`${path}/delete-plan`, planRoute(targetOf));
+    routes.post(`${path}/delete`, deleteRoute(targetOf));
   }
   return routes;
 };

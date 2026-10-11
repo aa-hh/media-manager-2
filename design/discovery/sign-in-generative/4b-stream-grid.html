@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>media-manager-2 — sign in</title>
+<style>
+  :root {
+    --paper: #0E0F0D;
+    --ink: #D8DBCE;
+    --ink-2: #9EA295;
+    --live: #C6F135;
+    --mono: "Berkeley Mono", "IBM Plex Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--paper); color: var(--ink); overflow: hidden; }
+  body { font-family: var(--mono); -webkit-font-smoothing: antialiased; transition: background-color 1.2s; }
+  body.success { background: #000; }
+  canvas { position: fixed; left: 0; top: 0; display: block; }
+
+  .panel {
+    position: fixed; left: 7vw; top: 50%; transform: translateY(-50%);
+    width: min(440px, calc(100vw - 32px));
+    padding: 32px 0;
+    text-shadow: 0 0 12px var(--paper), 0 0 2px var(--paper);
+  }
+  .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  h1 {
+    font-size: clamp(30px, 3.4vw, 44px); font-weight: 500; letter-spacing: -.02em;
+    line-height: 1.05; margin-top: 14px; white-space: nowrap;
+  }
+  .copy { margin-top: 22px; font-size: 14px; line-height: 1.6; color: var(--ink-2); max-width: 38ch; }
+  .copy p + p { margin-top: 8px; }
+  .copy strong { color: var(--ink); font-weight: 500; }
+
+  button {
+    margin-top: 30px; display: inline-flex; align-items: center; gap: 12px;
+    height: 52px; padding: 0 22px 0 18px; border: 0; border-radius: 2px;
+    background: var(--ink); color: #0E0F0D; text-shadow: none;
+    font: 600 15px/1 var(--mono); letter-spacing: .01em; cursor: pointer;
+    transition: background-color .4s, color .4s;
+  }
+  button svg { width: 16px; height: 16px; fill: currentColor; }
+  button:hover { background: #F1F3EA; }
+  button:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+  button[aria-busy="true"] { background: #80847A; cursor: progress; }
+  body.success button { background: var(--live); color: #000; }
+  .status { margin-top: 16px; min-height: 20px; font-size: 13px; color: var(--ink-2); }
+  body.refused .status { color: var(--ink); }
+  body.success .status { color: var(--live); }
+
+  @media (max-width: 640px) {
+    .panel { left: 16px; right: 16px; top: auto; bottom: 28px; transform: none; width: auto; padding: 24px 0 8px; }
+    h1 { font-size: 30px; }
+    .copy { font-size: 13px; }
+    button { width: 100%; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+
+<main class="panel" id="panel">
+  <div class="kicker">Owner sign-in</div>
+  <h1>media-manager-2</h1>
+  <div class="copy">
+    <p><strong>Only the owner's Plex account can open this app.</strong></p>
+    <p>Plex is used only to confirm it's you. This app never sees your password.</p>
+  </div>
+  <button id="go" type="button">
+    <svg viewBox="0 0 72 72" aria-hidden="true"><path d="M 14.03125 0 L 37.09375 36 L 14.03125 72 L 34.90625 72 L 57.96875 36 L 34.90625 0 L 14.03125 0 z"/></svg>
+    Sign in with Plex
+  </button>
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+</main>
+
+<script>
+// ---- Tunable constants ---------------------------------------------------
+const FONT_PX      = 12;        // glyph size in CSS px; sets grid density
+const LINE         = 1.3;       // row height as a multiple of FONT_PX
+const PAPER        = '#0E0F0D'; // idle background: near-black with a faint green cast
+const INK          = ['#3D4039', '#80847A', '#D8DBCE']; // ink at dim / mid / full strength
+const LIVE_PAPER   = '#000000'; // success background
+const LIVE         = ['#3A4710', '#7E9E22', '#C6F135']; // success ink, dim / mid / full
+const RAMP         = ' .·:-=+*#%@'; // density glyphs, empty to dense
+const HEX          = '0123456789ABCDEF'; // glyphs shown at the buffer front
+const BANDS        = 6;         // horizontal data bands on screen
+const BAND_H       = 2.6;       // mean band half-thickness, in rows
+const STREAM_SPEED = 5.5;       // download flow, cells per second (left to right)
+const SEED_SPEED   = 3.2;       // upload lines, cells per second (right to left)
+const SEED_LEVEL   = 0.24;      // brightness of upload lines
+const FRONT_X      = 0.70;      // buffer front resting position, fraction of width
+const FRONT_SWAY   = 0.06;      // how far the front drifts, fraction of width
+const FRONT_ZONE   = 90;        // width of the soft buffer front, CSS px
+const AHEAD_LEVEL  = 0.2;       // how faintly un-buffered data shows ahead of the front
+const FLOOR        = 0.05;      // background brightness
+const FLOOR_NOISE  = 0.16;      // background noise amount
+const HEX_RATE     = 2.2;       // hex glyph changes per second at the front
+const PANEL_CLEAR  = 44;        // px of soft clearance around the sign-in block
+const CHECK_SLOW   = 0.45;      // checking: flow speed multiplier
+const CHECK_FILL   = 0.34;      // checking: max width filled behind the stalled front, fraction of width
+const RACE_TIME    = 0.9;       // success: seconds for the front to cross the screen
+const REDUCED_T    = 6;         // still frame used for reduced motion
+const MAX_DPR      = 2;         // pixel density cap; 1 renders at half resolution on retina
+
+// ---- Setup ---------------------------------------------------------------
+const q = new URLSearchParams(location.search);
+const STATES = ['idle', 'checking', 'refused', 'success'];
+let state = STATES.includes(q.get('state')) ? q.get('state') : 'idle';
+const fixedT = q.has('t') ? parseFloat(q.get('t')) || 0 : null;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono');
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const panel = document.getElementById('panel'), btn = document.getElementById('go');
+const statusEl = document.getElementById('status');
+const STATUS = {
+  idle: '',
+  checking: 'Waiting for Plex to confirm…',
+  refused: 'That Plex account is not the owner. Nothing was opened.',
+  success: 'Signed in. Opening your library…',
+};
+
+const CHARS = RAMP + HEX;
+const G_DASH = RAMP.indexOf('-'), G_EQ = RAMP.indexOf('='), G_HEX = RAMP.length;
+let W, H, dpr, cw, ch, cols, rows, gw, gh, stride, img, buf, glyphs, lut, paperPx, panelR, lutPaper = '';
+const rgb = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+const pack = (r, g, b) => (255 << 24 | b << 16 | g << 8 | r) >>> 0; // little-endian RGBA
+
+function build() {
+  dpr = Math.max(1, Math.min(MAX_DPR, Math.round(window.devicePixelRatio || 1)));
+  W = innerWidth; H = innerHeight;
+  ctx.font = `${FONT_PX}px ${MONO}`;
+  cw = Math.max(6, Math.round(ctx.measureText('M').width));
+  ch = Math.round(FONT_PX * LINE);
+  cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+  gw = cw * dpr; gh = ch * dpr; stride = cols * gw;
+  cv.width = stride; cv.height = rows * gh;
+  cv.style.width = cols * cw + 'px'; cv.style.height = rows * ch + 'px';
+  img = ctx.createImageData(cv.width, cv.height); buf = new Uint32Array(img.data.buffer);
+  // glyph atlas: render each glyph once, keep only its inked pixels as (offset, alpha) lists
+  const a = document.createElement('canvas'); a.width = CHARS.length * gw; a.height = gh;
+  const ac = a.getContext('2d');
+  ac.scale(dpr, dpr); ac.font = `${FONT_PX}px ${MONO}`; ac.textAlign = 'center'; ac.textBaseline = 'middle'; ac.fillStyle = '#fff';
+  [...CHARS].forEach((g, i) => ac.fillText(g, i * cw + cw / 2, ch / 2 + 0.5));
+  const px = ac.getImageData(0, 0, a.width, a.height).data;
+  glyphs = [...CHARS].map((_, g) => {
+    const off = [], al = [];
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const v = px[(y * a.width + g * gw + x) * 4 + 3];
+      if (v > 8) { off.push(y * stride + x); al.push(v); }
+    }
+    return { off: Int32Array.from(off), al: Uint8Array.from(al) };
+  });
+  lutPaper = '';
+  const p = panel.getBoundingClientRect();
+  panelR = { x0: p.left, y0: p.top, x1: p.right, y1: p.bottom };
+}
+
+// colour lookup: paper blended toward each ink by glyph alpha (rebuilt only when paper changes)
+function setPaper(P) {
+  const key = P.join();
+  if (key === lutPaper) return;
+  lutPaper = key; paperPx = pack(...P);
+  const cols6 = [...INK, ...LIVE];
+  lut = new Uint32Array(cols6.length * 256);
+  cols6.forEach((c, ci) => { const C = rgb(c); for (let v = 0; v < 256; v++) lut[ci * 256 + v] = pack(...P.map((p, k) => Math.round(p + (C[k] - p) * v / 255))); });
+}
+
+// ---- Maths ---------------------------------------------------------------
+function hash3(x, y, z) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1103515245); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+const fade = t => t * t * (3 - 2 * t);
+function noise1(x, s) { const xi = Math.floor(x), u = fade(x - xi); const a = hash3(xi, s, 3), b = hash3(xi + 1, s, 3); return a + (b - a) * u; }
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const u = fade(x - xi), v = fade(y - yi), w = fade(z - zi);
+  const L = (a, b, t) => a + (b - a) * t;
+  const c = (dx, dy, dz) => hash3(xi + dx, yi + dy, zi + dz);
+  return L(L(L(c(0,0,0), c(1,0,0), u), L(c(0,1,0), c(1,1,0), u), v),
+           L(L(c(0,0,1), c(1,0,1), u), L(c(0,1,1), c(1,1,1), u), v), w);
+}
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const mix = (a, b, t) => a.map((v, k) => Math.round(v + (b[k] - v) * t));
+function panelDist(x, y) {
+  const dx = Math.max(panelR.x0 - x, 0, x - panelR.x1), dy = Math.max(panelR.y0 - y, 0, y - panelR.y1);
+  return Math.hypot(dx, dy);
+}
+// resting buffer front at time t (px)
+const frontAt = t => W * (FRONT_X + FRONT_SWAY * Math.sin(t * 0.07) + (W <= 640 ? 0.1 : 0));
+
+// ---- Frame ---------------------------------------------------------------
+// t: seconds since load; tau: seconds since the current state began
+function frame(t, tau) {
+  const t0s = t - tau; // when the state began
+  const S = { idle: 0, checking: 1, refused: 2, success: 3 }[state];
+
+  // paper: success fades to black
+  const liveMix = S === 3 ? smooth(0, 1.2, tau) : 0;
+  setPaper(mix(rgb(PAPER), rgb(LIVE_PAPER), liveMix));
+  buf.fill(paperPx);
+
+  // the shared front: idle sways, checking stalls, success races off-screen
+  let front = frontAt(t), race = -1;
+  if (S === 1) front = frontAt(t0s);
+  if (S === 3) { const f0 = frontAt(t0s), e = clamp(tau / RACE_TIME, 0, 1); race = f0 + (W * 1.25 - f0) * e * e * e; front = race; }
+
+  // refused envelope: static burst, bands collapse, one flat line remains
+  const stat = S === 2 ? smooth(0, 0.12, tau) * (0.1 + 0.9 * (1 - smooth(0.7, 2.6, tau))) : 0;
+  const collapse = S === 2 ? smooth(0.5, 1.7, tau) : 0;
+  const flat = S === 2 ? smooth(1.3, 2.4, tau) : 0;
+  const statSlot = tau < 2.6 ? Math.floor(tau * 24) : 62 + Math.floor((tau - 2.6) * 2);
+  // success swell when the front reaches the far edge
+  const swell = S === 3 ? Math.exp(-(((tau - RACE_TIME - 0.15) / 0.4) ** 2)) * 0.55 : 0;
+  // checking fill behind the stalled front
+  const fillW = S === 1 ? W * CHECK_FILL * (1 - Math.exp(-tau / 2.2)) : 0;
+
+  // per-band setup: flow phase, centre row, own front offset, half-thickness per column
+  const bands = [];
+  for (let k = 0; k < BANDS; k++) {
+    const v = STREAM_SPEED * (0.75 + 0.5 * hash3(k, 1, 1));
+    const phase = S === 1 ? v * (t0s + tau * CHECK_SLOW) : v * t;
+    const cy = rows * (k + 0.5) / BANDS + 1.3 * Math.sin(t * 0.04 + k * 2.1);
+    const base = BAND_H * (0.55 + 0.9 * hash3(k, 2, 2)) * (1 + swell) * (1 - collapse);
+    const lvl = 0.75 + 0.3 * hash3(k, 4, 4);
+    const fOff = race >= 0 ? 0 : W * 0.09 * (noise1(k * 3.1 + t * 0.05, 77) - 0.5);
+    const h = new Float32Array(cols);
+    for (let i = 0; i < cols; i++) {
+      const u = i - phase;
+      const env = noise1(u * 0.035, k * 13 + 5), env2 = noise1(u * 0.11, k * 13 + 6);
+      h[i] = base * (0.25 + 0.95 * env * env + 0.3 * env2);
+    }
+    bands.push({ phase, cy, lvl, h, F: front + fOff, k });
+  }
+  // upload lines sit between bands
+  const seedRows = new Int16Array(rows).fill(-1);
+  for (let k = 0; k < BANDS - 1; k++) { const r = Math.round(rows * (k + 1) / BANDS + 1.3 * Math.sin(t * 0.03 + k)); if (r >= 0 && r < rows) seedRows[r] = k; }
+  const flatRow = Math.round(rows * (W <= 640 ? 0.3 : 0.5));
+  const hexSlot = Math.floor(t * HEX_RATE * (S === 1 ? 2.5 : 1));
+  const nz = t * 0.04, nRamp = RAMP.length - 1, half = FRONT_ZONE / 2;
+
+  for (let j = 0; j < rows; j++) {
+    const y = j * ch + ch / 2;
+    const jit = (hash3(j, 9, 9) - 0.5) * cw * 3; // ragged front edge, per row
+    for (let i = 0; i < cols; i++) {
+      const x = i * cw + cw / 2;
+
+      // the strongest band at this cell
+      let val = 0, B = bands[0];
+      for (let k = 0; k < BANDS; k++) {
+        const b = bands[k], hh = b.h[i], dy = Math.abs(j - b.cy);
+        // checking: the strip behind the stalled front swells and fills toward solid
+        if (fillW > 0) {
+          const back = b.F - x;
+          if (back > 0 && back < fillW) {
+            const f = smooth(fillW, fillW * 0.25, back) * smooth(hh * 2.4 + 2.5, hh * 0.9 + 0.5, dy);
+            const v = f * (0.85 + 0.15 * hash3(i, j, hexSlot + 5));
+            if (v > val) { val = v; B = b; }
+          }
+        }
+        if (dy > hh + 1.2) continue;
+        const core = smooth(hh + 1.2, hh * 0.25, dy) * (1 - collapse);
+        const tex = noise3((i - b.phase) * 0.22, j * 0.5, k * 7.3);
+        const v = core * (0.42 + 0.62 * tex) * b.lvl;
+        if (v > val) { val = v; B = b; }
+      }
+
+      // buffer front: resolved behind (left), faint noise ahead (right)
+      const F = B.F + jit;
+      const r = smooth(F + half, F - half, x);
+      let b = FLOOR + FLOOR_NOISE * noise3(i * 0.05, j * 0.11, nz) ** 2;
+      b += val * r + val * (1 - r) * AHEAD_LEVEL * (0.4 + hash3(i, j, hexSlot) * 0.9);
+      let glyph = -1;
+
+      // characters at the front itself resolve as hex
+      const z = 1 - Math.abs(x - F) / half;
+      if (z > 0 && val > 0.18 && S !== 2 && hash3(i, j, hexSlot + 11) < z * 0.75) {
+        glyph = G_HEX + Math.floor(hash3(i, j, hexSlot + 23) * 16);
+        b = Math.max(b, 0.45 + 0.4 * z);
+      }
+
+      // upload lines: dashes drifting right to left, faint
+      const sk = seedRows[j];
+      if (sk >= 0 && glyph < 0 && b < SEED_LEVEL + 0.05) {
+        const u = i + t * SEED_SPEED * (0.8 + 0.4 * hash3(sk, 5, 5));
+        const on = noise1(u * 0.09, 100 + sk);
+        if (on > 0.55) { glyph = on > 0.8 ? G_EQ : G_DASH; b = SEED_LEVEL * (1 - collapse); }
+      }
+
+      // refused: static, then a single flat line
+      if (stat > 0) {
+        const s = hash3(i, j, statSlot + 400);
+        b = b * (1 - stat) + stat * s * s * 1.1;
+        if (glyph >= G_HEX) glyph = -1;
+      }
+      if (flat > 0 && j === flatRow) { glyph = G_DASH; b = Math.max(b, 0.7 * flat); }
+
+      // keep the sign-in block on clean paper
+      const pd = panelDist(x, y);
+      if (pd < PANEL_CLEAR) { const m = smooth(0, PANEL_CLEAR, pd); b *= m; if (m < 0.5) glyph = -1; }
+
+      b = clamp(b, 0, 1);
+      if (glyph < 0) { glyph = Math.min(nRamp, Math.floor(b * (nRamp + 0.999))); if (glyph === 0) continue; }
+      else if (b < 0.08) continue;
+
+      // colour: lime behind the racing success front, ink everywhere else
+      const live = race >= 0 && x < race + (hash3(i, j, 61) - 0.5) * 40;
+      const L0 = ((live ? 3 : 0) + (b < 0.3 ? 0 : b < 0.6 ? 1 : 2)) * 256;
+      const G = glyphs[glyph], off = G.off, al = G.al, base = j * gh * stride + i * gw;
+      for (let n = 0; n < off.length; n++) buf[base + off[n]] = lut[L0 + al[n]];
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---- Loop ----------------------------------------------------------------
+let tStart = performance.now(), stateStart = 0;
+function setState(s, now) {
+  state = s; stateStart = now; statusEl.textContent = STATUS[s];
+  btn.setAttribute('aria-busy', s === 'checking');
+  STATES.forEach(n => document.body.classList.toggle(n, n === s));
+}
+
+function run() {
+  build();
+  setState(state, 0);
+  if (q.has('bench')) { // ms per frame, written into the page for headless measurement
+    const n = 120; for (let f = 0; f < 10; f++) frame(f / 60, f / 60);
+    const a = performance.now(); for (let f = 0; f < n; f++) frame(2 + f / 60, 2 + f / 60);
+    document.body.dataset.ms = ((performance.now() - a) / n).toFixed(2); return;
+  }
+  if (fixedT !== null || reduced) { const t = fixedT ?? REDUCED_T; frame(t, t); return; }
+  const tick = () => { const t = (performance.now() - tStart) / 1000; frame(t, t - stateStart); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  btn.addEventListener('click', () => {
+    if (state !== 'idle') return;
+    const now = (performance.now() - tStart) / 1000;
+    setState('checking', now);
+  });
+}
+addEventListener('resize', () => { build(); if (fixedT !== null || reduced) { const t = fixedT ?? REDUCED_T; frame(t, t); } });
+if (document.readyState === 'complete') run(); else addEventListener('load', run);
+</script>
+</body>
+</html>

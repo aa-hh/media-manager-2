@@ -1,9 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { isAbsolute } from 'node:path';
-import { backupKeyFromEnvironment, createBackup, listSnapshots, restoreBackup, setBackupsOff } from './backup.js';
+import { backupKeyFromEnvironment, createBackup, listSnapshots, restoreBackup, restoreKeyFromEnvironment, setBackupsOff } from './backup.js';
 import { backupDestinationFromEnvironment, createBackupStore, readBackupDestination } from './backupDestination.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
+import { setLogSink } from './log.js';
 import { createArr } from './services/arr.js';
 import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
@@ -15,10 +16,10 @@ const usage = [
   '       node dist/server/cli.js settings delete <category> <key>',
   '       node dist/server/cli.js settings list',
   '       node dist/server/cli.js connections check',
-  '       node dist/server/cli.js backup now   (BACKUP_KEY environment variable)',
+  '       node dist/server/cli.js backup now   (a key made in the app, or BACKUP_KEY)',
   '       node dist/server/cli.js backup off | on',
   '       node dist/server/cli.js backup list   (BACKUP_FOLDER or BACKUP_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY)',
-  '       node dist/server/cli.js backup restore --to <absolute path> [--object <key>]   (the backup list variables and BACKUP_KEY)',
+  '       node dist/server/cli.js backup restore --to <absolute path> [--object <key>]   (the backup list variables and BACKUP_RESTORE_KEY or BACKUP_KEY)',
 ].join('\n');
 
 const readStdin = async () => {
@@ -75,13 +76,14 @@ const runWithoutDatabase = async (restoreOptions: Map<string, string> | undefine
       const { latestKey, snapshots } = await listSnapshots(store);
       for (const { key, size } of snapshots) console.log(`${key} ${size} bytes${key === latestKey ? ' (latest)' : ''}`);
     } else {
+      const restoreKey = restoreKeyFromEnvironment();
       const sealKey = backupKeyFromEnvironment();
-      if (sealKey === undefined) {
-        console.error('BACKUP_KEY must be set.');
+      if (restoreKey === undefined && sealKey === undefined) {
+        console.error('Set BACKUP_RESTORE_KEY or BACKUP_KEY.');
         return 1;
       }
       const target = restoreOptions.get('--to') as string;
-      const { key, counts } = await restoreBackup({ store, target, objectKey: restoreOptions.get('--object'), key: sealKey });
+      const { key, counts } = await restoreBackup({ store, target, objectKey: restoreOptions.get('--object'), key: sealKey, restoreKey });
       console.log(`restored ${key} to ${target}`);
       for (const { table, count } of counts) console.log(`${table} ${count}`);
     }
@@ -103,6 +105,8 @@ const parseRestoreOptions = (rest: string[]) => {
   return target !== undefined && isAbsolute(target) ? options : undefined;
 };
 
+// Timing records belong in the server's log; here they would land in output that people and deploy.sh read.
+setLogSink(() => {});
 const args = process.argv.slice(2);
 const [group, action, category, key] = args;
 const restoreOptions = group === 'backup' && action === 'restore' ? parseRestoreOptions(args.slice(2)) : undefined;

@@ -23,20 +23,23 @@ type StatusServicePillProps = ComponentProps<'span'> & {
   children: ReactNode;
   /** Logo and dot only; name and state stay for screen readers. Pair it with a Tooltip. */
   compact?: boolean;
+  /** Setup wizard strip only (DESIGN.md exception): connected is black with a lime dot, or lime once setup is done. */
+  look?: 'plain' | 'dark' | 'lime';
 };
 
 /** A service or tracker with its real logo and its state. */
-function StatusServicePill({ logo, name, state, compact = false, className, children, ...props }: StatusServicePillProps) {
+function StatusServicePill({ logo, name, state, compact = false, look = 'plain', className, children, ...props }: StatusServicePillProps) {
   const hidden = compact && 'sr-only';
+  const lit = state === 'connected' && look !== 'plain' ? look : undefined;
   return (
     <span
-      className={cn('inline-flex h-6.5 shrink-0 items-center gap-1.5 rounded-sm pr-2 pl-1.25', compact ? 'bg-transparent px-1' : fills[state], className)}
+      className={cn('inline-flex h-6.5 shrink-0 items-center gap-1.5 rounded-sm pr-2 pl-1.25 transition-colors duration-(--duration-base) ease-out [&>span]:transition-colors [&>span]:duration-(--duration-base)', compact ? 'bg-transparent px-1' : lit === 'dark' ? 'bg-bar' : lit === 'lime' ? 'bg-live' : fills[state], className)}
       {...props}
     >
       <span className="flex shrink-0 [&>img]:size-4">{logo}</span>
-      <span className={cn('font-ui text-[13px] font-semibold text-foreground', hidden)}>{name}</span>
+      <span className={cn('font-ui text-[13px] font-semibold', lit === 'dark' ? 'text-bar-foreground' : 'text-foreground', hidden)}>{name}</span>
       {(state === 'connected' || state === 'failed') && (
-        <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', state === 'failed' ? 'bg-destructive' : 'bg-foreground')} />
+        <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', state === 'failed' ? 'bg-destructive' : lit === 'dark' ? 'bg-live' : 'bg-foreground')} />
       )}
       {state === 'not-set-up' && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full border border-subtle-foreground" />}
       {state === 'testing' && <Spinner className="size-3" />}
@@ -44,7 +47,8 @@ function StatusServicePill({ logo, name, state, compact = false, className, chil
       <span
         className={cn(
           'font-data text-[13px]',
-          state === 'failed' ? 'text-destructive' : state === 'unsaved' ? 'text-warning' : 'text-muted-foreground',
+          state === 'failed' ? 'text-destructive' : state === 'unsaved' ? 'text-warning'
+            : lit === 'dark' ? 'text-bar-muted-foreground' : lit === 'lime' ? 'text-foreground' : 'text-muted-foreground',
           hidden,
         )}
       >

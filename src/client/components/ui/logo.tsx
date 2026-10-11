@@ -2,15 +2,18 @@
 import type { ComponentProps } from 'react';
 import beyondHd from '@/assets/logos/beyondhd-logo.png';
 import blutopia from '@/assets/logos/blutopia-logo.svg';
+import mdblist from '@/assets/logos/mdblist-logo.png';
 import plexGold from '@/assets/logos/plex-icon-gold.svg';
 import plex from '@/assets/logos/plex-icon.svg';
 import privateHd from '@/assets/logos/privatehd-logo.png';
 import radarr from '@/assets/logos/radarr-logo.svg';
 import rtorrent from '@/assets/logos/rutorrent-logo.png';
 import sonarr from '@/assets/logos/sonarr-logo.svg';
+import tmdb from '@/assets/logos/tmdb-logo.svg';
+import trakt from '@/assets/logos/trakt-logo.svg';
 import { cn } from '@/lib/utils';
 
-type LogoName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'plex-gold' | 'blutopia' | 'privatehd' | 'beyond-hd';
+type LogoName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'plex-gold' | 'blutopia' | 'privatehd' | 'beyond-hd' | 'tmdb' | 'mdblist' | 'trakt';
 
 const logos: Record<LogoName, { src: string; alt: string }> = {
   sonarr: { src: sonarr, alt: 'Sonarr' },
@@ -21,6 +24,9 @@ const logos: Record<LogoName, { src: string; alt: string }> = {
   blutopia: { src: blutopia, alt: 'Blutopia' },
   privatehd: { src: privateHd, alt: 'PrivateHD' },
   'beyond-hd': { src: beyondHd, alt: 'Beyond-HD' },
+  tmdb: { src: tmdb, alt: 'TMDB' },
+  mdblist: { src: mdblist, alt: 'MDBList' },
+  trakt: { src: trakt, alt: 'Trakt' },
 };
 
 /** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on the black button. */

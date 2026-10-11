@@ -23,12 +23,7 @@ export type Problem = {
 
 export const RELEASE_LIMIT = 3;
 
-const readSteps = (database: DatabaseSync, problemId: number): Step[] => database
-  .prepare('SELECT at, kind, text FROM problem_steps WHERE problem_id = ? ORDER BY id')
-  .all(problemId)
-  .map((row) => ({ at: Number(row.at), kind: row.kind as StepKind, text: String(row.text) }));
-
-const readProblem = (database: DatabaseSync, row: Record<string, unknown>): Problem => ({
+const readProblem = (row: Record<string, unknown>, steps: Step[]): Problem => ({
   id: Number(row.id),
   kind: String(row.kind),
   subject: {
@@ -42,23 +37,45 @@ const readProblem = (database: DatabaseSync, row: Record<string, unknown>): Prob
   openedAt: Number(row.opened_at),
   updatedAt: Number(row.updated_at),
   resolvedAt: row.resolved_at === null ? null : Number(row.resolved_at),
-  steps: readSteps(database, Number(row.id)),
+  steps,
 });
+
+// Jobs list problems every minute on the server's only thread, so steps load in one query, never one per problem.
+const readProblems = (database: DatabaseSync, rows: Record<string, unknown>[]): Problem[] => {
+  if (rows.length === 0) return [];
+  const steps = new Map<number, Step[]>(rows.map((row) => [Number(row.id), []]));
+  const stepRows = database
+    .prepare('SELECT problem_id, at, kind, text FROM problem_steps WHERE problem_id IN (SELECT value FROM json_each(?)) ORDER BY id')
+    .all(JSON.stringify([...steps.keys()]));
+  for (const row of stepRows) steps.get(Number(row.problem_id))?.push({ at: Number(row.at), kind: row.kind as StepKind, text: String(row.text) });
+  return rows.map((row) => readProblem(row, steps.get(Number(row.id)) ?? []));
+};
 
 export const getProblem = (database: DatabaseSync, id: number): Problem | undefined => {
   const row = database.prepare('SELECT * FROM problems WHERE id = ?').get(id);
-  return row === undefined ? undefined : readProblem(database, row as Record<string, unknown>);
+  return row === undefined ? undefined : readProblems(database, [row as Record<string, unknown>])[0];
 };
 
-export const listOpenProblems = (database: DatabaseSync): Problem[] => database
-  .prepare("SELECT * FROM problems WHERE state != 'resolved' ORDER BY opened_at, id")
-  .all()
-  .map((row) => readProblem(database, row as Record<string, unknown>));
+const findOpenId = (database: DatabaseSync, kind: string, subject: Subject) => {
+  const row = database.prepare(`
+    SELECT id FROM problems WHERE kind = ? AND subject_type = ? AND service = ? AND subject_id = ? AND state != 'resolved'
+  `).get(kind, subject.type, subject.service ?? '', subject.id);
+  return row === undefined ? undefined : Number(row.id);
+};
 
-export const subjectHistory = (database: DatabaseSync, subject: Subject): Problem[] => database
+export const findOpenProblem = (database: DatabaseSync, kind: string, subject: Subject): Problem | undefined => {
+  const id = findOpenId(database, kind, subject);
+  return id === undefined ? undefined : getProblem(database, id);
+};
+
+export const listOpenProblems = (database: DatabaseSync, kinds?: string[]): Problem[] => readProblems(database, (kinds === undefined
+  ? database.prepare("SELECT * FROM problems WHERE state != 'resolved' ORDER BY opened_at, id").all()
+  : database.prepare("SELECT * FROM problems WHERE state != 'resolved' AND kind IN (SELECT value FROM json_each(?)) ORDER BY opened_at, id")
+    .all(JSON.stringify(kinds))) as Record<string, unknown>[]);
+
+export const subjectHistory = (database: DatabaseSync, subject: Subject): Problem[] => readProblems(database, database
   .prepare('SELECT * FROM problems WHERE subject_type = ? AND service = ? AND subject_id = ? ORDER BY opened_at, id')
-  .all(subject.type, subject.service ?? '', subject.id)
-  .map((row) => readProblem(database, row as Record<string, unknown>));
+  .all(subject.type, subject.service ?? '', subject.id) as Record<string, unknown>[]);
 
 export const countReleaseAttempts = (database: DatabaseSync, subject: Subject): number => Number(database
   .prepare('SELECT COUNT(*) AS count FROM release_attempts WHERE subject_type = ? AND service = ? AND subject_id = ?')
@@ -79,12 +96,7 @@ export const createProblems = (options: { database: DatabaseSync; events: EventH
     database.prepare('UPDATE problems SET updated_at = ? WHERE id = ?').run(at, problemId);
   };
 
-  const findOpen = (kind: string, subject: Subject) => {
-    const row = database.prepare(`
-      SELECT id FROM problems WHERE kind = ? AND subject_type = ? AND service = ? AND subject_id = ? AND state != 'resolved'
-    `).get(kind, subject.type, subject.service ?? '', subject.id);
-    return row === undefined ? undefined : Number(row.id);
-  };
+  const findOpen = (kind: string, subject: Subject) => findOpenId(database, kind, subject);
 
   // At most one open problem per kind and subject: spotting the same problem again returns the open one unchanged.
   const open = (input: { kind: string; subject: Subject; summary: string; hash?: string; state?: Exclude<ProblemState, 'resolved'> }) => {

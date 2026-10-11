@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type Assignment, type AssignmentTarget, checkAssignments } from './assignments.js';
+import { recordHandImport } from './imports.js';
 import type { ArrServices } from './services/arr.js';
 import { findGrab, listQueue, type Service } from './torrentGrabs.js';
 import { listOpenProblems, type createProblems } from './problems.js';
@@ -174,8 +175,10 @@ export const createManualImport = (options: { database: DatabaseSync; arr: ArrSe
       });
       const result = await arr[service].forceImport(downloadId, files);
       if (result.kind !== 'ok') return { kind: 'failed', reason: result.message };
+      // Accepting the command is not importing: the import fix closes these once the download leaves the queue.
+      recordHandImport(database, service, downloadId, Date.now());
       for (const problem of listOpenProblems(database).filter((open) => open.hash === downloadId)) {
-        problems.setState(problem.id, 'resolved', `Imported by hand: ${files.length} ${files.length === 1 ? 'file' : 'files'}.`);
+        problems.setState(problem.id, 'handling', `Imported by hand: ${files.length} ${files.length === 1 ? 'file' : 'files'}; waiting for ${labels[service]} to finish.`);
       }
       return { kind: 'imported' };
     } catch (error) {

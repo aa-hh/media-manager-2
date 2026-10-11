@@ -256,8 +256,8 @@ export const createSecondVersionChecks = (options: { database: DatabaseSync; arr
       flag(FILE_MISSING, subject, `The second version file is missing from disk: ${row.file_path}`, row.hash);
     }
 
-    for (const problem of listOpenProblems(database)) {
-      if (!KINDS.includes(problem.kind) || !checked.has(`${problem.kind}|${problem.subject.service}`)) continue;
+    for (const problem of listOpenProblems(database, KINDS)) {
+      if (!checked.has(`${problem.kind}|${problem.subject.service}`)) continue;
       const key = `${problem.kind}|${problem.subject.type}|${problem.subject.service}|${problem.subject.id}`;
       if (!found.has(key)) problems.setState(problem.id, 'resolved', 'Checked again and no longer the case.');
     }

@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppBarDesktop } from './components/ui/app-bar';
-import { Button } from './components/ui/button';
-import { Logo } from './components/ui/logo';
 import { SignInBlock } from './components/ui/sign-in-block';
-import { StatusInline } from './components/ui/status-inline';
 import {
+  POLL_INTERVAL_MS,
   POPUP_FEATURES,
   POPUP_MESSAGE,
   POPUP_NAME,
@@ -16,21 +13,8 @@ import {
   type PopupMessage,
   type PopupWindow,
 } from './plexPopup';
-
-type SignInView =
-  | 'status'
-  | 'initial'
-  | 'preparing'
-  | 'checking'
-  | 'pending'
-  | 'interrupted'
-  | 'wrong-owner'
-  | 'unavailable'
-  | 'not-configured'
-  | 'expired'
-  | 'invalid'
-  | 'session-expired'
-  | 'cancel-failed';
+import { RECHECK_TRIES, holdSuccess, recheckLater, signInScreen, type SignInView } from './signInFlow';
+import { createPlanet } from './signInPlanet';
 
 type SignInProps = {
   entryReason?: 'session-expired' | 'signed-out' | 'session-unavailable';
@@ -78,6 +62,8 @@ const isPlexHandoff = (value: unknown): value is string => {
   }
 };
 
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 const popupHost: PopupHost = {
   open: () => window.open('about:blank', POPUP_NAME, POPUP_FEATURES),
   narrow: () => window.matchMedia('(max-width: 639px)').matches,
@@ -88,9 +74,11 @@ const popupHost: PopupHost = {
 
 export function SignIn({ entryReason, onSignedIn }: SignInProps) {
   const [view, setView] = useState<SignInView>('status');
-  const [cancellationBusy, setCancellationBusy] = useState(false);
   const [plexInWindow, setPlexInWindow] = useState(false);
-  const cancellationVersionRef = useRef<number | undefined>(undefined);
+  const [succeeded, setSucceeded] = useState(false);
+  const successTimerRef = useRef<number | undefined>(undefined);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const planetRef = useRef<ReturnType<typeof createPlanet>>(undefined);
   const viewRef = useRef(view);
   viewRef.current = view;
   const [announcement, setAnnouncement] = useState(entryReason === 'signed-out' ? 'Signed out.' : '');
@@ -129,8 +117,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
 
   const isCurrent = useCallback((version: number) => requestVersionRef.current === version, []);
 
-  const completeSignIn = useCallback(async (state: string, quiet = false, retriesLeft = 5): Promise<void> => {
-    if (cancellationVersionRef.current !== undefined) return;
+  const completeSignIn = useCallback(async (state: string, quiet = false, retriesLeft = RECHECK_TRIES): Promise<void> => {
     const request = beginRequest();
     if (!quiet) {
       setAnnouncement('Checking your Plex account…');
@@ -144,11 +131,16 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
         closePopup();
         callbackStateRef.current = undefined;
         window.history.replaceState(window.history.state, '', '/');
-        onSignedIn(body.expiresAt);
+        const expiresAt = body.expiresAt;
+        setSucceeded(true);
+        setAnnouncement('Signed in.');
+        successTimerRef.current = holdSuccess(window, REDUCED_MOTION, () => onSignedIn(expiresAt));
         return;
       }
       if (response.status === 202 && body.status === 'pending') {
         if (quiet) return;
+        // Back from Plex on a phone, the PIN can take a moment to register; ask again before showing an error.
+        if (recheckLater(window, retriesLeft, POLL_INTERVAL_MS, () => isCurrent(request.version), (left) => void completeSignIn(state, false, left))) return;
         setAnnouncement('Plex sign-in isn’t finished.');
         setView('pending');
         return;
@@ -170,12 +162,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
         setView('invalid');
       } else if (response.status === 409 && error === 'in_progress') {
         // A check the server already started (a timed poll, or another tab) finishes within a few seconds; ask again before handing the wait to the user.
-        if (retriesLeft > 0) {
-          window.setTimeout(() => {
-            if (isCurrent(request.version) && cancellationVersionRef.current === undefined) void completeSignIn(state, false, retriesLeft - 1);
-          }, 1_000);
-          return;
-        }
+        if (recheckLater(window, retriesLeft, 1_000, () => isCurrent(request.version), (left) => void completeSignIn(state, false, left))) return;
         setAnnouncement('Plex sign-in is still being checked.');
         setView('pending');
       } else {
@@ -194,7 +181,6 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
   }, [beginRequest, isCurrent, onSignedIn]);
 
   const startSignIn = useCallback(async () => {
-    if (cancellationVersionRef.current !== undefined) return;
     closePopup();
     const popup = openPopup(popupHost);
     popupRef.current = popup;
@@ -251,41 +237,8 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
     }
   }, [beginRequest, completeSignIn, isCurrent]);
 
-  const cancelSignIn = useCallback(async () => {
-    if (cancellationVersionRef.current !== undefined) return;
-    closePopup();
-    const request = beginRequest();
-    cancellationVersionRef.current = request.version;
-    setCancellationBusy(true);
-    setAnnouncement('Cancelling sign-in…');
-    try {
-      const response = await browserPost('/auth/cancel', {}, request.controller.signal);
-      if (!isCurrent(request.version)) return;
-      if (response.status === 204) {
-        callbackStateRef.current = undefined;
-        setAnnouncement('Plex sign-in cancelled.');
-        setView('initial');
-      } else {
-        setAnnouncement('Plex sign-in couldn’t be cancelled.');
-        setView('cancel-failed');
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      if (!isCurrent(request.version)) return;
-      setAnnouncement('Plex sign-in couldn’t be cancelled.');
-      setView('cancel-failed');
-    } finally {
-      if (isCurrent(request.version) && cancellationVersionRef.current === request.version) {
-        cancellationVersionRef.current = undefined;
-        setCancellationBusy(false);
-      }
-    }
-  }, [beginRequest, isCurrent]);
-
   const refreshStatus = useCallback(async (restored = false) => {
     const request = beginRequest();
-    cancellationVersionRef.current = undefined;
-    setCancellationBusy(false);
     try {
       const response = await fetch('/auth/status', {
         credentials: 'same-origin',
@@ -378,8 +331,8 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
   }, [refreshStatus]);
 
   useEffect(() => {
-    if (view === 'status') return;
-    if (firstViewRef.current) firstViewRef.current = false;
+    if (view === 'status' || !firstViewRef.current) return;
+    firstViewRef.current = false;
     const frame = window.requestAnimationFrame(() => headingRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [view]);
@@ -388,106 +341,38 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
     activeRequestRef.current?.controller.abort();
     stopPopupRef.current?.();
     requestVersionRef.current += 1;
-    cancellationVersionRef.current = undefined;
+    window.clearTimeout(successTimerRef.current);
   }, []);
 
-  const checkAgain = () => {
-    if (cancellationVersionRef.current !== undefined) return;
-    const state = callbackStateRef.current;
-    if (state === undefined) {
-      setAnnouncement('Plex sign-in couldn’t be verified.');
-      setView('invalid');
-      return;
-    }
-    void completeSignIn(state);
-  };
+  useEffect(() => {
+    if (canvasRef.current === null) return;
+    const planet = createPlanet(canvasRef.current, REDUCED_MOTION);
+    planetRef.current = planet;
+    return () => {
+      planet?.destroy();
+      planetRef.current = undefined;
+    };
+  }, []);
 
-  const heading = {
-    status: 'Sign in',
-    initial: 'Sign in',
-    preparing: 'Opening Plex…',
-    checking: 'Checking your Plex account…',
-    pending: 'Plex sign-in isn’t finished.',
-    interrupted: 'Plex sign-in was interrupted.',
-    'wrong-owner': 'This Plex account can’t open this app.',
-    unavailable: 'Plex sign-in is unavailable.',
-    'not-configured': 'Sign-in isn’t configured.',
-    expired: 'This sign-in attempt expired.',
-    invalid: 'Plex sign-in couldn’t be verified.',
-    'session-expired': 'Your session expired.',
-    'cancel-failed': 'Plex sign-in couldn’t be cancelled.',
-  }[view];
+  const { screen, line } = signInScreen(view, plexInWindow, succeeded);
+  const busy = screen === 'loading' || screen === 'waiting' || screen === 'success';
+  const planetState = screen === 'waiting' ? 'checking' : screen === 'success' ? 'success' : 'idle';
 
-  const body = {
-    status: ['Only the owner’s Plex account can open this app.', 'You’ll sign in on Plex, then return here. This app never receives your Plex password.'],
-    initial: ['Only the owner’s Plex account can open this app.', 'You’ll sign in on Plex, then return here. This app never receives your Plex password.'],
-    preparing: ['You’ll continue on Plex in this tab.'],
-    checking: ['Please wait while the server verifies the account with Plex.'],
-    pending: [plexInWindow ? 'Plex is open in a new window. Finish signing in there, then check again if this page hasn’t updated.' : 'Finish signing in on Plex, then check again.'],
-    interrupted: ['Start again to return to Plex, or cancel this attempt.'],
-    'wrong-owner': ['Sign in with the owner’s account.'],
-    unavailable: ['Try again.'],
-    'not-configured': [
-      'The server needs an owner Plex ID and public app address before sign-in can start.',
-      <span className="font-data text-sm text-foreground">PLEX_OWNER_ID · APP_ORIGIN</span>,
-    ],
-    expired: ['Sign in again to create a new attempt.'],
-    invalid: ['The return from Plex was missing or no longer matched this browser. Try again.'],
-    'session-expired': ['Sign in again.'],
-    'cancel-failed': ['Try cancelling again, or start a new sign-in attempt.'],
-  }[view];
-
-  const buttons = (
-    <>
-      {view === 'initial' && (
-        <Button size="large" icon={<Logo name="plex-gold" alt="" />} onClick={() => void startSignIn()}>
-          Sign in with Plex
-        </Button>
-      )}
-      {view === 'status' && <Button size="large" disabled>Loading…</Button>}
-      {view === 'preparing' && <Button size="large" aria-disabled loading icon={<Logo name="plex-gold" alt="" />}>Opening Plex…</Button>}
-      {view === 'checking' && <Button size="large" aria-disabled>Checking…</Button>}
-      {view === 'pending' && (
-        <>
-          <Button size="large" disabled={cancellationBusy} onClick={checkAgain}>Check again</Button>
-          <Button size="large" disabled={cancellationBusy} variant="ghost" onClick={() => void startSignIn()}>Try again</Button>
-          <Button size="large" disabled={cancellationBusy} variant="ghost" onClick={() => void cancelSignIn()}>{cancellationBusy ? 'Cancelling…' : 'Cancel'}</Button>
-        </>
-      )}
-      {view === 'interrupted' && (
-        <>
-          <Button size="large" disabled={cancellationBusy} onClick={() => void startSignIn()}>Try again</Button>
-          <Button size="large" disabled={cancellationBusy} variant="ghost" onClick={() => void cancelSignIn()}>{cancellationBusy ? 'Cancelling…' : 'Cancel'}</Button>
-        </>
-      )}
-      {view === 'cancel-failed' && (
-        <>
-          <Button size="large" disabled={cancellationBusy} onClick={() => void cancelSignIn()}>{cancellationBusy ? 'Cancelling…' : 'Try cancelling again'}</Button>
-          <Button size="large" disabled={cancellationBusy} variant="ghost" onClick={() => void startSignIn()}>Try again</Button>
-        </>
-      )}
-      {(view === 'wrong-owner' || view === 'unavailable' || view === 'expired' || view === 'invalid' || view === 'session-expired') && (
-        <Button size="large" disabled={cancellationBusy} onClick={() => void startSignIn()}>Try again</Button>
-      )}
-    </>
-  );
+  useEffect(() => {
+    planetRef.current?.setState(planetState);
+  }, [planetState]);
 
   return (
-    <main className="min-h-screen bg-background">
-      <AppBarDesktop signedOut productName="media-manager-2" />
-      <section className="px-(--page-margin) pt-24" aria-busy={cancellationBusy || view === 'status' || view === 'preparing' || view === 'checking'}>
-        <SignInBlock
-          heading={heading}
-          headingRef={headingRef}
-          body={body}
-          status={announcement === 'Signed out.' && (view === 'status' || view === 'initial') ? (
-            // The live region below already announces it, so this copy is not a status region too.
-            <div className="h-8"><StatusInline status="sent" role={undefined}>Signed out.</StatusInline></div>
-          ) : undefined}
-          buttons={view === 'not-configured' ? undefined : buttons}
-          attribution="Plex and the Plex chevron are trademarks of Plex, Inc. media-manager-2 is not an official Plex product and is not endorsed by Plex."
-        />
-      </section>
+    <main className="relative min-h-screen overflow-hidden bg-[#07080b]" aria-busy={view === 'status' || view === 'preparing' || view === 'checking'}>
+      <canvas ref={canvasRef} aria-hidden="true" className="fixed inset-0 size-full" />
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgb(7_8_11/0)_45%,#07080b_100%)] sm:bg-[linear-gradient(90deg,#07080b_0%,rgb(7_8_11/0)_55%)]" />
+      <SignInBlock
+        busy={busy}
+        line={line}
+        onSignIn={() => void startSignIn()}
+        headingRef={headingRef}
+        className="fixed right-6 bottom-[83px] left-6 sm:right-auto sm:bottom-[120px] sm:left-[120px] sm:w-100"
+      />
       <p className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
     </main>
   );

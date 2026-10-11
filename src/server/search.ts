@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import { stream } from 'hono/streaming';
 import { type ArrServices, type Image, type Movie, parseMovie, parseSeries, type Result, type Series } from './services/arr.js';
 import type { Title, TitleStore } from './titleStore.js';
 
@@ -29,6 +30,7 @@ export type SearchResult = {
 
 export type ServiceOutcome =
   | { kind: 'ok'; count: number }
+  | { kind: 'pending' }
   | { kind: 'skipped' }
   | { kind: 'not_configured' }
   | { kind: 'unreachable' }
@@ -56,6 +58,14 @@ export const parseSearchQuery = (input: string): SearchQuery | undefined => {
   return { kind: 'name', term };
 };
 
+// A result row shows its poster 40 px wide, but lookups link the full image (up to 280 KB on TMDB); TMDB's 185 px
+// size and TheTVDB's _t thumbnail are 8 to 40 KB.
+const thumbnail = (url: URL) => {
+  if (url.hostname === 'image.tmdb.org') url.pathname = url.pathname.replace(/^\/t\/p\/original\//, '/t/p/w185/');
+  if (url.hostname === 'artworks.thetvdb.com') url.pathname = url.pathname.replace(/(?<!_t)(\.\w+)$/, '_t$1');
+  return url.href;
+};
+
 // Lookup images carry a public remoteUrl and a local url; the local one is served by the
 // service itself and needs its key, so only an absolute http(s) remoteUrl may reach the browser.
 const posterUrl = (images: Image[]): string | null => {
@@ -65,7 +75,7 @@ const posterUrl = (images: Image[]): string | null => {
     if (url === null) continue;
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return parsed.href;
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return thumbnail(parsed);
     } catch {
       continue;
     }
@@ -204,6 +214,8 @@ const merge = (shows: SearchResult[], movies: SearchResult[]) => {
   return [...interleaved.filter((result) => result.inLibrary), ...interleaved.filter((result) => !result.inLibrary)];
 };
 
+const pending = { outcome: { kind: 'pending' } as const, results: [] };
+
 // A search term keeps only the ids it returned; each title's record lives in the title store, where the title page
 // and add reuse it. A term is answered from storage only while it and every one of its records are fresh.
 export const createSearch = (database: DatabaseSync, services: ArrServices, store: TitleStore) => {
@@ -239,15 +251,20 @@ export const createSearch = (database: DatabaseSync, services: ArrServices, stor
       database.prepare('DELETE FROM search_lookups WHERE service = ?').run(service);
       store.forget(lookups[service].part);
     },
-    async search(query: SearchQuery): Promise<SearchResponse> {
-      const [sonarr, radarr] = await Promise.all([
-        cachedLookup('sonarr', lookupTerm(query, 'sonarr')),
-        cachedLookup('radarr', lookupTerm(query, 'radarr')),
-      ]);
-      return {
-        results: merge(sonarr.results, radarr.results),
-        services: { sonarr: sonarr.outcome, radarr: radarr.outcome },
+    // Sonarr often answers a second after Radarr, so the first service to answer with results is passed to onPartial,
+    // merged with the other marked pending, before both are returned.
+    async search(query: SearchQuery, onPartial?: (response: SearchResponse) => void): Promise<SearchResponse> {
+      const answers: Partial<Record<Service, Awaited<ReturnType<typeof cachedLookup>>>> = {};
+      const respond = (): SearchResponse => {
+        const { sonarr = pending, radarr = pending } = answers;
+        return { results: merge(sonarr.results, radarr.results), services: { sonarr: sonarr.outcome, radarr: radarr.outcome } };
       };
+      await Promise.all((['sonarr', 'radarr'] as const).map(async (service) => {
+        const answer = await cachedLookup(service, lookupTerm(query, service));
+        answers[service] = answer;
+        if ((answers.sonarr === undefined || answers.radarr === undefined) && answer.results.length > 0) onPartial?.(respond());
+      }));
+      return respond();
     },
   };
 };
@@ -260,7 +277,12 @@ export const createSearchRoutes = (search: Search) => {
     const values = context.req.queries('q') ?? [];
     const query = values.length === 1 ? parseSearchQuery(values[0]) : undefined;
     if (query === undefined) return context.json({ error: 'invalid_query' }, 400);
-    return context.json(await search.search(query));
+    // One line of JSON per answer: the first service's results as soon as they arrive, then both services'.
+    context.header('Content-Type', 'application/x-ndjson');
+    return stream(context, async (output) => {
+      const response = await search.search(query, (partial) => void output.writeln(JSON.stringify(partial)));
+      await output.writeln(JSON.stringify(response));
+    });
   });
   routes.all('/', (context) => context.json({ error: 'method_not_allowed' }, 405));
   return routes;

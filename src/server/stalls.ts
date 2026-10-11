@@ -3,7 +3,7 @@ import { type ArrServices, valueOrThrow } from './services/arr.js';
 import type { createLabels } from './labels.js';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
-import { listOpenProblems, RELEASE_LIMIT } from './problems.js';
+import { findOpenProblem, RELEASE_LIMIT } from './problems.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import type { Removal } from './torrentFiles.js';
 import { listTorrents, type Torrent } from './torrents.js';
@@ -185,11 +185,12 @@ export const createStallFix = (options: {
       return 'Asked Sonarr to search automatically for these episodes.';
     }
     const query = grab.movieId !== null ? `movieId=${grab.movieId}` : `episodeId=${grab.episodeIds[0]}`;
-    const { status, body } = await client.request(`/api/v3/release?${query}`);
+    // An interactive search asks every tracker and takes about 20 seconds; the 10 second default cuts it off.
+    const { status, body } = await client.request(`/api/v3/release?${query}`, { timeoutMs: 120_000 });
     if (status < 200 || status > 299) throw new Error(`${labels[grab.service]} search failed.`);
     const release = pickRelease(parseReleases(body), grab);
     if (release === undefined) return 'Searched again and found no other usable release; the regular search keeps looking.';
-    const grabbed = await client.request('/api/v3/release', { method: 'POST', body: { guid: release.guid, indexerId: release.indexerId } });
+    const grabbed = await client.request('/api/v3/release', { method: 'POST', body: { guid: release.guid, indexerId: release.indexerId }, timeoutMs: 60_000 });
     if (grabbed.status < 200 || grabbed.status > 299) throw new Error(`${labels[grab.service]} refused the grab of ${release.title}.`);
     return `Grabbed ${release.title} from ${release.indexer || 'another tracker'}.`;
   };
@@ -235,8 +236,7 @@ export const createStallFix = (options: {
   const clearRecovered = (torrent: Torrent) => {
     if (!torrent.complete && torrent.downRate === 0) return;
     if ((readWatch(database, torrent.hash)?.replacedAt ?? null) === null || downloadingVersions(torrent.hash).length === 0) return;
-    const problem = listOpenProblems(database)
-      .find((open) => open.kind === 'stalled' && open.subject.type === 'torrent' && open.subject.id === torrent.hash);
+    const problem = findOpenProblem(database, 'stalled', { type: 'torrent', service: null, id: torrent.hash });
     if (problem !== undefined) problems.setState(problem.id, 'resolved', torrent.complete ? 'Finished downloading.' : 'Downloading again.');
     saveWatch(database, emptyWatch(torrent.hash));
   };

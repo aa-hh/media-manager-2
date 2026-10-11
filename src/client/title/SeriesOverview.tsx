@@ -120,16 +120,20 @@ export function SeriesOverview({ detail: loaded, protectedIds, downloads, progre
     const previous = detail;
     setDetail((current) => apply(current, change));
     setProblems((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== problemKey)));
+    const chunks = change.kind !== 'episodes' ? [] : Array.from(
+      { length: Math.ceil(change.episodeIds.length / MAX_EPISODE_IDS) },
+      (_, index) => change.episodeIds.slice(index * MAX_EPISODE_IDS, (index + 1) * MAX_EPISODE_IDS),
+    );
     const bodies = change.kind === 'series'
       ? [{ service: 'sonarr', kind: 'series', seriesId, monitored: change.monitored }]
       : change.kind === 'season'
         ? [{ service: 'sonarr', kind: 'season', seriesId, seasonNumber: change.seasonNumber, monitored: change.monitored }]
-        : Array.from({ length: Math.ceil(change.episodeIds.length / MAX_EPISODE_IDS) }, (_, index) => ({
-          service: 'sonarr', kind: 'episodes', episodeIds: change.episodeIds.slice(index * MAX_EPISODE_IDS, (index + 1) * MAX_EPISODE_IDS), monitored: change.monitored,
-        }));
+        : chunks.map((episodeIds) => ({ service: 'sonarr', kind: 'episodes', episodeIds, monitored: change.monitored }));
     const results = await Promise.all(bodies.map((body) => sendAction('/api/library/monitor', body, onUnauthenticated)));
     if (results.every(Boolean)) return;
-    setDetail((current) => apply(current, change, previous));
+    // Only the chunks Sonarr refused flip back; the ones it accepted are already true on its side.
+    const refused = change.kind !== 'episodes' ? change : { ...change, episodeIds: chunks.filter((_, index) => !results[index]).flat() };
+    setDetail((current) => apply(current, refused, previous));
     setProblems((current) => ({ ...current, [problemKey]: "Sonarr didn't answer." }));
   };
 

@@ -161,7 +161,7 @@ export type SecondVersion = {
   state: 'sending' | 'downloading' | 'importing' | 'imported' | 'failed';
   failure: string | null;
   failureCode: 'download_link_failed' | 'not_a_torrent' | 'already_in_rtorrent' | 'rtorrent_refused' | 'send_unconfirmed'
-    | 'grabbed_by_arr' | 'never_received' | 'stalled_removed' | 'import_no_name' | 'import_no_match' | 'import_link_failed' | null;
+    | 'grabbed_by_arr' | 'never_received' | 'stalled_removed' | 'import_no_name' | 'import_no_match' | 'import_link_failed' | 'torrent_gone' | null;
   releaseTitle: string;
   indexer: string;
   quality: string;

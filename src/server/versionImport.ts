@@ -1,7 +1,7 @@
-import { linkSync, mkdirSync, statSync } from 'node:fs';
+import { linkSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { listOpenProblems, type createProblems, type Subject } from './problems.js';
+import { findOpenProblem, type createProblems, type Subject } from './problems.js';
 import type { FailureCode } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -103,15 +103,14 @@ export const createVersionImport = (options: {
     : { type: 'episode', service: 'sonarr', id: String(row.episodeId) });
 
   const resolveOpen = (kind: string, subject: Subject, text: string) => {
-    const open = listOpenProblems(database).find((problem) => problem.kind === kind && problem.subject.type === subject.type
-      && problem.subject.service === subject.service && problem.subject.id === subject.id);
+    const open = findOpenProblem(database, kind, subject);
     if (open !== undefined) problems.setState(open.id, 'resolved', text);
   };
 
   const folderSubject = (service: Service): Subject => ({ type: 'dependency', service, id: `versions.${service}` });
 
   const fail = (row: Row, title: string, reason: string, code: FailureCode) => {
-    const changed = database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, failure_code = ?, updated_at = ? WHERE id = ? AND state = 'importing'")
+    const changed = database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, failure_code = ?, updated_at = ? WHERE id = ? AND state IN ('downloading', 'importing')")
       .run(reason, code, now(), row.id).changes;
     if (changed === 1) problems.open({ kind: IMPORT_PROBLEM_KIND, subject: subjectOf(row), hash: row.hash, state: 'needs_you', summary: `${title} (second version): ${reason}` });
   };
@@ -224,11 +223,10 @@ export const createVersionImport = (options: {
         throw code !== undefined && RETRYABLE_CODES.has(code) ? new FolderError((error as Error).message) : error;
       }
     };
-    if (onFolder(() => statSync(root)).dev !== original.dev) {
-      throw new Error(`The download and hostPaths versions.${service} are on different drives, so no hardlink can be made.`);
-    }
+    // A missing versions folder (an unmounted drive) is reported, never created by the mkdir below.
+    onFolder(() => statSync(root));
     const folder = join(root, folderName);
-    onFolder(() => mkdirSync(folder, { recursive: true }));
+    const made = onFolder(() => mkdirSync(folder, { recursive: true }));
     for (let copy = 1; ; copy += 1) {
       const destination = join(folder, `${stem}${copy === 1 ? '' : ` (${copy})`}${extname(source)}`);
       const existing = onFolder(() => statSync(destination, { throwIfNoEntry: false }));
@@ -236,7 +234,14 @@ export const createVersionImport = (options: {
         if (existing.dev === original.dev && existing.ino === original.ino) return destination;
         continue;
       }
-      onFolder(() => linkSync(source, destination));
+      // The link itself is the drive check: matching device numbers miss bind mounts and container volumes.
+      try {
+        onFolder(() => linkSync(source, destination));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+        if (made !== undefined) rmSync(made, { recursive: true });
+        throw new Error(`The download and hostPaths versions.${service} are on different drives, so no hardlink can be made.`);
+      }
       if (statSync(destination).ino !== original.ino) throw new Error(`${destination} is not a hardlink of the download.`);
       return destination;
     }
@@ -330,8 +335,27 @@ export const createVersionImport = (options: {
     return outcome;
   };
 
+  const readRows = (states: string): Row[] => database.prepare(`
+    SELECT id, service, movie_id, series_id, episode_id, release_title, quality, hash FROM second_versions WHERE state IN (${states}) ORDER BY id
+  `).all().map((row): Row => ({
+    id: Number(row.id),
+    service: row.service as Service,
+    movieId: row.movie_id === null ? null : Number(row.movie_id),
+    seriesId: row.series_id === null ? null : Number(row.series_id),
+    episodeId: row.episode_id === null ? null : Number(row.episode_id),
+    releaseTitle: String(row.release_title),
+    quality: String(row.quality),
+    hash: String(row.hash),
+  }));
+
   const run = async () => {
-    const complete = new Set(listTorrents(database).filter((torrent) => torrent.goneAt === null && torrent.complete).map((torrent) => torrent.hash));
+    const torrents = listTorrents(database);
+    const complete = new Set(torrents.filter((torrent) => torrent.goneAt === null && torrent.complete).map((torrent) => torrent.hash));
+    // Nothing else moves a row on once its torrent leaves rTorrent, and a delete refuses a row still downloading or importing.
+    const gone = new Set(torrents.filter((torrent) => torrent.goneAt !== null).map((torrent) => torrent.hash));
+    for (const row of readRows("'downloading', 'importing'")) {
+      if (gone.has(row.hash)) fail(row, row.releaseTitle, 'Its torrent left rTorrent before it was imported.', 'torrent_gone');
+    }
     const at = now();
     // TV and movies each wait for their versions folder to be set before importing, and say so once something is waiting.
     for (const service of ['radarr', 'sonarr'] as const) {
@@ -352,18 +376,7 @@ export const createVersionImport = (options: {
         database.prepare("UPDATE second_versions SET state = 'importing', updated_at = ? WHERE id = ? AND state = 'downloading'").run(at, row.id);
       }
     }
-    const rows = database.prepare(`
-      SELECT id, service, movie_id, series_id, episode_id, release_title, quality, hash FROM second_versions WHERE state = 'importing' ORDER BY id
-    `).all().map((row): Row => ({
-      id: Number(row.id),
-      service: row.service as Service,
-      movieId: row.movie_id === null ? null : Number(row.movie_id),
-      seriesId: row.series_id === null ? null : Number(row.series_id),
-      episodeId: row.episode_id === null ? null : Number(row.episode_id),
-      releaseTitle: String(row.release_title),
-      quality: String(row.quality),
-      hash: String(row.hash),
-    }));
+    const rows = readRows("'importing'");
     const byHash = new Map<string, Row[]>();
     for (const row of rows) byHash.set(row.hash, [...byHash.get(row.hash) ?? [], row]);
     const unsettled = new Set<Service>();

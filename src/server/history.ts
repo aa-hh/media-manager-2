@@ -87,6 +87,7 @@ const titleWords: Record<string, string> = {
   movie_file_deleted: 'Movie file deleted',
   movie_unmonitored: 'Movie unmonitored',
   series_deleted: 'Show deleted',
+  season_deleted: 'Season deleted',
 };
 // Second version events that also show under Deletions.
 const deletionKinds: ReadonlySet<string> = new Set(['deleted', 'torrent_removed', 'torrent_kept']);
@@ -327,6 +328,7 @@ export const createHistory = (options: {
         : filter === 'fixes' ? readSteps(since)
           : [...readVersionEvents(since).filter((record) => deletionKinds.has(record.kind ?? '')), ...readTitleEvents(since, query.service)].sort((a, b) => b.at - a.at);
       const matched = own.filter((record) => (query.before === undefined || record.at <= query.before)
+        && (query.service === 'all' || record.subject?.service == null || record.subject.service === query.service)
         && (record.subject === null ? movieId === undefined && seriesId === undefined && episodeId === undefined : matches(record.subject)));
       moreSteps = matched.length > PAGE_SIZE;
       ownEvents = await Promise.all(matched.slice(0, PAGE_SIZE).map((record) => record.event()));

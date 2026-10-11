@@ -4,6 +4,7 @@ import { AppBarDesktop, AppBarNavItem } from './components/ui/app-bar';
 import { Button } from './components/ui/button';
 import { InputSearch } from './components/ui/input-search';
 import { Calendar } from './calendar/Calendar';
+import { Discover } from './discover/Discover';
 import type { DownloadsState } from './downloads/useDownloads';
 import { Library } from './library/Library';
 import { navigate, replace, routeFor, useLocation } from './navigation';
@@ -45,6 +46,7 @@ const writeSearchQuery = (query: string) => {
 
 const navItems = [
   { label: 'Library', path: '/' },
+  { label: 'Discover', path: '/discover' },
   { label: 'Calendar', path: '/calendar' },
   { label: 'Downloads', path: '/downloads' },
   { label: 'Flagged', path: '/flagged' },
@@ -92,6 +94,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
       : pathname === '/health' ? 'health'
       : pathname === '/settings' ? 'settings'
       : pathname === '/calendar' ? 'calendar'
+      : pathname === '/discover' || pathname.startsWith('/discover/') ? 'discover'
         : /^\/(series|movie|title)\//.test(pathname) ? 'title'
           : 'library';
 
@@ -172,7 +175,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         )}
       />
       <main className="px-(--page-margin) pb-(--livebar)">
-        <div key={view} className="transition-opacity duration-(--duration-fast) ease-out starting:opacity-0">
+        {/* A new screen fades in; each title page counts as its own screen, so going from one title to another fades too. */}
+        <div key={view === 'title' ? pathname : view} className="transition-opacity duration-(--duration-fast) ease-out starting:opacity-0">
         {view === 'search'
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'
@@ -184,6 +188,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
             : view === 'settings' ? <Settings onUnauthenticated={onUnauthenticated} />
             : view === 'calendar'
               ? <Calendar downloads={downloadsState} onUnauthenticated={onUnauthenticated} />
+              : view === 'discover'
+                ? <Discover onUnauthenticated={onUnauthenticated} />
               : view === 'title'
                 ? <Overview downloads={downloadsState} onUnauthenticated={onUnauthenticated} />
                 : <Library downloads={downloadsState} onUnauthenticated={onUnauthenticated} />}
