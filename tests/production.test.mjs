@@ -5856,12 +5856,16 @@ test('flagged lists what automation gave up on with the right next step, and wan
   problems.open({ kind: 'tracker_cooldown', subject: { type: 'tracker', service: null, id: 'blutopia.cc' }, summary: 'Slow down.', state: 'needs_you' });
   problems.open({ kind: 'dependency_down', subject: { type: 'dependency', service: null, id: 'rtorrent' }, summary: 'rTorrent is unreachable.', state: 'needs_you' });
   problems.open({ kind: 'missed_search', subject: { type: 'episode', service: 'sonarr', id: '32' }, summary: 'Out but never searched.', state: 'needs_you' });
+  problems.open({ kind: 'second_version_orphaned', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Radarr no longer has this movie.', state: 'needs_you' });
+  problems.open({ kind: 'second_version_missing', subject: { type: 'episode', service: 'sonarr', id: '32' }, summary: 'File missing.', state: 'needs_you' });
+  problems.open({ kind: 'tracked_in_versions_folder', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Inside the versions folder.', state: 'needs_you' });
   problems.open({ kind: 'unfinished', subject: torrent('FF'.repeat(20)), hash: 'FF'.repeat(20), summary: 'Still going.' });
 
   const isManualDownload = (subject) => subject.type === 'movie' && subject.id === '7';
   const flagged = createFlagged({ database, arr, labels: createLabels(arr), isManualDownload, now: () => clock.value });
 
-  // Mapping a problem to the wrong next step, offering a manual import for a non-import problem, or a pick for several episodes turns this red.
+  // Mapping a problem to the wrong next step, offering a manual import for a non-import problem, a pick for several episodes,
+  // or a pick or search for a second version whose title or file is gone turns this red.
   const needsYou = await flagged.needsYou();
   assert.deepEqual(needsYou.items.map((item) => [item.problem.kind, item.label, item.actions.map((action) => action.kind)]), [
     ['stalled', 'Dune (2021)', ['pick_release', 'search']],
@@ -5871,6 +5875,9 @@ test('flagged lists what automation gave up on with the right next step, and wan
     ['tracker_cooldown', 'blutopia.cc', ['open_health']],
     ['dependency_down', 'rtorrent', ['open_health']],
     ['missed_search', 'Severance S01E02', ['pick_release', 'search']],
+    ['second_version_orphaned', 'Dune (2021)', []],
+    ['second_version_missing', 'Severance S01E02', []],
+    ['tracked_in_versions_folder', 'Dune (2021)', ['pick_release', 'search']],
   ]);
   assert.equal(needsYou.items[1].kindWord, 'IMPORT MATCHING');
   assert.deepEqual(needsYou.items[1].actions[0], { kind: 'manual_import', service: 'sonarr', downloadId: 'BB'.repeat(20) });
