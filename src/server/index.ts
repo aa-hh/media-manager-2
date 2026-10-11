@@ -27,6 +27,7 @@ import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
+import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersions } from './secondVersions.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
@@ -104,6 +105,8 @@ if (database !== undefined) {
   runner.register('stall-fix', 60_000, stalls.check);
   const relink = createRelinkFix({ database, rtorrent, arr, problems, isManualDownload: protection.isProtected });
   runner.register('relink-fix', 60_000, relink.check);
+  const versionChecks = createSecondVersionChecks({ database, arr, problems });
+  runner.register('second-version-checks', VERSION_CHECK_INTERVAL_MS, versionChecks.check);
   // Two minutes keeps Radarr's whole-library read light while still searching close to each release time.
   const searches = createSearchScheduler({ database, arr, problems, isManualDownload: protection.isProtected });
   runner.register('search-schedule', 2 * 60_000, searches.check);
@@ -149,7 +152,7 @@ if (database !== undefined) {
     secondVersions,
     owned: createOwned(arr),
     protection,
-    library: createLibrary(arr),
+    library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title)),
     api: createApiRoutes(database, {
       arr,
       refresh: torrentGrabs.refresh,

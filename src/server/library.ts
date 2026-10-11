@@ -9,6 +9,7 @@ import {
   type Result as ArrResult,
   type Series,
 } from './services/arr.js';
+import type { SecondVersionRow } from './secondVersionRows.js';
 
 export type { FileDetail };
 
@@ -408,7 +409,13 @@ const fromArr = <T>(result: ArrResult<T>): Result<T> => {
   return { kind: result.kind };
 };
 
-export const createLibrary = (services: ArrServices) => {
+type VersionRows = {
+  (title: { service: 'radarr'; movieId: number }): SecondVersionRow[];
+  (title: { service: 'sonarr'; seriesId: number }): SecondVersionRow[];
+};
+
+// The tracked version comes from Sonarr or Radarr; second versions come from this app's own records, beside it.
+export const createLibrary = (services: ArrServices, versionRows: VersionRows = () => []) => {
   const outcome = <T>(result: Result<T[]>): Outcome => (
     result.kind === 'ok' ? { kind: 'ok', count: result.value.length } : { kind: result.kind === 'not_found' ? 'unreachable' : result.kind }
   );
@@ -437,7 +444,7 @@ export const createLibrary = (services: ArrServices) => {
       return { titles: newestFirst([...sonarr.titles, ...radarr.titles]), services: { sonarr: sonarr.outcome, radarr: radarr.outcome } };
     },
 
-    async series(id: number): Promise<Result<SeriesDetail>> {
+    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[] }>> {
       const [record, episodes, profiles, tags] = await Promise.all([
         services.sonarr.series(id).then(fromArr),
         services.sonarr.episodes(id, { withFiles: true }).then(fromArr),
@@ -446,17 +453,20 @@ export const createLibrary = (services: ArrServices) => {
       ]);
       if (record.kind !== 'ok') return record;
       if (episodes.kind !== 'ok') return episodes;
-      return { kind: 'ok', value: seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true }) };
+      return {
+        kind: 'ok',
+        value: { ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true }), secondVersions: versionRows({ service: 'sonarr', seriesId: id }) },
+      };
     },
 
-    async movie(id: number): Promise<Result<MovieDetail>> {
+    async movie(id: number): Promise<Result<MovieDetail & { secondVersions: SecondVersionRow[] }>> {
       const [record, profiles, tags] = await Promise.all([
         services.radarr.movie(id).then(fromArr),
         optional('radarr', '/api/v3/qualityprofile'),
         optional('radarr', '/api/v3/tag'),
       ]);
       if (record.kind !== 'ok') return record;
-      return { kind: 'ok', value: movieDetail(record.value, { profiles, tags, owned: true }) };
+      return { kind: 'ok', value: { ...movieDetail(record.value, { profiles, tags, owned: true }), secondVersions: versionRows({ service: 'radarr', movieId: id }) } };
     },
 
     async preview(service: Service, id: number): Promise<Result<SeriesDetail | MovieDetail>> {
