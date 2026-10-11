@@ -26,8 +26,8 @@ type ImportView = {
 type Draft = Assignment & { include: boolean };
 
 // Finish an import by hand: pick the movie or episodes, quality and language per file. The same check runs on the server.
-export function ImportPanel({ service, downloadId, onDone, onCancel }: {
-  service: Service; downloadId: string; onDone: () => void; onCancel: () => void;
+export function ImportPanel({ service, downloadId, onDone, onCancel, onUnauthenticated }: {
+  service: Service; downloadId: string; onDone: () => void; onCancel: () => void; onUnauthenticated: () => void;
 }) {
   const [view, setView] = useState<ImportView | 'loading' | 'failed'>('loading');
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -38,6 +38,10 @@ export function ImportPanel({ service, downloadId, onDone, onCancel }: {
     let current = true;
     void fetch(`/api/imports/${service}/${downloadId}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(async (response) => {
+        if (response.status === 401) {
+          onUnauthenticated();
+          return;
+        }
         if (!response.ok) throw new Error('unreadable');
         const loaded = await response.json() as ImportView;
         if (!current) return;
@@ -53,7 +57,7 @@ export function ImportPanel({ service, downloadId, onDone, onCancel }: {
       })
       .catch(() => { if (current) setView('failed'); });
     return () => { current = false; };
-  }, [service, downloadId]);
+  }, [service, downloadId, onUnauthenticated]);
 
   const chosen = drafts.filter((draft) => draft.include);
   const reasons = useMemo(() => {
@@ -82,6 +86,10 @@ export function ImportPanel({ service, downloadId, onDone, onCancel }: {
       });
       if (response.status === 204) {
         onDone();
+        return;
+      }
+      if (response.status === 401) {
+        onUnauthenticated();
         return;
       }
       const body = await response.json().catch(() => ({})) as { reasons?: string[]; reason?: string };
