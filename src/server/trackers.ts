@@ -157,6 +157,9 @@ export const createTrackerWatch = (options: {
       }
 
       if (issue !== undefined && issue.replace) continue;
+      // Once the stall fix has replaced this release, a kept partial torrent still carries the same tracker message;
+      // asking again would grab another release on every check.
+      if (database.prepare('SELECT 1 FROM stall_watch WHERE hash = ? AND replaced_at IS NOT NULL').get(torrent.hash) !== undefined) continue;
 
       if (kind === 'unregistered') {
         const next: Issue = issue ?? { hash: torrent.hash, kind, since: at, lastRetryAt: null, recheckedAt: null, replace: false };

@@ -1,7 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ImportPanel } from './ImportPanel';
-import { buildRows, formatDuration, formatSpeed, groupRows, latestStep, type Group, type Row } from './model';
+import { buildRows, formatDuration, formatSpeed, groupRows, latestStep, type Group, type QueueItem, type Row } from './model';
 import { postAction, type DownloadsState } from './useDownloads';
 
 type Release = 'keep' | 'blocklist' | 'blocklist_search';
@@ -53,11 +53,10 @@ function Progress({ value }: { value: number }) {
   );
 }
 
-function RemovePanel({ row, onDone, onCancel }: { row: Row; onDone: () => void; onCancel: () => void }) {
+function RemovePanel({ row, item, onDone, onCancel }: { row: Row; item: QueueItem; onDone: () => void; onCancel: () => void }) {
   const [release, setRelease] = useState<Release>(row.byHand ? 'keep' : 'blocklist_search');
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
-  const item = row.queueItem!;
   const confirm = async () => {
     setSending(true);
     setFailed(false);
@@ -176,7 +175,7 @@ function DownloadRow({ row, index, now, selected, dimmed, panel, onSelect, onOpe
           {grabFailed && item !== null && <span role="alert" className="text-[var(--mm-risk)]">{item.service === 'sonarr' ? 'Sonarr' : 'Radarr'} did not grab it. Try again.</span>}
         </div>
       )}
-      {panel === 'remove' && <RemovePanel row={row} onDone={onChanged} onCancel={onClose} />}
+      {panel === 'remove' && item !== null && <RemovePanel row={row} item={item} onDone={onChanged} onCancel={onClose} />}
       {panel === 'import' && row.importable !== null && (
         <ImportPanel
           service={row.importable.service}

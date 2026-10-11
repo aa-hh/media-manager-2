@@ -35,14 +35,14 @@ if (database !== undefined) {
   const openedDatabase = database;
   const events = createEventHub();
   const runner = createJobRunner();
-  const poller = createTorrentPoller({ database, rtorrent: createRtorrent(database), events });
+  const rtorrent = createRtorrent(database);
+  const poller = createTorrentPoller({ database, rtorrent, events });
   runner.register('rtorrent-poll', poller.intervalMs, poller.poll);
   const arrServices = { sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) };
   const grabs = createGrabTracker({ database, arr: arrServices, events });
   runner.register('arr-reconcile', grabs.intervalMs, grabs.reconcile);
   const problems = createProblems({ database, events });
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
-  const rtorrent = createRtorrent(database);
   const trackers = createTrackerWatch({ database, rtorrent, problems, events });
   runner.register('tracker-watch', 30_000, trackers.check);
   const stalls = createStallFix({ database, rtorrent, arr: arrServices, problems, trackers });

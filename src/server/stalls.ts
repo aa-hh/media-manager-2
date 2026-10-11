@@ -202,6 +202,7 @@ export const createStallFix = (options: {
     const subject: Subject = { type: 'torrent', service: null, id: hash };
     if (grab === undefined) {
       problems.open({ kind: 'stalled', subject, hash, summary: `${reason} No Sonarr or Radarr grab matches this torrent, so it can't be replaced automatically.`, state: 'needs_you' });
+      saveWatch(database, { ...emptyWatch(hash), replacedAt: now() });
       trackers.replacementHandled(hash, 'Needs the owner: no grab record.');
       return;
     }
@@ -250,7 +251,13 @@ export const createStallFix = (options: {
     const torrents = listTorrents(database);
     const byHash = new Map(torrents.map((torrent) => [torrent.hash, torrent]));
     const requested = new Set(trackers.replacementRequests().map((issue) => issue.hash));
-    for (const hash of requested) await replace(byHash.get(hash), hash, 'The tracker can\'t serve this torrent.');
+    for (const hash of requested) {
+      if ((readWatch(database, hash)?.replacedAt ?? null) !== null) {
+        trackers.replacementHandled(hash, 'Already replaced.');
+        continue;
+      }
+      await replace(byHash.get(hash), hash, 'The tracker can\'t serve this torrent.');
+    }
     for (const torrent of torrents) {
       if (torrent.goneAt !== null || torrent.complete || requested.has(torrent.hash)) continue;
       flagLongUnfinished(torrent, at);

@@ -2437,7 +2437,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const hash = 'AB'.repeat(20);
   const start = Date.parse('2026-10-08T12:00:00Z');
 
-  const setup = async ({ publishedAgoMs = 48 * 60 * minute, completed = 0, files = [[0]], releases, manual = false } = {}) => {
+  const setup = async ({ publishedAgoMs = 48 * 60 * minute, completed = 0, files = [[0]], releases, manual = false, message = '' } = {}) => {
     count += 1;
     const database = openDatabase(join(root, `db-${count}`, 'media-manager.sqlite'));
     const clock = { value: start };
@@ -2448,7 +2448,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     const rtorrent = {
       call: async (method, params) => {
         if (method === 'd.multicall2') {
-          return [[hash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, '', 0, 0, torrent.seeders, torrent.seeders]];
+          return [[hash, 'Movie.2024.1080p', 1000, torrent.completed, torrent.down, 0, 1, 1, 1, 0, message, 0, 0, torrent.seeders, torrent.seeders]];
         }
         if (method === 't.multicall') return params[2] === 't.url=' ? [['https://tracker.blutopia.cc/announce/key']] : [[torrent.scrape]];
         if (method === 'f.multicall') return files;
@@ -2483,6 +2483,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
       for (let i = 0; i < minutes; i += 1) {
         clock.value += minute;
         await poller.poll();
+        await trackers.check();
         await stalls.check();
       }
     };
@@ -2561,6 +2562,15 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.deepEqual(run.calls.filter(([method]) => method === 'd.erase'), []);
     assert.deepEqual(run.calls.filter(([method]) => method === 'f.priority.set'), [['f.priority.set', `${hash}:f1`, 0], ['f.priority.set', `${hash}:f3`, 0]]);
     assert.deepEqual(run.calls.filter(([method]) => method === 'd.update_priorities'), [['d.update_priorities', hash]]);
+    run.database.close();
+  });
+
+  // Asking the stall fix again while the kept partial torrent still says unregistered grabs a new release every check.
+  await t.test('a tracker-requested replacement grabs once while the kept torrent keeps its message', async () => {
+    const run = await setup({ completed: 400, files: [[12], [0]], message: 'Unregistered torrent', releases: [release('Another', 'BeyondHD')] });
+    await run.tick(10);
+    assert.deepEqual(grabbedTitles(run.requests), ['guid-Another']);
+    assert.equal(run.database.prepare("SELECT COUNT(*) AS count FROM problems WHERE kind = 'stalled'").get().count, 1);
     run.database.close();
   });
 
@@ -2905,4 +2915,85 @@ test('operator command stores settings from stdin and checks connections without
   const relisted = await cli(['settings', 'list']);
   assert.equal(relisted.code, 0, relisted.stderr);
   assert.equal(relisted.stdout.split('\n').includes('credentials plex.token'), false);
+});
+
+test('the downloads screen joins torrents, queue items and problems into rows', async (t) => {
+  // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/downloads/model.ts', import.meta.url), 'utf8');
+  const { buildRows, groupRows, applyEvent } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const hash = 'CD'.repeat(20);
+  const torrent = (overrides = {}) => ({ hash, name: 'Movie.2024.1080p', sizeBytes: 1000, completedBytes: 400, downRate: 0, upRate: 0, started: true,
+    active: true, complete: false, message: '', ratioThousandths: 0, seedersConnected: 2, trackerHost: 'tracker.example', goneAt: null, ...overrides });
+  const item = (overrides = {}) => ({ service: 'radarr', queueId: 5, downloadId: hash, movieId: 7, episodeId: null, title: 'Movie.2024.1080p', label: 'Movie (2024)',
+    status: 'downloading', trackedStatus: 'ok', trackedState: 'downloading', statusMessages: [], errorMessage: '', indexer: 'Blutopia',
+    quality: 'Bluray-1080p', formats: [], formatScore: 0, estimatedCompletion: null, ...overrides });
+  const problem = (overrides = {}) => ({ id: 1, kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, hash, state: 'handling',
+    summary: 'No seeders.', steps: [], ...overrides });
+  const rowsFor = (snapshot) => buildRows({ torrents: [], queue: [], grabs: [], problems: [], ...snapshot });
+  const statusOf = (torrentOverrides, queue = [item()], problems = []) => rowsFor({ torrents: [torrent(torrentOverrides)], queue, problems })[0].status;
+
+  // Reading the wrong state first shows a blocked or stalled download as fine, or a fine one as at risk.
+  await t.test('a torrent row says the most urgent thing about its download', () => {
+    const cases = [
+      [{}, [item()], [problem()], 'stalled', 'risk'],
+      [{ message: 'Tracker: timeout' }, [item()], [], 'error', 'risk'],
+      [{ complete: true }, [item({ trackedState: 'importBlocked', statusMessages: [{ title: 'x', messages: ['No matching movie.'] }] })], [], 'import blocked', 'risk'],
+      [{ complete: true }, [item({ trackedState: 'importing' })], [], 'importing', 'normal'],
+      [{ complete: true }, [item({ trackedState: 'importPending' })], [], 'waiting to import', 'normal'],
+      [{ complete: true }, [], [], 'seeding', 'normal'],
+      [{ started: false }, [item()], [], 'paused', 'normal'],
+      [{ active: false }, [item()], [], 'queued', 'normal'],
+      [{ downRate: 2000 }, [item()], [], 'downloading', 'normal'],
+      [{ seedersConnected: 0 }, [item()], [], 'waiting for peers', 'risk'],
+    ];
+    for (const [overrides, queue, problems, word, tone] of cases) {
+      const status = statusOf(overrides, queue, problems);
+      assert.deepEqual([status.word, status.tone], [word, tone], JSON.stringify(overrides));
+    }
+    const blocked = rowsFor({ torrents: [torrent({ complete: true })], queue: [item({ trackedState: 'importBlocked', statusMessages: [{ title: 'x', messages: ['No matching movie.'] }] })] })[0];
+    assert.equal(blocked.status.detail, 'No matching movie.');
+    assert.deepEqual(blocked.importable, { service: 'radarr', downloadId: hash });
+  });
+
+  // Losing the join shows a download twice, drops a problem, or puts a delayed release's actions on the wrong row.
+  await t.test('queue items and problems join their download, and the rest get rows of their own', () => {
+    const delayed = item({ queueId: 6, downloadId: null, status: 'delay', estimatedCompletion: '2026-10-08T13:00:00Z', label: 'Other (2025)', movieId: 8 });
+    const rows = rowsFor({
+      torrents: [torrent(), torrent({ hash: 'EF'.repeat(20), goneAt: 1 })],
+      queue: [item(), delayed],
+      grabs: [{ hash, service: 'radarr', movieId: 7, episodeIds: [], releaseTitle: 'Movie.2024.1080p', indexer: 'Blutopia', byHand: true }],
+      problems: [
+        problem({ id: 2, kind: 'import_failed', subject: { type: 'movie', service: 'radarr', id: '7' }, hash: null, state: 'needs_you' }),
+        problem({ id: 3, kind: 'missing', subject: { type: 'movie', service: 'radarr', id: '8' }, hash: null }),
+        problem({ id: 4, kind: 'tracker_down', subject: { type: 'tracker', service: null, id: 'tracker.example' }, hash: null }),
+        problem({ id: 5, state: 'resolved' }),
+      ],
+    });
+    assert.deepEqual(rows.map((row) => [row.key, row.label, row.problems.map((open) => open.id)]), [
+      [`torrent:${hash}`, 'Movie (2024)', [2]],
+      ['queue:radarr:6', 'Other (2025)', [3]],
+      ['problem:4', 'tracker.example', [4]],
+    ]);
+    assert.equal(rows[0].queueItem.queueId, 5);
+    assert.equal(rows[0].byHand, true);
+    assert.deepEqual(rows[0].importable, { service: 'radarr', downloadId: hash });
+    assert.equal(rows[1].status.word, 'delayed');
+    assert.equal(rows[1].delayedUntil, Date.parse('2026-10-08T13:00:00Z'));
+    assert.equal(rows[2].queueItem, null);
+
+    assert.deepEqual(groupRows(rows).map((group) => [group.key, group.rows.map((row) => row.key)]), [
+      ['needs_you', [`torrent:${hash}`]],
+      ['handling', ['queue:radarr:6', 'problem:4']],
+    ]);
+  });
+
+  // Applying an event to the wrong service or keeping a resolved problem leaves the screen out of date.
+  await t.test('live events update only what they name', () => {
+    const snapshot = { torrents: [torrent()], queue: [item(), item({ service: 'sonarr', queueId: 9 })], grabs: [], problems: [problem()] };
+    assert.deepEqual(applyEvent(snapshot, 'torrents', { changed: [], gone: [hash] }).torrents, []);
+    assert.deepEqual(applyEvent(snapshot, 'queue', { service: 'radarr', items: [] }).queue.map((entry) => entry.queueId), [9]);
+    assert.deepEqual(applyEvent(snapshot, 'problem', problem({ state: 'resolved' })).problems, []);
+    assert.equal(applyEvent(snapshot, 'unknown', {}), snapshot);
+  });
 });
