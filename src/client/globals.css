@@ -181,6 +181,41 @@
   }
 }
 
+/*
+ * One light band sweeps across the window and every loading block shows its slice of it, so a grid of
+ * skeletons reads as one sheet catching the light instead of blocks pulsing out of step. The band is pinned
+ * to the window (background-attachment: fixed); iOS Safari ignores that and sweeps each block on its own.
+ * Under reduced motion the loop stops with the band parked off screen.
+ */
+@keyframes skeleton-sweep {
+  from {
+    background-position: -75vw 0;
+  }
+  to {
+    background-position: 75vw 0;
+  }
+}
+
+@utility skeleton-shimmer {
+  background-image: linear-gradient(105deg, transparent 40%, rgb(255 255 255 / 0.9) 50%, transparent 60%);
+  background-size: 100vw 100vh;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-position: -75vw 0;
+  animation: skeleton-sweep var(--duration-shimmer) var(--ease-linear) infinite;
+}
+
+/* Content arriving in place of a skeleton crossfades in (DESIGN.md Motion: skeleton to content, base, out). */
+@keyframes content-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@utility animate-content-in {
+  animation: content-in var(--duration-base) var(--ease-out) both;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-card: var(--card);
