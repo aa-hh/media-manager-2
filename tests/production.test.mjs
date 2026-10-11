@@ -9333,9 +9333,6 @@ test('the settings screen sends only changed fields and ranks each service state
     assert.equal(nextStep('what', fresh, wantedParts(fresh)), 'sonarr');
     // Radarr saved in Settings earlier is passed over.
     assert.equal(nextStep('sonarr', status(['sonarr', 'radarr']), { trackers: true, backup: true }), 'rtorrent');
-    // The steps follow the strip: Folders, which reads its suggestions from the three services, comes before Plex.
-    assert.equal(nextStep('rtorrent', status(['sonarr', 'radarr', 'rtorrent']), { trackers: true, backup: true }), 'folders');
-    assert.equal(nextStep('folders', status(['sonarr', 'radarr', 'rtorrent', 'folders']), { trackers: true, backup: true }), 'plex');
     assert.equal(firstStep(status(['sonarr']), { trackers: true, backup: true }), 'radarr');
     const required = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
     const chosen = status(required, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'not_done', wanted: true } });

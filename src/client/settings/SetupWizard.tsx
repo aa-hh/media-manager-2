@@ -185,8 +185,6 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   const folders = status.required.folders === 'done' ? { state: 'connected' as const, text: 'Confirmed' } : { state: 'not-set-up' as const, text: 'Not set' };
   const backupSkipped = status.optional.backup.status === 'skipped';
   const backupState = backupPill(status.backup);
-  // The finished strip is the payoff for the whole chain answering, so it waits for every connection test, not just for Done.
-  const chainLit = step === 'done' && status.required.folders === 'done' && (['sonarr', 'radarr', 'rtorrent', 'plex'] as const).every((name) => checks[name].kind === 'ok');
   const foldersReady = step === 'folders' || (['sonarr', 'radarr', 'rtorrent'] as const).every((part) => status.required[part] === 'done');
 
   const connectStep = async (name: ServiceStep) => {
@@ -208,9 +206,8 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           <div className="flex flex-col gap-2">
             <h3 className="font-ui text-sm font-semibold text-foreground">Required before the library opens. Have these ready:</h3>
             <dl className="flex flex-col">
-              {requiredParts.map((part) => (part === 'folders'
-                ? <FactRow key={part} label="Folders">Nothing to type: read from Sonarr, Radarr and rTorrent for you to confirm</FactRow>
-                : <FactRow key={part} label={infoOf(part).label}>{serviceSteps.find((service) => service.name === part)!.needs}</FactRow>))}
+              {serviceSteps.map((service) => <FactRow key={service.name} label={infoOf(service.name).label}>{service.needs}</FactRow>)}
+              <FactRow label="Folders">Nothing to type: read from Sonarr, Radarr and rTorrent for you to confirm</FactRow>
             </dl>
           </div>
           <div className="flex flex-col gap-2">
@@ -416,13 +413,13 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
         ) : (
           <>
             <PiecesStrip
-              summary={chainLit ? 'Every link answers. Search for something, pick a release, and watch it download live.' : stripSummary(checks)}
+              summary={step === 'done' ? 'Every link answers. Search for something, pick a release, and watch it download live.' : stripSummary(checks)}
               trackers={trackers}
               noTrackers="Optional, no tracker yet"
               checks={checks}
               editedOf={editedOf}
               folders={folders}
-              look={chainLit ? 'done' : 'setup'}
+              look={step === 'done' ? 'done' : 'setup'}
             />
             <div className="flex items-start gap-8">
               <nav aria-label="Setup steps" className="flex w-80 shrink-0 flex-col">
@@ -436,37 +433,32 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
                   onClick={() => setStep('what')}
                 />
                 <LabelGroup count={`${doneCount} of 5`}>Required</LabelGroup>
-                {requiredParts.map((part) => {
-                  if (part === 'folders') {
-                    return (
-                      <TrackerListRow
-                        key={part}
-                        host=""
-                        icon={<Folder />}
-                        title="Folders"
-                        subline={status.required.folders === 'done' ? '6 folders' : 'Where files go'}
-                        pill={pill(folders.state, folders.text)}
-                        selected={step === 'folders'}
-                        onClick={() => setStep('folders')}
-                      />
-                    );
-                  }
-                  const member = infoOf(part);
-                  const state = pillFor(member, checks[part], editedOf(part));
-                  const address = savedAddress(saved?.[part]);
+                {serviceSteps.map(({ name, about }) => {
+                  const member = infoOf(name);
+                  const state = pillFor(member, checks[name], editedOf(name));
+                  const address = savedAddress(saved?.[name]);
                   return (
                     <RowService
-                      key={part}
+                      key={name}
                       logo={member.logo!}
                       name={member.label}
-                      address={address === '' ? serviceSteps.find((service) => service.name === part)!.about : address}
+                      address={address === '' ? about : address}
                       state={state.state}
                       stateText={state.text}
-                      selected={step === part}
-                      onClick={() => setStep(part)}
+                      selected={step === name}
+                      onClick={() => setStep(name)}
                     />
                   );
                 })}
+                <TrackerListRow
+                  host=""
+                  icon={<Folder />}
+                  title="Folders"
+                  subline={status.required.folders === 'done' ? '6 folders' : 'Where files go'}
+                  pill={pill(folders.state, folders.text)}
+                  selected={step === 'folders'}
+                  onClick={() => setStep('folders')}
+                />
                 <LabelGroup count="can wait">Optional</LabelGroup>
                 <TrackerListRow
                   host=""

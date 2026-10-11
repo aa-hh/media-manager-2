@@ -19,8 +19,7 @@ export type SetupStatus = {
 
 /** The wizard's steps in order: the choices, the five required parts, the two optional parts, then Done. */
 export type WizardStep = 'what' | RequiredPart | OptionalPart | 'done';
-// Left to right along the How the pieces connect strip; Folders follows the three services it reads its suggestions from.
-export const requiredParts: RequiredPart[] = ['sonarr', 'radarr', 'rtorrent', 'folders', 'plex'];
+export const requiredParts: RequiredPart[] = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
 const order: WizardStep[] = ['what', ...requiredParts, 'trackers', 'backup', 'done'];
 
 /** Which optional parts the owner wants: ticked by default until a choice is saved, since an unticked part reads as skipped. */
