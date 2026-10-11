@@ -284,6 +284,16 @@ still there. If Sonarr or Radarr has a recycle bin set, deleted files move
 there and free no space until it is emptied; the plan reports its path. Each
 delete is listed in History under Deletions.
 
+Each torrent's advice here and from `GET /api/advice/<hash>` carries
+`recommendation`, `reason` and `globalRatio`, plus `host`, `requiredHours`
+(with margin), `seededHours`, `hoursLeft` and `detail` (`reason` without its
+"Keep seeding: " style opening). Each second version row on a movie or series
+page carries `hitAndRun` (the tracker's rule without margin, or `null`),
+`stalled`, `etaSeconds`, and beside any `failure` a `failureCode`:
+`download_link_failed`, `not_a_torrent`, `already_in_rtorrent`,
+`rtorrent_refused`, `send_unconfirmed`, `grabbed_by_arr`, `never_received`,
+`stalled_removed`, `import_no_name`, `import_no_match` or `import_link_failed`.
+
 ## Backups (optional)
 
 Backups are your choice. The app runs the same without them; until you set

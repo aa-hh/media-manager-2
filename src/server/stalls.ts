@@ -218,7 +218,7 @@ export const createStallFix = (options: {
     } else {
       const removal = await removeTorrent(hash);
       if (removal.removed) {
-        database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, updated_at = ? WHERE hash = ? AND state = 'downloading'")
+        database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, failure_code = 'stalled_removed', updated_at = ? WHERE hash = ? AND state = 'downloading'")
           .run(STALLED_REMOVED, now(), hash);
         const left = removal.left.map((file) => ` Could not delete ${file.path}: ${file.reason}`).join('');
         outcome = `Removed the torrent and its files from rTorrent: nothing had downloaded. It was not regrabbed.${left}`;

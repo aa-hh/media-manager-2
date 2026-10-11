@@ -2,6 +2,7 @@ import { linkSync, mkdirSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { listOpenProblems, type createProblems, type Subject } from './problems.js';
+import type { FailureCode } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
@@ -109,9 +110,9 @@ export const createVersionImport = (options: {
 
   const folderSubject = (service: Service): Subject => ({ type: 'dependency', service, id: `versions.${service}` });
 
-  const fail = (row: Row, title: string, reason: string) => {
-    const changed = database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, updated_at = ? WHERE id = ? AND state = 'importing'")
-      .run(reason, now(), row.id).changes;
+  const fail = (row: Row, title: string, reason: string, code: FailureCode) => {
+    const changed = database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, failure_code = ?, updated_at = ? WHERE id = ? AND state = 'importing'")
+      .run(reason, code, now(), row.id).changes;
     if (changed === 1) problems.open({ kind: IMPORT_PROBLEM_KIND, subject: subjectOf(row), hash: row.hash, state: 'needs_you', summary: `${title} (second version): ${reason}` });
   };
 
@@ -122,7 +123,7 @@ export const createVersionImport = (options: {
     database.exec('BEGIN IMMEDIATE;');
     try {
       const changed = database.prepare(`
-        UPDATE second_versions SET state = 'imported', file_path = ?, file_inode = ?, failure = NULL, imported_at = ?, updated_at = ? WHERE id = ? AND state = 'importing'
+        UPDATE second_versions SET state = 'imported', file_path = ?, file_inode = ?, failure = NULL, failure_code = NULL, imported_at = ?, updated_at = ? WHERE id = ? AND state = 'importing'
       `).run(destination, inode, at, at, row.id).changes;
       if (changed === 1) {
         database.prepare("INSERT INTO version_events (second_version_id, at, kind, detail) VALUES (?, ?, 'added', ?)").run(row.id, at, basename(destination));
@@ -292,12 +293,12 @@ export const createVersionImport = (options: {
       const place = places.get(row.id);
       const fallbackTitle = `${serviceWords[service]} ${service === 'radarr' ? 'movie' : 'episode'} ${service === 'radarr' ? row.movieId : row.episodeId}`;
       if (typeof place !== 'object') {
-        fail(row, fallbackTitle, place ?? 'No name was found for it.');
+        fail(row, fallbackTitle, place ?? 'No name was found for it.', 'import_no_name');
         continue;
       }
       const source = matched.get(row.id);
       if (source === undefined) {
-        fail(row, place.title, reasons.get(row.id) ?? 'No video file matched it.');
+        fail(row, place.title, reasons.get(row.id) ?? 'No video file matched it.', 'import_no_match');
         continue;
       }
       bySource.set(source, [...bySource.get(source) ?? [], { row, place }]);
@@ -322,7 +323,7 @@ export const createVersionImport = (options: {
           outcome = 'folder_error';
           break;
         }
-        for (const { row } of sharing) fail(row, place.title, error instanceof Error ? error.message : 'The hardlink failed.');
+        for (const { row } of sharing) fail(row, place.title, error instanceof Error ? error.message : 'The hardlink failed.', 'import_link_failed');
       }
     }
     if (folders.size > 0) await scan(service, root, folders);
