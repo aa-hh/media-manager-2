@@ -3730,3 +3730,46 @@ test('a hand grab marks its torrent grab record as by hand, whichever record arr
     database.close();
   }
 });
+
+test('subject labels come from Sonarr and Radarr once and fall back to ids', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createLabels } = await import(new URL('../dist/server/labels.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-labels-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const requests = [];
+  const bodies = {
+    '/api/v3/movie/7': { title: 'Dune', year: 2021 },
+    '/api/v3/episode/31': { seasonNumber: 2, episodeNumber: 9, series: { title: 'Andor' } },
+    '/api/v3/episode/32': { seasonNumber: 2, episodeNumber: 10, series: { title: 'Andor' } },
+  };
+  const fake = (service) => ({
+    request: async (path) => {
+      requests.push(`${service} ${path}`);
+      return path in bodies ? { status: 200, body: bodies[path] } : { status: 404, body: undefined };
+    },
+  });
+  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const labels = createLabels(arr);
+  const grabs = createGrabTracker({ database, arr, events: createEventHub() });
+  const grab = { service: 'sonarr', movieId: null, seriesId: 3, releaseTitle: 'Andor.S02', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false };
+  grabs.recordGrab({ ...grab, hash: 'AB'.repeat(20), episodeIds: [31, 32] });
+  grabs.recordGrab({ ...grab, hash: 'CD'.repeat(20), episodeIds: [] });
+
+  // Dropping the cache re-requests a label on every row, and dropping the fallback leaves a failed lookup without a title.
+  assert.equal(await labels.movie(7), 'Dune (2021)');
+  assert.equal(await labels.episode(31), 'Andor S02E09');
+  assert.equal(await labels.movie(7), 'Dune (2021)');
+  assert.equal(await labels.subject({ type: 'episode', service: 'sonarr', id: '31' }, database), 'Andor S02E09');
+  assert.deepEqual(requests, ['radarr /api/v3/movie/7', 'sonarr /api/v3/episode/31']);
+  assert.equal(await labels.movie(8), 'Radarr movie 8');
+  assert.equal(await labels.movie(8), 'Radarr movie 8');
+  assert.equal(requests.filter((request) => request === 'radarr /api/v3/movie/8').length, 2);
+  assert.equal(await labels.episode(99), 'Sonarr episode 99');
+  assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'ab'.repeat(20) }, database), 'Andor S02E09 + 1 more');
+  assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'CD'.repeat(20) }, database), 'CD'.repeat(20));
+  assert.equal(await labels.subject({ type: 'tracker', service: null, id: 'blutopia.cc' }, database), 'blutopia.cc');
+});

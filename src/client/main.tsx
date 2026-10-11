@@ -1,8 +1,11 @@
-import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
 import { Home } from './Home';
+import { Nav } from './Nav';
+import { navigate, useRoute } from './route';
 import { DownloadsScreen, LiveBar } from './downloads/Downloads';
+import { buildRows, groupRows } from './downloads/model';
 import { useDownloads } from './downloads/useDownloads';
 import './globals.css';
 
@@ -236,19 +239,44 @@ function App() {
 function SignedIn(props: ComponentProps<typeof Home>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
   const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const screen = useRoute();
+  const needsYou = useMemo(() => {
+    const rows = state.kind === 'ready' ? buildRows(state.snapshot) : [];
+    return groupRows(rows).find((group) => group.key === 'needs_you')?.rows.length ?? 0;
+  }, [state]);
+  const content = (() => {
+    switch (screen) {
+      case 'downloads':
+        return (
+          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
+            <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
+          </div>
+        );
+      default:
+        return null;
+    }
+  })();
   return (
     <div className="pb-8">
       <Home
         {...props}
-        downloads={(
-          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
-            <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
-          </div>
+        downloads={content}
+        nav={(showDownloads) => (
+          <Nav
+            screen={screen}
+            needsYou={needsYou}
+            healthBadge={null}
+            onNavigate={(path) => {
+              showDownloads();
+              navigate(path);
+            }}
+          />
         )}
         renderBar={(showDownloads) => (
           <LiveBar
             state={state}
             onOpen={() => {
+              navigate('/');
               showDownloads();
               window.requestAnimationFrame(() => downloadsHeadingRef.current?.focus());
             }}

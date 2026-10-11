@@ -12,6 +12,7 @@ type HomeProps = {
   onUnauthenticated: () => void;
   downloads?: ReactNode;
   renderBar?: (showDownloads: () => void) => ReactNode;
+  nav?: (showDownloads: () => void) => ReactNode;
 };
 
 const writeSearchQuery = (query: string) => {
@@ -19,11 +20,12 @@ const writeSearchQuery = (query: string) => {
   const trimmed = query.trim();
   if (trimmed === '') url.searchParams.delete('q');
   else url.searchParams.set('q', trimmed);
-  url.pathname = trimmed === '' ? '/' : '/search';
+  if (trimmed !== '') url.pathname = '/search';
+  else if (url.pathname === '/search') url.pathname = '/';
   if (url.href !== window.location.href) window.history.replaceState(null, '', url);
 };
 
-export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloads, renderBar }: HomeProps) {
+export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloads, renderBar, nav }: HomeProps) {
   const [query, setQuery] = useState(readSearchQuery);
   const [opened, setOpened] = useState<SearchResult | undefined>(undefined);
   const { state, run } = useSearch(onUnauthenticated);
@@ -57,6 +59,10 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
             search(value);
           }}
         />
+        {nav?.(() => {
+          setOpened(undefined);
+          setQuery('');
+        })}
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {signOutProblem}
           <Button variant="quiet" className="min-h-9 px-3 text-sm" onClick={onSignOut} disabled={signOutDisabled}>
