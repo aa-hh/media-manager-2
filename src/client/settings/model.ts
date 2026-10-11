@@ -2,7 +2,7 @@
 import type { LogoName } from '../components/ui/logo';
 import type { ServiceState } from '../components/ui/status-service-pill';
 
-export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'blutopia';
+export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex';
 
 // Shapes served by /api/settings; src/server/connections.ts is the source of truth.
 export type SavedService = { service: ServiceName; serviceAddresses: Record<string, string>; credentials: Record<string, boolean> };
@@ -20,7 +20,6 @@ export type ServiceInfo = {
   name: ServiceName;
   label: string;
   logo: LogoName;
-  tracker: boolean;
   addressPlaceholder: string;
   usedFor: string;
   /** What a refusal refused, such as "API key" or "login". */
@@ -36,22 +35,17 @@ const login = (service: string, help: string): Credential[] => [
   { key: `${service}.password`, label: 'Password', short: 'password', placeholder: 'Password', help, secret: true },
 ];
 
-// The screen's services, in list order. /api/settings still returns Beyond-HD and PrivateHD, whose server integrations are being removed
-// (they only checked the login); leaving them out here keeps their cards off the screen.
+// The screen's services, in list order. Trackers come from /api/settings/trackers instead (trackers.ts).
 export const services: ServiceInfo[] = [
-  { name: 'sonarr', label: 'Sonarr', logo: 'sonarr', tracker: false, addressPlaceholder: 'e.g. http://localhost:8989', usedFor: 'TV searches, grabs and imports', refused: 'API key', credentials: [apiKey('Sonarr')] },
-  { name: 'radarr', label: 'Radarr', logo: 'radarr', tracker: false, addressPlaceholder: 'e.g. http://localhost:7878', usedFor: 'Movie searches, grabs and imports', refused: 'API key', credentials: [apiKey('Radarr')] },
+  { name: 'sonarr', label: 'Sonarr', logo: 'sonarr', addressPlaceholder: 'e.g. http://localhost:8989', usedFor: 'TV searches, grabs and imports', refused: 'API key', credentials: [apiKey('Sonarr')] },
+  { name: 'radarr', label: 'Radarr', logo: 'radarr', addressPlaceholder: 'e.g. http://localhost:7878', usedFor: 'Movie searches, grabs and imports', refused: 'API key', credentials: [apiKey('Radarr')] },
   {
-    name: 'rtorrent', label: 'rTorrent', logo: 'rtorrent', tracker: false, addressPlaceholder: 'e.g. https://seedbox.example/xmlrpc', usedFor: 'Live torrent status, stall and re-link fixes, second versions', refused: 'login',
+    name: 'rtorrent', label: 'rTorrent', logo: 'rtorrent', addressPlaceholder: 'e.g. https://seedbox.example/xmlrpc', usedFor: 'Live torrent status, stall and re-link fixes, second versions', refused: 'login',
     credentials: login('rtorrent', 'The login for the rTorrent address.'),
   },
   {
-    name: 'plex', label: 'Plex', logo: 'plex', tracker: false, addressPlaceholder: 'e.g. http://localhost:32400', usedFor: 'Health check, and library scans after a second version imports', refused: 'token',
+    name: 'plex', label: 'Plex', logo: 'plex', addressPlaceholder: 'e.g. http://localhost:32400', usedFor: 'Health check, and library scans after a second version imports', refused: 'token',
     credentials: [{ key: 'plex.token', label: 'Plex token', short: 'token', placeholder: 'Paste the Plex token', help: 'The X-Plex-Token of your Plex server.', secret: true }],
-  },
-  {
-    name: 'blutopia', label: 'Blutopia', logo: 'blutopia', tracker: true, addressPlaceholder: 'e.g. https://blutopia.cc', usedFor: 'Account ratio and hit and runs, for Health and torrent removal advice', refused: 'API token',
-    credentials: [{ key: 'blutopia.apiToken', label: 'API token', short: 'token', placeholder: 'Paste the API token', help: 'From your Blutopia account settings.', secret: true }],
   },
 ];
 
@@ -102,14 +96,22 @@ const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 
 
 const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
-/** Header words, such as "5 of 7 connected · 2 failed · Radarr has unsaved edits". */
-export const headerSummary = (checks: Record<ServiceName, Check>, edited: ServiceName[], lastChecked: string | undefined) => {
+/** What the trackers add to the header: account connections that answer, of those that exist, and their own words. */
+export type TrackerSummary = { ok: number; total: number; failed: string[]; notes: string[] };
+
+/** Header words, such as "5 of 7 connected · 2 failed · Radarr has unsaved edits · Beyond-HD has no hit and run rule". */
+export const headerSummary = (
+  checks: Record<ServiceName, Check>,
+  edited: ServiceName[],
+  lastChecked: string | undefined,
+  trackers: TrackerSummary = { ok: 0, total: 0, failed: [], notes: [] },
+) => {
   const named = (name: ServiceName) => services.find((info) => info.name === name)!.label;
-  const ok = services.filter((info) => checks[info.name].kind === 'ok').length;
-  const failures = services.filter((info) => failed(checks[info.name]));
+  const ok = services.filter((info) => checks[info.name].kind === 'ok').length + trackers.ok;
+  const failures = [...services.filter((info) => failed(checks[info.name])).map((info) => info.label), ...trackers.failed];
   const testing = services.filter((info) => checks[info.name].kind === 'testing');
-  const parts = [`${ok} of ${services.length} connected`];
-  if (failures.length === 1) parts.push(`${failures[0].label} failed`);
+  const parts = [`${ok} of ${services.length + trackers.total} connected`];
+  if (failures.length === 1) parts.push(`${failures[0]} failed`);
   if (failures.length > 1) parts.push(`${failures.length} failed`);
   // As in the pills, a running test or a failure outranks unsaved edits.
   const unsaved = edited.filter((name) => !failed(checks[name]) && checks[name].kind !== 'testing');
@@ -117,13 +119,13 @@ export const headerSummary = (checks: Record<ServiceName, Check>, edited: Servic
   if (unsaved.length > 1) parts.push(`${unsaved.length} services have unsaved edits`);
   if (testing.length === 1) parts.push(`testing ${testing[0].label}`);
   if (testing.length > 1) parts.push(`testing ${testing.length} services`);
+  parts.push(...trackers.notes);
   if (parts.length === 1 && ok > 0 && lastChecked !== undefined) parts.push(`last checked ${lastChecked}`);
   return parts.join(' · ');
 };
 
-/** The columns of the "How the pieces connect" strip, left to right. Trackers stand apart: they feed nothing, so no link follows them. */
+/** The service columns of the "How the pieces connect" strip, left to right, after the Trackers column, which feeds nothing and has no link. */
 export const chain: { caption: string; names: ServiceName[]; linked: boolean }[] = [
-  { caption: 'Check accounts', names: ['blutopia'], linked: false },
   { caption: 'Find and grab', names: ['sonarr', 'radarr'], linked: true },
   { caption: 'Download and seed', names: ['rtorrent'], linked: true },
   { caption: 'Play', names: ['plex'], linked: false },
@@ -147,9 +149,9 @@ const consequences: Partial<Record<ServiceName, string>> = {
 export const stripSummary = (checks: Record<ServiceName, Check>) => {
   // Several tests at once is the check every saved connection gets when the screen opens; a single Connect keeps the usual sentence.
   if (services.filter((info) => checks[info.name].kind === 'testing').length > 1) return 'Checking each connection.';
-  if (services.every((info) => checks[info.name].kind === 'ok')) return 'Every link answers. Tracker accounts are checked on their own: they don\'t feed Sonarr or Radarr.';
+  if (services.every((info) => checks[info.name].kind === 'ok')) return 'Every link answers. Trackers don\'t feed Sonarr or Radarr: their hit and run rules decide when a torrent can be removed.';
   if (!services.some((info) => checks[info.name].kind === 'ok')) {
-    const next = services.find((info) => !info.tracker && checks[info.name].kind !== 'ok') ?? services[0];
+    const next = services.find((info) => checks[info.name].kind !== 'ok') ?? services[0];
     return `Nothing answers yet, so nothing can be found, grabbed or played. Start with ${next.label}.`;
   }
   const sentences = services.flatMap((info) => {

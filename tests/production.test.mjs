@@ -8299,3 +8299,21 @@ test('the settings screen sends only changed fields and ranks each service state
     assert.equal(linkTone([ok, down], [ok]), 'ok');
   });
 });
+
+test('the tracker rule form sends the saved rule back unchanged and converts percentages and days', async () => {
+  // Sending percentages or days as typed, dropping the kept curve row, writing margins nobody changed, or sending
+  // typed text as a blank turns this red.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/trackers.ts', import.meta.url), 'utf8');
+  const { draftFromRow, ruleBody, notANumber } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const rule = {
+    seedHours: [{ upToGB: 1, hours: 72 }, { upToGB: 50, hours: 72, perGB: 2 }, { hours: -219.2023, lnGB: 100 }],
+    ratio: 0.9, logic: 'or', minGlobalRatio: null, partial: { exemptBelow: 0.1, ratio: 0.9, maxHours: 1440 },
+  };
+  const row = { host: 'privatehd.to', status: 'configured', rule, ruleSource: 'settings', margins: { timeFactor: 1.1, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 } };
+  const draft = draftFromRow(row);
+  assert.deepEqual(ruleBody(draft, draft), { rule });
+  const wider = ruleBody({ ...draft, timePercent: '20' }, draft);
+  assert.deepEqual(wider.margins, { timeFactor: 1.2, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 });
+  assert.deepEqual(notANumber({ ...draft, ratio: '0.9x' }), { field: 'ratio', reason: 'Enter a number, such as 0.9 or 72.' });
+});

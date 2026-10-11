@@ -1,9 +1,10 @@
-import { ChevronRight, Lock, Plug, RefreshCw, Undo2 } from 'lucide-react';
+import { ChevronRight, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { BarBottomAction } from '@/components/ui/bar-bottom-action';
 import { Dialog } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { FactRow } from '@/components/ui/fact';
 import { FieldLabelled } from '@/components/ui/field-labelled';
 import { HeaderPage } from '@/components/ui/header-page';
@@ -19,8 +20,13 @@ import {
   ago, chain, changedCount, changes, type Check, type Draft, emptyDraft, failureTitle, headerSummary, isConfigured, linkTone, pillFor,
   savedAddress, type SavedService, type ServiceInfo, type ServiceName, services, stripSummary, type TestResult,
 } from './model';
+import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill, type TrackerRequest } from './TrackerEditor';
+import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; saved: Record<ServiceName, SavedService> };
+// A service, a tracker as `tracker:<host>`, or the add-a-tracker pane.
+type Selected = ServiceName | `tracker:${string}` | 'add';
+const trackerKey = (host: string): Selected => `tracker:${host}`;
 
 const writeHeaders = { 'Content-Type': 'application/json', 'X-Requested-With': 'media-manager-2', Accept: 'application/json' };
 const infoOf = (name: ServiceName) => services.find((info) => info.name === name)!;
@@ -45,7 +51,11 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const [replacing, setReplacing] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState<Partial<Record<ServiceName, 'connect' | 'check'>>>({});
   const [problems, setProblems] = useState<Partial<Record<ServiceName, string>>>({});
-  const [selected, setSelected] = useState<ServiceName>('sonarr');
+  const [selected, setSelected] = useState<Selected>('sonarr');
+  const [trackers, setTrackers] = useState<TrackerRow[]>([]);
+  const [checkedAt, setCheckedAt] = useState<Record<string, number>>({});
+  const [ruleDrafts, setRuleDrafts] = useState<Record<string, RuleDraft>>({});
+  const [newAddress, setNewAddress] = useState('');
   const [discardOpen, setDiscardOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
   const toasts = useToastManager();
@@ -81,10 +91,35 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     }
   }, []);
 
+  const request: TrackerRequest = useCallback(async (method, path, body) => {
+    const response = await fetch(`/api/settings/trackers${path}`, {
+      method, credentials: 'same-origin', headers: writeHeaders, body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (response.status === 401) {
+      unauthorizedRef.current();
+      throw new Error('Signed out.');
+    }
+    return response;
+  }, []);
+
+  /** Reads every tracker row; the server checks each account connection, reusing a result up to 5 minutes old. */
+  const readTrackers = useCallback(async () => {
+    const response = await request('GET', '');
+    if (!response.ok) throw new Error('Trackers could not be read.');
+    const rows = await response.json() as TrackerRow[];
+    const at = Date.now();
+    setTrackers(rows);
+    setCheckedAt(Object.fromEntries(rows.map((row) => [row.host, at])));
+    return rows;
+  }, [request]);
+
   const read = useCallback(async () => {
     setLoad({ kind: 'loading' });
     try {
-      const response = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const [response] = await Promise.all([
+        fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } }),
+        readTrackers(),
+      ]);
       if (response.status === 401) {
         unauthorizedRef.current();
         return;
@@ -98,7 +133,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     } catch {
       setLoad({ kind: 'failed' });
     }
-  }, [test]);
+  }, [test, readTrackers]);
 
   useEffect(() => { void read(); }, [read]);
 
@@ -191,9 +226,44 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     }
   };
 
-  const info = infoOf(selected);
-  const others = services.filter((other) => other.name !== selected && (checks[other.name].kind === 'unreachable' || checks[other.name].kind === 'rejected'));
-  const discardWords = changedWords(info, saved[selected], draftOf(selected));
+  // The service pane shows the selected service, or keeps Sonarr's state when a tracker is selected.
+  const service = (services.some((member) => member.name === selected) ? selected : 'sonarr') as ServiceName;
+  const selectedTracker = trackers.find((tracker) => trackerKey(tracker.host) === selected);
+  const info = infoOf(service);
+  const others = services.filter((other) => other.name !== service && (checks[other.name].kind === 'unreachable' || checks[other.name].kind === 'rejected'));
+  const discardWords = changedWords(info, saved[service], draftOf(service));
+  const ruleDraftOf = (row: TrackerRow) => ruleDrafts[row.host] ?? draftFromRow(row);
+  const adding = selected === 'add';
+
+  const updateTracker = (next: TrackerRow, at: number) => {
+    setTrackers((current) => current.map((row) => (row.host === next.host ? next : row)));
+    setCheckedAt((current) => ({ ...current, [next.host]: at }));
+  };
+  const dropRuleDraft = (host: string) => setRuleDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== host)));
+  /** Reads the trackers again; a failed read keeps the rows on screen and says so. */
+  const rereadTrackers = async () => {
+    try {
+      return await readTrackers();
+    } catch {
+      toasts.add({ title: 'Trackers could not be read', description: 'Check that media-manager-2 is running, then open Settings again.' });
+      return undefined;
+    }
+  };
+
+  const trackerRow = (row: TrackerRow) => {
+    const { name, named } = trackerInfo(row.host);
+    return (
+      <TrackerListRow
+        key={row.host}
+        host={row.host}
+        title={name}
+        subline={named ? row.host : softwareLabels[row.software]}
+        pill={<TrackerPill row={row} edited={isEdited(ruleDraftOf(row), row)} />}
+        selected={selected === trackerKey(row.host)}
+        onClick={() => setSelected(trackerKey(row.host))}
+      />
+    );
+  };
 
   const row = (other: ServiceInfo) => {
     const pill = pillFor(other, checks[other.name], editedOf(other.name));
@@ -225,7 +295,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     <div className="flex flex-col gap-6 pt-2 pb-6">
       <HeaderPage
         title="Settings"
-        summary={headerSummary(checks, edited, lastChecked)}
+        summary={headerSummary(checks, edited, lastChecked, trackerSummary(trackers, adding))}
         note={anyConfigured ? undefined : 'Nothing is connected yet. Add each service’s address and key, then Connect tests and saves it.'}
       />
 
@@ -235,6 +305,14 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
           <p className="font-ui text-sm text-muted-foreground">{stripSummary(checks)}</p>
         </div>
         <div className="flex min-w-0 flex-1 gap-3">
+          <div className="flex min-w-40 shrink-0 flex-col gap-2 pr-2">
+            <h3 className="font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase">Trackers</h3>
+            <div className="flex min-h-23.5 flex-col items-start justify-center gap-2">
+              {trackers.length === 0
+                ? <span className="font-data text-[13px] text-muted-foreground">None added yet</span>
+                : trackers.map((row) => <TrackerPill key={row.host} row={row} edited={false} strip />)}
+            </div>
+          </div>
           {chain.map((column, index) => {
             const next = chain[index + 1];
             const tone = next === undefined ? 'idle' : linkTone(column.names.map((name) => checks[name]), next.names.map((name) => checks[name]));
@@ -270,33 +348,96 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
 
       <div className="flex items-start gap-8">
         <nav aria-label="Services" className="flex w-105 shrink-0 flex-col">
-          {group('Services', services.filter((member) => !member.tracker), true)}
-          {group('Tracker accounts', services.filter((member) => member.tracker), false)}
+          {group('Services', services, true)}
+          <LabelGroup count={adding ? undefined : trackers.length}>Trackers</LabelGroup>
+          {trackers.map(trackerRow)}
+          {adding && (
+            <TrackerListRow
+              host=""
+              adding
+              title="New tracker"
+              subline={newAddress.trim() === '' ? <span className="text-subtle-foreground">No address yet</span> : newAddress.trim()}
+              selected
+              onClick={() => undefined}
+            />
+          )}
+          {trackers.length === 0 && !adding && (
+            <div className="rounded-lg border border-border">
+              <EmptyState
+                icon={<ShieldCheck />}
+                title="No trackers added"
+                action={<Button icon={<Plus />} className="mt-2" onClick={() => setSelected('add')}>Add tracker</Button>}
+              >
+                Add each tracker you use. Its hit and run rule decides when a torrent is safe to remove. Until a tracker has a rule, every torrent from it keeps seeding.
+              </EmptyState>
+            </div>
+          )}
+          {trackers.length > 0 && !adding && (
+            <div className="px-4 py-2">
+              <Button variant="outline" size="row" icon={<Plus />} onClick={() => { setNewAddress(''); setSelected('add'); }}>Add tracker</Button>
+            </div>
+          )}
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <Editor
-            key={selected}
-            info={info}
-            saved={saved[selected]}
-            draft={draftOf(selected)}
-            check={checks[selected]}
-            pending={pending[selected]}
-            problem={problems[selected]}
-            replacing={replacing}
-            now={now}
-            onDraft={(draft) => setDrafts((current) => ({ ...current, [selected]: draft }))}
-            onReplacing={(key, value) => {
-              setReplacing((current) => ({ ...current, [key]: value }));
-              if (!value) setDrafts((current) => {
-                const draft = current[selected] ?? emptyDraft(saved[selected]);
-                return { ...current, [selected]: { ...draft, secrets: Object.fromEntries(Object.entries(draft.secrets).filter(([secret]) => secret !== key)) } };
-              });
-            }}
-            onConnect={() => void connect(selected)}
-            onCheck={() => void checkSaved(selected)}
-            onDiscard={() => setDiscardOpen(true)}
-          />
-          {others.length > 0 && (
+          {adding ? (
+            <AddTracker
+              address={newAddress}
+              onAddress={setNewAddress}
+              request={request}
+              onCancel={() => setSelected(trackers[0] === undefined ? 'sonarr' : trackerKey(trackers[0].host))}
+              onAdded={async (host, softwareSaved) => {
+                setNewAddress('');
+                await rereadTrackers();
+                setSelected(trackerKey(host));
+                if (!softwareSaved) toasts.add({ title: `${trackerInfo(host).name} added as Other`, description: 'Its site software could not be saved. Remove it and add it again to pick the software.' });
+              }}
+            />
+          ) : selectedTracker !== undefined ? (
+            <TrackerEditor
+              key={selectedTracker.host}
+              row={selectedTracker}
+              draft={ruleDraftOf(selectedTracker)}
+              checkedAt={checkedAt[selectedTracker.host]}
+              now={now}
+              request={request}
+              onDraft={(draft) => (draft === undefined
+                ? dropRuleDraft(selectedTracker.host)
+                : setRuleDrafts((current) => ({ ...current, [selectedTracker.host]: draft })))}
+              onRow={updateTracker}
+              onRuleSaved={async () => {
+                if (await rereadTrackers() !== undefined) dropRuleDraft(selectedTracker.host);
+              }}
+              onRemoved={async () => {
+                dropRuleDraft(selectedTracker.host);
+                const rows = await rereadTrackers();
+                setSelected(rows?.[0] === undefined ? 'sonarr' : trackerKey(rows[0].host));
+              }}
+            />
+          ) : (
+            <Editor
+              key={service}
+              info={info}
+              saved={saved[service]}
+              draft={draftOf(service)}
+              check={checks[service]}
+              pending={pending[service]}
+              problem={problems[service]}
+              replacing={replacing}
+              now={now}
+              onDraft={(draft) => setDrafts((current) => ({ ...current, [service]: draft }))}
+              onReplacing={(key, value) => {
+                setReplacing((current) => ({ ...current, [key]: value }));
+                if (!value) setDrafts((current) => {
+                  const draft = current[service] ?? emptyDraft(saved[service]);
+                  return { ...current, [service]: { ...draft, secrets: Object.fromEntries(Object.entries(draft.secrets).filter(([secret]) => secret !== key)) } };
+                });
+              }}
+              onConnect={() => void connect(service)}
+              onCheck={() => void checkSaved(service)}
+              onDiscard={() => setDiscardOpen(true)}
+            />
+          )}
+          {others.length > 0 && !adding && selectedTracker === undefined && (
             <Callout title={failureTitle(others[0], checks[others[0].name], '')}>
               {[
                 checks[others[0].name].kind === 'unreachable'
@@ -315,13 +456,13 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
         open={discardOpen}
         onOpenChange={setDiscardOpen}
         title={`Discard edits to ${info.label}?`}
-        subject={`The new ${discardWords.words} ${discardWords.plural ? 'are' : 'is'} not saved. ${isConfigured(saved[selected])
+        subject={`The new ${discardWords.words} ${discardWords.plural ? 'are' : 'is'} not saved. ${isConfigured(saved[service])
           ? `${info.label} keeps its current connection.`
           : `${info.label} stays not set up.`}`}
         actions={(
           <>
             <Button variant="outline" size="large" onClick={() => setDiscardOpen(false)}>Keep editing</Button>
-            <Button variant="destructive" size="large" onClick={() => discard(selected)}>Discard</Button>
+            <Button variant="destructive" size="large" onClick={() => discard(service)}>Discard</Button>
           </>
         )}
       />
@@ -380,10 +521,10 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
       <div className="grid grid-cols-2 gap-4">
         <FieldLabelled
           label="Address"
-          error={check.kind === 'unreachable' ? `Nothing answered at this address within 10 seconds. Check the ${info.tracker ? 'address' : 'port'}.` : undefined}
+          error={check.kind === 'unreachable' ? 'Nothing answered at this address within 10 seconds. Check the port.' : undefined}
           help={savedUrl !== '' && address !== savedUrl
             ? <span className="text-muted-foreground">Changed from {savedUrl}. Not saved yet.</span>
-            : info.tracker ? `The ${info.label} web address.` : `Where media-manager-2 reaches ${info.label} on the seedbox, with the port.`}
+            : `Where media-manager-2 reaches ${info.label} on the seedbox, with the port.`}
         >
           <InputSearch
             variant="field"
@@ -477,7 +618,7 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
           action={<Button variant="outline" icon={<RefreshCw />} onClick={edits > 0 || !configured ? onConnect : onCheck}>Try again</Button>}
         >
           {check.kind === 'unreachable'
-            ? `Check that ${info.label} is running and that the ${info.tracker ? 'address' : 'port'} is right.`
+            ? `Check that ${info.label} is running and that the port is right.`
             : check.kind === 'rejected' ? info.credentials[0].help : `Fill in the address and ${info.refused}, then Connect again.`}
           {!check.ofSaved && check.kind !== 'not_configured' ? ` The address and ${info.refused} above are kept so you can fix them.` : ''}
         </Callout>
