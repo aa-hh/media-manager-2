@@ -3,7 +3,7 @@ import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import { findGrab, type Grab, listQueue, type QueueItem, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
-import { RELEASE_LIMIT } from './problems.js';
+import { listOpenProblems, RELEASE_LIMIT } from './problems.js';
 
 type Problems = ReturnType<typeof createProblems>;
 type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
@@ -239,6 +239,18 @@ export const createImportFix = (options: {
           const problem = problems.open({ kind: 'import_fix_failed', subject: { type: 'torrent', service: null, id: downloadId }, hash: downloadId, summary: items[0].title });
           if (problem.state !== 'needs_you') problems.setState(problem.id, 'needs_you', error instanceof Error ? error.message : 'The import fix failed.');
         }
+      }
+      // Only retries leave a handling row unfinished; once its download is no longer blocked, the retry worked.
+      const cleared = database.prepare('SELECT download_id FROM import_handling WHERE service = ? AND done = 0').all(service)
+        .map((row) => String(row.download_id))
+        .filter((downloadId) => !groups.has(downloadId));
+      if (cleared.length === 0) continue;
+      const open = listOpenProblems(database);
+      for (const downloadId of cleared) {
+        const handling = readHandling(service, downloadId) as Handling;
+        saveHandling({ ...handling, done: true });
+        const problem = open.find((item) => item.kind === `import_${handling.category}` && item.subject.type === 'torrent' && item.subject.id === downloadId);
+        if (problem !== undefined) problems.setState(problem.id, 'resolved', 'The import went through after the retry.');
       }
     }
   };

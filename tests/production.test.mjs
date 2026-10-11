@@ -2729,7 +2729,7 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     const problems = createProblems({ database, events, now });
     const fix = createImportFix({ database, arr, problems, events, now });
     const writes = () => requests.filter(([, method]) => method !== 'GET').map(([name, method, path, body]) => [name, method, path, body?.name]);
-    return { database, clock, fix, writes, requests, problems };
+    return { database, clock, fix, writes, requests, problems, queue, grabs };
   };
 
   // Touching rTorrent from the queue, importing a not-better automatic grab, or handling a replace's own import here turns this red.
@@ -2817,6 +2817,23 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     await move.fix.check();
     assert.equal(listOpenProblems(move.database)[0].state, 'needs_you');
     move.database.close();
+  });
+
+  // Dropping the check that closes retries whose download left the blocked set turns this red.
+  await t.test('a temporary block or failed move that clears after a retry resolves its problem', async () => {
+    for (const message of ['File is locked by another process', 'Failed to move file']) {
+      const run = await setup({ message });
+      await run.fix.check();
+      run.clock.value += 5 * minute;
+      await run.fix.check();
+      assert.equal(run.writes().length, 1, message);
+      run.queue.length = 0;
+      await run.grabs.reconcile();
+      await run.fix.check();
+      assert.deepEqual(listOpenProblems(run.database), [], message);
+      assert.equal(run.database.prepare('SELECT done FROM import_handling').get().done, 1, message);
+      run.database.close();
+    }
   });
 
   // Letting import fixes run while setup is broken, or never resuming them, turns this red.
