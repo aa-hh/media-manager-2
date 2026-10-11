@@ -4519,6 +4519,7 @@ test('an import is finished by hand only with a complete, conflict-free assignme
   const { createGrabTracker } = await import(torrentGrabsModuleUrl);
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createManualImport } = await import(manualImportModuleUrl);
+  const { createImportFix } = await import(importsModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-manual-import-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -4576,14 +4577,30 @@ test('an import is finished by hand only with a complete, conflict-free assignme
   assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 502);
   assert.deepEqual(state.commands, []);
 
-  // Moving instead of hardlinking, dropping the chosen episode, or leaving the problem open turns this red.
+  // Moving instead of hardlinking or dropping the chosen episode turns this red.
   state.copyUsingHardlinks = true;
   assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 204);
   assert.equal(state.commands.length, 1);
   const [command] = state.commands;
   assert.equal(command.importMode, 'copy');
   assert.deepEqual(command.files.map((entry) => [entry.seriesId, entry.episodeIds, entry.quality.quality.id, entry.quality.revision.version]), [[9, [101], 3, 2], [9, [102], 3, 1]]);
-  assert.equal(listOpenProblems(database).some((problem) => problem.id === flagged.id), false);
+
+  // Resolving on Sonarr's acceptance alone, or forcing an automatic import over the hand one, hides an import that then fails inside Sonarr.
+  assert.equal(listOpenProblems(database).find((problem) => problem.id === flagged.id).state, 'handling');
+  state.queue = [queueItem({ downloadId: hash, seriesId: 9, episodeId: 101, status: 'completed', trackedDownloadStatus: 'warning',
+    trackedDownloadState: 'importBlocked', statusMessages: [{ title: 'S01E01.mkv', messages: ['Series title mismatch, automatic import is not possible.'] }] })];
+  await tracker.reconcile();
+  const clock = { value: Date.now() };
+  const fix = createImportFix({ database, arr, problems, events, now: () => clock.value });
+  clock.value += 29 * 60_000;
+  await fix.check();
+  assert.equal(listOpenProblems(database).find((problem) => problem.id === flagged.id).state, 'handling');
+  clock.value += 60_000;
+  await fix.check();
+  const [stuck] = listOpenProblems(database);
+  assert.equal(stuck.state, 'needs_you');
+  assert.match(stuck.steps.at(-1).text, /still blocked/);
+  assert.equal(state.commands.length, 1);
 });
 
 test('tracker messages become cooldowns, retries, rechecks and replacement requests', async (t) => {
@@ -5603,6 +5620,10 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     assert.match(problem.steps.at(-1).text, /was not blocked/);
     assert.deepEqual(run.fake.radarr.state.removals, []);
     assert.deepEqual(run.fake.radarr.state.commands, []);
+    // Leaving the failed fix out of the sweep keeps both problems open after the download has left the queue.
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
     run.database.close();
   });
 
@@ -5667,6 +5688,50 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     await run.fix.check();
     assert.deepEqual(listOpenProblems(run.database), []);
     run.database.close();
+  });
+
+  // Resolving only the problem of the latest block kind leaves the earlier one open forever once the download is finished with.
+  await t.test('a fix that finishes a download resolves its earlier import problems, and a later working try resolves the failed fix', async () => {
+    const run = await setup({ message: 'File is locked by another process' });
+    run.fake.sonarr.state.down = true;
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.kind).sort(), ['import_fix_failed', 'import_temporary']);
+    run.fake.sonarr.state.down = false;
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.kind), ['import_temporary']);
+    run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Episode file already imported'] }];
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
+  // Resolving on Sonarr's acceptance alone, or sending the import again, hides an import that then fails inside Sonarr.
+  await t.test('a forced import waits 30 minutes for the download to clear, then is flagged and never sent again', async () => {
+    const files = [{ path: '/files/Sonarr/a.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 31 }] }];
+    const stuck = await setup({ message: 'Series title mismatch, automatic import is not possible.', files });
+    await stuck.fix.check();
+    assert.equal(listOpenProblems(stuck.database)[0].state, 'handling');
+    stuck.clock.value += 29 * minute;
+    await stuck.fix.check();
+    assert.equal(listOpenProblems(stuck.database)[0].state, 'handling');
+    stuck.clock.value += minute;
+    await stuck.fix.check();
+    const [flag] = listOpenProblems(stuck.database);
+    assert.equal(flag.state, 'needs_you');
+    assert.match(flag.steps.at(-1).text, /still blocked/);
+    stuck.clock.value += 60 * minute;
+    await stuck.fix.check();
+    assert.equal(stuck.fake.sonarr.state.commands.length, 1);
+    stuck.database.close();
+
+    const cleared = await setup({ message: 'Series title mismatch, automatic import is not possible.', files });
+    await cleared.fix.check();
+    cleared.queue.length = 0;
+    await cleared.grabs.reconcile();
+    await cleared.fix.check();
+    assert.deepEqual(listOpenProblems(cleared.database), []);
+    cleared.database.close();
   });
 
   // Letting import fixes run while setup is broken, or never resuming them, turns this red.
