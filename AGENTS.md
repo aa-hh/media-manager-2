@@ -176,6 +176,10 @@ override once with `--no-verify`):
   (one pass) or full (four parallel reviewers plus a confidence scorer) from
   the diff size and risk paths, posts one PR comment and the `review` commit
   status. Only a surviving HIGH fails it; fix, push and run it again — round
-  2 reviews only the fix, a third run refuses. A push that leaves the
-  branch's own non-Markdown lines unchanged re-posts the last status without
-  using a round.
+  2 reviews only the fix, and a third run refuses unless the only new commits
+  merge `origin/main` in. A push that leaves the branch's own non-Markdown
+  lines unchanged re-posts the last status without using a round. So does
+  merging `origin/main` in, even after round 2: a clean merge re-posts the
+  last status, and a merge that resolved conflicts gets one cheap check of
+  just the resolutions. Any commit of the branch's own, a rebase or a
+  force-push still counts as a round.
