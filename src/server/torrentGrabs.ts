@@ -1,10 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
+import { type ArrServices, type HistoryRecord, type QueueItem, valueOrThrow } from './services/arr.js';
 
 export type Service = 'sonarr' | 'radarr';
-
-type ArrRequest = (path: string) => Promise<{ status: number; body: unknown }>;
 
 export type Grab = {
   hash: string;
@@ -21,38 +20,11 @@ export type Grab = {
   failedAt: number | null;
 };
 
-export type QueueItem = {
-  service: Service;
-  queueId: number;
-  downloadId: string | null;
-  movieId: number | null;
-  seriesId: number | null;
-  episodeId: number | null;
-  title: string;
-  // The movie or episode in words, such as "Andor S02E09" or "Dune: Part Two (2024)".
-  label: string;
-  status: string;
-  trackedStatus: string;
-  trackedState: string;
-  statusMessages: { title: string; messages: string[] }[];
-  errorMessage: string;
-  indexer: string;
-  protocol: string;
-  quality: string;
-  formats: string[];
-  formatScore: number;
-  sizeBytes: number;
-  sizeLeftBytes: number;
-  estimatedCompletion: string | null;
-  added: string | null;
-};
-
 export const RECONCILE_INTERVAL_MS = 5 * 60_000;
 // Bounds the first check after a fresh install or a long outage; older grabs no longer need matching.
 const HISTORY_LOOKBACK_MS = 14 * 24 * 60 * 60_000;
 // Overlap with the previous check so a grab recorded just before it ran is never skipped.
 const HISTORY_OVERLAP_MS = 10 * 60_000;
-const QUEUE_PAGE_SIZE = 200;
 
 const services: readonly Service[] = ['sonarr', 'radarr'];
 
@@ -123,72 +95,12 @@ export const listQueue = (database: DatabaseSync): QueueItem[] => database
     };
   });
 
-const episodeCode = (season: unknown, episode: unknown) => (
-  typeof season === 'number' && typeof episode === 'number'
-    ? `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
-    : ''
-);
-
-const queueLabel = (value: Record<string, unknown>) => {
-  if (isRecord(value.movie)) {
-    const year = integer(value.movie.year);
-    return `${text(value.movie.title)}${year === null || year === 0 ? '' : ` (${year})`}`.trim();
-  }
-  if (isRecord(value.series)) {
-    const episode = isRecord(value.episode) ? episodeCode(value.episode.seasonNumber, value.episode.episodeNumber) : '';
-    return `${text(value.series.title)} ${episode}`.trim();
-  }
-  return '';
-};
-
-const parseQueueItem = (service: Service, value: unknown): QueueItem | null => {
-  if (!isRecord(value)) return null;
-  const queueId = integer(value.id);
-  if (queueId === null) return null;
-  const quality = isRecord(value.quality) && isRecord(value.quality.quality) ? text(value.quality.quality.name) : '';
-  const formats = Array.isArray(value.customFormats)
-    ? value.customFormats.flatMap((format) => (isRecord(format) && typeof format.name === 'string' ? [format.name] : []))
-    : [];
-  const statusMessages = Array.isArray(value.statusMessages)
-    ? value.statusMessages.flatMap((message) => (isRecord(message)
-      ? [{
-        title: text(message.title),
-        messages: Array.isArray(message.messages) ? message.messages.filter((line): line is string => typeof line === 'string') : [],
-      }]
-      : []))
-    : [];
-  return {
-    service,
-    queueId,
-    label: queueLabel(value),
-    downloadId: normalizeHash(value.downloadId),
-    movieId: integer(value.movieId),
-    seriesId: integer(value.seriesId),
-    episodeId: integer(value.episodeId),
-    title: text(value.title),
-    status: text(value.status),
-    trackedStatus: text(value.trackedDownloadStatus),
-    trackedState: text(value.trackedDownloadState),
-    statusMessages,
-    errorMessage: text(value.errorMessage),
-    indexer: text(value.indexer),
-    protocol: text(value.protocol),
-    quality,
-    formats,
-    formatScore: integer(value.customFormatScore) ?? 0,
-    sizeBytes: integer(value.size) ?? 0,
-    sizeLeftBytes: integer(value.sizeleft) ?? 0,
-    estimatedCompletion: typeof value.estimatedCompletionTime === 'string' ? value.estimatedCompletionTime : null,
-    added: typeof value.added === 'string' ? value.added : null,
-  };
-};
-
 type GrabInput = Omit<Grab, 'importedAt' | 'failedAt'>;
 type GrabListener = (grab: Grab) => void | Promise<void>;
 
 export const createGrabTracker = (options: {
   database: DatabaseSync;
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   events: EventHub;
   now?: () => number;
 }) => {
@@ -240,24 +152,6 @@ export const createGrabTracker = (options: {
     if (result.changes > 0) events.publish('grab', findGrab(database, hash));
   };
 
-  const fetchQueue = async (service: Service): Promise<QueueItem[]> => {
-    const items: QueueItem[] = [];
-    for (let page = 1; ; page += 1) {
-      const { status, body } = await arr[service].request(
-        `/api/v3/queue?page=${page}&pageSize=${QUEUE_PAGE_SIZE}&includeUnknownSeriesItems=true&includeUnknownMovieItems=true&includeSeries=true&includeEpisode=true&includeMovie=true`,
-      );
-      if (status < 200 || status > 299 || !isRecord(body) || !Array.isArray(body.records)) {
-        throw new Error(`${service === 'sonarr' ? 'Sonarr' : 'Radarr'} queue could not be read.`);
-      }
-      for (const record of body.records) {
-        const item = parseQueueItem(service, record);
-        if (item !== null) items.push(item);
-      }
-      const total = integer(body.totalRecords) ?? 0;
-      if (body.records.length < QUEUE_PAGE_SIZE || page * QUEUE_PAGE_SIZE >= total) return items;
-    }
-  };
-
   const storeQueue = (service: Service, items: QueueItem[]) => {
     const before = JSON.stringify(listQueue(database).filter((item) => item.service === service));
     database.exec('BEGIN IMMEDIATE;');
@@ -289,31 +183,25 @@ export const createGrabTracker = (options: {
     return row === undefined ? undefined : Number(row.history_checked_at);
   };
 
-  const fetchGrabHistory = async (service: Service, since: number) => {
-    const date = new Date(since).toISOString();
-    const { status, body } = await arr[service].request(`/api/v3/history/since?date=${encodeURIComponent(date)}&eventType=grabbed`);
-    if (status < 200 || status > 299 || !Array.isArray(body)) {
-      throw new Error(`${service === 'sonarr' ? 'Sonarr' : 'Radarr'} history could not be read.`);
-    }
-    // A season pack is one history row per episode, all with the same downloadId.
+  // A season pack is one history row per episode, all with the same downloadId.
+  const mergeGrabs = (service: Service, records: HistoryRecord[]) => {
     const grabs = new Map<string, GrabInput>();
-    for (const record of body) {
-      if (!isRecord(record)) continue;
+    for (const record of records) {
       const hash = normalizeHash(record.downloadId);
-      const grabbedAt = Date.parse(text(record.date));
+      const grabbedAt = Date.parse(record.date ?? '');
       if (hash === null || Number.isNaN(grabbedAt)) continue;
-      const data = isRecord(record.data) ? record.data : {};
+      const publishedAt = Date.parse(record.data.publishedDate ?? '');
       const existing = grabs.get(hash);
       grabs.set(hash, {
         hash,
         service,
-        movieId: existing?.movieId ?? integer(record.movieId),
-        seriesId: existing?.seriesId ?? integer(record.seriesId),
+        movieId: existing?.movieId ?? record.movieId,
+        seriesId: existing?.seriesId ?? record.seriesId,
         episodeIds: ids([...(existing?.episodeIds ?? []), record.episodeId]),
-        releaseTitle: existing?.releaseTitle || text(record.sourceTitle),
-        indexer: existing?.indexer || text(data.indexer),
+        releaseTitle: existing?.releaseTitle || (record.sourceTitle ?? ''),
+        indexer: existing?.indexer || (record.data.indexer ?? ''),
         grabbedAt: Math.min(existing?.grabbedAt ?? grabbedAt, grabbedAt),
-        publishedAt: existing?.publishedAt ?? (Number.isNaN(Date.parse(text(data.publishedDate))) ? null : Date.parse(text(data.publishedDate))),
+        publishedAt: existing?.publishedAt ?? (Number.isNaN(publishedAt) ? null : publishedAt),
         byHand: false,
       });
     }
@@ -347,9 +235,14 @@ export const createGrabTracker = (options: {
     try {
       const checkpoint = readCheckpoint(service);
       const since = Math.max(startedAt - HISTORY_LOOKBACK_MS, (checkpoint ?? 0) - HISTORY_OVERLAP_MS);
-      const [queue, history] = await Promise.all([fetchQueue(service), fetchGrabHistory(service, since)]);
-      for (const grab of history) recordGrab(grab);
-      storeQueue(service, queue);
+      const filter = { since, eventType: 'grabbed' } as const;
+      const [queue, history] = await Promise.all([
+        arr[service].queue(),
+        service === 'sonarr' ? arr.sonarr.history(filter) : arr.radarr.history(filter),
+      ]);
+      const items = valueOrThrow(queue);
+      for (const grab of mergeGrabs(service, valueOrThrow(history))) recordGrab(grab);
+      storeQueue(service, items);
       database.prepare(`
         INSERT INTO grab_checkpoints (service, history_checked_at) VALUES (?, ?)
         ON CONFLICT (service) DO UPDATE SET history_checked_at = excluded.history_checked_at

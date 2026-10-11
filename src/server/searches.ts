@@ -1,10 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { type ArrServices, valueOrThrow } from './services/arr.js';
 import { listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
 import { getPreference, setPreference } from './preferences.js';
 
 type Problems = ReturnType<typeof createProblems>;
-type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
 
 export const NEVER_SEARCHED_GRACE_MS = 15 * 60_000;
 export const REPEAT_SEARCH_MS = 6 * 60 * 60_000;
@@ -30,7 +30,7 @@ export const searchDueAt = (candidate: Pick<Candidate, 'availableAt' | 'addedAt'
 
 export const createSearchScheduler = (options: {
   database: DatabaseSync;
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   problems: Problems;
   now?: () => number;
   isManualDownload: (subject: Subject) => boolean;
@@ -98,11 +98,10 @@ export const createSearchScheduler = (options: {
 
   const search = async (service: Service, due: Candidate[], at: number) => {
     if (due.length === 0) return;
-    const body = service === 'sonarr'
-      ? { name: 'EpisodeSearch', episodeIds: due.map((candidate) => Number(candidate.subject.id)) }
-      : { name: 'MoviesSearch', movieIds: due.map((candidate) => Number(candidate.subject.id)) };
-    const { status } = await arr[service].request('/api/v3/command', { method: 'POST', body });
-    if (status < 200 || status > 299) throw new Error(`${service === 'sonarr' ? 'Sonarr' : 'Radarr'} refused the search.`);
+    const ids = due.map((candidate) => Number(candidate.subject.id));
+    valueOrThrow(service === 'sonarr'
+      ? await arr.sonarr.searchAutomatically({ episodeIds: ids })
+      : await arr.radarr.searchAutomatically({ movieIds: ids }));
     for (const candidate of due) {
       database.prepare(`
         INSERT INTO search_log (subject, searched_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET searched_at = excluded.searched_at

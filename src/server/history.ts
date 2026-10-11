@@ -2,9 +2,8 @@ import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import type { createLabels } from './labels.js';
 import type { StepKind, Subject, SubjectType } from './problems.js';
+import type { ArrServices, HistoryRecord } from './services/arr.js';
 import { findGrab, type Service } from './torrentGrabs.js';
-
-type ArrRequest = (path: string) => Promise<{ status: number; body: unknown }>;
 
 export type HistoryEvent = {
   id: string;
@@ -92,36 +91,24 @@ const age = (data: Record<string, unknown>) => {
 };
 
 // One Sonarr or Radarr history record in words; record types media-manager-2 has no words for are left out.
-export const normalizeArrEvent = (service: Service, raw: unknown, byHand: (downloadId: string) => boolean): HistoryEvent | null => {
-  const value = record(raw);
-  const eventType = text(value?.eventType);
-  const historyId = integer(value?.id);
-  const at = Date.parse(text(value?.date) ?? '');
-  if (value === undefined || eventType === null || eventWords[eventType] === undefined || historyId === null || Number.isNaN(at)) return null;
-  const data = record(value.data) ?? {};
-  const release = text(value.sourceTitle);
-  const movie = record(value.movie);
-  const series = record(value.series);
-  const episode = record(value.episode);
-  const title = movie !== undefined && text(movie.title) !== null ? `${String(movie.title)} (${String(movie.year)})`
-    : series !== undefined && episode !== undefined && text(series.title) !== null
-      ? `${String(series.title)} ${code(episode.seasonNumber, episode.episodeNumber)}`
+export const normalizeArrEvent = (service: Service, entry: HistoryRecord, byHand: (downloadId: string) => boolean): HistoryEvent | null => {
+  const { eventType, id: historyId, data, movie, series, episode, movieId, episodeId } = entry;
+  const at = Date.parse(entry.date ?? '');
+  if (historyId === null || eventWords[eventType] === undefined || Number.isNaN(at)) return null;
+  const release = entry.sourceTitle;
+  const title = movie !== null ? (movie.year === null ? movie.title : `${movie.title} (${movie.year})`)
+    : series !== null && episode !== null ? `${series.title} ${code(episode.seasonNumber, episode.episodeNumber)}`
       : release ?? '';
-  const movieId = integer(value.movieId);
-  const episodeId = integer(value.episodeId);
   const subject: Subject | null = service === 'radarr'
     ? (movieId === null ? null : { type: 'movie', service, id: String(movieId) })
     : (episodeId === null ? null : { type: 'episode', service, id: String(episodeId) });
   const releaseSource = text(data.releaseSource);
-  const formats = Array.isArray(value.customFormats)
-    ? value.customFormats.flatMap((format) => text(record(format)?.name) ?? [])
-    : [];
   const scoreText = text(data.customFormatScore);
   const details: HistoryEvent['details'] = {
     tracker: text(data.indexer),
     releaseGroup: text(data.releaseGroup),
-    formats,
-    score: integer(value.customFormatScore) ?? (scoreText === null ? null : integer(Number(scoreText))),
+    formats: entry.formats,
+    score: entry.formatScore ?? (scoreText === null ? null : integer(Number(scoreText))),
     howFound: releaseSource === null ? null : howFoundWords[releaseSource] ?? releaseSource,
     ageWhenGrabbed: age(data),
     deletionReason: text(data.reason),
@@ -129,7 +116,7 @@ export const normalizeArrEvent = (service: Service, raw: unknown, byHand: (downl
     importedPath: text(data.importedPath),
     message: text(data.message),
   };
-  const downloadId = text(value.downloadId);
+  const { downloadId } = entry;
   const pickedByHand = downloadId !== null && byHand(downloadId);
   const event = eventWords[eventType];
   const detail = event === 'Grabbed'
@@ -147,7 +134,7 @@ export const normalizeArrEvent = (service: Service, raw: unknown, byHand: (downl
     event,
     detail,
     release,
-    quality: text(record(record(value.quality)?.quality)?.name),
+    quality: entry.quality,
     byHand: pickedByHand,
     eventType,
     details,
@@ -172,22 +159,11 @@ const emptyDetails: HistoryEvent['details'] = {
 
 export const createHistory = (options: {
   database: DatabaseSync;
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   labels: Pick<ReturnType<typeof createLabels>, 'subject'>;
 }) => {
   const { database, arr, labels } = options;
   const byHand = (downloadId: string) => findGrab(database, downloadId)?.byHand ?? false;
-
-  // A service that is not set up, unreachable or refusing contributes nothing, so the other half still shows.
-  const readPage = async (service: Service, path: string): Promise<unknown[] | undefined> => {
-    try {
-      const { status, body } = await arr[service].request(path);
-      const records = record(body)?.records;
-      return status >= 200 && status <= 299 && Array.isArray(records) ? records : undefined;
-    } catch {
-      return undefined;
-    }
-  };
 
   // Episode ids of one series, so problems on single episodes can join that series' history.
   const seriesEpisodes = async (seriesId: number) => {
@@ -240,12 +216,12 @@ export const createHistory = (options: {
     const services = filter === 'fixes' ? [] : (query.service === 'all' ? ['sonarr', 'radarr'] as const : [query.service]).filter((service) => (
       service === 'sonarr' ? movieId === undefined : seriesId === undefined && episodeId === undefined
     ));
-    const base = `/api/v3/history?page=${page}&pageSize=${PAGE_SIZE}&sortKey=date&sortDirection=descending`;
+    // A service that is not set up, unreachable or refusing contributes nothing, so the other half still shows.
     const pages = await Promise.all(services.map(async (service) => {
-      const extra = service === 'sonarr'
-        ? `&includeSeries=true&includeEpisode=true${episodeId === undefined ? '' : `&episodeId=${episodeId}`}${seriesId === undefined ? '' : `&seriesIds=${seriesId}`}`
-        : `&includeMovie=true${movieId === undefined ? '' : `&movieIds=${movieId}`}`;
-      return { service, records: await readPage(service, base + extra) ?? [] };
+      const result = service === 'sonarr'
+        ? await arr.sonarr.history({ episodeId, seriesId, page, pageSize: PAGE_SIZE })
+        : await arr.radarr.history({ movieId, page, pageSize: PAGE_SIZE });
+      return { service, records: result.kind === 'ok' ? result.value.records : [] };
     }));
     const hasMore = pages.some((result) => result.records.length >= PAGE_SIZE);
     const arrEvents = pages.flatMap(({ service, records }) => records.map((raw) => normalizeArrEvent(service, raw, byHand)));

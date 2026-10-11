@@ -9,12 +9,11 @@ import { createHistoryRoutes, type History } from './history.js';
 import { type Blocklist, createBlocklistRoutes, createHistoryFailedRoute, recordBlocklistMark } from './blocklist.js';
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
+import type { ArrServices, Result } from './services/arr.js';
 import type { TrackerAccountStats } from './services/trackerAccounts.js';
 
-type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
-
 export type ApiActions = {
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   refresh(service: Service): Promise<void>;
   manualImport: ReturnType<typeof createManualImport>;
   health?: Health;
@@ -28,11 +27,7 @@ const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'track
 
 // The agreed removal choices: the release can be kept, blocklisted, or blocklisted with a new search.
 // rTorrent is never asked to remove anything from here, so seeding always continues.
-const removals = {
-  keep: 'blocklist=false&skipRedownload=true',
-  blocklist: 'blocklist=true&skipRedownload=true',
-  blocklist_search: 'blocklist=true&skipRedownload=false',
-} as const;
+const choices = { keep: 'nothing', blocklist: 'block', blocklist_search: 'block_and_search' } as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -108,14 +103,11 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     return listQueue(database).find((item) => item.service === service && item.queueId === Number(id));
   };
 
-  const send = async (service: Service, path: string, method: 'POST' | 'DELETE') => {
+  const outcome = async (service: Service, act: (arr: ArrServices[Service]) => Promise<Result<unknown>>) => {
     if (actions === undefined) return 'unavailable';
-    try {
-      const { status } = await actions.arr[service].request(path, { method });
-      if (status < 200 || status > 299) return 'refused';
-    } catch {
-      return 'unavailable';
-    }
+    const result = await act(actions.arr[service]);
+    if (result.kind === 'not_configured' || result.kind === 'unreachable') return 'unavailable';
+    if (result.kind !== 'ok') return 'refused';
     await actions.refresh(service);
     return 'ok';
   };
@@ -124,7 +116,7 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     const item = queueItem(context.req.param('service'), context.req.param('id'));
     if (item === undefined) return context.json({ error: 'not_found' }, 404);
     if (item.status !== 'delay') return context.json({ error: 'not_delayed' }, 409);
-    const result = await send(item.service, `/api/v3/queue/grab/${item.queueId}`, 'POST');
+    const result = await outcome(item.service, (arr) => arr.grabFromQueue(item.queueId));
     return result === 'ok' ? context.body(null, 204) : context.json({ error: `service_${result}` }, 502);
   });
 
@@ -138,9 +130,9 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
       return context.json({ error: 'invalid_request' }, 400);
     }
     const release = isRecord(body) ? body.release : undefined;
-    if (typeof release !== 'string' || !Object.hasOwn(removals, release)) return context.json({ error: 'invalid_request' }, 400);
-    const query = removals[release as keyof typeof removals];
-    const result = await send(item.service, `/api/v3/queue/${item.queueId}?removeFromClient=false&${query}`, 'DELETE');
+    if (typeof release !== 'string' || !Object.hasOwn(choices, release)) return context.json({ error: 'invalid_request' }, 400);
+    const choice = choices[release as keyof typeof choices];
+    const result = await outcome(item.service, (arr) => arr.removeFromQueue({ queueId: item.queueId }, choice));
     if (result === 'ok' && release !== 'keep') recordBlocklistMark(database, item.service, item.title, 'downloads', Date.now());
     return result === 'ok' ? context.body(null, 204) : context.json({ error: `service_${result}` }, 502);
   });

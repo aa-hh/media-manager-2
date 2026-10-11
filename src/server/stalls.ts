@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { type ArrServices, valueOrThrow } from './services/arr.js';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
 import { RELEASE_LIMIT } from './problems.js';
@@ -8,7 +9,6 @@ import { listCooldowns, type createTrackerWatch } from './trackers.js';
 
 type Problems = ReturnType<typeof createProblems>;
 type TrackerWatch = ReturnType<typeof createTrackerWatch>;
-type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
 type XmlRpcCall = (method: string, params: readonly XmlRpcParam[]) => Promise<unknown>;
 
 export const NO_SEEDERS_LIMIT_MS = 60 * 60_000;
@@ -67,7 +67,7 @@ const saveWatch = (database: DatabaseSync, watch: Watch) => {
 export const createStallFix = (options: {
   database: DatabaseSync;
   rtorrent: { call: XmlRpcCall };
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   problems: Problems;
   trackers: TrackerWatch;
   now?: () => number;
@@ -148,13 +148,8 @@ export const createStallFix = (options: {
   const blocklist = async (grab: Grab) => {
     const items = listQueue(database).filter((item) => item.service === grab.service && item.downloadId === grab.hash);
     if (items.length === 0) return false;
-    for (const item of items) {
-      const { status } = await arr[grab.service].request(
-        `/api/v3/queue/${item.queueId}?removeFromClient=false&blocklist=true&skipRedownload=true`,
-        { method: 'DELETE' },
-      );
-      if (status < 200 || status > 299) throw new Error(`${labels[grab.service]} refused to blocklist the release.`);
-    }
+    const { removed } = valueOrThrow(await arr[grab.service].removeFromQueue({ downloadId: grab.hash }, 'block'));
+    if (removed === 0) throw new Error(`${labels[grab.service]} no longer lists this download in its queue, so the release was not blocked.`);
     return true;
   };
 
@@ -179,10 +174,9 @@ export const createStallFix = (options: {
 
   const searchAgain = async (grab: Grab): Promise<string> => {
     const client = arr[grab.service];
-    if (grab.movieId === null && grab.episodeIds.length !== 1) {
+    if (grab.service === 'sonarr' && grab.movieId === null && grab.episodeIds.length !== 1) {
       // razor: a multi-episode or pack grab is searched automatically, without the tracker preference; per-episode releases need their own picks.
-      const { status } = await client.request('/api/v3/command', { method: 'POST', body: { name: 'EpisodeSearch', episodeIds: grab.episodeIds } });
-      if (status < 200 || status > 299) throw new Error('Sonarr refused the search.');
+      valueOrThrow(await arr.sonarr.searchAutomatically({ episodeIds: grab.episodeIds }));
       return 'Asked Sonarr to search automatically for these episodes.';
     }
     const query = grab.movieId !== null ? `movieId=${grab.movieId}` : `episodeId=${grab.episodeIds[0]}`;

@@ -1,10 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type Assignment, type AssignmentTarget, checkAssignments } from './assignments.js';
+import type { ArrServices } from './services/arr.js';
 import { findGrab, listQueue, type Service } from './torrentGrabs.js';
 import { listOpenProblems, type createProblems } from './problems.js';
 
 type Problems = ReturnType<typeof createProblems>;
-type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
 
 export type ImportFile = {
   path: string;
@@ -51,7 +51,7 @@ class ServiceError extends Error {}
 
 // Finishing an import by hand (AA-62): the owner picks the movie or episodes, quality and language for each file;
 // the server re-checks the assignment against Sonarr's or Radarr's own file list and imports with hardlinks only.
-export const createManualImport = (options: { database: DatabaseSync; arr: Record<Service, { request: ArrRequest }>; problems: Problems }) => {
+export const createManualImport = (options: { database: DatabaseSync; arr: ArrServices; problems: Problems }) => {
   const { database, arr, problems } = options;
 
   const get = async (service: Service, path: string) => {
@@ -153,11 +153,6 @@ export const createManualImport = (options: { database: DatabaseSync; arr: Recor
       });
       if (reasons.length > 0) return { kind: 'invalid', reasons };
 
-      // Copy mode hardlinks only when the service is set to; without it the import would copy, or a move would end seeding.
-      const settings = await get(service, '/api/v3/config/mediamanagement');
-      if (!isRecord(settings) || settings.copyUsingHardlinks !== true) {
-        return { kind: 'failed', reason: `${labels[service]} is not set to use hardlinks, so importing could stop seeding. Turn on "Use Hardlinks instead of Copy" first.` };
-      }
       const definitions = await get(service, '/api/v3/qualitydefinition') as Record<string, unknown>[];
       const languages = new Map(view.languages.map((language) => [language.id, language]));
       const originals = await get(service, `/api/v3/manualimport?downloadId=${downloadId}&filterExistingFiles=false`) as Record<string, unknown>[];
@@ -176,8 +171,8 @@ export const createManualImport = (options: { database: DatabaseSync; arr: Recor
           ? { ...base, seriesId: view.target.seriesId, episodeIds: assignment.episodeIds }
           : { ...base, movieId: view.target.movieId };
       });
-      const command = await arr[service].request('/api/v3/command', { method: 'POST', body: { name: 'ManualImport', files, importMode: 'copy' } });
-      if (command.status < 200 || command.status > 299) return { kind: 'failed', reason: `${labels[service]} refused the import.` };
+      const result = await arr[service].forceImport(downloadId, files);
+      if (result.kind !== 'ok') return { kind: 'failed', reason: result.message };
       for (const problem of listOpenProblems(database).filter((open) => open.hash === downloadId)) {
         problems.setState(problem.id, 'resolved', `Imported by hand: ${files.length} ${files.length === 1 ? 'file' : 'files'}.`);
       }

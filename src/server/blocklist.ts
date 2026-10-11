@@ -1,9 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type Context, Hono } from 'hono';
 import type { Subject } from './problems.js';
+import type { ArrServices, Result } from './services/arr.js';
 import type { Service } from './torrentGrabs.js';
-
-type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
 
 export type BlockEntry = {
   service: Service;
@@ -33,6 +32,10 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
 const ok = (status: number) => status >= 200 && status <= 299;
+const outcome = (result: Result<unknown>) => {
+  if (result.kind === 'ok') return 'ok' as const;
+  return result.kind === 'not_configured' || result.kind === 'unreachable' ? 'unavailable' as const : 'refused' as const;
+};
 
 // Remembers that the owner blocklisted a release, which Sonarr and Radarr themselves do not record.
 export const recordBlocklistMark = (database: DatabaseSync, service: Service, releaseTitle: string, origin: 'history' | 'downloads', at: number) => {
@@ -42,7 +45,7 @@ export const recordBlocklistMark = (database: DatabaseSync, service: Service, re
 
 export const createBlocklist = (options: {
   database: DatabaseSync;
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   isManualDownload: (subject: Subject) => boolean;
   now?: () => number;
 }) => {
@@ -84,7 +87,7 @@ export const createBlocklist = (options: {
     if (Array.isArray(clients) && clients.some((client) => record(client)?.enable === true && record(client)?.removeFailedDownloads === true)) {
       return { kind: 'remove_failed_on' };
     }
-    const marked = await send(service, `/api/v3/history/failed/${historyId}`, { method: 'POST' });
+    const marked = outcome(await arr[service].markFailed(historyId));
     if (marked !== 'ok') return { kind: marked };
     recordBlocklistMark(database, service, body.releaseTitle, 'history', now());
 
@@ -93,12 +96,11 @@ export const createBlocklist = (options: {
       ? (body.movieId === null ? [] : [{ type: 'movie', service, id: String(body.movieId) }])
       : body.episodeIds.map((id) => ({ type: 'episode', service, id: String(id) }));
     if (subjects.some(isManualDownload)) return { kind: 'ok', searched: 'manual_download' };
-    const command = service === 'sonarr'
-      ? { name: 'EpisodeSearch', episodeIds: body.episodeIds }
-      : { name: 'MoviesSearch', movieIds: body.movieId === null ? [] : [body.movieId] };
     // The grab is already marked failed here, so a refused search still reports the mark as done.
-    const searched = await send(service, '/api/v3/command', { method: 'POST', body: command });
-    return { kind: 'ok', searched: searched === 'ok' ? 'media-manager-2' : 'search_failed' };
+    const searched = service === 'sonarr'
+      ? await arr.sonarr.searchAutomatically({ episodeIds: body.episodeIds })
+      : await arr.radarr.searchAutomatically({ movieIds: body.movieId === null ? [] : [body.movieId] });
+    return { kind: 'ok', searched: searched.kind === 'ok' ? 'media-manager-2' : 'search_failed' };
   };
 
   const attribute = (service: Service, release: string, message: string | null): Pick<BlockEntry, 'by' | 'reason'> => {

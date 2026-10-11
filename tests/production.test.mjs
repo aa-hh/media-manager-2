@@ -21,6 +21,7 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { connectArr, createArrFake, historyRecord, importFile, queueItem } from './fakes/arr.mjs';
 
 const serverPath = fileURLToPath(new URL('../dist/server/index.js', import.meta.url));
 const databaseModuleUrl = new URL('../dist/server/database.js', import.meta.url).href;
@@ -1761,6 +1762,176 @@ test('service connections read saved settings and classify each outcome', async 
   }
 });
 
+// Classifying a status differently, dropping the service name from a message, or changing any operation's request turns a subtest red.
+test('Sonarr and Radarr operations answer with one result shape and never throw', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createArr, valueOrThrow } = await import(arrModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-arr-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const { sonarr, radarr, fake } = connectArr(database, { sonarr: {} });
+  const { state } = fake.sonarr;
+
+  await t.test('the queue read walks every page and keeps unknown items', async () => {
+    // Stopping the page walk early, dropping the unknown-item flags, or changing the queue parser turns this red.
+    const hash = 'ab'.repeat(20);
+    state.queue = Array.from({ length: 501 }, (_, index) => queueItem(
+      index === 0 ? { unknown: true } : index === 1 ? { downloadId: hash } : {},
+    ));
+    const result = await sonarr.queue();
+    assert.equal(result.kind, 'ok');
+    assert.equal(result.value.length, 501);
+    assert.ok(result.value.some((item) => item.queueId === state.queue[0].id));
+    assert.equal(result.value.find((item) => item.queueId === state.queue[1].id).downloadId, hash.toUpperCase());
+  });
+
+  await t.test('queue removal maps each choice and is safe to repeat', async () => {
+    // Mapping a removal choice to the wrong flags, counting an already-removed item, or telling rTorrent to erase on the wrong call turns this red.
+    const hash = 'cd'.repeat(20);
+    state.queue = [queueItem({ downloadId: hash }), queueItem({ downloadId: hash })];
+    state.removals = [];
+    state.erasedFromClient = [];
+    assert.deepEqual(await sonarr.removeFromQueue({ downloadId: hash }, 'block_and_search'), { kind: 'ok', value: { removed: 2 } });
+    assert.deepEqual(
+      state.removals.map(({ queueId: _queueId, ...flags }) => flags),
+      [
+        { removeFromClient: false, blocklist: true, skipRedownload: false },
+        { removeFromClient: false, blocklist: true, skipRedownload: false },
+      ],
+    );
+    assert.deepEqual(state.erasedFromClient, []);
+    assert.deepEqual(await sonarr.removeFromQueue({ downloadId: hash }, 'block_and_search'), { kind: 'ok', value: { removed: 0 } });
+
+    const fresh = 'EF'.repeat(20);
+    state.queue = [queueItem({ downloadId: fresh })];
+    state.removals = [];
+    assert.deepEqual(await sonarr.removeFromQueueAndClient(fresh), { kind: 'ok', value: { removed: 1 } });
+    assert.equal(state.removals[0].removeFromClient, true);
+    assert.equal(state.removals[0].blocklist, true);
+    assert.deepEqual(state.erasedFromClient, [fresh]);
+  });
+
+  await t.test('a forced import copies, and only with hardlinks on and files that match the grab', async (t) => {
+    // Sending importMode move or auto, skipping the hardlink setting read, or importing a file outside the grab turns this red.
+    t.mock.method(console, 'error', () => {});
+    const hash = '12'.repeat(20).toUpperCase();
+    const grab = { hash, movieId: null, seriesId: 7, episodeIds: [31, 32] };
+    state.commands = [];
+    state.manualImport = { [hash]: [importFile({ episodes: [{ id: 31 }] }), importFile({ episodes: [{ id: 32 }] })] };
+
+    state.copyUsingHardlinks = false;
+    const refused = await sonarr.forceImport(grab);
+    assert.equal(refused.kind, 'refused');
+    assert.equal(refused.status, null);
+    assert.deepEqual(state.commands, []);
+
+    state.copyUsingHardlinks = true;
+    assert.deepEqual(await sonarr.forceImport(grab), { kind: 'ok', value: undefined });
+    assert.equal(state.commands.length, 1);
+    assert.equal(state.commands[0].name, 'ManualImport');
+    assert.equal(state.commands[0].importMode, 'copy');
+    assert.deepEqual(state.commands[0].files.map((file) => file.episodeIds), [[31], [32]]);
+
+    state.manualImport = { [hash]: [importFile({ episodes: [{ id: 99 }] })] };
+    const mismatch = await sonarr.forceImport(grab);
+    assert.equal(mismatch.kind, 'refused');
+    assert.match(mismatch.message, /doesn't match the episodes/);
+
+    state.copyUsingHardlinks = false;
+    const byFiles = await sonarr.forceImport(hash, [{ path: '/downloads/file.mkv' }]);
+    assert.equal(byFiles.kind, 'refused');
+    assert.equal(byFiles.status, null);
+    assert.equal(state.commands.length, 1);
+    state.copyUsingHardlinks = true;
+  });
+
+  await t.test('history picks its route from the filter and walks every page', async () => {
+    // Sending a since filter to the paged route, stopping the page walk early, or losing the total count turns this red.
+    const since = Date.parse('2026-10-08T00:00:00Z');
+    const after = historyRecord({ date: '2026-10-09T00:00:00Z' });
+    state.history = [
+      historyRecord({ date: '2026-10-07T00:00:00Z' }),
+      after,
+      historyRecord({ date: '2026-10-09T00:00:00Z', eventType: 'downloadFolderImported' }),
+    ];
+    fake.sonarr.requests.length = 0;
+    const recent = await sonarr.history({ since, eventType: 'grabbed' });
+    assert.equal(recent.kind, 'ok');
+    assert.deepEqual(recent.value.map((record) => record.id), [after.id]);
+    assert.deepEqual(fake.sonarr.requests.map((request) => request.path), ['/api/v3/history/since']);
+
+    const downloadId = '34'.repeat(20);
+    state.history = Array.from({ length: 250 }, () => historyRecord({ downloadId }));
+    state.history.push(historyRecord({ downloadId: '56'.repeat(20), eventType: 'downloadFailed' }));
+    fake.sonarr.requests.length = 0;
+    const all = await sonarr.history({ downloadId });
+    assert.equal(all.kind, 'ok');
+    assert.equal(all.value.length, 250);
+    assert.deepEqual(fake.sonarr.requests.map((request) => request.params.get('pageSize')), ['100', '100', '100']);
+
+    const page = await sonarr.history({ eventType: 'grabbed', page: 1, pageSize: 50 });
+    assert.equal(page.kind, 'ok');
+    assert.equal(page.value.records.length, 50);
+    assert.equal(page.value.total, 250);
+  });
+
+  await t.test('commands, queue grabs and marking a grab failed reach Sonarr', async () => {
+    // Renaming a command or changing one of its body fields turns this red.
+    state.commands = [];
+    for (const target of [{ episodeIds: [1] }, { seriesId: 5 }, { seriesId: 5, seasonNumber: 2 }]) {
+      assert.deepEqual(await sonarr.searchAutomatically(target), { kind: 'ok', value: undefined });
+    }
+    assert.deepEqual(await sonarr.refreshTitle(5), { kind: 'ok', value: undefined });
+    assert.deepEqual(await sonarr.refreshMonitoredDownloads(), { kind: 'ok', value: undefined });
+    assert.deepEqual(state.commands, [
+      { name: 'EpisodeSearch', episodeIds: [1] },
+      { name: 'SeriesSearch', seriesId: 5 },
+      { name: 'SeasonSearch', seriesId: 5, seasonNumber: 2 },
+      { name: 'RefreshSeries', seriesId: 5 },
+      { name: 'RefreshMonitoredDownloads' },
+    ]);
+
+    const item = queueItem();
+    state.queue = [item];
+    state.grabbed = [];
+    assert.deepEqual(await sonarr.grabFromQueue(item.id), { kind: 'ok', value: undefined });
+    assert.deepEqual(state.grabbed, [item.id]);
+
+    const record = historyRecord();
+    state.history = [record];
+    state.failed = [];
+    assert.deepEqual(await sonarr.markFailed(record.id), { kind: 'ok', value: undefined });
+    assert.deepEqual(state.failed, [record.id]);
+  });
+
+  await t.test('each failure has its own kind and a message naming the service', async () => {
+    // Classifying a status as a different kind, or a message losing the service name or Sonarr's own reason, turns this red.
+    assert.equal((await radarr.queue()).kind, 'not_configured');
+
+    state.down = true;
+    const down = await sonarr.queue();
+    state.down = false;
+    assert.equal(down.kind, 'unreachable');
+    assert.match(down.message, /^Sonarr is unreachable/);
+
+    const other = createArrFake({ apiKey: 'other' });
+    assert.equal((await createArr('sonarr', database, { fetch: other.fetch }).queue()).kind, 'rejected');
+
+    fake.sonarr.routes.push(() => ({ status: 500, body: { message: 'boom' } }));
+    const refused = await sonarr.queue();
+    fake.sonarr.routes.length = 0;
+    assert.equal(refused.kind, 'refused');
+    assert.equal(refused.status, 500);
+    assert.ok(refused.message.startsWith('Sonarr '));
+    assert.ok(refused.message.endsWith('with HTTP 500: boom.'));
+    assert.throws(() => valueOrThrow(refused), (error) => error instanceof Error && error.message === refused.message);
+    assert.equal(valueOrThrow({ kind: 'ok', value: 3 }), 3);
+  });
+});
+
 // Reading a tracker credential from the wrong key, putting a secret in a URL the app builds, mis-mapping 401/422/'Invalid API Key' to unreachable, or dropping a tracker from the stats list turns this red.
 test('tracker accounts read saved settings and classify each outcome', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
@@ -2203,22 +2374,8 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     const database = openDatabase(databasePath ?? join(root, `db-${databaseCount}`, 'media-manager.sqlite'));
     const clock = { value: Date.parse('2026-10-08T12:00:00Z') };
     const events = createEventHub();
-    const fake = {
-      sonarr: { queue: [], history: [], down: false, requests: [] },
-      radarr: { queue: [], history: [], down: false, requests: [] },
-    };
-    const service = (name) => ({
-      request: async (path) => {
-        fake[name].requests.push(path);
-        if (fake[name].down) throw new Error(`${name === 'sonarr' ? 'Sonarr' : 'Radarr'} is unreachable.`);
-        if (path.startsWith('/api/v3/queue')) {
-          return { status: 200, body: { page: 1, pageSize: 200, totalRecords: fake[name].queue.length, records: fake[name].queue } };
-        }
-        if (path.startsWith('/api/v3/history/since')) return { status: 200, body: fake[name].history };
-        return { status: 404, body: undefined };
-      },
-    });
-    const tracker = createGrabTracker({ database, arr: { sonarr: service('sonarr'), radarr: service('radarr') }, events, now: () => clock.value });
+    const { fake, ...arr } = connectArr(database);
+    const tracker = createGrabTracker({ database, arr, events, now: () => clock.value });
     const heard = [];
     tracker.onGrab((grab) => { heard.push(grab.hash); });
     return { database, clock, fake, tracker, heard };
@@ -2239,10 +2396,10 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     assert.equal(findGrab(database, episodeHash.toUpperCase()).indexer, 'BeyondHD');
 
     clock.value += 60_000;
-    fake.sonarr.history = [
-      { downloadId: episodeHash.toUpperCase(), seriesId: 3, episodeId: 32, sourceTitle: 'Show.S01E01E02.1080p', date: '2026-10-08T11:59:00Z', data: { indexer: 'BeyondHD' } },
-      ...[41, 42, 43].map((episodeId) => ({
-        downloadId: packHash, seriesId: 4, episodeId, sourceTitle: 'Show.S02.1080p', date: '2026-10-08T11:30:00Z', data: { indexer: 'PrivateHD' },
+    fake.sonarr.state.history = [
+      historyRecord({ downloadId: episodeHash.toUpperCase(), seriesId: 3, episodeId: 32, sourceTitle: 'Show.S01E01E02.1080p', date: '2026-10-08T11:59:00Z', data: { indexer: 'BeyondHD' } }),
+      ...[41, 42, 43].map((episodeId) => historyRecord({
+        downloadId: packHash, seriesId: 4, episodeId, sourceTitle: 'Show.S02.1080p', date: '2026-10-08T11:55:00Z', data: { indexer: 'PrivateHD' },
       })),
     ];
     await tracker.reconcile();
@@ -2261,19 +2418,19 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     const databasePath = join(root, 'restart', 'media-manager.sqlite');
     const first = setup(databasePath);
     await first.tracker.reconcile();
-    const firstSince = first.fake.radarr.requests.find((path) => path.startsWith('/api/v3/history/since'));
-    assert.match(decodeURIComponent(firstSince), /date=2026-09-24T12:00:00.000Z/);
+    const firstSince = first.fake.radarr.requests.find((r) => r.path === '/api/v3/history/since');
+    assert.equal(firstSince.params.get('date'), '2026-09-24T12:00:00.000Z');
     const stoppedAt = first.clock.value;
     first.database.close();
 
     const second = setup(databasePath);
     second.clock.value = stoppedAt + 3 * 60 * 60_000;
-    second.fake.radarr.history = [
-      { downloadId: missedHash, movieId: 9, sourceTitle: 'Missed.2025.1080p', date: new Date(stoppedAt + 60 * 60_000).toISOString(), data: { indexer: 'Blutopia' } },
+    second.fake.radarr.state.history = [
+      historyRecord({ downloadId: missedHash, movieId: 9, sourceTitle: 'Missed.2025.1080p', date: new Date(stoppedAt + 60 * 60_000).toISOString(), data: { indexer: 'Blutopia' } }),
     ];
     await second.tracker.reconcile();
-    const since = second.fake.radarr.requests.find((path) => path.startsWith('/api/v3/history/since'));
-    assert.match(decodeURIComponent(since), new RegExp(`date=${new Date(stoppedAt - 10 * 60_000).toISOString()}`));
+    const since = second.fake.radarr.requests.find((r) => r.path === '/api/v3/history/since');
+    assert.equal(since.params.get('date'), new Date(stoppedAt - 10 * 60_000).toISOString());
     assert.equal(findGrab(second.database, missedHash).movieId, 9);
     second.database.close();
   });
@@ -2281,7 +2438,7 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
   // Dropping delayed (pending) items, keeping a stale queue after a failed read, or not marking the service down turns this red.
   await t.test('the queue snapshot keeps delayed releases and survives a failed read', async () => {
     const { database, fake, tracker } = setup();
-    fake.sonarr.queue = [
+    fake.sonarr.state.queue = [
       { id: 1, downloadId: episodeHash, seriesId: 3, episodeId: 31, title: 'Show.S01E01E02.1080p', status: 'downloading',
         trackedDownloadStatus: 'ok', trackedDownloadState: 'downloading', indexer: 'BeyondHD', protocol: 'torrent',
         quality: { quality: { name: 'WEBDL-1080p' } }, customFormats: [{ name: 'DV' }], customFormatScore: 150, size: 1000, sizeleft: 250 },
@@ -2297,7 +2454,7 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     assert.equal(queue[1].downloadId, null);
     assert.equal(readDependency(database, 'sonarr').state, 'ok');
 
-    fake.sonarr.down = true;
+    fake.sonarr.state.down = true;
     await tracker.reconcile();
     assert.equal(listQueue(database).length, 2);
     assert.equal(readDependency(database, 'sonarr').state, 'down');
@@ -2825,24 +2982,13 @@ test('queue actions grab delayed releases and remove items without touching rTor
   t.after(() => rm(root, { recursive: true, force: true }));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(() => database.close());
-  const queue = {
-    sonarr: [{
-      id: -51234, status: 'delay', title: 'Andor.S02E09.2160p.WEB-DL', series: { title: 'Andor' }, episode: { seasonNumber: 2, episodeNumber: 9 },
-    }],
-    radarr: [{ id: 8, status: 'downloading', downloadId: 'ee'.repeat(20), title: 'Dune.Part.Two.2024', movie: { title: 'Dune: Part Two', year: 2024 } }],
+  const { fake, ...arr } = connectArr(database);
+  const delayed = {
+    id: -51234, status: 'delay', title: 'Andor.S02E09.2160p.WEB-DL', series: { title: 'Andor' }, episode: { seasonNumber: 2, episodeNumber: 9 },
   };
-  const sent = [];
-  const service = (name) => ({
-    request: async (path, init = {}) => {
-      if (init.method === undefined && path.startsWith('/api/v3/queue')) {
-        return { status: 200, body: { page: 1, pageSize: 200, totalRecords: queue[name].length, records: queue[name] } };
-      }
-      if (init.method === undefined) return { status: 200, body: [] };
-      sent.push(`${name} ${init.method} ${path}`);
-      return { status: path.includes('/queue/8?') ? 500 : 200, body: undefined };
-    },
-  });
-  const arr = { sonarr: service('sonarr'), radarr: service('radarr') };
+  fake.sonarr.state.queue = [{ ...delayed }];
+  fake.radarr.state.queue = [{ id: 8, status: 'downloading', downloadId: 'ee'.repeat(20), title: 'Dune.Part.Two.2024', movie: { title: 'Dune: Part Two', year: 2024 } }];
+  fake.radarr.routes.push((method, url) => (method === 'DELETE' && url.pathname === '/api/v3/queue/8' ? { status: 500, body: {} } : undefined));
   const tracker = createGrabTracker({ database, arr, events: createEventHub() });
   await tracker.reconcile();
   // Dropping the movie year or the episode code from the queue label turns this red.
@@ -2858,24 +3004,26 @@ test('queue actions grab delayed releases and remove items without touching rTor
   assert.equal((await post('/api/queue/sonarr/999/grab')).status, 404);
   assert.equal((await post('/api/queue/radarr/8/grab')).status, 409);
   assert.equal((await post('/api/queue/sonarr/-51234/grab')).status, 204);
-  assert.deepEqual(sent, ['sonarr POST /api/v3/queue/grab/-51234']);
+  assert.deepEqual(fake.sonarr.state.grabbed, [-51234]);
 
   // Removing from rTorrent, or mapping a removal choice to the wrong blocklist and search flags, turns this red.
-  sent.length = 0;
   assert.equal((await post('/api/queue/sonarr/-51234/remove', { release: 'everything' })).status, 400);
   const downloadMarks = () => database.prepare("SELECT COUNT(*) AS count FROM blocklist_marks WHERE origin = 'downloads'").get().count;
   for (const release of ['keep', 'blocklist', 'blocklist_search']) {
+    // Each removal takes the item out of the fake's queue, so it goes back in before the next one.
+    if (fake.sonarr.state.queue.length === 0) fake.sonarr.state.queue.push({ ...delayed });
+    await tracker.refresh('sonarr');
     assert.equal((await post('/api/queue/sonarr/-51234/remove', { release })).status, 204);
     // Recording a blocklist mark for a kept release, or none for a blocklisted one, turns this red.
     assert.equal(downloadMarks() > 0, release !== 'keep');
   }
   assert.equal((await post('/api/queue/radarr/8/remove', { release: 'keep' })).status, 502);
-  assert.deepEqual(sent, [
-    'sonarr DELETE /api/v3/queue/-51234?removeFromClient=false&blocklist=false&skipRedownload=true',
-    'sonarr DELETE /api/v3/queue/-51234?removeFromClient=false&blocklist=true&skipRedownload=true',
-    'sonarr DELETE /api/v3/queue/-51234?removeFromClient=false&blocklist=true&skipRedownload=false',
-    'radarr DELETE /api/v3/queue/8?removeFromClient=false&blocklist=false&skipRedownload=true',
+  assert.deepEqual(fake.sonarr.state.removals, [
+    { queueId: -51234, removeFromClient: false, blocklist: false, skipRedownload: true },
+    { queueId: -51234, removeFromClient: false, blocklist: true, skipRedownload: true },
+    { queueId: -51234, removeFromClient: false, blocklist: true, skipRedownload: false },
   ]);
+  assert.deepEqual(fake.radarr.state.removals, []);
 });
 
 test('an import is finished by hand only with a complete, conflict-free assignment and hardlinks', async (t) => {
@@ -2892,28 +3040,22 @@ test('an import is finished by hand only with a complete, conflict-free assignme
   const hash = 'AB'.repeat(20);
   const events = createEventHub();
   const problems = createProblems({ database, events });
-  const fake = { hardlinks: true, commands: [] };
   const files = [
     { path: '/downloads/Pack/S01E01.mkv', relativePath: 'S01E01.mkv', size: 1, quality: { quality: { id: 3 }, revision: { version: 2, real: 0 } }, languages: [{ id: 1 }], episodes: [{ id: 101 }], rejections: [{ reason: 'Episode unexpected' }] },
     { path: '/downloads/Pack/S01E02.mkv', relativePath: 'S01E02.mkv', size: 1, quality: { quality: { id: 3 } }, languages: [], episodes: [] },
   ];
-  const sonarr = {
-    request: async (path, init = {}) => {
-      if (init.method === 'POST') {
-        fake.commands.push(init.body);
-        return { status: 201, body: {} };
-      }
-      if (path.startsWith('/api/v3/manualimport')) return { status: 200, body: files };
-      if (path === '/api/v3/qualitydefinition') return { status: 200, body: [{ quality: { id: 3, name: 'WEBDL-1080p' }, title: 'WEBDL-1080p' }] };
-      if (path === '/api/v3/language') return { status: 200, body: [{ id: 1, name: 'English' }] };
-      if (path === '/api/v3/episode?seriesId=9') {
-        return { status: 200, body: [{ id: 101, seasonNumber: 1, episodeNumber: 1 }, { id: 102, seasonNumber: 1, episodeNumber: 2 }] };
-      }
-      if (path === '/api/v3/config/mediamanagement') return { status: 200, body: { copyUsingHardlinks: fake.hardlinks } };
-      return { status: 200, body: { page: 1, totalRecords: 0, records: [] } };
-    },
-  };
-  const arr = { sonarr, radarr: sonarr };
+  const { fake, ...arr } = connectArr(database, { sonarr: {} });
+  const { state } = fake.sonarr;
+  state.manualImport[hash] = files;
+  fake.sonarr.routes.push((method, url) => {
+    if (method !== 'GET') return undefined;
+    if (url.pathname === '/api/v3/qualitydefinition') return { status: 200, body: [{ quality: { id: 3, name: 'WEBDL-1080p' }, title: 'WEBDL-1080p' }] };
+    if (url.pathname === '/api/v3/language') return { status: 200, body: [{ id: 1, name: 'English' }] };
+    if (url.pathname === '/api/v3/episode' && url.searchParams.get('seriesId') === '9') {
+      return { status: 200, body: [{ id: 101, seasonNumber: 1, episodeNumber: 1 }, { id: 102, seasonNumber: 1, episodeNumber: 2 }] };
+    }
+    return undefined;
+  });
   const tracker = createGrabTracker({ database, arr, events });
   tracker.recordGrab({ hash, service: 'sonarr', movieId: null, seriesId: 9, episodeIds: [101, 102], releaseTitle: 'Show.S01', indexer: 'BHD', grabbedAt: 1, publishedAt: null, byHand: false });
   const flagged = problems.open({ kind: 'import_matching', subject: { type: 'torrent', service: null, id: hash }, hash, summary: 'Show.S01: Episode unexpected', state: 'needs_you' });
@@ -2945,15 +3087,15 @@ test('an import is finished by hand only with a complete, conflict-free assignme
   }
 
   // Importing while Sonarr would copy instead of hardlink turns this red.
-  fake.hardlinks = false;
+  state.copyUsingHardlinks = false;
   assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 502);
-  assert.deepEqual(fake.commands, []);
+  assert.deepEqual(state.commands, []);
 
   // Moving instead of hardlinking, dropping the chosen episode, or leaving the problem open turns this red.
-  fake.hardlinks = true;
+  state.copyUsingHardlinks = true;
   assert.equal((await submit([file(files[0].path, [101]), file(files[1].path, [102])])).status, 204);
-  assert.equal(fake.commands.length, 1);
-  const [command] = fake.commands;
+  assert.equal(state.commands.length, 1);
+  const [command] = state.commands;
   assert.equal(command.importMode, 'copy');
   assert.deepEqual(command.files.map((entry) => [entry.seriesId, entry.episodeIds, entry.quality.quality.id, entry.quality.revision.version]), [[9, [101], 3, 2], [9, [102], 3, 1]]);
   assert.equal(listOpenProblems(database).some((problem) => problem.id === flagged.id), false);
@@ -3136,23 +3278,15 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
         return 0;
       },
     };
-    const requests = [];
-    const radarr = {
-      request: async (path, init = {}) => {
-        requests.push([init.method ?? 'GET', path, init.body]);
-        if (path.startsWith('/api/v3/queue?')) {
-          return { status: 200, body: { totalRecords: 1, records: [{ id: 55, downloadId: hash.toLowerCase(), movieId: 7, title: 'Movie.2024.1080p', status: 'downloading' }] } };
-        }
-        if (path.startsWith('/api/v3/history/since')) {
-          return { status: 200, body: [{ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - minute).toISOString(),
-            data: { indexer: 'Blutopia (API)', publishedDate: new Date(start - publishedAgoMs).toISOString() } }] };
-        }
-        if (path.startsWith('/api/v3/release?')) return { status: 200, body: releases };
-        return { status: 200, body: {} };
-      },
-    };
-    const sonarr = { request: async () => ({ status: 200, body: { totalRecords: 0, records: [] } }) };
-    const arr = { sonarr: { request: async (path) => (path.startsWith('/api/v3/history') ? { status: 200, body: [] } : sonarr.request(path)) }, radarr };
+    const { fake, ...arr } = connectArr(database);
+    const radarr = fake.radarr;
+    radarr.state.queue = [queueItem({ id: 55, downloadId: hash.toLowerCase(), movieId: 7, title: 'Movie.2024.1080p' })];
+    radarr.state.history = [historyRecord({ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - minute).toISOString(),
+      data: { indexer: 'Blutopia (API)', publishedDate: new Date(start - publishedAgoMs).toISOString() } })];
+    radarr.routes.push((method, url) => {
+      if (url.pathname !== '/api/v3/release') return undefined;
+      return method === 'GET' ? { status: 200, body: releases } : { status: 200, body: {} };
+    });
     const poller = createTorrentPoller({ database, rtorrent, events, now });
     const grabs = createGrabTracker({ database, arr, events, now });
     const problems = createProblems({ database, events, now });
@@ -3168,10 +3302,10 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
         await stalls.check();
       }
     };
-    return { database, torrent, calls, requests, tick, problems };
+    return { database, torrent, calls, requests: radarr.requests, removals: radarr.state.removals, state: radarr.state, tick, problems };
   };
   const release = (title, indexer, overrides = {}) => ({ guid: `guid-${title}`, indexerId: title.length, indexer, title, approved: true, ...overrides });
-  const grabbedTitles = (requests) => requests.filter(([method, path]) => method === 'POST' && path === '/api/v3/release').map(([, , body]) => body.guid);
+  const grabbedTitles = (requests) => requests.filter(({ method, path }) => method === 'POST' && path === '/api/v3/release').map(({ body }) => body.guid);
 
   // Matching the wrong host label to an indexer name sends a grab to a tracker on a cooldown.
   await t.test('tracker hosts match indexer names by site label', () => {
@@ -3184,16 +3318,16 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   await t.test('no seeders is stalled after one hour, or three hours for a new release', async () => {
     const old = await setup({ releases: [] });
     await old.tick(60);
-    assert.equal(old.requests.some(([method]) => method === 'DELETE'), false);
+    assert.equal(old.removals.length, 0);
     await old.tick(1);
-    assert.equal(old.requests.filter(([method]) => method === 'DELETE').length, 1);
+    assert.equal(old.removals.length, 1);
     old.database.close();
 
     const fresh = await setup({ publishedAgoMs: 2 * 60 * minute, releases: [] });
     await fresh.tick(180);
-    assert.equal(fresh.requests.some(([method]) => method === 'DELETE'), false);
+    assert.equal(fresh.removals.length, 0);
     await fresh.tick(1);
-    assert.equal(fresh.requests.filter(([method]) => method === 'DELETE').length, 1);
+    assert.equal(fresh.removals.length, 1);
     fresh.database.close();
   });
 
@@ -3204,9 +3338,9 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     await run.tick(11);
     assert.deepEqual(run.calls.filter(([method]) => method === 'd.tracker_announce').length, 1);
     await run.tick(29);
-    assert.equal(run.requests.some(([method]) => method === 'DELETE'), false);
+    assert.equal(run.removals.length, 0);
     await run.tick(1);
-    assert.equal(run.requests.filter(([method]) => method === 'DELETE').length, 1);
+    assert.equal(run.removals.length, 1);
     run.database.close();
   });
 
@@ -3221,8 +3355,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     });
     run.database.prepare("INSERT INTO tracker_cooldowns VALUES ('privatehd.to', 0, 'x', 1, ?)").run(hash);
     await run.tick(61);
-    const [deleted] = run.requests.filter(([method]) => method === 'DELETE');
-    assert.equal(deleted[1], '/api/v3/queue/55?removeFromClient=false&blocklist=true&skipRedownload=true');
+    assert.deepEqual(run.removals, [{ queueId: 55, removeFromClient: false, blocklist: true, skipRedownload: true }]);
     assert.deepEqual(grabbedTitles(run.requests), ['guid-Other.Tracker']);
     assert.deepEqual(run.calls.filter(([method]) => method === 'd.erase'), [['d.erase', hash]]);
     await run.tick(120);
@@ -3270,6 +3403,19 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.deepEqual(grabbedTitles(manual.requests), []);
     assert.equal(listOpenProblems(manual.database).find((problem) => problem.kind === 'stalled').state, 'needs_you');
     manual.database.close();
+  });
+
+  // Ignoring removeFromQueue's removed count, or treating 0 as a block, turns this red.
+  await t.test('a release the live queue no longer lists is not reported as blocked and nothing is replaced', async () => {
+    const run = await setup({ releases: [release('Another', 'BeyondHD')] });
+    run.state.queue = [];
+    await run.tick(61);
+    const problem = listOpenProblems(run.database).find((item) => item.kind === 'stalled');
+    assert.equal(problem.state, 'needs_you');
+    assert.match(problem.steps.at(-1).text, /was not blocked/);
+    assert.deepEqual(run.removals, []);
+    assert.deepEqual(grabbedTitles(run.requests), []);
+    run.database.close();
   });
 });
 
@@ -3329,18 +3475,9 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
         return 0;
       },
     };
-    const radarr = {
-      request: async (path) => {
-        if (path.startsWith('/api/v3/queue?')) return { status: 200, body: { totalRecords: 0, records: [] } };
-        if (path.startsWith('/api/v3/history/since')) {
-          return { status: 200, body: [{ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - 60_000).toISOString(), data: {} }] };
-        }
-        if (path === '/api/v3/movie/7') return { status: 200, body: { path: movieFolder } };
-        return { status: 200, body: {} };
-      },
-    };
-    const sonarr = { request: async (path) => (path.startsWith('/api/v3/history') ? { status: 200, body: [] } : { status: 200, body: { totalRecords: 0, records: [] } }) };
-    const arr = { sonarr, radarr };
+    const { fake: arrFake, ...arr } = connectArr(database);
+    arrFake.radarr.state.history = [historyRecord({ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - 60_000).toISOString() })];
+    arrFake.radarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/movie/7' ? { status: 200, body: { path: movieFolder } } : undefined));
     const events = createEventHub();
     const poller = createTorrentPoller({ database, rtorrent, events, now });
     const grabs = createGrabTracker({ database, arr, events, now });
@@ -3445,7 +3582,6 @@ test('missing movies and episodes are searched when they come out and every six 
     const events = createEventHub();
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
     const now = () => clock.value;
-    const commands = [];
     const episodes = [
       { id: 1, monitored: true, hasFile: false, airDateUtc: '2026-10-08T20:00:00Z', seasonNumber: 1, episodeNumber: 1, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
       { id: 2, monitored: true, hasFile: false, airDateUtc: '2026-10-08T14:00:00Z', lastSearchTime: '2026-10-08T15:00:00Z', seasonNumber: 1, episodeNumber: 2, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
@@ -3456,16 +3592,11 @@ test('missing movies and episodes are searched when they come out and every six 
       { id: 7, title: 'Movie', monitored: true, hasFile: false, isAvailable: true, added: '2026-10-08T19:55:00Z' },
       { id: 8, title: 'Later', monitored: true, hasFile: false, isAvailable: false, added: '2026-01-01T00:00:00Z' },
     ];
-    const arr = {
-      sonarr: { request: async (path, init = {}) => {
-        if (init.method === 'POST') { commands.push(['sonarr', init.body]); return { status: 201, body: {} }; }
-        return { status: 200, body: { totalRecords: episodes.length, records: episodes } };
-      } },
-      radarr: { request: async (path, init = {}) => {
-        if (init.method === 'POST') { commands.push(['radarr', init.body]); return { status: 201, body: {} }; }
-        return { status: 200, body: movies };
-      } },
-    };
+    const { fake, ...arr } = connectArr(database);
+    fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
+      ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
+    fake.radarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/movie' ? { status: 200, body: movies } : undefined));
+    const commands = () => [...fake.sonarr.state.commands.map((c) => ['sonarr', c]), ...fake.radarr.state.commands.map((c) => ['radarr', c])];
     database.prepare(`INSERT INTO arr_queue (service, queue_id, download_id, movie_id, series_id, episode_id, title, status, tracked_status,
       tracked_state, status_messages, error_message, indexer, protocol, quality, formats, format_score, size_bytes, size_left_bytes)
       VALUES ('sonarr', 1, NULL, NULL, 1, 3, 'x', 'delay', 'ok', 'downloading', '[]', '', '', 'torrent', '', '[]', 0, 0, 0)`).run();
@@ -3476,30 +3607,30 @@ test('missing movies and episodes are searched when they come out and every six 
     const backlog = () => database.prepare('SELECT subject FROM search_backlog ORDER BY subject').all().map((entry) => entry.subject);
 
     await scheduler.check();
-    assert.deepEqual(commands, []);
+    assert.deepEqual(commands(), []);
     assert.deepEqual(backlog(), ['radarr:movie:7', 'sonarr:episode:1', 'sonarr:episode:2', 'sonarr:episode:3', 'sonarr:episode:4']);
     assert.equal(database.prepare("SELECT value FROM preferences WHERE key = 'searches.baselineAt'").get()?.value, String(clock.value));
 
     episodes.push({ id: 5, monitored: true, hasFile: false, airDateUtc: '2026-10-08T20:30:00Z', seasonNumber: 1, episodeNumber: 5, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } });
     clock.value = Date.parse('2026-10-08T20:30:00Z');
     await scheduler.check();
-    assert.deepEqual(commands, [['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }]]);
+    assert.deepEqual(commands(), [['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }]]);
     assert.equal(subjectHistory(database, { type: 'episode', service: 'sonarr', id: '5' })[0].state, 'resolved');
 
     clock.value += 2 * minute;
     await scheduler.check();
-    assert.equal(commands.length, 1);
+    assert.equal(commands().length, 1);
 
     // The owner clearing backlog rows by hand still leaves queued (3) and protected manual (4) episodes alone.
     database.prepare("DELETE FROM search_backlog WHERE subject IN ('sonarr:episode:3', 'sonarr:episode:4')").run();
     clock.value = Date.parse('2026-10-09T02:30:00Z');
     await scheduler.check();
-    assert.deepEqual(commands, [['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }], ['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }]]);
+    assert.deepEqual(commands(), [['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }], ['sonarr', { name: 'EpisodeSearch', episodeIds: [5] }]]);
 
     writeDependency(database, events, 'sonarr', 'down', 0, 'Sonarr is unreachable.');
     clock.value = Date.parse('2026-10-09T08:30:00Z');
     await scheduler.check();
-    assert.equal(commands.length, 2);
+    assert.equal(commands().length, 2);
     database.close();
   });
 });
@@ -3541,31 +3672,23 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     const clock = { value: Date.parse('2026-10-08T12:00:00Z') };
     const now = () => clock.value;
     const events = createEventHub();
-    const requests = [];
     const queue = [{
       id: 9, downloadId: hash, ...(movie ? { movieId: 7 } : { seriesId: 3, episodeId: 31 }), title: 'Release.Title',
       status: 'completed', trackedDownloadStatus: 'warning', trackedDownloadState: 'importBlocked',
       statusMessages: [{ title: 'Release.Title.mkv', messages: [message] }],
     }];
-    const service = (name) => ({
-      request: async (path, init = {}) => {
-        requests.push([name, init.method ?? 'GET', path, init.body]);
-        if (path.startsWith('/api/v3/queue?')) return { status: 200, body: { totalRecords: name === (movie ? 'radarr' : 'sonarr') ? 1 : 0, records: name === (movie ? 'radarr' : 'sonarr') ? queue : [] } };
-        if (path.startsWith('/api/v3/history/since')) return { status: 200, body: [] };
-        if (path.startsWith('/api/v3/manualimport')) return { status: 200, body: files };
-        return { status: 200, body: {} };
-      },
-    });
-    const arr = { sonarr: service('sonarr'), radarr: service('radarr') };
+    const { fake, ...arr } = connectArr(database);
+    const { state } = fake[movie ? 'radarr' : 'sonarr'];
+    state.queue = queue;
+    state.manualImport[hash] = files;
     const grabs = createGrabTracker({ database, arr, events, now });
     grabs.recordGrab({ hash, service: movie ? 'radarr' : 'sonarr', movieId: movie ? 7 : null, seriesId: movie ? null : 3, episodeIds: movie ? [] : [31, 32],
       releaseTitle: 'Release.Title', indexer: 'Blutopia', grabbedAt: clock.value, publishedAt: null, byHand });
     await grabs.reconcile();
-    requests.length = 0;
     const problems = createProblems({ database, events, now });
     const fix = createImportFix({ database, arr, problems, events, now });
-    const writes = () => requests.filter(([, method]) => method !== 'GET').map(([name, method, path, body]) => [name, method, path, body?.name]);
-    return { database, clock, fix, writes, requests, problems, queue, grabs };
+    const writes = () => [...state.removals, ...state.commands];
+    return { database, clock, fix, writes, fake, problems, queue, grabs };
   };
 
   // Touching rTorrent from the queue, importing a not-better automatic grab, or handling a replace's own import here turns this red.
@@ -3573,7 +3696,8 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     for (const message of ['Episode file already imported', 'Not an upgrade for existing episode file(s)']) {
       const run = await setup({ message });
       await run.fix.check();
-      assert.deepEqual(run.writes(), [['sonarr', 'DELETE', '/api/v3/queue/9?removeFromClient=false&blocklist=false&skipRedownload=true', undefined]]);
+      assert.deepEqual(run.fake.sonarr.state.removals, [{ queueId: 9, removeFromClient: false, blocklist: false, skipRedownload: true }]);
+      assert.deepEqual(run.fake.sonarr.state.commands, []);
       await run.fix.check();
       assert.equal(run.writes().length, 1);
       run.database.close();
@@ -3592,10 +3716,10 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
       { path: '/files/Sonarr/b.mkv', quality: { quality: { id: 3 } }, languages: [], episodes: [{ id: 32 }] },
     ] });
     await good.fix.check();
-    const command = good.requests.find(([, method, path]) => method === 'POST' && path === '/api/v3/command');
-    assert.equal(command[3].name, 'ManualImport');
-    assert.equal(command[3].importMode, 'copy');
-    assert.deepEqual(command[3].files.map((file) => file.episodeIds), [[31], [32]]);
+    const [command] = good.fake.sonarr.state.commands;
+    assert.equal(command.name, 'ManualImport');
+    assert.equal(command.importMode, 'copy');
+    assert.deepEqual(command.files.map((file) => file.episodeIds), [[31], [32]]);
     good.database.close();
 
     const stray = await setup({ message: 'Series title mismatch, automatic import is not possible.', files: [
@@ -3613,16 +3737,29 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
   await t.test('a bad release is blocked and searched again until the third release', async () => {
     const first = await setup({ message: 'No audio tracks detected', movie: true });
     await first.fix.check();
-    assert.deepEqual(first.writes(), [['radarr', 'DELETE', '/api/v3/queue/9?removeFromClient=false&blocklist=true&skipRedownload=false', undefined]]);
+    assert.deepEqual(first.writes(), [{ queueId: 9, removeFromClient: false, blocklist: true, skipRedownload: false }]);
     first.database.close();
 
     const third = await setup({ message: 'No audio tracks detected', movie: true });
     third.problems.recordReleaseAttempt({ type: 'movie', service: 'radarr', id: '7' }, 'one');
     third.problems.recordReleaseAttempt({ type: 'movie', service: 'radarr', id: '7' }, 'two');
     await third.fix.check();
-    assert.deepEqual(third.writes(), [['radarr', 'DELETE', '/api/v3/queue/9?removeFromClient=false&blocklist=true&skipRedownload=true', undefined]]);
+    assert.deepEqual(third.writes(), [{ queueId: 9, removeFromClient: false, blocklist: true, skipRedownload: true }]);
     assert.equal(listOpenProblems(third.database)[0].state, 'needs_you');
     third.database.close();
+  });
+
+  // Ignoring removeFromQueue's removed count, or treating 0 as a block, turns this red.
+  await t.test('a bad release the live queue no longer lists is flagged, not reported as blocked', async () => {
+    const run = await setup({ message: 'No audio tracks detected', movie: true });
+    run.fake.radarr.state.queue = [];
+    await run.fix.check();
+    const problem = listOpenProblems(run.database).find((item) => item.kind === 'import_fix_failed');
+    assert.equal(problem.state, 'needs_you');
+    assert.match(problem.steps.at(-1).text, /was not blocked/);
+    assert.deepEqual(run.fake.radarr.state.removals, []);
+    assert.deepEqual(run.fake.radarr.state.commands, []);
+    run.database.close();
   });
 
   // Retrying sooner than the spacing, or never flagging, turns this red.
@@ -4223,6 +4360,7 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
     const service = parsed.port === '65051' ? 'sonarr' : 'radarr';
     const json = (body) => new Response(JSON.stringify(body), { status: 200 });
     const id = parsed.searchParams.get('downloadId');
+    if (parsed.pathname === '/api/v3/config/mediamanagement') return json({ copyUsingHardlinks: true });
     if (init.method === 'POST' && parsed.pathname === '/api/v3/command') {
       commands.push({ service, body: JSON.parse(init.body) });
       return json({ id: 1 });
@@ -4257,29 +4395,33 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   const blocked = (service, messages) => ({ service, status: 'completed', trackedDownloadStatus: 'warning', trackedDownloadState: 'importBlocked', statusMessages: [{ title: 'file.mkv', messages }] });
   const episodeFile = (path, rejections, episodes = [{ id: 50 }]) => ({ path, folderName: 'Show.S01E02', quality: { quality: { id: 4 } }, languages: [{ id: 1 }], releaseGroup: 'GRP', episodes, rejections: rejections.map((reason) => ({ reason, type: 'permanent' })) });
 
-  const episode = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 }, 'HASH-EPISODE');
-  const dangerous = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 51 }, 'HASH-DANGEROUS');
-  const movie = await start({ service: 'radarr', kind: 'movie', movieId: 9 }, 'HASH-MOVIE');
-  const vanished = await start({ service: 'radarr', kind: 'movie', movieId: 10 }, 'HASH-VANISHED');
+  const hashEpisode = 'AB'.repeat(20);
+  const hashDangerous = 'CD'.repeat(20);
+  const hashMovie = 'EF'.repeat(20);
+  const hashVanished = '12'.repeat(20);
+  const episode = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 }, hashEpisode);
+  const dangerous = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 51 }, hashDangerous);
+  const movie = await start({ service: 'radarr', kind: 'movie', movieId: 9 }, hashMovie);
+  const vanished = await start({ service: 'radarr', kind: 'movie', movieId: 10 }, hashVanished);
 
-  queue.e = { ...blocked('sonarr', []), downloadId: 'hash-episode', trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
-  queue.d = { ...blocked('sonarr', ['Dangerous file extension .exe']), downloadId: 'HASH-DANGEROUS' };
-  queue.m = { ...blocked('radarr', [notUpgrade.radarr]), downloadId: 'HASH-MOVIE' };
-  queue.v = { ...blocked('radarr', []), downloadId: 'HASH-VANISHED', trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
-  manual['HASH-MOVIE'] = [{ path: '/dl/Movie.mkv', quality: { quality: { id: 7 } }, languages: [], rejections: [{ reason: notUpgrade.radarr }] }];
+  queue.e = { ...blocked('sonarr', []), id: 1, downloadId: hashEpisode.toLowerCase(), trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
+  queue.d = { ...blocked('sonarr', ['Dangerous file extension .exe']), id: 2, downloadId: hashDangerous };
+  queue.m = { ...blocked('radarr', [notUpgrade.radarr]), id: 3, downloadId: hashMovie };
+  queue.v = { ...blocked('radarr', []), id: 4, downloadId: hashVanished, trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
+  manual[hashMovie] = [{ path: '/dl/Movie.mkv', quality: { quality: { id: 7 } }, languages: [], rejections: [{ reason: notUpgrade.radarr }] }];
   await replaces.run();
   assert.equal(commands.length, 1);
   assert.deepEqual(commands[0], {
     service: 'radarr',
-    body: { name: 'ManualImport', importMode: 'auto', files: [{ path: '/dl/Movie.mkv', quality: { quality: { id: 7 } }, languages: [], downloadId: 'HASH-MOVIE', movieId: 9 }] },
+    body: { name: 'ManualImport', importMode: 'copy', files: [{ path: '/dl/Movie.mkv', quality: { quality: { id: 7 } }, languages: [], downloadId: hashMovie, movieId: 9 }] },
   });
   assert.equal(grabs.read(episode).state, 'sent');
   assert.equal(grabs.read(dangerous).state, 'failed');
   assert.equal(grabs.read(dangerous).failure, 'Import blocked: Dangerous file extension .exe');
   assert.equal(grabs.read(movie).state, 'importing');
 
-  queue.e = { ...blocked('sonarr', [notUpgrade.sonarr]), downloadId: 'hash-episode' };
-  manual['HASH-EPISODE'] = [
+  queue.e = { ...blocked('sonarr', [notUpgrade.sonarr]), id: 1, downloadId: hashEpisode.toLowerCase() };
+  manual[hashEpisode] = [
     episodeFile('/dl/Show.S01E02/ep.mkv', [notUpgrade.sonarr]),
     episodeFile('/dl/Show.S01E02/sample.mkv', ['Sample']),
     episodeFile('/dl/Show.S01E02/other.mkv', [], []),
@@ -4288,7 +4430,7 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   await replaces.run();
   assert.equal(commands.length, 2, 'the movie already forced is not forced again');
   assert.equal(commands[1].service, 'sonarr');
-  assert.equal(commands[1].body.importMode, 'auto');
+  assert.equal(commands[1].body.importMode, 'copy');
   assert.deepEqual(commands[1].body.files.map((file) => [file.path, file.seriesId, file.episodeIds]), [
     ['/dl/Show.S01E02/ep.mkv', 5, [50]],
     ['/dl/Show.S01E02/other.mkv', 5, [50]],
@@ -4296,7 +4438,7 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   assert.equal(grabs.read(vanished).state, 'sent', 'history can name a download before the queue shows it');
 
   delete queue.e;
-  history['HASH-EPISODE'].push({ eventType: 'downloadFolderImported' });
+  history[hashEpisode].push({ eventType: 'downloadFolderImported' });
   clock += 31 * 60_000;
   await replaces.run();
   assert.equal(grabs.read(vanished).state, 'failed');
@@ -4388,7 +4530,7 @@ test('manual downloads are protected with tags, release profiles and a grab veto
     if (path === '/api/v3/movie' && method === 'GET') return json(Object.entries(fakeState.records).filter(([key]) => key.startsWith('/api/v3/movie/')).map(([, value]) => value));
     if (path === '/api/v3/queue') return json({ records: fakeState.queue });
     if (path.startsWith('/api/v3/queue/') && method === 'DELETE') {
-      fakeState.deleted.push(`${path}${parsed.search}`);
+      fakeState.deleted.push({ id: Number(path.split('/')[4]), removeFromClient: parsed.searchParams.get('removeFromClient'), blocklist: parsed.searchParams.get('blocklist') });
       return json({});
     }
     if (path in fakeState.records) {
@@ -4425,14 +4567,14 @@ test('manual downloads are protected with tags, release profiles and a grab veto
   await protection.reconcile();
   assert.equal(state.sonarr.profiles.length, 1, 'a profile removed by hand comes back');
 
-  state.sonarr.queue = [{ id: 31, downloadId: 'ABCDEF' }];
-  const grab = { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 49 }, { id: 50 }], downloadId: 'abcdef', release: { releaseTitle: 'Show.S01.1080p' } };
+  state.sonarr.queue = [{ id: 31, downloadId: 'AB'.repeat(20) }];
+  const grab = { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 49 }, { id: 50 }], downloadId: 'ab'.repeat(20), release: { releaseTitle: 'Show.S01.1080p' } };
   assert.equal(await protection.veto('sonarr', { ...grab, episodes: [{ id: 49 }] }), 'ignored');
   ownTitles = ['show.s01.1080p'];
   assert.equal(await protection.veto('sonarr', grab), 'allowed');
   ownTitles = [];
   assert.equal(await protection.veto('sonarr', grab), 'vetoed');
-  assert.deepEqual(state.sonarr.deleted, ['/api/v3/queue/31?removeFromClient=true&blocklist=true']);
+  assert.deepEqual(state.sonarr.deleted, [{ id: 31, removeFromClient: 'true', blocklist: 'true' }]);
   assert.equal(await protection.veto('sonarr', { eventType: 'Test' }), 'ignored');
 
   // Grabs reach the veto through the one webhook receiver the live-downloads work owns.
@@ -4487,6 +4629,36 @@ test('manual downloads are protected with tags, release profiles and a grab veto
   assert.deepEqual(state.radarr.records['/api/v3/movie/9'].tags, []);
   assert.deepEqual(state.sonarr.profiles, []);
   assert.deepEqual(state.sonarr.records['/api/v3/series/5'].tags, [7]);
+});
+
+// Reading only the first queue page, or stopping the walk before totalRecords, turns this red.
+test('the veto and the replace find a queue item past the first 500', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createProtection } = await import(protectionModuleUrl);
+  const { createReplaces } = await import(replaceModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-long-queue-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const { fake, ...services } = connectArr(database);
+  const fillers = () => Array.from({ length: 500 }, () => queueItem());
+
+  database.prepare("INSERT INTO protected_items (service, item_id, series_id, season_number, episode_number, created_at) VALUES ('sonarr', 50, 5, 1, 2, 0)").run();
+  fake.sonarr.state.queue = [...fillers(), queueItem({ downloadId: 'AB'.repeat(20), seriesId: 5, episodeId: 50 })];
+  const grab = { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 50 }], downloadId: 'ab'.repeat(20), release: { releaseTitle: 'Show.S01E02.1080p' } };
+  assert.equal(await createProtection(database, services).veto('sonarr', grab), 'vetoed');
+  assert.deepEqual(fake.sonarr.state.erasedFromClient, ['AB'.repeat(20)]);
+
+  fake.radarr.state.queue = [...fillers(), queueItem({ downloadId: 'CD'.repeat(20), movieId: 9, trackedDownloadState: 'downloading' })];
+  const now = () => 10 * 60 * 60_000;
+  const replaces = createReplaces(services, {}, { now });
+  const target = { service: 'radarr', kind: 'movie', movieId: 9 };
+  assert.deepEqual(await replaces.step({
+    id: 1, service: 'radarr', target, searchedFor: target, guid: 'g', releaseTitle: 'x', intent: 'replace', state: 'sent', failure: null,
+    downloadId: 'cd'.repeat(20), createdAt: 0, updatedAt: now() - 60 * 60_000,
+  }), { kind: 'waiting' });
 });
 
 test('the downloads screen joins torrents, queue items and problems into rows', async (t) => {
@@ -4829,15 +5001,11 @@ test('flagged lists what automation gave up on with the right next step, and wan
       { id: 9, title: 'Heat', year: 1995, added },
     ] },
   };
-  const sent = [];
-  const fake = (service) => ({
-    request: async (path, init = {}) => {
-      if (init.method === undefined) return path in bodies ? { status: 200, body: bodies[path] } : { status: 404, body: undefined };
-      sent.push({ service, method: init.method, path, body: init.body });
-      return { status: 201, body: {} };
-    },
-  });
-  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const { fake, ...arr } = connectArr(database);
+  for (const name of ['sonarr', 'radarr']) {
+    fake[name].routes.push((method, url) => (method === 'GET' && url.pathname + url.search in bodies ? { status: 200, body: bodies[url.pathname + url.search] } : undefined));
+  }
+  const commandCount = () => fake.sonarr.state.commands.length + fake.radarr.state.commands.length;
   const events = createEventHub();
   const problems = createProblems({ database, events, now: () => clock.value });
   const grabs = createGrabTracker({ database, arr, events });
@@ -4914,12 +5082,12 @@ test('flagged lists what automation gave up on with the right next step, and wan
     method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: JSON.stringify(body),
   });
   assert.equal((await post({ service: 'sonarr', type: 'episode', ids: [50] })).status, 204);
-  assert.deepEqual(sent, [{ service: 'sonarr', method: 'POST', path: '/api/v3/command', body: { name: 'EpisodeSearch', episodeIds: [50] } }]);
+  assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [50] }]);
   assert.equal(database.prepare('SELECT searched_at FROM search_log WHERE subject = ?').get('sonarr:episode:50').searched_at, clock.value);
   for (const body of [{ service: 'radarr', type: 'episode', ids: [50] }, { service: 'sonarr', type: 'episode', ids: [] }, { service: 'sonarr', type: 'episode', ids: [50], extra: 1 }]) {
     assert.equal((await post(body)).status, 400);
   }
-  assert.equal(sent.length, 1);
+  assert.equal(commandCount(), 1);
 });
 
 test('history merges Sonarr, Radarr and media-manager-2 events newest first with their details', async (t) => {
@@ -4935,7 +5103,7 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   t.after(() => database.close());
   const hash = 'AB'.repeat(20);
   const andor = { series: { title: 'Andor' }, episode: { seasonNumber: 2, episodeNumber: 9 }, episodeId: 31, seriesId: 3 };
-  const grabbed = {
+  const grabbed = historyRecord({
     ...andor,
     id: 11,
     eventType: 'grabbed',
@@ -4946,18 +5114,25 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
     customFormats: [{ name: 'DV' }, { name: 'HDR10' }],
     customFormatScore: 1250,
     data: { indexer: 'Blutopia', releaseGroup: 'GRP', releaseSource: 'Rss', ageHours: '5.4', age: '0' },
-  };
-  const imported = {
+  });
+  const imported = historyRecord({
     ...andor,
     id: 12,
     eventType: 'downloadFolderImported',
     date: '2026-10-10T08:00:00Z',
     sourceTitle: 'Andor.S02E09.2160p.WEB-DL-GRP',
     data: { importedPath: '/tv/Andor/Season 2/Andor S02E09.mkv' },
+  });
+  // The same grab as Sonarr's history read hands it to normalizeArrEvent.
+  const parsedGrab = {
+    id: 11, eventType: 'grabbed', date: '2026-10-10T10:00:00Z', downloadId: hash, movieId: null, seriesId: 3, episodeId: 31,
+    sourceTitle: 'Andor.S02E09.2160p.WEB-DL-GRP', quality: 'WEBDL-2160p', formats: ['DV', 'HDR10'], formatScore: 1250,
+    movie: null, series: { title: 'Andor' }, episode: { seasonNumber: 2, episodeNumber: 9 },
+    data: { indexer: 'Blutopia', releaseGroup: 'GRP', releaseSource: 'Rss', ageHours: '5.4', age: '0' },
   };
 
   // Dropping a data field, the "picked by you" mark or the episode code from the words turns this red.
-  assert.deepEqual(normalizeArrEvent('sonarr', grabbed, (id) => id === hash), {
+  assert.deepEqual(normalizeArrEvent('sonarr', parsedGrab, (id) => id === hash), {
     id: 'sonarr:11',
     at: Date.parse('2026-10-10T10:00:00Z'),
     service: 'sonarr',
@@ -4985,34 +5160,27 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
     markFailed: { service: 'sonarr', historyId: 11, movieId: null, episodeIds: [31], releaseTitle: 'Andor.S02E09.2160p.WEB-DL-GRP' },
   });
   const deleted = normalizeArrEvent('radarr', {
-    id: 21, eventType: 'movieFileDeleted', date: '2026-10-09T08:00:00Z', sourceTitle: 'Dune.2021.1080p', movieId: 7,
-    movie: { title: 'Dune', year: 2021 }, quality: { quality: { name: 'Bluray-1080p' } }, data: { reason: 'Upgrade' },
+    id: 21, eventType: 'movieFileDeleted', date: '2026-10-09T08:00:00Z', downloadId: null, movieId: 7, seriesId: null, episodeId: null,
+    sourceTitle: 'Dune.2021.1080p', quality: 'Bluray-1080p', formats: [], formatScore: null,
+    movie: { title: 'Dune', year: 2021 }, series: null, episode: null, data: { reason: 'Upgrade' },
   }, () => true);
   // Offering Mark as failed on anything but a grab, or losing the deletion reason, turns this red.
   assert.deepEqual(
     [deleted.title, deleted.event, deleted.detail, deleted.byHand, deleted.markFailed, deleted.subject],
     ['Dune (2021)', 'File deleted', 'Upgrade', false, null, { type: 'movie', service: 'radarr', id: '7' }],
   );
-  assert.equal(normalizeArrEvent('sonarr', { ...grabbed, eventType: 'unknown' }, () => false), null);
+  assert.equal(normalizeArrEvent('sonarr', { ...parsedGrab, eventType: 'unknown' }, () => false), null);
 
   const clock = { value: Date.parse('2026-10-10T09:00:00Z') };
   const problems = createProblems({ database, events: createEventHub(), now: () => clock.value });
   problems.open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, summary: 'Stalled at 40%', hash });
   clock.value = Date.parse('2026-10-10T07:00:00Z');
   problems.open({ kind: 'missed_search', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Nothing found' });
-  const requests = [];
-  let sonarrRecords = [grabbed, imported];
-  const arr = {
-    sonarr: {
-      request: async (path) => {
-        requests.push(path);
-        if (path.startsWith('/api/v3/history?')) return { status: 200, body: { records: sonarrRecords } };
-        if (path === '/api/v3/episode?seriesId=3') return { status: 200, body: [{ id: 31 }] };
-        return { status: 404, body: undefined };
-      },
-    },
-    radarr: { request: async () => { throw new Error('Radarr is not configured.'); } },
-  };
+  const { fake, ...arr } = connectArr(database, { sonarr: {} });
+  const { requests } = fake.sonarr;
+  fake.sonarr.state.history = [grabbed, imported];
+  fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/episode' && url.searchParams.get('seriesId') === '3'
+    ? { status: 200, body: [{ id: 31 }] } : undefined));
   const grabs = createGrabTracker({ database, arr, events: createEventHub() });
   grabs.recordGrab({ hash, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [31], releaseTitle: 'Andor.S02', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false });
   const history = createHistory({ database, arr, labels: { subject: async (subject) => `label ${subject.id}` } });
@@ -5029,23 +5197,24 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   assert.deepEqual((await history.list({ filter: 'fixes', service: 'all', page: 1 })).events.map((event) => event.id), ['mm2:1', 'mm2:2']);
   // Not forwarding the series id, or keeping problems on other titles in a title's history, turns this red.
   const series = await history.list({ filter: 'all', service: 'sonarr', page: 1, seriesId: 3 });
-  assert.match(requests.find((path) => path.startsWith('/api/v3/history?') && path.includes('seriesIds=3')) ?? '', /includeSeries=true&includeEpisode=true/);
+  assert.equal(series.events[0].title, 'Andor S02E09');
   assert.deepEqual(series.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
 
   // A full Sonarr page of 100 grabs, one a minute from 10:00 back to 08:21, leaves the 07:00 step for a later page.
-  sonarrRecords = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
+  const fullPage = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
+  fake.sonarr.state.history = fullPage;
   const full = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
   // Reading steps from the start of time instead of from the oldest record on a full Sonarr page turns this red.
   assert.deepEqual(full.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:1']);
   assert.equal(full.hasMore, true);
   // Page 2 is Sonarr's last, with one grab at 08:10; the 07:00 step is older than everything on page 1.
-  sonarrRecords = [{ ...grabbed, id: 300, date: '2026-10-10T08:10:00Z' }];
+  fake.sonarr.state.history = [...fullPage, { ...grabbed, id: 300, date: '2026-10-10T08:10:00Z' }];
   const fullOldest = Math.min(...full.events.map((event) => event.at));
   const afterFull = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: fullOldest });
   // Paging steps by offset on Sonarr's last page, instead of from the oldest event already shown, turns this red.
   assert.deepEqual(afterFull.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:2']);
   assert.equal(afterFull.hasMore, false);
-  sonarrRecords = [grabbed, imported];
+  fake.sonarr.state.history = [grabbed, imported];
 
   const missed = problems.open({ kind: 'missed_search', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Nothing found' });
   for (let index = 0; index < 100; index += 1) {
@@ -5063,23 +5232,23 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
     clock.value = Date.parse('2026-10-10T09:30:00Z') + index * 1_000;
     problems.step(missed.id, 'fix', `Newer step ${index}`);
   }
-  sonarrRecords = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
+  fake.sonarr.state.history = fullPage;
   const newer = (events) => events.filter((event) => event.detail.startsWith('Newer step ')).map((event) => event.detail);
   const crowded = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
   // Returning every step newer than the oldest Sonarr record on one page, instead of the newest 100, turns this red.
   assert.deepEqual([newer(crowded.events), crowded.hasMore], [Array.from({ length: 100 }, (_, index) => `Newer step ${149 - index}`), true]);
-  sonarrRecords = [];
+  fake.sonarr.state.history = [];
   const crowdedOldestStep = Math.min(...crowded.events.filter((event) => event.source === 'media-manager-2').map((event) => event.at));
   const afterCrowded = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: crowdedOldestStep });
   // Ignoring before on page 2, or cutting the newest steps instead of the oldest, turns this red.
   assert.deepEqual(newer(afterCrowded.events), Array.from({ length: 51 }, (_, index) => `Newer step ${50 - index}`));
   // A full Sonarr page whose every grab is newer than every step.
-  sonarrRecords = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 400 + index, date: new Date(Date.parse('2026-10-11T10:00:00Z') - index * 60_000).toISOString() }));
+  fake.sonarr.state.history = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 400 + index, date: new Date(Date.parse('2026-10-11T10:00:00Z') - index * 60_000).toISOString() }));
   const requestsBeforeFixes = requests.length;
   const fixesPastFull = await history.list({ filter: 'fixes', service: 'all', page: 1 });
   // Reading Sonarr pages under the Automatic fixes filter, and so starting steps at its oldest record, turns this red.
   assert.deepEqual([fixesPastFull.events[0]?.detail, fixesPastFull.events.length, requests.length], ['Newer step 149', 100, requestsBeforeFixes]);
-  sonarrRecords = [grabbed, imported];
+  fake.sonarr.state.history = [grabbed, imported];
 
   const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, history }) });
   const { session } = await signIn(app);
@@ -5114,18 +5283,19 @@ test('marking a grab failed keeps the file and the torrent, blocklists and searc
       radarr: [{ id: 5, date: '2026-10-10T09:00:00Z', sourceTitle: 'Dune.2021.1080p', movie: { title: 'Dune', year: 2021 }, message: 'Release was not wanted' }],
     },
   };
-  const calls = [];
-  const fake = (name) => ({
-    request: async (path, init = {}) => {
-      calls.push(`${name} ${init.method ?? 'GET'} ${path}`);
-      if (path === '/api/v3/downloadclient') return { status: 200, body: [{ enable: true, removeFailedDownloads: state.removeFailed }] };
-      if (path === '/api/v3/config/downloadclient') return { status: 200, body: { autoRedownloadFailed: state.autoRedownload } };
-      if (path.startsWith('/api/v3/blocklist?')) return { status: 200, body: { records: state.blocklist[name] } };
-      if (path === '/api/v3/command' && state.refuseSearch) return { status: 500, body: undefined };
-      return { status: 200, body: undefined };
-    },
-  });
-  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const { fake, ...arr } = connectArr(database);
+  for (const name of ['sonarr', 'radarr']) {
+    fake[name].state.blocklist = state.blocklist[name];
+    fake[name].routes.push((method, url) => {
+      if (method === 'GET' && url.pathname === '/api/v3/downloadclient') return { status: 200, body: [{ enable: true, removeFailedDownloads: state.removeFailed }] };
+      if (method === 'GET' && url.pathname === '/api/v3/config/downloadclient') return { status: 200, body: { autoRedownloadFailed: state.autoRedownload } };
+      if (method === 'POST' && url.pathname === '/api/v3/command' && state.refuseSearch) return { status: 500, body: {} };
+      return undefined;
+    });
+  }
+  // Sonarr only marks a grab failed when its history holds that record.
+  fake.sonarr.state.history = [7, 8, 9, 10].map((id) => historyRecord({ id }));
+  const calls = () => fake.sonarr.requests.map((r) => `${r.method} ${r.path}`);
   const blocklist = createBlocklist({ database, arr, isManualDownload: (subject) => subject.type === 'episode' && subject.id === '40', now: () => 5_000 });
   const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, blocklist }) });
   const { session } = await signIn(app);
@@ -5138,28 +5308,31 @@ test('marking a grab failed keeps the file and the torrent, blocklists and searc
   let response = await mark(7, grab);
   assert.equal(response.status, 409);
   assert.deepEqual(await response.json(), { error: 'remove_failed_on' });
-  assert.deepEqual(calls, ['sonarr GET /api/v3/downloadclient']);
+  assert.deepEqual(calls(), ['GET /api/v3/downloadclient']);
+  assert.deepEqual(fake.sonarr.state.failed, []);
 
   // Touching the library file or the queue, or skipping the search media-manager-2 owes, turns this red.
   state.removeFailed = false;
-  calls.length = 0;
+  fake.sonarr.requests.length = 0;
   response = await mark(7, grab);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { searched: 'media-manager-2' });
-  assert.deepEqual(calls, [
-    'sonarr GET /api/v3/downloadclient',
-    'sonarr POST /api/v3/history/failed/7',
-    'sonarr GET /api/v3/config/downloadclient',
-    'sonarr POST /api/v3/command',
+  assert.deepEqual(fake.sonarr.state.failed, [7]);
+  assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [31] }]);
+  assert.deepEqual(calls(), [
+    'GET /api/v3/downloadclient',
+    'POST /api/v3/history/failed/7',
+    'GET /api/v3/config/downloadclient',
+    'POST /api/v3/command',
   ]);
-  assert.equal(calls.some((call) => /episodefile|moviefile|queue/.test(call)), false);
+  assert.equal(calls().some((call) => /episodefile|moviefile|queue/.test(call)), false);
   assert.equal(database.prepare('SELECT origin FROM blocklist_marks WHERE release_title = ?').get(grab.releaseTitle).origin, 'history');
 
   // Searching on top of the service's own automatic redownload, or searching for a manual download, turns this red.
   state.autoRedownload = true;
-  calls.length = 0;
+  fake.sonarr.requests.length = 0;
   assert.deepEqual(await (await mark(8, grab)).json(), { searched: 'service' });
-  assert.equal(calls.includes('sonarr POST /api/v3/command'), false);
+  assert.equal(calls().includes('POST /api/v3/command'), false);
   state.autoRedownload = false;
   assert.deepEqual(await (await mark(9, { ...grab, episodeIds: [40], releaseTitle: 'Protected.Release' })).json(), { searched: 'manual_download' });
   // Reporting a refused search as a failed mark, when the grab is already marked failed, turns this red.
@@ -5186,15 +5359,23 @@ test('marking a grab failed keeps the file and the torrent, blocklists and searc
   assert.equal(listed.hasMore, false);
 
   // Unblocking through anything but the service's blocklist delete turns this red.
-  calls.length = 0;
+  fake.sonarr.requests.length = 0;
+  const commandsBefore = fake.sonarr.state.commands.length;
   const unblocked = await app.request('/api/blocklist/sonarr/3', { method: 'DELETE', headers: { ...jsonHeaders(), Cookie: session } });
   assert.equal(unblocked.status, 204);
-  assert.deepEqual(calls, ['sonarr DELETE /api/v3/blocklist/3']);
+  assert.deepEqual(calls(), ['DELETE /api/v3/blocklist/3']);
+  assert.equal(fake.sonarr.state.commands.length, commandsBefore);
 });
 
 test('the library reads Sonarr and Radarr, orders titles newest first and forwards monitoring changes', async (t) => {
   const { createLibrary, createLibraryRoutes, newestFirst, imageUrl } = await import(libraryModuleUrl);
-  const calls = [];
+  const { openDatabase } = await import(databaseModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-library-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
   const window = 'start=2026-10-01T00%3A00%3A00.000Z&end=2026-10-08T00%3A00%3A00.000Z&unmonitored=false';
   const bodies = {
     sonarr: {
@@ -5237,15 +5418,17 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
       '/api/v3/qualityprofile': [],
     },
   };
-  const fake = (name) => ({
-    configured: () => true,
-    request: async (path, init = {}) => {
-      calls.push({ name, method: init.method ?? 'GET', path, body: init.body });
-      if (init.method !== undefined) return { status: 200, body: undefined };
-      return path in bodies[name] ? { status: 200, body: bodies[name][path] } : { status: 404, body: undefined };
-    },
-  });
-  const library = createLibrary({ sonarr: fake('sonarr'), radarr: fake('radarr') });
+  const { fake, ...services } = connectArr(database);
+  for (const name of ['sonarr', 'radarr']) {
+    fake[name].routes.push((method, url) => {
+      const key = url.pathname + url.search;
+      if (method === 'GET') return key in bodies[name] ? { status: 200, body: bodies[name][key] } : undefined;
+      // Commands fall through to the fake's own handler, which records them.
+      return (method === 'PUT' || method === 'POST') && url.pathname !== '/api/v3/command' ? { status: 200, body: {} } : undefined;
+    });
+  }
+  const calls = () => ['sonarr', 'radarr'].flatMap((name) => fake[name].requests.map(({ method, path, body }) => ({ name, method, path, body })));
+  const library = createLibrary(services);
   const routes = createLibraryRoutes(library);
   const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -5280,12 +5463,12 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
 
   await t.test('monitor forwards each change to the right write and the routes reject bad bodies', async () => {
     // Flipping a different season, sending the wrong endpoint, or loosening the body checks turns this red.
-    calls.length = 0;
+    for (const name of ['sonarr', 'radarr']) fake[name].requests.length = 0;
     await library.monitor({ service: 'sonarr', kind: 'season', seriesId: 3, seasonNumber: 2, monitored: false });
     await library.monitor({ service: 'sonarr', kind: 'episodes', episodeIds: [31, 32], monitored: true });
     await library.monitor({ service: 'sonarr', kind: 'series', seriesId: 3, monitored: false });
     await library.monitor({ service: 'radarr', kind: 'movie', movieId: 5, monitored: true });
-    const writes = calls.filter((call) => call.method !== 'GET');
+    const writes = calls().filter((call) => call.method !== 'GET');
     assert.deepEqual(writes.map((call) => `${call.name} ${call.method} ${call.path}`), [
       'sonarr PUT /api/v3/series/3', 'sonarr PUT /api/v3/episode/monitor', 'sonarr PUT /api/v3/series/editor', 'radarr PUT /api/v3/movie/editor',
     ]);
