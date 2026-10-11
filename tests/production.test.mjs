@@ -3017,6 +3017,15 @@ test('queue actions grab delayed releases and remove items without touching rTor
     // Recording a blocklist mark for a kept release, or none for a blocklisted one, turns this red.
     assert.equal(downloadMarks() > 0, release !== 'keep');
   }
+  // Mapping a 404 on the queueId removal to ok with removed 0 turns this red.
+  fake.sonarr.state.queue.push({ ...delayed });
+  await tracker.refresh('sonarr');
+  fake.sonarr.state.queue = [];
+  const marksBefore = downloadMarks();
+  const gone = await post('/api/queue/sonarr/-51234/remove', { release: 'blocklist' });
+  assert.equal(gone.status, 502);
+  assert.deepEqual(await gone.json(), { error: 'service_refused' });
+  assert.equal(downloadMarks(), marksBefore);
   assert.equal((await post('/api/queue/radarr/8/remove', { release: 'keep' })).status, 502);
   assert.deepEqual(fake.sonarr.state.removals, [
     { queueId: -51234, removeFromClient: false, blocklist: false, skipRedownload: true },

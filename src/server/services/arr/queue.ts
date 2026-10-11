@@ -147,7 +147,6 @@ export const createQueue = ({ service, label, send }: { service: Service; label:
     if ('downloadId' in target) return removeMatching(target.downloadId, query);
     const answer = await deleteItem(target.queueId, query);
     if (answer.kind === 'ok') return { kind: 'ok', value: { removed: 1 } };
-    if (answer.kind === 'not_found') return { kind: 'ok', value: { removed: 0 } };
     return answer;
   };
 
