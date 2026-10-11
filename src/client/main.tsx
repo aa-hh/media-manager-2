@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
 import { Home } from './Home';
+import { DownloadsScreen, LiveBar } from './downloads/Downloads';
+import { useDownloads } from './downloads/useDownloads';
 import './globals.css';
 
 type SessionState =
@@ -204,7 +206,7 @@ function App() {
   }
 
   return (
-    <Home
+    <SignedIn
       headingRef={headingRef}
       signOutLabel={session.kind === 'signing-out'
         ? 'Signing out…'
@@ -227,6 +229,29 @@ function App() {
       onSignOut={() => void signOut(session.expiresAt)}
       onUnauthenticated={recheckSession}
     />
+  );
+}
+
+// Search and the title view come from Home; the Downloads screen fills Home while the search box is empty.
+function SignedIn(props: ComponentProps<typeof Home>) {
+  const { state, reload } = useDownloads(props.onUnauthenticated);
+  const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
+  return (
+    <div className="pb-8">
+      <Home
+        {...props}
+        downloads={<DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />}
+        renderBar={(showDownloads) => (
+          <LiveBar
+            state={state}
+            onOpen={() => {
+              showDownloads();
+              window.requestAnimationFrame(() => downloadsHeadingRef.current?.focus());
+            }}
+          />
+        )}
+      />
+    </div>
   );
 }
 

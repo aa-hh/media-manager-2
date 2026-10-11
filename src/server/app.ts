@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { extname, isAbsolute } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { deleteCookie, setCookie } from 'hono/cookie';
@@ -29,6 +30,11 @@ export type CreateAppOptions = {
   grabs?: Grabs;
   owned?: Owned;
   protection?: Protection;
+  api?: Hono;
+  webhooks?: {
+    secret(): string | undefined;
+    receive(service: 'sonarr' | 'radarr', payload: unknown): 'ok' | 'ignored' | 'invalid';
+  };
 };
 
 type AppEnvironment = {
@@ -59,6 +65,19 @@ const readCookie = (header: string | undefined, name: string): CookieRead => {
   if (values.length !== 1) return { kind: 'duplicate' };
   if (!TOKEN_PATTERN.test(values[0])) return { kind: 'invalid' };
   return { kind: 'value', value: values[0] };
+};
+
+const WEBHOOK_BODY_LIMIT = 512 * 1024;
+
+// Sonarr and Radarr send their webhook username and password as Basic auth; only the password is checked.
+const webhookPasswordMatches = (header: string | undefined, secret: string) => {
+  const match = /^Basic ([A-Za-z0-9+/=]+)$/.exec(header ?? '');
+  if (match === null) return false;
+  const decoded = Buffer.from(match[1], 'base64').toString('utf8');
+  const separator = decoded.indexOf(':');
+  if (separator === -1) return false;
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(decoded.slice(separator + 1)), digest(secret));
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
@@ -133,6 +152,12 @@ export const createApp = (options: CreateAppOptions) => {
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
   });
 
+  // A manual import lists every file of a season pack, so it gets more room than the other private writes.
+  const importRequestLimit = bodyLimit({
+    maxSize: 64 * 1_024,
+    onError: (context) => context.json({ error: 'request_too_large' }, 413),
+  });
+
   const requireBrowserPost: MiddlewareHandler<AppEnvironment> = async (context, next) => {
     const origin = context.req.header('Origin');
     const contentType = context.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
@@ -146,7 +171,9 @@ export const createApp = (options: CreateAppOptions) => {
       || contentType !== 'application/json'
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
-    return (context.req.path === '/api/grabs' ? grabRequestLimit : requestLimit)(context, next);
+    if (context.req.path === '/api/grabs') return grabRequestLimit(context, next);
+    if (context.req.path.startsWith('/api/imports/')) return importRequestLimit(context, next);
+    return requestLimit(context, next);
   };
 
   // Sonarr and Radarr call these with a shared token instead of a browser session.
@@ -253,6 +280,29 @@ export const createApp = (options: CreateAppOptions) => {
   app.all('/auth', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/auth/*', (context) => context.json({ error: 'not_found' }, 404));
 
+  const webhookLimit = bodyLimit({
+    maxSize: WEBHOOK_BODY_LIMIT,
+    onError: (context) => context.json({ error: 'request_too_large' }, 413),
+  });
+  app.post('/webhooks/:service{sonarr|radarr}', webhookLimit, async (context) => {
+    const secret = options.webhooks?.secret();
+    if (options.webhooks === undefined || secret === undefined) return context.json({ error: 'not_configured' }, 503);
+    if (!webhookPasswordMatches(context.req.header('Authorization'), secret)) {
+      context.header('WWW-Authenticate', 'Basic realm="media-manager-2 webhooks"');
+      return context.json({ error: 'unauthenticated' }, 401);
+    }
+    let payload: unknown;
+    try {
+      payload = await context.req.json();
+    } catch {
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    const result = options.webhooks.receive(context.req.param('service') as 'sonarr' | 'radarr', payload);
+    if (result === 'invalid') return context.json({ error: 'invalid_request' }, 400);
+    return context.body(null, 204);
+  });
+  app.all('/webhooks/*', (context) => context.json({ error: 'not_found' }, 404));
+
   const privateGuard: MiddlewareHandler<AppEnvironment> = async (context, next) => {
     const session = readCookie(context.req.header('Cookie'), sessionCookieName);
     if (session.kind !== 'value') {
@@ -315,6 +365,7 @@ export const createApp = (options: CreateAppOptions) => {
     app.route('/api/owned', createOwnedRoutes(options.owned, options.grabs.qualities));
   }
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
+  if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));
 

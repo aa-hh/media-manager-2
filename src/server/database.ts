@@ -32,6 +32,148 @@ export const applicationMigrations = [
     value TEXT NOT NULL,
     PRIMARY KEY (category, key)
   ) STRICT;`,
+  `CREATE TABLE torrents (
+    hash TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    completed_bytes INTEGER NOT NULL,
+    down_rate INTEGER NOT NULL,
+    up_rate INTEGER NOT NULL,
+    started INTEGER NOT NULL CHECK (started IN (0, 1)),
+    open INTEGER NOT NULL CHECK (open IN (0, 1)),
+    active INTEGER NOT NULL CHECK (active IN (0, 1)),
+    complete INTEGER NOT NULL CHECK (complete IN (0, 1)),
+    message TEXT NOT NULL,
+    finished_at INTEGER NOT NULL,
+    ratio_thousandths INTEGER NOT NULL,
+    peers_connected INTEGER NOT NULL,
+    seeders_connected INTEGER NOT NULL,
+    tracker_host TEXT,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    gone_at INTEGER,
+    seeding_seconds INTEGER NOT NULL CHECK (seeding_seconds >= 0)
+  ) STRICT;
+  CREATE TABLE dependency_status (
+    name TEXT PRIMARY KEY,
+    state TEXT NOT NULL CHECK (state IN ('ok', 'down')),
+    since INTEGER NOT NULL,
+    detail TEXT NOT NULL
+  ) STRICT;`,
+  `CREATE TABLE torrent_grabs (
+    hash TEXT PRIMARY KEY,
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    movie_id INTEGER,
+    series_id INTEGER,
+    episode_ids TEXT NOT NULL,
+    release_title TEXT NOT NULL,
+    indexer TEXT NOT NULL,
+    grabbed_at INTEGER NOT NULL,
+    by_hand INTEGER NOT NULL CHECK (by_hand IN (0, 1)),
+    imported_at INTEGER,
+    failed_at INTEGER
+  ) STRICT;
+  CREATE TABLE arr_queue (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    queue_id INTEGER NOT NULL,
+    download_id TEXT,
+    movie_id INTEGER,
+    series_id INTEGER,
+    episode_id INTEGER,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL,
+    tracked_status TEXT NOT NULL,
+    tracked_state TEXT NOT NULL,
+    status_messages TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    indexer TEXT NOT NULL,
+    protocol TEXT NOT NULL,
+    quality TEXT NOT NULL,
+    formats TEXT NOT NULL,
+    format_score INTEGER NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    size_left_bytes INTEGER NOT NULL,
+    estimated_completion TEXT,
+    added TEXT,
+    PRIMARY KEY (service, queue_id)
+  ) STRICT;
+  CREATE TABLE grab_checkpoints (
+    service TEXT PRIMARY KEY CHECK (service IN ('sonarr', 'radarr')),
+    history_checked_at INTEGER NOT NULL
+  ) STRICT;`,
+  `CREATE TABLE problems (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,
+    subject_type TEXT NOT NULL CHECK (subject_type IN ('movie', 'episode', 'torrent', 'tracker', 'dependency')),
+    service TEXT NOT NULL CHECK (service IN ('', 'sonarr', 'radarr')),
+    subject_id TEXT NOT NULL,
+    hash TEXT,
+    state TEXT NOT NULL CHECK (state IN ('handling', 'needs_you', 'resolved')),
+    summary TEXT NOT NULL,
+    opened_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    resolved_at INTEGER
+  ) STRICT;
+  CREATE UNIQUE INDEX problems_one_open ON problems (kind, subject_type, service, subject_id) WHERE state != 'resolved';
+  CREATE INDEX problems_subject ON problems (subject_type, service, subject_id);
+  CREATE TABLE problem_steps (
+    id INTEGER PRIMARY KEY,
+    problem_id INTEGER NOT NULL REFERENCES problems (id),
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('problem', 'fix', 'result')),
+    text TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX problem_steps_problem ON problem_steps (problem_id);
+  CREATE TABLE release_attempts (
+    subject_type TEXT NOT NULL,
+    service TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    release_key TEXT NOT NULL,
+    tried_at INTEGER NOT NULL,
+    PRIMARY KEY (subject_type, service, subject_id, release_key)
+  ) STRICT;`,
+  `CREATE TABLE tracker_cooldowns (
+    host TEXT PRIMARY KEY,
+    since INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    known INTEGER NOT NULL CHECK (known IN (0, 1)),
+    trigger_hash TEXT NOT NULL
+  ) STRICT;
+  CREATE TABLE torrent_issues (
+    hash TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('unregistered', 'tracker_down', 'damaged')),
+    since INTEGER NOT NULL,
+    last_retry_at INTEGER,
+    rechecked_at INTEGER,
+    replace INTEGER NOT NULL CHECK (replace IN (0, 1))
+  ) STRICT;`,
+  `ALTER TABLE torrent_grabs ADD COLUMN published_at INTEGER;
+  CREATE TABLE stall_watch (
+    hash TEXT PRIMARY KEY,
+    no_seeders_since INTEGER,
+    zero_speed_since INTEGER,
+    announced_at INTEGER,
+    replaced_at INTEGER
+  ) STRICT;`,
+  `CREATE TABLE search_log (
+    subject TEXT PRIMARY KEY,
+    searched_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE TABLE availability_seen (
+    subject TEXT PRIMARY KEY,
+    seen_at INTEGER NOT NULL
+  ) STRICT;`,
+  `CREATE TABLE import_handling (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    download_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    first_seen_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL,
+    last_attempt_at INTEGER,
+    done INTEGER NOT NULL CHECK (done IN (0, 1)),
+    PRIMARY KEY (service, download_id)
+  ) STRICT;`,
+  `ALTER TABLE arr_queue ADD COLUMN label TEXT NOT NULL DEFAULT '';`,
   `CREATE TABLE preferences (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -201,7 +343,8 @@ export const openDatabase = (path?: string): DatabaseSync => {
   prepareDatabaseFile(selectedPath);
   let database: DatabaseSync;
   try {
-    database = new DatabaseSync(selectedPath);
+    // The rTorrent poll writes every 30 seconds; without a busy timeout a CLI run landing inside it fails at once.
+    database = new DatabaseSync(selectedPath, { timeout: 5_000 });
   } catch {
     throw new DatabaseError('Database could not be opened.');
   }

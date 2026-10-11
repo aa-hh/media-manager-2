@@ -10,6 +10,8 @@ type HomeProps = {
   signOutProblem: ReactNode;
   onSignOut: () => void;
   onUnauthenticated: () => void;
+  downloads?: ReactNode;
+  renderBar?: (showDownloads: () => void) => ReactNode;
 };
 
 const writeSearchQuery = (query: string) => {
@@ -21,7 +23,7 @@ const writeSearchQuery = (query: string) => {
   if (url.href !== window.location.href) window.history.replaceState(null, '', url);
 };
 
-export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated }: HomeProps) {
+export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloads, renderBar }: HomeProps) {
   const [query, setQuery] = useState(readSearchQuery);
   const [opened, setOpened] = useState<SearchResult | undefined>(undefined);
   const { state, run } = useSearch(onUnauthenticated);
@@ -64,7 +66,9 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
       </header>
       <main>
         {opened === undefined
-          ? <SearchResults state={state} onOpen={setOpened} onRetry={() => search(query)} />
+          ? downloads !== undefined && query.trim() === ''
+            ? downloads
+            : <SearchResults state={state} onOpen={setOpened} onRetry={() => search(query)} />
           : (
             <TitleView
               result={opened}
@@ -74,6 +78,10 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
             />
           )}
       </main>
+      {renderBar?.(() => {
+        setOpened(undefined);
+        setQuery('');
+      })}
     </div>
   );
 }

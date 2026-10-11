@@ -1,24 +1,36 @@
 import type { Server } from 'node:http';
+import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { createAdd } from './add.js';
+import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createGrabs } from './grabs.js';
+import { createImportFix } from './imports.js';
+import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
 import { createOwned } from './owned.js';
+import { createProblems } from './problems.js';
 import { createProtection } from './protection.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
+import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
+import { readSetting } from './services/connection.js';
+import { createRtorrent } from './services/rtorrent.js';
+import { createTorrentPoller } from './torrents.js';
+import { createTrackerWatch } from './trackers.js';
+import { createSearchScheduler } from './searches.js';
+import { createStallFix } from './stalls.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? '3000');
 
-let database;
+let database: DatabaseSync | undefined;
 try {
   database = openDatabase();
 } catch {
@@ -27,9 +39,26 @@ try {
 }
 
 if (database !== undefined) {
+  const openedDatabase = database;
   const arr = { sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) };
   const events = createEventHub();
   const runner = createJobRunner();
+  const rtorrent = createRtorrent(database);
+  const poller = createTorrentPoller({ database, rtorrent, events });
+  runner.register('rtorrent-poll', poller.intervalMs, poller.poll);
+  const torrentGrabs = createGrabTracker({ database, arr, events });
+  runner.register('arr-reconcile', torrentGrabs.intervalMs, torrentGrabs.reconcile);
+  const problems = createProblems({ database, events });
+  runner.register('dependency-problems', 30_000, problems.syncDependencies);
+  const trackers = createTrackerWatch({ database, rtorrent, problems, events });
+  runner.register('tracker-watch', 30_000, trackers.check);
+  const stalls = createStallFix({ database, rtorrent, arr, problems, trackers });
+  runner.register('stall-fix', 60_000, stalls.check);
+  // Two minutes keeps Radarr's whole-library read light while still searching close to each release time.
+  const searches = createSearchScheduler({ database, arr, problems });
+  runner.register('search-schedule', 2 * 60_000, searches.check);
+  const imports = createImportFix({ database, arr, problems, events });
+  runner.register('import-fix', 60_000, imports.check);
   const releases = createReleases(database, arr);
   const grabs = createGrabs(database, arr, releases, { onChange: (grab) => events.publish('grab', grab) });
   const protection = createProtection(database, arr, { recentGrabTitles: (service, since) => grabs.recentTitles(service, since) });
@@ -57,6 +86,15 @@ if (database !== undefined) {
     grabs,
     owned: createOwned(arr),
     protection,
+    api: createApiRoutes(database, {
+      arr,
+      refresh: torrentGrabs.refresh,
+      manualImport: createManualImport({ database, arr, problems }),
+    }),
+    webhooks: {
+      secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
+      receive: torrentGrabs.receiveWebhook,
+    },
   });
   runner.start();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
