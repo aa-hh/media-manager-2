@@ -106,7 +106,7 @@ function Toggle({ id, label, checked, onChange }: { id: string; label: string; c
   );
 }
 
-function AddControls({ result, onAdded, onUnauthenticated }: {
+export function AddControls({ result, onAdded, onUnauthenticated }: {
   result: SearchResult;
   onAdded: (libraryId: number) => void;
   onUnauthenticated: () => void;

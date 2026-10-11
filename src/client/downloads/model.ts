@@ -15,6 +15,7 @@ export type Torrent = {
   ratioThousandths: number;
   seedersConnected: number;
   trackerHost: string | null;
+  seedingSeconds: number;
   goneAt: number | null;
 };
 
@@ -24,6 +25,7 @@ export type QueueItem = {
   downloadId: string | null;
   movieId: number | null;
   episodeId: number | null;
+  seriesId: number | null;
   title: string;
   label: string;
   status: string;
@@ -43,6 +45,9 @@ export type Grab = {
   service: Service;
   movieId: number | null;
   episodeIds: number[];
+  seriesId: number | null;
+  importedAt: number | null;
+  failedAt: number | null;
   releaseTitle: string;
   indexer: string;
   byHand: boolean;

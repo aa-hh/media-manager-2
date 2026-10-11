@@ -3863,3 +3863,55 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     assert.equal((await app.request('/api/library/titles', { headers: { Cookie: session } })).status, 200);
   });
 });
+
+test('library posters and title pages derive progress and totals from the live downloads snapshot', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { buildRows } = await load('../src/client/downloads/model.ts');
+  const { progressText, totals } = await load('../src/client/library/grid.ts');
+  const { subjectProgress, seedingFacts } = await load('../src/client/library/progress.ts');
+  const hash = 'EF'.repeat(20);
+  const torrent = (overrides = {}) => ({ hash, name: 'Show.S01', sizeBytes: 1000, completedBytes: 400, downRate: 2000, upRate: 0, started: true, active: true,
+    complete: false, message: '', ratioThousandths: 1500, seedersConnected: 3, trackerHost: 'tracker.example', seedingSeconds: 90, goneAt: null, ...overrides });
+  const grab = (overrides = {}) => ({ hash, service: 'sonarr', movieId: null, episodeIds: [11, 12], seriesId: 5, importedAt: null, failedAt: null,
+    releaseTitle: 'Show.S01', indexer: 'Blutopia', byHand: false, ...overrides });
+  const queue = (overrides = {}) => ({ service: 'sonarr', queueId: 3, downloadId: null, movieId: null, episodeId: 13, seriesId: 5, title: 'Show.S01E03', label: 'Show',
+    status: 'delay', trackedStatus: 'ok', trackedState: 'downloading', statusMessages: [], errorMessage: '', indexer: '', quality: 'WEBDL-1080p', formats: [],
+    formatScore: 0, estimatedCompletion: null, ...overrides });
+  const snapshot = (overrides = {}) => ({ torrents: [], queue: [], grabs: [], problems: [], ...overrides });
+  const progressFor = (shot) => subjectProgress(shot, buildRows(shot));
+
+  // Printing "8 + 2 / 10" when nothing downloads, or "8 / 10" while something does, turns this red.
+  await t.test('progress text separates files from downloading episodes', () => {
+    assert.equal(progressText(8, 2, 10), '8 + 2 / 10');
+    assert.equal(progressText(8, 0, 10), '8 / 10');
+    assert.equal(progressText(0, 0, 0), '0 / 0');
+  });
+
+  // Counting every title's totals the same way (or ignoring a movie's file) turns this red.
+  await t.test('totals count shows, movies, episodes, files and size', () => {
+    const show = (episodeFileCount, episodeCount, sizeOnDisk) => ({ type: 'tv', sizeOnDisk, tv: { episodeFileCount, episodeCount, totalEpisodeCount: episodeCount, seasonCount: 1 }, movie: null });
+    const movie = (hasFile, sizeOnDisk) => ({ type: 'movie', sizeOnDisk, tv: null, movie: { hasFile, isAvailable: true } });
+    assert.deepEqual(totals([show(8, 10, 100), show(2, 4, 50), movie(true, 30), movie(false, 0)]),
+      { shows: 2, movies: 2, episodes: 14, files: 11, sizeBytes: 180 });
+  });
+
+  // Mapping only the first episode of a grab, or keeping imported grabs, turns this red.
+  await t.test('a grab gives each of its episodes the torrent row word and percent; imported grabs and delayed queue items behave', () => {
+    const live = progressFor(snapshot({ torrents: [torrent()], grabs: [grab()] }));
+    for (const id of [11, 12]) assert.deepEqual(live.get(`episode:${id}`), { word: 'downloading', tone: 'normal', percent: 40, downRate: 2000 });
+    assert.equal(progressFor(snapshot({ torrents: [torrent()], grabs: [grab({ importedAt: 1 })] })).size, 0, 'an imported grab is not live');
+    const delayed = progressFor(snapshot({ queue: [queue()] })).get('episode:13');
+    assert.deepEqual([delayed.word, delayed.percent], ['delayed', null]);
+  });
+
+  // Reading a gone torrent, or a grab that has not imported yet, as seeding turns this red.
+  await t.test('seeding facts come from the imported grab\'s live torrent', () => {
+    const imported = grab({ importedAt: 1 });
+    assert.deepEqual(seedingFacts(snapshot({ torrents: [torrent()], grabs: [imported] }), { episodeId: 11 }),
+      [{ trackerHost: 'tracker.example', seedingSeconds: 90, ratio: 1.5, complete: false }]);
+    assert.deepEqual(seedingFacts(snapshot({ torrents: [torrent({ goneAt: 5 })], grabs: [imported] }), { episodeId: 11 }), []);
+    assert.deepEqual(seedingFacts(snapshot({ torrents: [torrent()], grabs: [grab()] }), { episodeId: 11 }), []);
+  });
+});
