@@ -1,6 +1,6 @@
 # media-manager-2 — Claude Code orientation
 
-A power-user web app that runs Sonarr and Radarr through one interface and keeps their torrent downloads on track.
+A power-user web app for discovering, downloading and managing your media in one place. It runs Sonarr and Radarr through one interface and keeps their torrent downloads on track.
 
 **Read [`AGENTS.md`](AGENTS.md) before doing anything.** It holds the
 architectural rules, constraints and traps the code alone cannot convey. Each

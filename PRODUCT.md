@@ -20,7 +20,7 @@ Friends who request movies and TV shows are a planned later audience (v2), not a
 
 ## Product Purpose
 
-media-manager-2 puts Sonarr and Radarr behind one interface and makes them behave the way the owner expects. It lets the owner search movies and TV shows, pick the exact release, and choose to replace the tracked version or keep a second version. It watches every download live from rTorrent and fixes searches that never ran and torrents that stalled, on its own.
+media-manager-2 brings media discovery, downloading and management into one app. It puts Sonarr and Radarr behind one interface and makes them behave the way the owner expects. It lets the owner discover and search movies and TV shows, pick the exact release, and choose to replace the tracked version or keep a second version. It watches every download live from rTorrent and fixes searches that never ran and torrents that stalled, on its own.
 
 Success: the owner trusts that what they asked for will arrive, at the quality they picked, without babysitting Sonarr, Radarr or rTorrent, and without ever getting a hit and run.
 
