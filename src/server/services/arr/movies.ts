@@ -1,14 +1,24 @@
-import { count, type FileDetail, finiteNumber, idList, type Image, parseFile, parseImages, positiveInteger, stringList, text } from './files.js';
+import { count, type FileDetail, finiteNumber, idList, type Image, otherTitles, parseFile, parseImages, positiveInteger, records, stringList, text } from './files.js';
 import { isRecord, refusal, type Result, type Send } from './result.js';
+
+const RATING_SITES = ['imdb', 'tmdb', 'metacritic', 'rottenTomatoes', 'trakt'] as const;
+export type Ratings = Record<(typeof RATING_SITES)[number], { value: number; votes: number } | null>;
 
 export type Movie = {
   id: number | null;
   title: string;
+  originalTitle: string | null;
+  originalLanguage: string | null;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   overview: string | null;
   images: Image[];
   rating: number | null;
+  ratings: Ratings;
+  keywords: string[];
+  youTubeTrailerId: string | null;
+  website: string | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -29,30 +39,53 @@ export type Movie = {
   inCinemas: string | null;
   digitalRelease: string | null;
   physicalRelease: string | null;
+  releaseDate: string | null;
+  releaseGroups: string[];
   file: FileDetail | null;
 };
 
-// Radarr rates a movie on several sites; the first one with a score wins.
-const rating = (ratings: unknown): number | null => {
-  if (!isRecord(ratings)) return null;
-  for (const key of ['tmdb', 'imdb', 'trakt']) {
-    const entry = ratings[key];
-    const value = isRecord(entry) ? finiteNumber(entry.value) : null;
-    if (value !== null && value > 0) return value;
-  }
-  return null;
+export type Credit = {
+  type: 'cast' | 'crew';
+  name: string;
+  character: string | null;
+  job: string | null;
+  department: string | null;
+  order: number | null;
+  tmdbId: number | null;
+  images: Image[];
+};
+
+// Radarr sends a zero score for a site with no rating, so only a positive score counts.
+const siteRatings = (value: unknown): Ratings => {
+  const ratings = isRecord(value) ? value : {};
+  const entries = RATING_SITES.map((site) => {
+    const entry = isRecord(ratings[site]) ? ratings[site] : {};
+    const score = finiteNumber(entry.value);
+    return [site, score !== null && score > 0 ? { value: score, votes: count(entry.votes) } : null];
+  });
+  return Object.fromEntries(entries) as Ratings;
 };
 
 export const parseMovie = (value: unknown): Movie | null => {
   if (!isRecord(value)) return null;
+  const title = text(value.title) ?? '';
+  const ratings = siteRatings(value.ratings);
   return {
     id: positiveInteger(value.id),
-    title: text(value.title) ?? '',
+    title,
+    originalTitle: text(value.originalTitle),
+    originalLanguage: isRecord(value.originalLanguage) ? text(value.originalLanguage.name) : null,
+    alternateTitles: otherTitles(value.alternateTitles, title),
     year: finiteNumber(value.year),
     status: text(value.status),
     overview: text(value.overview),
     images: parseImages(value.images),
-    rating: rating(value.ratings),
+    // The single rating the client still reads: the first of these sites with a score.
+    rating: ratings.tmdb?.value ?? ratings.imdb?.value ?? ratings.trakt?.value ?? null,
+    ratings,
+    keywords: stringList(value.keywords),
+    youTubeTrailerId: text(value.youTubeTrailerId),
+    website: text(value.website),
     certification: text(value.certification),
     genres: stringList(value.genres),
     runtime: finiteNumber(value.runtime),
@@ -73,8 +106,26 @@ export const parseMovie = (value: unknown): Movie | null => {
     inCinemas: text(value.inCinemas),
     digitalRelease: text(value.digitalRelease),
     physicalRelease: text(value.physicalRelease),
+    releaseDate: text(value.releaseDate),
+    releaseGroups: isRecord(value.statistics) ? stringList(value.statistics.releaseGroups) : [],
     file: parseFile(value.movieFile),
   };
+};
+
+const parseCredit = (value: Record<string, unknown>): Credit[] => {
+  const name = text(value.personName);
+  const type = text(value.type)?.toLowerCase();
+  if (name === null || (type !== 'cast' && type !== 'crew')) return [];
+  return [{
+    type,
+    name,
+    character: text(value.character),
+    job: text(value.job),
+    department: text(value.department),
+    order: finiteNumber(value.order),
+    tmdbId: positiveInteger(value.personTmdbId),
+    images: parseImages(value.images),
+  }];
 };
 
 const done = (answer: Result<unknown>): Result<void> => (answer.kind === 'ok' ? { kind: 'ok', value: undefined } : answer);
@@ -131,5 +182,14 @@ export const createMovies = ({ label, send }: { label: string; send: Send }) => 
     return done(await send(operation, `/api/v3/movie/${movieId}`, { method: 'PUT', body }));
   };
 
-  return { listMovies, movie, lookupMovies, addMovie, monitorMovie, setTag };
+  const credits = async (movieId: number): Promise<Result<Credit[]>> => {
+    const operation = 'the credit list';
+    const answer = await send(operation, `/api/v3/credit?movieId=${movieId}`);
+    if (answer.kind !== 'ok') return answer;
+    const { body } = answer.value;
+    if (!Array.isArray(body)) return refusal(`${label} sent no list of records for ${operation}.`);
+    return { kind: 'ok', value: records(body).flatMap(parseCredit) };
+  };
+
+  return { listMovies, movie, lookupMovies, addMovie, monitorMovie, setTag, credits };
 };

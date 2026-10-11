@@ -3,14 +3,14 @@ import { createCommands, type ForceImport, type SearchTarget } from './arr/comma
 import { createEpisodes, type Episode } from './arr/episodes.js';
 import { type FileDetail, type Image, parseFile } from './arr/files.js';
 import { createHistory, type HistoryRead, type HistoryRecord } from './arr/history.js';
-import { createMovies, type Movie } from './arr/movies.js';
+import { type Credit, createMovies, type Movie, type Ratings } from './arr/movies.js';
 import { createQueue, type QueueItem } from './arr/queue.js';
 import { classify, labels, notConfigured, type Result, type Send, type Service, unreachable, valueOrThrow } from './arr/result.js';
 import { createSeries, type Series } from './arr/series.js';
 import { type ConnectionStatus, readSetting, requestWithTimeout, type ServiceOptions } from './connection.js';
 
 export { parseFile, valueOrThrow };
-export type { Episode, FileDetail, HistoryRecord, Image, Movie, QueueItem, Result, Series, Service };
+export type { Credit, Episode, FileDetail, HistoryRecord, Image, Movie, QueueItem, Ratings, Result, Series, Service };
 
 export type SonarrTitles = {
   listSeries: () => Promise<Result<Series[]>>;
@@ -33,6 +33,7 @@ export type RadarrTitles = {
   addMovie: (tmdbId: number, fields: Record<string, unknown>) => Promise<Result<{ id: number }>>;
   monitorMovie: (movieId: number, monitored: boolean) => Promise<Result<void>>;
   setTag: (movieId: number, tagId: number, tagged: boolean) => Promise<Result<void>>;
+  credits: (movieId: number) => Promise<Result<Credit[]>>;
 };
 
 export type Arr<S extends Service> = {
