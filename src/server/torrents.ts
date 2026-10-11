@@ -37,7 +37,7 @@ const FILE_LIST_READS_PER_POLL = 20;
 export type TorrentFile = { path: string; sizeBytes: number };
 
 // A list with a path that is absolute or climbs out with '..' is not stored, so the torrent counts as unread.
-const parseFileList = (value: unknown): TorrentFile[] | null => {
+export const parseFileList = (value: unknown): TorrentFile[] | null => {
   if (!Array.isArray(value) || value.length === 0) return null;
   const files: TorrentFile[] = [];
   for (const row of value) {
@@ -207,7 +207,8 @@ export const createTorrentPoller = (options: {
       .filter((torrent) => (existing.get(torrent.hash)?.trackerHost ?? null) === null)
       .map((torrent) => torrent.hash));
     const listed = new Set(database.prepare('SELECT DISTINCT hash FROM torrent_files').all().map((row) => String(row.hash)));
-    const fileLists = await readFileLists(observed.map((torrent) => torrent.hash).filter((hash) => !listed.has(hash)));
+    // A torrent of size 0 has no metadata yet, so it has no list to read and no data on disk.
+    const fileLists = await readFileLists(observed.filter((torrent) => torrent.sizeBytes > 0 && !listed.has(torrent.hash)).map((torrent) => torrent.hash));
 
     const changed: Torrent[] = [];
     const gone: string[] = [];
@@ -224,6 +225,7 @@ export const createTorrentPoller = (options: {
       for (const torrent of observed) {
         if (seen.has(torrent.hash)) continue;
         seen.add(torrent.hash);
+        if (torrent.sizeBytes === 0) database.prepare('DELETE FROM torrent_files WHERE hash = ?').run(torrent.hash);
         const previous = existing.get(torrent.hash);
         const elapsed = previous === undefined ? 0 : at - previous.lastSeenAt;
         // Credit seeding only across one ordinary poll gap; a restart or outage adds nothing, so the counter can only undercount.

@@ -1682,7 +1682,7 @@ test('removal advice applies the hit and run rule with margins and proves time o
   const torrent = (input) => {
     const hash = (++count).toString(16).toUpperCase().padStart(40, '0');
     const row = { host: 'blutopia.cc', sizeBytes: 10 * GB, ratio: 0, seconds: 0, finishedAt: finished, firstSeenAt: (finished - hour) * 1000, goneAt: null, complete: 1, active: 1, ...input };
-    database.prepare("INSERT INTO torrents VALUES (?, 'Some.Movie', ?, ?, 0, 0, 1, 1, ?, ?, '', ?, ?, 0, 0, ?, ?, ?, ?, ?)")
+    database.prepare("INSERT INTO torrents VALUES (?, 'Some.Movie', ?, ?, 0, 0, 1, 1, ?, ?, '', ?, ?, 0, 0, ?, ?, ?, ?, ?, '')")
       .run(hash, row.sizeBytes, row.completedBytes ?? row.sizeBytes, row.active, row.complete, row.finishedAt, row.ratio, row.host, row.firstSeenAt, now, row.goneAt, row.seconds);
     return hash;
   };
@@ -2724,6 +2724,21 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     await poller.poll();
     assert.equal(listed().length, 24);
     assert.equal(listed().some((file) => file.hash === hashes[0]), false);
+    database.close();
+  });
+
+  // Spending list reads on torrents without metadata, or never reading one once it has metadata, turns this red.
+  await t.test('torrents without metadata do not use up list reads and are read once they have metadata', async () => {
+    const { database, fake, poller } = setup();
+    const waiting = Array.from({ length: 25 }, (_, index) => (index + 1).toString(16).toUpperCase().padStart(40, '0'));
+    fake.rows = [...waiting.map((hash) => row(hash, { size: 0 })), row(hashB)];
+    const listed = () => database.prepare('SELECT DISTINCT hash FROM torrent_files').all().map((file) => file.hash);
+    await poller.poll();
+    assert.deepEqual(listed(), [hashB]);
+    assert.deepEqual(fake.calls.filter(([method]) => method === 'f.multicall').map(([, params]) => params[0]), [hashB]);
+    fake.rows[0] = row(waiting[0]);
+    await poller.poll();
+    assert.deepEqual(listed().sort(), [waiting[0], hashB].sort());
     database.close();
   });
 
@@ -3969,7 +3984,7 @@ test('library files are traced to the torrents holding them, and a torrent is re
   const hashOf = (n) => String(n).repeat(40);
   const exists = async (path) => lstat(path).then(() => true, () => false);
 
-  // Each torrent: n (hash digit), directory under the case folder, files [[path, bytes]], multi, unreadable.
+  // Each torrent: n (hash digit), directory under the case folder, files [[path, bytes]], multi, unreadable, size (0 = no metadata yet).
   const setup = async (torrents) => {
     count += 1;
     const base = join(root, `case-${count}`);
@@ -3990,8 +4005,9 @@ test('library files are traced to the torrents holding them, and a torrent is re
     const rtorrent = {
       call: async (method, params) => {
         if (fake.down) throw new Error('rTorrent is unreachable.');
+        if (method === 'd.multicall2' && params.length === 5) return fake.torrents.map((torrent) => [hashOf(torrent.n), `T${torrent.n}`, at(torrent.directory)]);
         if (method === 'd.multicall2') {
-          return fake.torrents.map((torrent) => [hashOf(torrent.n), `T${torrent.n}`, 1, 1, 0, 0, 1, 1, 1, 1, '', 0, 0, 0, 0, at(torrent.directory)]);
+          return fake.torrents.map((torrent) => [hashOf(torrent.n), `T${torrent.n}`, torrent.size ?? 1, 1, 0, 0, 1, 1, 1, 1, '', 0, 0, 0, 0, at(torrent.directory)]);
         }
         if (method === 't.multicall') return [];
         const torrent = fake.torrents.find((candidate) => hashOf(candidate.n) === params[0]);
@@ -4048,6 +4064,31 @@ test('library files are traced to the torrents holding them, and a torrent is re
     world.fake.down = true;
     await world.poller.poll();
     assert.equal((await world.mapFiles(library, 'sonarr', 5)).files[2].state, 'unknown');
+  });
+
+  // Counting a torrent without metadata as unread, never reading its list once it has metadata, or skipping the live check before the erase turns this red.
+  await t.test('a torrent without metadata holds nothing until it has some, and is read from rTorrent before an erase', async () => {
+    const world = await setup([
+      { n: 1, directory: 'downloads', files: [['A.mkv', 10]] },
+      { n: 2, directory: 'downloads', files: [['B.mkv', 10]] },
+      { n: 7, directory: 'downloads', files: [], size: 0 },
+    ]);
+    await link(world.at('downloads', 'A.mkv'), world.at('library', 'Show', 'e1.mkv'));
+    await writeFile(world.at('library', 'Show', 'e3.mkv'), Buffer.alloc(30));
+    const library = [1, 3].map((n) => ({ path: world.at('library', 'Show', `e${n}.mkv`), fileId: n }));
+    assert.deepEqual(states(await world.mapFiles(library, 'sonarr', 5)), [['linked', [hashOf(1)]], ['none', []]]);
+    assert.deepEqual(world.canRemoveTorrent(hashOf(2)), { allowed: true });
+
+    Object.assign(world.fake.torrents[2], { size: 10, files: [['B.mkv', 10]] });
+    const refused = await world.removeTorrent(hashOf(2));
+    assert.equal(refused.removed, false);
+    assert.match(refused.reason, /B\.mkv is also used by the torrent T7/);
+    assert.deepEqual(world.fake.erased, []);
+    assert.equal(await exists(world.at('downloads', 'B.mkv')), true);
+
+    await world.poller.poll();
+    assert.equal(world.database.prepare('SELECT COUNT(*) AS n FROM torrent_files WHERE hash = ?').get(hashOf(7)).n, 1);
+    assert.match(world.canRemoveTorrent(hashOf(2)).reason, /B\.mkv is also used by the torrent T7/);
   });
 
   // Mapping a pack's files to separate torrents, or losing which library file shares each inode, turns this red.
@@ -4904,7 +4945,7 @@ test('pick a release shows the owned file with its seeding and compares each rel
   insertGrab.run('EF'.repeat(20), 'Show.S01E02.720p.HDTV-OLD', 1, 2);
   insertGrab.run(hash, 'Show.S01E02.1080p.WEB-DL.DDP5.1-OWN', 3, 4);
   database.prepare(`INSERT INTO torrents VALUES (?, 'Show.S01E02', 10000000000, 10000000000, 0, 0, 1, 1, 1, 1, '', 0, 450, 0, 0,
-    'tracker.privatehd.to', 1, 1, NULL, ?)`).run(hash, 31 * 3600 + 100);
+    'tracker.privatehd.to', 1, 1, NULL, ?, '')`).run(hash, 31 * 3600 + 100);
   database.prepare('INSERT INTO release_searches (target, fetched_at, releases) VALUES (?, ?, ?)').run('sonarr:episode:5:50', 500, JSON.stringify([{
     guid: 'old', indexerId: 3, indexer: null, title: 'Show.S01E02.2160p', quality: null, size: null, ageHours: null, seeders: null, leechers: null,
     approved: true, rejections: [], customFormatScore: 0, customFormats: [], flags: [], protocol: null, past: [], qualityModel: null, languages: [],

@@ -6,6 +6,7 @@ import type { ArrServices, Service } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import { listSettingKeys } from './settings.js';
+import { parseFileList } from './torrents.js';
 
 type XmlRpcCall = (method: string, params: readonly XmlRpcParam[]) => Promise<unknown>;
 
@@ -66,14 +67,15 @@ export const createTorrentFiles = (options: { database: DatabaseSync; rtorrent: 
     .filter(({ category, key }) => category === 'hostPaths' && key.startsWith(prefix))
     .flatMap(({ key }) => readSetting(database, 'hostPaths', key) ?? []);
 
-  // A torrent's files are null until its list is stored; full path is d.directory joined with f.path.
+  // A torrent's files are null until its list is stored and its directory known; full path is d.directory joined with f.path.
+  // A torrent of size 0 has no metadata yet, so it holds no data and lists no paths.
   const liveTorrents = (): LiveTorrent[] => {
     const lists = new Map<string, { path: string; sizeBytes: number }[]>();
     for (const row of database.prepare('SELECT hash, path, size_bytes FROM torrent_files ORDER BY hash, "index"').all()) {
       const hash = String(row.hash);
       lists.set(hash, [...(lists.get(hash) ?? []), { path: String(row.path), sizeBytes: Number(row.size_bytes) }]);
     }
-    return database.prepare('SELECT hash, name, directory FROM torrents WHERE gone_at IS NULL ORDER BY hash').all().map((row) => {
+    return database.prepare('SELECT hash, name, directory, size_bytes FROM torrents WHERE gone_at IS NULL ORDER BY hash').all().map((row) => {
       const hash = String(row.hash);
       const directory = String(row.directory);
       const list = lists.get(hash);
@@ -81,7 +83,7 @@ export const createTorrentFiles = (options: { database: DatabaseSync; rtorrent: 
         hash,
         name: String(row.name),
         directory,
-        files: list === undefined || !isAbsolute(directory) ? null : list.map((file) => ({ path: join(directory, file.path), sizeBytes: file.sizeBytes })),
+        files: Number(row.size_bytes) === 0 ? [] : list === undefined || !isAbsolute(directory) ? null : list.map((file) => ({ path: join(directory, file.path), sizeBytes: file.sizeBytes })),
       };
     });
   };
@@ -240,6 +242,30 @@ export const createTorrentFiles = (options: { database: DatabaseSync; rtorrent: 
     }
   };
 
+  // The stored lists are up to one poll old, so a torrent added or given metadata since then is read from rTorrent here.
+  const pathUsedNow = async (hash: string, files: { path: string }[]): Promise<string | null> => {
+    const stored = new Set(liveTorrents().filter((torrent) => (torrent.files ?? []).length > 0).map((torrent) => torrent.hash));
+    const own = new Set(files.map((file) => file.path));
+    const ownReal = new Set(files.map((file) => realPath(file.path) ?? file.path));
+    const rows = await rtorrent.call('d.multicall2', ['', 'main', 'd.hash=', 'd.name=', 'd.directory=']);
+    if (!Array.isArray(rows)) throw new Error('Unexpected rTorrent response.');
+    for (const row of rows) {
+      if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'string' || typeof row[2] !== 'string') {
+        throw new Error('Unexpected rTorrent response.');
+      }
+      const [other, name, directory] = row as string[];
+      if (other.toUpperCase() === hash || stored.has(other.toUpperCase())) continue;
+      const answer = await rtorrent.call('f.multicall', [other, '', 'f.path=', 'f.size_bytes=']);
+      const list = Array.isArray(answer) && answer.length === 0 ? [] : parseFileList(answer);
+      if (list === null || (list.length > 0 && !isAbsolute(directory))) throw new Error(`Could not read the files of ${name}.`);
+      for (const file of list) {
+        const path = join(directory, file.path);
+        if (own.has(path) || ownReal.has(realPath(path) ?? path)) return `${path} is also used by the torrent ${name}.`;
+      }
+    }
+    return null;
+  };
+
   const removeTorrent = async (hash: string): Promise<Removal> => {
     const key = hash.toUpperCase();
     const check = canRemoveTorrent(key);
@@ -254,6 +280,8 @@ export const createTorrentFiles = (options: { database: DatabaseSync; rtorrent: 
         return { removed: false, reason: 'rTorrent moved this torrent since its files were checked; try again after the next check.' };
       }
       multi = await rtorrent.call('d.is_multi_file', [key]);
+      const used = await pathUsedNow(key, files);
+      if (used !== null) return { removed: false, reason: used };
     } catch (error) {
       return { removed: false, reason: `rTorrent did not answer (${messageOf(error)}), so nothing was removed.` };
     }
