@@ -4,7 +4,7 @@ import type { EventHub } from './events.js';
 import { type ArrServices, type QueueItem, valueOrThrow } from './services/arr.js';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Problem, Subject } from './problems.js';
-import { listOpenProblems, RELEASE_LIMIT } from './problems.js';
+import { RELEASE_LIMIT } from './problems.js';
 
 type Problems = ReturnType<typeof createProblems>;
 
@@ -87,9 +87,13 @@ export const createImportFix = (options: {
   const save = (handling: Handling) => saveHandling(database, handling);
 
   // A block can change kind between checks (locked, then a failed move), so a download's import problems close together.
-  const closeImportProblems = (downloadId: string, text: string, skip: (problem: Problem) => boolean = () => false) => {
-    for (const problem of listOpenProblems(database)) {
-      if (!problem.kind.startsWith('import_') || problem.subject.type !== 'torrent' || problem.subject.id !== downloadId || skip(problem)) continue;
+  // Runs once per blocked download per check, so it reads only that download's open problems and never their steps.
+  const closeImportProblems = (downloadId: string, text: string, skip: (problem: Pick<Problem, 'id' | 'kind'>) => boolean = () => false) => {
+    const rows = database.prepare("SELECT id, kind FROM problems WHERE subject_type = 'torrent' AND service = '' AND subject_id = ? AND state != 'resolved' ORDER BY opened_at, id")
+      .all(downloadId)
+      .map((row) => ({ id: Number(row.id), kind: String(row.kind) }));
+    for (const problem of rows) {
+      if (!problem.kind.startsWith('import_') || skip(problem)) continue;
       problems.setState(problem.id, 'resolved', text);
     }
   };

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createCipheriv, createHash, createPublicKey, generateKeyPairSync, randomBytes, verify } from 'node:crypto';
 import { once } from 'node:events';
-import { existsSync } from 'node:fs';
+import fs, { existsSync } from 'node:fs';
 import {
   chmod,
   link,
@@ -18,6 +18,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -93,6 +94,17 @@ const ownerRules = {
 const saveOwnerRules = async (database) => {
   const { setSetting } = await import(settingsModuleUrl);
   for (const [host, rule] of Object.entries(ownerRules)) setSetting(database, 'trackerConfiguration', `rules.${host}`, JSON.stringify(rule));
+};
+
+// Makes every linkSync in the app throw `code`, as link() does across mounts, until the returned function restores it.
+const failLinks = (code) => {
+  const original = fs.linkSync;
+  fs.linkSync = () => { throw Object.assign(new Error(`${code}: link failed`), { code }); };
+  syncBuiltinESMExports();
+  return () => {
+    fs.linkSync = original;
+    syncBuiltinESMExports();
+  };
 };
 
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
@@ -5589,7 +5601,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
 
   const setup = async ({
     name = 'Movie.2024.mkv', files = [['Movie.2024.mkv', 1234]], library = [['Movie (2024).mkv', 1234]],
-    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false, startFails = false,
+    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false, startFails = false, linkError,
   } = {}) => {
     count += 1;
     const base = join(root, `case-${count}`);
@@ -5640,7 +5652,12 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     const relink = createRelinkFix({ database, rtorrent, arr, problems, now, sleep, isManualDownload: createProtection(database, arr).isProtected });
     await grabs.reconcile();
     await poller.poll();
-    await relink.check();
+    const restoreLinks = linkError === undefined ? () => {} : failLinks(linkError);
+    try {
+      await relink.check();
+    } finally {
+      restoreLinks();
+    }
     const writes = calls.filter(([method]) => writeMethods.includes(method));
     const found = database.prepare("SELECT id FROM problems WHERE kind = 'download_missing'").all().map((row) => getProblem(database, Number(row.id)));
     database.close();
@@ -5682,6 +5699,14 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     assert.deepEqual(run.writes.find(([method]) => method === 'd.directory.set'), ['d.directory.set', hash, run.downloadRoot]);
     assert.equal((await stat(join(run.downloadRoot, 'Movie.2024', 'a.mkv'))).nlink, 2);
     assert.equal((await stat(join(run.downloadRoot, 'Movie.2024', 'b.mkv'))).nlink, 2);
+  });
+
+  // Pre-checking device numbers instead of linking, or touching rTorrent before the links are made, turns this red.
+  await t.test('a library on another drive is reported and rTorrent is left alone', async () => {
+    const run = await setup({ linkError: 'EXDEV' });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal(run.problem.steps.at(-1).text, 'The download folder and the library are on different drives.');
+    assert.deepEqual(run.writes, []);
   });
 
   // Dropping the manual-download check turns this red.
@@ -6228,19 +6253,23 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     }
   });
 
-  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move.
-  await t.test('a block that changes kind before clearing resolves every import problem on the download', async () => {
+  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move;
+  // matching on anything wider than this download's import problems closes another download's or a stall's.
+  await t.test('a block that changes kind before clearing resolves every import problem on the download, and only those', async () => {
     const run = await setup({ message: 'File is locked by another process' });
+    const other = 'FF'.repeat(20);
+    run.problems.open({ kind: 'import_temporary', subject: { type: 'torrent', service: null, id: other }, hash: other, summary: 'Other.Release' });
+    run.problems.open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, hash, summary: 'Release.Title' });
     await run.fix.check();
     run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Failed to move file'] }];
     await run.grabs.reconcile();
     run.clock.value += 5 * minute;
     await run.fix.check();
-    assert.ok(listOpenProblems(run.database).length >= 1);
+    assert.ok(listOpenProblems(run.database).length >= 3);
     run.queue.length = 0;
     await run.grabs.reconcile();
     await run.fix.check();
-    assert.deepEqual(listOpenProblems(run.database), []);
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => [problem.kind, problem.subject.id]), [['import_temporary', other], ['stalled', hash]]);
     run.database.close();
   });
 
@@ -7439,17 +7468,23 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   assert.equal(rows(unfinishedHash)[0].state, 'downloading');
   database.prepare('DELETE FROM second_versions WHERE hash = ?').run(unfinishedHash);
 
-  // Checking the drive after making folders, or not at all, turns this red.
-  assert.notEqual((await stat('/dev')).dev, (await stat(root)).dev, 'this check needs /dev on its own file system');
-  setSetting(database, 'hostPaths', 'versions.radarr', '/dev');
+  // Pre-checking device numbers instead of linking, or leaving the folder made for a link that failed, turns this red.
+  const otherDrive = join(root, 'versions', 'other-drive');
+  await mkdir(otherDrive);
+  setSetting(database, 'hostPaths', 'versions.radarr', otherDrive);
   const otherDriveHash = 'A6'.repeat(20);
   await addTorrent(otherDriveHash, ['Heat.mkv']);
   addRows(otherDriveHash, [{ movieId: 11 }]);
-  await versionImport.run();
+  const restoreLinks = failLinks('EXDEV');
+  try {
+    await versionImport.run();
+  } finally {
+    restoreLinks();
+  }
   assert.equal(rows(otherDriveHash)[0].state, 'failed');
   assert.match(rows(otherDriveHash)[0].failure, /different drives/);
   assert.match(problemsFor(IMPORT_PROBLEM_KIND).at(-1).summary, /^Heat \(1995\) \(second version\): .*different drives/);
-  assert.equal(existsSync('/dev/Heat (1995)'), false);
+  assert.deepEqual(await readdir(otherDrive), []);
   setSetting(database, 'hostPaths', 'versions.radarr', movies);
 
   // Importing TV before its versions folder is set, matching pack files by order instead of SxxEyy, or importing the extra episode turns this red.
@@ -10122,7 +10157,33 @@ test('the settings screen sends only changed fields and ranks each service state
   });
 
   const setupSource = await readFile(new URL('../src/client/settings/setup.ts', import.meta.url), 'utf8');
-  const { folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
+  const {
+    folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken, wantedParts, nextStep, firstStep,
+  } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
+
+  // Opening on a done step, visiting an unwanted or skipped optional part, or reaching Done with a required part missing turns this red.
+  await t.test('the wizard moves to the next open step and reaches Done only once every required part is saved', () => {
+    const status = (done, optional = {}) => ({
+      required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
+      optional: { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
+    });
+    const fresh = status([]);
+    assert.deepEqual(wantedParts(fresh), { trackers: true, backup: true });
+    assert.equal(firstStep(fresh, wantedParts(fresh)), 'what');
+    assert.equal(nextStep('what', fresh, wantedParts(fresh)), 'sonarr');
+    // Radarr saved in Settings earlier is passed over.
+    assert.equal(nextStep('sonarr', status(['sonarr', 'radarr']), { trackers: true, backup: true }), 'rtorrent');
+    assert.equal(firstStep(status(['sonarr']), { trackers: true, backup: true }), 'radarr');
+    const required = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
+    const chosen = status(required, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'not_done', wanted: true } });
+    assert.deepEqual(wantedParts(chosen), { trackers: false, backup: true });
+    assert.equal(nextStep('folders', chosen, wantedParts(chosen)), 'backup');
+    assert.equal(nextStep('backup', chosen, wantedParts(chosen)), 'done');
+    const skipped = status(required, { trackers: { status: 'skipped', wanted: true }, backup: { status: 'skipped', wanted: true } });
+    assert.equal(nextStep('folders', skipped, wantedParts(skipped)), 'done');
+    // Past the end with Plex missing goes back to Plex, not to Done.
+    assert.equal(nextStep('backup', status(['sonarr', 'radarr', 'rtorrent', 'folders']), { trackers: true, backup: true }), 'plex');
+  });
 
   // Letting a suggestion replace a saved folder, or leaving a field null when nothing is known, turns this red.
   await t.test('a saved folder beats a suggestion, a suggestion fills a gap, and nothing known is blank', () => {

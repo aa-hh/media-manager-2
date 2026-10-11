@@ -1,4 +1,4 @@
-// Rules for the Folders and Backup panes. No runtime imports, so tests can load it from source.
+// Rules for the Folders and Backup panes and the setup wizard's steps. No runtime imports, so tests can load it from source.
 import type { ServiceState } from '../components/ui/status-service-pill';
 
 // Shapes served by /api/setup; src/server/setup.ts is the source of truth.
@@ -7,10 +7,59 @@ export type FolderValues = Record<FolderField, string>;
 export type FoldersRead = { saved: Record<FolderField, string | null>; suggested: Record<FolderField, string | null> };
 
 export type BackupDestination = { kind: 'folder'; folder: string } | { kind: 's3'; endpoint: string; bucket: string; region: string } | null;
+export type RequiredPart = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'folders';
+export type OptionalPart = 'trackers' | 'backup';
 export type SetupStatus = {
-  required: { folders: 'done' | 'not_done' };
+  required: Record<RequiredPart, 'done' | 'not_done'>;
+  optional: Record<OptionalPart, { status: 'done' | 'not_done' | 'skipped'; wanted: boolean }>;
+  requiredComplete: boolean;
   plexSignInTokenAvailable: boolean;
   backup: { destination: BackupDestination; problem: string | null; key: 'pair' | 'env' | 'missing' | 'invalid'; keyCreatedAt: number | null };
+};
+
+/** The wizard's steps in order: the choices, the five required parts, the two optional parts, then Done. */
+export type WizardStep = 'what' | RequiredPart | OptionalPart | 'done';
+export const requiredParts: RequiredPart[] = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
+const order: WizardStep[] = ['what', ...requiredParts, 'trackers', 'backup', 'done'];
+
+/** Which optional parts the owner wants: ticked by default until a choice is saved, since an unticked part reads as skipped. */
+export const wantedParts = (status: SetupStatus): Record<OptionalPart, boolean> => {
+  const chosen = status.optional.trackers.wanted || status.optional.backup.wanted
+    || status.optional.trackers.status === 'skipped' || status.optional.backup.status === 'skipped';
+  return { trackers: !chosen || status.optional.trackers.wanted, backup: !chosen || status.optional.backup.wanted };
+};
+
+/**
+ * The step after `current`: the next required part not done, or the next optional part wanted and not skipped. Done waits
+ * for every required part, so past the end it goes back to the first required part still missing.
+ */
+export const nextStep = (current: WizardStep, status: SetupStatus, wanted: Record<OptionalPart, boolean>): WizardStep => {
+  const open = (step: WizardStep) => (step === 'what' || step === 'done' ? false
+    : step === 'trackers' || step === 'backup' ? wanted[step] && status.optional[step].status !== 'skipped'
+      : status.required[step] === 'not_done');
+  const later = order.slice(order.indexOf(current) + 1).find(open);
+  if (later !== undefined) return later;
+  return requiredParts.find((part) => status.required[part] === 'not_done') ?? 'done';
+};
+
+/** Where the wizard opens: the choices on a fresh install, else the first step still open. */
+export const firstStep = (status: SetupStatus, wanted: Record<OptionalPart, boolean>): WizardStep => (
+  requiredParts.every((part) => status.required[part] === 'not_done') ? 'what' : nextStep('what', status, wanted)
+);
+
+/** The step before `current`, for Back. */
+export const previousStep = (current: WizardStep): WizardStep => order[Math.max(0, order.indexOf(current) - 1)];
+
+/** The header words, such as "2 of 5 required steps done" or "5 of 5 required steps done · backup left". */
+export const wizardSummary = (status: SetupStatus, wanted: Record<OptionalPart, boolean>, finished: boolean) => {
+  const done = requiredParts.filter((part) => status.required[part] === 'done').length;
+  const optional = (['trackers', 'backup'] as const);
+  if (finished) {
+    return `Done · ${done} of 5 required, ${optional.filter((part) => status.optional[part].status === 'done').length} of 2 optional`;
+  }
+  if (done < 5) return `${done} of 5 required steps done`;
+  const left = optional.filter((part) => wanted[part] && status.optional[part].status === 'not_done');
+  return `5 of 5 required steps done${left.length === 0 ? '' : ` · ${left.join(' and ')} left`}`;
 };
 
 export const folderFields: { field: FolderField; label: string; help: string }[] = [

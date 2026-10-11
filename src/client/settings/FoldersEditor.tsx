@@ -1,4 +1,4 @@
-import { Folder, RefreshCw, Save } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Folder, RefreshCw, Save } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { BarBottomAction } from '@/components/ui/bar-bottom-action';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,14 @@ const pillOnly = '[&>span:nth-child(-n+2)]:hidden';
 
 type Read = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; read: FoldersRead };
 
-/** The pane for the six host folders. `request` sends one request under /api/setup. */
-export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; onSaved: (saved: FolderValues) => void }) {
+type Wizard = { title: string; step: string; onBack: () => void; onContinue: () => void };
+
+/** The pane for the six host folders. `request` sends one request under /api/setup; `wizard` makes it a setup step. */
+export function FoldersEditor({ request, onSaved, wizard }: {
+  request: TrackerRequest;
+  onSaved: (saved: FolderValues, warnings: Partial<Record<FolderField, string>>) => void;
+  wizard?: Wizard;
+}) {
   const [state, setState] = useState<Read>({ kind: 'loading' });
   const [draft, setDraft] = useState<FolderValues>();
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FolderField, string>>>({});
@@ -39,7 +45,20 @@ export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; o
 
   useEffect(() => { void read(); }, [read]);
 
-  if (state.kind === 'loading') return <div><SkeletonRowTwoLine /><SkeletonRowTwoLine /></div>;
+  // The pane's own frame and heading while the services answer, so the fields arrive in place instead of pushing in.
+  if (state.kind === 'loading') {
+    return (
+      <section aria-labelledby="folders-editor" aria-busy="true" className="flex flex-col gap-6 rounded-lg border border-border p-6">
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground [&>svg]:size-4"><Folder /></span>
+          <h2 id="folders-editor" className="font-ui text-base font-bold text-foreground">{wizard?.title ?? 'Folders'}</h2>
+          {wizard !== undefined && <span className="ml-auto font-data text-[13px] text-muted-foreground">{wizard.step}</span>}
+        </div>
+        <p className="font-ui text-sm text-muted-foreground">Reading the folders from Sonarr, Radarr and rTorrent. This can take a few seconds.</p>
+        <div className="grid grid-cols-2 gap-x-4"><SkeletonRowTwoLine /><SkeletonRowTwoLine /><SkeletonRowTwoLine /><SkeletonRowTwoLine /><SkeletonRowTwoLine /><SkeletonRowTwoLine /></div>
+      </section>
+    );
+  }
   if (state.kind === 'failed') {
     return (
       <Callout title="Folders could not be read" action={<Button variant="outline" icon={<RefreshCw />} onClick={() => void read()}>Retry</Button>}>
@@ -53,7 +72,10 @@ export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; o
   const edited = foldersEdited(values, saved);
   const anyError = Object.values(fieldErrors).some((error) => error !== undefined);
   const anyBlank = folderFields.some(({ field }) => values[field].trim() === '');
-  const pill = edited ? { state: 'unsaved' as const, text: 'Unsaved edits' }
+  // Suggestions nobody has touched yet are not the owner's edits.
+  const suggestedOnly = draft === undefined && Object.values(saved).every((value) => value === null);
+  const pill = suggestedOnly ? { state: 'not-set-up' as const, text: 'Read from services' }
+    : edited ? { state: 'unsaved' as const, text: 'Unsaved edits' }
     : Object.values(saved).every((value) => value !== null) ? { state: 'connected' as const, text: 'Saved' }
       : { state: 'not-set-up' as const, text: 'Not set up' };
   const warned = folderFields.filter(({ field }) => warnings[field] !== undefined);
@@ -75,7 +97,7 @@ export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; o
         const body = await response.json() as { warnings: Partial<Record<FolderField, string>> };
         setWarnings(body.warnings);
         setState((current) => (current.kind === 'ready' ? { kind: 'ready', read: { ...current.read, saved: sent } } : current));
-        onSaved(sent);
+        onSaved(sent, body.warnings);
         return;
       }
       if (response.status === 400) {
@@ -93,10 +115,12 @@ export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; o
     }
   };
 
+  const allSaved = Object.values(saved).every((value) => value !== null);
   const summary = pending ? 'Checking each folder exists, then saving.'
     : anyError ? 'Not saved. Fix the fields marked in red.'
       : edited ? 'Confirm checks each folder exists, then saves. If one fails, nothing changes.'
-        : 'Nothing to save. Change a folder, then Confirm.';
+        : wizard !== undefined && allSaved ? 'Folders saved. Continue moves on.'
+          : 'Nothing to save. Change a folder, then Confirm.';
 
   return (
     <section
@@ -105,8 +129,9 @@ export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; o
     >
       <div className="flex items-center gap-3">
         <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground [&>svg]:size-4"><Folder /></span>
-        <h2 id="folders-editor" className="font-ui text-base font-bold text-foreground">Folders</h2>
+        <h2 id="folders-editor" className="font-ui text-base font-bold text-foreground">{wizard?.title ?? 'Folders'}</h2>
         <StatusServicePill logo={null} name={null} state={pill.state} className={pillOnly}>{pill.text}</StatusServicePill>
+        {wizard !== undefined && <span className="ml-auto font-data text-[13px] text-muted-foreground">{wizard.step}</span>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -135,12 +160,15 @@ export function FoldersEditor({ request, onSaved }: { request: TrackerRequest; o
 
       <BarBottomAction
         summary={summary}
-        unsavedNote={edited && !pending ? 'Unsaved edits' : undefined}
-        action={(
-          <Button size="large" icon={<Save />} loading={pending} disabled={!edited || anyBlank || pending} onClick={() => void save()}>
-            Confirm
-          </Button>
-        )}
+        unsavedNote={edited && !pending && !suggestedOnly ? 'Unsaved edits' : undefined}
+        secondary={wizard !== undefined && <Button variant="outline" icon={<ArrowLeft />} disabled={pending} onClick={wizard.onBack}>Back</Button>}
+        action={wizard !== undefined && !edited && allSaved
+          ? <Button size="large" icon={<ArrowRight />} onClick={wizard.onContinue}>Continue</Button>
+          : (
+            <Button size="large" icon={<Save />} loading={pending} disabled={!edited || anyBlank || pending} onClick={() => void save()}>
+              {wizard === undefined ? 'Confirm' : 'Confirm and continue'}
+            </Button>
+          )}
       />
     </section>
   );
