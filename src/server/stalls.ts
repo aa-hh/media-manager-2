@@ -71,12 +71,10 @@ export const createStallFix = (options: {
   problems: Problems;
   trackers: TrackerWatch;
   now?: () => number;
-  // The replace epic (AA-31) owns the manual-download label; until it supplies this, nothing counts as one.
-  isManualDownload?: (subject: Subject) => boolean;
+  isManualDownload: (subject: Subject) => boolean;
 }) => {
-  const { database, rtorrent, arr, problems, trackers } = options;
+  const { database, rtorrent, arr, problems, trackers, isManualDownload } = options;
   const now = options.now ?? Date.now;
-  const isManualDownload = options.isManualDownload ?? (() => false);
 
   // rTorrent's connected seeders miss seeders the tracker knows about, so the tracker's scrape count wins when it has one.
   const trackerSeeders = async (torrent: Torrent) => {

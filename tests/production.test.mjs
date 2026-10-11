@@ -2437,6 +2437,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createTrackerWatch } = await import(trackersModuleUrl);
   const { createStallFix, indexerMatchesHost } = await import(stallsModuleUrl);
+  const { createProtection } = await import(protectionModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-stalls-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   let count = 0;
@@ -2484,7 +2485,8 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     const grabs = createGrabTracker({ database, arr, events, now });
     const problems = createProblems({ database, events, now });
     const trackers = createTrackerWatch({ database, rtorrent, problems, events, now });
-    const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, now, isManualDownload: () => manual });
+    if (manual) database.prepare("INSERT INTO protected_items (service, item_id, created_at) VALUES ('radarr', 7, 0)").run();
+    const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, now, isManualDownload: createProtection(database, arr).isProtected });
     await grabs.reconcile();
     const tick = async (minutes = 1) => {
       for (let i = 0; i < minutes; i += 1) {
@@ -2605,6 +2607,7 @@ test('missing movies and episodes are searched when they come out and every six 
   const { createProblems, subjectHistory } = await import(problemsModuleUrl);
   const { writeDependency } = await import(dependenciesModuleUrl);
   const { createSearchScheduler, searchDueAt } = await import(searchesModuleUrl);
+  const { createProtection } = await import(protectionModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-searches-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const minute = 60_000;
@@ -2618,8 +2621,8 @@ test('missing movies and episodes are searched when they come out and every six 
     assert.equal(searchDueAt({ availableAt: 10 * hour, addedAt: 0, lastSearchAt: 11 * hour }), 17 * hour);
   });
 
-  // Sending a second search before Sonarr updates its last-search time, searching a queued item, or searching while Sonarr is down turns this red.
-  await t.test('the scheduler searches each due item once, skips queued ones and pauses with the service', async () => {
+  // Sending a second search before Sonarr updates its last-search time, searching a queued or protected manual download, or searching while Sonarr is down turns this red.
+  await t.test('the scheduler searches each due item once, skips queued and manual ones and pauses with the service', async () => {
     const database = openDatabase(join(root, 'scheduler', 'media-manager.sqlite'));
     const events = createEventHub();
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
@@ -2629,6 +2632,7 @@ test('missing movies and episodes are searched when they come out and every six 
       { id: 1, monitored: true, hasFile: false, airDateUtc: '2026-10-08T20:00:00Z', seasonNumber: 1, episodeNumber: 1, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
       { id: 2, monitored: true, hasFile: false, airDateUtc: '2026-10-08T14:00:00Z', lastSearchTime: '2026-10-08T15:00:00Z', seasonNumber: 1, episodeNumber: 2, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
       { id: 3, monitored: true, hasFile: false, airDateUtc: '2026-10-01T00:00:00Z', seasonNumber: 1, episodeNumber: 3, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
+      { id: 4, monitored: true, hasFile: false, airDateUtc: '2026-10-01T00:00:00Z', seasonNumber: 1, episodeNumber: 4, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } },
     ];
     const movies = [
       { id: 7, title: 'Movie', monitored: true, hasFile: false, isAvailable: true, added: '2026-10-08T19:55:00Z' },
@@ -2648,7 +2652,8 @@ test('missing movies and episodes are searched when they come out and every six 
       tracked_state, status_messages, error_message, indexer, protocol, quality, formats, format_score, size_bytes, size_left_bytes)
       VALUES ('sonarr', 1, NULL, NULL, 1, 3, 'x', 'delay', 'ok', 'downloading', '[]', '', '', 'torrent', '', '[]', 0, 0, 0)`).run();
     const problems = createProblems({ database, events, now });
-    const scheduler = createSearchScheduler({ database, arr, problems, now });
+    database.prepare("INSERT INTO protected_items (service, item_id, series_id, season_number, episode_number, created_at) VALUES ('sonarr', 4, 1, 1, 4, 0)").run();
+    const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: createProtection(database, arr).isProtected });
 
     await scheduler.check();
     assert.deepEqual(commands, [['sonarr', { name: 'EpisodeSearch', episodeIds: [1] }]]);

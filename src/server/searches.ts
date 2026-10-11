@@ -32,11 +32,10 @@ export const createSearchScheduler = (options: {
   arr: Record<Service, { request: ArrRequest }>;
   problems: Problems;
   now?: () => number;
-  isManualDownload?: (subject: Subject) => boolean;
+  isManualDownload: (subject: Subject) => boolean;
 }) => {
-  const { database, arr, problems } = options;
+  const { database, arr, problems, isManualDownload } = options;
   const now = options.now ?? Date.now;
-  const isManualDownload = options.isManualDownload ?? (() => false);
   const key = (subject: Subject) => `${subject.service}:${subject.type}:${subject.id}`;
 
   const ourLastSearch = (subject: Subject) => {

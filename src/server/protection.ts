@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { GrabRecord } from './grabs.js';
+import type { Subject } from './problems.js';
 import { getPreference, setPreference } from './preferences.js';
 import type { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -201,6 +202,9 @@ export const createProtection = (
   return {
     list: () => list(),
     hookToken,
+    // Radarr items are always movies and Sonarr items always episodes, so service plus id identifies one.
+    isProtected: (subject: Subject) => (subject.type === 'movie' || subject.type === 'episode')
+      && database.prepare('SELECT 1 FROM protected_items WHERE service = ? AND item_id = ?').get(subject.service, Number(subject.id)) !== undefined,
 
     // A completed replace protects whatever it put in place.
     async protect(record: GrabRecord) {
