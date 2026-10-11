@@ -2,9 +2,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { etag } from 'hono/etag';
 import type { EventHub } from './events.js';
+import { requestWithTimeout } from './services/connection.js';
 import type { ArrServices, Image, Movie, Series } from './services/arr.js';
 
 export type Service = 'sonarr' | 'radarr';
@@ -304,7 +305,94 @@ export const createTitleCache = (options: {
   };
 };
 
-export const createImageRoutes = (cache: Pick<ReturnType<typeof createTitleCache>, 'image'>) => {
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
+const TMDB_IMAGE_SIZES = new Set(['w342', 'w1920_and_h800_multi_faces']);
+const TMDB_IMAGE_FILE = /^[A-Za-z0-9]+\.(jpg|png)$/;
+// TMDB's terms cap how long a copy may be kept at six months; 180 days stays inside that.
+const TMDB_IMAGE_MAX_AGE_MS = 180 * 24 * 60 * 60_000;
+
+type StoredImage = { path: string; contentType: string; etag: string };
+
+// Our copies of TMDB posters and backdrops, fetched on first request. Cast photos stay TMDB links.
+export const createTmdbImages = (options: {
+  database: DatabaseSync;
+  imageDirectory: string;
+  fetchImpl?: typeof globalThis.fetch;
+  now?: () => number;
+}) => {
+  const { database, imageDirectory } = options;
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const now = options.now ?? Date.now;
+  const pending = new Map<string, Promise<StoredImage | 'not_found' | 'unreachable'>>();
+
+  const download = async (size: string, file: string): Promise<StoredImage | 'not_found' | 'unreachable'> => {
+    let bytes: Uint8Array;
+    try {
+      const response = await requestWithTimeout(fetchImpl, `${TMDB_IMAGE_BASE}${size}/${file}`, { method: 'GET' });
+      if (response.status === 404) return 'not_found';
+      if (!isSuccess(response.status)) return 'unreachable';
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } catch {
+      return 'unreachable';
+    }
+    const stored = `tmdb-${size}-${file}`;
+    mkdirSync(imageDirectory, { recursive: true, mode: 0o700 });
+    const temporary = join(imageDirectory, `${stored}.${randomUUID()}.tmp`);
+    writeFileSync(temporary, bytes, { mode: 0o600 });
+    renameSync(temporary, join(imageDirectory, stored));
+    const contentType = file.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const tag = sha256(bytes);
+    database.prepare(`INSERT INTO tmdb_images (size, path, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (size, path) DO UPDATE SET content_type = excluded.content_type, etag = excluded.etag,
+        file = excluded.file, fetched_at = excluded.fetched_at`)
+      .run(size, file, contentType, tag, stored, now());
+    return { path: join(imageDirectory, stored), contentType, etag: tag };
+  };
+
+  // Returns undefined for a size or file outside the allowed set, before any fetch.
+  const image = async (size: string, file: string) => {
+    if (!TMDB_IMAGE_SIZES.has(size) || !TMDB_IMAGE_FILE.test(file)) return undefined;
+    const row = database.prepare('SELECT content_type, etag, file, fetched_at FROM tmdb_images WHERE size = ? AND path = ?')
+      .get(size, file) as { content_type: string; etag: string; file: string; fetched_at: number } | undefined;
+    if (row !== undefined) {
+      const path = join(imageDirectory, row.file);
+      if (now() - row.fetched_at < TMDB_IMAGE_MAX_AGE_MS && existsSync(path)) {
+        return { path, contentType: row.content_type, etag: row.etag };
+      }
+      database.prepare('DELETE FROM tmdb_images WHERE size = ? AND path = ?').run(size, file);
+      rmSync(path, { force: true });
+    }
+    const key = `${size}/${file}`;
+    let fetching = pending.get(key);
+    if (fetching === undefined) {
+      fetching = download(size, file).finally(() => pending.delete(key));
+      pending.set(key, fetching);
+    }
+    return fetching;
+  };
+
+  return { image };
+};
+
+const serveImage = (context: Context, found: StoredImage) => {
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(found.path);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return context.json({ error: 'not_found' }, 404);
+    throw error;
+  }
+  return context.body(new Uint8Array(bytes), 200, {
+    'Content-Type': found.contentType,
+    ETag: `"${found.etag}"`,
+    'Cache-Control': 'private, max-age=300',
+  });
+};
+
+export const createImageRoutes = (
+  cache: Pick<ReturnType<typeof createTitleCache>, 'image'>,
+  tmdb?: ReturnType<typeof createTmdbImages>,
+) => {
   const routes = new Hono();
   routes.use('*', etag());
   routes.get('/:service{sonarr|radarr}/:id{[0-9]{1,18}}/:kind{poster|fanart}', (context) => {
@@ -314,19 +402,16 @@ export const createImageRoutes = (cache: Pick<ReturnType<typeof createTitleCache
       context.req.param('kind') as ImageKind,
     );
     if (found === undefined) return context.json({ error: 'not_found' }, 404);
-    let bytes: Buffer;
-    try {
-      bytes = readFileSync(found.path);
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return context.json({ error: 'not_found' }, 404);
-      throw error;
-    }
-    return context.body(new Uint8Array(bytes), 200, {
-      'Content-Type': found.contentType,
-      ETag: `"${found.etag}"`,
-      'Cache-Control': 'private, max-age=300',
-    });
+    return serveImage(context, found);
   });
+  if (tmdb !== undefined) {
+    routes.get('/tmdb/:size/:file', async (context) => {
+      const found = await tmdb.image(context.req.param('size'), context.req.param('file'));
+      if (found === 'unreachable') return context.json({ error: 'tmdb_unreachable' }, 502);
+      if (found === undefined || found === 'not_found') return context.json({ error: 'not_found' }, 404);
+      return serveImage(context, found);
+    });
+  }
   routes.all('/*', (context) => context.json({ error: 'not_found' }, 404));
   return routes;
 };
