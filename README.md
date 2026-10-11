@@ -7,9 +7,10 @@
 
 # media-manager-2
 
-A power-user web app that runs Sonarr and Radarr through one interface and
-keeps their torrent downloads on track: it reads rTorrent directly, spots
-downloads that stall or report vague status, and fixes them.
+Discover, download and manage your media, all in one app. It runs Sonarr and
+Radarr through one interface and keeps their torrent downloads on track: it
+reads rTorrent directly, spots downloads that stall or report vague status,
+and fixes them.
 
 It is a single Node.js process (a Hono server that also serves the React app)
 with its state in one SQLite file. It is built for one person, the owner, who
