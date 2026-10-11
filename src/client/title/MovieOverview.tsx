@@ -1,16 +1,17 @@
-import { useState } from 'react';
+import { type SetStateAction, useState } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { LabelGroup } from '@/components/ui/label-group';
 import { Table } from '@/components/ui/table';
 import { formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import type { OwnedMovieDetail } from '../library/api';
+import type { OwnedMovieDetail, SecondVersion } from '../library/api';
 import { seedingFacts, type SubjectProgress } from '../library/progress';
 import { PickRelease, type ReleaseTarget } from '../PickRelease';
 import { statusLabel } from '../Search';
 import { TrackedVersion } from './EpisodeDetails';
 import { History } from './History';
 import { movieWord } from './rows';
+import { SecondVersionRows } from './SecondVersions';
 import { sendAction, TitleHeader, type TitleFact } from './TitleHeader';
 
 const wordLook = (word: string, live: boolean): BadgeVariant => {
@@ -45,6 +46,15 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
     setProblem("Radarr didn't answer.");
   };
 
+  const setVersions = (next: SetStateAction<SecondVersion[]>) => setDetail((current) => ({
+    ...current,
+    secondVersions: typeof next === 'function' ? next(current.secondVersions) : next,
+  }));
+  const imported = detail.secondVersions.filter((version) => version.state === 'imported');
+  const versionCount = (detail.file === null ? 0 : 1) + imported.length;
+  const fileCount = (detail.hasFile ? 1 : 0) + imported.length;
+  const onDisk = detail.sizeOnDisk + imported.reduce((sum, version) => sum + (version.sizeBytes ?? 0), 0);
+
   const availableWhen = statusLabel(detail.minimumAvailability);
   const file = detail.file === null ? '' : [detail.file.quality, detail.file.releaseGroup].filter((part) => part !== null && part !== '').join(' · ');
   const facts: TitleFact[] = [
@@ -52,7 +62,7 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
     ...(availableWhen === null ? [] : [{ label: 'Available when', value: availableWhen }]),
     ...(detail.qualityProfile === null ? [] : [{ label: 'Quality profile', value: detail.qualityProfile.name }]),
     ...(file === '' ? [] : [{ label: 'File', value: file }]),
-    { label: 'On disk', value: detail.hasFile ? `${formatBytes(detail.sizeOnDisk)} · 1 file` : 'Nothing yet' },
+    { label: 'On disk', value: fileCount > 0 ? `${formatBytes(onDisk)} · ${fileCount} ${fileCount === 1 ? 'file' : 'files'}` : 'Nothing yet' },
   ];
 
   return (
@@ -62,7 +72,7 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         owned
         badges={(
           <>
-            <Badge variant="strong">In library</Badge>
+            <Badge variant="strong">{versionCount > 1 ? `In library · ${versionCount} versions` : 'In library'}</Badge>
             {word !== null && <Badge variant={wordLook(word, live !== undefined)}>{word.charAt(0).toUpperCase() + word.slice(1)}</Badge>}
           </>
         )}
@@ -79,13 +89,20 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         monitorProblem={problem}
         onUnauthenticated={onUnauthenticated}
       />
-      {/* Hand-off to AA-32: second version row and delete. */}
       <div className="flex flex-col pt-2 pb-10">
-        <LabelGroup count={detail.file === null ? 0 : 1}>Versions</LabelGroup>
+        <LabelGroup count={(detail.file === null ? 0 : 1) + detail.secondVersions.length}>Versions</LabelGroup>
         <Table>
           {detail.file === null
-            ? <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">No file yet.</p>
+            ? detail.secondVersions.length === 0 && <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">No file yet.</p>
             : <TrackedVersion file={detail.file} seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { movieId: detail.id })} indent />}
+          <SecondVersionRows
+            versions={detail.secondVersions}
+            indent
+            subject={detail.title}
+            trackedQuality={detail.file?.quality ?? null}
+            onChanged={setVersions}
+            onUnauthenticated={onUnauthenticated}
+          />
         </Table>
         <History query={`service=radarr&movieId=${detail.id}`} service="Radarr" onUnauthenticated={onUnauthenticated} />
       </div>

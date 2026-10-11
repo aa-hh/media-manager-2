@@ -3,20 +3,20 @@ import { createCommands, type ForceImport, type SearchTarget } from './arr/comma
 import { createEpisodes, type Episode } from './arr/episodes.js';
 import { type FileDetail, type Image, parseFile } from './arr/files.js';
 import { createHistory, type HistoryRead, type HistoryRecord } from './arr/history.js';
-import { type Credit, createMovies, type Movie, type Ratings } from './arr/movies.js';
+import { type Credit, createMovies, type Movie, parseMovie, type Ratings } from './arr/movies.js';
 import { createQueue, type QueueItem } from './arr/queue.js';
 import { classify, labels, notConfigured, type Result, type Send, type Service, unreachable, valueOrThrow } from './arr/result.js';
-import { createSeries, type Series } from './arr/series.js';
+import { createSeries, parseSeries, type Series } from './arr/series.js';
 import { type ConnectionStatus, readSetting, requestWithTimeout, type ServiceOptions } from './connection.js';
 
-export { parseFile, valueOrThrow };
+export { parseFile, parseMovie, parseSeries, valueOrThrow };
 export type { Credit, Episode, FileDetail, HistoryRecord, Image, Movie, QueueItem, Ratings, Result, Series, Service };
 
 export type SonarrTitles = {
   listSeries: () => Promise<Result<Series[]>>;
   series: (seriesId: number) => Promise<Result<Series>>;
-  lookupSeries: (term: string) => Promise<Result<Series[]>>;
-  addSeries: (tvdbId: number, fields: Record<string, unknown>) => Promise<Result<{ id: number }>>;
+  lookupSeries: (term: string) => Promise<Result<Record<string, unknown>[]>>;
+  addSeries: (record: Record<string, unknown>, fields: Record<string, unknown>) => Promise<Result<{ id: number }>>;
   monitorSeries: (seriesId: number, monitored: boolean) => Promise<Result<void>>;
   monitorSeason: (seriesId: number, seasonNumber: number, monitored: boolean) => Promise<Result<void>>;
   setTag: (seriesId: number, tagId: number, tagged: boolean) => Promise<Result<void>>;
@@ -24,16 +24,19 @@ export type SonarrTitles = {
   episode: (episodeId: number) => Promise<Result<Episode>>;
   episodeFiles: (seriesId: number) => Promise<Result<FileDetail[]>>;
   monitorEpisodes: (episodeIds: number[], monitored: boolean) => Promise<Result<void>>;
+  deleteSeries: (seriesId: number) => Promise<Result<void>>;
 };
 
 export type RadarrTitles = {
   listMovies: () => Promise<Result<Movie[]>>;
   movie: (movieId: number) => Promise<Result<Movie>>;
-  lookupMovies: (term: string) => Promise<Result<Movie[]>>;
-  addMovie: (tmdbId: number, fields: Record<string, unknown>) => Promise<Result<{ id: number }>>;
+  lookupMovies: (term: string) => Promise<Result<Record<string, unknown>[]>>;
+  addMovie: (record: Record<string, unknown>, fields: Record<string, unknown>) => Promise<Result<{ id: number }>>;
   monitorMovie: (movieId: number, monitored: boolean) => Promise<Result<void>>;
   setTag: (movieId: number, tagId: number, tagged: boolean) => Promise<Result<void>>;
   credits: (movieId: number) => Promise<Result<Credit[]>>;
+  deleteMovie: (movieId: number) => Promise<Result<void>>;
+  deleteMovieFile: (fileId: number) => Promise<Result<void>>;
 };
 
 export type Arr<S extends Service> = {
@@ -57,6 +60,7 @@ export type Arr<S extends Service> = {
   refreshTitle: (id: number) => Promise<Result<void>>;
   refreshMonitoredDownloads: () => Promise<Result<void>>;
   forceImport: ForceImport;
+  recycleBin: () => Promise<Result<string | null>>;
 } & (S extends 'sonarr' ? SonarrTitles : RadarrTitles);
 
 export type ArrServices = { sonarr: Arr<'sonarr'>; radarr: Arr<'radarr'> };

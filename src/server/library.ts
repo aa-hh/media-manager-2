@@ -7,11 +7,15 @@ import {
   type HistoryRecord,
   type Movie,
   parseFile,
+  parseMovie,
+  parseSeries,
   type Ratings,
   type Result as ArrResult,
   type Series,
 } from './services/arr.js';
+import { lookupTitle } from './search.js';
 import type { SecondVersionRow } from './secondVersionRows.js';
+import type { TitleStore } from './titleStore.js';
 
 export type { FileDetail };
 
@@ -471,7 +475,7 @@ type VersionRows = {
 };
 
 // The tracked version comes from Sonarr or Radarr; second versions come from this app's own records, beside it.
-export const createLibrary = (services: ArrServices, versionRows: VersionRows = () => []) => {
+export const createLibrary = (services: ArrServices, versionRows: VersionRows, store: TitleStore) => {
   const outcome = <T>(result: Result<T[]>): Outcome => (
     result.kind === 'ok' ? { kind: 'ok', count: result.value.length } : { kind: result.kind === 'not_found' ? 'unreachable' : result.kind }
   );
@@ -534,17 +538,14 @@ export const createLibrary = (services: ArrServices, versionRows: VersionRows = 
       };
     },
 
+    // Titles outside the library read the saved lookup record; library titles above always ask Sonarr or Radarr.
     async preview(service: Service, id: number): Promise<Result<SeriesDetail | MovieDetail>> {
-      if (service === 'sonarr') {
-        const found = fromArr(await services.sonarr.lookupSeries(`tvdb:${id}`));
-        if (found.kind !== 'ok') return found;
-        const first = found.value[0];
-        return first === undefined ? { kind: 'not_found' } : { kind: 'ok', value: seriesDetail(first, { owned: false }) };
-      }
-      const found = fromArr(await services.radarr.lookupMovies(`tmdb:${id}`));
+      const found = fromArr(await lookupTitle(services, store, service, id));
       if (found.kind !== 'ok') return found;
-      const first = found.value[0];
-      return first === undefined ? { kind: 'not_found' } : { kind: 'ok', value: movieDetail(first, { owned: false }) };
+      const show = service === 'sonarr' ? parseSeries(found.value) : null;
+      const movie = service === 'radarr' ? parseMovie(found.value) : null;
+      if (show !== null) return { kind: 'ok', value: seriesDetail(show, { owned: false }) };
+      return movie === null ? { kind: 'not_found' } : { kind: 'ok', value: movieDetail(movie, { owned: false }) };
     },
 
     async history(subject: HistorySubject): Promise<Result<HistoryEntry[]>> {

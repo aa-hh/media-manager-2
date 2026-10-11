@@ -68,6 +68,22 @@ export const folderProblems = (
   return fields;
 };
 
+// A library on another drive still saves (a network library is fine), but a deleted download can't be re-linked from it.
+export const folderWarnings = (
+  values: FolderValues,
+  stat: FolderStat = (path) => statSync(path, { throwIfNoEntry: false }),
+): Partial<Record<FolderField, string>> => {
+  const downloads = stat(values.downloads);
+  const warnings: Partial<Record<FolderField, string>> = {};
+  for (const field of ['librarySonarr', 'libraryRadarr'] as const) {
+    const library = stat(values[field]);
+    if (downloads !== undefined && library !== undefined && library.dev !== downloads.dev) {
+      warnings[field] = 'On a different drive from the downloads folder, so a deleted download can\'t be re-linked from this library.';
+    }
+  }
+  return warnings;
+};
+
 type Part = 'trackers' | 'backup';
 type Choices = Record<Part, { wanted: boolean; skipped: boolean }>;
 const CHOICES_KEY = 'setup.choices';
@@ -133,7 +149,8 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
           wanted: choices?.trackers.wanted ?? false,
         },
         backup: {
-          status: destination !== undefined && !off ? 'done' : chosenOut('backup') || off ? 'skipped' : 'not_done',
+          // Backups switched off elsewhere count as skipped until the owner says they want them here.
+          status: destination !== undefined && !off ? 'done' : (choices === undefined ? off : chosenOut('backup')) ? 'skipped' : 'not_done',
           wanted: choices?.backup.wanted ?? false,
         },
       },
@@ -151,13 +168,14 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   });
 
   // Skipping or unticking backups turns them off, as the CLI's `backup off` does, so the health check stops reminding.
+  // Ticking them never turns them on: only a saved destination (POST /backup) does.
   routes.put('/choices', async (context) => {
     const body = await readBody(context);
     if (!hasExactly(body, ['trackers', 'backup']) || !isChoice(body.trackers) || !isChoice(body.backup)) {
       return context.json({ error: 'invalid_request' }, 400);
     }
     setPreference(database, CHOICES_KEY, JSON.stringify({ trackers: body.trackers, backup: body.backup }));
-    setBackupsOff(database, chosenOut('backup'));
+    if (chosenOut('backup')) setBackupsOff(database, true);
     return context.body(null, 204);
   });
 
@@ -209,7 +227,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
     setSetting(database, 'hostPaths', 'library.radarr', values.libraryRadarr);
     setSetting(database, 'hostPaths', 'versions.sonarr', values.versionsSonarr);
     setSetting(database, 'hostPaths', 'versions.radarr', values.versionsRadarr);
-    return context.body(null, 204);
+    return context.json({ warnings: folderWarnings(values) });
   });
 
   // Connects Plex with the token the owner signed in with, checked in a throwaway in-memory database first so a
