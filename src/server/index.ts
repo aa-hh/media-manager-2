@@ -177,6 +177,7 @@ if (database !== undefined) {
   const app = createApp({
     clientDirectory,
     listeningHost: host,
+    database,
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
