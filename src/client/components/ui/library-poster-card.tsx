@@ -1,6 +1,6 @@
 // v2/Library poster card — design/design-system.lib.pen Z0OVp
 import { ArrowRight, Check, Clapperboard, ImageOff, Tv } from 'lucide-react';
-import type { ComponentProps, CSSProperties, ReactNode } from 'react';
+import { type ComponentProps, type CSSProperties, type ReactNode, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 type LibraryPosterCardProps = ComponentProps<'a'> & {
@@ -36,6 +36,8 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
 /**
  * Library grid card, 152 by 228 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
  * pressed 84 %; focus rings the poster; selected adds a 2 px black edge and a 700 title.
+ * The card crossfades in when it takes a skeleton's place; its poster block keeps the skeleton shimmer until
+ * the image has loaded, then the image fades in. An image that fails to load shows the no-poster fallback.
  */
 function LibraryPosterCard({
   poster, title, meta, status, progress, imported = false, importedLabel = 'Imported', selected = false,
@@ -43,25 +45,37 @@ function LibraryPosterCard({
 }: LibraryPosterCardProps) {
   const large = size === 'large';
   const strip = imported ? 100 : progress;
+  const [image, setImage] = useState<'loading' | 'loaded' | 'failed'>('loading');
+  const showPoster = poster !== undefined && image !== 'failed';
   return (
-    <a className={cn('group flex flex-col gap-2 outline-none', large ? 'w-55' : 'w-(--poster-width)', className)} {...props}>
+    <a className={cn('group flex flex-col gap-2 outline-none animate-content-in', large ? 'w-55' : 'w-(--poster-width)', className)} {...props}>
       <span
+        data-poster
         className={cn(
           'relative block w-full overflow-hidden rounded-md bg-muted',
+          showPoster && image === 'loading' && 'skeleton-shimmer motion-reduce:bg-none',
           large ? 'h-82.5' : 'h-57',
           'group-focus-visible:outline-2 group-focus-visible:outline-offset-0 group-focus-visible:outline-ring',
         )}
       >
-        {poster !== undefined && (
+        {showPoster && (
           <img
+            // A cached image can finish before React attaches onLoad, so a complete one counts as loaded at once.
+            ref={(node) => { if (node?.complete === true && node.naturalWidth > 0) setImage('loaded'); }}
             src={poster}
             alt=""
             loading="lazy"
             decoding="async"
-            className="size-full object-cover transition-[filter] duration-(--duration-fast) ease-out group-hover:brightness-92 group-active:brightness-84 group-active:duration-0"
+            onLoad={() => setImage('loaded')}
+            onError={() => setImage('failed')}
+            className={cn(
+              'size-full object-cover transition-[filter] duration-(--duration-fast) ease-out',
+              'group-hover:brightness-92 group-active:brightness-84 group-active:duration-0',
+              image === 'loaded' ? 'animate-content-in' : 'opacity-0',
+            )}
           />
         )}
-        {poster === undefined && (
+        {!showPoster && (
           <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <ImageOff aria-hidden="true" className="size-6 text-subtle-foreground" />
             <span className="font-ui text-xs text-muted-foreground">No poster yet</span>

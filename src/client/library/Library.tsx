@@ -22,7 +22,7 @@ import { SkeletonPosterCard } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { buildRows, formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import { navigate } from '../navigation';
+import { navigateFrom } from '../navigation';
 import { getJson, type LibraryTitle, type Outcome } from './api';
 import { FIELDS, missingCount, movieWord, progressText, readFields, totals, writeFields, type Field } from './grid';
 import { downloadingByShow, subjectProgress, type SubjectProgress } from './progress';
@@ -54,7 +54,7 @@ const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 const openLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
   event.preventDefault();
-  navigate(path);
+  navigateFrom(path, event.currentTarget);
 };
 
 // One badge per card: live progress, then deleted, then not monitored, then what is missing or not out yet.
