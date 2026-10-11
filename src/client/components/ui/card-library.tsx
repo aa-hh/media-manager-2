@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 type CardLibraryProps = ComponentProps<'section'> & {
   title?: ReactNode;
   /** One entry per rating site, such as { source: 'IMDb', value: '8.5', votes: '1,203 votes' }; the row is left out when empty. */
-  ratings?: Array<{ source: string; value: string; votes?: string }>;
+  ratings?: Array<{ source: string; icon?: ReactNode; value: string; votes?: string }>;
   /** Fact/row rows: label 112 px, value right-aligned. */
   rows: Array<{ label: string; value: ReactNode }>;
   /** The owner's tags; the row is left out when empty. */
@@ -27,7 +27,9 @@ function CardLibrary({ title = 'In your library', ratings = [], rows, tags = [],
         <ul aria-label="Ratings" className="m-0 flex h-12 list-none items-center justify-center gap-4 border-b border-border px-4">
           {ratings.map((rating) => (
             <li key={rating.source} className="flex items-center gap-1.25">
-              <span className="font-ui text-xs font-bold text-subtle-foreground">{rating.source}</span>
+              {rating.icon === undefined
+                ? <span className="font-ui text-xs font-bold text-subtle-foreground">{rating.source}</span>
+                : <span className="flex items-center text-subtle-foreground [&>svg]:size-3.5" role="img" aria-label={rating.source}>{rating.icon}</span>}
               <span className="text-data font-semibold text-foreground">{rating.value}</span>
               {rating.votes !== undefined && <span className="text-data-small font-normal text-subtle-foreground">{rating.votes}</span>}
             </li>

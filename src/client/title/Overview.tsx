@@ -6,7 +6,7 @@ import { Callout } from '@/components/ui/callout';
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton';
 import { buildRows } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import { getJson, type MovieDetail, type SeriesDetail } from '../library/api';
+import { getJson, type MovieDetail, type OwnedMovieDetail, type SeriesDetail } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
 import { replace, useLocation } from '../navigation';
 import { AddControls } from './AddControls';
@@ -24,7 +24,7 @@ type Load =
   | { kind: 'loading' }
   | { kind: 'failed'; message: string }
   | { kind: 'series'; detail: SeriesDetail; protectedIds: Set<number> }
-  | { kind: 'movie'; detail: MovieDetail; protectedIds: Set<number> }
+  | { kind: 'movie'; detail: OwnedMovieDetail; protectedIds: Set<number> }
   | { kind: 'preview-tv'; detail: SeriesDetail }
   | { kind: 'preview-movie'; detail: MovieDetail };
 
@@ -110,7 +110,7 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
         const [detail, items] = await Promise.all([getJson<SeriesDetail>(`/api/library/series/${route.id}`, onUnauthenticated, controller.signal), protectedRead]);
         return { kind: 'series', detail, protectedIds: new Set(items.flatMap((item) => (item.kind === 'episode' ? [item.episodeId] : []))) };
       }
-      const [detail, items] = await Promise.all([getJson<MovieDetail>(`/api/library/movie/${route.id}`, onUnauthenticated, controller.signal), protectedRead]);
+      const [detail, items] = await Promise.all([getJson<OwnedMovieDetail>(`/api/library/movie/${route.id}`, onUnauthenticated, controller.signal), protectedRead]);
       return { kind: 'movie', detail, protectedIds: new Set(items.flatMap((item) => (item.kind === 'movie' ? [item.movieId] : []))) };
     };
     read()

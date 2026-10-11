@@ -4,7 +4,7 @@ import { LabelGroup } from '@/components/ui/label-group';
 import { Table } from '@/components/ui/table';
 import { formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import type { MovieDetail } from '../library/api';
+import type { OwnedMovieDetail } from '../library/api';
 import { seedingFacts, type SubjectProgress } from '../library/progress';
 import { PickRelease, type ReleaseTarget } from '../PickRelease';
 import { statusLabel } from '../Search';
@@ -21,7 +21,7 @@ const wordLook = (word: string, live: boolean): BadgeVariant => {
 };
 
 export function MovieOverview({ detail: loaded, downloads, progress, onUnauthenticated }: {
-  detail: MovieDetail;
+  detail: OwnedMovieDetail;
   downloads: DownloadsState;
   progress: Map<string, SubjectProgress>;
   onUnauthenticated: () => void;

@@ -1,4 +1,4 @@
-import { Ellipsis, ExternalLink, History as HistoryIcon, List, RefreshCw, Search, SlidersHorizontal, Tag, X } from 'lucide-react';
+import { Ellipsis, ExternalLink, History as HistoryIcon, List, RefreshCw, Search, SlidersHorizontal, Star, Tag, X } from 'lucide-react';
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -10,11 +10,12 @@ import { FactStacked } from '@/components/ui/fact-stacked';
 import { HeaderTitle } from '@/components/ui/header-title';
 import { StatusInline } from '@/components/ui/status-inline';
 import type { BookmarkState } from '@/components/ui/toggle-bookmark';
-import { postJson, type EpisodeDetail, type MovieDetail, type SeriesDetail, type TitleRating } from '../library/api';
+import { postJson, type Credits, type EpisodeDetail, type MovieDetail, type SeriesDetail } from '../library/api';
 import { navigate, useLocation } from '../navigation';
 import { statusLabel } from '../Search';
 
-export type Subject = { type: 'tv'; detail: SeriesDetail } | { type: 'movie'; detail: MovieDetail };
+// A movie already in the library carries its credits; a not-yet-added one has none.
+export type Subject = { type: 'tv'; detail: SeriesDetail } | { type: 'movie'; detail: MovieDetail & { credits?: Credits } };
 export type MonitoredState = BookmarkState;
 export type TitleFact = { label: string; value: ReactNode };
 
@@ -71,7 +72,7 @@ const titleLinks = (subject: Subject) => {
     detail.links.imdbId === null ? null : { label: 'IMDb', href: `https://www.imdb.com/title/${detail.links.imdbId}/` },
     subject.type === 'tv' && subject.detail.links.tvdbId !== null ? { label: 'TVDB', href: `https://www.thetvdb.com/?tab=series&id=${subject.detail.links.tvdbId}` } : null,
     detail.links.tmdbId === null ? null : { label: 'TMDB', href: `https://www.themoviedb.org/${tmdbKind}/${detail.links.tmdbId}` },
-    subject.type === 'movie' && typeof subject.detail.youTubeTrailerId === 'string' && subject.detail.youTubeTrailerId !== ''
+    subject.type === 'movie' && subject.detail.youTubeTrailerId !== null && subject.detail.youTubeTrailerId !== ''
       ? { label: 'Trailer', href: `https://www.youtube.com/watch?v=${encodeURIComponent(subject.detail.youTubeTrailerId)}` }
       : null,
   ].filter((link) => link !== null);
@@ -94,16 +95,31 @@ const titleFacts = (subject: Subject): TitleFact[] => {
   ];
 };
 
-const ratingSources: Record<TitleRating['source'], string> = {
-  imdb: 'IMDb', tmdb: 'TMDB', tvdb: 'TVDB', trakt: 'Trakt', rottenTomatoes: 'RT', metacritic: 'Metacritic',
-};
+const movieRatingSites = [
+  ['imdb', 'IMDb'], ['tmdb', 'TMDB'], ['trakt', 'Trakt'], ['rottenTomatoes', 'RT'], ['metacritic', 'Metacritic'],
+] as const;
 
 // TMDB scores out of 10 but shows as a percentage; Rotten Tomatoes and Metacritic already score out of 100.
-const ratingValue = (rating: TitleRating) => {
-  if (rating.source === 'tmdb') return `${Math.round(rating.value * 10)}%`;
-  if (rating.source === 'rottenTomatoes') return `${rating.value}%`;
-  if (rating.source === 'metacritic') return String(rating.value);
-  return rating.value.toFixed(1);
+const movieRatingValue = (site: (typeof movieRatingSites)[number][0], value: number) => {
+  if (site === 'tmdb') return `${Math.round(value * 10)}%`;
+  if (site === 'rottenTomatoes') return `${value}%`;
+  if (site === 'metacritic') return String(value);
+  return value.toFixed(1);
+};
+
+const votesText = (votes: number | null) => (votes === null || votes <= 0 ? undefined : `${votes.toLocaleString('en-GB')} votes`);
+
+// A movie has one rating per site; a show has Sonarr's single rating, which the server does not attribute to a site.
+const cardRatings = (subject: Subject) => {
+  if (subject.type === 'tv') {
+    const { rating, ratingVotes } = subject.detail;
+    return rating === null ? [] : [{ source: 'Rating', icon: <Star />, value: rating.toFixed(1), votes: votesText(ratingVotes) }];
+  }
+  const { ratings } = subject.detail;
+  return movieRatingSites.flatMap(([site, source]) => {
+    const rating = ratings[site];
+    return rating === null ? [] : [{ source, value: movieRatingValue(site, rating.value), votes: votesText(rating.votes) }];
+  });
 };
 
 // Sonarr gives each season's next and previous air time; the show's are the earliest next and the latest previous.
@@ -131,7 +147,7 @@ const tvFacts = (tv: SeriesDetail): Cell[][] => {
   return [
     [{ label: 'Status', value: statusLabel(tv.status) }, { label: 'First aired', value: day(firstAired) }, { label: 'Last aired', value: day(tv.lastAired) }],
     [{ label: 'Network', value: tv.network }, { label: 'Air time', value: tv.airTime }, { label: 'Runtime', value: runtimeText(tv.runtime) }],
-    [{ label: 'Certification', value: tv.certification }, { label: 'Original language', value: tv.language }, { label: 'Also known as', value: tv.alternateTitles?.join(', ') }],
+    [{ label: 'Certification', value: tv.certification }, { label: 'Original language', value: tv.language }, { label: 'Also known as', value: tv.alternateTitles.join(', ') }],
     [
       { label: 'Next episode', value: airing(tv, 'nextAiring') },
       { label: 'Previous episode', value: airing(tv, 'previousAiring') },
@@ -146,9 +162,11 @@ const movieFacts = (movie: MovieDetail): Cell[][] => [
   [{ label: 'Certification', value: movie.certification }, { label: 'Original language', value: movie.originalLanguage }, { label: 'Collection', value: movie.collection }],
 ];
 
-const credits = (movie: MovieDetail, job: string) => movie.crew?.filter((member) => member.job === job).map((member) => member.name).join(', ');
+const credits = (movie: Extract<Subject, { type: 'movie' }>['detail'], job: string) => (
+  movie.credits?.crew.filter((member) => member.job === job).map((member) => member.name).join(', ')
+);
 
-const crewFacts = (movie: MovieDetail): Cell[][] => [
+const crewFacts = (movie: Extract<Subject, { type: 'movie' }>['detail']): Cell[][] => [
   [{ label: 'Director', value: credits(movie, 'Director') }, { label: 'Screenplay', value: credits(movie, 'Screenplay') }, { label: 'Novel', value: credits(movie, 'Novel') }],
   [
     { label: 'Producers', value: credits(movie, 'Producer') },
@@ -178,12 +196,7 @@ function FactGrid({ rows, className }: { rows: Cell[][]; className: string }) {
 function OverviewBand({ subject, library }: { subject: Subject; library: TitleFact[] }) {
   const { detail } = subject;
   const links = titleLinks(subject);
-  const chips = [...detail.genres, ...(subject.type === 'movie' ? subject.detail.keywords ?? [] : [])];
-  const ratings = (detail.ratings ?? []).map((rating) => ({
-    source: ratingSources[rating.source],
-    value: ratingValue(rating),
-    votes: rating.votes === null ? undefined : `${rating.votes.toLocaleString('en-GB')} votes`,
-  }));
+  const chips = [...detail.genres, ...(subject.type === 'movie' ? subject.detail.keywords : [])];
   return (
     <section aria-label="About" className="flex items-start gap-10 pt-6 pb-8">
       <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -207,7 +220,7 @@ function OverviewBand({ subject, library }: { subject: Subject; library: TitleFa
           </ul>
         )}
       </div>
-      <CardLibrary ratings={ratings} rows={library} tags={detail.tags} />
+      <CardLibrary ratings={cardRatings(subject)} rows={library} tags={detail.tags} />
     </section>
   );
 }
