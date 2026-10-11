@@ -1,8 +1,9 @@
-# {{PROJECT_NAME}}
+# media-manager-2
 
 ## Purpose
 
-{{ONE_LINE_DESCRIPTION}}. `CONTEXT.md` defines the domain words; `docs/adr/`
+A power-user web app that puts Sonarr and Radarr behind one interface and
+watches their downloads. `CONTEXT.md` defines the domain words; `docs/adr/`
 records decisions. This file orients an agent to where things live and the
 rules that apply everywhere.
 
@@ -42,11 +43,17 @@ symbol you cannot find in source, believe the source and fix the doc.
 
 ## Folder Map
 
-<!-- One line per top-level folder: path → what it is. Each folder with
-     rules of its own gets an AGENTS.md. -->
-- `scripts/` → the only sanctioned way to build, test, review, land and deploy.
+- `src/server/` → HTTP routes, background jobs and the SQLite database. Has AGENTS.md.
+- `src/server/services/` → clients for Sonarr, Radarr, rTorrent, Plex, TMDB and the rest. Has AGENTS.md.
+- `src/client/` → the React app the browser runs. Has AGENTS.md.
+- `tests/` → the test suite and the fakes of outside services. Has AGENTS.md.
+- `scripts/` → the only sanctioned way to build, test, review, land and deploy. Has AGENTS.md.
 - `.githooks/` → commit and push guards; settings in `project.conf`.
+- `.github/` → the CI workflow and the pull request template.
+- `docs/` → operations notes, agent setup and design notes.
+- `docs/adr/` → recorded architecture decisions.
 - `docs/review/` → instructions for each branch-review pass.
+- `design/` → the pen.dev design files.
 - `.scratch/` → local issue tracker (`docs/agents/issue-tracker.md`).
 
 ## Rules (all targets)
@@ -68,7 +75,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 - **Dev tooling that outlives its session is labelled, parked and purgeable.**
   Anything that keeps running after the session that made it (a launchd/cron
   job, login item, file watcher, watchdog) must (a) carry a name starting
-  `{{PROJECT_SLUG}}.dev.`, (b) live in the repo's `dev/`, never inside the
+  `media-manager-2.dev.`, (b) live in the repo's `dev/`, never inside the
   app's own data directory, and (c) be removable by a purge script updated in
   the same change. Unlabelled tooling dropped onto a machine runs unnoticed
   for days.
@@ -77,6 +84,20 @@ symbol you cannot find in source, believe the source and fix the doc.
 - **A busy shared resource is reported, not waited on.** When a lock, slot or
   device another agent holds blocks you, say who holds it, go do other work,
   and retry later. Never sit in a wait loop.
+- **Imports make hardlinks only, and this app never moves or deletes a
+  seeding torrent's files except through the delete flows that check the
+  tracker's hit-and-run rule.** A move or early delete ends seeding, and
+  private trackers punish that.
+- **Every removal from a Sonarr or Radarr queue says whether the service may
+  search again** (`skipRedownload`). Left out, Sonarr and Radarr search by
+  themselves and can grab release after release on a private tracker.
+- **Every request to Sonarr, Radarr, rTorrent, Plex's media API, TMDB,
+  MDBList, tracker sites and S3 goes through `src/server/services/`.** The
+  service clients hold the timeouts, paging and error mapping; a second
+  caller skips all three. Two exceptions exist: Plex sign-in in
+  `src/server/auth.ts` and .torrent downloads from indexers in
+  `src/server/secondVersions.ts`. The two exceptions cap their own requests
+  the same way (time limit, redirects); keep those caps when editing them.
 
 ## Tests
 
@@ -128,7 +149,6 @@ green is not a fix.
   paths are `is_risk_path` at the top of `scripts/review-branch.sh`. State
   the function's invariants and enumerate the cases first; write those cases
   as tests; then the code.
-<!-- Add project-wide rules here: architectural seams, boundaries, traps. -->
 
 ## `main` takes changes only through reviewed pull requests (HARD RULE)
 

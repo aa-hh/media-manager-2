@@ -70,19 +70,22 @@ SCORE_MODEL=haiku
 # Any touched path here makes the review full, whatever its size.
 is_risk_path() {
   case "$1" in
-    # Fill in per project: the code where a small diff can do large harm
-    # (persistence formats, auth/licensing, concurrency, hooks). Example:
-    # src/storage/*|src/auth/*|.githooks/*) return 0 ;;
-    __none__) return 0 ;;
+    src/server/auth.ts|src/server/database.ts|src/server/backup.ts|src/server/backupDestination.ts) return 0 ;;
+    src/server/grabs.ts|src/server/replace.ts|src/server/stalls.ts|src/server/protection.ts|src/server/advice.ts) return 0 ;;
+    src/server/titleDelete.ts|src/server/secondVersionDelete.ts|src/server/versionImport.ts) return 0 ;;
+    src/server/torrentFiles.ts|src/server/relink.ts|src/server/trackerRules.ts) return 0 ;;
+    src/server/services/arr/queue.ts|src/server/services/arr/commands.ts) return 0 ;;
+    .githooks/*|scripts/*|.github/*|.claude/hooks/*) return 0 ;;
   esac
   return 1
 }
 
-# Lines in these paths count toward the size thresholds; tests and docs do not.
+# Lines in these paths count toward the size thresholds; Markdown, the lockfile and
+# *Test*-named files do not (tests/production.test.mjs counts).
 is_product_path() {
-  case "$1" in *Tests/*|*.md) return 1 ;; esac
+  case "$1" in *Tests/*|*.md|package-lock.json) return 1 ;; esac
   case "${1##*/}" in *Test*) return 1 ;; esac
-  case "$1" in .githooks/*|*.swift|*.c|*.h|*.m|*.sh|*.py|*.ts|*.tsx|*.js|*.go|*.rs|*.rb|*.java|*.kt) return 0 ;; esac
+  case "$1" in .githooks/*|*.swift|*.c|*.h|*.m|*.sh|*.py|*.ts|*.tsx|*.js|*.mjs|*.go|*.rs|*.rb|*.java|*.kt|*.yml|*.yaml|*.json) return 0 ;; esac
   return 1
 }
 
