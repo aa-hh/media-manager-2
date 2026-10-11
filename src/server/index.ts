@@ -39,6 +39,7 @@ import { createTorrentPoller } from './torrents.js';
 import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
 import { createStallFix } from './stalls.js';
+import { createTorrentFiles } from './torrentFiles.js';
 import { createImageRoutes, createTitleCache } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
@@ -101,7 +102,10 @@ if (database !== undefined) {
   const protection = createProtection(database, arr, { recentGrabTitles: (service, since) => grabs.recentTitles(service, since) });
   const labels = createLabels(arr);
   const replaces = createReplaces(arr, grabs, { onCompleted: (grab) => protection.protect(grab) });
-  const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected });
+  const torrentFiles = createTorrentFiles({ database, rtorrent, arr });
+  const stalls = createStallFix({
+    database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected, labels, removeTorrent: torrentFiles.removeTorrent,
+  });
   runner.register('stall-fix', 60_000, stalls.check);
   const relink = createRelinkFix({ database, rtorrent, arr, problems, isManualDownload: protection.isProtected });
   runner.register('relink-fix', 60_000, relink.check);
