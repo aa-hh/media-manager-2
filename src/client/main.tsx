@@ -5,6 +5,8 @@ import { Home } from './Home';
 import { Nav } from './Nav';
 import { navigate, useRoute } from './route';
 import { DownloadsScreen, LiveBar } from './downloads/Downloads';
+import { FlaggedScreen } from './flagged/Flagged';
+import { useFlagged } from './flagged/useFlagged';
 import { buildRows, groupRows } from './downloads/model';
 import { useDownloads } from './downloads/useDownloads';
 import { HealthScreen } from './health/Health';
@@ -241,6 +243,8 @@ function App() {
 function SignedIn(props: ComponentProps<typeof Home>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
   const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const flagged = useFlagged(props.onUnauthenticated);
+  const flaggedHeadingRef = useRef<HTMLDivElement>(null);
   const screen = useRoute();
   const health = useHealth(props.onUnauthenticated);
   const healthHeadingRef = useRef<HTMLDivElement>(null);
@@ -269,6 +273,18 @@ function SignedIn(props: ComponentProps<typeof Home>) {
         return (
           <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
             <HealthScreen state={health.state} runChecks={health.runChecks} headingRef={healthHeadingRef} />
+          </div>
+        );
+      case 'flagged':
+        return (
+          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
+            <FlaggedScreen
+              state={flagged}
+              reload={flagged.reload}
+              headingRef={flaggedHeadingRef}
+              onUnauthenticated={props.onUnauthenticated}
+              onOpenHealth={() => navigate('/health')}
+            />
           </div>
         );
       default:
