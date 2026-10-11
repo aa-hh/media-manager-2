@@ -141,7 +141,7 @@ Neutrals do most of the work. One meaning per colour.
 
 - **Page and surfaces:** `background` is the page; `card` is tables, panels and menus (both white). `muted` is sunken things: tracks, Kbd keys, the neutral badge, the search field at rest. `surface-hover` and `surface-pressed` are hover and pressed. `selected` is the grey tint on a selected row, always with the 3px black side bar.
 - **Text:** `foreground` (18.9:1 on white) for text and icons. `muted-foreground` (7.5:1) for secondary text. `subtle-foreground` (5.6:1) for meta, placeholders and column headers. `faint-foreground` (2.5:1) is for disabled things only, never readable text.
-- **Lines:** `border` draws dividers and panel edges. `input` (3.4:1) draws control edges: outline buttons, checkboxes, radios, focused fields.
+- **Lines:** `border` draws dividers and panel edges. `input` (3.4:1) draws control edges: checkboxes, radios, focused fields. Outline and menu buttons take a 1.5px `foreground` edge instead (1.5px `border` when disabled, 1.5px `destructive` on outline-destructive).
 - **Black:** `primary` is buttons and "on" states (checked, monitored, selected segment label, active tab underline). `bar` is the downloads bar, toasts, tooltips and the selection bar, with `bar-foreground` text. One in-page exception: the setup wizard's "How the pieces connect" strip fills with `bar` once every part is connected, meaning the whole chain is live.
 - **Lime:** `best` marks the single best release; `best-soft` tints its row. `live` marks downloads in progress. Lime is 1.3:1 on white, so it is only ever a fill behind black text (14.4:1) or a fill on the black downloads bar or on a poster. Setup wizard exception: a connected part's pill in the "How the pieces connect" strip is black with a lime dot (connected and answering), and the finished strip's pills are lime with black text. Never lime text, lime icons or thin lime lines on white.
 - **Red:** `destructive`, `destructive-soft` and their hover and pressed steps are for problems and risk: stalled, failed, gave up, hit and run risk, tracker cooldown, a failed service.
@@ -202,7 +202,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 
 ### Buttons, badges and inputs
 
-- **v2/Button:** primary (black, shadcn `default`), outline (white, `input` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron). Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
+- **v2/Button:** primary (black, shadcn `default`), outline (white, 1.5px `foreground` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron). Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
 - **v2/Badge**, 20px: neutral (`muted`), strong (black, "In library"), lime (`best`, black text: best release, "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). Release tables add `v2/Mark/comparison` (best is the only lime pill), `v2/Cell/profile-fit` (fit in words) and `v2/Mark/pending-change` (old value, arrow, new value on amber while a change waits).
 - **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 40px, radius 6, white with an edge. Phone: 44px, full width.
 - **Select trigger:** 40px, radius 8, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
