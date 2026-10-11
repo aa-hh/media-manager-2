@@ -33,6 +33,8 @@ type Summary = {
 };
 type Entry = { item: StoredItem; tvdbId: number | null; rank: number };
 type Built = { result: Result<StoredRow>; partial: boolean };
+// `thinned`: a Trakt list whose titles were partly dropped because their summaries failed.
+type Ran = Result<Entry[]> & { thinned?: boolean };
 type Candidate = { item: StoredItem; tvdbId: number | null; score: number; heaviest: { weight: number; rank: number }; order: number };
 
 const elapsed = (started: number) => Math.round((performance.now() - started) * 10) / 10;
@@ -202,7 +204,7 @@ export const createOrchestrator = (options: {
   };
 
   // Undefined means a Trakt source with no client or no Client ID saved: the row treats it as absent, not as failed.
-  const run = async (source: Source, filters: Filters, at: number): Promise<Result<Entry[]> | undefined> => {
+  const run = async (source: Source, filters: Filters, at: number): Promise<Ran | undefined> => {
     if (source.kind === 'trakt') {
       if (trakt === undefined) return undefined;
       // Box office takes no filters: it is always last weekend's top ten.
@@ -220,7 +222,7 @@ export const createOrchestrator = (options: {
       const entries = resolved.flatMap((entry) => (entry?.kind === 'ok' ? [entry.value] : []));
       const failure = resolved.find((entry): entry is Failure => entry !== undefined && entry.kind !== 'ok');
       // Every summary failing means TMDB is down or not set up, which fails this source like any other upstream failure.
-      return entries.length === 0 && failure !== undefined ? failure : { kind: 'ok', value: entries };
+      return entries.length === 0 && failure !== undefined ? failure : { kind: 'ok', value: entries, thinned: failure !== undefined };
     }
     if (source.kind === 'tmdb-trending') {
       const result = await tmdb.trending(source.mediaType, 'week');
@@ -251,14 +253,18 @@ export const createOrchestrator = (options: {
     if (forType.length > 0 && live.length === 0) return { result: notConfigured('Trakt', `the ${recipe.label} row`), partial: false };
     const failures = live.flatMap(({ result }) => (result.kind === 'ok' ? [] : [result]));
     if (live.length > 0 && failures.length === live.length) return { result: failures[0], partial: false };
+    const thinned = live.some(({ result }) => result.thinned === true);
     let candidates = fuse(live.map(({ source, result }) => ({ weight: source.weight, entries: result.kind === 'ok' ? result.value : [] })))
       .filter((candidate) => passes(candidate.item, filters));
+    let lookupsFailed = false;
     if (filters.providers.length > 0) {
       // razor: the first load of a service filter makes up to 40 availability lookups per row; upgrade path is a bulk provider cache.
       candidates = candidates.slice(0, PROVIDER_LOOKUPS);
       const available = await Promise.all(candidates.map(({ item, tvdbId }) => savedPart(
         item.type, item.tmdbId, tvdbId, 'tmdbProviders', PROVIDERS_MAX_AGE_MS, () => tmdb.watchProviders(item.type, item.tmdbId),
       )));
+      // A failed lookup drops its title, so the row is partial rather than complete without it.
+      lookupsFailed = available.some((result) => result.kind !== 'ok');
       candidates = candidates.filter((_, index) => {
         const result = available[index];
         return result.kind === 'ok' && (result.value[filters.region] ?? []).some((id) => filters.providers.includes(id));
@@ -273,7 +279,7 @@ export const createOrchestrator = (options: {
     }
     // razor: filters applied after fusion can leave fewer than 20 titles; upgrade path is asking each source for more pages.
     const named = await withGenreNames(candidates.slice(0, CAP).map(({ item }) => item));
-    return { result: { kind: 'ok', value: { items: named.items, totalPages: null } }, partial: failures.length > 0 || !named.complete };
+    return { result: { kind: 'ok', value: { items: named.items, totalPages: null } }, partial: failures.length > 0 || thinned || lookupsFailed || !named.complete };
   };
 
   const build = async (spec: RowSpec): Promise<Built> => {

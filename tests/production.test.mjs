@@ -10633,6 +10633,8 @@ test('the discover home serves recipe rows from saved results, blends sources by
   const unexpected = [];
   let tmdbDown = false;
   let trendingMovies = [102, 101, 103];
+  let providersDown = false;
+  let failingSummary;
   let genresDown = false;
   const json = (body) => new Response(JSON.stringify(body));
   const page = (type, ids, withType = false) => json({ page: 1, total_pages: 1, results: ids.map((id) => listItem(type, id, withType)) });
@@ -10662,8 +10664,10 @@ test('the discover home serves recipe rows from saved results, blends sources by
     if (path === '/genre/tv/list') return json({ genres: [{ id: 18, name: 'Drama' }] });
     if (path === '/watch/providers/movie') return json({ results: [{ provider_id: 8, provider_name: 'Netflix' }] });
     let match = path.match(/^\/(movie|tv)\/(\d+)\/watch\/providers$/);
+    if (match && providersDown) return new Response('', { status: 500 });
     if (match) return json({ id: Number(match[2]), results: { US: { flatrate: flatrate(Number(match[2])).map((id) => ({ provider_id: id })) } } });
     match = path.match(/^\/(movie|tv)\/(\d+)$/);
+    if (match && path === failingSummary) return new Response('', { status: 500 });
     if (match && catalogue.has(`${match[1]}:${match[2]}`)) {
       const { genre_ids: ids, ...item } = listItem(match[1], Number(match[2]));
       return json({ ...item, genres: ids.map((id) => ({ id, name: genreNames[id] })) });
@@ -10975,6 +10979,42 @@ test('the discover home serves recipe rows from saved results, blends sources by
     await discover.refresh();
     const fixed = (await home('?type=movie')).body.popularMovies;
     assert.ok(fixed.results.length > 0 && fixed.results.every((item) => item.genres.length > 0));
+  });
+
+  // Saving a service-filtered rebuild whose availability lookups failed, which empties the row, turns this red.
+  await t.test('a refresh whose availability lookups fail keeps the saved service rows', async () => {
+    await signInAgain();
+    database.prepare('DELETE FROM discover_rows').run();
+    const query = '?services=8&providers=8';
+    await home(query);
+    // Read again just before the lookups go stale, so the refresh renews these rows and has to ask TMDB.
+    clock.value += 23 * 60 * 60_000;
+    await signInAgain();
+    const saved = (await home(query)).body;
+    assert.ok(saved.services[0].results.length > 0);
+    clock.value += 60 * 60_000 + 1;
+    providersDown = true;
+    const at = mark();
+    await discover.refresh();
+    assert.ok(since(at).tmdb.some((call) => call.pathname.endsWith('/watch/providers')));
+    providersDown = false;
+    assert.deepEqual((await home(query)).body, saved);
+  });
+
+  // Saving a Trakt list thinned by a failed summary as a complete row turns this red.
+  await t.test('a refresh where one Trakt summary fails keeps the saved blended row', async () => {
+    await signInAgain();
+    database.prepare('DELETE FROM discover_rows').run();
+    const saved = (await home()).body;
+    assert.ok(ids(saved.trending.movie).includes(201));
+    database.prepare("DELETE FROM title_store_parts WHERE key = 'movie:201' AND part = 'tmdbSummary'").run();
+    failingSummary = '/movie/201';
+    clock.value += 30 * 60_000 + 1;
+    const at = mark();
+    await discover.refresh();
+    assert.ok(since(at).tmdb.some((call) => call.pathname === '/3/movie/201'));
+    failingSummary = undefined;
+    assert.deepEqual((await home()).body.trending, saved.trending);
   });
 
   // Requiring Trakt for a TMDB row, failing the home when Trakt alone is missing, saving a Trakt-only row empty,
