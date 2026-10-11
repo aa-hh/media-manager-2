@@ -94,7 +94,7 @@ export const createRelinkFix = (options: {
     await rtorrent.call('d.directory.set', [hash, downloadRoot]);
     problems.step(problemId, 'fix', `Pointed it at ${downloadRoot}.`);
     const base = await rtorrent.call('d.is_multi_file', [hash]) === 1 ? join(downloadRoot, name) : downloadRoot;
-    // A torrent started later would write through leftover links into the library's files, so a failed run removes them.
+    // A torrent started later would write through leftover links into the library's files, so a run that fails before the recheck completes removes them.
     const created: string[] = [];
     try {
       for (const { file, library } of pairs) {
@@ -120,21 +120,23 @@ export const createRelinkFix = (options: {
       if (await rtorrent.call('d.complete', [hash]) !== 1) {
         throw new Error('The recheck found the data incomplete, so the torrent stays stopped.');
       }
-      await rtorrent.call('d.start', [hash]);
     } catch (error) {
       if (created.length > 0) {
+        let left = 0;
         for (const path of created) {
           try {
             unlinkSync(path);
-          } catch (unlinkError) {
-            if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') throw unlinkError;
+          } catch {
+            left += 1;
           }
         }
-        const n = created.length;
-        problems.step(problemId, 'fix', `Removed the ${n} hardlink${n === 1 ? '' : 's'} again.`);
+        const n = created.length - left;
+        problems.step(problemId, 'fix', `Removed the ${n} hardlink${n === 1 ? '' : 's'} again.${left > 0 ? ` ${left} could not be removed.` : ''}`);
       }
       throw error;
     }
+    // Once the recheck is complete the links are the torrent's data, and a start that throws may still have started it.
+    await rtorrent.call('d.start', [hash]);
     problems.step(problemId, 'fix', 'Started it.');
     try {
       await rtorrent.call('d.message.set', [hash, '']);
