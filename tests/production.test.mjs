@@ -10058,14 +10058,14 @@ test('the settings screen sends only changed fields and ranks each service state
     folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken, wantedParts, nextStep, firstStep,
   } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
 
-  // Opening on a done step, visiting an unwanted or skipped optional part, or reaching Done with a required part missing turns this red.
+  // Opening on a done step, visiting an unwanted or skipped optional part, skipping the posters and ratings step between trackers and backup, or reaching Done with a required part missing turns this red.
   await t.test('the wizard moves to the next open step and reaches Done only once every required part is saved', () => {
     const status = (done, optional = {}) => ({
       required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
-      optional: { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
+      optional: { trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
     });
     const fresh = status([]);
-    assert.deepEqual(wantedParts(fresh), { trackers: true, backup: true });
+    assert.deepEqual(wantedParts(fresh), { trackers: true, metadata: true, backup: true });
     assert.equal(firstStep(fresh, wantedParts(fresh)), 'what');
     assert.equal(nextStep('what', fresh, wantedParts(fresh)), 'sonarr');
     // Radarr saved in Settings earlier is passed over.
@@ -10073,9 +10073,13 @@ test('the settings screen sends only changed fields and ranks each service state
     assert.equal(firstStep(status(['sonarr']), { trackers: true, backup: true }), 'radarr');
     const required = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
     const chosen = status(required, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'not_done', wanted: true } });
-    assert.deepEqual(wantedParts(chosen), { trackers: false, backup: true });
+    assert.deepEqual(wantedParts(chosen), { trackers: false, metadata: false, backup: true });
     assert.equal(nextStep('folders', chosen, wantedParts(chosen)), 'backup');
     assert.equal(nextStep('backup', chosen, wantedParts(chosen)), 'done');
+    const all = { trackers: true, metadata: true, backup: true };
+    assert.equal(nextStep('trackers', status(required), all), 'metadata');
+    assert.equal(nextStep('metadata', status(required), all), 'backup');
+    assert.equal(nextStep('trackers', status(required, { metadata: { status: 'skipped', wanted: true } }), all), 'backup');
     const skipped = status(required, { trackers: { status: 'skipped', wanted: true }, backup: { status: 'skipped', wanted: true } });
     assert.equal(nextStep('folders', skipped, wantedParts(skipped)), 'done');
     // Past the end with Plex missing goes back to Plex, not to Done.

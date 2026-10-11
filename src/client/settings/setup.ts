@@ -8,7 +8,7 @@ export type FoldersRead = { saved: Record<FolderField, string | null>; suggested
 
 export type BackupDestination = { kind: 'folder'; folder: string } | { kind: 's3'; endpoint: string; bucket: string; region: string } | null;
 export type RequiredPart = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'folders';
-export type OptionalPart = 'trackers' | 'backup';
+export type OptionalPart = 'trackers' | 'metadata' | 'backup';
 export type SetupStatus = {
   required: Record<RequiredPart, 'done' | 'not_done'>;
   optional: Record<OptionalPart, { status: 'done' | 'not_done' | 'skipped'; wanted: boolean }>;
@@ -16,17 +16,19 @@ export type SetupStatus = {
   plexSignInTokenAvailable: boolean;
   backup: { destination: BackupDestination; problem: string | null; key: 'pair' | 'env' | 'missing' | 'invalid'; keyCreatedAt: number | null };
 };
+/** What GET /api/setup/rtorrent suggests from Sonarr's (else Radarr's) rTorrent download client; never the password. */
+export type RtorrentSuggestion = { address: string | null; username: string | null };
 
-/** The wizard's steps in order: the choices, the five required parts, the two optional parts, then Done. */
+/** The wizard's steps in order: the choices, the five required parts, the three optional parts, then Done. */
 export type WizardStep = 'what' | RequiredPart | OptionalPart | 'done';
 export const requiredParts: RequiredPart[] = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
-const order: WizardStep[] = ['what', ...requiredParts, 'trackers', 'backup', 'done'];
+const optionalParts: OptionalPart[] = ['trackers', 'metadata', 'backup'];
+const order: WizardStep[] = ['what', ...requiredParts, ...optionalParts, 'done'];
 
 /** Which optional parts the owner wants: ticked by default until a choice is saved, since an unticked part reads as skipped. */
 export const wantedParts = (status: SetupStatus): Record<OptionalPart, boolean> => {
-  const chosen = status.optional.trackers.wanted || status.optional.backup.wanted
-    || status.optional.trackers.status === 'skipped' || status.optional.backup.status === 'skipped';
-  return { trackers: !chosen || status.optional.trackers.wanted, backup: !chosen || status.optional.backup.wanted };
+  const chosen = optionalParts.some((part) => status.optional[part].wanted || status.optional[part].status === 'skipped');
+  return Object.fromEntries(optionalParts.map((part) => [part, !chosen || status.optional[part].wanted])) as Record<OptionalPart, boolean>;
 };
 
 /**
@@ -35,7 +37,7 @@ export const wantedParts = (status: SetupStatus): Record<OptionalPart, boolean> 
  */
 export const nextStep = (current: WizardStep, status: SetupStatus, wanted: Record<OptionalPart, boolean>): WizardStep => {
   const open = (step: WizardStep) => (step === 'what' || step === 'done' ? false
-    : step === 'trackers' || step === 'backup' ? wanted[step] && status.optional[step].status !== 'skipped'
+    : step === 'trackers' || step === 'metadata' || step === 'backup' ? wanted[step] && status.optional[step].status !== 'skipped'
       : status.required[step] === 'not_done');
   const later = order.slice(order.indexOf(current) + 1).find(open);
   if (later !== undefined) return later;
@@ -50,16 +52,15 @@ export const firstStep = (status: SetupStatus, wanted: Record<OptionalPart, bool
 /** The step before `current`, for Back. */
 export const previousStep = (current: WizardStep): WizardStep => order[Math.max(0, order.indexOf(current) - 1)];
 
-/** The header words, such as "2 of 5 required steps done" or "5 of 5 required steps done · backup left". */
+const optionalNames: Record<OptionalPart, string> = { trackers: 'trackers', metadata: 'posters and ratings', backup: 'backup' };
+
+/** The header words, such as "2 of 5 required steps done", "5 of 5 required steps done · backup left" or "… · 2 optional steps left". */
 export const wizardSummary = (status: SetupStatus, wanted: Record<OptionalPart, boolean>, finished: boolean) => {
   const done = requiredParts.filter((part) => status.required[part] === 'done').length;
-  const optional = (['trackers', 'backup'] as const);
-  if (finished) {
-    return `Done · ${done} of 5 required, ${optional.filter((part) => status.optional[part].status === 'done').length} of 2 optional`;
-  }
+  if (finished) return `Done · ${done} of 5 required`;
   if (done < 5) return `${done} of 5 required steps done`;
-  const left = optional.filter((part) => wanted[part] && status.optional[part].status === 'not_done');
-  return `5 of 5 required steps done${left.length === 0 ? '' : ` · ${left.join(' and ')} left`}`;
+  const left = optionalParts.filter((part) => wanted[part] && status.optional[part].status === 'not_done');
+  return `5 of 5 required steps done${left.length === 0 ? '' : left.length === 1 ? ` · ${optionalNames[left[0]]} left` : ` · ${left.length} optional steps left`}`;
 };
 
 export const folderFields: { field: FolderField; label: string; help: string }[] = [
