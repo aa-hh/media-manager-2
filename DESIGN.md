@@ -114,6 +114,11 @@ components:
   callout-destructive: {backgroundColor: "{colors.destructive-soft}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}"}
   callout-warning: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}"}
   poster-card: {rounded: "{rounded.radius-md}", width: "152px"}
+  callout-info: {backgroundColor: "{colors.muted}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}"}
+  status-rule-pill: {backgroundColor: "{colors.muted}", textColor: "{colors.muted-foreground}", typography: "{typography.data-small}", rounded: "{rounded.radius-sm}", padding: "0px 8px", height: "26px"}
+  status-rule-pill-no-rule: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.warning}"}
+  field-number-input: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", typography: "{typography.data}", rounded: "{rounded.radius-md}", padding: "0px 12px", height: "40px", width: "72px"}
+  collapsible-content: {padding: "0px 12px 16px 36px"}
 ---
 
 # Design System: media-manager-2
@@ -202,6 +207,15 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 - **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 40px, radius 6, white with an edge. Phone: 44px, full width.
 - **Select trigger:** 40px, radius 8, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
 - **Toggle group:** up to six segments, 34px each inside a 40px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
+
+### Rule forms and tracker status
+
+- **v2/Field/number** (`field-number.tsx`): a 72 by 40px number box with plain words before and after it, read as one sentence ("Not a hit and run below 10 % downloaded"). The value is in `font-data`; an empty box shows a hint in `subtle-foreground`. Either word can be left out. Seed-time size bands and the More section of a tracker's rule are built from it.
+- **v2/Field/labelled optional** (`field-labelled-optional.tsx`): `v2/Field/labelled` for a field that may be left blank. The word Optional sits after the label in 12px `subtle-foreground`; help, error and the trailing action work as in `v2/Field/labelled`.
+- **v2/Collapsible trigger/open**: the open state of `v2/Collapsible trigger` (`collapsible-trigger.tsx`); the chevron turns 90° to point down and the summary stays. No separate code component.
+- **v2/Collapsible/content** (`collapsible-content.tsx`): holds what the trigger reveals, directly under it. 16px between children; padding 0 12 16 36 lines the content up with the trigger's title. Opens by height at `duration-size`, closes at `duration-fast`; instant under reduced motion.
+- **v2/Callout/info** (`callout-info.tsx`): a fact to know, not a problem: `muted` fill, `muted-foreground` icon (info by default; the screen may swap the icon, such as a file icon for "comes from the env file"), radius 8, no side bar, optional outline button. Use `v2/Callout` for risk and warning.
+- **v2/Status/rule pill** (`status-rule-pill.tsx`): a tracker's hit and run rule state, in the tracker row, the tracker editor and the How the pieces connect strip. Same 26px shape as the service pill with no logo and no icon: Configured and Configured (env file) have a black dot on `muted`; No rule has an amber dot and amber text on `warning-soft`, because that tracker's torrents keep seeding. The same amber look marks an account that answers but can't share its stats ("No account stats"). In the strip the tracker's logo and name sit inside the pill before the dot.
 
 ### Tables and rows
 
