@@ -1,4 +1,5 @@
 // v2/Badge — design/design-system.lib.pen zGBcp
+import { X } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
@@ -11,6 +12,9 @@ type BadgeProps = ComponentProps<'span'> & {
   icon?: ReactNode;
   /** Spinner before the label; for Searching only. */
   spinner?: boolean;
+  /** Adds a trailing remove button, for filter tags. */
+  onRemove?: () => void;
+  removeLabel?: string;
 };
 
 const variants: Record<BadgeVariant, string> = {
@@ -23,8 +27,8 @@ const variants: Record<BadgeVariant, string> = {
   outline: 'border border-input bg-transparent text-muted-foreground',
 };
 
-/** Not interactive, so no hover or focus. The live look carries the dot. */
-function Badge({ variant = 'neutral', icon, spinner = false, className, children, ...props }: BadgeProps) {
+/** Not interactive (the optional remove button aside), so no hover or focus. The live look carries the dot. */
+function Badge({ variant = 'neutral', icon, spinner = false, onRemove, removeLabel, className, children, ...props }: BadgeProps) {
   return (
     <span
       className={cn(
@@ -38,6 +42,11 @@ function Badge({ variant = 'neutral', icon, spinner = false, className, children
       {spinner && <Spinner className="text-current" />}
       {icon}
       {children}
+      {onRemove !== undefined && (
+        <button type="button" aria-label={removeLabel} onClick={onRemove} className="focus-ring flex rounded-xs">
+          <X aria-hidden="true" className="size-3 text-muted-foreground" />
+        </button>
+      )}
     </span>
   );
 }

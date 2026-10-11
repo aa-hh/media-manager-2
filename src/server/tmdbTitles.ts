@@ -83,6 +83,11 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
         similar,
       };
     },
+
+    async tvdbIdOf(tmdbId: number): Promise<number | null> {
+      const found = await details('tv', tmdbId);
+      return typeof found?.tvdbId === 'number' ? found.tvdbId : null;
+    },
   };
 };
 

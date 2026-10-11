@@ -2703,7 +2703,7 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
   const none = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null };
   const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
   const clock = { value: 1_800_000_000_000 };
-  const connect = (respond) => {
+  const connect = (respond, tvdbIdOf = async () => 371980) => {
     database.prepare("DELETE FROM title_store_parts WHERE part = 'mdblistRatings'").run();
     const calls = [];
     const mdblist = createMdblist(database, { now: () => clock.value, fetch: async (url, init) => {
@@ -2711,7 +2711,7 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
       assert.equal(init.redirect, 'error');
       return respond(new URL(String(url)));
     } });
-    const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value }), mdblist));
+    const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value }), mdblist, tvdbIdOf));
     const page = async (path = '/series/7') => {
       const response = await routes.request(path);
       return { status: response.status, text: await response.text() };
@@ -2729,6 +2729,18 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
     assert.equal(calls[0].origin + calls[0].pathname, 'https://api.mdblist.com/tvdb/show/371980');
     assert.equal(calls[0].searchParams.get('apikey'), key);
     assert.deepEqual(JSON.parse((await page('/preview/sonarr/371980')).text).ratingsBySite, expected);
+  });
+
+  // Previewing anything but the TVDB id TMDB names, or answering a show TMDB has no TVDB id for with anything but 404, turns this red.
+  await t.test('a show preview by TMDB id serves the TVDB preview, or 404 when TMDB knows no TVDB id', async () => {
+    const { page } = connect(() => json(severance));
+    const byTmdb = await page('/preview/sonarr/tmdb/95396');
+    assert.equal(byTmdb.status, 200);
+    assert.equal(byTmdb.text, (await page('/preview/sonarr/371980')).text);
+    assert.equal((await connect(() => json(severance), async () => null).page('/preview/sonarr/tmdb/95396')).status, 404);
+    // Answering a server with no TMDB at all with anything but 503 turns this red.
+    const noTmdb = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value })));
+    assert.equal((await noTmdb.request('/preview/sonarr/tmdb/95396')).status, 503);
   });
 
   // Not falling back to the TMDB id when MDBList has no such TVDB id turns this red.
@@ -2807,7 +2819,8 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
   let respond = () => { throw new TypeError('fetch failed'); };
   let calls = 0;
   const tmdb = createTmdb(database, { fetch: async (url) => { calls += 1; return respond(new URL(String(url))); } });
-  const routes = createTmdbTitleRoutes(createTmdbTitles({ database, tmdb, store: createTitleStore(database, { now: () => clock.value }) }));
+  const titles = createTmdbTitles({ database, tmdb, store: createTitleStore(database, { now: () => clock.value }) });
+  const routes = createTmdbTitleRoutes(titles);
   const json = (body, status = 200) => () => new Response(JSON.stringify(body), { status });
   const page = async (path) => {
     const response = await routes.request(path);
@@ -2840,6 +2853,14 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     respond = json({ id: 1, title: 'Film', keywords: { keywords: [{ id: 1, name: 'heist' }] }, credits: { cast }, recommendations: { results: [{ id: 2, title: 'Other' }] } });
     assert.deepEqual(await page('/tmdb/movie/1'), { similar: [{ tmdbId: 2, type: 'movie', title: 'Other', year: null, posterUrl: null, libraryId: null }] });
     assert.equal((await routes.request('/tmdb/person/1')).status, 400);
+  });
+
+  // Reading the TVDB id from anywhere but TMDB's external_ids, or answering a show without one with anything but null, turns this red.
+  await t.test('tvdbIdOf reads the TVDB id from external_ids and gives null without one', async () => {
+    respond = json({ id: 95396, name: 'Severance', external_ids: { tvdb_id: 371980 } });
+    assert.equal(await titles.tvdbIdOf(95396), 371980);
+    respond = json({ id: 50, name: 'Unknown to TVDB' });
+    assert.equal(await titles.tvdbIdOf(50), null);
   });
 
   // Throwing or dropping a section when TMDB omits keywords, credits or recommendations turns this red.
@@ -9530,6 +9551,92 @@ test('title pages mark episodes and select ranges of episodes only', async (t) =
   });
 });
 
+test('discover helpers turn dates, filters and rows into what the screen shows', async (t) => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { countdown, dateTab, homeQuery, gridPath, readState, readGridState, titlePath, extraRowsView, visibleCards, filterTags } = await load('../src/client/discover/model.ts');
+  const empty = { genres: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
+
+  // Counting calendar days with local time, or moving a boundary (14 days, 84 days) by one, turns this red.
+  await t.test('a countdown says today, tomorrow, days, weeks or months', () => {
+    const cases = [[null, 'No date yet'], ['2026-10-11', 'Today'], ['2026-10-10', 'Today'], ['2026-10-12', 'Tomorrow'], ['2026-10-24', 'In 13 days'],
+      ['2026-10-25', 'In 2 weeks'], ['2027-01-02', 'In 12 weeks'], ['2027-01-03', 'In 3 months'], ['2026-11-07', 'In 4 weeks']];
+    for (const [date, word] of cases) assert.equal(countdown(date, '2026-10-11'), word, String(date));
+  });
+
+  // Padding the day with a zero, or a mixed-case month, turns this red.
+  await t.test('a date tab is a three-letter upper-case month and a plain day', () => {
+    assert.deepEqual(dateTab('2026-10-04'), { month: 'OCT', day: '4' });
+    assert.deepEqual(dateTab('2027-01-22'), { month: 'JAN', day: '22' });
+  });
+
+  // Sending window or region to the server, or keeping an empty value, turns this red.
+  await t.test('the home query uses the API names and drops empty values and the client-only window', () => {
+    assert.equal(homeQuery({ ...empty, type: 'all', window: 90 }, []), '');
+    const state = { type: 'tv', window: 30, genres: [18, 10765], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
+    const query = homeQuery(state, [8, 337]);
+    assert.equal(query, 'type=tv&genres=18%2C10765&providers=8&yearFrom=2006&minRating=7&services=8%2C337');
+    assert.ok(!query.includes('window') && !query.includes('region'));
+    assert.deepEqual(readState(`?${query}`), { ...state, window: 90 });
+    assert.equal(readState('?window=30').window, 30);
+  });
+
+  // Letting a bad value through to the screen (and then to the server as a 400) turns this red.
+  await t.test('page addresses read back, and bad values fall to the defaults', () => {
+    assert.equal(gridPath('movies', empty, { sort: 'popular' }), '/discover/movies');
+    const path = gridPath('trending', { ...empty, genres: [18], minRating: 8 }, { type: 'tv' });
+    assert.equal(path, '/discover/trending?type=tv&genres=18&minRating=8');
+    assert.deepEqual(readGridState(path.slice(path.indexOf('?'))), { ...empty, genres: [18], minRating: 8, type: 'tv', sort: 'popular' });
+    assert.equal(gridPath('tv', empty, { sort: 'rating' }), '/discover/tv?sort=rating');
+    assert.equal(readGridState('?sort=rating').sort, 'rating');
+    assert.deepEqual(readState('?type=film&genres=x,5&yearFrom=2020&yearTo=2019&minRating=11&window=7'),
+      { ...empty, genres: [5], type: 'all', window: 90 });
+    assert.equal(readGridState('?sort=title').sort, 'popular');
+    // Dropping the 1870–2200 bounds from yearOf turns this red: the server answers those years with a 400.
+    assert.deepEqual([readState('?yearFrom=1869&yearTo=2201'), readState('?yearFrom=1870&yearTo=2200')].map(({ yearFrom, yearTo }) => [yearFrom, yearTo]),
+      [[null, null], [1870, 2200]]);
+  });
+
+  // Sending a library title to the preview page, or a show to the movie preview, turns this red.
+  await t.test('a card opens the library page, or the preview page for its type', () => {
+    const result = (type, libraryId) => ({ tmdbId: 95396, type, libraryId });
+    assert.equal(titlePath(result('tv', 7)), '/series/7');
+    assert.equal(titlePath(result('movie', 7)), '/movie/7');
+    assert.equal(titlePath(result('tv', null)), '/title/tmdb-tv/95396');
+    assert.equal(titlePath(result('movie', null)), '/title/tmdb/95396');
+  });
+
+  // Hiding a row that is still loading, or showing the Trakt note when only some rows failed, turns this red.
+  await t.test('extra rows hide when empty and the Trakt note needs every row to be not configured', () => {
+    const row = (overrides) => ({ id: 'x', label: 'X', results: [{}], pending: false, failed: false, failure: null, ...overrides });
+    const missing = { results: [], failed: true, failure: 'not_configured' };
+    const view = extraRowsView([row(), row({ results: [] }), row({ results: [], pending: true })]);
+    assert.equal(view.shown.length, 2);
+    assert.equal(view.traktMissing, false);
+    assert.equal(extraRowsView([row(missing), row(missing)]).traktMissing, true);
+    assert.equal(extraRowsView([row(missing), row({ results: [], failed: true, failure: 'unreachable' })]).traktMissing, false);
+    assert.equal(extraRowsView([]).traktMissing, false);
+  });
+
+  // Counting a card's gap twice, or returning zero cards for a narrow strip, turns this red.
+  await t.test('a strip shows as many whole cards as fit, and at least one', () => {
+    assert.equal(visibleCards(1360), 5);
+    assert.equal(visibleCards(220), 1);
+    assert.equal(visibleCards(100), 1);
+  });
+
+  // Dropping a tag, or removing more than the one the tag names, turns this red.
+  await t.test('filter tags name each active filter and clear only their own', () => {
+    const filters = { genres: [18, 99], providers: [8], yearFrom: 2006, yearTo: 2024, minRating: 7 };
+    const tags = filterTags(filters, [{ id: 18, name: 'Drama' }], [{ id: 8, name: 'Netflix' }]);
+    assert.deepEqual(tags.map((tag) => tag.label), ['Drama', 'Netflix', '2006–2024', 'Rating 7 and above']);
+    assert.deepEqual(tags[0].remove, { ...filters, genres: [99] });
+    assert.deepEqual(tags[2].remove, { ...filters, yearFrom: null, yearTo: null });
+    assert.equal(filterTags({ ...empty, yearFrom: 2006 }, [], [])[0].label, 'From 2006');
+    assert.equal(filterTags({ ...empty, yearTo: 2024 }, [], [])[0].label, 'Up to 2024');
+  });
+});
+
 test('the calendar groups one show\'s same-day episodes and frames week, month and forecast windows', async (t) => {
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/calendar/model.ts', import.meta.url), 'utf8');
@@ -10773,7 +10880,7 @@ test('the discover routes check every value, mark library titles and turn a miss
     const target = new URL(String(url));
     calls.push(target);
     if (target.pathname === '/3/genre/movie/list') return json({ genres: [{ id: 878, name: 'Science Fiction' }, { id: 18, name: 'Drama' }] });
-    if (target.pathname === '/3/genre/tv/list') return json({ genres: [] });
+    if (target.pathname === '/3/genre/tv/list') return json({ genres: [{ id: 18, name: 'Drama' }] });
     return json({ page: 2, total_pages: 3, results: [
       { id: 438631, title: 'Dune', release_date: '2021-09-15', poster_path: '/d5NX.jpg', backdrop_path: null, vote_average: 7.8, overview: 'Paul travels. Then more.', genre_ids: [878, 18], popularity: 90.5 },
       { id: 999, name: 'Severance', media_type: 'tv', first_air_date: '2022-02-17', poster_path: null, backdrop_path: '/bg.jpg' },
@@ -10803,6 +10910,8 @@ test('the discover routes check every value, mark library titles and turn a miss
   for (const path of [
     'movie?sort=trending', 'movie?region=usa', 'movie?region=us', 'movie?yearFrom=2020&yearTo=2019', 'movie?genres=18,abc',
     'movie?providers=8|9', 'movie?page=0', 'movie?page=501', 'movie?minRating=11', 'person', 'providers/tv?region=GBR',
+    // Dropping the type or year check on the trending grid turns these two red.
+    'trending?type=film', 'trending?yearFrom=2020&yearTo=2019',
   ]) {
     assert.equal((await get(`/api/discover/${path}`)).status, 400, path);
   }
@@ -10837,6 +10946,19 @@ test('the discover routes check every value, mark library titles and turn a miss
   clock.value += 5 * 60_000 + 1;
   assert.equal((await get(path)).status, 200);
   assert.equal(calls.slice(before).filter((call) => call.pathname === '/3/discover/movie').length, 1);
+
+  // Asking TMDB for the mixed trending list on a TV grid, or not applying the genre filter to the trending page, turns this red.
+  const trending = await get('/api/discover/trending?type=tv&genres=18');
+  assert.equal(trending.status, 200);
+  assert.ok(calls.some((call) => call.pathname === '/3/trending/tv/week'));
+  assert.deepEqual(trending.body.results.map((item) => item.title), ['Dune']);
+  assert.ok(trending.body.results.every((item) => item.genres.includes('Drama')));
+
+  // Reporting a Trakt-only row with no Trakt as an empty row instead of failed, or marking a TMDB-filled row failed, turns this red.
+  const home = await get('/api/discover/home');
+  assert.ok(home.body.extraRows.length > 0);
+  assert.ok(home.body.extraRows.every((row) => row.failed === true && row.failure === 'not_configured'));
+  assert.equal(home.body.trending.all.failed, false);
 });
 
 test('the discover home serves recipe rows from saved results, blends sources by weighted rank, applies the filter bar and never leaks a key', async (t) => {
@@ -11081,7 +11203,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
   await t.test('the TV filter hides movie rows and keeps shows only', async () => {
     const { body } = await home('?type=tv');
     assert.deepEqual([body.popularMovies, body.upcomingMovies], [null, null]);
-    assert.deepEqual(body.trending.movie, { results: [], pending: false });
+    assert.deepEqual(body.trending.movie, { results: [], pending: false, failed: false, failure: null });
     assert.equal(body.extraRows.some((row) => row.id === 'box-office'), false);
     const watched = body.extraRows.find((row) => row.id === 'most-watched');
     assert.ok(watched.results.length > 0);
@@ -11196,12 +11318,12 @@ test('the discover home serves recipe rows from saved results, blends sources by
     traktHold = { promise: new Promise((resolve) => { release = resolve; }) };
     const before = traktCalls.filter((call) => call.type === 'movie' && call.kind === 'trending').length;
     const waiting = await get('/api/discover/home?type=movie', cappedApp, cappedSession); // real-time-ok: the fill cap is the behaviour under test
-    assert.deepEqual(waiting.body.trending.movie, { results: [], pending: true });
+    assert.deepEqual(waiting.body.trending.movie, { results: [], pending: true, failed: false, failure: null });
     for (const row of [waiting.body.popularMovies, waiting.body.upcomingMovies.days30, waiting.body.upcomingMovies.days90, ...waiting.body.extraRows]) {
       assert.equal(row.pending, false);
       assert.ok(row.results.length > 0);
     }
-    assert.deepEqual((await get('/api/discover/home?type=movie', cappedApp, cappedSession)).body.trending.movie, { results: [], pending: true });
+    assert.deepEqual((await get('/api/discover/home?type=movie', cappedApp, cappedSession)).body.trending.movie, { results: [], pending: true, failed: false, failure: null });
     release({ kind: 'ok', value: traktLists['movie:trending'] });
     traktHold = undefined;
     await capped.idle();

@@ -37,11 +37,11 @@ export type Filters = {
   minRating: number | null;
 };
 
-// The trending grid is TMDB's mixed movie and TV list, so it alone has type 'all' and sort 'trending'.
+// The trending grid is TMDB's trending list, so it alone has sort 'trending' and may mix movies and TV as type 'all'.
 export type RowSpec =
   | { kind: 'row'; recipe: string; type: 'all' | 'movie' | 'tv'; filters: Filters }
   | { kind: 'grid'; type: 'movie' | 'tv'; sort: Sort; page: number; filters: Filters }
-  | { kind: 'grid'; type: 'all'; sort: 'trending'; page: number; filters: Filters }
+  | { kind: 'grid'; type: 'all' | 'movie' | 'tv'; sort: 'trending'; page: number; filters: Filters }
   | { kind: 'reference'; name: 'genres' | 'providers' | 'trakt-genres'; type: 'movie' | 'tv'; region: string };
 
 export type DiscoverResult = {
