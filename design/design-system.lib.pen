@@ -5771,7 +5771,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "One badge, six looks, set by root fill and Label fill. Neutral (muted, ink-2): file quality, Manual download, 2 versions. Strong (black, white): In library, stays visible on a selected row. Lime (best, black text): best release and Downloading 64%, with Dot on. Risk (risk-soft, risk): Hit and run risk, Stalled, Failed. Warning (warning-soft, warning): Missing 2 episodes, Below cutoff. Outline (1 px line-strong, ink-2): Not out yet, Searching with Spinner on. Not interactive, so no hover or focus. Maps to shadcn Badge variants secondary, default, best (custom), destructive, warning (custom), outline. Icon: optional 12 px lucide icon before the label, off by default; turn it on and set its icon for states such as Not monitored (bookmark-x). Spinner stays for Searching only.",
+              "content": "One badge, six looks, set by root fill and Label fill. Neutral (muted, ink-2): file quality, Manual download, 2 versions. Strong (black, white): In library, stays visible on a selected row. Lime (best, black text): best release and Downloading 64%, with Dot on. Risk (risk-soft, risk): Hit and run risk, Stalled, Failed. Warning (warning-soft, warning): Missing 2 episodes, Below cutoff. Outline (1 px line-strong, ink-2): Not out yet, Searching with Spinner on. Not interactive, so no hover or focus. Maps to shadcn Badge variants secondary, default, best (custom), destructive, warning (custom), outline. Icon: optional 12 px lucide icon before the label, off by default; turn it on and set its icon for states such as Not monitored (bookmark-x). Spinner stays for Searching only. Two sizes. Default: 20 px high (badge-h), badge-px 6, badge-text 11, 12 px icons (badge-icon). Row size: a badge beside a row button takes the button's row tokens, 28 px high (control-h-row), control-px-row, control-text-row and 14 px icons (control-icon-row), so the two always match.",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -5813,7 +5813,7 @@
                       "gap": 4,
                       "padding": [
                         0,
-                        6
+                        "$badge-px"
                       ],
                       "alignItems": "center",
                       "children": [
@@ -5861,7 +5861,7 @@
                           "fill": "$muted-foreground",
                           "content": "2160p",
                           "fontFamily": "$font-ui",
-                          "fontSize": 11,
+                          "fontSize": "$badge-text",
                           "fontWeight": "600"
                         },
                         {
@@ -6176,6 +6176,220 @@
                         "rMeqR": {
                           "content": "Not monitored",
                           "fill": "$muted-foreground"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "x9aewd",
+                  "name": "State row size",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "n00Rw",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "row size, beside a row button",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "h5rC4r",
+                      "name": "Pair",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "nNhJ1",
+                          "type": "ref",
+                          "ref": "zGBcp",
+                          "name": "Instance strong row size",
+                          "fill": "$primary",
+                          "height": 28,
+                          "padding": [
+                            0,
+                            "$control-px-row"
+                          ],
+                          "descendants": {
+                            "rMeqR": {
+                              "content": "In library",
+                              "fill": "$primary-foreground",
+                              "fontSize": "$control-text-row"
+                            }
+                          }
+                        },
+                        {
+                          "id": "yqS7W",
+                          "type": "ref",
+                          "ref": "ht3RN",
+                          "name": "Row button outline",
+                          "fill": "$card",
+                          "stroke": "$foreground",
+                          "strokeWidth": 1.5,
+                          "height": 28,
+                          "padding": [
+                            0,
+                            "$control-px-row"
+                          ],
+                          "cornerRadius": "$control-radius-row",
+                          "gap": 6,
+                          "descendants": {
+                            "HQLEf": {
+                              "icon": "plus",
+                              "fill": "$foreground",
+                              "width": 14,
+                              "height": 14
+                            },
+                            "OXVvv": {
+                              "content": "Add",
+                              "fill": "$foreground",
+                              "fontSize": "$control-text-row"
+                            },
+                            "T1Pftv": {
+                              "enabled": false
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "O71tK",
+          "name": "Section v2/Chip/filter",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "G2sMRD",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Chip/filter",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "rfzm0",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "A filter that is switched on, shown above results so it can be removed with its x. Overrides: Chip label. Border is 1.5px input grey, the same edge as inputs and selects; hover fills with surface-hover. Not for status (use v2/Badge) or for choosing between options (use v2/ToggleGroup).",
+              "lineHeight": 1.5,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "c0esh",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "dPCcf",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "VoBTR",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "yDjSk",
+                      "name": "v2/Chip/filter",
+                      "context": "Removable filter",
+                      "reusable": true,
+                      "height": 28,
+                      "fill": "$card",
+                      "cornerRadius": "$radius-full",
+                      "stroke": "$input",
+                      "strokeWidth": 1.5,
+                      "gap": 4,
+                      "padding": [
+                        0,
+                        6,
+                        0,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "BRjxi",
+                          "name": "Chip label",
+                          "fill": "$foreground",
+                          "content": "Science Fiction",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "ulNFS",
+                          "name": "Remove",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "x",
+                          "library": "lucide",
+                          "fill": "$muted-foreground"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "F2tND",
+                  "name": "State hover",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "h3JCl5",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "hover",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "CBO2L",
+                      "type": "ref",
+                      "ref": "yDjSk",
+                      "name": "Chip hover",
+                      "fill": "$surface-hover",
+                      "descendants": {
+                        "BRjxi": {
+                          "content": "Drama"
                         }
                       }
                     }
@@ -20958,10 +21172,33 @@
                       "reusable": true,
                       "width": 1440,
                       "height": 64,
-                      "fill": "$card",
+                      "fill": {
+                        "type": "gradient",
+                        "gradientType": "linear",
+                        "enabled": true,
+                        "opacity": 0.7,
+                        "rotation": 0,
+                        "size": {
+                          "height": 1
+                        },
+                        "colors": [
+                          {
+                            "color": "$card",
+                            "position": 0
+                          },
+                          {
+                            "color": "$card",
+                            "position": 1
+                          }
+                        ]
+                      },
                       "stroke": "$border",
                       "strokeWidth": {
                         "bottom": 1
+                      },
+                      "effect": {
+                        "type": "background_blur",
+                        "radius": 24
                       },
                       "gap": 24,
                       "padding": [
@@ -34450,7 +34687,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "One search result, 84 px: enough to tell titles apart before opening one. Poster 40 by 60 in colour, Title and Year, Meta as one plain line (TV or Movie, network or studio, Continuing or Ended, rating), Overview on one line, and In library at the right with the file count. Overrides: Poster fill, Title, Year, Meta, Overview, Status (badge strong, off when not in library), Files (fixed 80 px column, right aligned, so every In library badge lines up whatever the count), Add (outline v2/Button at the default 40 px size from control-h-default, control-px-default and control-text-default, on when not in library; this is a list row, not a table row, so the 28 px row size does not apply). States: default, hover, pressed, focus (inner ring, radius 8), highlighted by keyboard (same as hover). Maps to shadcn Command item laid out as a row.",
+              "content": "One search result, 84 px: enough to tell titles apart before opening one. Poster 40 by 60 in colour, Title and Year, Meta as one plain line (TV or Movie, network or studio, Continuing or Ended, rating), Overview on one line, and In library at the right with the file count. Overrides: Poster fill, Title, Year, Meta, Overview, Status (badge strong, off when not in library), Files (fixed 80 px column, right aligned, so every In library badge lines up whatever the count), Add (outline v2/Button at the 28 px row size from control-h-row, control-px-row and control-text-row, on when not in library). Status takes the badge row size, so In library and Add are both 28 px. States: default, hover, pressed, focus (inner ring, radius 8), highlighted by keyboard (same as hover). Maps to shadcn Command item laid out as a row.",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -34591,10 +34828,16 @@
                           "ref": "zGBcp",
                           "name": "Status",
                           "fill": "$primary",
+                          "height": 28,
+                          "padding": [
+                            0,
+                            "$control-px-row"
+                          ],
                           "descendants": {
                             "rMeqR": {
                               "content": "In library",
-                              "fill": "$primary-foreground"
+                              "fill": "$primary-foreground",
+                              "fontSize": "$control-text-row"
                             }
                           }
                         },
@@ -34620,24 +34863,24 @@
                           "fill": "$card",
                           "stroke": "$foreground",
                           "strokeWidth": 1.5,
-                          "height": 40,
+                          "height": 28,
                           "padding": [
                             0,
-                            "$control-px-default"
+                            "$control-px-row"
                           ],
-                          "cornerRadius": "$control-radius-default",
-                          "gap": 8,
+                          "cornerRadius": "$control-radius-row",
+                          "gap": 6,
                           "descendants": {
                             "HQLEf": {
                               "icon": "plus",
                               "fill": "$foreground",
-                              "width": 16,
-                              "height": 16
+                              "width": 14,
+                              "height": 14
                             },
                             "OXVvv": {
                               "content": "Add",
                               "fill": "$foreground",
-                              "fontSize": "$control-text-default"
+                              "fontSize": "$control-text-row"
                             },
                             "T1Pftv": {
                               "enabled": false
@@ -39414,6 +39657,22 @@
     "plex-foreground": {
       "type": "color",
       "value": "#111111"
+    },
+    "badge-h": {
+      "type": "number",
+      "value": 20
+    },
+    "badge-px": {
+      "type": "number",
+      "value": 6
+    },
+    "badge-text": {
+      "type": "number",
+      "value": 11
+    },
+    "badge-icon": {
+      "type": "number",
+      "value": 12
     }
   },
   "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"
