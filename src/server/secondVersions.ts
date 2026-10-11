@@ -210,13 +210,15 @@ export const createSecondVersions = (options: {
     async grab(target: ReleaseTarget, guid: string) {
       const release = releases.find(target, guid);
       if (release === undefined) return { kind: 'unknown_release' } as const;
-      const folder = readSetting(database, 'hostPaths', 'downloads.versions');
+      // A second version downloads into the same folder as its service's own grabs.
+      const key = `downloads.${target.service}`;
+      const folder = readSetting(database, 'hostPaths', key);
       if (folder === undefined || !isAbsolute(folder)) {
-        return { kind: 'refused', reason: 'Set hostPaths downloads.versions to the folder second versions download into.' } as const;
+        return { kind: 'refused', reason: `Set hostPaths ${key} to the folder ${target.service === 'sonarr' ? 'Sonarr' : 'Radarr'} downloads into.` } as const;
       }
       // razor: rTorrent reads the folder inside a quoted command; a quote, backslash or line break would need escaping it may not honour.
       if (/["\\\r\n]/.test(folder)) {
-        return { kind: 'refused', reason: 'hostPaths downloads.versions cannot contain a quote, backslash or line break.' } as const;
+        return { kind: 'refused', reason: `hostPaths ${key} cannot contain a quote, backslash or line break.` } as const;
       }
       if (readSetting(database, 'serviceAddresses', 'rtorrent.url') === undefined) {
         return { kind: 'refused', reason: 'Set up rTorrent first.' } as const;
