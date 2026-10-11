@@ -1200,6 +1200,32 @@ test('background job runner', async (t) => {
     runner.start();
     assert.throws(() => runner.register('b', 1000, () => {}), { message: 'Register jobs before start.' });
   });
+
+  // Not recording a finished run's time or failure, or never marking a job late after three silent intervals, turns this red.
+  await t.test('status reports each job\'s last run, its failure and lateness', async (t) => {
+    t.mock.method(console, 'error', () => {});
+    const clock = { value: 0 };
+    const timers = createFakeTimers(clock);
+    const runner = createJobRunner(timers, () => clock.value);
+    let blocked = false;
+    runner.register('ok', 1000, () => {});
+    runner.register('risky', 1000, () => { throw new Error('boom'); });
+    runner.register('slow', 1000, () => (blocked ? new Promise(() => {}) : undefined));
+    assert.deepEqual(runner.status().map((job) => job.late), [false, false, false]);
+    runner.start();
+    timers.advance(1000);
+    await drain();
+    const byName = Object.fromEntries(runner.status().map((job) => [job.name, job]));
+    assert.equal(byName.ok.lastFinishedAt, 1000);
+    assert.equal(byName.ok.lastFailed, false);
+    assert.equal(byName.risky.lastFailed, true);
+    assert.equal(byName.risky.lastFinishedAt, 1000);
+    blocked = true;
+    timers.advance(3001);
+    await drain();
+    const late = Object.fromEntries(runner.status().map((job) => [job.name, job.late]));
+    assert.deepEqual(late, { ok: false, risky: false, slow: true });
+  });
 });
 
 // Removing initialization or deriving the default from the working directory loses durable storage.
@@ -2216,8 +2242,11 @@ test('queue actions grab delayed releases and remove items without touching rTor
   // Removing from rTorrent, or mapping a removal choice to the wrong blocklist and search flags, turns this red.
   sent.length = 0;
   assert.equal((await post('/api/queue/sonarr/-51234/remove', { release: 'everything' })).status, 400);
+  const downloadMarks = () => database.prepare("SELECT COUNT(*) AS count FROM blocklist_marks WHERE origin = 'downloads'").get().count;
   for (const release of ['keep', 'blocklist', 'blocklist_search']) {
     assert.equal((await post('/api/queue/sonarr/-51234/remove', { release })).status, 204);
+    // Recording a blocklist mark for a kept release, or none for a blocklisted one, turns this red.
+    assert.equal(downloadMarks() > 0, release !== 'keep');
   }
   assert.equal((await post('/api/queue/radarr/8/remove', { release: 'keep' })).status, 502);
   assert.deepEqual(sent, [
@@ -3880,6 +3909,524 @@ test('a hand grab marks its torrent grab record as by hand, whichever record arr
     assert.deepEqual([grab.seriesId, grab.episodeIds, grab.grabbedAt], [3, [31], 1_000]);
     database.close();
   }
+});
+
+test('subject labels come from Sonarr and Radarr once and fall back to ids', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createLabels } = await import(new URL('../dist/server/labels.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-labels-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const requests = [];
+  const bodies = {
+    '/api/v3/movie/7': { title: 'Dune', year: 2021 },
+    '/api/v3/episode/31': { seasonNumber: 2, episodeNumber: 9, series: { title: 'Andor' } },
+    '/api/v3/episode/32': { seasonNumber: 2, episodeNumber: 10, series: { title: 'Andor' } },
+  };
+  const fake = (service) => ({
+    request: async (path) => {
+      requests.push(`${service} ${path}`);
+      return path in bodies ? { status: 200, body: bodies[path] } : { status: 404, body: undefined };
+    },
+  });
+  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const labels = createLabels(arr);
+  const grabs = createGrabTracker({ database, arr, events: createEventHub() });
+  const grab = { service: 'sonarr', movieId: null, seriesId: 3, releaseTitle: 'Andor.S02', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false };
+  grabs.recordGrab({ ...grab, hash: 'AB'.repeat(20), episodeIds: [31, 32] });
+  grabs.recordGrab({ ...grab, hash: 'CD'.repeat(20), episodeIds: [] });
+
+  // Dropping the cache re-requests a label on every row, and dropping the fallback leaves a failed lookup without a title.
+  assert.equal(await labels.movie(7), 'Dune (2021)');
+  assert.equal(await labels.episode(31), 'Andor S02E09');
+  assert.equal(await labels.movie(7), 'Dune (2021)');
+  assert.equal(await labels.subject({ type: 'episode', service: 'sonarr', id: '31' }, database), 'Andor S02E09');
+  assert.deepEqual(requests, ['radarr /api/v3/movie/7', 'sonarr /api/v3/episode/31']);
+  assert.equal(await labels.movie(8), 'Radarr movie 8');
+  assert.equal(await labels.movie(8), 'Radarr movie 8');
+  assert.equal(requests.filter((request) => request === 'radarr /api/v3/movie/8').length, 2);
+  assert.equal(await labels.episode(99), 'Sonarr episode 99');
+  assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'ab'.repeat(20) }, database), 'Andor S02E09 + 1 more');
+  assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'CD'.repeat(20) }, database), 'CD'.repeat(20));
+  assert.equal(await labels.subject({ type: 'tracker', service: null, id: 'blutopia.cc' }, database), 'blutopia.cc');
+});
+
+test('health merges service, tracker, disk, job and backup checks and ranks the worst', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createHealth } = await import(new URL('../dist/server/health.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-health-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const now = 1_800_000_000_000;
+  const hour = 3_600_000;
+  const ok = { kind: 'ok', version: '4.0.0' };
+  const healthy = {
+    '/api/v3/health': [],
+    '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 2_000_000_000_000, totalSpace: 4_000_000_000_000 }],
+    '/api/v3/update': [],
+  };
+  let caseNumber = 0;
+  const run = async (input = {}) => {
+    caseNumber += 1;
+    const database = openDatabase(join(root, String(caseNumber), 'media-manager.sqlite'));
+    t.after(() => database.close());
+    // A recent ok backup row keeps the healthy baseline quiet; backupAt null leaves backup_runs empty.
+    if (input.backupAt !== null) {
+      database.prepare("INSERT INTO backup_runs (started_at, finished_at, outcome, detail) VALUES (?, ?, 'ok', '')").run(0, input.backupAt ?? now - hour);
+    }
+    if (input.cooldown !== undefined) {
+      database.prepare('INSERT INTO tracker_cooldowns VALUES (?, ?, ?, ?, ?)').run('blutopia.cc', now - hour, input.cooldown.text, input.cooldown.known ? 1 : 0, 'AB'.repeat(20));
+    }
+    const fake = (service) => ({
+      configured: () => true,
+      check: async () => input.statuses?.[service] ?? ok,
+      request: async (path) => ({ status: 200, body: { ...healthy, ...input.arr?.[service] }[path] }),
+    });
+    const published = [];
+    const health = createHealth({
+      database,
+      arr: { sonarr: fake('sonarr'), radarr: fake('radarr') },
+      rtorrent: { check: async () => ok },
+      plex: { check: async () => ok },
+      jobs: { status: () => input.jobs ?? [] },
+      events: { publish: (type, data) => { published.push({ type, data }); } },
+      now: () => now,
+    });
+    const snapshot = await health.check();
+    return { snapshot, badge: published.at(-1), health, database };
+  };
+
+  // Dropping a check, ranking a lower level above a higher one, or rewriting a service's own message turns this red.
+  const cases = [
+    { name: 'all ok', input: {}, level: 'ok', errors: 0, warnings: 0, message: undefined },
+    { name: 'Sonarr unreachable', input: { statuses: { sonarr: { kind: 'unreachable' } } }, level: 'error', errors: 1, warnings: 0, message: 'Sonarr is unreachable.' },
+    {
+      name: 'arr warning row with a string wikiUrl',
+      input: { arr: { radarr: { '/api/v3/health': [{ source: 'IndexerStatusCheck', type: 'warning', message: 'Indexers unavailable: Blutopia', wikiUrl: 'https://wiki.servarr.com/radarr/1' }] } } },
+      level: 'warning', errors: 0, warnings: 1, message: 'Indexers unavailable: Blutopia', docsUrl: 'https://wiki.servarr.com/radarr/1',
+    },
+    {
+      name: 'arr warning row with an object wikiUrl',
+      input: { arr: { sonarr: { '/api/v3/health': [{ source: 'DownloadClientCheck', type: 'warning', message: 'No download client', wikiUrl: { fullUri: 'https://wiki.servarr.com/sonarr/2' } }] } } },
+      level: 'warning', errors: 0, warnings: 1, message: 'No download client', docsUrl: 'https://wiki.servarr.com/sonarr/2',
+    },
+    {
+      name: 'unknown cooldown', input: { cooldown: { text: 'Ratio too low, sorry', known: false } }, level: 'error', errors: 1, warnings: 0,
+      message: 'blutopia.cc refused downloads with text media-manager-2 doesn\'t know: "Ratio too low, sorry"',
+    },
+    {
+      name: 'known cooldown', input: { cooldown: { text: 'Your downloading privileges have been disabled.', known: true } }, level: 'warning', errors: 0, warnings: 1,
+      message: `blutopia.cc refused downloads since ${new Date(now - hour).toISOString()}: "Your downloading privileges have been disabled."`,
+    },
+    {
+      name: 'disk with 20 GB free',
+      input: { arr: { sonarr: { '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 20_000_000_000, totalSpace: 100_000_000_000 }] } } },
+      level: 'warning', errors: 0, warnings: 1, message: 'Drive /data is 80% full · 20.0 GB free of 100 GB',
+    },
+    {
+      name: 'late job',
+      input: { jobs: [{ name: 'stall-fix', intervalMs: 60_000, lastStartedAt: now - hour, lastFinishedAt: now - hour, lastFailed: false, late: true }] },
+      level: 'warning', errors: 0, warnings: 1, message: 'Background job stall-fix hasn\'t finished for 1h 0m; expected every 1m',
+    },
+    { name: 'no ok backup yet', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Cloudflare R2 backups are not set up yet' },
+    { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last Cloudflare R2 backup finished 30h 0m ago' },
+  ];
+  for (const { name, input, level, errors, warnings, message, docsUrl } of cases) {
+    const { snapshot, badge } = await run(input);
+    assert.equal(snapshot.level, level, name);
+    assert.deepEqual(badge, { type: 'health', data: { checkedAt: now, level, errors, warnings } }, name);
+    if (message === undefined) {
+      assert.deepEqual(snapshot.problems, [], name);
+    } else {
+      assert.equal(snapshot.problems[0].message, message, name);
+      if (docsUrl !== undefined) assert.equal(snapshot.problems[0].docsUrl, docsUrl, name);
+    }
+  }
+
+  // Leaving the health routes outside the sign-in guard, or not running the checks on demand, turns this red.
+  await t.test('the health routes need the owner session and run the checks on demand', async () => {
+    const { health, database } = await run();
+    const { app } = await makeApp({ api: createApiRoutes(database, { arr: {}, refresh: async () => {}, manualImport: {}, health }) });
+    assert.equal((await app.request('/api/health')).status, 401);
+    const { session } = await signIn(app);
+    const response = await app.request('/api/health/check', { method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: '{}' });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).checkedAt, now);
+  });
+});
+
+test('flagged lists what automation gave up on with the right next step, and wanted lists with their search times', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { searchDueAt } = await import(searchesModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createLabels } = await import(new URL('../dist/server/labels.js', import.meta.url).href);
+  const { createFlagged } = await import(new URL('../dist/server/flagged.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-flagged-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const day = 24 * 60 * 60_000;
+  const clock = { value: Date.parse('2026-10-08T12:00:00Z') };
+  const added = '2026-01-01T00:00:00Z';
+  const bodies = {
+    '/api/v3/movie/7': { title: 'Dune', year: 2021 },
+    '/api/v3/episode/31': { seriesId: 3, seasonNumber: 2, episodeNumber: 9, series: { title: 'Andor' } },
+    '/api/v3/episode/32': { seriesId: 5, seasonNumber: 1, episodeNumber: 2, series: { title: 'Severance' } },
+    '/api/v3/wanted/missing?page=1&pageSize=500&monitored=true&includeSeries=true': { totalRecords: 2, records: [
+      { id: 50, seriesId: 3, seasonNumber: 2, episodeNumber: 1, airDateUtc: '2026-10-01T00:00:00Z', series: { title: 'Andor', added } },
+      { id: 51, seriesId: 3, seasonNumber: 2, episodeNumber: 2, airDateUtc: '2026-09-01T00:00:00Z', lastSearchTime: '2026-10-07T00:00:00Z', series: { title: 'Andor', added } },
+    ] },
+    '/api/v3/wanted/cutoff?page=1&pageSize=500&monitored=true&includeSeries=true': { totalRecords: 0, records: [] },
+    '/api/v3/wanted/missing?page=1&pageSize=500&monitored=true': { totalRecords: 2, records: [
+      { id: 8, title: 'Arrival', year: 2016, added },
+      { id: 7, title: 'Dune', year: 2021, added },
+    ] },
+    '/api/v3/wanted/cutoff?page=1&pageSize=500&monitored=true': { totalRecords: 2, records: [
+      { id: 7, title: 'Dune', year: 2021, added },
+      { id: 9, title: 'Heat', year: 1995, added },
+    ] },
+  };
+  const sent = [];
+  const fake = (service) => ({
+    request: async (path, init = {}) => {
+      if (init.method === undefined) return path in bodies ? { status: 200, body: bodies[path] } : { status: 404, body: undefined };
+      sent.push({ service, method: init.method, path, body: init.body });
+      return { status: 201, body: {} };
+    },
+  });
+  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const events = createEventHub();
+  const problems = createProblems({ database, events, now: () => clock.value });
+  const grabs = createGrabTracker({ database, arr, events });
+  const grab = { publishedAt: null, byHand: false, indexer: 'Blutopia', grabbedAt: clock.value - 60 * 60_000 };
+  grabs.recordGrab({ ...grab, hash: 'AA'.repeat(20), service: 'radarr', movieId: 7, seriesId: null, episodeIds: [], releaseTitle: 'Dune.2021' });
+  grabs.recordGrab({ ...grab, hash: 'BB'.repeat(20), service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [31], releaseTitle: 'Andor.S02E09' });
+  grabs.recordGrab({ ...grab, hash: 'CC'.repeat(20), service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [33, 34], releaseTitle: 'Andor.S02E11E12' });
+  grabs.recordGrab({ ...grab, hash: 'DD'.repeat(20), service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [51], releaseTitle: 'Andor.S02E02.2160p' });
+  database.prepare('INSERT INTO availability_seen (subject, seen_at) VALUES (?, ?)').run('radarr:movie:7', clock.value - 3 * day);
+  database.prepare(`
+    INSERT INTO arr_queue (service, queue_id, movie_id, title, status, tracked_status, tracked_state, status_messages, error_message,
+      indexer, protocol, quality, formats, format_score, size_bytes, size_left_bytes)
+    VALUES ('radarr', 1, 8, 'Arrival.2016', 'downloading', 'ok', 'downloading', '[]', '', 'Blutopia', 'torrent', 'Bluray-1080p', '[]', 0, 1, 1)
+  `).run();
+
+  const torrent = (hash) => ({ type: 'torrent', service: null, id: hash });
+  for (const ago of [8 * day, 2 * day]) {
+    clock.value -= ago;
+    const old = problems.open({ kind: 'missed_search', subject: { type: 'episode', service: 'sonarr', id: '40' }, summary: 'Out but never searched.' });
+    problems.setState(old.id, 'resolved', 'Searched automatically.');
+    clock.value += ago;
+  }
+  problems.open({ kind: 'stalled', subject: torrent('AA'.repeat(20)), hash: 'AA'.repeat(20), summary: 'No seeders.', state: 'needs_you' });
+  problems.open({ kind: 'import_matching', subject: torrent('BB'.repeat(20)), hash: 'BB'.repeat(20), summary: 'No match.', state: 'needs_you' });
+  problems.open({ kind: 'stalled', subject: torrent('CC'.repeat(20)), hash: 'CC'.repeat(20), summary: 'No seeders.', state: 'needs_you' });
+  problems.open({ kind: 'stalled', subject: torrent('EE'.repeat(20)), hash: 'EE'.repeat(20), summary: 'No grab.', state: 'needs_you' });
+  problems.open({ kind: 'tracker_cooldown', subject: { type: 'tracker', service: null, id: 'blutopia.cc' }, summary: 'Slow down.', state: 'needs_you' });
+  problems.open({ kind: 'dependency_down', subject: { type: 'dependency', service: null, id: 'rtorrent' }, summary: 'rTorrent is unreachable.', state: 'needs_you' });
+  problems.open({ kind: 'missed_search', subject: { type: 'episode', service: 'sonarr', id: '32' }, summary: 'Out but never searched.', state: 'needs_you' });
+  problems.open({ kind: 'unfinished', subject: torrent('FF'.repeat(20)), hash: 'FF'.repeat(20), summary: 'Still going.' });
+
+  const isManualDownload = (subject) => subject.type === 'movie' && subject.id === '7';
+  const flagged = createFlagged({ database, arr, labels: createLabels(arr), isManualDownload, now: () => clock.value });
+
+  // Mapping a problem to the wrong next step, offering a manual import for a non-import problem, or a pick for several episodes turns this red.
+  const needsYou = await flagged.needsYou();
+  assert.deepEqual(needsYou.items.map((item) => [item.problem.kind, item.label, item.actions.map((action) => action.kind)]), [
+    ['stalled', 'Dune (2021)', ['pick_release', 'search']],
+    ['import_matching', 'Andor S02E09', ['manual_import', 'pick_release', 'search']],
+    ['stalled', 'Sonarr episode 33 + 1 more', ['search']],
+    ['stalled', 'EE'.repeat(20), []],
+    ['tracker_cooldown', 'blutopia.cc', ['open_health']],
+    ['dependency_down', 'rtorrent', ['open_health']],
+    ['missed_search', 'Severance S01E02', ['pick_release', 'search']],
+  ]);
+  assert.equal(needsYou.items[1].kindWord, 'IMPORT MATCHING');
+  assert.deepEqual(needsYou.items[1].actions[0], { kind: 'manual_import', service: 'sonarr', downloadId: 'BB'.repeat(20) });
+  assert.deepEqual(needsYou.items[2].actions[0], { kind: 'search', service: 'sonarr', type: 'episode', ids: [33, 34] });
+  assert.deepEqual(needsYou.items[6].actions[0].target, { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 32 });
+  // Counting resolutions older than a week, or counting open problems as handled, turns this red.
+  assert.equal(needsYou.handledThisWeek, 1);
+  assert.equal(needsYou.handlingCount, 1);
+
+  // Filtering manual downloads out of the missing list, keeping them in cutoff, or losing the search schedule turns this red.
+  const { missing, cutoff } = await flagged.wanted();
+  assert.deepEqual(missing.map((item) => `${item.service}:${item.id}`), ['sonarr:51', 'sonarr:50', 'radarr:7', 'radarr:8']);
+  assert.deepEqual(cutoff.map((item) => `${item.service}:${item.id}`), ['radarr:9']);
+  const never = missing.find((item) => item.id === 50);
+  assert.equal(never.lastResult, 'never searched');
+  assert.equal(never.nextSearchAt, searchDueAt({ availableAt: Date.parse('2026-10-01T00:00:00Z'), addedAt: Date.parse(added), lastSearchAt: null }));
+  assert.equal(missing.find((item) => item.id === 51).lastResult, 'grabbed Andor.S02E02.2160p');
+  assert.equal(missing.find((item) => item.id === 7).availableAt, clock.value - 3 * day);
+  assert.equal(missing.find((item) => item.id === 8).nextSearchAt, null);
+  // Checking the search history before the download queue makes a queued, never-searched movie read "never searched".
+  assert.deepEqual([missing.find((item) => item.id === 8).lastResult, missing.find((item) => item.id === 8).inQueue], ['in queue', true]);
+
+  // Sending a search without recording it, sending it twice, or accepting an episode search aimed at Radarr turns this red.
+  const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, flagged }) });
+  const { session } = await signIn(app);
+  const post = (body) => app.request('/api/flagged/search', {
+    method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: JSON.stringify(body),
+  });
+  assert.equal((await post({ service: 'sonarr', type: 'episode', ids: [50] })).status, 204);
+  assert.deepEqual(sent, [{ service: 'sonarr', method: 'POST', path: '/api/v3/command', body: { name: 'EpisodeSearch', episodeIds: [50] } }]);
+  assert.equal(database.prepare('SELECT searched_at FROM search_log WHERE subject = ?').get('sonarr:episode:50').searched_at, clock.value);
+  for (const body of [{ service: 'radarr', type: 'episode', ids: [50] }, { service: 'sonarr', type: 'episode', ids: [] }, { service: 'sonarr', type: 'episode', ids: [50], extra: 1 }]) {
+    assert.equal((await post(body)).status, 400);
+  }
+  assert.equal(sent.length, 1);
+});
+
+test('history merges Sonarr, Radarr and media-manager-2 events newest first with their details', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createHistory, normalizeArrEvent } = await import(new URL('../dist/server/history.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-history-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const hash = 'AB'.repeat(20);
+  const andor = { series: { title: 'Andor' }, episode: { seasonNumber: 2, episodeNumber: 9 }, episodeId: 31, seriesId: 3 };
+  const grabbed = {
+    ...andor,
+    id: 11,
+    eventType: 'grabbed',
+    date: '2026-10-10T10:00:00Z',
+    sourceTitle: 'Andor.S02E09.2160p.WEB-DL-GRP',
+    downloadId: hash,
+    quality: { quality: { name: 'WEBDL-2160p' } },
+    customFormats: [{ name: 'DV' }, { name: 'HDR10' }],
+    customFormatScore: 1250,
+    data: { indexer: 'Blutopia', releaseGroup: 'GRP', releaseSource: 'Rss', ageHours: '5.4', age: '0' },
+  };
+  const imported = {
+    ...andor,
+    id: 12,
+    eventType: 'downloadFolderImported',
+    date: '2026-10-10T08:00:00Z',
+    sourceTitle: 'Andor.S02E09.2160p.WEB-DL-GRP',
+    data: { importedPath: '/tv/Andor/Season 2/Andor S02E09.mkv' },
+  };
+
+  // Dropping a data field, the "picked by you" mark or the episode code from the words turns this red.
+  assert.deepEqual(normalizeArrEvent('sonarr', grabbed, (id) => id === hash), {
+    id: 'sonarr:11',
+    at: Date.parse('2026-10-10T10:00:00Z'),
+    service: 'sonarr',
+    source: 'Sonarr',
+    subject: { type: 'episode', service: 'sonarr', id: '31' },
+    title: 'Andor S02E09',
+    event: 'Grabbed',
+    detail: 'Blutopia · RSS · picked by you',
+    release: 'Andor.S02E09.2160p.WEB-DL-GRP',
+    quality: 'WEBDL-2160p',
+    byHand: true,
+    eventType: 'grabbed',
+    details: {
+      tracker: 'Blutopia',
+      releaseGroup: 'GRP',
+      formats: ['DV', 'HDR10'],
+      score: 1250,
+      howFound: 'RSS',
+      ageWhenGrabbed: '5 hours',
+      deletionReason: null,
+      droppedPath: null,
+      importedPath: null,
+      message: null,
+    },
+    markFailed: { service: 'sonarr', historyId: 11, movieId: null, episodeIds: [31], releaseTitle: 'Andor.S02E09.2160p.WEB-DL-GRP' },
+  });
+  const deleted = normalizeArrEvent('radarr', {
+    id: 21, eventType: 'movieFileDeleted', date: '2026-10-09T08:00:00Z', sourceTitle: 'Dune.2021.1080p', movieId: 7,
+    movie: { title: 'Dune', year: 2021 }, quality: { quality: { name: 'Bluray-1080p' } }, data: { reason: 'Upgrade' },
+  }, () => true);
+  // Offering Mark as failed on anything but a grab, or losing the deletion reason, turns this red.
+  assert.deepEqual(
+    [deleted.title, deleted.event, deleted.detail, deleted.byHand, deleted.markFailed, deleted.subject],
+    ['Dune (2021)', 'File deleted', 'Upgrade', false, null, { type: 'movie', service: 'radarr', id: '7' }],
+  );
+  assert.equal(normalizeArrEvent('sonarr', { ...grabbed, eventType: 'unknown' }, () => false), null);
+
+  const clock = { value: Date.parse('2026-10-10T09:00:00Z') };
+  const problems = createProblems({ database, events: createEventHub(), now: () => clock.value });
+  problems.open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, summary: 'Stalled at 40%', hash });
+  clock.value = Date.parse('2026-10-10T07:00:00Z');
+  problems.open({ kind: 'missed_search', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Nothing found' });
+  const requests = [];
+  let sonarrRecords = [grabbed, imported];
+  const arr = {
+    sonarr: {
+      request: async (path) => {
+        requests.push(path);
+        if (path.startsWith('/api/v3/history?')) return { status: 200, body: { records: sonarrRecords } };
+        if (path === '/api/v3/episode?seriesId=3') return { status: 200, body: [{ id: 31 }] };
+        return { status: 404, body: undefined };
+      },
+    },
+    radarr: { request: async () => { throw new Error('Radarr is not configured.'); } },
+  };
+  const grabs = createGrabTracker({ database, arr, events: createEventHub() });
+  grabs.recordGrab({ hash, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [31], releaseTitle: 'Andor.S02', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false });
+  const history = createHistory({ database, arr, labels: { subject: async (subject) => `label ${subject.id}` } });
+
+  // Sorting per source instead of by time, or letting an unconfigured Radarr throw, turns this red.
+  const all = await history.list({ filter: 'all', service: 'all', page: 1 });
+  assert.deepEqual(all.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12', 'mm2:2']);
+  assert.equal(all.hasMore, false);
+  assert.deepEqual(
+    [all.events[1].title, all.events[1].event, all.events[1].release, all.events[2].detail],
+    [`label ${hash}`, 'Problem', 'Andor.S02', 'Andor S02E09.mkv'],
+  );
+  // Letting Sonarr or Radarr events through the Automatic fixes filter turns this red.
+  assert.deepEqual((await history.list({ filter: 'fixes', service: 'all', page: 1 })).events.map((event) => event.id), ['mm2:1', 'mm2:2']);
+  // Not forwarding the series id, or keeping problems on other titles in a title's history, turns this red.
+  const series = await history.list({ filter: 'all', service: 'sonarr', page: 1, seriesId: 3 });
+  assert.match(requests.find((path) => path.startsWith('/api/v3/history?') && path.includes('seriesIds=3')) ?? '', /includeSeries=true&includeEpisode=true/);
+  assert.deepEqual(series.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
+
+  // A full Sonarr page of 100 grabs, one a minute from 10:00 back to 08:21, leaves the 07:00 step for a later page.
+  sonarrRecords = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
+  const full = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
+  // Reading steps from the start of time instead of from the oldest record on a full Sonarr page turns this red.
+  assert.deepEqual(full.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:1']);
+  assert.equal(full.hasMore, true);
+  // Page 2 is Sonarr's last, with one grab at 08:10; the 07:00 step is older than everything on page 1.
+  sonarrRecords = [{ ...grabbed, id: 300, date: '2026-10-10T08:10:00Z' }];
+  const fullOldest = Math.min(...full.events.map((event) => event.at));
+  const afterFull = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: fullOldest });
+  // Paging steps by offset on Sonarr's last page, instead of from the oldest event already shown, turns this red.
+  assert.deepEqual(afterFull.events.filter((event) => event.source === 'media-manager-2').map((event) => event.id), ['mm2:2']);
+  assert.equal(afterFull.hasMore, false);
+  sonarrRecords = [grabbed, imported];
+
+  const missed = problems.open({ kind: 'missed_search', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Nothing found' });
+  for (let index = 0; index < 100; index += 1) {
+    clock.value = Date.parse('2026-10-10T06:00:00Z') - index * 60_000;
+    problems.step(missed.id, 'fix', `Searched again ${index}`);
+  }
+  // Returning every step on one page when no Sonarr or Radarr page is full, or ignoring before, turns this red.
+  const firstFixes = await history.list({ filter: 'fixes', service: 'all', page: 1 });
+  assert.deepEqual([firstFixes.events.length, firstFixes.hasMore], [100, true]);
+  const secondFixes = await history.list({ filter: 'fixes', service: 'all', page: 2, before: Math.min(...firstFixes.events.map((event) => event.at)) });
+  assert.deepEqual([secondFixes.events.map((event) => event.detail), secondFixes.hasMore], [['Searched again 97', 'Searched again 98', 'Searched again 99'], false]);
+
+  const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, history }) });
+  const { session } = await signIn(app);
+  // Serving history without a session, or accepting a filter name it doesn't know, turns this red.
+  assert.equal((await app.request('/api/history')).status, 401);
+  assert.equal((await app.request('/api/history?filter=nope', { headers: { Cookie: session } })).status, 400);
+  assert.equal((await app.request('/api/history?before=soon', { headers: { Cookie: session } })).status, 400);
+  assert.equal((await app.request('/api/history?filter=fixes', { headers: { Cookie: session } })).status, 200);
+});
+
+test('marking a grab failed keeps the file and the torrent, blocklists and searches again; the blocklist says why and by whom', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createBlocklist } = await import(new URL('../dist/server/blocklist.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-blocklist-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const andor = { series: { title: 'Andor' }, quality: { quality: { name: 'WEBDL-2160p' } }, indexer: 'Blutopia' };
+  const state = {
+    removeFailed: true,
+    autoRedownload: false,
+    refuseSearch: false,
+    blocklist: {
+      sonarr: [
+        { ...andor, id: 3, date: '2026-10-10T10:00:00Z', sourceTitle: 'andor.s02e09.2160p.web-dl-grp', episodeIds: [31], message: 'Manually marked as failed' },
+        { ...andor, id: 4, date: '2026-10-10T08:00:00Z', sourceTitle: 'Andor.S02E10.STALLED', episodeIds: [32, 33], message: 'Download failed' },
+      ],
+      radarr: [{ id: 5, date: '2026-10-10T09:00:00Z', sourceTitle: 'Dune.2021.1080p', movie: { title: 'Dune', year: 2021 }, message: 'Release was not wanted' }],
+    },
+  };
+  const calls = [];
+  const fake = (name) => ({
+    request: async (path, init = {}) => {
+      calls.push(`${name} ${init.method ?? 'GET'} ${path}`);
+      if (path === '/api/v3/downloadclient') return { status: 200, body: [{ enable: true, removeFailedDownloads: state.removeFailed }] };
+      if (path === '/api/v3/config/downloadclient') return { status: 200, body: { autoRedownloadFailed: state.autoRedownload } };
+      if (path.startsWith('/api/v3/blocklist?')) return { status: 200, body: { records: state.blocklist[name] } };
+      if (path === '/api/v3/command' && state.refuseSearch) return { status: 500, body: undefined };
+      return { status: 200, body: undefined };
+    },
+  });
+  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const blocklist = createBlocklist({ database, arr, isManualDownload: (subject) => subject.type === 'episode' && subject.id === '40', now: () => 5_000 });
+  const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, blocklist }) });
+  const { session } = await signIn(app);
+  const mark = (id, body) => app.request(`/api/history/sonarr/${id}/failed`, {
+    method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: JSON.stringify(body),
+  });
+  const grab = { movieId: null, episodeIds: [31], releaseTitle: 'Andor.S02E09.2160p.WEB-DL-GRP' };
+
+  // Marking it failed while the download client would remove the seeding torrent turns this red.
+  let response = await mark(7, grab);
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'remove_failed_on' });
+  assert.deepEqual(calls, ['sonarr GET /api/v3/downloadclient']);
+
+  // Touching the library file or the queue, or skipping the search media-manager-2 owes, turns this red.
+  state.removeFailed = false;
+  calls.length = 0;
+  response = await mark(7, grab);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { searched: 'media-manager-2' });
+  assert.deepEqual(calls, [
+    'sonarr GET /api/v3/downloadclient',
+    'sonarr POST /api/v3/history/failed/7',
+    'sonarr GET /api/v3/config/downloadclient',
+    'sonarr POST /api/v3/command',
+  ]);
+  assert.equal(calls.some((call) => /episodefile|moviefile|queue/.test(call)), false);
+  assert.equal(database.prepare('SELECT origin FROM blocklist_marks WHERE release_title = ?').get(grab.releaseTitle).origin, 'history');
+
+  // Searching on top of the service's own automatic redownload, or searching for a manual download, turns this red.
+  state.autoRedownload = true;
+  calls.length = 0;
+  assert.deepEqual(await (await mark(8, grab)).json(), { searched: 'service' });
+  assert.equal(calls.includes('sonarr POST /api/v3/command'), false);
+  state.autoRedownload = false;
+  assert.deepEqual(await (await mark(9, { ...grab, episodeIds: [40], releaseTitle: 'Protected.Release' })).json(), { searched: 'manual_download' });
+  // Reporting a refused search as a failed mark, when the grab is already marked failed, turns this red.
+  state.refuseSearch = true;
+  const refused = await mark(10, grab);
+  assert.deepEqual([refused.status, await refused.json()], [200, { searched: 'search_failed' }]);
+  state.refuseSearch = false;
+  assert.equal((await mark(7, { ...grab, extra: true })).status, 400);
+  assert.equal((await mark(7, { ...grab, releaseTitle: '' })).status, 400);
+
+  const hash = 'CD'.repeat(20);
+  createGrabTracker({ database, arr, events: createEventHub() }).recordGrab({
+    hash, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [32, 33], releaseTitle: 'Andor.S02E10.STALLED', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false,
+  });
+  createProblems({ database, events: createEventHub() })
+    .open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, summary: 'Stalled at 40% for 6 hours', hash });
+  // Losing the case-insensitive match on the owner's mark, the problem summary, or the service's own message turns this red.
+  const listed = await blocklist.list(1, 'all');
+  assert.deepEqual(listed.entries.map((entry) => [entry.id, entry.title, entry.by, entry.reason]), [
+    [3, 'Andor · 1 episode', 'you', "from the title's history"],
+    [5, 'Dune (2021)', 'Radarr', 'Release was not wanted'],
+    [4, 'Andor · 2 episodes', 'media-manager-2', 'Stalled at 40% for 6 hours'],
+  ]);
+  assert.equal(listed.hasMore, false);
+
+  // Unblocking through anything but the service's blocklist delete turns this red.
+  calls.length = 0;
+  const unblocked = await app.request('/api/blocklist/sonarr/3', { method: 'DELETE', headers: { ...jsonHeaders(), Cookie: session } });
+  assert.equal(unblocked.status, 204);
+  assert.deepEqual(calls, ['sonarr DELETE /api/v3/blocklist/3']);
 });
 
 const sha256Hex = (data) => createHash('sha256').update(data).digest('hex');

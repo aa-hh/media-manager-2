@@ -221,6 +221,13 @@ export const applicationMigrations = [
     bytes INTEGER,
     sha256 TEXT
   ) STRICT;`,
+  `CREATE TABLE blocklist_marks (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    release_title TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    origin TEXT NOT NULL CHECK (origin IN ('history', 'downloads')),
+    PRIMARY KEY (service, release_title, at)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

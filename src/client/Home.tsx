@@ -12,18 +12,28 @@ type HomeProps = {
   onUnauthenticated: () => void;
   downloads?: ReactNode;
   renderBar?: (showDownloads: () => void) => ReactNode;
+  nav?: (showDownloads: () => void) => ReactNode;
 };
 
+// Searching moves the path to /search and remembers the screen it left, so clearing the search returns to that screen.
 const writeSearchQuery = (query: string) => {
   const url = new URL(window.location.href);
   const trimmed = query.trim();
+  let state: unknown = window.history.state;
   if (trimmed === '') url.searchParams.delete('q');
   else url.searchParams.set('q', trimmed);
-  url.pathname = trimmed === '' ? '/' : '/search';
-  if (url.href !== window.location.href) window.history.replaceState(null, '', url);
+  if (trimmed !== '' && url.pathname !== '/search') {
+    state = { from: url.pathname };
+    url.pathname = '/search';
+  } else if (trimmed === '' && url.pathname === '/search') {
+    const from = (state as { from?: unknown } | null)?.from;
+    url.pathname = typeof from === 'string' ? from : '/';
+    state = null;
+  }
+  if (url.href !== window.location.href) window.history.replaceState(state, '', url);
 };
 
-export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloads, renderBar }: HomeProps) {
+export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloads, renderBar, nav }: HomeProps) {
   const [query, setQuery] = useState(readSearchQuery);
   const [opened, setOpened] = useState<SearchResult | undefined>(undefined);
   const { state, run } = useSearch(onUnauthenticated);
@@ -57,6 +67,10 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
             search(value);
           }}
         />
+        {nav?.(() => {
+          setOpened(undefined);
+          setQuery('');
+        })}
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {signOutProblem}
           <Button variant="quiet" className="min-h-9 px-3 text-sm" onClick={onSignOut} disabled={signOutDisabled}>
