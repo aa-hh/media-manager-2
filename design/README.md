@@ -14,6 +14,8 @@ Light mode, desktop first. Open and edit these in pen.dev; never edit a `.pen` f
 | `calendar.pen` | Calendar (`/calendar`): week, month, forecast |
 | `settings.pen` | Settings |
 | `sign-in.pen` | Plex sign-in and sign out |
+| `setup-wizard.pen` | First-run setup wizard: each part's step, testing and failure states, the "How the pieces connect" map, Done |
+| `discovery.pen` | Discover (`/discover`) |
 | `archive/mediaManager2-2026-10-11.pen` | The single design file before the 11 Oct 2026 split, including every dark screen. Reference only. |
 
 Phone versions of a screen go in the same file as its desktop version.
