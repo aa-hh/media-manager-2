@@ -75,8 +75,8 @@ export const createTrackerWatch = (options: {
   const torrentSubject = (hash: string) => ({ type: 'torrent' as const, service: null, id: hash });
   const trackerSubject = (host: string) => ({ type: 'tracker' as const, service: null, id: host });
 
-  const issueProblem = (issue: Pick<Issue, 'hash' | 'kind'>, summary: string) => problems.open({
-    kind: issue.kind, subject: torrentSubject(issue.hash), summary, hash: issue.hash,
+  const issueProblem = (issue: Pick<Issue, 'hash' | 'kind'>, summary: string, state?: 'needs_you') => problems.open({
+    kind: issue.kind, subject: torrentSubject(issue.hash), summary, hash: issue.hash, state,
   });
 
   const saveIssue = (issue: Issue) => {
@@ -164,8 +164,9 @@ export const createTrackerWatch = (options: {
       if (kind === 'unregistered') {
         const next: Issue = issue ?? { hash: torrent.hash, kind, since: at, lastRetryAt: null, recheckedAt: null, replace: false };
         saveIssue(next);
-        issueProblem(next, `The tracker no longer knows this torrent: "${text}"`);
-        // A finished torrent has nothing left to download, so searching again would grab a release nobody asked for.
+        // A finished torrent has nothing left to download, so searching again would grab a release nobody asked for;
+        // only the owner can act on it.
+        issueProblem(next, `The tracker no longer knows this torrent: "${text}"`, torrent.complete ? 'needs_you' : undefined);
         if (!torrent.complete) askForReplacement(next, 'Unregistered torrent: blocking it and searching again.');
       } else if (kind === 'tracker_down' && !torrent.complete) {
         const current: Issue = issue?.kind === 'tracker_down'
@@ -206,6 +207,7 @@ export const createTrackerWatch = (options: {
         }
       } else if (issue !== undefined) {
         if (issue.kind === 'tracker_down' && kind === 'clean') endIssue(issue, 'The tracker answered again.');
+        if (issue.kind === 'unregistered' && kind === 'clean') endIssue(issue, 'The tracker knows this torrent again.');
         if (issue.kind === 'damaged' && kind === 'clean' && issue.recheckedAt !== null && at - issue.recheckedAt >= RECHECK_SETTLE_MS) {
           endIssue(issue, 'The recheck found the data intact.');
         }

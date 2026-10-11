@@ -4690,9 +4690,12 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
     await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' }), finished]);
     assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash), [hash(4)]);
     assert.deepEqual(replacements, [hash(4)]);
-    assert.ok(listOpenProblems(database).some((problem) => problem.kind === 'unregistered' && problem.hash === hash(9)));
+    // Opening the finished torrent's problem as handling turns this red: nothing handles it, so it waits on the owner unseen.
+    const flagged = listOpenProblems(database).find((problem) => problem.kind === 'unregistered' && problem.hash === hash(9));
+    assert.equal(flagged?.state, 'needs_you');
     assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
-    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' })], 31 * 60_000);
+    await step([row(hash(4), { message: 'Tracker: [Failure reason "Unregistered torrent"]' }), row(hash(5), { message: 'Hash check on download completion found bad chunks' }), row(hash(9), { complete: 1, completed: 1000 })], 31 * 60_000);
+    assert.equal(listOpenProblems(database).some((problem) => problem.id === flagged.id), false, 'a clean message ends the finished torrent\'s problem');
     assert.deepEqual(fake.calls, [['d.check_hash', hash(5)]]);
     assert.deepEqual(watch.replacementRequests().map((issue) => issue.hash).sort(), [hash(4), hash(5)].sort());
     watch.replacementHandled(hash(4), 'Grabbed another release.');
