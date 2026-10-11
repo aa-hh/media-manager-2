@@ -127,14 +127,6 @@ export const createProtection = (
     return isRecord(found) && positiveInteger(found.id) ? found.id : undefined;
   };
 
-  const setTagged = async (service: Service, path: string, tagId: number, tagged: boolean) => {
-    const record = await call(service, path);
-    if (!isRecord(record)) throw new Error(`${path} is not a record`);
-    const tags = Array.isArray(record.tags) ? record.tags.filter(positiveInteger) : [];
-    if (tags.includes(tagId) === tagged) return;
-    await call(service, path, 'PUT', { ...record, tags: tagged ? [...tags, tagId] : tags.filter((id) => id !== tagId) });
-  };
-
   const ensureProfile = async (service: Service, name: string, ignored: string[] | undefined, tagId: number) => {
     const profiles = await call(service, '/api/v3/releaseprofile');
     const existing = Array.isArray(profiles) ? profiles.find((profile) => isRecord(profile) && profile.name === name) : undefined;
@@ -161,11 +153,10 @@ export const createProtection = (
     const tagId = await ensureTag('radarr', RADARR_TAG);
     await ensureProfile('radarr', RADARR_PROFILE, ['/./'], tagId);
     const wanted = new Set(movies.map((item) => (item.kind === 'movie' ? item.movieId : 0)));
-    for (const movieId of wanted) await setTagged('radarr', `/api/v3/movie/${movieId}`, tagId, true);
-    const all = await call('radarr', '/api/v3/movie');
-    for (const movie of Array.isArray(all) ? all : []) {
-      if (!isRecord(movie) || !positiveInteger(movie.id) || wanted.has(movie.id)) continue;
-      if (Array.isArray(movie.tags) && movie.tags.includes(tagId)) await setTagged('radarr', `/api/v3/movie/${movie.id}`, tagId, false);
+    for (const movieId of wanted) valueOrThrow(await services.radarr.setTag(movieId, tagId, true));
+    for (const movie of valueOrThrow(await services.radarr.listMovies())) {
+      if (movie.id === null || wanted.has(movie.id)) continue;
+      if (movie.tags.includes(tagId)) valueOrThrow(await services.radarr.setTag(movie.id, tagId, false));
     }
   };
 
@@ -175,7 +166,7 @@ export const createProtection = (
       const tagId = await findTag('sonarr', seriesTag(seriesId));
       if (tagId === undefined) return;
       await ensureProfile('sonarr', seriesProfile(seriesId), undefined, tagId);
-      await setTagged('sonarr', `/api/v3/series/${seriesId}`, tagId, false);
+      valueOrThrow(await services.sonarr.setTag(seriesId, tagId, false));
       return;
     }
     const tagId = await ensureTag('sonarr', seriesTag(seriesId));
@@ -183,7 +174,7 @@ export const createProtection = (
       item.kind === 'episode' ? episodePatterns(item.seasonNumber, item.episodeNumber) : []
     )))];
     await ensureProfile('sonarr', seriesProfile(seriesId), ignored, tagId);
-    await setTagged('sonarr', `/api/v3/series/${seriesId}`, tagId, true);
+    valueOrThrow(await services.sonarr.setTag(seriesId, tagId, true));
   };
 
   const remove = (item: ProtectedItem) => {
@@ -218,14 +209,11 @@ export const createProtection = (
       if (target.kind === 'episode') episodeIds = [target.episodeId];
       else if (target.kind === 'episodes') episodeIds = target.episodeIds;
       else {
-        const all = await call('sonarr', `/api/v3/episode?seriesId=${target.seriesId}`);
-        episodeIds = (Array.isArray(all) ? all : []).flatMap((episode) => (
-          isRecord(episode) && episode.seasonNumber === target.seasonNumber && episode.hasFile === true && positiveInteger(episode.id) ? [episode.id] : []
-        ));
+        const all = valueOrThrow(await services.sonarr.episodes(target.seriesId, { seasonNumber: target.seasonNumber }));
+        episodeIds = all.flatMap((episode) => (episode.hasFile ? [episode.id] : []));
       }
       for (const episodeId of episodeIds) {
-        const episode = await call('sonarr', `/api/v3/episode/${episodeId}`);
-        if (!isRecord(episode) || typeof episode.seasonNumber !== 'number' || typeof episode.episodeNumber !== 'number') continue;
+        const episode = valueOrThrow(await services.sonarr.episode(episodeId));
         insert.run('sonarr', episodeId, target.seriesId, episode.seasonNumber, episode.episodeNumber, now());
       }
       await syncSeries(target.seriesId);
@@ -242,13 +230,8 @@ export const createProtection = (
     async reconcile() {
       const items = list();
       for (const item of items) {
-        try {
-          const path = item.kind === 'movie' ? `/api/v3/movie/${item.movieId}` : `/api/v3/episode/${item.episodeId}`;
-          const response = await services[item.service].request(path);
-          if (response.status === 404 || (isRecord(response.body) && response.body.hasFile === false)) remove(item);
-        } catch {
-          continue;
-        }
+        const result = item.kind === 'movie' ? await services.radarr.movie(item.movieId) : await services.sonarr.episode(item.episodeId);
+        if (result.kind === 'not_found' || (result.kind === 'ok' && !result.value.hasFile)) remove(item);
       }
       if (services.radarr.configured() && items.some((item) => item.service === 'radarr')) await syncRadarr();
       const seriesIds = new Set(items.flatMap((item) => (item.kind === 'episode' ? [item.seriesId] : [])));

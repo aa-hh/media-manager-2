@@ -57,6 +57,8 @@ export const handGrab = (record: GrabRecord & { downloadId: string }) => {
 };
 
 const GRAB_TIMEOUT_MS = 60_000;
+// A grab that never shows up in history within an hour is failed for the owner to see, not polled forever.
+const UNREPORTED_GRAB_LIMIT_MS = 3_600_000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -64,6 +66,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 const positiveInteger = (value: unknown): value is number => (
   typeof value === 'number' && Number.isInteger(value) && value > 0
 );
+
+// Only codes raised while connecting: the request never left this host, so the service cannot have grabbed.
+// A route lost later (EHOSTUNREACH, ENETUNREACH) can follow a delivered POST, so those stay sent.
+const NEVER_CONNECTED_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT']);
+
+const connectionNeverOpened = (error: unknown): boolean => {
+  const first = error instanceof Error ? error.cause : undefined;
+  const second = first instanceof Error ? first.cause : undefined;
+  const codes = [first, second]
+    .flatMap((item) => (item instanceof AggregateError ? [item, ...item.errors] : [item]))
+    .map((item) => (isRecord(item) ? item.code : undefined));
+  return codes.some((code) => typeof code === 'string' && NEVER_CONNECTED_CODES.has(code));
+};
 
 const refusal = (body: unknown): string | undefined => {
   const messages = (Array.isArray(body) ? body : [body]).flatMap((item) => {
@@ -131,6 +146,11 @@ export const createGrabs = (
     return row === undefined ? undefined : rowToRecord(row as Record<string, unknown>);
   };
 
+  const pending = (intent?: GrabIntent) => database
+    .prepare("SELECT * FROM grabs WHERE state = 'sent' AND (? IS NULL OR intent = ?) ORDER BY id")
+    .all(intent ?? null, intent ?? null)
+    .map((row) => rowToRecord(row as Record<string, unknown>));
+
   const update = (id: number, fields: { state?: GrabState; failure?: string | null; downloadId?: string }) => {
     database.prepare(`
       UPDATE grabs SET
@@ -159,19 +179,13 @@ export const createGrabs = (
     const result = record.service === 'sonarr' ? await services.sonarr.history(filter) : await services.radarr.history(filter);
     if (result.kind !== 'ok') return record;
     const event = result.value.records.find((entry) => entry.data.guid === record.guid && entry.downloadId !== null);
-    return event === undefined ? record : update(record.id, { downloadId: event.downloadId! });
+    return event === undefined ? record : update(record.id, { downloadId: event.downloadId!, failure: null });
   };
 
   const seasonEpisodeIds = async (seriesId: number, seasonNumber: number) => {
-    try {
-      const response = await services.sonarr.request(`/api/v3/episode?seriesId=${seriesId}&seasonNumber=${seasonNumber}`);
-      if (response.status < 200 || response.status > 299 || !Array.isArray(response.body)) return undefined;
-      return response.body.flatMap((episode) => (
-        isRecord(episode) && episode.seasonNumber === seasonNumber && positiveInteger(episode.id) ? [episode.id] : []
-      ));
-    } catch {
-      return undefined;
-    }
+    const result = await services.sonarr.episodes(seriesId, { seasonNumber });
+    if (result.kind !== 'ok') return undefined;
+    return result.value.flatMap((episode) => (episode.seasonNumber === seasonNumber ? [episode.id] : []));
   };
 
   const qualities = async (service: 'sonarr' | 'radarr') => {
@@ -201,11 +215,7 @@ export const createGrabs = (
         .all(targetKey(target), targetKey(target))
         .map((row) => rowToRecord(row as Record<string, unknown>));
     },
-    pending(intent?: GrabIntent) {
-      return database.prepare("SELECT * FROM grabs WHERE state = 'sent' AND (? IS NULL OR intent = ?) ORDER BY id")
-        .all(intent ?? null, intent ?? null)
-        .map((row) => rowToRecord(row as Record<string, unknown>));
-    },
+    pending,
     recentTitles(service: 'sonarr' | 'radarr', since: number) {
       return database.prepare("SELECT release_title FROM grabs WHERE service = ? AND created_at >= ? AND state != 'failed'")
         .all(service, since)
@@ -218,6 +228,14 @@ export const createGrabs = (
     },
     update,
     resolveDownloadId,
+
+    async resolvePending() {
+      for (const record of pending()) {
+        if (record.downloadId !== null) continue;
+        if (record.createdAt > now() - UNREPORTED_GRAB_LIMIT_MS) await resolveDownloadId(record);
+        else update(record.id, { state: 'failed', failure: 'Sonarr or Radarr never reported this grab.' });
+      }
+    },
 
     async grab(searchedFor: ReleaseTarget, guid: string, intent: GrabIntent, overrides: Overrides = {}) {
       const release = releases.find(searchedFor, guid);
@@ -264,15 +282,20 @@ export const createGrabs = (
         }
       }
 
+      const label = searchedFor.service === 'sonarr' ? 'Sonarr' : 'Radarr';
       let response: { status: number; body: unknown };
       try {
         // POST /release ignores the search's rejections; /release/push would drop rejected releases.
         response = await service.request('/api/v3/release', { method: 'POST', body, timeoutMs: GRAB_TIMEOUT_MS });
-      } catch {
-        return { kind: 'failed', record: update(id, { state: 'failed', failure: `${searchedFor.service === 'sonarr' ? 'Sonarr' : 'Radarr'} didn't answer the grab.` }) } as const;
+      } catch (error) {
+        if (connectionNeverOpened(error)) {
+          return { kind: 'failed', record: update(id, { state: 'failed', failure: `${label} didn't answer the grab.` }) } as const;
+        }
+        // Any failure once the connection may have opened could still have reached the indexer, so it stays sent: the veto then spares it and history settles it.
+        const unanswered = update(id, { state: 'sent', failure: `${label} didn't answer the grab, so it may still have gone through.` });
+        return { kind: 'sent', record: await resolveDownloadId(unanswered) } as const;
       }
       if (response.status < 200 || response.status > 299) {
-        const label = searchedFor.service === 'sonarr' ? 'Sonarr' : 'Radarr';
         const reason = response.status === 401 || response.status === 403
           ? `${label} refused the API key.`
           : refusal(response.body) ?? `${label} refused the grab (HTTP ${response.status}).`;

@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type Assignment, type AssignmentTarget, checkAssignments } from './assignments.js';
+import { recordHandImport } from './imports.js';
 import type { ArrServices } from './services/arr.js';
 import { findGrab, listQueue, type Service } from './torrentGrabs.js';
 import { listOpenProblems, type createProblems } from './problems.js';
@@ -92,20 +93,21 @@ export const createManualImport = (options: { database: DatabaseSync; arr: ArrSe
     let target: ImportView['target'];
     if (service === 'sonarr') {
       if (title.seriesId === null) return undefined;
-      const episodes = await get(service, `/api/v3/episode?seriesId=${title.seriesId}`);
+      const episodes = await arr.sonarr.episodes(title.seriesId);
+      if (episodes.kind !== 'ok') throw new ServiceError(episodes.message);
       target = {
         kind: 'series',
         seriesId: title.seriesId,
-        episodes: (Array.isArray(episodes) ? episodes : []).flatMap((episode) => {
-          if (!isRecord(episode) || integer(episode.id) === null) return [];
+        episodes: episodes.value.map((episode) => {
           const code = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
-          return [{ id: episode.id as number, code, title: text(episode.title) }];
+          return { id: episode.id, code, title: episode.title ?? '' };
         }),
       };
     } else {
       if (title.movieId === null) return undefined;
-      const movie = await get(service, `/api/v3/movie/${title.movieId}`);
-      target = { kind: 'movie', movieId: title.movieId, title: isRecord(movie) ? text(movie.title) : title.label };
+      const movie = await arr.radarr.movie(title.movieId);
+      if (movie.kind !== 'ok') throw new ServiceError(movie.message);
+      target = { kind: 'movie', movieId: title.movieId, title: movie.value.title };
     }
     return {
       service,
@@ -173,8 +175,10 @@ export const createManualImport = (options: { database: DatabaseSync; arr: ArrSe
       });
       const result = await arr[service].forceImport(downloadId, files);
       if (result.kind !== 'ok') return { kind: 'failed', reason: result.message };
+      // Accepting the command is not importing: the import fix closes these once the download leaves the queue.
+      recordHandImport(database, service, downloadId, Date.now());
       for (const problem of listOpenProblems(database).filter((open) => open.hash === downloadId)) {
-        problems.setState(problem.id, 'resolved', `Imported by hand: ${files.length} ${files.length === 1 ? 'file' : 'files'}.`);
+        problems.setState(problem.id, 'handling', `Imported by hand: ${files.length} ${files.length === 1 ? 'file' : 'files'}; waiting for ${labels[service]} to finish.`);
       }
       return { kind: 'imported' };
     } catch (error) {

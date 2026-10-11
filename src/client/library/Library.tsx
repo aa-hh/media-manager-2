@@ -1,9 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { BookmarkX, Library as LibraryIcon } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuGroupLabel,
+  DropdownMenuTrigger,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
+import { HeaderPage } from '@/components/ui/header-page';
+import { LibraryPosterCard } from '@/components/ui/library-poster-card';
+import { LineTotals } from '@/components/ui/line-totals';
+import { Select, SelectTrigger } from '@/components/ui/select-trigger';
+import { SkeletonPosterCard } from '@/components/ui/skeleton';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { buildRows, formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import { navigate } from '../navigation';
-import { Poster } from '../Search';
+import { navigateFrom } from '../navigation';
 import { getJson, type LibraryTitle, type Outcome } from './api';
 import { FIELDS, missingCount, movieWord, progressText, readFields, totals, writeFields, type Field } from './grid';
 import { downloadingByShow, subjectProgress, type SubjectProgress } from './progress';
@@ -13,8 +32,9 @@ type LoadState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; dat
 type Show = 'all' | 'tv' | 'movie';
 
 const fieldLabels: Record<Field, string> = { year: 'Year', progress: 'Progress', size: 'Size', profile: 'Quality profile', added: 'Date added' };
-const showLabels: Array<[Show, string]> = [['all', 'All titles'], ['tv', 'Shows'], ['movie', 'Movies']];
+const showLabels: Array<[Show, string]> = [['all', 'All'], ['movie', 'Movies'], ['tv', 'TV']];
 const noProgress = new Map<string, SubjectProgress>();
+const SKELETON_CARDS = 8;
 
 const serviceProblem = (name: 'Sonarr' | 'Radarr', outcome: Outcome) => {
   const missing = name === 'Sonarr' ? 'shows are' : 'movies are';
@@ -29,43 +49,54 @@ const addedOn = (added: string | null) => {
   return Number.isNaN(time) ? '' : new Date(time).toLocaleDateString();
 };
 
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+const openLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+  event.preventDefault();
+  navigateFrom(path, event.currentTarget);
+};
+
+// One badge per card: live progress, then deleted, then not monitored, then what is missing or not out yet.
+function statusBadge(title: LibraryTitle, live: SubjectProgress | undefined, downloading: number): ReactNode {
+  const word = title.tv === null ? movieWord(title, live) : null;
+  if (downloading > 0) return <Badge variant="live">{downloading} downloading</Badge>;
+  if (word === 'deleted') return <Badge variant="risk">Deleted</Badge>;
+  if (live !== undefined && word !== null) return <Badge variant={live.tone === 'risk' ? 'risk' : 'live'}>{capitalise(word)}</Badge>;
+  if (!title.monitored) return <Badge icon={<BookmarkX aria-hidden="true" />}>Not monitored</Badge>;
+  const missing = title.tv === null ? 0 : title.tv.episodeCount - title.tv.episodeFileCount - downloading;
+  if (missing > 0) return <Badge variant="warning">Missing {missing} {missing === 1 ? 'episode' : 'episodes'}</Badge>;
+  if (word === 'missing') return <Badge variant="warning">Missing</Badge>;
+  if (word === 'not available') return <Badge variant="outline" className="bg-card">Not out yet</Badge>;
+  return undefined;
+}
+
 function PosterCard({ title, fields, progress, downloading }: {
   title: LibraryTitle;
   fields: Field[];
   progress: Map<string, SubjectProgress>;
   downloading: number;
 }) {
-  const lines: Array<{ text: string; risk?: boolean }> = [];
-  const word = title.tv === null ? movieWord(title, progress.get(`movie:${title.id}`)) : null;
-  if (title.tv !== null && fields.includes('progress')) lines.push({ text: progressText(title.tv.episodeFileCount, downloading, title.tv.episodeCount) });
-  else if (word !== null) lines.push({ text: word, risk: word === 'missing' || word === 'deleted' });
-  if (!title.monitored) lines.push({ text: 'not monitored' });
-  const facts = [
+  const live = title.tv === null ? progress.get(`movie:${title.id}`) : undefined;
+  const meta = [
     fields.includes('year') && title.year !== null ? String(title.year) : '',
+    title.tv !== null && fields.includes('progress') ? progressText(title.tv.episodeFileCount, downloading, title.tv.episodeCount) : '',
     fields.includes('size') ? formatBytes(title.sizeOnDisk) : '',
     fields.includes('profile') ? title.qualityProfile ?? '' : '',
     fields.includes('added') ? addedOn(title.added) : '',
   ].filter((fact) => fact !== '');
+  const path = `/${title.tv === null ? 'movie' : 'series'}/${title.id}`;
   return (
     <li>
-      <a
-        href={`/${title.tv === null ? 'movie' : 'series'}/${title.id}`}
-        onClick={(event) => {
-          if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-          event.preventDefault();
-          navigate(`/${title.tv === null ? 'movie' : 'series'}/${title.id}`);
-        }}
-        className="group flex flex-col gap-2 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--mm-ink)]"
-      >
-        <Poster url={title.posterUrl} className={cn('aspect-[2/3] w-full', !title.monitored && 'opacity-60')} />
-        <div className="min-w-0">
-          <p className="truncate font-ui text-[14px] font-semibold text-[var(--mm-ink)] group-hover:underline">{title.title}</p>
-          {facts.length > 0 && <p className="truncate font-data text-[12px] text-[var(--mm-ink-2)]">{facts.join(' · ')}</p>}
-          {lines.map((line) => (
-            <p key={line.text} className={cn('truncate font-data text-[12px]', line.risk ? 'text-[var(--mm-risk)]' : 'text-[var(--mm-ink-2)]')}>{line.text}</p>
-          ))}
-        </div>
-      </a>
+      <LibraryPosterCard
+        href={path}
+        onClick={openLink(path)}
+        poster={title.posterUrl ?? undefined}
+        title={title.title}
+        meta={meta.length > 0 ? meta.join(' · ') : undefined}
+        status={statusBadge(title, live, downloading)}
+        progress={live?.percent ?? undefined}
+      />
     </li>
   );
 }
@@ -74,7 +105,6 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [show, setShow] = useState<Show>('all');
   const [fields, setFields] = useState<Field[]>(readFields);
-  const [picking, setPicking] = useState(false);
 
   const load = useCallback(() => {
     setState({ kind: 'loading' });
@@ -100,73 +130,110 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
     writeFields(next);
   };
 
+  const titles = state.kind === 'ready' ? state.data.titles : [];
+  const counts: Record<Show, number> = {
+    all: titles.length,
+    movie: titles.filter((title) => title.type === 'movie').length,
+    tv: titles.filter((title) => title.type === 'tv').length,
+  };
+  const sum = totals(titles);
+  const missing = missingCount(titles, progress, perShow);
+
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] bg-[var(--mm-ground)] px-4 pb-16 pt-6 text-[var(--mm-ink)] sm:px-6">
-      <h2 className="sr-only">Library</h2>
-      {state.kind === 'loading' && <p className="font-ui text-[14px] text-[var(--mm-ink-2)]">Loading…</p>}
-      {state.kind === 'failed' && (
-        <div className="flex items-center gap-3">
-          <p role="alert" className="font-ui text-[14px] text-[var(--mm-risk)]">The library could not be read.</p>
-          <button type="button" onClick={load} className="h-8 border border-[var(--mm-ink-3)] px-3 font-ui text-[14px] font-semibold hover:bg-[var(--mm-row-hover)]">Retry</button>
-        </div>
-      )}
-      {state.kind === 'ready' && (() => {
-        const { titles, services } = state.data;
-        const shown = titles.filter((title) => show === 'all' || title.type === show);
-        const sum = totals(titles);
-        const missing = missingCount(titles, progress, perShow);
-        const problems = [serviceProblem('Sonarr', services.sonarr), serviceProblem('Radarr', services.radarr)].filter((line) => line !== undefined);
-        return (
-          <>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-ui text-[14px]">
-              <span className="text-[var(--mm-ink-2)]">Sort · Date added, newest first</span>
-              <div role="group" aria-label="Show" className="flex gap-1">
-                {showLabels.map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={show === value}
-                    onClick={() => setShow(value)}
-                    className={cn('h-8 px-3', show === value ? 'bg-[var(--mm-ink)] font-semibold text-[var(--mm-on-cell)]' : 'text-[var(--mm-ink-2)] hover:bg-[var(--mm-row-hover)]')}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="relative">
-                <button type="button" aria-expanded={picking} onClick={() => setPicking(!picking)} className="h-8 border border-[var(--mm-ink-3)] px-3 font-semibold hover:bg-[var(--mm-row-hover)]">
-                  Poster fields
-                </button>
-                {picking && (
-                  <fieldset className="absolute left-0 top-9 z-10 flex min-w-44 flex-col gap-1 border border-[var(--mm-seam)] bg-[var(--mm-row)] p-3">
-                    <legend className="sr-only">Poster fields</legend>
-                    {FIELDS.map((field) => (
-                      <label key={field} className="flex items-center gap-2">
-                        <input type="checkbox" checked={fields.includes(field)} onChange={() => toggleField(field)} />
-                        {fieldLabels[field]}
-                      </label>
-                    ))}
-                  </fieldset>
-                )}
-              </div>
-              {missing > 0 && <span className="text-[var(--mm-risk)]">{missing} {missing === 1 ? 'title' : 'titles'} missing files</span>}
-            </div>
-            {problems.map((line) => <p key={line} role="alert" className="mt-3 font-ui text-[14px] text-[var(--mm-risk)]">{line}</p>)}
-            {shown.length === 0
-              ? <p className="mt-6 font-ui text-[14px] text-[var(--mm-ink-2)]">Nothing here yet.</p>
-              : (
-                <ul className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-4 gap-y-6">
-                  {shown.map((title) => (
-                    <PosterCard key={`${title.service}:${title.id}`} title={title} fields={fields} progress={progress} downloading={perShow.get(title.id) ?? 0} />
-                  ))}
-                </ul>
+    <div className="flex flex-col pb-6">
+      <div className="flex flex-col gap-1">
+        <HeaderPage title="Library" className="pb-0" />
+        {state.kind === 'ready' && (
+          <LineTotals
+            totals={[
+              { value: sum.shows.toLocaleString(), word: 'shows' },
+              { value: sum.movies.toLocaleString(), word: 'movies' },
+              { value: sum.episodes.toLocaleString(), word: 'episodes' },
+              { value: sum.files.toLocaleString(), word: 'files' },
+              { value: formatBytes(sum.sizeBytes) },
+            ]}
+            link={missing > 0 ? { label: `${missing} ${missing === 1 ? 'title' : 'titles'} missing files`, href: '/flagged', onClick: openLink('/flagged') } : undefined}
+          />
+        )}
+      </div>
+      <div className="flex items-center gap-2 pt-4 pb-5">
+        <ToggleGroup aria-label="Show" value={show} onValueChange={(value) => setShow(value as Show)}>
+          {showLabels.map(([value, label]) => (
+            <ToggleGroupItem key={value} value={value} count={state.kind === 'ready' ? counts[value] : undefined}>{label}</ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <span className="flex-1" />
+        <Select value="added">
+          <SelectTrigger lead="Sort">Date added, newest first</SelectTrigger>
+          <SelectContent>
+            <SelectItem value="added">Date added, newest first</SelectItem>
+          </SelectContent>
+        </Select>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="menu">Poster fields</Button>} />
+          <DropdownMenuContent align="end">
+            <DropdownMenuGroup>
+              <DropdownMenuGroupLabel>Poster fields</DropdownMenuGroupLabel>
+              {FIELDS.map((field) => (
+                <DropdownMenuCheckboxItem key={field} checked={fields.includes(field)} onCheckedChange={() => toggleField(field)}>
+                  {fieldLabels[field]}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div key={state.kind} className="transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
+        {state.kind === 'loading' && (
+          <div className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
+            {Array.from({ length: SKELETON_CARDS }, (_, index) => <SkeletonPosterCard key={index} />)}
+          </div>
+        )}
+        {state.kind === 'failed' && (
+          <Callout className="w-130" title="The library could not be read." action={<Button variant="outline" onClick={load}>Retry</Button>} />
+        )}
+        {state.kind === 'ready' && (() => {
+          const { services } = state.data;
+          const shown = titles.filter((title) => show === 'all' || title.type === show);
+          const problems = [serviceProblem('Sonarr', services.sonarr), serviceProblem('Radarr', services.radarr)].filter((line) => line !== undefined);
+          return (
+            <>
+              {problems.length > 0 && (
+                <div className="flex flex-col gap-2 pb-6">
+                  {problems.map((line) => <Callout key={line} look="warning" title={line} className="w-130" />)}
+                </div>
               )}
-            <p className="mt-10 border-t border-[var(--mm-seam)] pt-3 font-data text-[12px] text-[var(--mm-ink-2)]">
-              {sum.shows} shows · {sum.movies} movies · {sum.episodes} episodes · {sum.files} files · {formatBytes(sum.sizeBytes)}
-            </p>
-          </>
-        );
-      })()}
+              {shown.length === 0
+                ? (
+                  <div className="flex justify-center pt-24">
+                    <EmptyState
+                      icon={<LibraryIcon aria-hidden="true" />}
+                      title="Nothing here yet"
+                      action={(
+                        <Button
+                          variant="outline"
+                          kbd="/"
+                          onClick={() => document.querySelector<HTMLInputElement>('[role="search"] input')?.focus()}
+                        >
+                          Search
+                        </Button>
+                      )}
+                    >
+                      Add a show or movie from search.
+                    </EmptyState>
+                  </div>
+                )
+                : (
+                  <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
+                    {shown.map((title) => (
+                      <PosterCard key={`${title.service}:${title.id}`} title={title} fields={fields} progress={progress} downloading={perShow.get(title.id) ?? 0} />
+                    ))}
+                  </ul>
+                )}
+            </>
+          );
+        })()}
+      </div>
     </div>
   );
 }

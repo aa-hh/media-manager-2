@@ -1,14 +1,26 @@
-import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
-import { cn } from '@/lib/utils';
+import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
+import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search } from 'lucide-react';
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { BarSelection, BarSelectionAction } from '@/components/ui/bar-selection';
+import { Button } from '@/components/ui/button';
+import { Collapsible } from '@/components/ui/collapsible-trigger';
+import { EmptyState } from '@/components/ui/empty-state';
+import { RowEpisode } from '@/components/ui/row-episode';
+import { RowSeason } from '@/components/ui/row-season';
+import { StatusInline } from '@/components/ui/status-inline';
+import { Table } from '@/components/ui/table';
+import { ToggleBookmark } from '@/components/ui/toggle-bookmark';
+import { Tooltip } from '@/components/ui/tooltip';
 import { formatBytes, type Snapshot } from '../downloads/model';
-import type { EpisodeDetail, SeriesDetail } from '../library/api';
+import type { EpisodeDetail, SecondVersion, SeriesDetail } from '../library/api';
 import { progressText } from '../library/grid';
 import { downloadingEpisodes, seedingFacts, type SubjectProgress } from '../library/progress';
 import { PickRelease, type ReleaseTarget } from '../PickRelease';
 import { EpisodeDetails } from './EpisodeDetails';
 import { episodeMarks, episodeWord, relativeAirDate, seasonAiredState, seasonMonitoredState } from './rows';
 import { moveFocus, rangeBetween, selectionSummary, type RowRef } from './selection';
-import { ActionButton, Bookmark, sendAction } from './TitleHeader';
+import { sendAction } from './TitleHeader';
 
 // One inline panel at a time, keyed by row so live progress updates never close it.
 export type Panel = { key: string; panel: 'pick'; target: ReleaseTarget; title: string } | { key: string; panel: 'details' };
@@ -21,36 +33,56 @@ export type MonitorChange =
 const airedLabels = { aired: 'Aired', airing: 'Airing', upcoming: 'Upcoming' } as const;
 const seasonKey = (seasonNumber: number) => `season:${seasonNumber}`;
 const episodeKey = (id: number) => `episode:${id}`;
+const code = (episode: EpisodeDetail) => `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
 
-function Chip({ children }: { children: string }) {
-  return <span className="inline-flex h-5 items-center whitespace-nowrap border border-[var(--mm-ink-3)] px-1.5 font-data text-[12px] text-[var(--mm-ink-2)]">{children}</span>;
+// Height 0 to full as a season or an episode's details open (duration-size); the reverse at duration-fast.
+const openPanel = 'h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-size) ease-out data-ending-style:h-0 data-ending-style:duration-(--duration-fast) data-ending-style:ease-in data-starting-style:h-0 motion-reduce:transition-none';
+
+function IconAction({ label, icon, pressed = false, onClick }: { label: string; icon: ReactNode; pressed?: boolean; onClick: () => void }) {
+  return (
+    <Tooltip text={label}>
+      <Button
+        variant="ghost"
+        size="row"
+        iconOnly
+        icon={icon}
+        aria-label={label}
+        className={pressed ? 'bg-surface-pressed' : undefined}
+        onClick={(event) => { event.stopPropagation(); onClick(); }}
+      />
+    </Tooltip>
+  );
 }
 
-function PickPanel({ panel, episodes, onClose, onUnauthenticated }: {
+function PickBand({ panel, name, episodes, onClose, onUnauthenticated }: {
   panel: Extract<Panel, { panel: 'pick' }>;
+  name: string;
   episodes: EpisodeDetail[];
   onClose: () => void;
   onUnauthenticated: () => void;
 }) {
-  // Pick a release keeps its light styling, so it sits on a light surface.
   return (
-    <div className="bg-[var(--control)] pb-2 text-[var(--ink)]">
-      <PickRelease target={panel.target} title={panel.title} episodes={episodes} movieHasFile={false} onClose={onClose} onUnauthenticated={onUnauthenticated} />
+    <div className="border-b border-border bg-background p-2">
+      <PickRelease target={panel.target} title={panel.title} name={name} episodes={episodes} movieHasFile={false} onClose={onClose} onUnauthenticated={onUnauthenticated} />
     </div>
   );
 }
 
-function Problem({ text }: { text: string | undefined }) {
-  return text === undefined ? null : <span role="alert" className="font-ui text-[13px] text-[var(--mm-risk)]">{text}</span>;
-}
+const stateLook = (word: string, live: SubjectProgress | undefined): BadgeVariant => {
+  if (live !== undefined) return live.tone === 'risk' ? 'risk' : 'live';
+  return word === 'Missing' || word === 'Below cutoff' ? 'warning' : 'neutral';
+};
 
-export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems, onMonitor, onUnauthenticated }: {
+export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progress, problems, onMonitor, onSecondVersions, onUnauthenticated }: {
   detail: SeriesDetail;
+  /** Goes up each time the header's Pick a release is pressed: opens the first season's panel. */
+  pickRequest: number;
   snapshot: Snapshot | undefined;
   protectedIds: Set<number>;
   progress: Map<string, SubjectProgress>;
   problems: Record<string, string>;
   onMonitor: (change: MonitorChange, problemKey: string) => void;
+  onSecondVersions: (next: SetStateAction<SecondVersion[]>) => void;
   onUnauthenticated: () => void;
 }) {
   const seasons = [...detail.seasons].sort((a, b) => b.seasonNumber - a.seasonNumber);
@@ -60,9 +92,20 @@ export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [sent, setSent] = useState<Record<string, 'sent' | 'failed'>>({});
-  const containerRef = useRef<HTMLUListElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const now = Date.now();
   const seriesId = detail.id;
+
+  const seasonLabel = (seasonNumber: number) => (seasonNumber === 0 ? 'Specials' : `Season ${seasonNumber}`);
+  const seasonTarget = (seasonNumber: number): ReleaseTarget => ({ service: 'sonarr', kind: 'season', seriesId, seasonNumber });
+
+  useEffect(() => {
+    if (pickRequest === 0 || seasons.length === 0) return;
+    const first = seasons[0].seasonNumber;
+    setOpen((current) => new Set(current).add(first));
+    setPanel({ key: seasonKey(first), panel: 'pick', target: seasonTarget(first), title: seasonLabel(first) });
+    // Only a new press opens it; the seasons list itself changes on every live update.
+  }, [pickRequest]);
 
   const episodesOf = (seasonNumber: number) => detail.episodes.filter((episode) => episode.seasonNumber === seasonNumber);
   const seasonState = (season: SeriesDetail['seasons'][number]) => {
@@ -70,7 +113,7 @@ export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems
     return episodes.length === 0 ? (season.monitored ? 'all' : 'none') : seasonMonitoredState(episodes);
   };
 
-  // The visible rows in screen order; version rows join once second versions are drawn.
+  // The visible rows in screen order. Second-version rows sit inside the episode details band and stay out of this list.
   const rows: RowRef[] = seasons.flatMap((season) => [
     { kind: 'season' as const, key: seasonKey(season.seasonNumber), episodeId: null },
     ...(open.has(season.seasonNumber)
@@ -87,6 +130,10 @@ export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems
   const toggleEpisode = (episode: EpisodeDetail) => onMonitor({ kind: 'episodes', episodeIds: [episode.id], monitored: !episode.monitored }, episodeKey(episode.id));
   const setSelection = (ids: number[], monitored: boolean) => {
     if (ids.length > 0) onMonitor({ kind: 'episodes', episodeIds: ids, monitored }, episodeKey(ids[0]));
+  };
+  const clearSelection = () => {
+    setSelected(new Set());
+    setAnchorKey(null);
   };
 
   const focusRow = (key: string) => {
@@ -110,7 +157,14 @@ export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems
     selectRow(indexOf(key), event.shiftKey);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+  const toggleOpen = (seasonNumber: number) => {
+    const next = new Set(open);
+    if (next.has(seasonNumber)) next.delete(seasonNumber);
+    else next.add(seasonNumber);
+    setOpen(next);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const key = (event.target as HTMLElement).dataset.rowKey;
     if (key === undefined) return;
     const index = indexOf(key);
@@ -129,7 +183,8 @@ export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems
     }
     if (event.key === ' ' || event.key === 'm') {
       event.preventDefault();
-      if (selected.size > 0) {
+      // Acts on the selection only while the selection bar shows it; one selected row elsewhere must not steal the key from the focused row.
+      if (selected.size >= 2) {
         const anchorEpisode = detail.episodes.find((episode) => episodeKey(episode.id) === anchorKey)
           ?? detail.episodes.find((episode) => selected.has(episode.id));
         setSelection([...selected], !(anchorEpisode?.monitored ?? false));
@@ -146,21 +201,17 @@ export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems
       setPanel(panel?.key === key && panel.panel === 'details' ? null : { key, panel: 'details' });
       return;
     }
+    if (event.key === 'Enter' && rows[index].kind === 'season') {
+      event.preventDefault();
+      toggleOpen(Number(key.slice('season:'.length)));
+      return;
+    }
     if (event.key === 'Escape') {
       if (panel !== null) setPanel(null);
-      else {
-        setSelected(new Set());
-        setAnchorKey(null);
-      }
+      else clearSelection();
     }
   };
 
-  const toggleOpen = (seasonNumber: number) => {
-    const next = new Set(open);
-    if (next.has(seasonNumber)) next.delete(seasonNumber);
-    else next.add(seasonNumber);
-    setOpen(next);
-  };
   const openPick = (key: string, target: ReleaseTarget, title: string) => {
     setPanel(panel?.key === key && panel.panel === 'pick' ? null : { key, panel: 'pick', target, title });
   };
@@ -169,146 +220,204 @@ export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems
     setSent((current) => ({ ...current, [key]: ok ? 'sent' : 'failed' }));
   };
   const pickTarget = (episode: EpisodeDetail): ReleaseTarget => ({ service: 'sonarr', kind: 'episode', seriesId, episodeId: episode.id });
-  const pickTitle = (episode: EpisodeDetail) => `${detail.title} S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
-  const dimmed = (key: string) => panel !== null && panel.key !== key;
-  const sentText = (key: string) => {
-    if (sent[key] === 'sent') return <span role="status" className="text-[var(--mm-ink-2)]">search sent</span>;
-    if (sent[key] === 'failed') return <span role="alert" className="text-[var(--mm-risk)]">Sonarr didn't answer.</span>;
+  const pickTitle = (episode: EpisodeDetail) => `${code(episode)} · ${episode.title}`;
+  const statusOf = (key: string) => {
+    if (problems[key] !== undefined) return <StatusInline status="failed" className="ml-2">{problems[key]}</StatusInline>;
+    if (sent[key] === 'sent') return <StatusInline status="sent" className="ml-2">search sent</StatusInline>;
+    if (sent[key] === 'failed') return <StatusInline status="failed" className="ml-2">Sonarr didn't answer.</StatusInline>;
     return null;
   };
   const tabStop = (key: string) => (key === (indexOf(focusKey) >= 0 ? focusKey : rows[0]?.key) ? 0 : -1);
+  const pickOpen = (key: string) => panel?.key === key && panel.panel === 'pick';
+  // The show was read once when the page opened; an import since then shows only as a grab marked imported in the
+  // live snapshot. Pick a release needs the current hasFile to offer replace or second version.
+  const imported = new Set((snapshot?.grabs ?? []).filter((grab) => grab.importedAt !== null).flatMap((grab) => grab.episodeIds));
+  const pickBand = (key: string) => (panel !== null && panel.key === key && panel.panel === 'pick'
+    ? (
+      <PickBand
+        panel={panel}
+        name={detail.title}
+        episodes={detail.episodes.map((episode) => (!episode.hasFile && imported.has(episode.id) ? { ...episode, hasFile: true } : episode))}
+        onClose={() => setPanel(null)}
+        onUnauthenticated={onUnauthenticated}
+      />
+    )
+    : null);
 
-  if (seasons.length === 0) return <p className="mt-8 font-ui text-[14px] text-[var(--mm-ink-2)]">Sonarr has no episodes for this show yet.</p>;
+  if (seasons.length === 0) {
+    return (
+      <div className="pt-6">
+        <EmptyState
+          icon={<ListVideo />}
+          title="Sonarr has no episodes for this show yet"
+          action={(
+            <Button variant="outline" icon={<RotateCw />} onClick={() => void sendAction('/api/library/refresh', { service: 'sonarr', kind: 'series', seriesId }, onUnauthenticated)}>
+              Refresh
+            </Button>
+          )}
+        >
+          Refresh the show once Sonarr has its episode list.
+        </EmptyState>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <ul ref={containerRef} aria-label="Seasons" onKeyDown={onKeyDown} className="mt-8 border-t border-[var(--mm-seam)] font-ui text-[14px]">
+    <div ref={containerRef} onKeyDown={onKeyDown}>
+      <Table aria-label="Seasons">
         {seasons.map((season) => {
           const key = seasonKey(season.seasonNumber);
           const episodes = episodesOf(season.seasonNumber);
           const isOpen = open.has(season.seasonNumber);
-          const label = season.seasonNumber === 0 ? 'Specials' : `Season ${season.seasonNumber}`;
+          const label = seasonLabel(season.seasonNumber);
           const downloading = downloadingEpisodes(progress, episodes.map((episode) => episode.id));
           const monitored = seasonState(season);
-          const active = focusKey === key || panel?.key === key;
+          const { episodeFileCount, episodeCount, sizeOnDisk } = season.statistics;
+          const off = episodes.filter((episode) => !episode.monitored);
+          const summary = monitored !== 'mixed' ? undefined
+            : `${episodes.length - off.length} of ${episodes.length} monitored${off.length <= 2 ? ` · ${off.map(code).join(', ')} off` : ''}`;
           return (
-            <li key={key}>
-              <div
+            <Fragment key={key}>
+              <RowSeason
                 data-row-key={key}
                 tabIndex={tabStop(key)}
                 onFocus={(event) => { if (event.target === event.currentTarget) setFocusKey(key); }}
-                onClick={(event) => onRowClick(event, key)}
-                className={cn(
-                  'group flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--mm-seam)] bg-[var(--mm-row-alt)] px-3 py-1',
-                  'focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-[var(--mm-ink)]',
-                  active && 'bg-[var(--mm-row-hover)]',
-                  dimmed(key) && 'opacity-35',
+                onClick={(event) => {
+                  onRowClick(event, key);
+                  if (!event.shiftKey) toggleOpen(season.seasonNumber);
+                }}
+                open={isOpen}
+                bookmark={<ToggleBookmark state={monitored} onToggle={() => toggleSeason(season.seasonNumber)} />}
+                title={label}
+                progress={episodeCount === 0 ? 0 : Math.min(100, (episodeFileCount / episodeCount) * 100)}
+                progressTone={episodeCount > 0 && episodeFileCount >= episodeCount ? 'done' : undefined}
+                count={(
+                  <>
+                    {episodes.length === 0 && season.statistics.totalEpisodeCount === 0
+                      ? 'No episodes listed yet'
+                      : progressText(episodeFileCount, downloading, episodeCount)}
+                    {statusOf(key)}
+                  </>
                 )}
-              >
-                <Bookmark state={monitored} onToggle={() => toggleSeason(season.seasonNumber)} />
-                <button type="button" tabIndex={-1} aria-expanded={isOpen} onClick={(event) => { event.stopPropagation(); toggleOpen(season.seasonNumber); }} className={cn('font-semibold', monitored === 'none' && 'text-[var(--mm-ink-2)]')}>
-                  {label}
-                </button>
-                <Chip>{airedLabels[seasonAiredState(episodes, now)]}</Chip>
-                <span className="font-data text-[13px] text-[var(--mm-ink-2)]">
-                  {progressText(season.statistics.episodeFileCount, downloading, season.statistics.episodeCount)}
-                </span>
-                <span className="font-data text-[13px] text-[var(--mm-ink-2)]">{formatBytes(season.statistics.sizeOnDisk)}</span>
-                {sentText(key)}
-                <Problem text={problems[key]} />
-                <div className={cn('ml-auto flex gap-2 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100', active && 'opacity-100')}>
-                  <ActionButton onClick={() => void search(key, { service: 'sonarr', kind: 'season', seriesId, seasonNumber: season.seasonNumber })}>Search automatically</ActionButton>
-                  <ActionButton onClick={() => openPick(key, { service: 'sonarr', kind: 'season', seriesId, seasonNumber: season.seasonNumber }, `${detail.title} ${label.toLowerCase()}`)}>
-                    Pick a release
-                  </ActionButton>
-                  <ActionButton onClick={() => toggleOpen(season.seasonNumber)}>{isOpen ? 'Collapse' : 'Expand'}</ActionButton>
-                </div>
-              </div>
-              {panel?.key === key && panel.panel === 'pick' && (
-                <PickPanel panel={panel} episodes={detail.episodes} onClose={() => setPanel(null)} onUnauthenticated={onUnauthenticated} />
-              )}
-              {isOpen && (
-                <ul aria-label={label}>
-                  {episodes.map((episode, index) => {
+                status={airedLabels[seasonAiredState(episodes, now)]}
+                size={sizeOnDisk > 0 ? formatBytes(sizeOnDisk) : '–'}
+                summary={summary}
+                monitored={monitored !== 'none'}
+                actions={(
+                  <>
+                    <IconAction
+                      label="Search automatically"
+                      icon={<Search className="text-muted-foreground" />}
+                      onClick={() => void search(key, { service: 'sonarr', kind: 'season', seriesId, seasonNumber: season.seasonNumber })}
+                    />
+                    <IconAction
+                      label="Pick a season pack"
+                      icon={<List className="text-muted-foreground" />}
+                      pressed={pickOpen(key)}
+                      onClick={() => openPick(key, seasonTarget(season.seasonNumber), label)}
+                    />
+                  </>
+                )}
+              />
+              {pickBand(key)}
+              <Collapsible open={isOpen}>
+                <CollapsiblePrimitive.Panel aria-label={label} className={openPanel}>
+                  {episodes.map((episode) => {
                     const rowKey = episodeKey(episode.id);
-                    const word = episodeWord(episode, progress.get(rowKey), protectedIds, now);
-                    const risk = progress.get(rowKey)?.tone === 'risk';
-                    const isSelected = selected.has(episode.id);
-                    const rowActive = isSelected || focusKey === rowKey || panel?.key === rowKey;
+                    const live = progress.get(rowKey);
+                    const word = episodeWord(episode, live, protectedIds, now);
+                    const upcoming = episode.airDate !== null && Date.parse(episode.airDate) > now;
+                    const detailsOpen = panel?.key === rowKey && panel.panel === 'details';
+                    const secondVersions = (detail.secondVersions ?? []).filter((version) => version.episodeId === episode.id);
+                    const versionCount = (episode.hasFile ? 1 : 0) + secondVersions.filter((version) => version.state === 'imported').length;
                     return (
-                      <li key={rowKey}>
-                        <div
+                      <Fragment key={rowKey}>
+                        <RowEpisode
                           data-row-key={rowKey}
                           tabIndex={tabStop(rowKey)}
-                          aria-selected={isSelected}
+                          aria-selected={selected.has(episode.id)}
                           onFocus={(event) => { if (event.target === event.currentTarget) setFocusKey(rowKey); }}
                           onClick={(event) => onRowClick(event, rowKey)}
-                          className={cn(
-                            'group flex min-h-[34px] flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--mm-seam)] px-3 py-1 font-data text-[13px] select-none',
-                            isSelected ? 'bg-[var(--mm-row-hover)]' : index % 2 === 0 ? 'bg-[var(--mm-row)]' : 'bg-[var(--mm-row-alt)]',
-                            'focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-[var(--mm-ink)]',
-                            dimmed(rowKey) && 'opacity-35',
+                          className="pl-13 select-none"
+                          selected={selected.has(episode.id) || detailsOpen}
+                          marker={live?.tone === 'risk' ? 'risk' : word === 'Missing' ? 'warning' : undefined}
+                          bookmark={<ToggleBookmark state={episode.monitored ? 'all' : 'none'} onToggle={() => toggleEpisode(episode)} />}
+                          number={`E${String(episode.episodeNumber).padStart(2, '0')}`}
+                          title={(
+                            <>
+                              {episode.title}
+                              {episodeMarks(episode).map((mark) => <Badge key={mark} variant="outline" className="ml-2">{mark}</Badge>)}
+                            </>
                           )}
-                        >
-                          <Bookmark state={episode.monitored ? 'all' : 'none'} onToggle={() => toggleEpisode(episode)} />
-                          <span className="w-6 tabular-nums text-[var(--mm-ink-2)]">{String(episode.episodeNumber).padStart(2, '0')}</span>
-                          <span className={cn('min-w-0 flex-1 truncate font-ui text-[14px]', !episode.monitored && 'text-[var(--mm-ink-3)]')}>{episode.title}</span>
-                          {episodeMarks(episode).map((mark) => <Chip key={mark}>{mark}</Chip>)}
-                          <span className={cn('w-24 text-[var(--mm-ink-2)]', !episode.monitored && 'text-[var(--mm-ink-3)]')}>{relativeAirDate(episode.airDate, now)}</span>
-                          {episode.file !== null && (
-                            <span className="flex items-center gap-2">
-                              {episode.file.quality !== null && <span className="bg-[var(--mm-ink)] px-1.5 text-[12px] text-[var(--mm-on-cell)]">{episode.file.quality}</span>}
-                              <span className="text-[var(--mm-ink-2)]">{formatBytes(episode.file.size)}</span>
-                            </span>
+                          aired={relativeAirDate(episode.airDate, now)}
+                          file={episode.file?.quality == null ? undefined : <Badge>{episode.file.quality}</Badge>}
+                          state={(
+                            <>
+                              {word !== null
+                                ? <Badge variant={stateLook(word, live)}>{word}</Badge>
+                                : upcoming && <Badge variant="outline">Not out yet</Badge>}
+                              {versionCount > 1 && <Badge>{`${versionCount} versions`}</Badge>}
+                              {statusOf(rowKey)}
+                            </>
                           )}
-                          {word !== null && <span className={risk ? 'text-[var(--mm-risk)]' : 'text-[var(--mm-ink-2)]'}>{word}</span>}
-                          {sentText(rowKey)}
-                          <Problem text={problems[rowKey]} />
-                          <div className={cn('flex gap-2 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100', rowActive && 'opacity-100')}>
-                            <ActionButton onClick={() => void search(rowKey, { service: 'sonarr', kind: 'episodes', episodeIds: [episode.id] })}>Search automatically</ActionButton>
-                            <ActionButton
-                              onClick={() => openPick(rowKey, pickTarget(episode), pickTitle(episode))}
-                            >
-                              Pick a release
-                            </ActionButton>
-                            <ActionButton onClick={() => setPanel(panel?.key === rowKey && panel.panel === 'details' ? null : { key: rowKey, panel: 'details' })}>
-                              {panel?.key === rowKey && panel.panel === 'details' ? 'Hide details' : 'Details'}
-                            </ActionButton>
-                          </div>
-                        </div>
-                        {panel?.key === rowKey && panel.panel === 'details' && (
-                          <EpisodeDetails
-                            episode={episode}
-                            seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { episodeId: episode.id })}
-                            onSearch={() => void search(rowKey, { service: 'sonarr', kind: 'episodes', episodeIds: [episode.id] })}
-                            onPick={() => openPick(rowKey, pickTarget(episode), pickTitle(episode))}
-                            onClose={() => {
-                              setPanel(null);
-                              focusRow(rowKey);
-                            }}
-                            onUnauthenticated={onUnauthenticated}
-                          />
-                        )}
-                        {panel?.key === rowKey && panel.panel === 'pick' && (
-                          <PickPanel panel={panel} episodes={detail.episodes} onClose={() => setPanel(null)} onUnauthenticated={onUnauthenticated} />
-                        )}
-                      </li>
+                          monitored={episode.monitored}
+                          upcoming={upcoming}
+                          actions={(
+                            <>
+                              <IconAction
+                                label="Search automatically"
+                                icon={<Search className="text-muted-foreground" />}
+                                onClick={() => void search(rowKey, { service: 'sonarr', kind: 'episodes', episodeIds: [episode.id] })}
+                              />
+                              <IconAction
+                                label="Pick a release"
+                                icon={<List className="text-muted-foreground" />}
+                                pressed={pickOpen(rowKey)}
+                                onClick={() => openPick(rowKey, pickTarget(episode), pickTitle(episode))}
+                              />
+                              <IconAction
+                                label={detailsOpen ? 'Hide details' : 'Details'}
+                                icon={detailsOpen ? <ChevronUp className="text-foreground" /> : <Ellipsis className="text-muted-foreground" />}
+                                pressed={detailsOpen}
+                                onClick={() => setPanel(detailsOpen ? null : { key: rowKey, panel: 'details' })}
+                              />
+                            </>
+                          )}
+                        />
+                        <Collapsible open={detailsOpen}>
+                          <CollapsiblePrimitive.Panel className={openPanel}>
+                            <EpisodeDetails
+                              episode={episode}
+                              seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { episodeId: episode.id })}
+                              secondVersions={secondVersions}
+                              onSecondVersions={onSecondVersions}
+                              profile={detail.qualityProfile?.name ?? null}
+                              seriesPath={detail.path}
+                              onClose={() => {
+                                setPanel(null);
+                                focusRow(rowKey);
+                              }}
+                              onUnauthenticated={onUnauthenticated}
+                            />
+                          </CollapsiblePrimitive.Panel>
+                        </Collapsible>
+                        {pickBand(rowKey)}
+                      </Fragment>
                     );
                   })}
-                </ul>
-              )}
-            </li>
+                </CollapsiblePrimitive.Panel>
+              </Collapsible>
+            </Fragment>
           );
         })}
-      </ul>
-      {selected.size >= 2 && (
-        <div role="region" aria-label="Selection" className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-[var(--mm-seam)] bg-[var(--mm-row-hover)] px-3 py-2 font-ui text-[14px]">
-          <span>{selectionSummary(selected, detail.episodes)}</span>
-          <ActionButton filled onClick={() => setSelection([...selected], true)}>Monitor</ActionButton>
-          <ActionButton onClick={() => setSelection([...selected], false)}>Unmonitor</ActionButton>
-          <span className="text-[var(--mm-ink-2)]">Unmonitoring keeps files</span>
-        </div>
-      )}
-    </>
+      </Table>
+      <BarSelection open={selected.size >= 2} count={selectionSummary(selected, detail.episodes)} hint="Unmonitoring keeps files" onClear={clearSelection} clearKbd="Esc">
+        <BarSelectionAction icon={<Bookmark />} onClick={() => setSelection([...selected], true)}>Monitor</BarSelectionAction>
+        <BarSelectionAction icon={<BookmarkX />} onClick={() => setSelection([...selected], false)}>Unmonitor</BarSelectionAction>
+        <BarSelectionAction icon={<Search />} onClick={() => void search(episodeKey([...selected][0]), { service: 'sonarr', kind: 'episodes', episodeIds: [...selected] })}>
+          Search automatically
+        </BarSelectionAction>
+      </BarSelection>
+    </div>
   );
 }

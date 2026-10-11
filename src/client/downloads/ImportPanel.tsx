@@ -1,4 +1,13 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { LoaderCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { SelectContent, SelectItem } from '@/components/ui/dropdown-menu';
+import { PanelInline } from '@/components/ui/panel-inline';
+import { RowImportFile, RowImportFileHeader } from '@/components/ui/row-import-file';
+import { RowImportFileGroup } from '@/components/ui/row-import-file-group';
+import { Select, SelectTrigger } from '@/components/ui/select-trigger';
+import { Table } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { type Assignment, checkAssignments } from '../../server/assignments';
 import type { Service } from './model';
@@ -16,12 +25,9 @@ type ImportView = {
 
 type Draft = Assignment & { include: boolean };
 
-const select = 'h-8 border border-[var(--mm-ink-3)] bg-[var(--mm-ground)] px-2 text-[var(--mm-ink)]';
-
 // Finish an import by hand: pick the movie or episodes, quality and language per file. The same check runs on the server.
-export function ImportPanel({ service, downloadId, onDone, onCancel, button }: {
-  service: Service; downloadId: string; onDone: () => void; onCancel: () => void;
-  button: (props: { children: ReactNode; onClick: () => void; disabled?: boolean; filled?: boolean }) => ReactNode;
+export function ImportPanel({ service, downloadId, onDone, onCancel, onUnauthenticated }: {
+  service: Service; downloadId: string; onDone: () => void; onCancel: () => void; onUnauthenticated: () => void;
 }) {
   const [view, setView] = useState<ImportView | 'loading' | 'failed'>('loading');
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -32,6 +38,10 @@ export function ImportPanel({ service, downloadId, onDone, onCancel, button }: {
     let current = true;
     void fetch(`/api/imports/${service}/${downloadId}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(async (response) => {
+        if (response.status === 401) {
+          onUnauthenticated();
+          return;
+        }
         if (!response.ok) throw new Error('unreadable');
         const loaded = await response.json() as ImportView;
         if (!current) return;
@@ -47,7 +57,7 @@ export function ImportPanel({ service, downloadId, onDone, onCancel, button }: {
       })
       .catch(() => { if (current) setView('failed'); });
     return () => { current = false; };
-  }, [service, downloadId]);
+  }, [service, downloadId, onUnauthenticated]);
 
   const chosen = drafts.filter((draft) => draft.include);
   const reasons = useMemo(() => {
@@ -78,6 +88,10 @@ export function ImportPanel({ service, downloadId, onDone, onCancel, button }: {
         onDone();
         return;
       }
+      if (response.status === 401) {
+        onUnauthenticated();
+        return;
+      }
       const body = await response.json().catch(() => ({})) as { reasons?: string[]; reason?: string };
       setServerReasons(body.reasons ?? [body.reason ?? 'The import did not go through. Try again.']);
     } catch {
@@ -87,69 +101,105 @@ export function ImportPanel({ service, downloadId, onDone, onCancel, button }: {
     }
   };
 
+  const loaded = typeof view === 'string' ? null : view;
+  const allReasons = [...reasons, ...serverReasons];
+  const included = drafts.filter((draft) => draft.include).length;
+  const groupChecked = included === drafts.length ? true : included === 0 ? false : 'mixed';
+  const label = 'text-label font-normal text-muted-foreground';
+
   return (
-    <div className="space-y-3 border-t border-[var(--mm-seam)] bg-[var(--mm-row-hover)] px-5 py-4" onClick={(event) => event.stopPropagation()}>
-      <p className="text-[var(--mm-ink)]">Import by hand</p>
-      {view === 'loading' && <p className="text-[var(--mm-ink-2)]">Reading the download's files…</p>}
-      {view === 'failed' && <p role="alert" className="text-[var(--mm-risk)]">The download's files could not be read.</p>}
-      {typeof view !== 'string' && (
-        <>
-          {view.reasons.map((reason) => <p key={reason} className="text-[var(--mm-ink-2)]">Why it stopped: {reason}</p>)}
-          <p className="text-[var(--mm-ink-2)]">Files are hardlinked into the library, so the torrent keeps seeding.</p>
-          <div className="space-y-2">
-            {view.files.map((file, index) => {
-              const draft = drafts[index];
-              if (draft === undefined) return null;
-              return (
-                <div key={file.path} className={cn('flex flex-wrap items-center gap-3', !draft.include && 'opacity-50')}>
-                  <label className="flex min-w-[220px] flex-1 items-center gap-2 [overflow-wrap:anywhere]">
-                    <input type="checkbox" checked={draft.include} onChange={(event) => update(index, { include: event.target.checked })} className="accent-[var(--mm-ink)]" />
-                    <span>{file.relativePath}</span>
-                    {file.rejections.length > 0 && <span className="text-[var(--mm-ink-2)]">{file.rejections.join('; ')}</span>}
-                  </label>
-                  {view.target.kind === 'series' ? (
-                    <select
-                      multiple
-                      aria-label={`Episodes for ${file.relativePath}`}
-                      size={Math.min(4, view.target.episodes.length)}
-                      className={cn(select, 'h-auto')}
-                      value={draft.episodeIds.map(String)}
-                      onChange={(event) => update(index, { episodeIds: [...event.target.selectedOptions].map((option) => Number(option.value)) })}
-                    >
-                      {view.target.episodes.map((episode) => <option key={episode.id} value={episode.id}>{episode.code} {episode.title}</option>)}
-                    </select>
-                  ) : (
-                    <span className="text-[var(--mm-ink)]">{view.target.title}</span>
-                  )}
-                  <select
-                    aria-label={`Quality for ${file.relativePath}`}
-                    className={select}
-                    value={draft.qualityId ?? ''}
-                    onChange={(event) => update(index, { qualityId: event.target.value === '' ? null : Number(event.target.value) })}
-                  >
-                    <option value="">quality</option>
-                    {view.qualities.map((quality) => <option key={quality.id} value={quality.id}>{quality.name}</option>)}
-                  </select>
-                  <select
-                    aria-label={`Language for ${file.relativePath}`}
-                    className={select}
-                    value={draft.languageIds[0] ?? ''}
-                    onChange={(event) => update(index, { languageIds: event.target.value === '' ? [] : [Number(event.target.value)] })}
-                  >
-                    <option value="">language</option>
-                    {view.languages.map((language) => <option key={language.id} value={language.id}>{language.name}</option>)}
-                  </select>
-                </div>
-              );
-            })}
-          </div>
-          {[...reasons, ...serverReasons].map((reason) => <p key={reason} role="alert" className="text-[var(--mm-risk)]">{reason}</p>)}
-        </>
-      )}
-      <div className="flex items-center gap-3">
-        {button({ filled: true, disabled: typeof view === 'string' || reasons.length > 0 || sending, onClick: () => void submit(), children: sending ? 'Importing…' : `Import ${chosen.length} ${chosen.length === 1 ? 'file' : 'files'} with hardlinks` })}
-        {button({ onClick: onCancel, children: 'Cancel' })}
-      </div>
+    <div onClick={(event) => event.stopPropagation()}>
+      <PanelInline
+        open
+        title="Import by hand"
+        onClose={onCancel}
+        primary={(
+          <Button
+            size="large"
+            disabled={loaded === null || reasons.length > 0}
+            loading={sending}
+            icon={sending ? <LoaderCircle /> : undefined}
+            onClick={() => void submit()}
+          >
+            {sending ? 'Importing…' : `Import ${chosen.length} ${chosen.length === 1 ? 'file' : 'files'} with hardlinks`}
+          </Button>
+        )}
+        secondary={<Button variant="outline" onClick={onCancel}>Cancel</Button>}
+      >
+        <div className={cn('flex w-full flex-col gap-3 px-5', allReasons.length > 0 && 'gap-4')}>
+          {view === 'loading' && <p className={label}>Reading the download's files…</p>}
+          {view === 'failed' && <Callout look="risk" title="The download's files could not be read." />}
+          {loaded !== null && (
+            <>
+              <div className="flex w-full flex-col gap-1">
+                {loaded.reasons.map((reason) => <p key={reason} className={label}>Why it stopped: {reason}</p>)}
+                <p className={label}>Files are hardlinked into the library, so the torrent keeps seeding.</p>
+              </div>
+              {allReasons.map((reason) => <Callout key={reason} look="risk" title={reason} />)}
+              <Table>
+                <RowImportFileHeader />
+                <RowImportFileGroup
+                  open
+                  checked={groupChecked}
+                  onCheckedChange={(checked) => setDrafts((current) => current.map((draft) => ({ ...draft, include: checked })))}
+                  checkLabel={`All files in ${loaded.title}`}
+                  folder={loaded.title}
+                  count={`${included} of ${drafts.length} ${drafts.length === 1 ? 'file' : 'files'}`}
+                />
+                {loaded.files.map((file, index) => {
+                  const draft = drafts[index];
+                  if (draft === undefined) return null;
+                  const target = loaded.target;
+                  return (
+                    <RowImportFile
+                      key={file.path}
+                      checked={draft.include}
+                      onCheckedChange={(checked) => update(index, { include: checked })}
+                      checkLabel={file.relativePath}
+                      file={file.rejections.length > 0 ? `${file.relativePath} · ${file.rejections.join('; ')}` : file.relativePath}
+                      mapsTo={target.kind === 'series' ? (
+                        <Select multiple value={draft.episodeIds} onValueChange={(episodeIds) => update(index, { episodeIds })}>
+                          <SelectTrigger size="row" aria-label={`Episodes for ${file.relativePath}`} className="w-full">
+                            {draft.episodeIds.length === 0
+                              ? 'episodes'
+                              : target.episodes.filter((episode) => draft.episodeIds.includes(episode.id)).map((episode) => episode.code).join(', ')}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {target.episodes.map((episode) => <SelectItem key={episode.id} value={episode.id}>{episode.code} {episode.title}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      ) : target.title}
+                      quality={(
+                        <Select value={draft.qualityId} onValueChange={(qualityId) => update(index, { qualityId })}>
+                          <SelectTrigger size="row" aria-label={`Quality for ${file.relativePath}`} className="w-full">
+                            {loaded.qualities.find((quality) => quality.id === draft.qualityId)?.name ?? 'quality'}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {loaded.qualities.map((quality) => <SelectItem key={quality.id} value={quality.id}>{quality.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      languages={(
+                        <Select
+                          value={draft.languageIds[0] ?? null}
+                          onValueChange={(languageId) => update(index, { languageIds: languageId === null ? [] : [languageId] })}
+                        >
+                          <SelectTrigger size="row" aria-label={`Language for ${file.relativePath}`} className="w-full">
+                            {loaded.languages.find((language) => language.id === draft.languageIds[0])?.name ?? 'language'}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {loaded.languages.map((language) => <SelectItem key={language.id} value={language.id}>{language.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  );
+                })}
+              </Table>
+            </>
+          )}
+        </div>
+      </PanelInline>
     </div>
   );
 }

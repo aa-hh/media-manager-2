@@ -1,6 +1,18 @@
-import { useRef, useState } from 'react';
+import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
+import { Ban, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Collapsible } from '@/components/ui/collapsible-trigger';
+import { EmptyState } from '@/components/ui/empty-state';
+import { HeaderPage } from '@/components/ui/header-page';
+import { RowBlocklist, RowBlocklistHeader } from '@/components/ui/row-blocklist';
+import { SkeletonRow } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
+import { StatusInline } from '@/components/ui/status-inline';
+import { Table } from '@/components/ui/table';
+import { useToastManager } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import { ScreenButton, ScreenHeading } from '../screen';
 import { dayTitle, FilterTabs, formatWhen } from './History';
 import { type BlockEntry, sendJson, type useBlocklist } from './useHistory';
 
@@ -23,21 +35,25 @@ const shows: Record<View, (entry: BlockEntry) => boolean> = {
 const serviceWords = { sonarr: 'Sonarr', radarr: 'Radarr' } as const;
 const UNDO_MS = 8_000;
 
-const columns = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px] items-baseline gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_120px]';
-const label = 'font-data text-[11px] font-bold tracking-[0.6px] text-[var(--mm-ink-2)]';
 // No day headings here, so today's and yesterday's times carry their day word.
 const when = (at: number) => (['Today', 'Yesterday'].includes(dayTitle(at)) ? `${dayTitle(at)} ${formatWhen(at)}` : formatWhen(at));
 const keyOf = (entry: BlockEntry) => `${entry.service}:${entry.id}`;
 const why = (entry: BlockEntry) => (entry.by === 'you' ? `by you ${entry.reason}` : `by ${entry.by}${entry.reason === '' ? '' : `: ${entry.reason}`}`);
 
+// An unblocked row closes to height 0 (duration-base); Undo opens it again.
+const panelMotion = cn(
+  'h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-base) ease-out',
+  'data-starting-style:h-0 data-ending-style:h-0 motion-reduce:transition-none',
+);
+
 export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof useBlocklist> }) {
   const { state, loadMore, reload } = blocklist;
+  const toasts = useToastManager();
   const [view, setView] = useState<View>('all');
   const [selected, setSelected] = useState<string | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
-  const [pending, setPending] = useState<BlockEntry | null>(null);
   const [failed, setFailed] = useState<BlockEntry | null>(null);
-  const timerRef = useRef<{ entry: BlockEntry; timer: number } | null>(null);
+  const pendingRef = useRef<{ entry: BlockEntry; toast: string; timer: number } | null>(null);
 
   const show = (key: string, visible: boolean) => setHidden((current) => {
     const next = new Set(current);
@@ -47,109 +63,140 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
   });
 
   // The delete goes out only once the Undo window has passed; Sonarr and Radarr cannot put an entry back.
-  const commit = async (entry: BlockEntry) => {
-    timerRef.current = null;
-    setPending((current) => (current === entry ? null : current));
-    const { status } = await sendJson(`/api/blocklist/${entry.service}/${entry.id}`, 'DELETE').catch(() => ({ status: 0 }));
-    if (status === 204) return;
-    show(keyOf(entry), true);
-    setFailed(entry);
+  // Clearing pendingRef first makes a second call (the toast's onClose firing from close below) a no-op.
+  const commit = () => {
+    const current = pendingRef.current;
+    if (current === null) return;
+    pendingRef.current = null;
+    window.clearTimeout(current.timer);
+    toasts.close(current.toast);
+    const { entry } = current;
+    void sendJson(`/api/blocklist/${entry.service}/${entry.id}`, 'DELETE').catch(() => ({ status: 0 })).then(({ status }) => {
+      if (status === 204) {
+        // The server pages by position, so a gone entry would shift the next page by one and skip an entry; start the list over.
+        if (state.kind === 'ready' && state.hasMore) void reload();
+        return;
+      }
+      show(keyOf(entry), true);
+      setFailed(entry);
+    });
+  };
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  // Leaving the screen sends a pending delete straight away rather than dropping it.
+  useEffect(() => () => commitRef.current(), []);
+
+  const undo = () => {
+    const current = pendingRef.current;
+    if (current === null) return;
+    pendingRef.current = null;
+    window.clearTimeout(current.timer);
+    toasts.close(current.toast);
+    show(keyOf(current.entry), true);
   };
 
   const unblock = (entry: BlockEntry) => {
-    const previous = timerRef.current;
-    if (previous !== null) {
-      window.clearTimeout(previous.timer);
-      void commit(previous.entry);
-    }
+    commit();
     show(keyOf(entry), false);
     setSelected(null);
     setFailed(null);
-    setPending(entry);
-    timerRef.current = { entry, timer: window.setTimeout(() => void commit(entry), UNDO_MS) };
-  };
-
-  const undo = () => {
-    const current = timerRef.current;
-    if (current === null) return;
-    window.clearTimeout(current.timer);
-    timerRef.current = null;
-    show(keyOf(current.entry), true);
-    setPending(null);
+    // The Undo window runs on a window timer, not the toast's own timeout: Base UI pauses toast timers while the
+    // window is out of focus, which would hold the delete back. The toast only shows Undo; dismissing it commits early.
+    const toast = toasts.add({
+      title: `Unblocked ${entry.release}`,
+      description: `${serviceWords[entry.service]} can grab that release again on the next search.`,
+      timeout: 0,
+      actionProps: { children: 'Undo', onClick: undo },
+      onClose: () => {
+        if (pendingRef.current?.entry === entry) commit();
+      },
+    });
+    pendingRef.current = { entry, toast, timer: window.setTimeout(commit, UNDO_MS) };
   };
 
   const entries = state.kind === 'ready' ? state.items.filter((entry) => !hidden.has(keyOf(entry))) : [];
-  const visible = entries.filter(shows[view]);
+  const listed = state.kind === 'ready' ? state.items.filter(shows[view]) : [];
   return (
-    <section aria-label="Blocklist">
-      <ScreenHeading title="Blocklist" summary={state.kind === 'ready' ? `${entries.length} blocked releases` : undefined} />
-      <p className="px-5 pb-3 text-[13px] text-[var(--mm-ink-2)]">
-        Sonarr and Radarr never grab a blocked release again. Unblocking one lets them grab it on the next search.
-      </p>
-      <div className="border-b border-[var(--mm-seam)] px-2">
+    <section aria-label="Blocklist" className="flex flex-col gap-4 pt-2 pb-6">
+      <HeaderPage
+        title="Blocklist"
+        summary={state.kind === 'ready' ? `${entries.length} blocked releases` : undefined}
+        note="Sonarr and Radarr never grab a blocked release again. Unblocking one lets them grab it on the next search."
+      />
+      <div className="border-b border-border">
         <FilterTabs label="Blocked releases" choices={views} value={view} onChange={(value) => { setSelected(null); setView(value); }} />
       </div>
-      {pending !== null && (
-        <div className="flex flex-wrap items-center gap-3 px-5 py-3 text-[13px]">
-          <p role="status" className="text-[var(--mm-ink)]">
-            Unblocked {pending.title}. {serviceWords[pending.service]} can grab that release again on the next search.
-          </p>
-          <ScreenButton onClick={undo}>Undo</ScreenButton>
+      {state.kind === 'loading' && (
+        <div className="flex flex-col gap-3">
+          <StatusInline status="busy">Reading the blocklist…</StatusInline>
+          <Table aria-label="Blocklist">
+            <RowBlocklistHeader />
+            {[0, 1, 2, 3, 4].map((index) => <SkeletonRow key={index} />)}
+          </Table>
         </div>
       )}
-      {failed !== null && (
-        <p role="alert" className="px-5 py-3 text-[13px] text-[var(--mm-risk)]">{serviceWords[failed.service]} did not unblock it.</p>
-      )}
-      {state.kind === 'loading' && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">Reading the blocklist…</p>}
       {state.kind === 'failed' && (
-        <div className="flex items-center gap-3 px-5 py-6 text-[13px]">
-          <p role="alert" className="text-[var(--mm-risk)]">The blocklist could not be read.</p>
-          <ScreenButton onClick={() => void reload()}>Try again</ScreenButton>
+        <Callout title="The blocklist could not be read." action={<Button variant="outline" size="row" onClick={() => void reload()}>Try again</Button>} />
+      )}
+      {state.kind === 'ready' && entries.filter(shows[view]).length === 0 && (
+        <EmptyState icon={<Ban />} title="Nothing is blocked here" className="mt-16" />
+      )}
+      {state.kind === 'ready' && entries.filter(shows[view]).length > 0 && (
+        <div className="flex flex-col">
+          <Table aria-label="Blocklist">
+            <RowBlocklistHeader />
+            {listed.map((entry) => {
+              const key = keyOf(entry);
+              const isSelected = selected === key;
+              return (
+                <Collapsible key={key} open={!hidden.has(key)}>
+                  <CollapsiblePrimitive.Panel className={panelMotion}>
+                    <RowBlocklist
+                      release={entry.release}
+                      title={entry.title}
+                      tracker={entry.indexer ?? undefined}
+                      reason={why(entry)}
+                      added={when(entry.at)}
+                      actions={(
+                        <Button
+                          variant="ghost"
+                          size="row"
+                          iconOnly
+                          icon={<X />}
+                          aria-label={`Unblock ${entry.release}`}
+                          onClick={(event) => { event.stopPropagation(); unblock(entry); }}
+                        />
+                      )}
+                      selected={isSelected}
+                      tabIndex={0}
+                      aria-selected={isSelected}
+                      onClick={() => setSelected(isSelected ? null : key)}
+                      onKeyDown={(event) => { if (event.key === 'Enter' && event.target === event.currentTarget) setSelected(isSelected ? null : key); }}
+                    />
+                    {isSelected && (
+                      <div className="flex h-(--row) w-full items-center gap-2 border-b border-border bg-selected px-4">
+                        <Button variant="outline" size="row" onClick={() => unblock(entry)}>Unblock</Button>
+                      </div>
+                    )}
+                    {failed !== null && keyOf(failed) === key && (
+                      <div className="flex h-8 w-full items-center border-b border-border bg-muted px-4">
+                        <StatusInline status="failed">{serviceWords[failed.service]} did not unblock it.</StatusInline>
+                      </div>
+                    )}
+                  </CollapsiblePrimitive.Panel>
+                </Collapsible>
+              );
+            })}
+          </Table>
+          {state.hasMore && (
+            <div className="pt-4">
+              <Button variant="outline" disabled={state.loadingMore} icon={state.loadingMore ? <Spinner /> : undefined} onClick={loadMore}>
+                {state.loadingMore ? 'Loading…' : 'Load more'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
-      {state.kind === 'ready' && (<>
-        <div className={cn(columns, 'h-[30px] items-center bg-[var(--mm-row)] px-5', label)} role="row">
-          <span>TITLE</span><span>WHY BLOCKED</span><span className="hidden md:block">RELEASE</span><span>WHEN</span>
-        </div>
-        {visible.length === 0 && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">Nothing is blocked here.</p>}
-        <div role="table" aria-label="Blocklist">
-          {visible.map((entry, index) => {
-            const key = keyOf(entry);
-            const isSelected = selected === key;
-            return (
-              <div
-                key={key}
-                role="row"
-                tabIndex={0}
-                aria-selected={isSelected}
-                onClick={() => setSelected(isSelected ? null : key)}
-                onKeyDown={(event) => { if (event.key === 'Enter' && event.target === event.currentTarget) setSelected(isSelected ? null : key); }}
-                className={cn(
-                  'border-b border-[var(--mm-seam)] font-data text-[13px] focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)]',
-                  isSelected ? 'bg-[var(--mm-row-hover)]' : index % 2 === 0 ? 'bg-[var(--mm-row)]' : 'bg-[var(--mm-row-alt)]',
-                )}
-              >
-                <div className={cn(columns, 'min-h-[34px] px-5 py-1.5')}>
-                  <span className="min-w-0 [overflow-wrap:anywhere] text-[var(--mm-ink)]">{entry.title}</span>
-                  <span className="min-w-0 [overflow-wrap:anywhere] text-[var(--mm-ink-2)]">{why(entry)}</span>
-                  <span className="hidden min-w-0 [overflow-wrap:anywhere] text-[var(--mm-ink-2)] md:block">
-                    {[entry.release, entry.quality, entry.indexer].filter((part) => part !== null && part !== '').join(' · ')}
-                  </span>
-                  <span className="tabular-nums text-[var(--mm-ink-2)]">{when(entry.at)}</span>
-                </div>
-                {isSelected && (
-                  <div className="px-5 pb-3"><ScreenButton onClick={() => unblock(entry)}>Unblock</ScreenButton></div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {state.hasMore && (
-          <div className="px-5 py-4">
-            <ScreenButton disabled={state.loadingMore} onClick={loadMore}>{state.loadingMore ? 'Loading…' : 'Load more'}</ScreenButton>
-          </div>
-        )}
-      </>)}
     </section>
   );
 }

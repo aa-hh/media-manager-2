@@ -1,6 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import { adviseRemoval } from './advice.js';
 import type { Assignment } from './assignments.js';
+import { createConnectionRoutes } from './connections.js';
+import { createTrackerRoutes } from './trackerSettings.js';
 import { createFlaggedRoutes, type Flagged } from './flagged.js';
 import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import { createHealthRoutes, type Health } from './health.js';
@@ -10,7 +13,7 @@ import { type Blocklist, createBlocklistRoutes, createHistoryFailedRoute, record
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
 import type { ArrServices, Result } from './services/arr.js';
-import type { TrackerAccountStats } from './services/trackerAccounts.js';
+import type { TrackerAccounts } from './services/trackerAccounts.js';
 
 export type ApiActions = {
   arr: ArrServices;
@@ -20,7 +23,7 @@ export type ApiActions = {
   flagged?: Flagged;
   history?: History;
   blocklist?: Blocklist;
-  trackers?: { stats(): Promise<TrackerAccountStats[]> };
+  trackers?: TrackerAccounts;
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -53,9 +56,18 @@ const readAssignments = (body: unknown): Assignment[] | undefined => {
 };
 const downloadPattern = /^[0-9A-F]{40}$/;
 
+const liveTorrents = (database: DatabaseSync) => listTorrents(database).filter((torrent) => torrent.goneAt === null);
+
+// The grabs the browser still has a use for: not yet imported or failed (progress), or still in rTorrent (seeding facts).
+// Everything else stays in the database for history and would only make the Downloads list grow for ever.
+export const listDownloadGrabs = (database: DatabaseSync) => {
+  const seeding = new Set(liveTorrents(database).map((torrent) => torrent.hash));
+  return listGrabs(database).filter((grab) => (grab.importedAt === null && grab.failedAt === null) || seeding.has(grab.hash));
+};
+
 // How far each movie and episode has downloaded, for title views and the calendar; finished imports drop out.
 export const listProgress = (database: DatabaseSync) => {
-  const torrents = new Map(listTorrents(database).filter((torrent) => torrent.goneAt === null).map((torrent) => [torrent.hash, torrent]));
+  const torrents = new Map(liveTorrents(database).map((torrent) => [torrent.hash, torrent]));
   return listGrabs(database).flatMap((grab) => {
     const torrent = torrents.get(grab.hash);
     if (torrent === undefined || grab.importedAt !== null || grab.failedAt !== null) return [];
@@ -71,9 +83,9 @@ export const listProgress = (database: DatabaseSync) => {
 export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) => {
   const api = new Hono();
   api.get('/downloads', (context) => context.json({
-    torrents: listTorrents(database).filter((torrent) => torrent.goneAt === null),
+    torrents: liveTorrents(database),
     queue: listQueue(database),
-    grabs: listGrabs(database),
+    grabs: listDownloadGrabs(database),
     problems: listOpenProblems(database),
   }));
   api.get('/progress', (context) => context.json(listProgress(database)));
@@ -95,6 +107,19 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
   api.get('/trackers', async (context) => {
     if (actions?.trackers === undefined) return context.json({ error: 'not_found' }, 404);
     return context.json(await actions.trackers.stats());
+  });
+
+  // Whether a torrent can be removed under its tracker's hit and run rule; advice only, nothing is removed here.
+  api.get('/advice/:hash', async (context) => {
+    const hash = context.req.param('hash');
+    if (!downloadPattern.test(hash.toUpperCase())) return context.json({ error: 'invalid_request' }, 400);
+    return context.json(await adviseRemoval(database, hash.toUpperCase(), {
+      now: Date.now(),
+      accountStats: async (host) => {
+        const account = await actions?.trackers?.connection(host);
+        return account?.kind === 'ok' ? account.stats : null;
+      },
+    }));
   });
 
   // Only items media-manager-2 has seen in the queue can be acted on, so a stray id never reaches Sonarr or Radarr.
@@ -169,6 +194,8 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     await actions.refresh(service);
     return context.body(null, 204);
   });
+  api.route('/', createConnectionRoutes(database));
+  api.route('/', createTrackerRoutes(database, process.env, actions?.trackers));
   if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
   if (actions?.flagged !== undefined) api.route('/flagged', createFlaggedRoutes(actions.flagged));
   if (actions?.history !== undefined) api.route('/history', createHistoryRoutes(actions.history));

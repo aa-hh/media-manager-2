@@ -1,7 +1,7 @@
+import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-
-type ArrRequest = (path: string) => Promise<{ status: number; body: unknown }>;
-type ArrService = { request: ArrRequest; configured: () => boolean };
+import { type ArrServices, type Image, type Movie, parseMovie, parseSeries, type Result, type Series } from './services/arr.js';
+import type { Title, TitleStore } from './titleStore.js';
 
 export type SearchQuery =
   | { kind: 'name'; term: string }
@@ -42,15 +42,9 @@ export type SearchResponse = {
 const MAX_QUERY_LENGTH = 200;
 const MAX_RESULTS_PER_SERVICE = 20;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
-const text = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
 const positiveInteger = (value: unknown) => (
   typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
 );
-const finiteNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
 export const parseSearchQuery = (input: string): SearchQuery | undefined => {
   const term = input.trim().replace(/\s+/g, ' ');
@@ -64,11 +58,10 @@ export const parseSearchQuery = (input: string): SearchQuery | undefined => {
 
 // Lookup images carry a public remoteUrl and a local url; the local one is served by the
 // service itself and needs its key, so only an absolute http(s) remoteUrl may reach the browser.
-const posterUrl = (images: unknown): string | null => {
-  if (!Array.isArray(images)) return null;
+const posterUrl = (images: Image[]): string | null => {
   for (const image of images) {
-    if (!isRecord(image) || image.coverType !== 'poster') continue;
-    const url = text(image.remoteUrl);
+    if (image.coverType !== 'poster') continue;
+    const url = image.remoteUrl;
     if (url === null) continue;
     try {
       const parsed = new URL(url);
@@ -80,63 +73,47 @@ const posterUrl = (images: unknown): string | null => {
   return null;
 };
 
-const firstRating = (ratings: unknown, keys: string[]): number | null => {
-  if (!isRecord(ratings)) return null;
-  if (finiteNumber(ratings.value) !== null) return finiteNumber(ratings.value);
-  for (const key of keys) {
-    const rating = ratings[key];
-    if (isRecord(rating) && finiteNumber(rating.value) !== null && (rating.value as number) > 0) return rating.value as number;
-  }
-  return null;
-};
-
-const toSeries = (value: unknown): SearchResult | undefined => {
-  if (!isRecord(value)) return undefined;
-  const title = text(value.title);
-  const tvdbId = positiveInteger(value.tvdbId);
-  if (title === null || tvdbId === null) return undefined;
-  const libraryId = positiveInteger(value.id);
+const toSeries = (record: Series): SearchResult | undefined => {
+  const { title, tvdbId, id: libraryId } = record;
+  if (title === '' || tvdbId === null) return undefined;
   return {
     type: 'tv',
     service: 'sonarr',
     key: `tvdb:${tvdbId}`,
     title,
-    year: positiveInteger(value.year),
-    network: text(value.network),
-    status: text(value.status),
-    rating: firstRating(value.ratings, []),
-    overview: text(value.overview),
-    posterUrl: posterUrl(value.images),
+    year: positiveInteger(record.year),
+    network: record.network,
+    status: record.status,
+    rating: record.rating,
+    overview: record.overview,
+    posterUrl: posterUrl(record.images),
     inLibrary: libraryId !== null,
     libraryId,
     tvdbId,
-    tmdbId: positiveInteger(value.tmdbId),
-    imdbId: text(value.imdbId),
+    tmdbId: record.tmdbId,
+    imdbId: record.imdbId,
   };
 };
 
-const toMovie = (value: unknown): SearchResult | undefined => {
-  if (!isRecord(value)) return undefined;
-  const title = text(value.title);
-  const tmdbId = positiveInteger(value.tmdbId);
-  if (title === null || tmdbId === null) return undefined;
-  const libraryId = positiveInteger(value.id);
+const toMovie = (record: Movie): SearchResult | undefined => {
+  const { title, tmdbId, id: libraryId } = record;
+  if (title === '' || tmdbId === null) return undefined;
   return {
     type: 'movie',
     service: 'radarr',
     key: `tmdb:${tmdbId}`,
     title,
-    year: positiveInteger(value.year),
-    network: text(value.studio),
-    status: text(value.status),
-    rating: firstRating(value.ratings, ['tmdb', 'imdb', 'trakt']),
-    overview: text(value.overview),
-    posterUrl: posterUrl(value.images),
+    year: positiveInteger(record.year),
+    network: record.studio,
+    status: record.status,
+    rating: record.rating,
+    overview: record.overview,
+    posterUrl: posterUrl(record.images),
     inLibrary: libraryId !== null,
     libraryId,
     tvdbId: null,
     tmdbId,
-    imdbId: text(value.imdbId),
+    imdbId: record.imdbId,
   };
 };
 
@@ -147,34 +124,73 @@ const lookupTerm = (query: SearchQuery, service: 'sonarr' | 'radarr'): string | 
   return service === 'radarr' ? `tmdb:${query.id}` : undefined;
 };
 
+type Service = 'sonarr' | 'radarr';
+type Found = { result: SearchResult; record: Record<string, unknown> };
+
+export const LOOKUP_CACHE_MS = 10 * 60_000;
+
+// Per service: the title store part its lookup records are saved under, the record's own id field, and the title
+// a record is saved as.
+const lookups = {
+  sonarr: {
+    part: 'sonarr-lookup',
+    idField: 'tvdbId',
+    title: (id: number, record?: Record<string, unknown>): Title => (
+      { type: 'tv', tvdbId: id, tmdbId: typeof record?.tmdbId === 'number' ? record.tmdbId : null }
+    ),
+    normalize: (record: Record<string, unknown>) => {
+      const parsed = parseSeries(record);
+      return parsed === null ? undefined : toSeries(parsed);
+    },
+  },
+  radarr: {
+    part: 'radarr-lookup',
+    idField: 'tmdbId',
+    title: (id: number): Title => ({ type: 'movie', tmdbId: id }),
+    normalize: (record: Record<string, unknown>) => {
+      const parsed = parseMovie(record);
+      return parsed === null ? undefined : toMovie(parsed);
+    },
+  },
+} as const;
+
+const read = (services: ArrServices, service: Service, term: string) => (
+  service === 'sonarr' ? services.sonarr.lookupSeries(term) : services.radarr.lookupMovies(term)
+);
+
+// One title outside the library, as Sonarr's or Radarr's own lookup record; the title page and add both read it here.
+export const lookupTitle = (services: ArrServices, store: TitleStore, service: Service, id: number) => {
+  const { part, idField, title } = lookups[service];
+  return store.fetch(title(id), part, LOOKUP_CACHE_MS, async (): Promise<Result<Record<string, unknown>>> => {
+    const found = await read(services, service, `${service === 'sonarr' ? 'tvdb' : 'tmdb'}:${id}`);
+    if (found.kind !== 'ok') return found;
+    const match = found.value.find((record) => record[idField] === id);
+    return match === undefined ? { kind: 'not_found', message: 'No such title.' } : { kind: 'ok', value: match };
+  });
+};
+
 const lookup = async (
-  service: ArrService,
-  path: string,
+  services: ArrServices,
+  service: Service,
   term: string | undefined,
-  normalize: (value: unknown) => SearchResult | undefined,
-): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
-  if (term === undefined) return { outcome: { kind: 'skipped' }, results: [] };
-  if (!service.configured()) return { outcome: { kind: 'not_configured' }, results: [] };
-  let response: { status: number; body: unknown };
-  try {
-    response = await service.request(`${path}?term=${encodeURIComponent(term)}`);
-  } catch {
-    return { outcome: { kind: 'unreachable' }, results: [] };
+): Promise<{ outcome: ServiceOutcome; found: Found[] }> => {
+  if (term === undefined) return { outcome: { kind: 'skipped' }, found: [] };
+  const response = await read(services, service, term);
+  if (response.kind === 'not_configured' || response.kind === 'unreachable' || response.kind === 'rejected') {
+    return { outcome: { kind: response.kind }, found: [] };
   }
-  if (response.status === 401 || response.status === 403) return { outcome: { kind: 'rejected' }, results: [] };
-  if (response.status < 200 || response.status > 299 || !Array.isArray(response.body)) {
-    return { outcome: { kind: 'unreachable' }, results: [] };
-  }
+  // A non-2xx answer or a body that is not a list reads as unreachable, as it did before the adapter.
+  if (response.kind !== 'ok') return { outcome: { kind: 'unreachable' }, found: [] };
   const seen = new Set<string>();
-  const results: SearchResult[] = [];
-  for (const item of response.body) {
-    const result = normalize(item);
+  const found: Found[] = [];
+  for (const record of response.value) {
+    const result = lookups[service].normalize(record);
     if (result === undefined || seen.has(result.key)) continue;
     seen.add(result.key);
-    results.push(result);
-    if (results.length === MAX_RESULTS_PER_SERVICE) break;
+    found.push({ result, record });
+    if (found.length === MAX_RESULTS_PER_SERVICE) break;
   }
-  return { outcome: { kind: 'ok', count: results.length }, results };
+  return { outcome: { kind: 'ok', count: found.length }, found };
 };
 
 // Each service ranks its own results; interleaving by rank keeps both services' best
@@ -188,44 +204,45 @@ const merge = (shows: SearchResult[], movies: SearchResult[]) => {
   return [...interleaved.filter((result) => result.inLibrary), ...interleaved.filter((result) => !result.inLibrary)];
 };
 
-export const LOOKUP_CACHE_MS = 10 * 60_000;
+// A search term keeps only the ids it returned; each title's record lives in the title store, where the title page
+// and add reuse it. A term is answered from storage only while it and every one of its records are fresh.
+export const createSearch = (database: DatabaseSync, services: ArrServices, store: TitleStore) => {
+  const { now } = store;
 
-export const createSearch = (services: { sonarr: ArrService; radarr: ArrService }, options: { now?: () => number } = {}) => {
-  const now = options.now ?? Date.now;
-  // razor: no size cap beyond purging stale entries after each successful lookup. Upgrade path: an LRU bound on entries.
-  const cache = new Map<string, { fetchedAt: number; results: SearchResult[]; count: number }>();
-
-  const cachedLookup = async (
-    service: 'sonarr' | 'radarr',
-    path: string,
-    term: string | undefined,
-    normalize: (value: unknown) => SearchResult | undefined,
-  ): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
-    const key = `${service}\n${term}`;
+  const cachedLookup = async (service: Service, term: string | undefined): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
+    const { part, idField, title, normalize } = lookups[service];
     if (term !== undefined && services[service].configured()) {
-      const entry = cache.get(key);
-      if (entry !== undefined && now() - entry.fetchedAt < LOOKUP_CACHE_MS) {
-        return { outcome: { kind: 'ok', count: entry.count }, results: entry.results };
+      const row = database.prepare('SELECT ids, fetched_at FROM search_lookups WHERE service = ? AND term = ?').get(service, term);
+      if (row !== undefined && now() - Number(row.fetched_at) < LOOKUP_CACHE_MS) {
+        const stored = (JSON.parse(String(row.ids)) as number[]).map((id) => store.get<Record<string, unknown>>(title(id), part));
+        if (stored.every((entry) => entry !== undefined && now() - entry.fetchedAt < LOOKUP_CACHE_MS)) {
+          const results = stored.flatMap((entry) => (entry === undefined ? [] : normalize(entry.value) ?? []));
+          return { outcome: { kind: 'ok', count: results.length }, results };
+        }
       }
     }
-    const result = await lookup(services[service], path, term, normalize);
-    if (result.outcome.kind === 'ok') {
-      const fetchedAt = now();
-      cache.set(key, { fetchedAt, results: result.results, count: result.outcome.count });
-      for (const [stored, entry] of cache) if (fetchedAt - entry.fetchedAt >= LOOKUP_CACHE_MS) cache.delete(stored);
+    const { outcome, found } = await lookup(services, service, term);
+    if (outcome.kind === 'ok' && term !== undefined) {
+      const ids = found.map(({ record }) => record[idField] as number);
+      found.forEach(({ record }, index) => store.put(title(ids[index], record), part, record));
+      // razor: stale terms are purged on each write; titles' parts are kept. Upgrade path: purge old parts on a timer.
+      database.prepare('DELETE FROM search_lookups WHERE fetched_at <= ?').run(now() - LOOKUP_CACHE_MS);
+      database.prepare('INSERT OR REPLACE INTO search_lookups (service, term, ids, fetched_at) VALUES (?, ?, ?, ?)')
+        .run(service, term, JSON.stringify(ids), now());
     }
-    return result;
+    return { outcome, results: found.map(({ result }) => result) };
   };
 
   return {
-    // An add changes which titles that service has, so its cached lookups would still offer Add.
-    forget(service: 'sonarr' | 'radarr') {
-      for (const key of cache.keys()) if (key.startsWith(`${service}\n`)) cache.delete(key);
+    // An add or delete changes which titles that service has, so its stored lookups would show the old answer.
+    forget(service: Service) {
+      database.prepare('DELETE FROM search_lookups WHERE service = ?').run(service);
+      store.forget(lookups[service].part);
     },
     async search(query: SearchQuery): Promise<SearchResponse> {
       const [sonarr, radarr] = await Promise.all([
-        cachedLookup('sonarr', '/api/v3/series/lookup', lookupTerm(query, 'sonarr'), toSeries),
-        cachedLookup('radarr', '/api/v3/movie/lookup', lookupTerm(query, 'radarr'), toMovie),
+        cachedLookup('sonarr', lookupTerm(query, 'sonarr')),
+        cachedLookup('radarr', lookupTerm(query, 'radarr')),
       ]);
       return {
         results: merge(sonarr.results, radarr.results),

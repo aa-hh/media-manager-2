@@ -12,6 +12,18 @@ _Avoid_: Sear, the TV backend
 The external service that manages movies. media-manager-2 searches for, grabs and manages movies through it.
 _Avoid_: radar, the movie backend
 
+**Series**:
+One TV show as Sonarr holds it, with its seasons, episodes and files. Sonarr's own term; "show" is fine in words to the user.
+_Avoid_: programme
+
+**Movie**:
+One film as Radarr holds it, with the one file it tracks. Radarr's own term.
+_Avoid_: film
+
+**Episode**:
+One episode of a series as Sonarr holds it, with whether it is monitored and has a file. Sonarr's own term.
+_Avoid_: ep, installment
+
 **rTorrent**:
 The download client that Sonarr and Radarr hand torrents to. It does the downloading; they only check on it. media-manager-2 reads torrent status from it directly.
 _Avoid_: the downloader, the torrent client
@@ -73,7 +85,7 @@ rTorrent continuing to upload a finished torrent. Required by the private tracke
 _Avoid_: sharing
 
 **Stalled**:
-A started, unfinished torrent that has made no progress for long enough that media-manager-2 stops waiting on it and looks for another release. rTorrent has no such status; media-manager-2 decides it.
+A started, unfinished torrent that has made no progress for long enough that media-manager-2 stops waiting on it and looks for another release. A stalled second version is never regrabbed: it is removed if nothing downloaded, and flagged to the user either way. rTorrent has no such status; media-manager-2 decides it.
 _Avoid_: stuck, dead, hung
 
 **Tracker**:
@@ -87,6 +99,10 @@ _Avoid_: seeding requirement, seed rule, ratio rule
 **Global ratio**:
 The user's total upload-to-download ratio across a whole tracker account. Each tracker sets a minimum; it is separate from any single torrent's hit and run rule.
 _Avoid_: account ratio, overall ratio
+
+**Site software**:
+The tracker software a tracker's site runs (UNIT3D, Gazelle, NexusPHP, or other). It decides how media-manager-2 reads the tracker account; trackers running the same software share one way in.
+_Avoid_: tracker type, platform, engine
 
 **Plex**:
 The media server that plays the library folder to the user and friends.

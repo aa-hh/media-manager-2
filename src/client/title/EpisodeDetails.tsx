@@ -1,90 +1,108 @@
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, SetStateAction } from 'react';
+import { FactRow } from '@/components/ui/fact';
+import { RowEpisodeDetails } from '@/components/ui/row-episode-details';
+import { RowHistoryHeader } from '@/components/ui/row-history';
+import { RowSecondVersion, RowSecondVersionHeader } from '@/components/ui/row-second-version';
+import { SkeletonRow } from '@/components/ui/skeleton';
 import { formatBytes } from '../downloads/model';
-import type { EpisodeDetail, FileDetail } from '../library/api';
+import type { EpisodeDetail, FileDetail, SecondVersion } from '../library/api';
 import type { SeedingFact } from '../library/progress';
-import { Poster } from '../Search';
-import { History } from './History';
-import { ActionButton } from './TitleHeader';
+import { historyEmpty, historyRows, useTitleHistory } from './History';
+import { seedingText } from './secondVersionText';
+import { SecondVersionRows } from './SecondVersions';
+import { episodeCode } from './TitleHeader';
 
-const when = (iso: string | null) => (iso === null ? '' : new Date(iso).toLocaleString());
+const day = (iso: string | null) => (iso === null ? '' : new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }));
 
-export const seedingText = (fact: SeedingFact) =>
-  `${fact.trackerHost || 'Unknown tracker'} · ${Math.floor(fact.seedingSeconds / 3600)} h · ratio ${fact.ratio.toFixed(1)}`;
+const releaseName = (file: FileDetail) => {
+  const name = file.relativePath?.split('/').pop() ?? '';
+  return name.replace(/\.[^.]+$/, '');
+};
 
-// The file Sonarr or Radarr reports, as one version row; movies use the same table.
-export function VersionTable({ file, seeding, label = 'Versions' }: { file: FileDetail | null; seeding: SeedingFact[]; label?: string }) {
-  const media = file?.mediaInfo ?? null;
+// HDR, audio, languages and custom formats of a file, for the second line of its version row.
+const fileDetail = (file: FileDetail) => {
+  const media = file.mediaInfo;
+  const audio = [media?.audioCodec ?? '', media?.audioChannels == null ? '' : String(media.audioChannels)].filter((part) => part !== '').join(' ');
+  const text = [media?.videoDynamicRangeType ?? '', audio, file.languages.join(', '), file.customFormats.join(', ')]
+    .filter((part) => part !== '').join(' · ');
+  return text === '' ? undefined : text;
+};
+
+// The file Sonarr or Radarr tracks, as the tracked-version row; movies use the same row under their header.
+export function TrackedVersion({ file, seeding, indent }: { file: FileDetail; seeding: SeedingFact[]; indent: boolean }) {
   return (
-    <section aria-label={label} className="mt-4 font-data text-[13px]">
-      <h3 className="font-ui text-[14px] font-semibold">{label}</h3>
-      {file === null
-        ? <p className="mt-1 text-[var(--mm-ink-2)]">No file yet.</p>
-        : (
-          // Hand-off to AA-32: hit and run rule and second-version rows.
-          <div className="mt-1 overflow-x-auto">
-            <table className="w-full min-w-[44rem] border-y border-[var(--mm-seam)] text-left">
-              <thead className="text-[var(--mm-ink-3)]">
-                <tr>
-                  {['Quality', 'Size', 'Group', 'HDR', 'Audio', 'Languages', 'Score', 'Formats', 'Seeding'].map((heading) => (
-                    <th key={heading} scope="col" className="py-1 pr-4 font-normal">{heading}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="align-top">
-                  <td className="py-1 pr-4">{file.quality ?? ''}</td>
-                  <td className="py-1 pr-4">{formatBytes(file.size)}</td>
-                  <td className="py-1 pr-4">{file.releaseGroup ?? ''}</td>
-                  <td className="py-1 pr-4">{media?.videoDynamicRangeType ?? ''}</td>
-                  <td className="py-1 pr-4">{[media?.audioCodec, media?.audioChannels].filter((part) => part != null).join(' ')}</td>
-                  <td className="py-1 pr-4">{file.languages.join(', ')}</td>
-                  <td className="py-1 pr-4 tabular-nums">{file.customFormatScore}</td>
-                  <td className="py-1 pr-4">{file.customFormats.join(', ')}</td>
-                  <td className="py-1 pr-4">{seeding.map(seedingText).join('; ')}</td>
-                </tr>
-              </tbody>
-            </table>
-            {file.relativePath !== null && <p className="mt-1 text-[var(--mm-ink-3)] [overflow-wrap:anywhere]">{file.relativePath}</p>}
-          </div>
-        )}
-    </section>
+    <RowSecondVersion
+      tracked
+      indent={indent}
+      quality={file.quality ?? ''}
+      release={releaseName(file)}
+      detail={fileDetail(file)}
+      size={formatBytes(file.size)}
+      tracker={seeding[0]?.trackerHost ?? ''}
+      seeding={seeding.map(seedingText).join('; ')}
+    />
   );
 }
 
-export function EpisodeDetails({ episode, seeding, onSearch, onPick, onClose, onUnauthenticated }: {
+export function EpisodeDetails({ episode, seeding, secondVersions, onSecondVersions, profile, seriesPath, onClose, onUnauthenticated }: {
   episode: EpisodeDetail;
   seeding: SeedingFact[];
-  onSearch: () => void;
-  onPick: () => void;
+  /** This episode's second versions. */
+  secondVersions: SecondVersion[];
+  /** Takes the series' whole list, as the delete reply gives it, or an update to it. */
+  onSecondVersions: (next: SetStateAction<SecondVersion[]>) => void;
+  profile: string | null;
+  seriesPath: string | null;
   onClose: () => void;
   onUnauthenticated: () => void;
 }) {
+  const history = useTitleHistory(`service=sonarr&episodeId=${episode.id}`, onUnauthenticated);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape') return;
     event.stopPropagation();
     onClose();
   };
-  const facts = [
-    episode.airDate === null ? '' : `Aired ${when(episode.airDate)}`,
-    episode.runtime === null || episode.runtime <= 0 ? '' : `${episode.runtime} min`,
-    `Last search ${episode.lastSearchTime === null ? 'never' : when(episode.lastSearchTime)}`,
-  ].filter((fact) => fact !== '');
+  const file = episode.file;
+  const folder = file?.relativePath?.split('/').slice(0, -1).join('/');
+  const fit = file === null ? 'no file' : file.qualityCutoffNotMet ? 'below cutoff' : 'cutoff met';
+  const details = [
+    <FactRow key="aired" label="Aired">
+      {[day(episode.airDate), episode.runtime === null || episode.runtime <= 0 ? '' : `${episode.runtime} min`].filter((part) => part !== '').join(' · ') || '–'}
+    </FactRow>,
+    <FactRow key="monitored" label="Monitored">{episode.monitored ? 'Yes' : 'No'}</FactRow>,
+    <FactRow key="last-search" label="Last search">{episode.lastSearchTime === null ? 'Never' : day(episode.lastSearchTime)}</FactRow>,
+    ...(profile === null ? [] : [<FactRow key="profile" label="Quality profile">{`${profile} · ${fit}`}</FactRow>]),
+    ...(folder === undefined || folder === '' ? [] : [
+      <FactRow key="folder" label="Folder"><span className="[overflow-wrap:anywhere]">{[seriesPath, folder].filter((part) => part !== null).join('/')}</span></FactRow>,
+    ]),
+  ];
   return (
-    <div onKeyDown={onKeyDown} className="border-b border-[var(--mm-seam)] bg-[var(--mm-row-hover)] px-5 py-4 font-ui text-[14px]">
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <Poster url={episode.imageUrl} className="aspect-video w-56" />
-        <div className="min-w-0 flex-1">
-          <p className="font-data text-[13px] text-[var(--mm-ink-2)]">{facts.join(' · ')}</p>
-          {episode.overview !== null && <p className="mt-2 text-[var(--mm-ink-2)]">{episode.overview}</p>}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <ActionButton onClick={onSearch}>Search automatically</ActionButton>
-            <ActionButton onClick={onPick}>Pick a release</ActionButton>
-            <ActionButton onClick={onClose}>Close</ActionButton>
-          </div>
-        </div>
-      </div>
-      <VersionTable file={episode.file} seeding={seeding} />
-      <History query={`service=sonarr&episodeId=${episode.id}`} service="Sonarr" onUnauthenticated={onUnauthenticated} />
-    </div>
+    <RowEpisodeDetails
+      onKeyDown={onKeyDown}
+      overview={episode.overview ?? undefined}
+      stillUrl={episode.imageUrl ?? undefined}
+      details={details}
+      versionCount={(file === null ? 0 : 1) + secondVersions.length}
+      versions={file === null && secondVersions.length === 0 ? undefined : (
+        <>
+          <RowSecondVersionHeader />
+          {file !== null && <TrackedVersion file={file} seeding={seeding} indent={false} />}
+          <SecondVersionRows
+            versions={secondVersions}
+            indent={false}
+            subject={episodeCode(episode)}
+            trackedQuality={file?.quality ?? null}
+            onChanged={onSecondVersions}
+            onUnauthenticated={onUnauthenticated}
+          />
+        </>
+      )}
+      versionsEmpty={file === null && secondVersions.length === 0 ? 'No file yet.' : undefined}
+      historyCount={history.kind === 'ready' ? history.entries.length : undefined}
+      history={history.kind === 'loading'
+        ? <SkeletonRow />
+        : history.kind === 'ready' && history.entries.length > 0 ? <><RowHistoryHeader />{historyRows(history.entries)}</> : undefined}
+      historyEmpty={historyEmpty(history, 'Sonarr')}
+    />
   );
 }

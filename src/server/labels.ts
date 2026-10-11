@@ -1,17 +1,13 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { Subject } from './problems.js';
-import { findGrab, type Service } from './torrentGrabs.js';
+import type { ArrServices } from './services/arr.js';
+import { findGrab } from './torrentGrabs.js';
 import { listTorrents } from './torrents.js';
-
-type ArrRequest = (path: string) => Promise<{ status: number; body: unknown }>;
-
-const record = (body: unknown): Record<string, unknown> | undefined =>
-  typeof body === 'object' && body !== null && !Array.isArray(body) ? body as Record<string, unknown> : undefined;
 
 const code = (season: unknown, episode: unknown) => `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
 
 // Titles in words for subjects that only carry ids; a lookup that fails falls back to the id and is tried again next time.
-export const createLabels = (arr: Record<Service, { request: ArrRequest }>) => {
+export const createLabels = (arr: ArrServices) => {
   const cache = new Map<string, string>();
 
   const lookup = async (key: string, fallback: string, read: () => Promise<string | undefined>) => {
@@ -29,18 +25,16 @@ export const createLabels = (arr: Record<Service, { request: ArrRequest }>) => {
   };
 
   const movie = (movieId: number) => lookup(`radarr:movie:${movieId}`, `Radarr movie ${movieId}`, async () => {
-    const { status, body } = await arr.radarr.request(`/api/v3/movie/${movieId}`);
-    const value = record(body);
-    if (status < 200 || status > 299 || typeof value?.title !== 'string') return undefined;
-    return `${value.title} (${String(value.year)})`;
+    const result = await arr.radarr.movie(movieId);
+    if (result.kind !== 'ok' || result.value.title === '') return undefined;
+    const { title, year } = result.value;
+    return year === null ? title : `${title} (${year})`;
   });
 
   const episode = (episodeId: number) => lookup(`sonarr:episode:${episodeId}`, `Sonarr episode ${episodeId}`, async () => {
-    const { status, body } = await arr.sonarr.request(`/api/v3/episode/${episodeId}`);
-    const value = record(body);
-    const series = record(value?.series);
-    if (status < 200 || status > 299 || value === undefined || typeof series?.title !== 'string') return undefined;
-    return `${series.title} ${code(value.seasonNumber, value.episodeNumber)}`;
+    const result = await arr.sonarr.episode(episodeId);
+    if (result.kind !== 'ok' || result.value.seriesTitle === null) return undefined;
+    return `${result.value.seriesTitle} ${code(result.value.seasonNumber, result.value.episodeNumber)}`;
   });
 
   const subject = async (target: Subject, database: DatabaseSync): Promise<string> => {
@@ -52,6 +46,11 @@ export const createLabels = (arr: Record<Service, { request: ArrRequest }>) => {
     if (grab !== undefined && grab.episodeIds.length === 1) return episode(grab.episodeIds[0]);
     if (grab !== undefined && grab.episodeIds.length > 1) return `${await episode(grab.episodeIds[0])} + ${grab.episodeIds.length - 1} more`;
     const hash = target.id.toUpperCase();
+    const versions = database.prepare('SELECT movie_id, episode_id FROM second_versions WHERE hash = ? ORDER BY id').all(hash);
+    if (versions.length > 0) {
+      const first = versions[0].movie_id === null ? await episode(Number(versions[0].episode_id)) : await movie(Number(versions[0].movie_id));
+      return `${first}${versions.length > 1 ? ` + ${versions.length - 1} more` : ''} (second version)`;
+    }
     return listTorrents(database).find((torrent) => torrent.hash.toUpperCase() === hash)?.name ?? target.id;
   };
 

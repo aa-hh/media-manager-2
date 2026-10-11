@@ -1,9 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type ArrServices, valueOrThrow } from './services/arr.js';
+import type { createLabels } from './labels.js';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
-import { RELEASE_LIMIT } from './problems.js';
+import { findOpenProblem, RELEASE_LIMIT } from './problems.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
+import type { Removal } from './torrentFiles.js';
 import { listTorrents, type Torrent } from './torrents.js';
 import { listCooldowns, type createTrackerWatch } from './trackers.js';
 
@@ -19,6 +21,7 @@ export const NEW_RELEASE_AGE_MS = 24 * 60 * 60_000;
 export const ZERO_SPEED_BEFORE_ANNOUNCE_MS = 10 * 60_000;
 export const AFTER_ANNOUNCE_LIMIT_MS = 30 * 60_000;
 export const UNFINISHED_FLAG_MS = 14 * 24 * 60 * 60_000;
+export const STALLED_REMOVED = 'Stalled with nothing downloaded; torrent removed.';
 
 type Watch = { hash: string; noSeedersSince: number | null; zeroSpeedSince: number | null; announcedAt: number | null; replacedAt: number | null };
 
@@ -72,8 +75,10 @@ export const createStallFix = (options: {
   trackers: TrackerWatch;
   now?: () => number;
   isManualDownload: (subject: Subject) => boolean;
+  labels: Pick<ReturnType<typeof createLabels>, 'movie' | 'episode'>;
+  removeTorrent: (hash: string) => Promise<Removal>;
 }) => {
-  const { database, rtorrent, arr, problems, trackers, isManualDownload } = options;
+  const { database, rtorrent, arr, problems, trackers, isManualDownload, labels: titles, removeTorrent } = options;
   const now = options.now ?? Date.now;
 
   // rTorrent's connected seeders miss seeders the tracker knows about, so the tracker's scrape count wins when it has one.
@@ -180,16 +185,68 @@ export const createStallFix = (options: {
       return 'Asked Sonarr to search automatically for these episodes.';
     }
     const query = grab.movieId !== null ? `movieId=${grab.movieId}` : `episodeId=${grab.episodeIds[0]}`;
-    const { status, body } = await client.request(`/api/v3/release?${query}`);
+    // An interactive search asks every tracker and takes about 20 seconds; the 10 second default cuts it off.
+    const { status, body } = await client.request(`/api/v3/release?${query}`, { timeoutMs: 120_000 });
     if (status < 200 || status > 299) throw new Error(`${labels[grab.service]} search failed.`);
     const release = pickRelease(parseReleases(body), grab);
     if (release === undefined) return 'Searched again and found no other usable release; the regular search keeps looking.';
-    const grabbed = await client.request('/api/v3/release', { method: 'POST', body: { guid: release.guid, indexerId: release.indexerId } });
+    const grabbed = await client.request('/api/v3/release', { method: 'POST', body: { guid: release.guid, indexerId: release.indexerId }, timeoutMs: 60_000 });
     if (grabbed.status < 200 || grabbed.status > 299) throw new Error(`${labels[grab.service]} refused the grab of ${release.title}.`);
     return `Grabbed ${release.title} from ${release.indexer || 'another tracker'}.`;
   };
 
+  // Only rows still downloading: failed rows include a hash Sonarr or Radarr grabbed themselves.
+  const downloadingVersions = (hash: string) => database
+    .prepare("SELECT movie_id, episode_id, release_title FROM second_versions WHERE hash = ? AND state = 'downloading' ORDER BY id")
+    .all(hash);
+
+  // A second version has no grab to blocklist or search again, so it is never regrabbed: per AA-13 it is removed only when
+  // nothing downloaded, and the owner is told either way.
+  const flagSecondVersion = async (torrent: Torrent | undefined, hash: string, reason: string, rows: ReturnType<typeof downloadingVersions>) => {
+    const names = await Promise.all(rows.map((row) => (row.movie_id !== null ? titles.movie(Number(row.movie_id)) : titles.episode(Number(row.episode_id)))));
+    const problem = problems.open({
+      kind: 'stalled',
+      subject: { type: 'torrent', service: null, id: hash },
+      hash,
+      state: 'needs_you',
+      summary: `${reason} Second version of ${names.join(', ')} (${String(rows[0].release_title)}).`,
+    });
+    let outcome: string;
+    if (torrent === undefined || torrent.goneAt !== null) {
+      outcome = 'The torrent is already gone from rTorrent.';
+    } else if (torrent.completedBytes > 0) {
+      outcome = 'Kept the partly downloaded torrent active in rTorrent; it was not regrabbed.';
+    } else {
+      const removal = await removeTorrent(hash);
+      if (removal.removed) {
+        database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, failure_code = 'stalled_removed', updated_at = ? WHERE hash = ? AND state = 'downloading'")
+          .run(STALLED_REMOVED, now(), hash);
+        const left = removal.left.map((file) => ` Could not delete ${file.path}: ${file.reason}`).join('');
+        outcome = `Removed the torrent and its files from rTorrent: nothing had downloaded. It was not regrabbed.${left}`;
+      } else {
+        outcome = `Kept the torrent in rTorrent because it could not be removed: ${removal.reason}`;
+      }
+    }
+    problems.step(problem.id, 'fix', outcome);
+    saveWatch(database, { ...emptyWatch(hash), replacedAt: now() });
+    trackers.replacementHandled(hash, 'Flagged as a stalled second version.');
+  };
+
+  // A flagged second version that downloads again needs nothing from the owner, and is watched afresh from here.
+  const clearRecovered = (torrent: Torrent) => {
+    if (!torrent.complete && torrent.downRate === 0) return;
+    if ((readWatch(database, torrent.hash)?.replacedAt ?? null) === null || downloadingVersions(torrent.hash).length === 0) return;
+    const problem = findOpenProblem(database, 'stalled', { type: 'torrent', service: null, id: torrent.hash });
+    if (problem !== undefined) problems.setState(problem.id, 'resolved', torrent.complete ? 'Finished downloading.' : 'Downloading again.');
+    saveWatch(database, emptyWatch(torrent.hash));
+  };
+
   const replace = async (torrent: Torrent | undefined, hash: string, reason: string) => {
+    const versions = downloadingVersions(hash);
+    if (versions.length > 0) {
+      await flagSecondVersion(torrent, hash, reason, versions);
+      return;
+    }
     const grab = findGrab(database, hash);
     const subject: Subject = { type: 'torrent', service: null, id: hash };
     if (grab === undefined) {
@@ -251,7 +308,9 @@ export const createStallFix = (options: {
       await replace(byHash.get(hash), hash, 'The tracker can\'t serve this torrent.');
     }
     for (const torrent of torrents) {
-      if (torrent.goneAt !== null || torrent.complete || requested.has(torrent.hash)) continue;
+      if (torrent.goneAt !== null || requested.has(torrent.hash)) continue;
+      clearRecovered(torrent);
+      if (torrent.complete) continue;
       flagLongUnfinished(torrent, at);
       if (!torrent.started || torrent.message !== '' || (readWatch(database, torrent.hash)?.replacedAt ?? null) !== null) continue;
       const verdict = await isStalled(torrent, at);

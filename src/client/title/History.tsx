@@ -1,4 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Ban, CircleX, Download, FileCheck, FilePen, FileX } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { LabelGroup } from '@/components/ui/label-group';
+import { RowHistory } from '@/components/ui/row-history';
+import { SkeletonRow } from '@/components/ui/skeleton';
+import { StatusInline } from '@/components/ui/status-inline';
+import { Table } from '@/components/ui/table';
 import { getJson, type HistoryEntry } from '../library/api';
 
 const eventWords: Record<string, string> = {
@@ -14,11 +20,26 @@ const eventWords: Record<string, string> = {
   movieFileRenamed: 'File renamed',
 };
 
-type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; entries: HistoryEntry[] };
+const eventIcons: Record<string, ReactNode> = {
+  grabbed: <Download />,
+  downloadFolderImported: <FileCheck />,
+  seriesFolderImported: <FileCheck />,
+  movieFolderImported: <FileCheck />,
+  downloadFailed: <CircleX />,
+  downloadIgnored: <Ban />,
+  episodeFileDeleted: <FileX />,
+  movieFileDeleted: <FileX />,
+  episodeFileRenamed: <FilePen />,
+  movieFileRenamed: <FilePen />,
+};
+
+export type HistoryLoad = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; entries: HistoryEntry[] };
+
+const when = (iso: string | null) => (iso === null ? '' : new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
 
 // `query` is the /api/library/history query string, e.g. "service=sonarr&episodeId=12".
-export function History({ query, service, onUnauthenticated }: { query: string; service: 'Sonarr' | 'Radarr'; onUnauthenticated: () => void }) {
-  const [load, setLoad] = useState<Load>({ kind: 'loading' });
+export function useTitleHistory(query: string, onUnauthenticated: () => void) {
+  const [load, setLoad] = useState<HistoryLoad>({ kind: 'loading' });
   useEffect(() => {
     const controller = new AbortController();
     setLoad({ kind: 'loading' });
@@ -27,27 +48,42 @@ export function History({ query, service, onUnauthenticated }: { query: string; 
       .catch(() => { if (!controller.signal.aborted) setLoad({ kind: 'failed' }); });
     return () => controller.abort();
   }, [query, onUnauthenticated]);
+  return load;
+}
 
+// Hand-off to AA-34: mark as failed.
+export const historyRows = (entries: HistoryEntry[]) => entries.map((entry, index) => (
+  <RowHistory
+    key={index}
+    when={when(entry.at)}
+    icon={eventIcons[entry.eventType] ?? <FileCheck />}
+    event={[[eventWords[entry.eventType] ?? entry.eventType, entry.quality].filter((part) => part !== null).join(' '), entry.sourceTitle]
+      .filter((part) => part !== null && part !== '').join(' · ')}
+    by=""
+    detail={entry.detail}
+    tone={entry.eventType === 'downloadFailed' ? 'problem' : undefined}
+  />
+));
+
+// The one line the history panel shows when there are no rows to draw.
+export const historyEmpty = (load: HistoryLoad, service: 'Sonarr' | 'Radarr') => {
+  if (load.kind === 'loading') return undefined;
+  if (load.kind === 'failed') return <StatusInline status="failed">{service} didn't answer.</StatusInline>;
+  return load.entries.length === 0 ? `${service} has no history for this yet.` : undefined;
+};
+
+/** A title's history as its own group: heading with the count, then a table of events. */
+export function History({ query, service, onUnauthenticated }: { query: string; service: 'Sonarr' | 'Radarr'; onUnauthenticated: () => void }) {
+  const load = useTitleHistory(query, onUnauthenticated);
+  const empty = historyEmpty(load, service);
   return (
-    <section aria-label="History" className="mt-4 font-data text-[13px]">
-      <h3 className="font-ui text-[14px] font-semibold">History</h3>
-      {load.kind === 'loading' && <p className="mt-1 text-[var(--mm-ink-2)]">Loading…</p>}
-      {load.kind === 'failed' && <p role="alert" className="mt-1 text-[var(--mm-risk)]">{service} didn't answer.</p>}
-      {load.kind === 'ready' && load.entries.length === 0 && <p className="mt-1 text-[var(--mm-ink-2)]">{service} has no history for this yet.</p>}
-      {load.kind === 'ready' && load.entries.length > 0 && (
-        // Hand-off to AA-34: mark as failed.
-        <ul className="mt-1 divide-y divide-[var(--mm-seam)] border-y border-[var(--mm-seam)]">
-          {load.entries.map((entry, index) => (
-            <li key={index} className="flex flex-wrap gap-x-4 gap-y-0.5 py-1">
-              <span className="w-40 shrink-0 text-[var(--mm-ink-2)]">{entry.at === null ? '' : new Date(entry.at).toLocaleString()}</span>
-              <span className={entry.eventType === 'downloadFailed' ? 'w-36 shrink-0 text-[var(--mm-risk)]' : 'w-36 shrink-0'}>{eventWords[entry.eventType] ?? entry.eventType}</span>
-              {entry.quality !== null && <span className="text-[var(--mm-ink-2)]">{entry.quality}</span>}
-              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{entry.sourceTitle}</span>
-              {entry.detail !== '' && <span className="text-[var(--mm-ink-2)]">{entry.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
+    <section aria-label="History" className="flex flex-col">
+      <LabelGroup count={load.kind === 'ready' ? load.entries.length : undefined}>History</LabelGroup>
+      <Table>
+        {load.kind === 'loading' && <SkeletonRow />}
+        {load.kind === 'ready' && historyRows(load.entries)}
+        {empty !== undefined && <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">{empty}</p>}
+      </Table>
     </section>
   );
 }

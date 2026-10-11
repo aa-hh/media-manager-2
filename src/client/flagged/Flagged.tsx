@@ -1,10 +1,22 @@
+import { Flag } from 'lucide-react';
 import { type RefObject, useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Checkbox } from '@/components/ui/checkbox';
+import { EmptyState } from '@/components/ui/empty-state';
+import { HeaderPage } from '@/components/ui/header-page';
+import { PanelInline } from '@/components/ui/panel-inline';
+import { RowFlagged } from '@/components/ui/row-flagged';
+import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
+import { StatusInline } from '@/components/ui/status-inline';
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs-trigger';
 import { cn } from '@/lib/utils';
 import { ImportPanel } from '../downloads/ImportPanel';
 import { formatDuration, type Service } from '../downloads/model';
 import { postAction } from '../downloads/useDownloads';
 import { PickRelease, type OwnedEpisode, type ReleaseTarget } from '../PickRelease';
-import { ScreenButton, ScreenHeading } from '../screen';
 import type { FlaggedAction, FlaggedItem, FlaggedState, Wanted } from './useFlagged';
 
 type Tab = 'needs_you' | 'missing' | 'cutoff';
@@ -23,17 +35,13 @@ const actionLabels: Record<FlaggedAction['kind'], string> = {
 };
 
 const serviceName = (service: Service) => (service === 'sonarr' ? 'Sonarr' : 'Radarr');
-const header = 'font-data text-[11px] font-bold tracking-[0.6px] text-[var(--mm-ink-2)]';
-const rowTone = (index: number, selected: boolean, dimmed: boolean) => cn(
-  'border-b border-[var(--mm-seam)] font-data text-[13px]',
-  selected ? 'bg-[var(--mm-row-hover)]' : index % 2 === 0 ? 'bg-[var(--mm-row)]' : 'bg-[var(--mm-row-alt)]',
-  dimmed && 'opacity-35',
-);
-const needsYouColumns = 'grid grid-cols-[120px_minmax(0,1fr)] items-center gap-3 md:grid-cols-[160px_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,220px)]';
-const wantedColumns = 'grid grid-cols-[24px_minmax(0,1fr)_minmax(0,140px)] items-center gap-3 md:grid-cols-[24px_minmax(0,1fr)_minmax(0,220px)_72px_120px_minmax(0,240px)]';
+// Rows dim while another row's panel is open; the opacity change runs at duration-fast like the row's colours.
+const dim = (dimmed: boolean) => cn('transition-all', dimmed && 'opacity-35');
+const actionsLine = 'flex h-(--row) w-full shrink-0 items-center gap-2 border-b border-border bg-selected pr-4';
 
-const sendSearch = async (service: Service, type: 'movie' | 'episode', ids: number[]) => {
+const sendSearch = async (service: Service, type: 'movie' | 'episode', ids: number[], onUnauthenticated: () => void) => {
   const status = await postAction('/api/flagged/search', { service, type, ids }).catch(() => 0);
+  if (status === 401) onUnauthenticated();
   return status === 204;
 };
 
@@ -64,26 +72,31 @@ function PickPanel({ target, title, onClose, onUnauthenticated }: {
     })();
     return () => { current = false; };
   }, [path, onUnauthenticated]);
-  if (owned.kind === 'loading') return <p className="px-5 pb-3 text-[var(--mm-ink-2)]">Reading {title} from {serviceName(target.service)}…</p>;
-  if (owned.kind === 'failed') {
-    return (
-      <div className="flex items-center gap-3 px-5 pb-3">
-        <p role="alert" className="text-[var(--mm-risk)]">{serviceName(target.service)} could not be read.</p>
-        <ScreenButton onClick={onClose}>Close</ScreenButton>
-      </div>
-    );
+  if (owned.kind === 'ready') {
+    // The server's labels read "Series S02E08" or "Movie (2024)"; its "Sonarr episode 12" and "Radarr movie 7" fallbacks carry no name.
+    const name = target.kind === 'movie' ? (/^Radarr movie \d+$/.test(title) ? undefined : title) : /^(.+) S\d{2,}E\d{2,}$/.exec(title)?.[1];
+    return <PickRelease target={target} title={title} name={name} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} />;
   }
   return (
-    <div className="px-5 pb-3 font-ui" onClick={(event) => event.stopPropagation()}>
-      <PickRelease target={target} title={title} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} />
-    </div>
+    <PanelInline open title={`Pick a release for ${title}`} onClose={onClose}>
+      <div className="px-5 pt-3 pb-6">
+        {owned.kind === 'loading'
+          ? (
+            <p className="flex items-center gap-2 font-ui text-sm text-muted-foreground">
+              <Spinner />
+              Reading {title} from {serviceName(target.service)}…
+            </p>
+          )
+          : <Callout title={`${serviceName(target.service)} could not be read.`} action={<Button variant="outline" size="row" onClick={onClose}>Close</Button>} />}
+      </div>
+    </PanelInline>
   );
 }
 
 type Open = { key: string; panel: 'pick' | 'import' };
 
-function NeedsYouRow({ item, index, selected, open, dimmed, onSelect, onOpen, onClose, onChanged, onOpenHealth, onUnauthenticated }: {
-  item: FlaggedItem; index: number; selected: boolean; open: Open['panel'] | null; dimmed: boolean;
+function NeedsYouRow({ item, selected, open, dimmed, onSelect, onOpen, onClose, onChanged, onOpenHealth, onUnauthenticated }: {
+  item: FlaggedItem; selected: boolean; open: Open['panel'] | null; dimmed: boolean;
   onSelect: () => void; onOpen: (panel: Open['panel']) => void; onClose: () => void; onChanged: () => void;
   onOpenHealth: () => void; onUnauthenticated: () => void;
 }) {
@@ -97,26 +110,37 @@ function NeedsYouRow({ item, index, selected, open, dimmed, onSelect, onOpen, on
     else if (action.kind === 'open_health') onOpenHealth();
     else {
       setSearching(true);
-      const ok = await sendSearch(action.service, action.type, action.ids);
+      const ok = await sendSearch(action.service, action.type, action.ids, onUnauthenticated);
       setSearching(false);
       setSearched({ ok, service: action.service });
     }
   };
   return (
-    <div className={rowTone(index, selected, dimmed)} onClick={onSelect} aria-selected={selected} role="row">
-      <div className={cn(needsYouColumns, 'min-h-[34px] px-5 py-1')}>
-        <span className="text-[var(--mm-ink-2)]">{item.kindWord}</span>
-        <span className="min-w-0 text-[var(--mm-ink)] [overflow-wrap:anywhere]">{item.label}</span>
-        <span className="hidden min-w-0 text-[var(--mm-ink-2)] md:block">{item.detail}</span>
-        <span className="hidden min-w-0 text-[var(--mm-ink-2)] md:block">{item.actions.map((action) => actionLabels[action.kind]).join(' · ')}</span>
-      </div>
+    <>
+      <RowFlagged
+        title={item.label}
+        reason={`${item.kindWord} · ${item.detail}`}
+        actions={<span className="w-full truncate text-right font-ui text-muted-foreground">{item.actions.map((action) => actionLabels[action.kind]).join(' · ')}</span>}
+        selected={selected}
+        aria-selected={selected}
+        onClick={onSelect}
+        className={dim(dimmed)}
+      />
       {selected && open === null && item.actions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 px-5 pb-3">
-          {item.actions.map((action) => (
-            <ScreenButton key={action.kind} disabled={action.kind === 'search' && searching} onClick={() => void run(action)}>{actionLabels[action.kind]}</ScreenButton>
+        <div className={cn(actionsLine, 'pl-16')}>
+          {item.actions.map((action, index) => (
+            <Button
+              key={action.kind}
+              size="row"
+              variant={index === 0 ? 'default' : 'outline'}
+              loading={action.kind === 'search' && searching}
+              onClick={() => void run(action)}
+            >
+              {actionLabels[action.kind]}
+            </Button>
           ))}
-          {searched?.ok === true && <span role="status" className="text-[var(--mm-ink-2)]">Search sent</span>}
-          {searched?.ok === false && <span role="alert" className="text-[var(--mm-risk)]">{serviceName(searched.service)} refused the search.</span>}
+          {searched?.ok === true && <StatusInline status="sent">Search sent</StatusInline>}
+          {searched?.ok === false && <StatusInline status="failed">{serviceName(searched.service)} refused the search.</StatusInline>}
         </div>
       )}
       {open === 'pick' && pick !== undefined && (
@@ -128,10 +152,10 @@ function NeedsYouRow({ item, index, selected, open, dimmed, onSelect, onOpen, on
           downloadId={manual.downloadId}
           onDone={onChanged}
           onCancel={onClose}
-          button={({ children, ...props }) => <ScreenButton {...props}>{children}</ScreenButton>}
+          onUnauthenticated={onUnauthenticated}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -173,7 +197,7 @@ function WantedList({ items, empty, now, open, setOpen, onChanged, onUnauthentic
     for (const item of chosen) groups.set(`${item.service}:${item.type}`, [...(groups.get(`${item.service}:${item.type}`) ?? []), item]);
     const results = await Promise.all([...groups.values()].map(async (group) => ({
       service: group[0].service,
-      ok: await sendSearch(group[0].service, group[0].type, group.map((item) => item.id)),
+      ok: await sendSearch(group[0].service, group[0].type, group.map((item) => item.id), onUnauthenticated),
     })));
     setSearching(false);
     setRefused(results.filter((result) => !result.ok).map((result) => result.service));
@@ -181,69 +205,73 @@ function WantedList({ items, empty, now, open, setOpen, onChanged, onUnauthentic
     onChanged();
   };
   const allChecked = searchable.length > 0 && chosen.length === searchable.length;
+  if (items.length === 0) return <EmptyState icon={<Flag />} title={empty} className="py-16" />;
   return (
     <>
-      {(chosen.length > 0 || refused !== null) && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--mm-seam)] px-5 py-2 text-[13px]">
-          {chosen.length > 0 && (
-            <>
-              <span className="text-[var(--mm-ink)]">{chosen.length} selected</span>
-              <ScreenButton disabled={searching} onClick={() => void search()}>Search</ScreenButton>
-              <ScreenButton onClick={() => setChecked(new Set())}>Clear</ScreenButton>
-            </>
-          )}
-          {refused !== null && refused.length === 0 && <span role="status" className="text-[var(--mm-ink-2)]">Search sent</span>}
-          {refused !== null && refused.map((service) => (
-            <span key={service} role="alert" className="text-[var(--mm-risk)]">{serviceName(service)} refused the search.</span>
-          ))}
+      {refused !== null && (
+        <div className="flex flex-wrap items-center gap-3">
+          {refused.length === 0 && <StatusInline status="sent">Search sent</StatusInline>}
+          {refused.map((service) => <StatusInline key={service} status="failed">{serviceName(service)} refused the search.</StatusInline>)}
         </div>
       )}
-      <div className={cn(wantedColumns, 'h-[30px] bg-[var(--mm-row)] px-5', header)} role="row">
-        <input
-          type="checkbox"
-          aria-label="Select every item that can be searched"
-          checked={allChecked}
-          disabled={searchable.length === 0}
-          onChange={() => setChecked(allChecked ? new Set() : new Set(searchable.map(wantedKey)))}
-        />
-        <span>TITLE</span><span>LAST RESULT</span><span className="hidden md:block">TYPE</span>
-        <span className="hidden md:block">DATE, OLDEST FIRST</span><span className="hidden md:block">SEARCHED</span>
-      </div>
-      {items.length === 0 && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">{empty}</p>}
-      <div role="table" aria-label="Wanted">
-        {items.map((item, index) => {
+      {chosen.length > 0 && (
+        <div className="flex h-7 items-center gap-3">
+          <span className="text-label text-foreground">{chosen.length} selected</span>
+          <Button size="row" loading={searching} onClick={() => void search()}>Search</Button>
+          <Button size="row" variant="outline" onClick={() => setChecked(new Set())}>Clear</Button>
+        </div>
+      )}
+      <Table aria-label="Wanted">
+        <TableHeader>
+          <TableHead className="w-4">
+            <Checkbox
+              aria-label="Select every item that can be searched"
+              checked={allChecked}
+              indeterminate={chosen.length > 0 && !allChecked}
+              disabled={searchable.length === 0}
+              onCheckedChange={() => setChecked(allChecked ? new Set() : new Set(searchable.map(wantedKey)))}
+            />
+          </TableHead>
+          <TableHead fill>Title and last result</TableHead>
+          <TableHead className="w-40">Date, oldest first</TableHead>
+          <TableHead className="w-16">Type</TableHead>
+          <TableHead className="w-60">Searched</TableHead>
+        </TableHeader>
+        {items.map((item) => {
           const key = wantedKey(item);
           const target = wantedTarget(item);
           const isSelected = selected === key;
           return (
-            <div
-              key={key}
-              className={rowTone(index, isSelected, open !== null && open.key !== key)}
-              onClick={() => { if (open === null) setSelected(key); }}
-              aria-selected={isSelected}
-              role="row"
-            >
-              <div className={cn(wantedColumns, 'min-h-[34px] px-5 py-1')}>
-                {item.inQueue
-                  ? <span />
-                  : (
-                    <input
-                      type="checkbox"
+            <div key={key} className="contents">
+              <TableRow
+                selected={isSelected}
+                aria-selected={isSelected}
+                onClick={() => { if (open === null) setSelected(key); }}
+                className={cn('h-(--row-two-line)', dim(open !== null && open.key !== key))}
+              >
+                <TableCell className="w-4">
+                  {!item.inQueue && (
+                    <Checkbox
                       aria-label={`Select ${item.title}`}
                       checked={checked.has(key)}
                       onClick={(event) => event.stopPropagation()}
-                      onChange={() => toggle(key)}
+                      onCheckedChange={() => toggle(key)}
                     />
                   )}
-                <span className="min-w-0 text-[var(--mm-ink)] [overflow-wrap:anywhere]">{item.title}</span>
-                <span className="min-w-0 truncate text-[var(--mm-ink-2)]" title={item.lastResult}>{item.lastResult}</span>
-                <span className="hidden text-[var(--mm-ink-2)] md:block">{item.type === 'movie' ? 'Movie' : 'Episode'}</span>
-                <span className="hidden tabular-nums text-[var(--mm-ink-2)] md:block">{dateText(item.availableAt)}</span>
-                <span className="hidden text-[var(--mm-ink-2)] md:block">{searchedText(item, now)}</span>
-              </div>
+                </TableCell>
+                <TableCell fill className="flex-col items-start justify-center gap-0.5">
+                  <span className="w-full truncate font-ui font-semibold">{item.title}</span>
+                  <span className="w-full truncate text-muted-foreground" title={item.lastResult}>Last result: {item.lastResult}</span>
+                </TableCell>
+                <TableCell className="w-40 text-muted-foreground">{dateText(item.availableAt)}</TableCell>
+                <TableCell className="w-16 text-muted-foreground">{item.type === 'movie' ? 'Movie' : 'Episode'}</TableCell>
+                <TableCell className="w-60 text-muted-foreground">
+                  <span className="truncate">{searchedText(item, now)}</span>
+                </TableCell>
+              </TableRow>
               {isSelected && open === null && target !== undefined && (
-                <div className="flex flex-wrap items-center gap-3 px-5 pb-3">
-                  <ScreenButton onClick={() => setOpen({ key, panel: 'pick' })}>Pick a release</ScreenButton>
+                <div className={cn(actionsLine, 'pl-12')}>
+                  <Button size="row" variant="outline" onClick={() => setOpen({ key, panel: 'pick' })}>Pick a release</Button>
                 </div>
               )}
               {open?.key === key && target !== undefined && (
@@ -252,7 +280,7 @@ function WantedList({ items, empty, now, open, setOpen, onChanged, onUnauthentic
             </div>
           );
         })}
-      </div>
+      </Table>
     </>
   );
 }
@@ -290,82 +318,89 @@ export function FlaggedScreen({ state, reload, headingRef, onUnauthenticated, on
   };
 
   const handled = state.needsYou.kind === 'ready' ? state.needsYou.value.handledThisWeek : undefined;
-  const summary = handled === undefined ? undefined
+  const note = handled === undefined ? undefined
     : tab === 'needs_you'
       ? `Automatic fixes handled ${handled} problems this week on their own. These are the ones they gave up on.`
       : `Automatic fixes handled ${handled} problems this week. Missing items are searched every 6h.`;
+  const counts: Record<Tab, number | undefined> = {
+    needs_you: state.needsYou.kind === 'ready' ? state.needsYou.value.items.length : undefined,
+    missing: state.wanted.kind === 'ready' ? state.wanted.value.missing.length : undefined,
+    cutoff: state.wanted.kind === 'ready' ? state.wanted.value.cutoff.length : undefined,
+  };
+  const words: Record<Tab, string> = { needs_you: 'need you', missing: 'missing', cutoff: 'below cutoff' };
+  const summary = tabs.flatMap(({ key }) => (counts[key] === undefined ? [] : [`${counts[key]} ${words[key]}`])).join(' · ');
   const load = tab === 'needs_you' ? state.needsYou : state.wanted;
 
   return (
-    <section aria-label="Flagged">
+    <section aria-label="Flagged" className="flex flex-col gap-6 pt-2 pb-6">
       <div ref={headingRef} tabIndex={-1}>
-        <ScreenHeading title="Flagged" summary={summary} />
+        <HeaderPage title="Flagged" summary={load.kind === 'ready' ? summary : undefined} note={load.kind === 'ready' ? note : undefined} />
       </div>
-      <div role="tablist" aria-label="Flagged lists" className="flex gap-5 border-b border-[var(--mm-seam)] px-5">
-        {tabs.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.key}
-            onClick={() => switchTab(item.key)}
-            className={cn(
-              'h-9 font-ui text-[13px] font-medium focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)]',
-              tab === item.key ? 'border-b border-[var(--mm-ink)] text-[var(--mm-ink)]' : 'text-[var(--mm-ink-2)]',
-            )}
-          >
-            {item.label}
-          </button>
-        ))}
+      <Tabs value={tab} onValueChange={(value) => switchTab(value as Tab)}>
+        <TabsList aria-label="Flagged lists" className="gap-5 border-b border-border">
+          {tabs.map((item) => <TabsTrigger key={item.key} value={item.key} count={counts[item.key]}>{item.label}</TabsTrigger>)}
+        </TabsList>
+      </Tabs>
+      <div key={tab} className="flex flex-col gap-6 transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
+        {load.kind === 'loading' && (
+          <div className="flex flex-col gap-3">
+            <StatusInline status="busy">Reading flagged items…</StatusInline>
+            <div className="flex flex-col">
+              {[0, 1, 2, 3, 4].map((index) => <SkeletonRowTwoLine key={index} />)}
+            </div>
+          </div>
+        )}
+        {load.kind === 'failed' && (
+          <Callout title="Flagged items could not be read." action={<Button variant="outline" size="row" onClick={() => void reload()}>Try again</Button>} />
+        )}
+        {tab === 'needs_you' && state.needsYou.kind === 'ready' && (state.needsYou.value.items.length === 0
+          ? (
+            <EmptyState icon={<Flag />} title="Nothing needs you" className="py-16">
+              Automatic fixes handled everything. Anything they give up on lands here.
+            </EmptyState>
+          )
+          : (
+            <Table aria-label="Needs you">
+              <TableHeader>
+                <TableHead className="w-8" />
+                <TableHead fill>Item</TableHead>
+                <TableHead className="w-30" />
+                <TableHead className="w-16" />
+                <TableHead align="end" className="w-60">Next step</TableHead>
+              </TableHeader>
+              {state.needsYou.value.items.map((item) => {
+                const key = String(item.problem.id);
+                return (
+                  <NeedsYouRow
+                    key={key}
+                    item={item}
+                    selected={selected === key}
+                    open={open?.key === key ? open.panel : null}
+                    dimmed={open !== null && open.key !== key}
+                    onSelect={() => { if (open === null) setSelected(key); }}
+                    onOpen={(panel) => setOpen({ key, panel })}
+                    onClose={() => setOpen(null)}
+                    onChanged={changed}
+                    onOpenHealth={onOpenHealth}
+                    onUnauthenticated={onUnauthenticated}
+                  />
+                );
+              })}
+            </Table>
+          ))}
+        {tab !== 'needs_you' && state.wanted.kind === 'ready' && (
+          <WantedList
+            key={tab}
+            items={tab === 'missing' ? state.wanted.value.missing : state.wanted.value.cutoff}
+            empty={tab === 'missing' ? 'Nothing is missing.' : 'Nothing is below cutoff.'}
+            now={now}
+            open={open}
+            setOpen={setOpen}
+            onChanged={changed}
+            onUnauthenticated={onUnauthenticated}
+          />
+        )}
       </div>
-      {load.kind === 'loading' && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">Reading flagged items…</p>}
-      {load.kind === 'failed' && (
-        <div className="flex items-center gap-3 px-5 py-6 text-[13px]">
-          <p role="alert" className="text-[var(--mm-risk)]">Flagged items could not be read.</p>
-          <ScreenButton onClick={() => void reload()}>Try again</ScreenButton>
-        </div>
-      )}
-      {tab === 'needs_you' && state.needsYou.kind === 'ready' && (
-        <>
-          <div className={cn(needsYouColumns, 'h-[30px] bg-[var(--mm-row)] px-5', header)} role="row">
-            <span>KIND</span><span>ITEM</span><span className="hidden md:block">WHAT HAPPENED</span><span className="hidden md:block">NEXT STEP</span>
-          </div>
-          {state.needsYou.value.items.length === 0 && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">Nothing needs you.</p>}
-          <div role="table" aria-label="Needs you">
-            {state.needsYou.value.items.map((item, index) => {
-              const key = String(item.problem.id);
-              return (
-                <NeedsYouRow
-                  key={key}
-                  item={item}
-                  index={index}
-                  selected={selected === key}
-                  open={open?.key === key ? open.panel : null}
-                  dimmed={open !== null && open.key !== key}
-                  onSelect={() => { if (open === null) setSelected(key); }}
-                  onOpen={(panel) => setOpen({ key, panel })}
-                  onClose={() => setOpen(null)}
-                  onChanged={changed}
-                  onOpenHealth={onOpenHealth}
-                  onUnauthenticated={onUnauthenticated}
-                />
-              );
-            })}
-          </div>
-        </>
-      )}
-      {tab !== 'needs_you' && state.wanted.kind === 'ready' && (
-        <WantedList
-          key={tab}
-          items={tab === 'missing' ? state.wanted.value.missing : state.wanted.value.cutoff}
-          empty={tab === 'missing' ? 'Nothing is missing.' : 'Nothing is below cutoff.'}
-          now={now}
-          open={open}
-          setOpen={setOpen}
-          onChanged={changed}
-          onUnauthenticated={onUnauthenticated}
-        />
-      )}
     </section>
   );
 }

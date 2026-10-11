@@ -1,13 +1,16 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { extname, isAbsolute } from 'node:path';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import { createAuthentication } from './auth.js';
+import { createAuthentication, isLoopback } from './auth.js';
+import { createDiscoverRoutes, type Discover } from './discover/index.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
+import { logEvent } from './log.js';
 import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
 import { createLibraryRoutes, type Library } from './library.js';
@@ -15,6 +18,11 @@ import { createOwnedRoutes, type Owned } from './owned.js';
 import { createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
 import { createSearchRoutes, type Search } from './search.js';
+import type { SecondVersionDelete } from './secondVersionDelete.js';
+import { createSecondVersionRoutes, type SecondVersions } from './secondVersions.js';
+import type { SetupEnvironment } from './setup.js';
+import { createTitleDeleteRoutes, type TitleDelete } from './titleDelete.js';
+import { createTmdbTitleRoutes, type TmdbTitles } from './tmdbTitles.js';
 
 export type CreateAppOptions = {
   clientDirectory: string;
@@ -29,9 +37,15 @@ export type CreateAppOptions = {
   add?: Add;
   releases?: Releases;
   grabs?: Grabs;
+  secondVersions?: SecondVersions;
+  secondVersionDelete?: SecondVersionDelete;
   owned?: Owned;
   protection?: Protection;
   library?: Library;
+  discover?: Discover;
+  titleDelete?: TitleDelete;
+  tmdbTitles?: TmdbTitles;
+  setup?: Hono<SetupEnvironment>;
   api?: Hono;
   images?: Hono;
   webhooks?: {
@@ -44,6 +58,7 @@ type AppEnvironment = {
   Variables: {
     sessionExpiresAt: number;
     sessionToken: string;
+    plexSignInToken: string | undefined;
   };
 };
 
@@ -109,6 +124,23 @@ const acceptsHtml = (header: string | undefined) => header?.split(',').some(
   },
 ) ?? false;
 
+const metricNames = ['LCP', 'INP', 'CLS', 'FCP', 'TTFB', 'api'];
+const metricRatings = ['good', 'needs-improvement', 'poor'];
+const metricKeys = ['name', 'value', 'route', 'path', 'rating'];
+const pagePath = (value: unknown) => typeof value === 'string' && value.length <= 200 && /^\/[A-Za-z0-9/_.\-]*$/.test(value);
+
+// Only these fields reach the log, so a browser cannot write anything else into it.
+const validMetric = (item: unknown) => {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) return false;
+  const { name, value, route, path, rating } = item as Record<string, unknown>;
+  return Object.keys(item).every((key) => metricKeys.includes(key))
+    && typeof name === 'string' && metricNames.includes(name)
+    && typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 600_000
+    && pagePath(route)
+    && (path === undefined ? name !== 'api' : pagePath(path))
+    && (rating === undefined || (typeof rating === 'string' && metricRatings.includes(rating)));
+};
+
 export const createApp = (options: CreateAppOptions) => {
   if (!isAbsolute(options.clientDirectory)) throw new TypeError('clientDirectory must be absolute.');
   const now = options.now ?? Date.now;
@@ -129,12 +161,34 @@ export const createApp = (options: CreateAppOptions) => {
   const staticFiles = serveStatic({ root: options.clientDirectory });
   const cookieOptions = { httpOnly: true, sameSite: 'Lax' as const, secure, path: '/' };
 
+  // A loopback listener sits behind the reverse proxy the README requires, so the socket is the proxy and the browser is
+  // the address the proxy appended last; anything earlier in the header is the browser's own claim.
+  const clientOf = (context: Context) => {
+    const forwarded = isLoopback(options.listeningHost) ? context.req.header('X-Forwarded-For')?.split(',').at(-1)?.trim() : undefined;
+    if (forwarded) return forwarded;
+    try {
+      return getConnInfo(context).remote.address ?? '';
+    } catch {
+      return '';
+    }
+  };
+
   const clearSessionCookie = (context: Context) => {
     deleteCookie(context, sessionCookieName, cookieOptions);
   };
   const clearBindingCookie = (context: Context) => {
     deleteCookie(context, bindingCookieName, cookieOptions);
   };
+
+  // Times every API request but these: the event stream stays open for hours, browser timings are logged by their own route,
+  // and image loads would flood the log.
+  app.use('*', async (context, next) => {
+    const { path } = context.req;
+    if (!path.startsWith('/api') || path === '/api/events' || path === '/api/metrics' || path.startsWith('/api/images/')) return next();
+    const started = performance.now();
+    await next();
+    logEvent('api', { method: context.req.method, path, status: context.res.status, ms: Math.round((performance.now() - started) * 10) / 10 });
+  });
 
   app.use('*', async (context, next) => {
     await next();
@@ -157,7 +211,8 @@ export const createApp = (options: CreateAppOptions) => {
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
   });
 
-  // A manual import lists every file of a season pack, so it gets more room than the other private writes.
+  // A manual import lists every file of a season pack, and a movie or show delete every torrent and second version chosen,
+  // so they get more room than the other private writes.
   const importRequestLimit = bodyLimit({
     maxSize: 64 * 1_024,
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
@@ -176,8 +231,10 @@ export const createApp = (options: CreateAppOptions) => {
       || contentType !== 'application/json'
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
-    if (context.req.path === '/api/grabs') return grabRequestLimit(context, next);
-    if (context.req.path.startsWith('/api/imports/')) return importRequestLimit(context, next);
+    // A batch of browser timings holds up to 50 items, so it gets the same room as a grab.
+    if (context.req.path === '/api/grabs' || context.req.path === '/api/second-versions' || context.req.path === '/api/metrics') return grabRequestLimit(context, next);
+    // A movie or show delete lists every torrent and second version chosen, which for a long show is many.
+    if (context.req.path.startsWith('/api/imports/') || /^\/api\/library\/(movie|series)\/\d+\/delete$/.test(context.req.path)) return importRequestLimit(context, next);
     return requestLimit(context, next);
   };
 
@@ -198,7 +255,7 @@ export const createApp = (options: CreateAppOptions) => {
       clearBindingCookie(context);
       return context.json({ error: 'invalid_request' }, 400);
     }
-    const result = await authentication.start(binding.kind === 'value' ? binding.value : undefined);
+    const result = await authentication.start(binding.kind === 'value' ? binding.value : undefined, clientOf(context));
     if (result.kind === 'not_configured') return context.json({ error: 'not_configured' }, 503);
     if (result.kind === 'unavailable') return context.json({ error: 'plex_unavailable' }, 503);
     if (result.kind === 'rate_limited') {
@@ -318,12 +375,19 @@ export const createApp = (options: CreateAppOptions) => {
     }
     context.set('sessionExpiresAt', validated.expiresAt);
     context.set('sessionToken', session.value);
+    context.set('plexSignInToken', authentication.plexToken(session.value));
     if (!['GET', 'HEAD', 'OPTIONS'].includes(context.req.method)) return requireBrowserPost(context, next);
     return next();
   };
 
   app.use('/api', privateGuard);
   app.use('/api/*', privateGuard);
+  app.post('/api/metrics', async (context) => {
+    const batch: unknown = await context.req.json().catch(() => undefined);
+    if (!Array.isArray(batch) || batch.length > 50 || !batch.every(validMetric)) return context.json({ error: 'invalid_request' }, 400);
+    for (const item of batch) logEvent('web', item);
+    return context.body(null, 204);
+  });
   app.get('/api/session', (context) => context.json({ expiresAt: context.get('sessionExpiresAt'), serverNow: now() }));
   let openStreams = 0;
   app.get('/api/events', (context) => {
@@ -363,12 +427,17 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.add !== undefined) app.route('/api/add', createAddRoutes(options.add));
   if (options.releases !== undefined) app.route('/api/releases', createReleaseRoutes(options.releases));
   if (options.grabs !== undefined) app.route('/api/grabs', createGrabRoutes(options.grabs));
+  if (options.secondVersions !== undefined) app.route('/api/second-versions', createSecondVersionRoutes(options.secondVersions, options.secondVersionDelete));
   if (options.owned !== undefined && options.grabs !== undefined) {
     app.route('/api/owned', createOwnedRoutes(options.owned, options.grabs.qualities));
   }
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
+  if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
+  if (options.tmdbTitles !== undefined) app.route('/api/library', createTmdbTitleRoutes(options.tmdbTitles));
+  if (options.discover !== undefined) app.route('/api/discover', createDiscoverRoutes(options.discover));
   if (options.images !== undefined) app.route('/api/images', options.images);
+  if (options.setup !== undefined) app.route('/api/setup', options.setup);
   if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));

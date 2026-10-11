@@ -3,16 +3,27 @@ import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
 import { Home } from './Home';
 import { navigate, useLocation } from './navigation';
-import { DownloadsScreen, LiveBar } from './downloads/Downloads';
+import { Button } from './components/ui/button';
+import { Callout } from './components/ui/callout';
+import { DownloadsLiveBar } from './components/ui/downloads-live-bar';
+import { LabelGroup } from './components/ui/label-group';
+import { PanelInline } from './components/ui/panel-inline';
+import { RowDownload } from './components/ui/row-download';
+import { StatusInline } from './components/ui/status-inline';
+import { ToastProvider } from './components/ui/toast';
+import { DownloadsScreen } from './downloads/Downloads';
 import { FlaggedScreen } from './flagged/Flagged';
 import { useFlagged } from './flagged/useFlagged';
-import { buildRows, groupRows } from './downloads/model';
+import { buildRows, formatSpeed, groupRows } from './downloads/model';
 import { useDownloads } from './downloads/useDownloads';
 import { HealthScreen } from './health/Health';
 import { useHealth } from './health/useHealth';
 import { BlocklistScreen } from './history/Blocklist';
 import { HistoryScreen } from './history/History';
 import { useBlocklist, useHistory } from './history/useHistory';
+import { startMetrics } from './metrics';
+import type { SetupStatus } from './settings/setup';
+import { SetupWizard } from './settings/SetupWizard';
 import './globals.css';
 
 type SessionState =
@@ -57,8 +68,9 @@ function App() {
   const checkSession = useCallback(async (completedSignIn = false) => {
     if (sessionRef.current.kind === 'signing-out') return;
     const previous = sessionRef.current;
+    // No 'checking' here: it unmounts the signed-in app, losing typed settings and open dialogs on every focus.
+    // The first check and signedIn() start from 'checking' already.
     const request = beginRequest();
-    if (completedSignIn || previous.kind !== 'signed-out') setSession({ kind: 'checking' });
     try {
       const requestStartedAt = performance.now();
       const response = await fetch('/api/session', {
@@ -204,7 +216,7 @@ function App() {
 
   if (session.kind === 'checking') {
     return (
-      <main className="min-h-screen bg-[var(--ground)]">
+      <main className="min-h-screen bg-background">
         <p className="sr-only" aria-live="polite">Checking session…</p>
       </main>
     );
@@ -215,7 +227,7 @@ function App() {
   }
 
   return (
-    <SignedIn
+    <SetupGate
       headingRef={headingRef}
       signOutLabel={session.kind === 'signing-out'
         ? 'Signing out…'
@@ -226,9 +238,9 @@ function App() {
       signOutProblem={(
         <>
           {session.kind === 'sign-out-failed' && (
-            <p role="alert" className="text-sm text-[var(--secondary-ink)]">
+            <StatusInline status="failed" role="alert">
               Sign-out failed. Your session may still be active.
-            </p>
+            </StatusInline>
           )}
           <p className="sr-only" aria-live="polite">
             {session.kind === 'signing-out' ? 'Signing out…' : ''}
@@ -241,8 +253,45 @@ function App() {
   );
 }
 
-// Home routes by address: the Library is home, search results, title pages and the calendar come from Home, and the Downloads, Flagged, History, Blocklist and Health screens live at /downloads, /flagged, /history, /blocklist and /health.
-function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'healthBadge'>) {
+type SignedInProps = Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'downloading' | 'healthProblems' | 'healthRisk'>;
+
+// The setup wizard blocks the app until every required part is set up; once open, it stays until the owner leaves Done.
+function SetupGate(props: SignedInProps) {
+  const [gate, setGate] = useState<{ kind: 'checking' | 'failed' | 'app' } | { kind: 'setup'; status: SetupStatus }>({ kind: 'checking' });
+  const unauthorizedRef = useRef(props.onUnauthenticated);
+  unauthorizedRef.current = props.onUnauthenticated;
+
+  const check = useCallback(async () => {
+    setGate({ kind: 'checking' });
+    try {
+      const response = await fetch('/api/setup', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (response.status === 401) {
+        unauthorizedRef.current();
+        return;
+      }
+      if (!response.ok) throw new Error('Setup status could not be read.');
+      const status = await response.json() as SetupStatus;
+      setGate(status.requiredComplete ? { kind: 'app' } : { kind: 'setup', status });
+    } catch {
+      setGate({ kind: 'failed' });
+    }
+  }, []);
+
+  useEffect(() => { void check(); }, [check]);
+
+  if (gate.kind === 'app') return <SignedIn {...props} />;
+  if (gate.kind === 'setup') return <SetupWizard {...props} status={gate.status} onFinished={() => setGate({ kind: 'app' })} />;
+  return (
+    <main className="min-h-screen bg-background px-(--page-margin) pt-10">
+      {gate.kind === 'failed'
+        ? <Callout title="media-manager-2 could not be read" action={<Button variant="outline" onClick={() => void check()}>Retry</Button>}>Check that it is running, then retry.</Callout>
+        : <p className="sr-only" aria-live="polite">Checking setup…</p>}
+    </main>
+  );
+}
+
+// Home routes by address: the Library is home, search results, title pages, the calendar and Discover (/discover and its grids) come from Home, and the Downloads, Flagged, History, Blocklist, Health and Settings screens live at /downloads, /flagged, /history, /blocklist, /health and /settings.
+function SignedIn(props: SignedInProps) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
   const { pathname } = useLocation();
   const history = useHistory(props.onUnauthenticated, pathname === '/history');
@@ -252,61 +301,91 @@ function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'n
   const flaggedHeadingRef = useRef<HTMLDivElement>(null);
   const health = useHealth(props.onUnauthenticated);
   const healthHeadingRef = useRef<HTMLDivElement>(null);
-  const healthBadge = (() => {
-    if (health.state.kind !== 'ready') return null;
-    const { problems } = health.state.snapshot;
-    const errors = problems.filter((problem) => problem.level === 'error').length;
-    const warnings = problems.filter((problem) => problem.level === 'warning').length;
-    if (errors > 0) return `${errors} ${errors === 1 ? 'RISK' : 'RISKS'}`;
-    if (warnings > 0) return `${warnings} ${warnings === 1 ? 'WARNING' : 'WARNINGS'}`;
-    return null;
-  })();
-  const needsYou = useMemo(() => {
-    const rows = state.kind === 'ready' ? buildRows(state.snapshot) : [];
-    return groupRows(rows).find((group) => group.key === 'needs_you')?.rows.length ?? 0;
-  }, [state]);
+  const healthProblems = health.state.kind === 'ready' ? health.state.snapshot.problems : [];
+  const rows = useMemo(() => (state.kind === 'ready' ? buildRows(state.snapshot) : []), [state]);
+  const needsYou = useMemo(() => groupRows(rows).find((group) => group.key === 'needs_you')?.rows.length ?? 0, [rows]);
+  const downloadingRows = rows.filter((row) => row.downloading);
+  const speeds = `${formatSpeed(rows.reduce((total, row) => total + row.downRate, 0))} down · ${formatSpeed(rows.reduce((total, row) => total + row.upRate, 0))} up`;
+  const [barOpen, setBarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!barOpen) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setBarOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [barOpen]);
+
   return (
-    <div className="pb-8">
-      <Home
-        {...props}
-        downloadsState={state}
-        needsYou={needsYou}
-        healthBadge={healthBadge}
-        downloads={(
-          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
-            <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
-          </div>
-        )}
-        flagged={(
-          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
-            <FlaggedScreen
-              state={flagged}
-              reload={flagged.reload}
-              headingRef={flaggedHeadingRef}
-              onUnauthenticated={props.onUnauthenticated}
-              onOpenHealth={() => navigate('/health')}
-            />
-          </div>
-        )}
-        history={<div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><HistoryScreen history={history} onNavigate={navigate} /></div>}
-        blocklist={<div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><BlocklistScreen blocklist={blocklist} /></div>}
-        health={(
-          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
-            <HealthScreen state={health.state} runChecks={health.runChecks} headingRef={healthHeadingRef} />
-          </div>
-        )}
-        renderBar={(showDownloads) => (
-          <LiveBar
-            state={state}
-            onOpen={() => {
-              showDownloads();
-              window.requestAnimationFrame(() => downloadsHeadingRef.current?.focus());
-            }}
+    <Home
+      {...props}
+      downloadsState={state}
+      needsYou={needsYou}
+      downloading={downloadingRows.length}
+      healthProblems={healthProblems.filter((problem) => problem.level !== 'notice').length}
+      healthRisk={healthProblems.some((problem) => problem.level === 'error')}
+      downloads={<DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} onUnauthenticated={props.onUnauthenticated} />}
+      flagged={(
+        <FlaggedScreen
+          state={flagged}
+          reload={flagged.reload}
+          headingRef={flaggedHeadingRef}
+          onUnauthenticated={props.onUnauthenticated}
+          onOpenHealth={() => navigate('/health')}
+        />
+      )}
+      history={<HistoryScreen history={history} onNavigate={navigate} />}
+      blocklist={<BlocklistScreen blocklist={blocklist} />}
+      health={<HealthScreen state={health.state} runChecks={health.runChecks} headingRef={healthHeadingRef} />}
+      renderBar={(showDownloads) => {
+        const onOpen = () => {
+          setBarOpen(false);
+          showDownloads();
+          window.requestAnimationFrame(() => downloadsHeadingRef.current?.focus());
+        };
+        return (
+          <DownloadsLiveBar
+            count={state.kind === 'ready' ? (downloadingRows.length === 0 ? 'Nothing downloading' : `${downloadingRows.length} downloading`) : 'downloads'}
+            idle={downloadingRows.length === 0}
+            speeds={speeds}
+            items={downloadingRows.map((row) => ({ key: row.key, name: row.label, percent: row.progress ?? 0 }))}
+            problem={needsYou > 0 ? `${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you` : undefined}
+            expanded={barOpen}
+            onExpandedChange={setBarOpen}
+            panel={(
+              <PanelInline
+                open
+                title="Downloads"
+                onClose={() => setBarOpen(false)}
+                primary={<Button size="large" onClick={onOpen}>Open Downloads</Button>}
+                secondary={<Button variant="outline" kbd="Esc" onClick={() => setBarOpen(false)}>Collapse</Button>}
+                hint={speeds}
+              >
+                <div className="px-5">
+                  <LabelGroup count={downloadingRows.length}>Downloading</LabelGroup>
+                  <div role="table" aria-label="Downloading" className="border-t border-border">
+                    {downloadingRows.map((row) => (
+                      <RowDownload
+                        key={row.key}
+                        title={row.label}
+                        detail={row.release}
+                        progress={row.progress ?? 0}
+                        speed={formatSpeed(row.downRate)}
+                        eta={row.timeLeft}
+                        tracker={row.tracker}
+                        state={row.status.tone === 'risk' ? 'stalled' : 'downloading'}
+                        stateLabel={row.seeders === null ? row.status.word : `${row.status.word} · ${row.seeders} seeders`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </PanelInline>
+            )}
           />
-        )}
-      />
-    </div>
+        );
+      }}
+    />
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+startMetrics();
+createRoot(document.getElementById('root')!).render(<ToastProvider><App /></ToastProvider>);

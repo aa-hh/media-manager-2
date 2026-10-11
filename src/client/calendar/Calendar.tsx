@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarX } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { Button } from '@/components/ui/button';
+import { CalendarDayHeader, CalendarEntry as CalendarEntryTile, CalendarHeader, CalendarMonthCell, CalendarNowLine } from '@/components/ui/calendar';
+import { Callout } from '@/components/ui/callout';
+import { EmptyState } from '@/components/ui/empty-state';
+import { LabelGroup } from '@/components/ui/label-group';
+import { SkeletonCalendarEntry } from '@/components/ui/skeleton';
+import { StripStillMissing } from '@/components/ui/strip-still-missing';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 import { buildRows } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
@@ -40,92 +49,159 @@ const targetOf = (group: CalendarGroup) => {
   return entry.kind === 'episode' ? `/series/${entry.seriesId}` : `/movie/${entry.id}`;
 };
 
-function GroupButton({ group, progress, now }: { group: CalendarGroup; progress: Map<string, SubjectProgress>; now: number }) {
-  const word = entryWord(group, progress, now);
-  const time = timeOf(group);
-  return (
-    <button
-      type="button"
-      onClick={() => navigate(targetOf(group))}
-      className="flex w-full min-w-0 flex-col px-2 py-1 text-left hover:bg-[var(--mm-row-hover)] focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)]"
-    >
-      <span className="truncate font-ui text-[13px] font-semibold">{group.title}</span>
-      <span className="truncate font-data text-[12px] text-[var(--mm-ink-2)]">{[group.subtitle, time].filter((part) => part !== '').join(' · ')}</span>
-      {word !== null && <span className={cn('truncate font-data text-[12px]', word === 'missing' ? 'text-[var(--mm-risk)]' : 'text-[var(--mm-ink-2)]')}>{word}</span>}
-    </button>
-  );
-}
+const openTarget = (group: CalendarGroup) => (event: MouseEvent<HTMLAnchorElement>) => {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+  event.preventDefault();
+  navigate(targetOf(group));
+};
+const liveOf = (group: CalendarGroup, progress: Map<string, SubjectProgress>) => group.entries
+  .map((entry) => progress.get(entry.kind === 'episode' ? `episode:${entry.id}` : `movie:${entry.id}`))
+  .find((live) => live !== undefined);
+const dayLabel = (day: Date) => `${weekdays[(day.getDay() + 6) % 7]} ${day.getDate()} ${shortMonth(day)}`;
 
-function DayCell({ day, groups, today, dimmed, label, progress, now }: {
-  day: Date;
-  groups: CalendarGroup[];
-  today: boolean;
-  dimmed?: boolean;
-  label: string;
+function Entry({ group, progress, now, meta, compact = false }: {
+  group: CalendarGroup;
   progress: Map<string, SubjectProgress>;
   now: number;
+  meta: string[];
+  compact?: boolean;
 }) {
+  const word = entryWord(group, progress, now);
   return (
-    <section
-      aria-label={day.toDateString()}
-      aria-current={today ? 'date' : undefined}
-      className={cn('flex min-h-24 min-w-0 flex-col gap-1 border border-[var(--mm-seam)] p-1', today && 'border-[var(--mm-ink)]', dimmed && 'opacity-40')}
-    >
-      <h3 className={cn('px-1 font-data text-[12px]', today ? 'font-semibold text-[var(--mm-ink)]' : 'text-[var(--mm-ink-2)]')}>{label}{today ? ' · today' : ''}</h3>
-      {groups.map((group) => <GroupButton key={group.key} group={group} progress={progress} now={now} />)}
-    </section>
+    <CalendarEntryTile
+      href={targetOf(group)}
+      onClick={openTarget(group)}
+      state={word === 'missing' ? 'missing' : 'normal'}
+      title={compact && group.kind === 'episode' ? `${group.title} ${group.subtitle}` : group.title}
+      meta={[...meta, word ?? ''].filter((part) => part !== '').join(' · ')}
+      progress={liveOf(group, progress)?.percent ?? undefined}
+      compact={compact}
+    />
   );
 }
 
-function Days({ view, window, entries, progress, now, month }: {
-  view: View;
+type GridProps = {
   window: CalendarWindow;
   entries: CalendarEntry[];
   progress: Map<string, SubjectProgress>;
   now: number;
-  month: number;
-}) {
+  loading: boolean;
+};
+
+function WeekGrid({ window, entries, progress, now, loading }: GridProps) {
+  const today = new Date(now);
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const perDay = groupByDay(entries, window.days);
+  return (
+    <div className="flex justify-between">
+      {window.days.map((day, index) => {
+        const isToday = sameDay(day, today);
+        const groups = perDay[index];
+        const before = isToday ? groups.filter((group) => Date.parse(group.at) <= now) : groups;
+        const after = isToday ? groups.slice(before.length) : [];
+        const entry = (group: CalendarGroup) => <Entry key={group.key} group={group} progress={progress} now={now} meta={[timeOf(group), group.subtitle]} />;
+        return (
+          <Fragment key={day.getTime()}>
+            {index > 0 && <span aria-hidden="true" className="w-px shrink-0 self-stretch bg-border" />}
+            <section aria-label={day.toDateString()} aria-current={isToday ? 'date' : undefined} className="flex w-47 min-w-0 shrink flex-col gap-2">
+              <CalendarDayHeader
+                day={weekdays[index]}
+                date={day.getDate()}
+                today={isToday}
+                tag={isToday ? 'today' : sameDay(day, tomorrow) ? 'tomorrow' : undefined}
+              />
+              {loading
+                ? <><SkeletonCalendarEntry /><SkeletonCalendarEntry /></>
+                : (
+                  <>
+                    {before.map(entry)}
+                    {isToday && <CalendarNowLine time={today.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} />}
+                    {after.map(entry)}
+                  </>
+                )}
+            </section>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// A month cell holds three tiles; past that, two tiles and the count of the rest.
+const MONTH_TILES = 3;
+
+function MonthGrid({ window, entries, progress, now, loading, month, onOpenDay }: GridProps & { month: number; onOpenDay: (day: Date) => void }) {
   const today = new Date(now);
   const perDay = groupByDay(entries, window.days);
-  const missing = view === 'forecast'
-    ? stillMissing(entries.filter((entry) => Date.parse(entry.at) < window.start.getTime()), progress, now)
-    : [];
+  const weeks = Array.from({ length: window.days.length / 7 }, (_, week) => window.days.slice(week * 7, week * 7 + 7));
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-2" aria-hidden="true">
+        {weekdays.map((name) => <span key={name} className="flex h-5 min-w-0 flex-1 items-center px-1.5 text-caption tracking-wider text-subtle-foreground uppercase">{name}</span>)}
+      </div>
+      {weeks.map((days, week) => (
+        <div key={days[0].getTime()} className="flex gap-2">
+          {days.map((day, index) => {
+            const groups = perDay[week * 7 + index];
+            const shown = groups.length > MONTH_TILES ? groups.slice(0, MONTH_TILES - 1) : groups;
+            const rest = groups.length - shown.length;
+            return (
+              <CalendarMonthCell
+                key={day.getTime()}
+                role="group"
+                aria-label={day.toDateString()}
+                date={day.getDate()}
+                today={sameDay(day, today)}
+                outside={day.getMonth() !== month}
+                more={rest > 0 ? <button type="button" onClick={() => onOpenDay(day)} className="rounded-xs hover:underline focus-ring">+{rest} more</button> : undefined}
+                className="h-32 min-w-0 flex-1"
+              >
+                {loading
+                  ? <SkeletonCalendarEntry />
+                  : shown.length > 0 ? shown.map((group) => <Entry key={group.key} group={group} progress={progress} now={now} meta={[]} compact />) : undefined}
+              </CalendarMonthCell>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Forecast({ window, entries, progress, now, loading }: GridProps) {
+  const today = new Date(now);
+  const perDay = groupByDay(entries, window.days);
+  const missing = stillMissing(entries.filter((entry) => Date.parse(entry.at) < window.start.getTime()), progress, now);
   const missingDays = Array.from({ length: 7 }, (_, index) => new Date(window.lookback.getFullYear(), window.lookback.getMonth(), window.lookback.getDate() + index));
   const missingGroups = groupByDay(missing, missingDays).flat();
   return (
-    <>
-      {view !== 'forecast' && (
-        <div className="mt-4 hidden grid-cols-7 gap-1 font-data text-[12px] text-[var(--mm-ink-2)] lg:grid" aria-hidden="true">
-          {weekdays.map((name) => <span key={name} className="px-1">{name}</span>)}
-        </div>
+    <div className="flex flex-col gap-1">
+      {!loading && missingGroups.length > 0 && (
+        <>
+          <StripStillMissing lead="Aired, still missing" className="mt-6">
+            {missingGroups.map((group) => `${group.title} ${group.subtitle}`).join(' · ')}
+          </StripStillMissing>
+          {missingGroups.map((group) => (
+            <Entry key={group.key} group={group} progress={progress} now={now} meta={[group.subtitle, `aired ${dayLabel(new Date(group.at))}`]} />
+          ))}
+        </>
       )}
-      {view === 'forecast' && (
-        <section aria-label="Aired, still missing" className="mt-4 border border-[var(--mm-seam)] p-2">
-          <h3 className={cn('font-ui text-[14px] font-semibold', missing.length > 0 && 'text-[var(--mm-risk)]')}>{missing.length} aired, still missing</h3>
-          {missingGroups.map((group) => <GroupButton key={group.key} group={group} progress={progress} now={now} />)}
-        </section>
-      )}
-      <div className={cn('mt-2 grid gap-1', view === 'forecast' ? 'grid-cols-1' : view === 'week' ? 'grid-cols-1 lg:grid-cols-7' : 'grid-cols-7')}>
-        {window.days.map((day, index) => {
-          const boundary = day.getDate() === 1 || index === 0;
-          const label = view === 'month'
-            ? (boundary ? `${day.getDate()} ${shortMonth(day)}` : String(day.getDate()))
-            : `${weekdays[(day.getDay() + 6) % 7]} ${day.getDate()} ${shortMonth(day)}`;
-          return (
-            <DayCell
-              key={day.getTime()}
-              day={day}
-              groups={perDay[index]}
-              today={sameDay(day, today)}
-              dimmed={view === 'month' && day.getMonth() !== month}
-              label={label}
-              progress={progress}
-              now={now}
-            />
-          );
-        })}
-      </div>
-    </>
+      {window.days.map((day, index) => {
+        const groups = perDay[index];
+        return (
+          <section key={day.getTime()} aria-label={day.toDateString()} className="flex flex-col gap-1">
+            <LabelGroup count={!loading && groups.length > 0 ? groups.length : undefined}>
+              {dayLabel(day)}{sameDay(day, today) ? ' · today' : ''}
+            </LabelGroup>
+            {loading
+              ? <><SkeletonCalendarEntry /><SkeletonCalendarEntry /></>
+              : groups.length === 0
+                ? <p className="text-label font-normal text-subtle-foreground">Nothing airs.</p>
+                : groups.map((group) => <Entry key={group.key} group={group} progress={progress} now={now} meta={[timeOf(group), group.subtitle]} />)}
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -138,7 +214,15 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
   const requested = params.get('view');
   const view: View = requested === 'month' || requested === 'forecast' ? requested : 'week';
   const at = params.get('at');
-  const anchor = useMemo(() => parseDay(at) ?? new Date(), [at]);
+  // With no ?at= the calendar follows the clock, so a tab left open past midnight moves to the new day.
+  const [today, setToday] = useState(() => isoDay(new Date()));
+  useEffect(() => {
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    const timer = setTimeout(() => setToday(isoDay(new Date())), midnight.getTime() - Date.now());
+    return () => clearTimeout(timer);
+  }, [today]);
+  const anchor = useMemo(() => parseDay(at) ?? parseDay(today) ?? new Date(), [at, today]);
   const window = useMemo(() => windowFor(view, anchor), [view, anchor]);
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
 
@@ -183,49 +267,47 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
   );
   const now = Date.now();
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const control = 'h-8 px-3 font-ui text-[14px] font-semibold hover:bg-[var(--mm-row-hover)]';
+  const loading = state.kind === 'loading';
+  const entries = state.kind === 'ready' ? state.data.entries : [];
+  const missing = stillMissing(entries, progress, now).length;
+  const grid = { window, entries, progress, now, loading };
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] bg-[var(--mm-ground)] px-4 pb-16 pt-6 text-[var(--mm-ink)] sm:px-6">
+    <div className={cn('flex flex-col pt-2 pb-6', view === 'week' ? 'gap-6' : view === 'month' && 'gap-4')}>
       <h2 className="sr-only">Calendar</h2>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div role="tablist" aria-label="Calendar view" className="flex gap-1">
-          {views.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={view === value}
-              onClick={() => go(value, parseDay(at) === undefined ? null : anchor)}
-              className={cn('h-8 px-3 font-ui text-[14px]', view === value ? 'bg-[var(--mm-ink)] font-semibold text-[var(--mm-on-cell)]' : 'text-[var(--mm-ink-2)] hover:bg-[var(--mm-row-hover)]')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1">
-          <button type="button" aria-label="Previous" onClick={() => step(-1)} className={control}>‹</button>
-          <button type="button" onClick={() => go(view, null)} className={control}>Today</button>
-          <button type="button" aria-label="Next" onClick={() => step(1)} className={control}>›</button>
-        </div>
-        <span className="font-ui text-[16px] font-semibold">{rangeLabel(view, window)}</span>
-        <span className="font-data text-[12px] text-[var(--mm-ink-2)]">times in {zone}</span>
-      </div>
-      {state.kind === 'loading' && <p className="mt-4 font-ui text-[14px] text-[var(--mm-ink-2)]">Loading…</p>}
-      {state.kind === 'failed' && (
-        <div className="mt-4 flex items-center gap-3">
-          <p role="alert" className="font-ui text-[14px] text-[var(--mm-risk)]">The calendar could not be read.</p>
-          <button type="button" onClick={() => load()} className="h-8 border border-[var(--mm-ink-3)] px-3 font-ui text-[14px] font-semibold hover:bg-[var(--mm-row-hover)]">Retry</button>
-        </div>
-      )}
-      {state.kind === 'ready' && (
-        <>
-          {[serviceProblem('Sonarr', state.data.services.sonarr), serviceProblem('Radarr', state.data.services.radarr)]
-            .filter((line) => line !== undefined)
-            .map((line) => <p key={line} role="alert" className="mt-3 font-ui text-[14px] text-[var(--mm-risk)]">{line}</p>)}
-          <Days view={view} window={window} entries={state.data.entries} progress={progress} now={now} month={anchor.getMonth()} />
-        </>
-      )}
+      <CalendarHeader
+        range={rangeLabel(view, window)}
+        missing={missing > 0 ? `${missing} missing` : undefined}
+        onPrevious={() => step(-1)}
+        onToday={() => go(view, null)}
+        onNext={() => step(1)}
+        previousLabel="Previous"
+        nextLabel="Next"
+        timeZone={`Times in ${zone}`}
+        view={(
+          <ToggleGroup aria-label="Calendar view" value={view} onValueChange={(value) => go(value as View, parseDay(at) === undefined ? null : anchor)}>
+            {views.map(([value, label]) => <ToggleGroupItem key={value} value={value}>{label}</ToggleGroupItem>)}
+          </ToggleGroup>
+        )}
+      />
+      {state.kind === 'failed'
+        ? <Callout title="The calendar could not be read." action={<Button variant="outline" onClick={() => load()}>Retry</Button>} className="w-130" />
+        : (
+          <div
+            key={`${view}:${isoDay(window.start)}:${state.kind}`}
+            className={cn('flex flex-col transition-opacity duration-(--duration-base) ease-out starting:opacity-0', view === 'week' ? 'gap-6' : view === 'month' && 'gap-4')}
+          >
+            {state.kind === 'ready' && [serviceProblem('Sonarr', state.data.services.sonarr), serviceProblem('Radarr', state.data.services.radarr)]
+              .filter((line) => line !== undefined)
+              .map((line) => <Callout key={line} look="warning" title={line} className="w-130" />)}
+            {view === 'week' && state.kind === 'ready' && entries.length === 0 && (
+              <EmptyState icon={<CalendarX aria-hidden="true" />} title="Nothing airs this week." />
+            )}
+            {view === 'week' && <WeekGrid {...grid} />}
+            {view === 'month' && <MonthGrid {...grid} month={anchor.getMonth()} onOpenDay={(day) => go('week', day)} />}
+            {view === 'forecast' && <Forecast {...grid} />}
+          </div>
+        )}
     </div>
   );
 }

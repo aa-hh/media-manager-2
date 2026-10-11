@@ -1,12 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { getPreference, setPreference } from './preferences.js';
+import { lookupTitle } from './search.js';
+import type { ArrServices, Result } from './services/arr.js';
+import type { TitleStore } from './titleStore.js';
 
-type ArrRequest = (
-  path: string,
-  init?: { method?: 'GET' | 'POST'; body?: unknown },
-) => Promise<{ status: number; body: unknown }>;
-type ArrService = { request: ArrRequest; configured: () => boolean };
 type Service = 'sonarr' | 'radarr';
 
 // Sonarr's and Radarr's own monitor values, in the order their add screens list them.
@@ -53,15 +51,10 @@ const failureFor = (status: number): Failure => (
   status === 401 || status === 403 ? { kind: 'rejected' } : { kind: 'unreachable' }
 );
 
-// Sonarr and Radarr answer a refused add with a list of validation failures; their
-// messages are what the owner needs to see ("This series has already been added").
-const refusal = (body: unknown): string | undefined => {
-  const messages = (Array.isArray(body) ? body : [body]).flatMap((item) => {
-    if (!isRecord(item)) return [];
-    const message = item.errorMessage ?? item.message;
-    return typeof message === 'string' && message.trim() !== '' ? [message.trim()] : [];
-  });
-  return messages.length === 0 ? undefined : [...new Set(messages)].join(' ');
+const added = (result: Result<{ id: number }>): { kind: 'added'; libraryId: number } | Failure => {
+  if (result.kind === 'ok') return { kind: 'added', libraryId: result.value.id };
+  if (result.kind === 'refused') return { kind: 'refused', reason: result.message };
+  return { kind: result.kind };
 };
 
 export const parseSeriesChoices = (value: unknown): SeriesAddChoices | undefined => {
@@ -96,7 +89,7 @@ const readDefaults = (database: DatabaseSync, service: Service) => {
   }
 };
 
-export const createAdd = (database: DatabaseSync, services: Record<Service, ArrService>) => {
+export const createAdd = (database: DatabaseSync, services: ArrServices, store: TitleStore) => {
   const get = async (service: Service, path: string): Promise<{ kind: 'ok'; body: unknown } | Failure> => {
     let response: { status: number; body: unknown };
     try {
@@ -129,42 +122,13 @@ export const createAdd = (database: DatabaseSync, services: Record<Service, ArrS
     return { kind: 'ok', qualityProfiles, rootFolders, defaults: usable ? saved : null } as const;
   };
 
-  // The add body must be the lookup's own record: Sonarr and Radarr take their title,
-  // images and seasons from it rather than fetching them again.
-  const lookupOne = async (service: Service, term: string, idKey: 'tvdbId' | 'tmdbId', id: number) => {
-    const path = service === 'sonarr' ? '/api/v3/series/lookup' : '/api/v3/movie/lookup';
-    const result = await get(service, `${path}?term=${encodeURIComponent(term)}`);
-    if (result.kind !== 'ok') return result;
-    if (!Array.isArray(result.body)) return { kind: 'unreachable' } as const;
-    const match = result.body.find((item) => isRecord(item) && item[idKey] === id);
-    return match === undefined ? { kind: 'not_found' } as const : { kind: 'ok', record: match as Record<string, unknown> } as const;
-  };
-
-  const send = async (service: Service, path: string, body: unknown): Promise<{ kind: 'added'; libraryId: number } | Failure> => {
-    let response: { status: number; body: unknown };
-    try {
-      response = await services[service].request(path, { method: 'POST', body });
-    } catch {
-      return { kind: 'unreachable' };
-    }
-    if (response.status === 401 || response.status === 403) return { kind: 'rejected' };
-    if (response.status >= 400 && response.status < 500) {
-      return { kind: 'refused', reason: refusal(response.body) ?? `${service === 'sonarr' ? 'Sonarr' : 'Radarr'} refused the add.` };
-    }
-    if (response.status < 200 || response.status > 299 || !isRecord(response.body) || !positiveInteger(response.body.id)) {
-      return { kind: 'unreachable' };
-    }
-    return { kind: 'added', libraryId: response.body.id };
-  };
-
   return {
     options,
     async addSeries(tvdbId: number, choices: SeriesAddChoices) {
       if (!services.sonarr.configured()) return { kind: 'not_configured' } as const;
-      const found = await lookupOne('sonarr', `tvdb:${tvdbId}`, 'tvdbId', tvdbId);
-      if (found.kind !== 'ok') return found;
-      const result = await send('sonarr', '/api/v3/series', {
-        ...found.record,
+      const record = await lookupTitle(services, store, 'sonarr', tvdbId);
+      if (record.kind !== 'ok') return added(record);
+      const result = added(await services.sonarr.addSeries(record.value, {
         qualityProfileId: choices.qualityProfileId,
         rootFolderPath: choices.rootFolderPath,
         seasonFolder: choices.seasonFolder,
@@ -177,22 +141,21 @@ export const createAdd = (database: DatabaseSync, services: Record<Service, ArrS
           searchForMissingEpisodes: choices.searchOnAdd,
           searchForCutoffUnmetEpisodes: false,
         },
-      });
+      }));
       if (result.kind === 'added') setPreference(database, 'add.sonarr', JSON.stringify(choices));
       return result;
     },
     async addMovie(tmdbId: number, choices: MovieAddChoices) {
       if (!services.radarr.configured()) return { kind: 'not_configured' } as const;
-      const found = await lookupOne('radarr', `tmdb:${tmdbId}`, 'tmdbId', tmdbId);
-      if (found.kind !== 'ok') return found;
-      const result = await send('radarr', '/api/v3/movie', {
-        ...found.record,
+      const record = await lookupTitle(services, store, 'radarr', tmdbId);
+      if (record.kind !== 'ok') return added(record);
+      const result = added(await services.radarr.addMovie(record.value, {
         qualityProfileId: choices.qualityProfileId,
         rootFolderPath: choices.rootFolderPath,
         minimumAvailability: choices.minimumAvailability,
         monitored: choices.monitor !== 'none',
         addOptions: { monitor: choices.monitor, searchForMovie: choices.searchOnAdd },
-      });
+      }));
       if (result.kind === 'added') setPreference(database, 'add.radarr', JSON.stringify(choices));
       return result;
     },

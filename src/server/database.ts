@@ -269,6 +269,126 @@ export const applicationMigrations = [
   // Backups once went only to Cloudflare R2; the same four settings now describe any S3-compatible bucket.
   `UPDATE OR IGNORE settings SET key = 'backup.' || substr(key, 4)
     WHERE key IN ('r2.endpoint', 'r2.bucket', 'r2.accessKeyId', 'r2.secretAccessKey');`,
+  // One row per movie or episode: a pack's rows share one hash. Second versions never enter grabs, which Sonarr and Radarr drive.
+  `CREATE TABLE second_versions (
+    id INTEGER PRIMARY KEY,
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    movie_id INTEGER,
+    series_id INTEGER,
+    episode_id INTEGER,
+    release_title TEXT NOT NULL,
+    guid TEXT NOT NULL,
+    indexer TEXT NOT NULL,
+    quality TEXT NOT NULL,
+    size_bytes INTEGER,
+    hash TEXT,
+    state TEXT NOT NULL CHECK (state IN ('sending', 'downloading', 'importing', 'imported', 'failed', 'deleted')),
+    failure TEXT,
+    file_path TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    imported_at INTEGER,
+    deleted_at INTEGER,
+    CHECK (
+      (service = 'radarr' AND movie_id IS NOT NULL AND series_id IS NULL AND episode_id IS NULL)
+      OR (service = 'sonarr' AND movie_id IS NULL AND series_id IS NOT NULL AND episode_id IS NOT NULL)
+    ),
+    CHECK (hash IS NOT NULL OR state = 'failed')
+  ) STRICT;
+  CREATE INDEX second_versions_hash ON second_versions (hash);
+  CREATE INDEX second_versions_state ON second_versions (state);`,
+  // A hash's file list never changes, so it is read from rTorrent once and dropped when the torrent is gone.
+  `ALTER TABLE torrents ADD COLUMN directory TEXT NOT NULL DEFAULT '';
+  CREATE TABLE torrent_files (
+    hash TEXT NOT NULL,
+    "index" INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    PRIMARY KEY (hash, "index")
+  ) STRICT;`,
+  // What happened to each second version, for history. Kind has no CHECK so later kinds need no table rebuild.
+  `CREATE TABLE version_events (
+    id INTEGER PRIMARY KEY,
+    second_version_id INTEGER NOT NULL REFERENCES second_versions (id),
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX version_events_at ON version_events (at);`,
+  // The imported file's device and inode, so a delete removes only the file this app linked there.
+  'ALTER TABLE second_versions ADD COLUMN file_inode TEXT;',
+  // Tracker accounts moved from one fixed set of keys per tracker to one credential and software per added tracker.
+  // Blutopia's token becomes blutopia.cc's credential (adding the tracker); blutopia.cc runs UNIT3D whenever it is
+  // added or had a token. The Beyond-HD and PrivateHD sign-ins and blutopia.url are gone: the address is now https://<host>.
+  `INSERT OR IGNORE INTO settings (category, key, value)
+    SELECT 'credentials', 'trackers.blutopia.cc', value FROM settings WHERE category = 'credentials' AND key = 'blutopia.apiToken' AND value <> '';
+  INSERT OR IGNORE INTO settings (category, key, value)
+    SELECT 'trackerConfiguration', 'trackers.blutopia.cc', 'added' FROM settings WHERE category = 'credentials' AND key = 'trackers.blutopia.cc';
+  INSERT OR IGNORE INTO settings (category, key, value)
+    SELECT 'trackerConfiguration', 'software.blutopia.cc', 'unit3d' WHERE EXISTS (
+      SELECT 1 FROM settings WHERE category = 'trackerConfiguration' AND key IN ('trackers.blutopia.cc', 'rules.blutopia.cc'));
+  DELETE FROM settings
+    WHERE (category = 'serviceAddresses' AND key IN ('blutopia.url', 'privatehd.url', 'beyondhd.url'))
+      OR (category = 'credentials' AND key IN ('blutopia.apiToken', 'privatehd.username', 'privatehd.password', 'privatehd.pid', 'beyondhd.apiKey', 'beyondhd.rssKey'));`,
+  // What each source said about a title outside the library. Each source's reply is its own part row with its own
+  // fetch time, so a new source is a new part name, not a new column. A show's key is its TVDB id; its TMDB id sits
+  // beside it so either finds the row. search_lookups keeps which titles a search term returned.
+  `CREATE TABLE title_store (
+    key TEXT PRIMARY KEY,
+    type TEXT NOT NULL CHECK (type IN ('movie', 'tv')),
+    tmdb_id INTEGER,
+    tvdb_id INTEGER
+  ) STRICT;
+  CREATE INDEX title_store_tmdb ON title_store (type, tmdb_id);
+  CREATE TABLE title_store_parts (
+    key TEXT NOT NULL REFERENCES title_store (key),
+    part TEXT NOT NULL,
+    json TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (key, part)
+  ) STRICT;
+  CREATE TABLE search_lookups (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    term TEXT NOT NULL,
+    ids TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (service, term)
+  ) STRICT;`,
+  // Deleting a movie or show, for history. The title is kept as text because Sonarr and Radarr forget it.
+  `CREATE TABLE title_events (
+    id INTEGER PRIMARY KEY,
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    title_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX title_events_at ON title_events (at);`,
+  // Our copies of TMDB posters and backdrops; title_images' CHECK constraints only allow Sonarr and Radarr rows.
+  `CREATE TABLE tmdb_images (
+    size TEXT NOT NULL,
+    path TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    etag TEXT NOT NULL,
+    file TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (size, path)
+  ) STRICT;`,
+  // A fixed code beside each second version's failure text, so the client never matches the text. Rows failed before
+  // this get the code their exact text maps to; other texts keep a null code.
+  `ALTER TABLE second_versions ADD COLUMN failure_code TEXT;
+  UPDATE second_versions SET failure_code = CASE
+    WHEN failure = 'Stalled with nothing downloaded; torrent removed.' THEN 'stalled_removed'
+    WHEN failure = 'Sonarr or Radarr grabbed the same torrent.' THEN 'grabbed_by_arr'
+    WHEN failure LIKE 'rTorrent never received it.%' THEN 'never_received'
+    WHEN failure = 'That torrent is already in rTorrent.' THEN 'already_in_rtorrent'
+    WHEN failure IN ('The download link returned a web page, not a torrent file.', 'The download link did not return a torrent file.') THEN 'not_a_torrent'
+  END WHERE failure IS NOT NULL;`,
+  // Where the history check last read imports and failures; null makes the next check backfill the full lookback.
+  `ALTER TABLE grab_checkpoints ADD COLUMN outcomes_checked_at INTEGER;`,
+  // Saved Discover rows, so the home screen reads results and never waits on TMDB or Trakt.
+  `CREATE TABLE discover_rows (key TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL, read_at INTEGER NOT NULL) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

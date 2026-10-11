@@ -2,44 +2,391 @@
 @import "shadcn/tailwind.css";
 
 @font-face {
-  font-family: "Inter";
-  src: url("./assets/inter-variable.ttf") format("truetype");
+  font-family: "Schibsted Grotesk";
+  src: url("./assets/fonts/SchibstedGrotesk-VariableFont_wght.ttf") format("truetype");
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 400 900;
   font-display: swap;
 }
 
-:root {
-  color-scheme: light;
-  --ground: #f6f8f7;
-  --control: #ffffff;
-  --control-hover: #f0f4f2;
-  --quiet-hover: #e8eeeb;
-  --ink: #152123;
-  --secondary-ink: #53605f;
-  --border: #dae2df;
-  --focus: #233b35;
-  /* The signed-in app follows DESIGN.md; the sign-in page keeps the light tokens above. */
-  --mm-ground: #0e0f12;
-  --mm-row: #15171c;
-  --mm-row-alt: #1b1e24;
-  --mm-row-hover: #22262e;
-  --mm-seam: #262a33;
-  --mm-ink: #eef0f2;
-  --mm-ink-2: #9aa1ab;
-  --mm-ink-3: #69707b;
-  --mm-best: #b46af5;
-  --mm-risk: #ff534a;
-  --mm-on-cell: #0e0f12;
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  src: url("./assets/fonts/BarlowSemiCondensed-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
 }
 
-/* Barlow is not bundled yet, so these fall back to the closest system faces. */
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  src: url("./assets/fonts/BarlowSemiCondensed-Medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  src: url("./assets/fonts/BarlowSemiCondensed-SemiBold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  src: url("./assets/fonts/BarlowSemiCondensed-Bold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+/* Names and values come from the variables in design/design-system.lib.pen (light mode only). */
+:root {
+  color-scheme: light;
+
+  /* Colour */
+  --background: #ffffff;
+  --card: #ffffff;
+  --card-foreground: #111111;
+  --popover: #ffffff;
+  --popover-foreground: #111111;
+  --muted: #f2f2ef;
+  --secondary: #f2f2ef;
+  --secondary-foreground: #111111;
+  --accent: #f6f6f3;
+  --accent-foreground: #111111;
+  --surface-hover: #f6f6f3;
+  --surface-pressed: #eaeae6;
+  --selected: #edede9;
+  --foreground: #111111;
+  --muted-foreground: #55554f;
+  --subtle-foreground: #686862;
+  --faint-foreground: #a3a39d;
+  --border: #e3e3de;
+  --input: #8c8c85;
+  --primary: #111111;
+  --primary-hover: #2e2e2c;
+  --primary-pressed: #000000;
+  --primary-foreground: #ffffff;
+  --best: #c6f135;
+  --best-soft: #f3fcd6;
+  --best-foreground: #3d5600;
+  --live: #c6f135;
+  --destructive: #cc1f17;
+  --destructive-hover: #ad1912;
+  --destructive-pressed: #8e140e;
+  --destructive-soft: #fde9e7;
+  --destructive-foreground: #ffffff;
+  --warning: #a15c00;
+  --warning-soft: #fdf0d9;
+  --warning-foreground: #ffffff;
+  --ring: #111111;
+  --focus-on-dark: #ffffff;
+  --bar: #111111;
+  --bar-foreground: #ffffff;
+  --bar-muted-foreground: #b5b5ae;
+  --scrim: #1111114d;
+  --shadow: #1111111f;
+
+  /* Radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-full: 999px;
+  --radius: 10px;
+  --radius-xl: 14px;
+
+  /* Sizes and spacing */
+  --row: 40px; /* the library file types this variable as the colour #000000; the Tokens sheet says "row 40" */
+  --row-header: 32px;
+  --row-two-line: 56px;
+  --topbar: 64px;
+  --livebar: 40px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --page-margin: 40px;
+  --page-margin-phone: 16px;
+  --poster-gutter: 20px;
+  --poster-width: 152px;
+  --detail-indent: 133px;
+
+  /* Controls */
+  --control-h-row: 28px;
+  --control-h-default: 40px;
+  --control-h-large: 48px;
+  --control-px-row: 10px;
+  --control-px-default: 16px;
+  --control-px-large: 20px;
+  --control-text-row: 13px;
+  --control-text-default: 14px;
+  --control-text-large: 15px;
+  --control-radius-row: 6px;
+  --control-radius-default: 8px;
+  --control-radius-large: 10px;
+  --control-icon-row: 14px;
+  --control-icon-default: 16px;
+  --control-icon-large: 18px;
+
+  /* Type */
+  --font-ui: "Schibsted Grotesk";
+  --font-data: "Barlow Semi Condensed";
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-base: 160ms;
+  --duration-slow: 220ms;
+  --duration-size: var(--duration-base);
+  --duration-spin: 700ms;
+  --duration-shimmer: 1400ms;
+  --duration-toast: 6000ms;
+  --delay-tooltip: 400ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-linear: linear;
+  --motion-rise-4: 4px;
+  --motion-rise-6: 6px;
+  --motion-rise-12: 12px;
+  --motion-rise-16: 16px;
+  --motion-scale-dialog: 0.98;
+}
+
+/* Under reduced motion every slide and scale becomes a plain fade, size changes are instant and loops stop. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-rise-4: 0px;
+    --motion-rise-6: 0px;
+    --motion-rise-12: 0px;
+    --motion-rise-16: 0px;
+    --motion-scale-dialog: 1;
+    --duration-base: var(--duration-fast);
+    --duration-slow: var(--duration-fast);
+    --duration-size: 0ms;
+  }
+
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+  }
+}
+
+/*
+ * One light band sweeps across the window and every loading block shows its slice of it, so a grid of
+ * skeletons reads as one sheet catching the light instead of blocks pulsing out of step. The band is pinned
+ * to the window (background-attachment: fixed); iOS Safari ignores that and sweeps each block on its own.
+ * Under reduced motion the loop stops with the band parked off screen.
+ */
+@keyframes skeleton-sweep {
+  from {
+    background-position: -75vw 0;
+  }
+  to {
+    background-position: 75vw 0;
+  }
+}
+
+@utility skeleton-shimmer {
+  background-image: linear-gradient(105deg, transparent 40%, rgb(255 255 255 / 0.9) 50%, transparent 60%);
+  background-size: 100vw 100vh;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-position: -75vw 0;
+  animation: skeleton-sweep var(--duration-shimmer) var(--ease-linear) infinite;
+}
+
+/*
+ * View transitions (navigation.ts withViewTransition). The old page leaves fast, the new page arrives at base speed,
+ * and a poster card's poster morphs into the title page's large poster. Reduced motion never starts one.
+ */
+.title-poster {
+  view-transition-name: title-poster;
+}
+
+::view-transition-old(root) {
+  animation-duration: var(--duration-fast);
+  animation-timing-function: var(--ease-in);
+}
+
+::view-transition-new(root) {
+  animation-duration: var(--duration-base);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-group(title-poster) {
+  animation-duration: var(--duration-slow);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-old(title-poster),
+::view-transition-new(title-poster) {
+  animation-duration: var(--duration-slow);
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Content arriving in place of a skeleton crossfades in (DESIGN.md Motion: skeleton to content, base, out). */
+@keyframes content-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@utility animate-content-in {
+  animation: content-in var(--duration-base) var(--ease-out) both;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-pressed: var(--surface-pressed);
+  --color-selected: var(--selected);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-best: var(--best);
+  --color-best-soft: var(--best-soft);
+  --color-best-foreground: var(--best-foreground);
+  --color-live: var(--live);
+  --color-destructive: var(--destructive);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-pressed: var(--destructive-pressed);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-ring: var(--ring);
+  --color-focus-on-dark: var(--focus-on-dark);
+  --color-bar: var(--bar);
+  --color-bar-foreground: var(--bar-foreground);
+  --color-bar-muted-foreground: var(--bar-muted-foreground);
+  --color-scrim: var(--scrim);
+  --color-shadow: var(--shadow);
+
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-full: var(--radius-full);
+
+  --font-ui: var(--font-ui), sans-serif;
+  --font-data: var(--font-data), sans-serif;
+
+  --ease-out: var(--ease-out);
+  --ease-in: var(--ease-in);
+  --ease-in-out: var(--ease-in-out);
+  --ease-linear: var(--ease-linear);
+}
+
 @utility font-ui {
-  font-family: "Barlow", "Inter", sans-serif;
+  font-family: var(--font-ui), sans-serif;
 }
 
 @utility font-data {
-  font-family: "Barlow Semi Condensed", "Arial Narrow", "Inter", sans-serif;
+  font-family: var(--font-data), sans-serif;
+  font-feature-settings: "tnum";
+}
+
+/*
+ * Text styles from the DESIGN.md typography front matter: family, size and weight in one class.
+ *   text-title-hero   36/800 font-ui
+ *   text-page-title   26/700 font-ui
+ *   text-section      16/700 font-ui
+ *   text-body         14/400 font-ui
+ *   text-label        13/600 font-ui
+ *   text-caption      11/600 font-ui
+ *   text-data         14/400 font-data, tabular figures
+ *   text-data-small   13/500 font-data, tabular figures
+ * cn() registers these names as font sizes in tailwind-merge (src/client/lib/utils.ts), so they survive text colour classes.
+ */
+@utility text-title-hero {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 36px;
+  font-weight: 800;
+}
+
+@utility text-page-title {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+@utility text-section {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+@utility text-body {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+@utility text-label {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@utility text-caption {
+  font-family: var(--font-ui), sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@utility text-data {
+  font-family: var(--font-data), sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  font-feature-settings: "tnum";
+}
+
+@utility text-data-small {
+  font-family: var(--font-data), sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  font-feature-settings: "tnum";
+}
+
+/* 2px ring with a 2px gap (DESIGN.md "Focus"). The Kbd and bars use the white ring. */
+@utility focus-ring {
+  &:focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+}
+
+@utility focus-ring-on-dark {
+  &:focus-visible {
+    @apply outline-2 outline-offset-2 outline-focus-on-dark;
+  }
 }
 
 @layer base {
@@ -49,17 +396,15 @@
 
   html {
     min-width: 320px;
-    background: var(--ground);
+    background: var(--background);
   }
 
   body {
+    @apply bg-background text-foreground font-ui;
     min-width: 320px;
     min-height: 100vh;
     margin: 0;
     overflow-x: hidden;
-    background: var(--ground);
-    color: var(--ink);
-    font-family: "Inter", sans-serif;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
   }
@@ -69,7 +414,7 @@
   }
 
   ::selection {
-    background: #c9d7d1;
-    color: var(--ink);
+    background: var(--selected);
+    color: var(--foreground);
   }
 }

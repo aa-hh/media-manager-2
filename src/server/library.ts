@@ -1,5 +1,25 @@
 import { Hono } from 'hono';
-import type { ArrServices, HistoryRecord, Result as ArrResult } from './services/arr.js';
+import {
+  type ArrServices,
+  type Credit,
+  type Episode,
+  type FileDetail,
+  type HistoryRecord,
+  type Movie,
+  parseFile,
+  parseMovie,
+  parseSeries,
+  type Ratings,
+  type Result as ArrResult,
+  type Series,
+} from './services/arr.js';
+import { lookupTitle } from './search.js';
+import { notConfigured } from './services/arr/result.js';
+import type { SecondVersionRow } from './secondVersionRows.js';
+import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
+import type { TitleStore } from './titleStore.js';
+
+export type { FileDetail };
 
 type Arr = ArrServices[keyof ArrServices];
 type Service = 'sonarr' | 'radarr';
@@ -15,6 +35,7 @@ export type LibraryTitle = {
   type: 'tv' | 'movie';
   service: Service;
   id: number;
+  tmdbId: number | null;
   title: string;
   year: number | null;
   added: string | null;
@@ -25,29 +46,6 @@ export type LibraryTitle = {
   sizeOnDisk: number;
   tv: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; seasonCount: number } | null;
   movie: { hasFile: boolean; isAvailable: boolean } | null;
-};
-
-export type FileDetail = {
-  id: number | null;
-  relativePath: string | null;
-  size: number;
-  dateAdded: string | null;
-  quality: string | null;
-  revision: { version: number | null; real: number | null; isRepack: boolean };
-  releaseGroup: string | null;
-  languages: string[];
-  customFormats: string[];
-  customFormatScore: number | null;
-  qualityCutoffNotMet: boolean;
-  mediaInfo: {
-    videoCodec: string | null;
-    videoDynamicRangeType: string | null;
-    resolution: string | null;
-    audioCodec: string | null;
-    audioChannels: number | null;
-    audioLanguages: string | null;
-    subtitles: string | null;
-  } | null;
 };
 
 // A strict superset of OwnedEpisode in the client's PickRelease.
@@ -76,15 +74,23 @@ type ProfileDetail = { id: number; name: string; cutoff: string | null };
 export type SeriesDetail = {
   id: number | null;
   title: string;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   ended: boolean;
+  airTime: string | null;
+  firstAired: string | null;
+  lastAired: string | null;
+  nextAiring: string | null;
+  previousAiring: string | null;
   network: string | null;
   language: string | null;
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
+  ratingVotes: number | null;
+  ratingsBySite: RatingsBySite;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -95,7 +101,8 @@ export type SeriesDetail = {
   monitorNewItems: string | null;
   qualityProfile: ProfileDetail | null;
   added: string | null;
-  statistics: { seasonCount: number; episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; sizeOnDisk: number };
+  statistics: Series['statistics'];
+  releaseGroups: string[];
   seasons: Array<{
     seasonNumber: number;
     monitored: boolean;
@@ -115,12 +122,20 @@ export type SeriesDetail = {
 export type MovieDetail = {
   id: number | null;
   title: string;
+  originalTitle: string | null;
+  originalLanguage: string | null;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
+  // Kept until the client reads ratings instead.
   rating: number | null;
+  ratings: Ratings;
+  keywords: string[];
+  youTubeTrailerId: string | null;
+  website: string | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -138,7 +153,14 @@ export type MovieDetail = {
   lastSearchTime: string | null;
   sizeOnDisk: number;
   releaseDates: { inCinemas: string | null; digital: string | null; physical: string | null };
+  releaseDate: string | null;
+  releaseGroups: string[];
   file: FileDetail | null;
+};
+
+export type Credits = {
+  cast: Array<{ name: string; character: string | null; order: number | null; photoUrl: string | null; tmdbId: number | null }>;
+  crew: Array<{ name: string; job: string | null; department: string | null; photoUrl: string | null; tmdbId: number | null }>;
 };
 
 export type HistoryEntry = {
@@ -224,37 +246,23 @@ const read = async (service: Arr, path: string): Promise<Result<unknown>> => {
   return { kind: 'ok', value: response.body };
 };
 
-// Sonarr and Radarr explain a refused write as { message } or as a list of { errorMessage }.
-const serviceMessage = (body: unknown): string | undefined => {
-  if (isRecord(body)) return text(body.message) ?? text(body.errorMessage) ?? undefined;
-  if (Array.isArray(body)) return records(body).map((item) => text(item.errorMessage)).find((message) => message !== null) ?? undefined;
-  return undefined;
-};
-
-const write = async (service: Arr, path: string, method: 'PUT' | 'POST', body: unknown): Promise<Result<void>> => {
-  if (!service.configured()) return { kind: 'not_configured' };
-  let response: { status: number; body: unknown };
+const webUrl = (value: unknown): string | null => {
+  const url = text(value);
+  if (url === null) return null;
   try {
-    response = await service.request(path, { method, body });
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
   } catch {
-    return { kind: 'unreachable' };
+    return null;
   }
-  if (response.status >= 200 && response.status <= 299) return { kind: 'ok', value: undefined };
-  return { kind: 'unreachable', reason: serviceMessage(response.body) ?? `The service answered ${response.status}.` };
 };
 
 // Only an absolute http(s) remoteUrl may reach the browser: the local url is served by the service and needs its key.
 export const imageUrl = (images: unknown, coverType: string): string | null => {
   for (const image of records(images)) {
     if (image.coverType !== coverType) continue;
-    const url = text(image.remoteUrl);
-    if (url === null) continue;
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return parsed.href;
-    } catch {
-      continue;
-    }
+    const url = webUrl(image.remoteUrl);
+    if (url !== null) return url;
   }
   return null;
 };
@@ -294,192 +302,154 @@ const tagNames = (tags: unknown, ids: unknown): string[] => {
   return records(tags).flatMap((tag) => (wanted.includes(tag.id) && text(tag.label) !== null ? [text(tag.label) as string] : []));
 };
 
-const movieRating = (ratings: unknown): number | null => {
-  if (!isRecord(ratings)) return null;
-  for (const key of ['tmdb', 'imdb', 'trakt']) {
-    const rating = ratings[key];
-    if (isRecord(rating) && finiteNumber(rating.value) !== null && (rating.value as number) > 0) return rating.value as number;
-  }
-  return null;
-};
+const episodeDetails = (episodes: Episode[]): EpisodeDetail[] => episodes
+  .map((episode): EpisodeDetail => ({
+    id: episode.id,
+    seasonNumber: episode.seasonNumber,
+    episodeNumber: episode.episodeNumber,
+    title: episode.title,
+    airDate: episode.airDateUtc,
+    monitored: episode.monitored,
+    hasFile: episode.hasFile,
+    overview: episode.overview,
+    runtime: episode.runtime,
+    finaleType: episode.finaleType,
+    absoluteEpisodeNumber: episode.absoluteEpisodeNumber,
+    sceneSeasonNumber: episode.sceneSeasonNumber,
+    sceneEpisodeNumber: episode.sceneEpisodeNumber,
+    unverifiedSceneNumbering: episode.unverifiedSceneNumbering,
+    lastSearchTime: episode.lastSearchTime,
+    imageUrl: imageUrl(episode.images, 'screenshot'),
+    file: episode.file,
+  }))
+  .sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
 
-const fileDetail = (value: unknown): FileDetail | null => {
-  if (!isRecord(value)) return null;
-  const quality = isRecord(value.quality) ? value.quality : {};
-  const revision = isRecord(quality.revision) ? quality.revision : {};
-  const info = isRecord(value.mediaInfo) ? value.mediaInfo : undefined;
-  return {
-    id: positiveInteger(value.id),
-    relativePath: text(value.relativePath),
-    size: count(value.size),
-    dateAdded: text(value.dateAdded),
-    quality: isRecord(quality.quality) ? text(quality.quality.name) : null,
-    revision: { version: finiteNumber(revision.version), real: finiteNumber(revision.real), isRepack: revision.isRepack === true },
-    releaseGroup: text(value.releaseGroup),
-    languages: names(value.languages),
-    customFormats: names(value.customFormats),
-    customFormatScore: finiteNumber(value.customFormatScore),
-    qualityCutoffNotMet: value.qualityCutoffNotMet === true,
-    mediaInfo: info === undefined ? null : {
-      videoCodec: text(info.videoCodec),
-      videoDynamicRangeType: text(info.videoDynamicRangeType),
-      resolution: text(info.resolution),
-      audioCodec: text(info.audioCodec),
-      audioChannels: finiteNumber(info.audioChannels),
-      audioLanguages: text(info.audioLanguages),
-      subtitles: text(info.subtitles),
-    },
-  };
-};
-
-const episodeDetails = (value: unknown): EpisodeDetail[] => {
-  const episodes = records(value).flatMap((episode): EpisodeDetail[] => {
-    const id = positiveInteger(episode.id);
-    const seasonNumber = finiteNumber(episode.seasonNumber);
-    const episodeNumber = finiteNumber(episode.episodeNumber);
-    if (id === null || seasonNumber === null || episodeNumber === null) return [];
-    return [{
-      id,
-      seasonNumber,
-      episodeNumber,
-      title: text(episode.title),
-      airDate: text(episode.airDateUtc),
-      monitored: episode.monitored === true,
-      hasFile: episode.hasFile === true,
-      overview: text(episode.overview),
-      runtime: finiteNumber(episode.runtime),
-      finaleType: text(episode.finaleType),
-      absoluteEpisodeNumber: finiteNumber(episode.absoluteEpisodeNumber),
-      sceneSeasonNumber: finiteNumber(episode.sceneSeasonNumber),
-      sceneEpisodeNumber: finiteNumber(episode.sceneEpisodeNumber),
-      unverifiedSceneNumbering: episode.unverifiedSceneNumbering === true,
-      lastSearchTime: text(episode.lastSearchTime),
-      imageUrl: imageUrl(episode.images, 'screenshot'),
-      file: fileDetail(episode.episodeFile),
-    }];
-  });
-  return episodes.sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
-};
-
-const seriesDetail = (raw: Record<string, unknown>, extras: { profiles?: unknown; tags?: unknown; episodes?: unknown; owned: boolean }): SeriesDetail => {
-  const statistics = isRecord(raw.statistics) ? raw.statistics : {};
-  return {
-    id: extras.owned ? positiveInteger(raw.id) : null,
-    title: text(raw.title) ?? '',
-    year: finiteNumber(raw.year),
-    status: text(raw.status),
-    ended: raw.ended === true,
-    network: text(raw.network),
-    language: isRecord(raw.originalLanguage) ? text(raw.originalLanguage.name) : null,
-    overview: text(raw.overview),
-    posterUrl: imageUrl(raw.images, 'poster'),
-    backdropUrl: imageUrl(raw.images, 'fanart'),
-    rating: isRecord(raw.ratings) ? finiteNumber(raw.ratings.value) : null,
-    certification: text(raw.certification),
-    genres: stringList(raw.genres),
-    runtime: finiteNumber(raw.runtime),
-    path: extras.owned ? text(raw.path) : null,
-    tags: extras.owned ? tagNames(extras.tags, raw.tags) : [],
-    links: { imdbId: text(raw.imdbId), tvdbId: positiveInteger(raw.tvdbId), tmdbId: positiveInteger(raw.tmdbId) },
-    monitored: raw.monitored === true,
-    monitorNewItems: text(raw.monitorNewItems),
-    qualityProfile: extras.owned ? profileById(extras.profiles, raw.qualityProfileId) : null,
-    added: text(raw.added),
-    statistics: {
-      seasonCount: count(statistics.seasonCount),
-      episodeFileCount: count(statistics.episodeFileCount),
-      episodeCount: count(statistics.episodeCount),
-      totalEpisodeCount: count(statistics.totalEpisodeCount),
-      sizeOnDisk: count(statistics.sizeOnDisk),
-    },
-    seasons: records(raw.seasons).flatMap((season) => {
-      const seasonNumber = finiteNumber(season.seasonNumber);
-      if (seasonNumber === null) return [];
-      const stats = isRecord(season.statistics) ? season.statistics : {};
-      return [{
-        seasonNumber,
-        monitored: season.monitored === true,
-        posterUrl: imageUrl(season.images, 'poster'),
-        statistics: {
-          episodeFileCount: count(stats.episodeFileCount),
-          episodeCount: count(stats.episodeCount),
-          totalEpisodeCount: count(stats.totalEpisodeCount),
-          sizeOnDisk: count(stats.sizeOnDisk),
-          nextAiring: text(stats.nextAiring),
-          previousAiring: text(stats.previousAiring),
-        },
-      }];
-    }),
-    episodes: episodeDetails(extras.episodes),
-  };
-};
-
-const movieDetail = (raw: Record<string, unknown>, extras: { profiles?: unknown; tags?: unknown; owned: boolean }): MovieDetail => ({
-  id: extras.owned ? positiveInteger(raw.id) : null,
-  title: text(raw.title) ?? '',
-  year: finiteNumber(raw.year),
-  status: text(raw.status),
-  overview: text(raw.overview),
-  posterUrl: imageUrl(raw.images, 'poster'),
-  backdropUrl: imageUrl(raw.images, 'fanart'),
-  rating: movieRating(raw.ratings),
-  certification: text(raw.certification),
-  genres: stringList(raw.genres),
-  runtime: finiteNumber(raw.runtime),
-  studio: text(raw.studio),
-  collection: isRecord(raw.collection) ? text(raw.collection.title) : null,
-  path: extras.owned ? text(raw.path) : null,
-  tags: extras.owned ? tagNames(extras.tags, raw.tags) : [],
-  links: { imdbId: text(raw.imdbId), tmdbId: positiveInteger(raw.tmdbId) },
-  monitored: raw.monitored === true,
-  hasFile: raw.hasFile === true,
-  isAvailable: raw.isAvailable === true,
-  minimumAvailability: text(raw.minimumAvailability),
-  qualityProfile: extras.owned ? profileById(extras.profiles, raw.qualityProfileId) : null,
-  added: text(raw.added),
-  lastSearchTime: text(raw.lastSearchTime),
-  sizeOnDisk: count(raw.sizeOnDisk),
-  releaseDates: { inCinemas: text(raw.inCinemas), digital: text(raw.digitalRelease), physical: text(raw.physicalRelease) },
-  file: extras.owned ? fileDetail(raw.movieFile) : null,
+const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unknown; episodes?: Episode[]; owned: boolean; ratingsBySite: RatingsBySite }): SeriesDetail => ({
+  id: extras.owned ? record.id : null,
+  title: record.title,
+  alternateTitles: record.alternateTitles,
+  year: record.year,
+  status: record.status,
+  ended: record.ended,
+  airTime: record.airTime,
+  firstAired: record.firstAired,
+  lastAired: record.lastAired,
+  nextAiring: record.nextAiring,
+  previousAiring: record.previousAiring,
+  network: record.network,
+  language: record.language,
+  overview: record.overview,
+  posterUrl: imageUrl(record.images, 'poster'),
+  backdropUrl: imageUrl(record.images, 'fanart'),
+  rating: record.rating,
+  ratingVotes: record.ratingVotes,
+  ratingsBySite: extras.ratingsBySite,
+  certification: record.certification,
+  genres: record.genres,
+  runtime: record.runtime,
+  path: extras.owned ? record.path : null,
+  tags: extras.owned ? tagNames(extras.tags, record.tags) : [],
+  links: { imdbId: record.imdbId, tvdbId: record.tvdbId, tmdbId: record.tmdbId },
+  monitored: record.monitored,
+  monitorNewItems: record.monitorNewItems,
+  qualityProfile: extras.owned ? profileById(extras.profiles, record.qualityProfileId) : null,
+  added: record.added,
+  statistics: record.statistics,
+  releaseGroups: record.releaseGroups,
+  seasons: record.seasons.map((season) => ({
+    seasonNumber: season.seasonNumber,
+    monitored: season.monitored,
+    posterUrl: imageUrl(season.images, 'poster'),
+    statistics: season.statistics,
+  })),
+  episodes: episodeDetails(extras.episodes ?? []),
 });
 
-const toTitle = (service: Service, raw: Record<string, unknown>, profiles: unknown): LibraryTitle[] => {
-  const id = positiveInteger(raw.id);
-  const title = text(raw.title);
-  if (id === null || title === null) return [];
-  const profile = profileById(profiles, raw.qualityProfileId);
+const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown; owned: boolean }): MovieDetail => ({
+  id: extras.owned ? record.id : null,
+  title: record.title,
+  originalTitle: record.originalTitle,
+  originalLanguage: record.originalLanguage,
+  alternateTitles: record.alternateTitles,
+  year: record.year,
+  status: record.status,
+  overview: record.overview,
+  posterUrl: imageUrl(record.images, 'poster'),
+  backdropUrl: imageUrl(record.images, 'fanart'),
+  rating: record.rating,
+  ratings: record.ratings,
+  keywords: record.keywords,
+  youTubeTrailerId: record.youTubeTrailerId,
+  website: webUrl(record.website),
+  certification: record.certification,
+  genres: record.genres,
+  runtime: record.runtime,
+  studio: record.studio,
+  collection: record.collection,
+  path: extras.owned ? record.path : null,
+  tags: extras.owned ? tagNames(extras.tags, record.tags) : [],
+  links: { imdbId: record.imdbId, tmdbId: record.tmdbId },
+  monitored: record.monitored,
+  hasFile: record.hasFile,
+  isAvailable: record.isAvailable,
+  minimumAvailability: record.minimumAvailability,
+  qualityProfile: extras.owned ? profileById(extras.profiles, record.qualityProfileId) : null,
+  added: record.added,
+  lastSearchTime: record.lastSearchTime,
+  sizeOnDisk: record.sizeOnDisk,
+  releaseDates: { inCinemas: record.inCinemas, digital: record.digitalRelease, physical: record.physicalRelease },
+  releaseDate: record.releaseDate,
+  releaseGroups: record.releaseGroups,
+  file: extras.owned ? record.file : null,
+});
+
+// A headshot's url is Radarr's own proxy path, so only its public remoteUrl may reach the browser.
+const creditList = (credits: Credit[]): Credits => ({
+  cast: credits.filter((credit) => credit.type === 'cast')
+    .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+    .map(({ name, character, order, images, tmdbId }) => ({ name, character, order, photoUrl: imageUrl(images, 'headshot'), tmdbId })),
+  crew: credits.filter((credit) => credit.type === 'crew')
+    .map(({ name, job, department, images, tmdbId }) => ({ name, job, department, photoUrl: imageUrl(images, 'headshot'), tmdbId })),
+});
+
+const toTitle = (service: Service, record: Series | Movie, profiles: unknown): LibraryTitle[] => {
+  const { id, title } = record;
+  if (id === null || title === '') return [];
+  const profile = profileById(profiles, record.qualityProfileId);
   const base = {
     service,
     id,
+    tmdbId: record.tmdbId,
     title,
-    year: finiteNumber(raw.year),
-    added: text(raw.added),
-    monitored: raw.monitored === true,
-    status: text(raw.status),
-    posterUrl: imageUrl(raw.images, 'poster'),
+    year: record.year,
+    added: record.added,
+    monitored: record.monitored,
+    status: record.status,
+    posterUrl: imageUrl(record.images, 'poster'),
     qualityProfile: profile?.name ?? null,
   };
   if (service === 'sonarr') {
-    const statistics = isRecord(raw.statistics) ? raw.statistics : {};
+    const { statistics } = record as Series;
     return [{
       ...base,
       type: 'tv',
-      sizeOnDisk: count(statistics.sizeOnDisk),
+      sizeOnDisk: statistics.sizeOnDisk,
       tv: {
-        episodeFileCount: count(statistics.episodeFileCount),
-        episodeCount: count(statistics.episodeCount),
-        totalEpisodeCount: count(statistics.totalEpisodeCount),
-        seasonCount: count(statistics.seasonCount),
+        episodeFileCount: statistics.episodeFileCount,
+        episodeCount: statistics.episodeCount,
+        totalEpisodeCount: statistics.totalEpisodeCount,
+        seasonCount: statistics.seasonCount,
       },
       movie: null,
     }];
   }
+  const movie = record as Movie;
   return [{
     ...base,
     type: 'movie',
-    sizeOnDisk: count(raw.sizeOnDisk),
+    sizeOnDisk: movie.sizeOnDisk,
     tv: null,
-    movie: { hasFile: raw.hasFile === true, isAvailable: raw.isAvailable === true },
+    movie: { hasFile: movie.hasFile, isAvailable: movie.isAvailable },
   }];
 };
 
@@ -505,7 +475,22 @@ const fromArr = <T>(result: ArrResult<T>): Result<T> => {
   return { kind: result.kind };
 };
 
-export const createLibrary = (services: ArrServices) => {
+type VersionRows = {
+  (title: { service: 'radarr'; movieId: number }): SecondVersionRow[];
+  (title: { service: 'sonarr'; seriesId: number }): SecondVersionRow[];
+};
+
+// The tracked version comes from Sonarr or Radarr; second versions come from this app's own records, beside it.
+export const createLibrary = (
+  services: ArrServices,
+  versionRows: VersionRows,
+  store: TitleStore,
+  mdblist?: Pick<Mdblist, 'showRatings'>,
+  tvdbIdOf?: (tmdbId: number) => Promise<ArrResult<number | null>>,
+) => {
+  const showRatings = (record: Series) => (
+    mdblist === undefined ? Promise.resolve(noRatings) : mdblist.showRatings(store, { tvdbId: record.tvdbId, tmdbId: record.tmdbId })
+  );
   const outcome = <T>(result: Result<T[]>): Outcome => (
     result.kind === 'ok' ? { kind: 'ok', count: result.value.length } : { kind: result.kind === 'not_found' ? 'unreachable' : result.kind }
   );
@@ -520,57 +505,72 @@ export const createLibrary = (services: ArrServices) => {
     return result.kind === 'ok' ? result.value : undefined;
   };
 
-  const owned = async (service: Service, path: string): Promise<Result<Record<string, unknown>>> => {
-    const result = await read(services[service], path);
-    if (result.kind !== 'ok') return result;
-    return isRecord(result.value) ? { kind: 'ok', value: result.value } : { kind: 'unreachable' };
-  };
-
   return {
     async titles(): Promise<{ titles: LibraryTitle[]; services: { sonarr: Outcome; radarr: Outcome } }> {
       const fetchService = async (service: Service) => {
         const [items, profiles] = await Promise.all([
-          list(service, service === 'sonarr' ? '/api/v3/series' : '/api/v3/movie'),
+          (service === 'sonarr' ? services.sonarr.listSeries() : services.radarr.listMovies()).then((result) => fromArr<Array<Series | Movie>>(result)),
           optional(service, '/api/v3/qualityprofile'),
         ]);
-        const titles = items.kind === 'ok' ? items.value.flatMap((raw) => (isRecord(raw) ? toTitle(service, raw, profiles) : [])) : [];
+        const titles = items.kind === 'ok' ? items.value.flatMap((record) => toTitle(service, record, profiles)) : [];
         return { titles, outcome: outcome(items) };
       };
       const [sonarr, radarr] = await Promise.all([fetchService('sonarr'), fetchService('radarr')]);
       return { titles: newestFirst([...sonarr.titles, ...radarr.titles]), services: { sonarr: sonarr.outcome, radarr: radarr.outcome } };
     },
 
-    async series(id: number): Promise<Result<SeriesDetail>> {
-      const [raw, episodes, profiles, tags] = await Promise.all([
-        owned('sonarr', `/api/v3/series/${id}?includeSeasonImages=true`),
-        list('sonarr', `/api/v3/episode?seriesId=${id}&includeEpisodeFile=true&includeImages=true`),
+    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[] }>> {
+      const [record, episodes, profiles, tags] = await Promise.all([
+        services.sonarr.series(id).then(fromArr),
+        services.sonarr.episodes(id, { withFiles: true }).then(fromArr),
         optional('sonarr', '/api/v3/qualityprofile'),
         optional('sonarr', '/api/v3/tag'),
       ]);
-      if (raw.kind !== 'ok') return raw;
+      if (record.kind !== 'ok') return record;
       if (episodes.kind !== 'ok') return episodes;
-      return { kind: 'ok', value: seriesDetail(raw.value, { profiles, tags, episodes: episodes.value, owned: true }) };
-    },
-
-    async movie(id: number): Promise<Result<MovieDetail>> {
-      const [raw, profiles, tags] = await Promise.all([
-        owned('radarr', `/api/v3/movie/${id}`),
-        optional('radarr', '/api/v3/qualityprofile'),
-        optional('radarr', '/api/v3/tag'),
-      ]);
-      if (raw.kind !== 'ok') return raw;
-      return { kind: 'ok', value: movieDetail(raw.value, { profiles, tags, owned: true }) };
-    },
-
-    async preview(service: Service, id: number): Promise<Result<SeriesDetail | MovieDetail>> {
-      const found = await list(service, service === 'sonarr' ? `/api/v3/series/lookup?term=tvdb:${id}` : `/api/v3/movie/lookup?term=tmdb:${id}`);
-      if (found.kind !== 'ok') return found;
-      const first = found.value[0];
-      if (!isRecord(first)) return { kind: 'not_found' };
+      const ratingsBySite = await showRatings(record.value);
       return {
         kind: 'ok',
-        value: service === 'sonarr' ? seriesDetail(first, { owned: false }) : movieDetail(first, { owned: false }),
+        value: { ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite }), secondVersions: versionRows({ service: 'sonarr', seriesId: id }) },
       };
+    },
+
+    // Credits cost one more Radarr call, so only this route asks for them; a failed read leaves them empty.
+    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[] }>> {
+      const [record, profiles, tags, credits] = await Promise.all([
+        services.radarr.movie(id).then(fromArr),
+        optional('radarr', '/api/v3/qualityprofile'),
+        optional('radarr', '/api/v3/tag'),
+        services.radarr.credits(id),
+      ]);
+      if (record.kind !== 'ok') return record;
+      return {
+        kind: 'ok',
+        value: {
+          ...movieDetail(record.value, { profiles, tags, owned: true }),
+          credits: creditList(credits.kind === 'ok' ? credits.value : []),
+          secondVersions: versionRows({ service: 'radarr', movieId: id }),
+        },
+      };
+    },
+
+    // Titles outside the library read the saved lookup record; library titles above always ask Sonarr or Radarr.
+    async preview(service: Service, id: number): Promise<Result<SeriesDetail | MovieDetail>> {
+      const found = fromArr(await lookupTitle(services, store, service, id));
+      if (found.kind !== 'ok') return found;
+      const show = service === 'sonarr' ? parseSeries(found.value) : null;
+      const movie = service === 'radarr' ? parseMovie(found.value) : null;
+      if (show !== null) return { kind: 'ok', value: seriesDetail(show, { owned: false, ratingsBySite: await showRatings(show) }) };
+      return movie === null ? { kind: 'not_found' } : { kind: 'ok', value: movieDetail(movie, { owned: false }) };
+    },
+
+    // Discover cards know a show only by its TMDB id; Sonarr looks shows up by TVDB id.
+    async previewShowByTmdbId(tmdbId: number): Promise<Result<SeriesDetail | MovieDetail>> {
+      if (tvdbIdOf === undefined) return { kind: 'not_configured', reason: notConfigured('TMDB', 'the show preview').message };
+      const found = await tvdbIdOf(tmdbId);
+      if (found.kind !== 'ok') return { kind: found.kind === 'refused' ? 'unreachable' : found.kind, reason: found.message };
+      if (found.value === null) return { kind: 'not_found', reason: 'TMDB knows no TVDB id for this show.' };
+      return this.preview('sonarr', found.value);
     },
 
     async history(subject: HistorySubject): Promise<Result<HistoryEntry[]>> {
@@ -584,16 +584,10 @@ export const createLibrary = (services: ArrServices) => {
 
     async monitor(change: MonitorChange): Promise<Result<void>> {
       const { monitored } = change;
-      if (change.kind === 'series') return write(services.sonarr, '/api/v3/series/editor', 'PUT', { seriesIds: [change.seriesId], monitored });
-      if (change.kind === 'episodes') return write(services.sonarr, '/api/v3/episode/monitor', 'PUT', { episodeIds: change.episodeIds, monitored });
-      if (change.kind === 'movie') return write(services.radarr, '/api/v3/movie/editor', 'PUT', { movieIds: [change.movieId], monitored });
-      const raw = await owned('sonarr', `/api/v3/series/${change.seriesId}`);
-      if (raw.kind !== 'ok') return raw;
-      const seasons = Array.isArray(raw.value.seasons) ? raw.value.seasons : [];
-      const index = seasons.findIndex((season) => isRecord(season) && season.seasonNumber === change.seasonNumber);
-      if (index === -1) return { kind: 'not_found' };
-      const updated = { ...raw.value, seasons: seasons.map((season, position) => (position === index ? { ...(season as Record<string, unknown>), monitored } : season)) };
-      return write(services.sonarr, `/api/v3/series/${change.seriesId}`, 'PUT', updated);
+      if (change.kind === 'series') return fromArr(await services.sonarr.monitorSeries(change.seriesId, monitored));
+      if (change.kind === 'episodes') return fromArr(await services.sonarr.monitorEpisodes(change.episodeIds, monitored));
+      if (change.kind === 'movie') return fromArr(await services.radarr.monitorMovie(change.movieId, monitored));
+      return fromArr(await services.sonarr.monitorSeason(change.seriesId, change.seasonNumber, monitored));
     },
 
     async search(request: Target): Promise<Result<void>> {
@@ -628,7 +622,7 @@ export const createLibrary = (services: ArrServices) => {
           const at = text(episode.airDateUtc);
           const series = isRecord(episode.series) ? episode.series : {};
           if (id === null || seriesId === null || seasonNumber === null || episodeNumber === null || at === null) continue;
-          const file = fileDetail(episode.episodeFile);
+          const file = parseFile(episode.episodeFile);
           entries.push({
             service: 'sonarr',
             kind: 'episode',
@@ -730,6 +724,12 @@ export const createLibraryRoutes = (library: Library) => {
     const id = positiveInteger(Number(context.req.param('id')));
     if (id === null) return context.json(invalid, 400);
     const result = await library.movie(id);
+    return result.kind === 'ok' ? context.json(result.value) : failure(context, result);
+  });
+  routes.get('/preview/sonarr/tmdb/:tmdbId', async (context) => {
+    const tmdbId = positiveInteger(Number(context.req.param('tmdbId')));
+    if (tmdbId === null) return context.json(invalid, 400);
+    const result = await library.previewShowByTmdbId(tmdbId);
     return result.kind === 'ok' ? context.json(result.value) : failure(context, result);
   });
   routes.get('/preview/:service/:id', async (context) => {

@@ -1,15 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { etag } from 'hono/etag';
 import type { EventHub } from './events.js';
-import type { createArr } from './services/arr.js';
+import { requestWithTimeout } from './services/connection.js';
+import type { ArrServices, Image, Movie, Series } from './services/arr.js';
 
 export type Service = 'sonarr' | 'radarr';
 export type ImageKind = 'poster' | 'fanart';
 export const TITLE_REFRESH_INTERVAL_MS = 5 * 60_000;
+
+const imageContentType = (header: string, extension: string) =>
+  header.split(';')[0].trim().toLowerCase().startsWith('image/') ? header : `image/${extension === 'jpg' ? 'jpeg' : extension}`;
 
 export type CachedTitle = {
   service: Service;
@@ -32,7 +36,6 @@ export type CachedEpisode = {
   monitored: boolean;
 };
 
-type Arr = Pick<ReturnType<typeof createArr>, 'request' | 'download'>;
 type TitleRow = { service: Service; id: number; title: string; year: number | null; detail: string; fetched_at: number };
 type EpisodeRow = {
   id: number;
@@ -48,7 +51,6 @@ type EpisodeRow = {
 
 const SERVICES: Service[] = ['sonarr', 'radarr'];
 const KINDS: ImageKind[] = ['poster', 'fanart'];
-const resourcePath = { sonarr: '/api/v3/series', radarr: '/api/v3/movie' } as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -58,6 +60,19 @@ const positiveInteger = (value: unknown) => (
 );
 const isSuccess = (status: number) => status >= 200 && status <= 299;
 const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
+
+// Written beside the target and renamed over it, so a reader never sees half a file; a failure removes the partial copy.
+const saveImage = (directory: string, file: string, bytes: Uint8Array) => {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const temporary = join(directory, `${file}.${randomUUID()}.tmp`);
+  try {
+    writeFileSync(temporary, bytes, { mode: 0o600 });
+    renameSync(temporary, join(directory, file));
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    throw error;
+  }
+};
 
 const toTitle = (row: TitleRow): CachedTitle => ({
   service: row.service,
@@ -79,6 +94,14 @@ export const listTitles = (database: DatabaseSync, service: Service): CachedTitl
     .all(service) as TitleRow[]).map(toTitle)
 );
 
+// Library ids keyed by the TMDB id Sonarr or Radarr records on each title.
+export const libraryIdsByTmdbId = (database: DatabaseSync, service: Service, tmdbIds: number[]): Map<number, number> => {
+  if (tmdbIds.length === 0) return new Map();
+  const rows = database.prepare(`SELECT id, json_extract(detail, '$.tmdbId') AS tmdb_id FROM titles
+    WHERE service = ? AND json_extract(detail, '$.tmdbId') IN (${tmdbIds.map(() => '?').join(', ')})`).all(service, ...tmdbIds);
+  return new Map(rows.map((row) => [Number(row.tmdb_id), Number(row.id)]));
+};
+
 export const listEpisodes = (database: DatabaseSync, seriesId: number): CachedEpisode[] => (
   (database.prepare(`SELECT id, series_id, season_number, episode_number, title, air_date_utc, overview, has_file, monitored
     FROM episodes WHERE series_id = ? ORDER BY season_number, episode_number`).all(seriesId) as EpisodeRow[]).map((row) => ({
@@ -96,7 +119,7 @@ export const listEpisodes = (database: DatabaseSync, seriesId: number): CachedEp
 
 export const createTitleCache = (options: {
   database: DatabaseSync;
-  arr: Record<Service, Arr>;
+  arr: ArrServices;
   events: EventHub;
   imageDirectory: string;
   now?: () => number;
@@ -110,13 +133,8 @@ export const createTitleCache = (options: {
   );
 
   const syncEpisodes = async (seriesId: number, startedAt: number) => {
-    let response: { status: number; body: unknown };
-    try {
-      response = await arr.sonarr.request(`/api/v3/episode?seriesId=${seriesId}`);
-    } catch {
-      return;
-    }
-    if (!isSuccess(response.status) || !Array.isArray(response.body)) return;
+    const result = await arr.sonarr.episodes(seriesId);
+    if (result.kind !== 'ok') return;
     const insert = database.prepare(`INSERT OR REPLACE INTO episodes
       (id, series_id, season_number, episode_number, title, air_date_utc, overview, has_file, monitored, fetched_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -128,19 +146,15 @@ export const createTitleCache = (options: {
         return;
       }
       database.prepare('DELETE FROM episodes WHERE series_id = ?').run(seriesId);
-      for (const episode of response.body) {
-        if (!isRecord(episode)) continue;
-        const id = positiveInteger(episode.id);
-        const { seasonNumber, episodeNumber } = episode;
-        if (id === null || !Number.isInteger(seasonNumber) || !Number.isInteger(episodeNumber)) continue;
+      for (const episode of result.value) {
         insert.run(
-          id,
+          episode.id,
           seriesId,
-          seasonNumber as number,
-          episodeNumber as number,
-          typeof episode.title === 'string' ? episode.title : null,
-          typeof episode.airDateUtc === 'string' ? episode.airDateUtc : null,
-          typeof episode.overview === 'string' ? episode.overview : '',
+          episode.seasonNumber,
+          episode.episodeNumber,
+          episode.title,
+          episode.airDateUtc,
+          episode.overview ?? '',
           episode.hasFile === true ? 1 : 0,
           episode.monitored === true ? 1 : 0,
           startedAt,
@@ -154,20 +168,19 @@ export const createTitleCache = (options: {
 
   // razor: a failed image download is retried on the next change of its source url, not on a timer.
   // Upgrade path: a retry timestamp on title_images checked by the fallback run.
-  const syncImages = async (service: Service, id: number, resource: Record<string, unknown>, startedAt: number) => {
-    const images = Array.isArray(resource.images) ? resource.images : [];
+  const syncImages = async (service: Service, id: number, images: Image[], startedAt: number) => {
     for (const kind of KINDS) {
-      const entry = images.find((image) => isRecord(image) && image.coverType === kind && typeof image.url === 'string');
+      const entry = images.find((image) => image.coverType === kind && image.url !== null);
       const stored = database.prepare('SELECT source, file FROM title_images WHERE service = ? AND id = ? AND kind = ?')
         .get(service, id, kind) as { source: string; file: string } | undefined;
-      if (!isRecord(entry)) {
+      if (entry === undefined || entry.url === null) {
         if (stored !== undefined) {
           database.prepare('DELETE FROM title_images WHERE service = ? AND id = ? AND kind = ?').run(service, id, kind);
           removeImageFile(stored.file);
         }
         continue;
       }
-      const source = entry.url as string;
+      const source = entry.url;
       if (stored?.source === source && existsSync(join(imageDirectory, stored.file))) continue;
       let name: string;
       try {
@@ -184,16 +197,13 @@ export const createTitleCache = (options: {
         if (!titleExists(service, id)) return;
         const extension = match[1].toLowerCase();
         const file = `${service}-${id}-${kind}.${extension}`;
-        mkdirSync(imageDirectory, { recursive: true, mode: 0o700 });
-        const temporary = join(imageDirectory, `${file}.${randomUUID()}.tmp`);
-        writeFileSync(temporary, response.bytes, { mode: 0o600 });
-        renameSync(temporary, join(imageDirectory, file));
+        saveImage(imageDirectory, file, response.bytes);
         if (stored !== undefined && stored.file !== file) removeImageFile(stored.file);
         database.prepare(`INSERT INTO title_images (service, id, kind, source, content_type, etag, file, fetched_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (service, id, kind) DO UPDATE SET source = excluded.source, content_type = excluded.content_type,
             etag = excluded.etag, file = excluded.file, fetched_at = excluded.fetched_at`)
-          .run(service, id, kind, source, response.contentType || `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+          .run(service, id, kind, source, imageContentType(response.contentType, extension),
             sha256(response.bytes), file, startedAt);
       } catch {
         continue;
@@ -204,18 +214,17 @@ export const createTitleCache = (options: {
   // razor: every write is stamped with the time its fetch started and only replaces an older row, so a delete
   // webhook racing a fallback list that started earlier can re-insert the row until the next fallback run.
   // Upgrade path: keep deleted ids with their deletion time and refuse older inserts for them.
-  const upsertTitle = async (service: Service, resource: unknown, startedAt: number) => {
-    if (!isRecord(resource)) return 'skipped';
-    const id = positiveInteger(resource.id);
-    if (id === null || typeof resource.title !== 'string' || resource.title === '') return 'skipped';
-    const detail = JSON.stringify(resource);
+  const upsertTitle = async (service: Service, record: Series | Movie, startedAt: number) => {
+    const { id } = record;
+    if (id === null || record.title === '') return 'skipped';
+    const detail = JSON.stringify(record);
     const fingerprint = sha256(detail);
     const stored = database.prepare('SELECT fingerprint FROM titles WHERE service = ? AND id = ?')
       .get(service, id) as { fingerprint: string } | undefined;
     if (stored?.fingerprint === fingerprint) {
       // A restored database or a wiped images folder keeps rows whose files are gone; fetch those again.
       const files = database.prepare('SELECT file FROM title_images WHERE service = ? AND id = ?').all(service, id) as { file: string }[];
-      if (files.some(({ file }) => !existsSync(join(imageDirectory, file)))) await syncImages(service, id, resource, startedAt);
+      if (files.some(({ file }) => !existsSync(join(imageDirectory, file)))) await syncImages(service, id, record.images, startedAt);
       return 'unchanged';
     }
     const { changes } = database.prepare(`INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at)
@@ -223,10 +232,10 @@ export const createTitleCache = (options: {
       ON CONFLICT (service, id) DO UPDATE SET title = excluded.title, year = excluded.year, detail = excluded.detail,
         fingerprint = excluded.fingerprint, fetched_at = excluded.fetched_at
       WHERE titles.fetched_at < excluded.fetched_at`)
-      .run(service, id, resource.title, Number.isInteger(resource.year) ? resource.year as number : null, detail, fingerprint, startedAt);
+      .run(service, id, record.title, Number.isInteger(record.year) ? record.year : null, detail, fingerprint, startedAt);
     if (Number(changes) === 0) return 'stale';
     if (service === 'sonarr') await syncEpisodes(id, startedAt);
-    await syncImages(service, id, resource, startedAt);
+    await syncImages(service, id, record.images, startedAt);
     if (titleExists(service, id)) events.publish('title', { service, id, change: 'updated' });
     return 'written';
   };
@@ -243,10 +252,10 @@ export const createTitleCache = (options: {
   const refresh = async (service: Service, id: number) => {
     try {
       const startedAt = now();
-      const response = await arr[service].request(`${resourcePath[service]}/${id}`);
-      if (response.status === 404) deleteTitle(service, id);
-      else if (isSuccess(response.status) && isRecord(response.body)) {
-        const result = await upsertTitle(service, response.body, startedAt);
+      const response = service === 'sonarr' ? await arr.sonarr.series(id) : await arr.radarr.movie(id);
+      if (response.kind === 'not_found') deleteTitle(service, id);
+      else if (response.kind === 'ok') {
+        const result = await upsertTitle(service, response.value, startedAt);
         if (result === 'unchanged' && service === 'sonarr') {
           const before = JSON.stringify(listEpisodes(database, id));
           await syncEpisodes(id, startedAt);
@@ -261,12 +270,11 @@ export const createTitleCache = (options: {
   const reconcileService = async (service: Service) => {
     try {
       const startedAt = now();
-      const response = await arr[service].request(resourcePath[service]);
-      if (!isSuccess(response.status) || !Array.isArray(response.body)) return;
+      const response = service === 'sonarr' ? await arr.sonarr.listSeries() : await arr.radarr.listMovies();
+      if (response.kind !== 'ok') return;
       const listed = new Set<number>();
-      for (const item of response.body) {
-        const id = isRecord(item) ? positiveInteger(item.id) : null;
-        if (id !== null) listed.add(id);
+      for (const item of response.value) {
+        if (item.id !== null) listed.add(item.id);
         // razor: episode-only changes are picked up when Sonarr's metadata refresh changes the series resource or on the next webhook refresh; upgrade path is a per-series episode check in the fallback.
         await upsertTitle(service, item, startedAt);
       }
@@ -318,7 +326,109 @@ export const createTitleCache = (options: {
   };
 };
 
-export const createImageRoutes = (cache: Pick<ReturnType<typeof createTitleCache>, 'image'>) => {
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
+const TMDB_IMAGE_SIZES = new Set(['w342', 'w1920_and_h800_multi_faces']);
+const TMDB_IMAGE_FILE = /^[A-Za-z0-9]+\.(jpg|png)$/;
+// TMDB's terms cap how long a copy may be kept at six months; 180 days stays inside that.
+const TMDB_IMAGE_MAX_AGE_MS = 180 * 24 * 60 * 60_000;
+// A partial file this old belongs to no write still running.
+const PARTIAL_IMAGE_MAX_AGE_MS = 24 * 60 * 60_000;
+export const IMAGE_SWEEP_INTERVAL_MS = 24 * 60 * 60_000;
+
+type StoredImage = { path: string; contentType: string; etag: string };
+
+// Our copies of TMDB posters and backdrops, fetched on first request. Cast photos stay TMDB links.
+export const createTmdbImages = (options: {
+  database: DatabaseSync;
+  imageDirectory: string;
+  fetchImpl?: typeof globalThis.fetch;
+  now?: () => number;
+}) => {
+  const { database, imageDirectory } = options;
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const now = options.now ?? Date.now;
+  const pending = new Map<string, Promise<StoredImage | 'not_found' | 'unreachable'>>();
+
+  const download = async (size: string, file: string): Promise<StoredImage | 'not_found' | 'unreachable'> => {
+    let bytes: Uint8Array;
+    try {
+      const response = await requestWithTimeout(fetchImpl, `${TMDB_IMAGE_BASE}${size}/${file}`, { method: 'GET' });
+      if (response.status === 404) return 'not_found';
+      if (!isSuccess(response.status)) return 'unreachable';
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } catch {
+      return 'unreachable';
+    }
+    const stored = `tmdb-${size}-${file}`;
+    saveImage(imageDirectory, stored, bytes);
+    const contentType = file.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const tag = sha256(bytes);
+    database.prepare(`INSERT INTO tmdb_images (size, path, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (size, path) DO UPDATE SET content_type = excluded.content_type, etag = excluded.etag,
+        file = excluded.file, fetched_at = excluded.fetched_at`)
+      .run(size, file, contentType, tag, stored, now());
+    return { path: join(imageDirectory, stored), contentType, etag: tag };
+  };
+
+  // Returns undefined for a size or file outside the allowed set, before any fetch.
+  const image = async (size: string, file: string) => {
+    if (!TMDB_IMAGE_SIZES.has(size) || !TMDB_IMAGE_FILE.test(file)) return undefined;
+    const row = database.prepare('SELECT content_type, etag, file, fetched_at FROM tmdb_images WHERE size = ? AND path = ?')
+      .get(size, file) as { content_type: string; etag: string; file: string; fetched_at: number } | undefined;
+    if (row !== undefined) {
+      const path = join(imageDirectory, row.file);
+      if (now() - row.fetched_at < TMDB_IMAGE_MAX_AGE_MS && existsSync(path)) {
+        return { path, contentType: row.content_type, etag: row.etag };
+      }
+      database.prepare('DELETE FROM tmdb_images WHERE size = ? AND path = ?').run(size, file);
+      rmSync(path, { force: true });
+    }
+    const key = `${size}/${file}`;
+    let fetching = pending.get(key);
+    if (fetching === undefined) {
+      fetching = download(size, file).finally(() => pending.delete(key));
+      pending.set(key, fetching);
+    }
+    return fetching;
+  };
+
+  // A copy nobody asks for again would otherwise outlive TMDB's limit, and partial files from a crash would never go.
+  const sweep = () => {
+    const cutoff = now() - TMDB_IMAGE_MAX_AGE_MS;
+    const expired = database.prepare('SELECT file FROM tmdb_images WHERE fetched_at <= ?').all(cutoff) as { file: string }[];
+    database.prepare('DELETE FROM tmdb_images WHERE fetched_at <= ?').run(cutoff);
+    for (const { file } of expired) rmSync(join(imageDirectory, file), { force: true });
+    if (!existsSync(imageDirectory)) return;
+    for (const name of readdirSync(imageDirectory)) {
+      if (!name.endsWith('.tmp')) continue;
+      const path = join(imageDirectory, name);
+      const modified = statSync(path, { throwIfNoEntry: false })?.mtimeMs;
+      if (modified !== undefined && now() - modified > PARTIAL_IMAGE_MAX_AGE_MS) rmSync(path, { force: true });
+    }
+  };
+
+  return { image, sweep };
+};
+
+const serveImage = (context: Context, found: StoredImage) => {
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(found.path);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return context.json({ error: 'not_found' }, 404);
+    throw error;
+  }
+  return context.body(new Uint8Array(bytes), 200, {
+    'Content-Type': found.contentType,
+    ETag: `"${found.etag}"`,
+    'Cache-Control': 'private, max-age=300',
+  });
+};
+
+export const createImageRoutes = (
+  cache: Pick<ReturnType<typeof createTitleCache>, 'image'>,
+  tmdb?: ReturnType<typeof createTmdbImages>,
+) => {
   const routes = new Hono();
   routes.use('*', etag());
   routes.get('/:service{sonarr|radarr}/:id{[0-9]{1,18}}/:kind{poster|fanart}', (context) => {
@@ -328,19 +438,16 @@ export const createImageRoutes = (cache: Pick<ReturnType<typeof createTitleCache
       context.req.param('kind') as ImageKind,
     );
     if (found === undefined) return context.json({ error: 'not_found' }, 404);
-    let bytes: Buffer;
-    try {
-      bytes = readFileSync(found.path);
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return context.json({ error: 'not_found' }, 404);
-      throw error;
-    }
-    return context.body(new Uint8Array(bytes), 200, {
-      'Content-Type': found.contentType,
-      ETag: `"${found.etag}"`,
-      'Cache-Control': 'private, max-age=300',
-    });
+    return serveImage(context, found);
   });
+  if (tmdb !== undefined) {
+    routes.get('/tmdb/:size/:file', async (context) => {
+      const found = await tmdb.image(context.req.param('size'), context.req.param('file'));
+      if (found === 'unreachable') return context.json({ error: 'tmdb_unreachable' }, 502);
+      if (found === undefined || found === 'not_found') return context.json({ error: 'not_found' }, 404);
+      return serveImage(context, found);
+    });
+  }
   routes.all('/*', (context) => context.json({ error: 'not_found' }, 404));
   return routes;
 };

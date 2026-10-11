@@ -47,6 +47,12 @@ export const createCommands = <S extends Service>({ service, label, send }: { se
     );
   };
 
+  // A forced import drops every rejection, and a sample imported after the real file would replace it.
+  const isSample = (candidate: Record<string, unknown>) => Array.isArray(candidate.rejections) && candidate.rejections.some((rejection) => {
+    const reason = isRecord(rejection) ? rejection.reason : rejection;
+    return typeof reason === 'string' && /sample/i.test(reason);
+  });
+
   // Forces the import only onto what the grab record says was grabbed; any file outside it stops the whole import.
   const grabFiles = async (grab: ForceImportGrab): Promise<Result<unknown[]>> => {
     const answer = await send(operation, `/api/v3/manualimport?downloadId=${grab.hash}&filterExistingFiles=false`);
@@ -56,7 +62,7 @@ export const createCommands = <S extends Service>({ service, label, send }: { se
     const allowed = new Set(grab.episodeIds);
     const files: Record<string, unknown>[] = [];
     for (const candidate of body) {
-      if (!isRecord(candidate) || typeof candidate.path !== 'string') continue;
+      if (!isRecord(candidate) || typeof candidate.path !== 'string' || isSample(candidate)) continue;
       const base = {
         path: candidate.path,
         quality: candidate.quality,
@@ -93,7 +99,18 @@ export const createCommands = <S extends Service>({ service, label, send }: { se
     return done(await command(operation, { name: 'ManualImport', files, importMode: 'copy' }));
   };
 
+  // Sonarr and Radarr move deleted files here instead of deleting them, so the space is freed only once it is emptied.
+  const recycleBin = async (): Promise<Result<string | null>> => {
+    const operation = 'the media management settings read';
+    const answer = await send(operation, '/api/v3/config/mediamanagement');
+    if (answer.kind !== 'ok') return answer;
+    const { body } = answer.value;
+    if (!isRecord(body)) return refusal(`${label} sent no record for ${operation}.`);
+    return { kind: 'ok', value: typeof body.recycleBin === 'string' && body.recycleBin.trim() !== '' ? body.recycleBin.trim() : null };
+  };
+
   return {
+    recycleBin,
     searchAutomatically: searchAutomatically as (target: SearchTarget<S>) => Promise<Result<void>>,
     refreshTitle,
     refreshMonitoredDownloads,

@@ -64,18 +64,29 @@ export type EpisodeDetail = {
 
 type Profile = { id: number; name: string; cutoff: string | null } | null;
 
+/** One rating site's score as the site gives it, or null when the site has none. */
+type SiteRating = { value: number; votes: number } | null;
+
 export type SeriesDetail = {
   id: number;
   title: string;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   ended: boolean;
+  airTime: string | null;
+  firstAired: string | null;
+  lastAired: string | null;
+  nextAiring: string | null;
+  previousAiring: string | null;
   network: string | null;
   language: string | null;
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
+  /** Sonarr's one rating, out of 10; the server does not say which site it comes from. */
   rating: number | null;
+  ratingVotes: number | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -94,17 +105,25 @@ export type SeriesDetail = {
     statistics: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; sizeOnDisk: number; nextAiring: string | null; previousAiring: string | null };
   }>;
   episodes: EpisodeDetail[];
+  /** Only on a series already in the library. */
+  secondVersions?: SecondVersion[];
 };
 
 export type MovieDetail = {
   id: number;
   title: string;
+  originalLanguage: string | null;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
+  /** IMDb, TMDB and Trakt score out of 10; Rotten Tomatoes and Metacritic out of 100. */
+  ratings: Record<'imdb' | 'tmdb' | 'metacritic' | 'rottenTomatoes' | 'trakt', SiteRating>;
+  keywords: string[];
+  youTubeTrailerId: string | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -123,6 +142,68 @@ export type MovieDetail = {
   sizeOnDisk: number;
   releaseDates: { inCinemas: string | null; digital: string | null; physical: string | null };
   file: FileDetail | null;
+};
+
+/** Only a movie already in the library comes with credits; crew jobs use TMDB names, such as Director, Screenplay, Novel, Producer. */
+export type Credits = {
+  cast: Array<{ name: string; character: string | null; order: number | null; photoUrl: string | null; tmdbId: number | null }>;
+  crew: Array<{ name: string; job: string | null; department: string | null; photoUrl: string | null; tmdbId: number | null }>;
+};
+export type OwnedMovieDetail = MovieDetail & { credits: Credits; secondVersions: SecondVersion[] };
+
+/** A version media-manager-2 grabbed next to the tracked one; src/server/secondVersionRows.ts is the source of truth. */
+export type SecondVersion = {
+  id: number;
+  service: Service;
+  movieId: number | null;
+  seriesId: number | null;
+  episodeId: number | null;
+  state: 'sending' | 'downloading' | 'importing' | 'imported' | 'failed';
+  failure: string | null;
+  failureCode: 'download_link_failed' | 'not_a_torrent' | 'already_in_rtorrent' | 'rtorrent_refused' | 'send_unconfirmed'
+    | 'grabbed_by_arr' | 'never_received' | 'stalled_removed' | 'import_no_name' | 'import_no_match' | 'import_link_failed' | 'torrent_gone' | null;
+  releaseTitle: string;
+  indexer: string;
+  quality: string;
+  group: string | null;
+  sizeBytes: number | null;
+  /** Milliseconds since 1970. */
+  addedAt: number;
+  importedAt: number | null;
+  hash: string | null;
+  path: string | null;
+  percent: number | null;
+  /** From the last rTorrent poll; null when media-manager-2 has never seen the torrent. */
+  seeding: { inRtorrent: boolean; complete: boolean; ratio: number; seedingSeconds: number; upRate: number; trackerHost: string | null } | null;
+  /** The tracker's bare rule, without the removal advice's margins; null when the torrent is gone, unsized or its tracker has no rule. */
+  hitAndRun: { host: string; requiredHours: number | null; seededHours: number; ratio: number; requiredRatio: number | null; met: boolean } | null;
+  /** The stall check flagged it while downloading and kept it in rTorrent. */
+  stalled: boolean;
+  /** Seconds left at the last download rate; null unless downloading. */
+  etaSeconds: number | null;
+};
+
+/** GET /api/advice/:hash; src/server/advice.ts is the source of truth. */
+export type RemovalAdvice = {
+  recommendation: 'safe' | 'keep' | 'unconfirmed';
+  reason: string;
+  globalRatio: string | null;
+  host: string | null;
+  /** Includes the advice's margin; null when no seed time applies. */
+  requiredHours: number | null;
+  /** Null when the torrent is not in rTorrent. */
+  seededHours: number | null;
+  /** 0 once the rule is met; null when no seed time applies or the torrent is incomplete. */
+  hoursLeft: number | null;
+  /** `reason` without its verdict prefix. */
+  detail: string;
+};
+
+/** DELETE /api/second-versions/:id reply; src/server/secondVersionDelete.ts is the source of truth. */
+export type SecondVersionDeleted = {
+  deleted: { path: string } | null;
+  torrent: { removed: true } | { removed: false; reason: string };
+  secondVersions: SecondVersion[];
 };
 
 export type HistoryEntry = {

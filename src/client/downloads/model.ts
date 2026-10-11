@@ -310,13 +310,19 @@ export const groupRows = (rows: Row[]): Group[] => {
 // The latest fix attempt, or the problem itself when nothing has been tried yet.
 export const latestStep = (problem: Problem) => problem.steps.at(-1)?.text ?? problem.summary;
 
+// The grabs worth keeping, as the server chooses them for /api/downloads: still downloading, or still seeding in rTorrent.
+const stillWanted = (grab: Grab, torrents: Torrent[]) => (
+  (grab.importedAt === null && grab.failedAt === null) || torrents.some((torrent) => torrent.hash === grab.hash && torrent.goneAt === null)
+);
+
 export const applyEvent = (snapshot: Snapshot, type: string, data: unknown): Snapshot => {
   if (type === 'torrents') {
     const { changed, gone } = data as { changed: Torrent[]; gone: string[] };
     const byHash = new Map(snapshot.torrents.map((torrent) => [torrent.hash, torrent]));
     for (const torrent of changed) byHash.set(torrent.hash, torrent);
     for (const hash of gone) byHash.delete(hash);
-    return { ...snapshot, torrents: [...byHash.values()] };
+    const torrents = [...byHash.values()];
+    return { ...snapshot, torrents, grabs: snapshot.grabs.filter((grab) => stillWanted(grab, torrents)) };
   }
   if (type === 'queue') {
     const { service, items } = data as { service: Service; items: QueueItem[] };
@@ -324,7 +330,8 @@ export const applyEvent = (snapshot: Snapshot, type: string, data: unknown): Sna
   }
   if (type === 'grab') {
     const grab = data as Grab;
-    return { ...snapshot, grabs: [...snapshot.grabs.filter((existing) => existing.hash !== grab.hash), grab] };
+    const others = snapshot.grabs.filter((existing) => existing.hash !== grab.hash);
+    return { ...snapshot, grabs: stillWanted(grab, snapshot.torrents) ? [...others, grab] : others };
   }
   if (type === 'problem') {
     const problem = data as Problem;
