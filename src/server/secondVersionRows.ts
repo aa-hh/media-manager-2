@@ -123,7 +123,8 @@ const toRow = (database: DatabaseSync, row: Record<string, unknown>): SecondVers
       trackerHost: (row.t_tracker as string | null) ?? null,
     } : null,
     hitAndRun: hitAndRunOf(database, row),
-    stalled: state === 'downloading' && row.w_replaced !== null,
+    // A flag from before the row was created belongs to an earlier use of the same torrent.
+    stalled: state === 'downloading' && row.w_replaced !== null && Number(row.w_replaced) >= Number(row.created_at),
     etaSeconds: downloading && downRate > 0 ? Math.ceil(Math.max(0, size - Number(row.t_completed)) / downRate) : null,
   };
 };

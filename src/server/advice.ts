@@ -7,7 +7,8 @@ import { listTorrents, type Torrent } from './torrents.js';
 export type Recommendation = 'safe' | 'keep' | 'unconfirmed';
 // `reason` is the full sentence; `detail` is the same text without its verdict prefix ("Keep seeding: " and the like).
 // requiredHours includes the margin and is null when no seed time applies. hoursLeft is requiredHours less seededHours,
-// never below 0, and null when no seed time applies or the seeding counter does not run (an incomplete torrent).
+// never below 0; it is 0 once the rule is met, even on ratio alone with seed time still short, and null when no seed
+// time applies or the seeding counter does not run (an incomplete torrent).
 // seededHours is null when the torrent is not in rTorrent. All three are rounded to 0.01 hours, hoursLeft upwards.
 export type RemovalAdvice = {
   recommendation: Recommendation;

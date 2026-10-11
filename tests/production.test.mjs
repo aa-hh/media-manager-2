@@ -1885,6 +1885,8 @@ test('removal advice applies the hit and run rule with margins and proves time o
         detail: "Partly downloaded: clears at ratio 0.95 of the data downloaded (now 0.94) or after 66 days seeding, which isn't measured yet" }],
     ['no rule', { host: 'tracker.opentrackr.org', seconds: 7 * hour },
       { host: 'tracker.opentrackr.org', requiredHours: null, seededHours: 7, hoursLeft: null, detail: 'no hit and run rule for tracker.opentrackr.org' }],
+    ['met on ratio alone', { host: 'tracker.beyond-hd.me', seconds: 100 * hour, ratio: 1050 },
+      { host: 'beyond-hd.me', requiredHours: 132, seededHours: 100, hoursLeft: 0, detail: 'ratio 1.05 of 1.05' }],
     ['gone', { goneAt: now - 1000, seconds: 7 * hour },
       { host: 'blutopia.cc', requiredHours: null, seededHours: null, hoursLeft: null, detail: 'Seeding time unknown (torrent not in rTorrent)' }],
   ]) {
@@ -6774,7 +6776,7 @@ test('second versions are served under their movie and series, and a check flags
   const torrent = database.prepare("INSERT INTO torrents VALUES (?, ?, 1000, ?, ?, 7, 1, 1, 1, ?, '', 0, ?, 0, 0, 'blutopia.cc', 1, 1, NULL, ?, '')");
   torrent.run('M'.repeat(40), 'Dune', 1000, 0, 1, 1500, 7200);
   torrent.run('F'.repeat(40), 'Show S01E02', 400, 100, 0, 0, 0);
-  database.prepare('INSERT INTO stall_watch (hash, replaced_at) VALUES (?, 1)').run('F'.repeat(40));
+  database.prepare('INSERT INTO stall_watch (hash, replaced_at) VALUES (?, 550)').run('F'.repeat(40));
 
   const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title)));
   const read = async (path) => (await routes.request(path)).json();
@@ -6803,6 +6805,18 @@ test('second versions are served under their movie and series, and a check flags
     [{ host: 'blutopia.cc', requiredHours: null, seededHours: 0, ratio: 0, requiredRatio: null, met: false }, 6, true],
     [null, null, false],
   ]);
+  // Counting a stall flag set before the row was created (an earlier use of the same torrent) turns this red.
+  database.prepare('UPDATE stall_watch SET replaced_at = 499 WHERE hash = ?').run('F'.repeat(40));
+  assert.equal((await read('/series/5')).secondVersions[1].stalled, false);
+
+  // Not judging a met rule as met, or failing the whole page on an invalid saved rule, turns these red.
+  setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', JSON.stringify({ seedHours: [{ hours: 2 }] }));
+  assert.deepEqual((await read('/movie/9')).secondVersions[0].hitAndRun,
+    { host: 'blutopia.cc', requiredHours: 2, seededHours: 2, ratio: 1.5, requiredRatio: null, met: true });
+  setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', 'not json');
+  const broken = await routes.request('/movie/9');
+  assert.equal(broken.status, 200);
+  assert.equal((await broken.json()).secondVersions[0].hitAndRun, null);
 
   const problems = createProblems({ database, events: createEventHub() });
   const checks = createSecondVersionChecks({ database, arr, problems });
