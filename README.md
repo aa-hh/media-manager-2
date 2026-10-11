@@ -92,7 +92,7 @@ rtorrent, plex, blutopia, privatehd, beyondhd, and exits 0 only when all seven a
 
 The output never contains a URL or a setting value. AA-38 is accepted only on
 live service evidence: the owner runs `node dist/server/cli.js connections
-check` on the slot and sees four `ok` lines with versions. The test fixtures
+check` on the slot and sees `ok` with a version on the sonarr, radarr, rtorrent and plex lines. The test fixtures
 prove controlled behaviour only.
 
 ### Tracker accounts

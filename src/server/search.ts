@@ -218,6 +218,10 @@ export const createSearch = (services: { sonarr: ArrService; radarr: ArrService 
   };
 
   return {
+    // An add changes which titles that service has, so its cached lookups would still offer Add.
+    forget(service: 'sonarr' | 'radarr') {
+      for (const key of cache.keys()) if (key.startsWith(`${service}\n`)) cache.delete(key);
+    },
     async search(query: SearchQuery): Promise<SearchResponse> {
       const [sonarr, radarr] = await Promise.all([
         cachedLookup('sonarr', '/api/v3/series/lookup', lookupTerm(query, 'sonarr'), toSeries),

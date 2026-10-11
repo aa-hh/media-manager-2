@@ -104,14 +104,28 @@ if (database !== undefined) {
       if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
     }
   });
+  const search = createSearch(arr);
+  const add = createAdd(database, arr);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
-    search: createSearch(arr),
-    add: createAdd(database, arr),
+    search,
+    add: {
+      ...add,
+      async addSeries(...args: Parameters<typeof add.addSeries>) {
+        const result = await add.addSeries(...args);
+        if (result.kind === 'added') search.forget('sonarr');
+        return result;
+      },
+      async addMovie(...args: Parameters<typeof add.addMovie>) {
+        const result = await add.addMovie(...args);
+        if (result.kind === 'added') search.forget('radarr');
+        return result;
+      },
+    },
     releases,
     grabs,
     owned: createOwned(arr),

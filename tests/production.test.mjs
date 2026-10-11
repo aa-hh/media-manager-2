@@ -2557,6 +2557,41 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     assert.deepEqual(files.filter((name) => name.startsWith('radarr-7-')), []);
   });
 
+  // Skipping the download whenever the stored source matches, without checking the file is on disk, turns this red.
+  await t.test('the fallback downloads an image again when its file is missing', async () => {
+    const { cache, calls, clock, state } = setup();
+    await cache.reconcile();
+    await rm(cache.image('sonarr', 1, 'poster').path);
+    calls.length = 0;
+    clock.value += 60_000;
+    await cache.reconcile();
+    const poster = cache.image('sonarr', 1, 'poster');
+    assert.ok(poster);
+    assert.deepEqual(new Uint8Array(await readFile(poster.path)), state.images['sonarr/1/poster.jpg']);
+    const downloads = () => calls.filter((call) => call.path.startsWith('/api/v3/mediacover/')).map(({ service, path }) => `${service}${path}`);
+    assert.deepEqual(downloads(), ['sonarr/api/v3/mediacover/1/poster.jpg']);
+    calls.length = 0;
+    clock.value += 60_000;
+    await cache.reconcile();
+    assert.deepEqual(downloads(), []);
+  });
+
+  // Writing episodes without checking the series still exists, or publishing 'updated' for a deleted title, turns this red.
+  await t.test('a delete during an episode fetch leaves no episodes and no later update', async () => {
+    const { cache, database, published, state } = setup();
+    let release;
+    state.gate = { service: 'sonarr', path: '/api/v3/episode', promise: new Promise((resolve) => { release = resolve; }) };
+    const pending = cache.refresh('sonarr', 1);
+    await settle();
+    assert.equal(state.gate, null, 'the episode request is in flight');
+    assert.equal(cache.receiveWebhook('sonarr', { eventType: 'SeriesDelete', series: { id: 1 } }), 'ok');
+    release();
+    await pending;
+    await settle();
+    assert.deepEqual(listEpisodes(database, 1), []);
+    assert.deepEqual(published, [{ service: 'sonarr', id: 1, change: 'deleted' }]);
+  });
+
   // Registering the fallback on another interval, or not registering it, turns this red.
   await t.test('the five-minute fallback runs on the job runner', async () => {
     const { cache, calls, clock } = setup();
@@ -3810,6 +3845,10 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   clock.value += 1;
   await lookUp('Dune');
   assert.deepEqual(calls.map(({ service }) => service), ['sonarr', 'radarr']);
+  // Making forget a no-op, or dropping the other service's entries too, turns this red.
+  search.forget('sonarr');
+  await lookUp('Dune');
+  assert.deepEqual(calls.map(({ service }) => service), ['sonarr']);
 
   responders = { sonarr: () => new Response('', { status: 500 }), radarr: ok(movies) };
   await run('Dune');

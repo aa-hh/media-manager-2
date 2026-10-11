@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
@@ -105,6 +105,9 @@ export const createTitleCache = (options: {
   const now = options.now ?? Date.now;
 
   const removeImageFile = (file: string) => rmSync(join(imageDirectory, file), { force: true });
+  const titleExists = (service: Service, id: number) => (
+    database.prepare('SELECT 1 FROM titles WHERE service = ? AND id = ?').get(service, id) !== undefined
+  );
 
   const syncEpisodes = async (seriesId: number, startedAt: number) => {
     let response: { status: number; body: unknown };
@@ -119,6 +122,11 @@ export const createTitleCache = (options: {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     database.exec('BEGIN IMMEDIATE;');
     try {
+      // A delete that landed while the episode list was in flight leaves no series to attach episodes to.
+      if (!titleExists('sonarr', seriesId)) {
+        database.exec('ROLLBACK;');
+        return;
+      }
       database.prepare('DELETE FROM episodes WHERE series_id = ?').run(seriesId);
       for (const episode of response.body) {
         if (!isRecord(episode)) continue;
@@ -160,7 +168,7 @@ export const createTitleCache = (options: {
         continue;
       }
       const source = entry.url as string;
-      if (stored?.source === source) continue;
+      if (stored?.source === source && existsSync(join(imageDirectory, stored.file))) continue;
       let name: string;
       try {
         name = posix.basename(new URL(source, 'http://localhost').pathname);
@@ -173,7 +181,7 @@ export const createTitleCache = (options: {
         const response = await arr[service].download(`/api/v3/mediacover/${id}/${name}`);
         if (!isSuccess(response.status)) continue;
         // A delete that landed while the download was in flight leaves nothing to attach the image to.
-        if (database.prepare('SELECT 1 FROM titles WHERE service = ? AND id = ?').get(service, id) === undefined) return;
+        if (!titleExists(service, id)) return;
         const extension = match[1].toLowerCase();
         const file = `${service}-${id}-${kind}.${extension}`;
         mkdirSync(imageDirectory, { recursive: true, mode: 0o700 });
@@ -204,7 +212,12 @@ export const createTitleCache = (options: {
     const fingerprint = sha256(detail);
     const stored = database.prepare('SELECT fingerprint FROM titles WHERE service = ? AND id = ?')
       .get(service, id) as { fingerprint: string } | undefined;
-    if (stored?.fingerprint === fingerprint) return 'unchanged';
+    if (stored?.fingerprint === fingerprint) {
+      // A restored database or a wiped images folder keeps rows whose files are gone; fetch those again.
+      const files = database.prepare('SELECT file FROM title_images WHERE service = ? AND id = ?').all(service, id) as { file: string }[];
+      if (files.some(({ file }) => !existsSync(join(imageDirectory, file)))) await syncImages(service, id, resource, startedAt);
+      return 'unchanged';
+    }
     const { changes } = database.prepare(`INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (service, id) DO UPDATE SET title = excluded.title, year = excluded.year, detail = excluded.detail,
@@ -214,7 +227,7 @@ export const createTitleCache = (options: {
     if (Number(changes) === 0) return 'stale';
     if (service === 'sonarr') await syncEpisodes(id, startedAt);
     await syncImages(service, id, resource, startedAt);
-    events.publish('title', { service, id, change: 'updated' });
+    if (titleExists(service, id)) events.publish('title', { service, id, change: 'updated' });
     return 'written';
   };
 
@@ -237,7 +250,7 @@ export const createTitleCache = (options: {
         if (result === 'unchanged' && service === 'sonarr') {
           const before = JSON.stringify(listEpisodes(database, id));
           await syncEpisodes(id, startedAt);
-          if (JSON.stringify(listEpisodes(database, id)) !== before) events.publish('title', { service, id, change: 'updated' });
+          if (titleExists(service, id) && JSON.stringify(listEpisodes(database, id)) !== before) events.publish('title', { service, id, change: 'updated' });
         }
       }
     } catch {
