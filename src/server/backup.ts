@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { applicationMigrations, assertDatabasePath, openDatabase } from './database.js';
 import type { EventHub } from './events.js';
+import { getPreference, setPreference } from './preferences.js';
 
 export type BackupStore = {
   put(key: string, body: Uint8Array, contentType: string): Promise<void>;
@@ -32,6 +33,10 @@ const snapshotKey = /^backups\/(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2}\.\d{3}
 const countedTables = ['settings', 'torrents', 'torrent_grabs', 'grabs', 'problems', 'protected_items', 'preferences'];
 
 const sha256Hex = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
+
+// Turning backups off is the owner accepting the risk of running without them, so nothing reminds them while it holds.
+export const backupsAreOff = (database: DatabaseSync): boolean => getPreference(database, 'backups') === 'off';
+export const setBackupsOff = (database: DatabaseSync, off: boolean): void => setPreference(database, 'backups', off ? 'off' : 'on');
 
 // The backup destination would otherwise hold every saved credential in plain text, so snapshots are sealed with AES-256-GCM:
 // a 12-byte nonce, the ciphertext, then the 16-byte authentication tag.
@@ -140,10 +145,15 @@ export const createBackup = ({ database, events, store, key = backupKeyFromEnvir
       // The marker describes the database as the uploaded snapshot saw it; undefined means nothing is known to be backed up.
       let marker: string | undefined;
       let result: Omit<BackupRun, 'id' | 'startedAt' | 'finishedAt'>;
-      if (configError !== undefined) {
+      if (backupsAreOff(database)) {
+        result = { outcome: 'skipped', detail: 'off', objectKey: null, bytes: null, sha256: null };
+      } else if (configError !== undefined) {
         result = { outcome: 'failed', detail: configError, objectKey: null, bytes: null, sha256: null };
-      } else if (target === undefined || sealKey === undefined) {
+      } else if (target === undefined) {
         result = { outcome: 'skipped', detail: 'not_configured', objectKey: null, bytes: null, sha256: null };
+      } else if (sealKey === undefined) {
+        // A destination means the owner asked for backups, so a missing key must show as a failure, not as not set up.
+        result = { outcome: 'failed', detail: 'BACKUP_KEY is not set.', objectKey: null, bytes: null, sha256: null };
       } else if (!force && backedUpMarker !== undefined && backedUpMarker === writeMarker()) {
         marker = backedUpMarker;
         result = { outcome: 'skipped', detail: 'unchanged', objectKey: null, bytes: null, sha256: null };

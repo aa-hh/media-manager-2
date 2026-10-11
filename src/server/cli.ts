@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { isAbsolute } from 'node:path';
-import { backupKeyFromEnvironment, createBackup, listSnapshots, restoreBackup } from './backup.js';
+import { backupKeyFromEnvironment, createBackup, listSnapshots, restoreBackup, setBackupsOff } from './backup.js';
 import { backupDestinationFromEnvironment, createBackupStore, readBackupDestination } from './backupDestination.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
@@ -16,6 +16,7 @@ const usage = [
   '       node dist/server/cli.js settings list',
   '       node dist/server/cli.js connections check',
   '       node dist/server/cli.js backup now   (BACKUP_KEY environment variable)',
+  '       node dist/server/cli.js backup off | on',
   '       node dist/server/cli.js backup list   (BACKUP_FOLDER or BACKUP_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY)',
   '       node dist/server/cli.js backup restore --to <absolute path> [--object <key>]   (the backup list variables and BACKUP_KEY)',
 ].join('\n');
@@ -109,8 +110,9 @@ const command = group === 'settings' && action === 'set' && args.length === 4 ? 
       : group === 'connections' && action === 'check' && args.length === 2 ? 'check'
         : group === 'backup' && action === 'now' && args.length === 2 ? 'backup-now'
           : group === 'backup' && action === 'list' && args.length === 2 ? 'backup-list'
-            : restoreOptions !== undefined ? 'backup-restore'
-              : undefined;
+            : group === 'backup' && (action === 'off' || action === 'on') && args.length === 2 ? 'backup-switch'
+              : restoreOptions !== undefined ? 'backup-restore'
+                : undefined;
 
 if (command === undefined) {
   console.error(usage);
@@ -133,6 +135,9 @@ if (command === undefined) {
         deleteSetting(database, category, key);
       } else if (command === 'list') {
         for (const row of listSettingKeys(database)) console.log(`${row.category} ${row.key}`);
+      } else if (command === 'backup-switch') {
+        setBackupsOff(database, action === 'off');
+        console.log(`backups: ${action}`);
       } else if (command === 'backup-now') {
         process.exitCode = await backupNow(database);
       } else {
