@@ -12,13 +12,13 @@ React client for a server that grabs releases and deletes files; a click here ha
 - A session re-check never unmounts a verified session; that discards unsaved input and pending Undo.
 - The event stream reopens after it closes for good, or live screens freeze.
 - Events arriving while a snapshot loads are not applied to the old snapshot; the snapshot would overwrite them.
-- A 401 from any request goes to `onUnauthenticated`, never shown as a service refusal.
+- A 401 goes to `onUnauthenticated`, never shown as a refusal; metrics posts only clear their queue.
 - Secrets never echo into the page; the server sends only whether each is set.
 - `components/ui/` is presentational and never fetches; screens own every request.
 
 ## Map
 
-- `main.tsx` → session check and routing by address.
+- `main.tsx`, `metrics.ts` → session check, routing, page-speed log.
 - `Home.tsx`, `Search.tsx`, `SignIn.tsx` → home, search and sign-in screens.
 - `PickRelease.tsx` → Pick a release screen and its grab.
 - `navigation.ts`, `plexPopup.ts` → in-page navigation; Plex sign-in popup.

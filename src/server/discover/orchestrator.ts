@@ -1,3 +1,4 @@
+import { logEvent } from '../log.js';
 import { type Failure, notConfigured, type Result } from '../services/arr/result.js';
 import type { createTmdb, TmdbDiscoverParams, TmdbGenre, TmdbListItem, TmdbMediaType } from '../services/tmdb.js';
 import type { Trakt, TraktFilters, TraktGenre } from '../services/trakt.js';
@@ -35,6 +36,15 @@ type Built = { result: Result<StoredRow>; partial: boolean };
 // `thinned`: a Trakt list whose titles were partly dropped because their summaries failed.
 type Ran = Result<Entry[]> & { thinned?: boolean };
 type Candidate = { item: StoredItem; tvdbId: number | null; score: number; heaviest: { weight: number; rank: number }; order: number };
+
+const elapsed = (started: number) => Math.round((performance.now() - started) * 10) / 10;
+
+// A short name for a row in the timing log, such as row:trending:movie, instead of the whole key.
+const rowLabel = (key: string) => {
+  const spec = parseKey(key);
+  const name = spec.kind === 'row' ? spec.recipe : spec.kind === 'reference' ? spec.name : spec.sort;
+  return `${spec.kind}:${name}:${spec.type}`;
+};
 
 const today = (at: number) => new Date(at).toISOString().slice(0, 10);
 const daysAfter = (at: number, days: number) => today(at + days * DAY_MS);
@@ -210,7 +220,8 @@ export const createOrchestrator = (options: {
         return summary.kind === 'ok' ? { kind: 'ok', value: { item: toItem(title.type, tmdbId, summary.value), tvdbId: title.tvdbId, rank: index + 1 } } : summary;
       }));
       const entries = resolved.flatMap((entry) => (entry?.kind === 'ok' ? [entry.value] : []));
-      const failure = resolved.find((entry): entry is Failure => entry !== undefined && entry.kind !== 'ok');
+      // A title TMDB no longer has is dropped, not counted as a failure, or the row would stay partial for good.
+      const failure = resolved.find((entry): entry is Failure => entry !== undefined && entry.kind !== 'ok' && entry.kind !== 'not_found');
       // Every summary failing means TMDB is down or not set up, which fails this source like any other upstream failure.
       return entries.length === 0 && failure !== undefined ? failure : { kind: 'ok', value: entries, thinned: failure !== undefined };
     }
@@ -253,8 +264,8 @@ export const createOrchestrator = (options: {
       const available = await Promise.all(candidates.map(({ item, tvdbId }) => savedPart(
         item.type, item.tmdbId, tvdbId, 'tmdbProviders', PROVIDERS_MAX_AGE_MS, () => tmdb.watchProviders(item.type, item.tmdbId),
       )));
-      // A failed lookup drops its title, so the row is partial rather than complete without it.
-      lookupsFailed = available.some((result) => result.kind !== 'ok');
+      // A failed lookup drops its title, so the row is partial rather than complete without it. A title TMDB no longer has is simply dropped.
+      lookupsFailed = available.some((result) => result.kind !== 'ok' && result.kind !== 'not_found');
       candidates = candidates.filter((_, index) => {
         const result = available[index];
         return result.kind === 'ok' && (result.value[filters.region] ?? []).some((id) => filters.providers.includes(id));
@@ -295,13 +306,15 @@ export const createOrchestrator = (options: {
   };
 
   // One build per key at a time. A failure keeps the old row. A partial build (a source or the genre list failed) never
-  // replaces a saved row; with nothing saved it is saved already past its age limit, so the next refresh or read rebuilds it.
+  // replaces a saved row; with nothing saved it is saved already past its age limit, so the next refresh rebuilds it (a grid page, on its next read).
   const fill = (key: string) => {
     const running = inFlight.get(key);
     if (running !== undefined) return running;
     const spec = parseKey(key);
+    const started = performance.now();
     const building = build(spec)
       .then(({ result, partial }) => {
+        logEvent('discover-build', { row: rowLabel(key), ms: elapsed(started), partial, ok: result.kind === 'ok' });
         if (result.kind !== 'ok') return result;
         if (!partial) rows.save(key, result.value, now());
         else if (!rows.has(key)) {
@@ -318,14 +331,20 @@ export const createOrchestrator = (options: {
   // A saved recipe or reference row is served at any age (the refresh job renews it); a grid page refills once five minutes old.
   // A missing row waits for its build up to the cap, then comes back pending while the build carries on and saves.
   const request = async (key: string): Promise<{ pending: boolean; failure?: Failure }> => {
+    const started = performance.now();
     const saved = rows.read(key);
-    if (saved !== undefined && (parseKey(key).kind !== 'grid' || now() - saved.fetchedAt < GRID_TTL_MS)) return { pending: false };
+    if (saved !== undefined && (parseKey(key).kind !== 'grid' || now() - saved.fetchedAt < GRID_TTL_MS)) {
+      logEvent('discover', { row: rowLabel(key), outcome: 'saved', ms: elapsed(started) });
+      return { pending: false };
+    }
     let timer: NodeJS.Timeout | undefined;
     const cap = new Promise<{ pending: boolean }>((resolve) => {
       timer = setTimeout(() => resolve({ pending: true }), fillTimeoutMs);
     });
     const answer = await Promise.race([fill(key).then((result) => (result.kind === 'ok' ? { pending: false } : { pending: false, failure: result })), cap]);
     clearTimeout(timer);
+    const outcome = answer.pending ? 'pending' : 'failure' in answer ? 'failed' : 'built';
+    logEvent('discover', { row: rowLabel(key), outcome, ms: elapsed(started) });
     return answer;
   };
 

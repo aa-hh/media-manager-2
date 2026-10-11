@@ -87,7 +87,6 @@ export const serviceRecipe = (providerId: number): Recipe => {
   };
 };
 
-export const HOME_ROWS = ['trending', 'popular', 'upcoming-movies-30', 'upcoming-movies-90', 'upcoming-tv'];
 export const EXTRA_ROWS = ['most-anticipated', 'most-watched', 'most-collected', 'box-office', 'most-favorited'];
 
 export const recipeById = (id: string): Recipe | undefined => {

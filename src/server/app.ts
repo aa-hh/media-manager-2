@@ -10,6 +10,7 @@ import { createAuthentication, isLoopback } from './auth.js';
 import { createDiscoverRoutes, type Discover } from './discover/index.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
+import { logEvent } from './log.js';
 import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
 import { createLibraryRoutes, type Library } from './library.js';
@@ -123,6 +124,23 @@ const acceptsHtml = (header: string | undefined) => header?.split(',').some(
   },
 ) ?? false;
 
+const metricNames = ['LCP', 'INP', 'CLS', 'FCP', 'TTFB', 'api'];
+const metricRatings = ['good', 'needs-improvement', 'poor'];
+const metricKeys = ['name', 'value', 'route', 'path', 'rating'];
+const pagePath = (value: unknown) => typeof value === 'string' && value.length <= 200 && /^\/[A-Za-z0-9/_.\-]*$/.test(value);
+
+// Only these fields reach the log, so a browser cannot write anything else into it.
+const validMetric = (item: unknown) => {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) return false;
+  const { name, value, route, path, rating } = item as Record<string, unknown>;
+  return Object.keys(item).every((key) => metricKeys.includes(key))
+    && typeof name === 'string' && metricNames.includes(name)
+    && typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 600_000
+    && pagePath(route)
+    && (path === undefined ? name !== 'api' : pagePath(path))
+    && (rating === undefined || (typeof rating === 'string' && metricRatings.includes(rating)));
+};
+
 export const createApp = (options: CreateAppOptions) => {
   if (!isAbsolute(options.clientDirectory)) throw new TypeError('clientDirectory must be absolute.');
   const now = options.now ?? Date.now;
@@ -161,6 +179,16 @@ export const createApp = (options: CreateAppOptions) => {
   const clearBindingCookie = (context: Context) => {
     deleteCookie(context, bindingCookieName, cookieOptions);
   };
+
+  // Times every API request but these: the event stream stays open for hours, browser timings are logged by their own route,
+  // and image loads would flood the log.
+  app.use('*', async (context, next) => {
+    const { path } = context.req;
+    if (!path.startsWith('/api') || path === '/api/events' || path === '/api/metrics' || path.startsWith('/api/images/')) return next();
+    const started = performance.now();
+    await next();
+    logEvent('api', { method: context.req.method, path, status: context.res.status, ms: Math.round((performance.now() - started) * 10) / 10 });
+  });
 
   app.use('*', async (context, next) => {
     await next();
@@ -203,7 +231,8 @@ export const createApp = (options: CreateAppOptions) => {
       || contentType !== 'application/json'
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
-    if (context.req.path === '/api/grabs' || context.req.path === '/api/second-versions') return grabRequestLimit(context, next);
+    // A batch of browser timings holds up to 50 items, so it gets the same room as a grab.
+    if (context.req.path === '/api/grabs' || context.req.path === '/api/second-versions' || context.req.path === '/api/metrics') return grabRequestLimit(context, next);
     // A movie or show delete lists every torrent and second version chosen, which for a long show is many.
     if (context.req.path.startsWith('/api/imports/') || /^\/api\/library\/(movie|series)\/\d+\/delete$/.test(context.req.path)) return importRequestLimit(context, next);
     return requestLimit(context, next);
@@ -353,6 +382,12 @@ export const createApp = (options: CreateAppOptions) => {
 
   app.use('/api', privateGuard);
   app.use('/api/*', privateGuard);
+  app.post('/api/metrics', async (context) => {
+    const batch: unknown = await context.req.json().catch(() => undefined);
+    if (!Array.isArray(batch) || batch.length > 50 || !batch.every(validMetric)) return context.json({ error: 'invalid_request' }, 400);
+    for (const item of batch) logEvent('web', item);
+    return context.body(null, 204);
+  });
   app.get('/api/session', (context) => context.json({ expiresAt: context.get('sessionExpiresAt'), serverNow: now() }));
   let openStreams = 0;
   app.get('/api/events', (context) => {

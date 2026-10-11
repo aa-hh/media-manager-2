@@ -4,6 +4,7 @@ import { backupKeyFromEnvironment, createBackup, listSnapshots, restoreBackup, r
 import { backupDestinationFromEnvironment, createBackupStore, readBackupDestination } from './backupDestination.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
+import { setLogSink } from './log.js';
 import { createArr } from './services/arr.js';
 import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
@@ -104,6 +105,8 @@ const parseRestoreOptions = (rest: string[]) => {
   return target !== undefined && isAbsolute(target) ? options : undefined;
 };
 
+// Timing records belong in the server's log; here they would land in output that people and deploy.sh read.
+setLogSink(() => {});
 const args = process.argv.slice(2);
 const [group, action, category, key] = args;
 const restoreOptions = group === 'backup' && action === 'restore' ? parseRestoreOptions(args.slice(2)) : undefined;

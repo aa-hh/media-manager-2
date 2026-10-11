@@ -34,6 +34,8 @@ const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
 const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
+const connectionModuleUrl = new URL('../dist/server/services/connection.js', import.meta.url).href;
+const logModuleUrl = new URL('../dist/server/log.js', import.meta.url).href;
 const traktModuleUrl = new URL('../dist/server/services/trakt.js', import.meta.url).href;
 const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
@@ -78,6 +80,10 @@ const setupModuleUrl = new URL('../dist/server/setup.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
 const titleStoreModuleUrl = new URL('../dist/server/titleStore.js', import.meta.url).href;
 const tmdbTitlesModuleUrl = new URL('../dist/server/tmdbTitles.js', import.meta.url).href;
+// The modules loaded in this process log timing records nowhere; a test that checks them installs its own sink and puts this one back.
+const { setLogSink } = await import(logModuleUrl);
+const discardLog = () => {};
+setLogSink(discardLog);
 // The owner's confirmed rules (AA-23). The code ships none, so tests that judge these trackers supply them.
 const ownerRules = {
   'blutopia.cc': { minHours: 168, minGlobalRatio: 0.4 },
@@ -1034,6 +1040,79 @@ test('discover routes, rows and recipes never reach upstream', async () => {
     }
     if (name === 'routes') assert.equal(source.includes('.fetch('), false);
   }
+});
+
+test('the timing log records API requests, upstream calls and browser metrics without query strings or keys', async (t) => {
+  const { requestWithTimeout } = await import(connectionModuleUrl);
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTmdb } = await import(tmdbModuleUrl);
+  const raw = [];
+  setLogSink((line) => raw.push(line));
+  t.after(() => setLogSink(discardLog));
+  const logged = (kind) => raw.map((line) => JSON.parse(line)).filter((line) => line.kind === kind);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-timing-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const { app } = await makeApp();
+  const { session } = await signIn(app);
+  const postMetrics = (body, cookie = session) => app.request('/api/metrics', {
+    method: 'POST',
+    headers: { ...jsonHeaders(), ...(cookie === null ? {} : { Cookie: cookie }) },
+    body: JSON.stringify(body),
+  });
+
+  // Logging context.req.url instead of the path, or dropping the method, status or time, turns this red.
+  await t.test('an API request logs method, path, status and time but never its query', async () => {
+    assert.equal((await app.request('/api/session?token=secret', { headers: { Cookie: session } })).status, 200);
+    const [line] = logged('api').filter((entry) => entry.path === '/api/session');
+    assert.deepEqual({ ...line, at: undefined, ms: undefined }, { at: undefined, kind: 'api', method: 'GET', path: '/api/session', status: 200, ms: undefined });
+    assert.equal(typeof line.ms, 'number');
+    assert.equal(raw.some((entry) => entry.includes('?') || entry.includes('secret')), false);
+  });
+
+  // Logging the full URL, which carries TMDB's api_key, turns this red.
+  await t.test('an upstream call logs host and path and never the key', async () => {
+    setSetting(database, 'credentials', 'tmdb.apiKey', 'tmdb-secret-key');
+    const tmdb = createTmdb(database, { fetch: async () => new Response(JSON.stringify({ genres: [] })) });
+    assert.equal((await tmdb.genres('movie')).kind, 'ok');
+    const [line] = logged('upstream');
+    assert.deepEqual([line.host, line.method, line.path, line.status], ['api.themoviedb.org', 'GET', '/3/genre/movie/list', 200]);
+    assert.equal(raw.some((entry) => entry.includes('api_key') || entry.includes('tmdb-secret-key')), false);
+  });
+
+  // Swallowing the fetch error, or not logging it, turns this red.
+  await t.test('a fetch that throws logs the error name and still throws', async () => {
+    const failure = new TypeError('fetch failed');
+    await assert.rejects(requestWithTimeout(async () => { throw failure; }, 'https://unreachable.example/api/v3/queue?apikey=k', {}), (error) => error === failure);
+    const line = logged('upstream').at(-1);
+    assert.deepEqual([line.host, line.path, line.error, line.status], ['unreachable.example', '/api/v3/queue', 'TypeError', undefined]);
+  });
+
+  // Loosening any check on the batch, or mounting /api/metrics outside the private guard, turns this red.
+  await t.test('browser metrics log one line per valid item and refuse anything else', async () => {
+    const batch = [
+      { name: 'LCP', value: 1234.5, route: '/discover', rating: 'good' },
+      { name: 'api', value: 80, route: '/', path: '/api/discover/home' },
+    ];
+    assert.equal((await postMetrics(batch)).status, 204);
+    assert.deepEqual(logged('web').map(({ at, kind, ...item }) => item), batch);
+    const item = { name: 'CLS', value: 0.1, route: '/library' };
+    for (const invalid of [
+      [{ ...item, name: 'FID' }], [{ ...item, value: 600_001 }], [{ ...item, value: -1 }], [{ ...item, route: 'https://elsewhere.example/' }],
+      [{ ...item, route: '/search?q=x' }], [{ ...item, route: `/${'a'.repeat(200)}` }], [{ ...item, rating: 'great' }], [{ ...item, extra: 1 }],
+      [{ ...item, name: 'api' }], Array.from({ length: 51 }, () => item), item,
+    ]) {
+      const response = await postMetrics(invalid);
+      assert.equal(response.status, 400, JSON.stringify(invalid).slice(0, 80));
+      assert.deepEqual(await response.json(), { error: 'invalid_request' });
+    }
+    assert.equal((await postMetrics(batch, null)).status, 401);
+    assert.equal(logged('web').length, 2);
+  });
 });
 
 test('the Plex sign-in popup is used when it opens, skipped when blocked or on a phone, and noticed when closed early', async (t) => {
@@ -2378,6 +2457,25 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
     const limited = connect(() => new Response('', { status: 429, headers: { 'Retry-After': '0' } }));
     assert.equal((await limited.tmdb.summary('movie', 5)).kind, 'refused');
     assert.equal(limited.calls.length, 2);
+  });
+
+  // Waiting the full Retry-After, however long TMDB asks for, turns this red.
+  await t.test('a 429 waits at most 10 seconds whatever Retry-After says', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let answers = 0;
+    const { tmdb, calls } = connect(() => {
+      answers += 1;
+      return answers === 1 ? new Response('', { status: 429, headers: { 'Retry-After': '86400' } }) : json({ id: 5, title: 'Film' });
+    });
+    const pending = tmdb.summary('movie', 5);
+    for (let turn = 0; turn < 5; turn += 1) await drain();
+    t.mock.timers.tick(9_999);
+    await drain();
+    assert.equal(calls.length, 1);
+    t.mock.timers.tick(1);
+    for (let turn = 0; turn < 5; turn += 1) await drain();
+    assert.equal(calls.length, 2);
+    assert.equal((await pending).kind, 'ok');
   });
 
   // Reading rent or buy entries as streaming, keeping a non-numeric id, or putting the key anywhere but the api_key parameter turns this red.
@@ -10680,6 +10778,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
   let trendingMovies = [102, 101, 103];
   let providersDown = false;
   let failingSummary;
+  let missingSummary;
   let genresDown = false;
   const json = (body) => new Response(JSON.stringify(body));
   const page = (type, ids, withType = false) => json({ page: 1, total_pages: 1, results: ids.map((id) => listItem(type, id, withType)) });
@@ -10713,6 +10812,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     if (match) return json({ id: Number(match[2]), results: { US: { flatrate: flatrate(Number(match[2])).map((id) => ({ provider_id: id })) } } });
     match = path.match(/^\/(movie|tv)\/(\d+)$/);
     if (match && path === failingSummary) return new Response('', { status: 500 });
+    if (match && path === missingSummary) return new Response('', { status: 404 });
     if (match && catalogue.has(`${match[1]}:${match[2]}`)) {
       const { genre_ids: ids, ...item } = listItem(match[1], Number(match[2]));
       return json({ ...item, genres: ids.map((id) => ({ id, name: genreNames[id] })) });
@@ -11062,6 +11162,24 @@ test('the discover home serves recipe rows from saved results, blends sources by
     assert.deepEqual((await home()).body.trending, saved.trending);
   });
 
+  // Counting a summary TMDB answers 404 for as a failed source, which leaves the row partial for good, turns this red.
+  await t.test('a Trakt title TMDB no longer has is dropped and the row saves fresh', async () => {
+    await signInAgain();
+    database.prepare('DELETE FROM discover_rows').run();
+    database.prepare("DELETE FROM title_store_parts WHERE key = 'movie:201' AND part = 'tmdbSummary'").run();
+    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
+    missingSummary = '/movie/201';
+    const without = (await home()).body;
+    await discover.idle();
+    assert.equal(ids(without.trending.movie).includes(201), false);
+    assert.equal(database.prepare('SELECT fetched_at FROM discover_rows WHERE key = ?').get(trendingKey).fetched_at, clock.value);
+    missingSummary = undefined;
+    clock.value += 30 * 60_000 + 1;
+    await discover.refresh();
+    assert.equal(database.prepare('SELECT fetched_at FROM discover_rows WHERE key = ?').get(trendingKey).fetched_at, clock.value);
+    assert.ok(ids((await home()).body.trending.movie).includes(201));
+  });
+
   // Requiring Trakt for a TMDB row, failing the home when Trakt alone is missing, saving a Trakt-only row empty,
   // or answering anything but a readable 503 when neither service is set up turns this red.
   await t.test('without Trakt every row builds from TMDB alone', async () => {
@@ -11104,6 +11222,26 @@ test('the discover home serves recipe rows from saved results, blends sources by
     await noClientId.refresh();
     assert.deepEqual(ids((await get('/api/discover/home', plain, plainSession)).body.trending.movie), [103, 102]);
     trendingMovies = [102, 101, 103];
+  });
+
+  // Logging a fresh build for a row served from the saved rows, or logging the whole key or the TMDB key, turns this red.
+  await t.test('home requests log each row as built, then as saved on the same request again', async (t) => {
+    const lines = [];
+    setLogSink((line) => lines.push(line));
+    t.after(() => setLogSink(discardLog));
+    const { app: timed } = await makeApp({ clock, discover });
+    const { session: timedSession } = await signIn(timed);
+    database.prepare('DELETE FROM discover_rows').run();
+    const outcomes = () => lines.splice(0).map((line) => JSON.parse(line)).filter((line) => line.kind === 'discover');
+    assert.equal((await get('/api/discover/home?type=movie', timed, timedSession)).status, 200);
+    await discover.idle();
+    const first = outcomes();
+    assert.ok(first.some((line) => line.row === 'row:trending:movie' && line.outcome === 'built'));
+    assert.equal((await get('/api/discover/home?type=movie', timed, timedSession)).status, 200);
+    const second = outcomes();
+    assert.deepEqual(second.map((line) => line.row).sort(), first.map((line) => line.row).sort());
+    assert.ok(second.every((line) => line.outcome === 'saved'));
+    assert.equal(JSON.stringify([...first, ...second]).includes(key), false);
   });
 });
 

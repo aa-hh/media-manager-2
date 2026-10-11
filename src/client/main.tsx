@@ -20,6 +20,7 @@ import { useHealth } from './health/useHealth';
 import { BlocklistScreen } from './history/Blocklist';
 import { HistoryScreen } from './history/History';
 import { useBlocklist, useHistory } from './history/useHistory';
+import { startMetrics } from './metrics';
 import './globals.css';
 
 type SessionState =
@@ -346,4 +347,5 @@ function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'n
   );
 }
 
+startMetrics();
 createRoot(document.getElementById('root')!).render(<ToastProvider><App /></ToastProvider>);
