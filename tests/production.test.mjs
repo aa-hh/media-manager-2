@@ -1615,11 +1615,11 @@ test('hit and run rules come from settings with the confirmed defaults and an ex
 
   const privatehd = findTrackerRule(database, 'PrivateHD').rule;
   for (const [gb, hours] of [[1, 72.0], [49.99, 171.98], [50, 172.0], [100, 241.31]]) {
-    const { requiredHours } = checkHitAndRun(privatehd, { seedHours: 0, ratio: 0, sizeBytes: gb * 1000 ** 3 });
+    const { requiredHours } = checkHitAndRun(privatehd, { seedHours: 0, ratio: 0, sizeBytes: gb * 1000 ** 3, completedBytes: gb * 1000 ** 3 });
     assert.equal(Math.round(requiredHours * 100) / 100, hours, `${gb} GB`);
   }
 
-  const torrent = (seedHours, ratio) => ({ seedHours, ratio, sizeBytes: 10 * 1000 ** 3 });
+  const torrent = (seedHours, ratio) => ({ seedHours, ratio, sizeBytes: 10 * 1000 ** 3, completedBytes: 10 * 1000 ** 3 });
   const blutopia = findTrackerRule(database, 'blutopia.cc').rule;
   const beyondhd = findTrackerRule(database, 'BeyondHD (Prowlarr)');
   assert.equal(beyondhd.host, 'beyond-hd.me');
@@ -1647,7 +1647,9 @@ test('hit and run rules come from settings with the confirmed defaults and an ex
   assert.equal(findTrackerRule(database, 'Unknown (Prowlarr)'), undefined);
 
   setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', JSON.stringify({ minHours: 200, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' }));
-  assert.deepEqual(findTrackerRule(database, 'Blutopia (API)').rule, { minHours: 200, minHoursFormula: null, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' });
+  assert.deepEqual(findTrackerRule(database, 'Blutopia (API)').rule, {
+    minHours: 200, minHoursFormula: null, minRatio: 1, minGlobalRatio: 0.5, logic: 'or', partialExemptBelow: null, partialRatio: null, partialMaxHours: null,
+  });
   for (const bad of [
     'not json', '{"minHours":10,"minRatio":1,"logic":"xor"}', '{"minHours":10,"minRatio":1}',
     '{"minRatio":1,"logic":"or"}', '{"minHours":-1}', '{"minHours":10,"minGlobalRatio":"high"}',
@@ -1676,9 +1678,9 @@ test('removal advice applies the hit and run rule with margins and proves time o
   // Each row is first seen before it finished (full seeding history) unless `firstSeenAt` says otherwise.
   const torrent = (input) => {
     const hash = (++count).toString(16).toUpperCase().padStart(40, '0');
-    const row = { host: 'blutopia.cc', sizeBytes: 10 * GB, ratio: 0, seconds: 0, finishedAt: finished, firstSeenAt: (finished - hour) * 1000, goneAt: null, complete: 1, ...input };
-    database.prepare("INSERT INTO torrents VALUES (?, 'Some.Movie', ?, ?, 0, 0, 1, 1, 1, ?, '', ?, ?, 0, 0, ?, ?, ?, ?, ?)")
-      .run(hash, row.sizeBytes, row.sizeBytes, row.complete, row.finishedAt, row.ratio, row.host, row.firstSeenAt, now, row.goneAt, row.seconds);
+    const row = { host: 'blutopia.cc', sizeBytes: 10 * GB, ratio: 0, seconds: 0, finishedAt: finished, firstSeenAt: (finished - hour) * 1000, goneAt: null, complete: 1, active: 1, ...input };
+    database.prepare("INSERT INTO torrents VALUES (?, 'Some.Movie', ?, ?, 0, 0, 1, 1, ?, ?, '', ?, ?, 0, 0, ?, ?, ?, ?, ?)")
+      .run(hash, row.sizeBytes, row.completedBytes ?? row.sizeBytes, row.active, row.complete, row.finishedAt, row.ratio, row.host, row.firstSeenAt, now, row.goneAt, row.seconds);
     return hash;
   };
   const ratios = { blutopia: 1.0, beyondhd: null, privatehd: null };
@@ -1710,6 +1712,16 @@ test('removal advice applies the hit and run rule with margins and proves time o
     ['gone from rTorrent', { seconds: blutopiaNeeds, goneAt: now - 1000 }, 'keep', 'Seeding time unknown (torrent not in rTorrent)'],
     ['no rule', { host: 'tracker.opentrackr.org', seconds: blutopiaNeeds }, 'unconfirmed', "Can't tell; keep seeding: no hit and run rule for tracker.opentrackr.org"],
     ['no tracker', { host: null }, 'unconfirmed', "Can't tell; keep seeding: its tracker is not known"],
+    // Incomplete torrents: judging them by the complete rule, letting the counter prove PrivateHD's 60 days, dropping the
+    // ratio margin, or calling a running download under 10% safe turns these red.
+    ['PrivateHD partial ratio met', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 20 * GB, complete: 0, ratio: 950 }, 'safe',
+      'Partly downloaded: ratio 0.95 of 0.95 on the data downloaded'],
+    ['PrivateHD partial ratio short', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 20 * GB, complete: 0, ratio: 949, seconds: 2000 * hour }, 'keep',
+      "Partly downloaded: clears at ratio 0.95 of the data downloaded (now 0.94) or after 66 days seeding, which isn't measured yet"],
+    ['PrivateHD under 10%, stopped', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 3 * GB, complete: 0, active: 0 }, 'safe',
+      'Under 10% downloaded; not a hit and run on privatehd.to'],
+    ['PrivateHD under 10%, downloading', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 3 * GB, complete: 0 }, 'keep', 'Still downloading'],
+    ['Blutopia incomplete', { completedBytes: 5 * GB, complete: 0, seconds: blutopiaNeeds }, 'keep', 'Download not complete; blutopia.cc counts seed time only at 100%'],
   ]) {
     assert.deepEqual(await advise(torrent(input)), { recommendation, reason, globalRatio }, name);
   }
@@ -1731,6 +1743,49 @@ test('removal advice applies the hit and run rule with margins and proves time o
   for (const bad of ['not json', '{"timeFactor":0.9}', '{"extraHours":-1}', '{"ratioExtra":"0.05"}', '{"other":1}', '[]']) {
     setSetting(database, 'trackerConfiguration', 'margins.blutopia.cc', bad);
     await assert.rejects(advise(met), { message: 'The saved hit and run margins for blutopia.cc are not valid.' }, bad);
+  }
+});
+
+// PrivateHD's rules for incomplete torrents (privatehd.to/rules/hit-run-rules). Each case names its defect.
+test('incomplete torrents follow the tracker partial-download rules', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-partial-rules-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { checkHitAndRun, findTrackerRule } = await import(trackerRulesModuleUrl);
+  const database = openDatabase(join(root, 'database.sqlite'));
+  t.after(() => database.close());
+  const privatehd = findTrackerRule(database, 'privatehd.to').rule;
+  const blutopia = findTrackerRule(database, 'blutopia.cc').rule;
+  const gb = 1000 ** 3;
+  // 15 GB torrent; `ratio` is uploaded over downloaded, as rTorrent's d.ratio reports it.
+  const stuck = (downloadedGb, uploadedGb, seedHours) => ({ seedHours, ratio: uploadedGb / downloadedGb, sizeBytes: 15 * gb, completedBytes: downloadedGb * gb });
+  for (const [label, rule, torrent, expected] of [
+    // Dividing the upload by the torrent's size instead of the data downloaded turns this red.
+    ['4.5 of 5 GB uploaded', privatehd, stuck(5, 4.5, 0), ['partial', true]],
+    // Lowering partialRatio below 0.9 turns this red.
+    ['4.4 of 5 GB uploaded', privatehd, stuck(5, 4.4, 0), ['partial', false]],
+    // Ignoring partialMaxHours, or applying the 15 GB complete seed time (102 h) to an incomplete torrent, turns these red.
+    ['1440 h partial', privatehd, stuck(5, 0, 1440), ['partial', true]],
+    ['1439 h partial', privatehd, stuck(5, 0, 1439), ['partial', false]],
+    // Dropping the under-10% exemption turns this red.
+    ['1.4 of 15 GB', privatehd, stuck(1.4, 0, 0), ['under_buffer', true]],
+    // Using <= instead of < for the exemption turns this red.
+    ['exactly 10%', privatehd, stuck(1.5, 0, 0), ['partial', false]],
+    // Letting an incomplete torrent fall back to the complete rule, or giving Blutopia partial defaults, turns these red.
+    ['Blutopia incomplete, long seed', blutopia, stuck(5, 5, 10000), ['partial', false]],
+    ['Blutopia incomplete, tiny', blutopia, stuck(0.1, 0, 0), ['partial', false]],
+  ]) {
+    const result = checkHitAndRun(rule, torrent);
+    assert.deepEqual([result.case, result.met], expected, label);
+  }
+  // Treating a finished torrent as incomplete turns this red.
+  assert.equal(checkHitAndRun(privatehd, { seedHours: 0, ratio: 0.9, sizeBytes: 15 * gb, completedBytes: 15 * gb }).case, 'complete');
+
+  // Accepting a non-numeric partialRatio, or a fraction above 1, turns this red.
+  for (const bad of ['{"minHours":10,"partialRatio":"abc"}', '{"minHours":10,"partialExemptBelow":10}']) {
+    setSetting(database, 'trackerConfiguration', 'rules.example.org', bad);
+    assert.throws(() => findTrackerRule(database, 'example.org'), { message: 'The saved hit and run rule for example.org is not valid.' });
   }
 });
 
