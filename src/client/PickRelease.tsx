@@ -453,7 +453,9 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
   // A tracker cooldown refuses every grab from it, so Grab stays off until it ends.
   const onCooldown = (release: Release | undefined) => release?.hitAndRun?.cooldown === true;
 
+  // Enter on a row reaches here while a grab is in flight or done, and the server records and sends every grab it gets.
   const onGrab = (guid: string) => {
+    if (grabbing || grabbed.has(guid)) return;
     if (onCooldown(releases.find((release) => release.guid === guid))) return;
     setSelected(guid);
     if (grabTargetHasFile) {
