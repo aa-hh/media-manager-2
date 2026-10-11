@@ -21,6 +21,7 @@ import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createRtorrent } from './services/rtorrent.js';
+import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller } from './torrents.js';
 import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
@@ -95,6 +96,7 @@ if (database !== undefined) {
     api: createApiRoutes(database, {
       arr,
       refresh: torrentGrabs.refresh,
+      trackers: createTrackerAccounts(database),
       manualImport: createManualImport({ database, arr, problems }),
     }),
     webhooks: {

@@ -27,6 +27,7 @@ const settingsModuleUrl = new URL('../dist/server/settings.js', import.meta.url)
 const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).href;
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
+const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
 const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
@@ -1705,6 +1706,199 @@ test('service connections read saved settings and classify each outcome', async 
   }
 });
 
+// Reading a tracker credential from the wrong key, putting a secret in a URL the app builds, mis-mapping 401/422/'Invalid API Key' to unreachable, or dropping a tracker from the stats list turns this red.
+test('tracker accounts read saved settings and classify each outcome', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { deleteSetting, setSetting } = await import(settingsModuleUrl);
+  const { createTrackerAccounts, getTrackerAccountStats } = await import(trackerAccountsModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-trackers-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const pid = process.pid;
+  const secret = (name) => `${name}-${pid}-distinctive`;
+  const respond = (status, body) => () => new Response(body, { status });
+  const timeout = () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); };
+  const networkFailure = () => { throw new TypeError('fetch failed'); };
+
+  const descriptors = [
+    {
+      tracker: 'blutopia',
+      url: 'http://127.0.0.1:65021',
+      credentials: { 'blutopia.apiToken': secret('blutopia-token') },
+      request: {
+        method: 'GET',
+        url: 'http://127.0.0.1:65021/api/user',
+        headers: { authorization: `Bearer ${secret('blutopia-token')}`, accept: 'application/json' },
+        body: undefined,
+      },
+      ok: [
+        {
+          body: '{"username":"alec","group":"User","uploaded":"1.5 TiB","downloaded":"600 GiB","ratio":"2.56","buffer":"900 GiB","seeding":12,"leeching":0,"seedbonus":1234.5,"hit_and_runs":1}',
+          stats: { username: 'alec', group: 'User', uploaded: '1.5 TiB', downloaded: '600 GiB', ratio: 2.56, buffer: '900 GiB', seeding: 12, leeching: 0, seedbonus: 1234.5, hitAndRuns: 1 },
+        },
+        {
+          body: '{"username":"alec"}',
+          stats: { username: 'alec', group: '', uploaded: '', downloaded: '', ratio: null, buffer: '', seeding: null, leeching: null, seedbonus: null, hitAndRuns: null },
+        },
+      ],
+      rejected: [],
+      unreachable: [['[]', 200]],
+    },
+    {
+      tracker: 'privatehd',
+      url: 'http://127.0.0.1:65022',
+      credentials: {
+        'privatehd.username': secret('privatehd-user'),
+        'privatehd.password': secret('privatehd-password'),
+        'privatehd.pid': secret('privatehd-pid'),
+      },
+      request: {
+        method: 'POST',
+        url: 'http://127.0.0.1:65022/api/v1/jackett/auth',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+        body: new URLSearchParams({
+          username: secret('privatehd-user'),
+          password: secret('privatehd-password'),
+          pid: secret('privatehd-pid'),
+        }).toString(),
+      },
+      ok: [{ body: '{"token":"tok-123","expiry":"2027-01-01 00:00:00"}', stats: 'unsupported' }],
+      rejected: [['{}', 422]],
+      unreachable: [['{}', 200]],
+    },
+    {
+      tracker: 'beyondhd',
+      url: 'http://127.0.0.1:65023',
+      credentials: { 'beyondhd.apiKey': secret('beyondhd-key') },
+      request: {
+        method: 'POST',
+        url: `http://127.0.0.1:65023/api/torrents/${secret('beyondhd-key')}`,
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: '{"action":"search","page":1}',
+      },
+      ok: [{ body: '{"status_code":1,"page":1,"results":[],"total_results":0,"total_pages":0,"success":true}', stats: 'unsupported' }],
+      rejected: [['{"status_code":0,"status_message":"Invalid API Key"}', 200], ['{"status_code":0,"status_message":"Invalid RSS key"}', 200]],
+      unreachable: [['{"status_code":0,"status_message":"Nope"}', 200], ['{}', 200]],
+    },
+  ];
+  const urlKey = (descriptor) => `${descriptor.tracker}.url`;
+  const allKeys = (descriptor) => [['serviceAddresses', urlKey(descriptor)], ...Object.keys(descriptor.credentials).map((key) => ['credentials', key])];
+  const clear = () => {
+    for (const descriptor of descriptors) {
+      for (const [category, key] of allKeys(descriptor)) deleteSetting(database, category, key);
+    }
+    deleteSetting(database, 'credentials', 'beyondhd.rssKey');
+  };
+  const configure = (descriptor) => {
+    setSetting(database, 'serviceAddresses', urlKey(descriptor), descriptor.url);
+    for (const [key, value] of Object.entries(descriptor.credentials)) setSetting(database, 'credentials', key, value);
+  };
+  const run = async (descriptor, handler) => {
+    const calls = [];
+    const fetch = async (url, init) => {
+      assert.equal(init.redirect, 'error');
+      assert.ok(init.signal instanceof AbortSignal);
+      calls.push({ url, init, headers: Object.fromEntries(Object.entries(init.headers ?? {}).map(([name, value]) => [name.toLowerCase(), value])) });
+      return handler(url, init);
+    };
+    const result = await createTrackerAccounts(database, { fetch }).check(descriptor.tracker);
+    return { calls, result };
+  };
+  const secretsOf = (descriptor) => Object.values(descriptor.credentials);
+  const assertQuiet = (descriptor, result, label) => {
+    const text = JSON.stringify(result);
+    for (const value of [...secretsOf(descriptor), '127.0.0.1']) assert.equal(text.includes(value), false, `${label} mentions ${value}`);
+  };
+
+  for (const descriptor of descriptors) {
+    const { tracker } = descriptor;
+    clear();
+
+    const nothing = await run(descriptor, respond(200, '{}'));
+    assert.deepEqual(nothing.result, { tracker, kind: 'not_configured' });
+    assert.equal(nothing.calls.length, 0);
+    for (const [category, key] of allKeys(descriptor)) {
+      clear();
+      configure(descriptor);
+      deleteSetting(database, category, key);
+      const partial = await run(descriptor, respond(200, '{}'));
+      assert.deepEqual(partial.result, { tracker, kind: 'not_configured' }, `${tracker} without ${key}`);
+      assert.equal(partial.calls.length, 0);
+    }
+
+    clear();
+    configure(descriptor);
+    for (const okCase of descriptor.ok) {
+      const { calls, result } = await run(descriptor, respond(200, okCase.body));
+      assert.deepEqual(result, { tracker, kind: 'ok', stats: okCase.stats });
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].url, descriptor.request.url);
+      assert.equal(calls[0].init.method, descriptor.request.method);
+      assert.deepEqual(calls[0].headers, descriptor.request.headers);
+      assert.equal(calls[0].init.body, descriptor.request.body);
+      if (tracker !== 'beyondhd') {
+        for (const value of secretsOf(descriptor)) assert.equal(calls[0].url.includes(value), false, `${tracker} URL contains a credential`);
+      }
+      assertQuiet(descriptor, result, `${tracker} ok`);
+    }
+
+    const failures = [
+      ...descriptor.rejected.map(([body, status]) => [body, status, 'rejected']),
+      ...descriptor.unreachable.map(([body, status]) => [body, status, 'unreachable']),
+      ['{}', 401, 'rejected'],
+      ['{}', 403, 'rejected'],
+      ['{}', 500, 'unreachable'],
+    ];
+    for (const [body, status, kind] of failures) {
+      const { result } = await run(descriptor, respond(status, body));
+      assert.deepEqual(result, { tracker, kind }, `${tracker} ${status} ${body}`);
+      assertQuiet(descriptor, result, `${tracker} ${kind}`);
+    }
+    for (const handler of [networkFailure, timeout]) {
+      const { result } = await run(descriptor, handler);
+      assert.deepEqual(result, { tracker, kind: 'unreachable' });
+      assertQuiet(descriptor, result, `${tracker} thrown`);
+    }
+  }
+
+  clear();
+  const beyond = descriptors[2];
+  configure(beyond);
+  setSetting(database, 'credentials', 'beyondhd.rssKey', secret('beyondhd-rss'));
+  const withRss = await run(beyond, respond(200, beyond.ok[0].body));
+  assert.deepEqual(withRss.result, { tracker: 'beyondhd', kind: 'ok', stats: 'unsupported' });
+  assert.equal(withRss.calls[0].init.body, JSON.stringify({ action: 'search', page: 1, rsskey: secret('beyondhd-rss') }));
+  assertQuiet({ credentials: { rss: secret('beyondhd-rss') } }, withRss.result, 'beyondhd rss');
+
+  clear();
+  const emptyFetch = async () => { throw new Error('no request expected'); };
+  assert.deepEqual(await getTrackerAccountStats(database, { fetch: emptyFetch }), [
+    { tracker: 'blutopia', kind: 'not_configured' },
+    { tracker: 'privatehd', kind: 'not_configured' },
+    { tracker: 'beyondhd', kind: 'not_configured' },
+  ]);
+  for (const descriptor of descriptors) configure(descriptor);
+  const bodies = new Map(descriptors.map((descriptor) => [descriptor.url, descriptor.ok[0].body]));
+  const allOkFetch = async (url) => new Response(bodies.get(new URL(url).origin), { status: 200 });
+  assert.deepEqual(await getTrackerAccountStats(database, { fetch: allOkFetch }), descriptors.map((descriptor) => ({
+    tracker: descriptor.tracker, kind: 'ok', stats: descriptor.ok[0].stats,
+  })));
+
+  const fixedArray = [{ tracker: 'blutopia', kind: 'not_configured' }, { tracker: 'privatehd', kind: 'rejected' }, { tracker: 'beyondhd', kind: 'ok', stats: 'unsupported' }];
+  const { app } = await makeApp({ api: createApiRoutes(database, { trackers: { stats: async () => fixedArray } }) });
+  assert.equal((await app.request('/api/trackers')).status, 401);
+  const { session } = await signIn(app);
+  const listed = await app.request('/api/trackers', { headers: { Cookie: session } });
+  assert.equal(listed.status, 200);
+  assert.deepEqual(await listed.json(), fixedArray);
+  const posted = await app.request('/api/trackers', { method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: '{}' });
+  assert.notEqual(posted.status, 200);
+});
+
 // Dropping an escape, mis-reading a scalar, or resolving a fault or malformed response corrupts every rTorrent call.
 test('rTorrent XML-RPC requests are encoded and responses parsed by hand', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
@@ -2897,6 +3091,11 @@ test('operator command stores settings from stdin and checks connections without
     'rtorrent.username': `rtorrent-user-${pid}-distinctive`,
     'rtorrent.password': `rtorrent-password-${pid}-distinctive`,
     'plex.token': `plex-token-${pid}-distinctive`,
+    'blutopia.apiToken': `blutopia-token-${pid}-distinctive`,
+    'privatehd.username': `privatehd-user-${pid}-distinctive`,
+    'privatehd.password': `privatehd-password-${pid}-distinctive`,
+    'privatehd.pid': `privatehd-pid-${pid}-distinctive`,
+    'beyondhd.apiKey': `beyondhd-key-${pid}-distinctive`,
   };
 
   const usage = await cli([]);
@@ -2918,7 +3117,7 @@ test('operator command stores settings from stdin and checks connections without
 
   const unconfigured = await cli(['connections', 'check']);
   assert.equal(unconfigured.code, 1, unconfigured.stderr);
-  assert.equal(unconfigured.stdout, 'sonarr: not_configured\nradarr: not_configured\nrtorrent: not_configured\nplex: not_configured\n');
+  assert.equal(unconfigured.stdout, 'sonarr: not_configured\nradarr: not_configured\nrtorrent: not_configured\nplex: not_configured\nblutopia: not_configured\nprivatehd: not_configured\nbeyondhd: not_configured\n');
 
   const { createServer } = await import('node:http');
   const requests = [];
@@ -2933,7 +3132,7 @@ test('operator command stores settings from stdin and checks connections without
     server.close();
   });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const urls = { 'sonarr.url': base, 'radarr.url': base, 'rtorrent.url': `${base}/xmlrpc`, 'plex.url': base };
+  const urls = { 'sonarr.url': base, 'radarr.url': base, 'rtorrent.url': `${base}/xmlrpc`, 'plex.url': base, 'blutopia.url': base, 'privatehd.url': base, 'beyondhd.url': base };
   for (const [category, entries] of [['serviceAddresses', urls], ['credentials', credentials]]) {
     for (const [key, value] of Object.entries(entries)) {
       const result = await cli(['settings', 'set', category, key], value);
@@ -2943,7 +3142,7 @@ test('operator command stores settings from stdin and checks connections without
 
   const rejected = await cli(['connections', 'check']);
   assert.equal(rejected.code, 1, rejected.stderr);
-  assert.equal(rejected.stdout, 'sonarr: rejected\nradarr: rejected\nrtorrent: rejected\nplex: rejected\n');
+  assert.equal(rejected.stdout, 'sonarr: rejected\nradarr: rejected\nrtorrent: rejected\nplex: rejected\nblutopia: rejected\nprivatehd: rejected\nbeyondhd: rejected\n');
   for (const value of Object.values(credentials)) {
     assert.equal(rejected.stdout.includes(value), false);
     assert.equal(rejected.stderr.includes(value), false);
@@ -2954,6 +3153,8 @@ test('operator command stores settings from stdin and checks connections without
   const basic = Buffer.from(`${credentials['rtorrent.username']}:${credentials['rtorrent.password']}`).toString('base64');
   assert.ok(sent('authorization').includes(`Basic ${basic}`));
   assert.ok(sent('x-plex-token').includes(credentials['plex.token']));
+  assert.ok(sent('authorization').includes(`Bearer ${credentials['blutopia.apiToken']}`));
+  assert.ok(requests.some((request) => request.url.startsWith(`/api/torrents/${credentials['beyondhd.apiKey']}`)));
 
   const deleted = await cli(['settings', 'delete', 'credentials', 'plex.token']);
   assert.equal(deleted.code, 0, deleted.stderr);

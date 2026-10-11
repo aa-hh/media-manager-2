@@ -43,6 +43,15 @@ The server reaches Sonarr, Radarr, rTorrent and Plex with these saved settings:
 | `credentials` | `rtorrent.username` | rTorrent HTTP basic auth username |
 | `credentials` | `rtorrent.password` | rTorrent HTTP basic auth password |
 | `credentials` | `plex.token` | Plex Media Server token |
+| `serviceAddresses` | `blutopia.url` | Blutopia base URL with scheme, such as `https://blutopia.cc` |
+| `serviceAddresses` | `privatehd.url` | PrivateHD base URL with scheme |
+| `serviceAddresses` | `beyondhd.url` | Beyond-HD base URL with scheme |
+| `credentials` | `blutopia.apiToken` | Blutopia API token from the site's API settings |
+| `credentials` | `privatehd.username` | PrivateHD account username |
+| `credentials` | `privatehd.password` | PrivateHD account password |
+| `credentials` | `privatehd.pid` | PrivateHD PID |
+| `credentials` | `beyondhd.apiKey` | Beyond-HD API key |
+| `credentials` | `beyondhd.rssKey` | Beyond-HD RSS key (optional) |
 
 Until a settings screen exists, save and check them on the server with the
 operator command:
@@ -63,7 +72,7 @@ list. One trailing line break is removed. `settings list` prints each saved
 category and key, never a value.
 
 `connections check` prints one line per service, in the order sonarr, radarr,
-rtorrent, plex, and exits 0 only when all four are `ok`:
+rtorrent, plex, blutopia, privatehd, beyondhd, and exits 0 only when all seven are `ok`. Tracker lines print `ok` without a version:
 
 - `ok <version>`: the service accepted the saved credentials and reported its version.
 - `not_configured`: the URL or a credential for that service is missing or empty.
@@ -74,6 +83,18 @@ The output never contains a URL or a setting value. AA-38 is accepted only on
 live service evidence: the owner runs `node dist/server/cli.js connections
 check` on the slot and sees four `ok` lines with versions. The test fixtures
 prove controlled behaviour only.
+
+## Tracker accounts
+
+`getTrackerAccountStats(database)` in `src/server/services/trackerAccounts.ts`
+returns one entry per tracker (Blutopia, PrivateHD, Beyond-HD, in that order).
+`GET /api/trackers` (owner session) returns the same JSON. Only Blutopia
+returns stats (`username, group, uploaded, downloaded, ratio, buffer, seeding,
+leeching, seedbonus, hitAndRuns`); PrivateHD and Beyond-HD return
+`stats: "unsupported"`. The three trackers are used through their APIs only
+(AA-23). Live tracker evidence is still owed: no live keys exist and the tests
+use fixtures. Acceptance needs the owner's `connections check` showing three
+tracker `ok` lines.
 
 ## Plex owner sign-in
 
