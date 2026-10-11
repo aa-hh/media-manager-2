@@ -3984,3 +3984,43 @@ test('title pages mark episodes and select ranges of episodes only', async (t) =
     for (const [input, progress, word] of cases) assert.equal(movieWord(input, progress), word, JSON.stringify([input, progress]));
   });
 });
+
+test('the calendar groups one show\'s same-day episodes and frames week, month and forecast windows', async (t) => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/calendar/model.ts', import.meta.url), 'utf8');
+  const { windowFor, groupByDay, entryWord, shiftAnchor } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const ymd = (date) => [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+
+  // Starting the week on Sunday, or ending the month grid on the last day instead of the following Sunday, turns this red.
+  await t.test('week runs Monday to Sunday, the month grid pads to whole weeks and the forecast is five days', () => {
+    const week = windowFor('week', new Date(2026, 9, 7, 15));
+    assert.deepEqual([ymd(week.start), week.days.length, ymd(week.days[6])], [[2026, 10, 5], 7, [2026, 10, 11]]);
+    const month = windowFor('month', new Date(2026, 9, 14));
+    assert.deepEqual([ymd(month.start), ymd(month.days[month.days.length - 1]), month.days.length], [[2026, 9, 28], [2026, 11, 1], 35]);
+    assert.equal(windowFor('month', new Date(2026, 7, 14)).days.length, 42, 'August 2026 needs six weeks');
+    const forecast = windowFor('forecast', new Date(2026, 9, 8));
+    assert.deepEqual([forecast.days.length, ymd(forecast.lookback)], [5, [2026, 10, 1]]);
+    assert.deepEqual(ymd(shiftAnchor('month', new Date(2026, 0, 31), 1)), [2026, 2, 1]);
+  });
+
+  // Listing each episode separately, or merging two different shows, turns this red.
+  await t.test('two episodes of one show on one day collapse into one group; another show stays separate', () => {
+    const episode = (id, seriesId, episodeNumber, title, hasFile = false) => ({ service: 'sonarr', kind: 'episode', id, seriesId, seriesTitle: `Show ${seriesId}`,
+      seasonNumber: 2, episodeNumber, title, at: new Date(2026, 9, 7, 20).toISOString(), hasFile, monitored: true, quality: null, finaleType: null });
+    const [groups] = groupByDay([episode(1, 5, 3, 'Sweet Vitriol'), episode(2, 5, 4, 'Next'), episode(3, 6, 1, 'Pilot')], [new Date(2026, 9, 7)]);
+    assert.deepEqual(groups.map((group) => [group.title, group.subtitle, group.count]), [['Show 5', 'S02E03–E04', 2], ['Show 6', 'S02E01 Pilot', 1]]);
+  });
+
+  // Calling a downloaded or not-yet-aired episode missing, or a downloading one missing, turns this red.
+  await t.test('only aired, monitored, file-less, idle entries say missing; live progress wins', () => {
+    const now = new Date(2026, 9, 7, 22).getTime();
+    const group = (overrides = {}) => ({ entries: [{ service: 'sonarr', kind: 'episode', id: 1, seriesId: 5, seasonNumber: 2, episodeNumber: 3, title: 't',
+      at: new Date(2026, 9, 7, 20).toISOString(), hasFile: false, monitored: true, ...overrides }] });
+    const idle = new Map();
+    assert.equal(entryWord(group(), idle, now), 'missing');
+    assert.equal(entryWord(group({ hasFile: true }), idle, now), null);
+    assert.equal(entryWord(group({ at: new Date(2026, 9, 8).toISOString() }), idle, now), null);
+    assert.equal(entryWord(group(), new Map([['episode:1', { word: 'downloading', tone: 'normal', percent: 40.2, downRate: 1 }]]), now), 'downloading 40%');
+    assert.equal(entryWord(group(), new Map([['episode:1', { word: 'queued', tone: 'normal', percent: null, downRate: 0 }]]), now), 'queued');
+  });
+});
