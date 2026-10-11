@@ -5217,7 +5217,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
 
   const setup = async ({
     name = 'Movie.2024.mkv', files = [['Movie.2024.mkv', 1234]], library = [['Movie (2024).mkv', 1234]],
-    multi = 0, hashing = 3, manual = false, present = false,
+    multi = 0, hashing = 3, manual = false, present = false, complete = 1, linked = false,
   } = {}) => {
     count += 1;
     const base = join(root, `case-${count}`);
@@ -5232,12 +5232,13 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
       await mkdir(directory, { recursive: true });
       await writeFile(join(directory, files[0][0]), Buffer.alloc(files[0][1]));
     }
+    if (linked) await link(join(movieFolder, library[0][0]), join(downloadRoot, files[0][0]));
     const database = openDatabase(join(base, 'db', 'media-manager.sqlite'));
     setSetting(database, 'hostPaths', 'downloads.radarr', downloadRoot);
     setSetting(database, 'hostPaths', 'library.radarr', libraryRoot);
     const clock = { value: start };
     const now = () => clock.value;
-    const fake = { hashing, complete: 1 };
+    const fake = { hashing, complete };
     const sleep = async (ms) => { clock.value += ms; fake.hashing -= 1; };
     const size = files.reduce((total, [, bytes]) => total + bytes, 0);
     const message = 'Download registered as completed, but hash check returned unfinished chunks.';
@@ -5333,6 +5334,26 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     assert.equal(run.writes.some(([method]) => method === 'd.start'), false);
     assert.equal(run.writes.some(([method]) => method === 'd.check_hash'), true);
     assert.ok(run.clock.value - start >= HASH_WAIT_LIMIT_MS);
+    assert.deepEqual(await readdir(run.downloadRoot), []);
+    assert.equal((await stat(join(run.movieFolder, 'Movie (2024).mkv'))).nlink, 1);
+  });
+
+  // Leaving the hardlinks in the download root after a failed recheck turns this red.
+  await t.test('an incomplete recheck removes the hardlinks it made and leaves the library file alone', async () => {
+    const run = await setup({ complete: 0 });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal(run.problem.steps.at(-1).text, 'The recheck found the data incomplete, so the torrent stays stopped.');
+    assert.equal(run.problem.steps.at(-2).text, 'Removed the 1 hardlink again.');
+    assert.deepEqual(await readdir(run.downloadRoot), []);
+    assert.equal((await stat(join(run.movieFolder, 'Movie (2024).mkv'))).nlink, 1);
+    assert.equal(run.writes.some(([method]) => method === 'd.start'), false);
+  });
+
+  // Removing every link at the torrent's file paths, not only the ones this run made, turns this red.
+  await t.test('a hardlink that was already in the download root survives an incomplete recheck', async () => {
+    const run = await setup({ linked: true, complete: 0 });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal((await stat(join(run.downloadRoot, 'Movie.2024.mkv'))).nlink, 2);
   });
 });
 
