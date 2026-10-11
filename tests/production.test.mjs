@@ -8,6 +8,7 @@ import {
   mkdir,
   mkdtemp,
   realpath,
+  readdir,
   readFile,
   rm,
   stat,
@@ -42,6 +43,7 @@ const problemsModuleUrl = new URL('../dist/server/problems.js', import.meta.url)
 const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
+const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
@@ -2598,6 +2600,152 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.deepEqual(grabbedTitles(manual.requests), []);
     assert.equal(listOpenProblems(manual.database).find((problem) => problem.kind === 'stalled').state, 'needs_you');
     manual.database.close();
+  });
+});
+
+test('a stopped torrent whose download files were deleted is re-linked to its library copy', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTorrentPoller } = await import(torrentsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createProblems, getProblem } = await import(problemsModuleUrl);
+  const { createProtection } = await import(protectionModuleUrl);
+  const { createRelinkFix, HASH_WAIT_LIMIT_MS } = await import(relinkModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-relink-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let count = 0;
+  const hash = 'AB'.repeat(20);
+  const start = Date.parse('2026-10-08T12:00:00Z');
+  const writeMethods = ['d.close', 'd.directory.set', 'd.open', 'd.check_hash', 'd.start', 'd.message.set'];
+
+  const setup = async ({
+    name = 'Movie.2024.mkv', files = [['Movie.2024.mkv', 1234]], library = [['Movie (2024).mkv', 1234]],
+    multi = 0, hashing = 3, manual = false, present = false,
+  } = {}) => {
+    count += 1;
+    const base = join(root, `case-${count}`);
+    const downloadRoot = join(base, 'downloads/Radarr');
+    const libraryRoot = join(base, 'library/Movies');
+    const movieFolder = join(libraryRoot, 'Movie (2024)');
+    const directory = join(downloadRoot, 'Old.Folder');
+    await mkdir(downloadRoot, { recursive: true });
+    await mkdir(movieFolder, { recursive: true });
+    for (const [file, size] of library) await writeFile(join(movieFolder, file), Buffer.alloc(size));
+    if (present) {
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, files[0][0]), Buffer.alloc(files[0][1]));
+    }
+    const database = openDatabase(join(base, 'db', 'media-manager.sqlite'));
+    setSetting(database, 'hostPaths', 'downloads.radarr', downloadRoot);
+    setSetting(database, 'hostPaths', 'library.radarr', libraryRoot);
+    const clock = { value: start };
+    const now = () => clock.value;
+    const fake = { hashing, complete: 1 };
+    const sleep = async (ms) => { clock.value += ms; fake.hashing -= 1; };
+    const size = files.reduce((total, [, bytes]) => total + bytes, 0);
+    const message = 'Download registered as completed, but hash check returned unfinished chunks.';
+    const calls = [];
+    const rtorrent = {
+      call: async (method, params) => {
+        if (method === 'd.multicall2') return [[hash, name, size, 0, 0, 0, 0, 0, 0, 0, message, 0, 0, 0, 0]];
+        if (method === 't.multicall') return [['https://tracker.example/announce/k']];
+        if (method === 'f.multicall') return files;
+        if (method === 'd.directory') return directory;
+        if (method === 'd.is_multi_file') return multi;
+        if (method === 'd.hashing') return fake.hashing > 0 ? 3 : 0;
+        if (method === 'd.complete') return fake.complete;
+        calls.push([method, ...params]);
+        return 0;
+      },
+    };
+    const radarr = {
+      request: async (path) => {
+        if (path.startsWith('/api/v3/queue?')) return { status: 200, body: { totalRecords: 0, records: [] } };
+        if (path.startsWith('/api/v3/history/since')) {
+          return { status: 200, body: [{ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - 60_000).toISOString(), data: {} }] };
+        }
+        if (path === '/api/v3/movie/7') return { status: 200, body: { path: movieFolder } };
+        return { status: 200, body: {} };
+      },
+    };
+    const sonarr = { request: async (path) => (path.startsWith('/api/v3/history') ? { status: 200, body: [] } : { status: 200, body: { totalRecords: 0, records: [] } }) };
+    const arr = { sonarr, radarr };
+    const events = createEventHub();
+    const poller = createTorrentPoller({ database, rtorrent, events, now });
+    const grabs = createGrabTracker({ database, arr, events, now });
+    const problems = createProblems({ database, events, now });
+    if (manual) database.prepare("INSERT INTO protected_items (service, item_id, created_at) VALUES ('radarr', 7, 0)").run();
+    const relink = createRelinkFix({ database, rtorrent, arr, problems, now, sleep, isManualDownload: createProtection(database, arr).isProtected });
+    await grabs.reconcile();
+    await poller.poll();
+    await relink.check();
+    const writes = calls.filter(([method]) => writeMethods.includes(method));
+    const found = database.prepare("SELECT id FROM problems WHERE kind = 'download_missing'").all().map((row) => getProblem(database, Number(row.id)));
+    database.close();
+    return { writes, found, problem: found[0], downloadRoot, movieFolder, clock };
+  };
+
+  // Linking before the size match, skipping the recheck, or starting without a complete recheck turns this red.
+  await t.test('a single-file torrent is hardlinked from the library, rechecked and started', async () => {
+    const run = await setup();
+    assert.deepEqual(run.writes, [['d.close', hash], ['d.directory.set', hash, run.downloadRoot], ['d.open', hash], ['d.check_hash', hash],
+      ['d.start', hash], ['d.message.set', hash, '']]);
+    const linked = await stat(join(run.downloadRoot, 'Movie.2024.mkv'));
+    assert.equal(linked.nlink, 2);
+    assert.equal(linked.ino, (await stat(join(run.movieFolder, 'Movie (2024).mkv'))).ino);
+    assert.equal(run.found.length, 1);
+    assert.equal(run.problem.state, 'resolved');
+  });
+
+  // Matching by anything looser than the exact byte size turns this red.
+  await t.test('a library file one byte off is not used and rTorrent is left alone', async () => {
+    const run = await setup({ library: [['Movie (2024).mkv', 1235]] });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.match(run.problem.steps.at(-1).text, /exactly 1234 bytes/);
+    assert.deepEqual(run.writes, []);
+    assert.deepEqual(await readdir(run.downloadRoot), []);
+  });
+
+  // Writing to rTorrent before every torrent file has a library match turns this red.
+  await t.test('a multi-file torrent with one unmatched file is left alone', async () => {
+    const run = await setup({ name: 'Movie.2024', multi: 1, files: [['a.mkv', 10], ['b.mkv', 20]], library: [['a.mkv', 10]] });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.deepEqual(run.writes, []);
+  });
+
+  // Linking multi-file torrents straight under the download root instead of under the torrent's name turns this red.
+  await t.test('a multi-file torrent is linked under its own name in the download root', async () => {
+    const run = await setup({ name: 'Movie.2024', multi: 1, files: [['a.mkv', 10], ['b.mkv', 20]], library: [['a.mkv', 10], ['b.mkv', 20]] });
+    assert.equal(run.problem.state, 'resolved');
+    assert.deepEqual(run.writes.find(([method]) => method === 'd.directory.set'), ['d.directory.set', hash, run.downloadRoot]);
+    assert.equal((await stat(join(run.downloadRoot, 'Movie.2024', 'a.mkv'))).nlink, 2);
+    assert.equal((await stat(join(run.downloadRoot, 'Movie.2024', 'b.mkv'))).nlink, 2);
+  });
+
+  // Dropping the manual-download check turns this red.
+  await t.test('a manual download is flagged and never re-linked', async () => {
+    const run = await setup({ manual: true });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal(run.problem.steps.at(-1).text, 'This is a manual download, so it is left alone.');
+    assert.deepEqual(run.writes, []);
+  });
+
+  // Dropping the check that the download files are really gone turns this red.
+  await t.test('a stopped torrent whose download files still exist is not touched', async () => {
+    const run = await setup({ present: true });
+    assert.deepEqual(run.found, []);
+    assert.deepEqual(run.writes, []);
+  });
+
+  // Waiting on the recheck without a ceiling, or starting the torrent after giving up, turns this red.
+  await t.test('a recheck that never finishes gives up after two hours without starting', async () => {
+    const run = await setup({ hashing: Infinity });
+    assert.equal(run.problem.state, 'needs_you');
+    assert.equal(run.problem.steps.at(-1).text, 'Still rechecking after two hours.');
+    assert.equal(run.writes.some(([method]) => method === 'd.start'), false);
+    assert.equal(run.writes.some(([method]) => method === 'd.check_hash'), true);
+    assert.ok(run.clock.value - start >= HASH_WAIT_LIMIT_MS);
   });
 });
 
