@@ -55,6 +55,7 @@ const connectionsModuleUrl = new URL('../dist/server/connections.js', import.met
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
 const trackerRulesModuleUrl = new URL('../dist/server/trackerRules.js', import.meta.url).href;
 const adviceModuleUrl = new URL('../dist/server/advice.js', import.meta.url).href;
+const trackerSettingsModuleUrl = new URL('../dist/server/trackerSettings.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
 const labelsModuleUrl = new URL('../dist/server/labels.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
@@ -67,6 +68,17 @@ const s3ModuleUrl = new URL('../dist/server/services/s3.js', import.meta.url).hr
 const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js', import.meta.url).href;
 const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
+// The owner's confirmed rules (AA-23). The code ships none, so tests that judge these trackers supply them.
+const ownerRules = {
+  'blutopia.cc': { minHours: 168, minGlobalRatio: 0.4 },
+  'beyond-hd.me': { minHours: 120, minRatio: 1.0, logic: 'or', minGlobalRatio: 0.25 },
+  'privatehd.to': { minHoursFormula: 'privatehd', minRatio: 0.9, logic: 'or', partialExemptBelow: 0.1, partialRatio: 0.9, partialMaxHours: 1440 },
+};
+const saveOwnerRules = async (database) => {
+  const { setSetting } = await import(settingsModuleUrl);
+  for (const [host, rule] of Object.entries(ownerRules)) setSetting(database, 'trackerConfiguration', `rules.${host}`, JSON.stringify(rule));
+};
+
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 const clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url));
 
@@ -1610,15 +1622,21 @@ test('settings validate categories, keys, and values', async (t) => {
 });
 
 // Changing a piece of the PrivateHD formula, the and/or combination, giving Blutopia a ratio side, letting the global
-// ratio flip a torrent's result, or matching indexer names by substring turns this red.
-test('hit and run rules come from settings with the confirmed defaults and an exact name match', async (t) => {
+// ratio flip a torrent's result, matching indexer names by substring, shipping a built-in rule, or letting the
+// TRACKER_RULES rule win over a saved one turns this red.
+test('hit and run rules come from settings or TRACKER_RULES with an exact name match', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tracker-rules-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
-  const { checkHitAndRun, findTrackerRule } = await import(trackerRulesModuleUrl);
+  const { checkHitAndRun, findTrackerRule: find } = await import(trackerRulesModuleUrl);
   const database = openDatabase(join(root, 'database.sqlite'));
   t.after(() => database.close());
+
+  // A new install knows no tracker.
+  for (const name of ['blutopia.cc', 'PrivateHD', 'BeyondHD (Prowlarr)']) assert.equal(find(database, name, {}), undefined, name);
+  const env = { TRACKER_RULES: JSON.stringify(ownerRules) };
+  const findTrackerRule = (database, name) => find(database, name, env);
 
   const privatehd = findTrackerRule(database, 'PrivateHD').rule;
   for (const [gb, hours] of [[1, 72.0], [49.99, 171.98], [50, 172.0], [100, 241.31]]) {
@@ -1653,6 +1671,7 @@ test('hit and run rules come from settings with the confirmed defaults and an ex
   assert.equal(findTrackerRule(database, 'hd'), undefined);
   assert.equal(findTrackerRule(database, 'Unknown (Prowlarr)'), undefined);
 
+  // The saved rule wins over the TRACKER_RULES one for the same host.
   setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', JSON.stringify({ minHours: 200, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' }));
   assert.deepEqual(findTrackerRule(database, 'Blutopia (API)').rule, {
     minHours: 200, minHoursFormula: null, minRatio: 1, minGlobalRatio: 0.5, logic: 'or', partialExemptBelow: null, partialRatio: null, partialMaxHours: null,
@@ -1664,6 +1683,17 @@ test('hit and run rules come from settings with the confirmed defaults and an ex
     setSetting(database, 'trackerConfiguration', 'rules.example.org', bad);
     assert.throws(() => findTrackerRule(database, 'example.org'), { message: 'The saved hit and run rule for example.org is not valid.' });
   }
+
+  // Dropping a bad TRACKER_RULES quietly, or not naming the host and field at fault, turns this red.
+  const { trackerRulesFromEnvironment } = await import(trackerRulesModuleUrl);
+  for (const [value, message] of [
+    ['not json', 'TRACKER_RULES is not valid JSON.'],
+    ['[]', 'TRACKER_RULES must be a JSON object keyed by tracker hostname.'],
+    ['{"blutopia":{"minHours":1}}', 'TRACKER_RULES: "blutopia" is not a tracker hostname.'],
+    ['{"blutopia.cc":{"minHours":168,"minRatio":1}}', 'TRACKER_RULES: the rule for blutopia.cc is not valid: logic must be "and" or "or" when minRatio is set.'],
+    ['{"blutopia.cc":{"minHours":"168"}}', 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
+    ['{"Blutopia.cc":{"minHours":1},"blutopia.cc":{"minHours":2}}', 'TRACKER_RULES: blutopia.cc is listed twice.'],
+  ]) assert.throws(() => trackerRulesFromEnvironment({ TRACKER_RULES: value }), { message }, value);
 });
 
 // Dropping either margin, letting time since finishing prove a time rule, matching only the exact announce hostname
@@ -1676,6 +1706,8 @@ test('removal advice applies the hit and run rule with margins and proves time o
   const { adviseRemoval } = await import(adviceModuleUrl);
   const database = openDatabase(join(root, 'database.sqlite'));
   t.after(() => database.close());
+  await saveOwnerRules(database);
+  setSetting(database, 'trackerConfiguration', 'trackers.example.net', 'added');
 
   const now = 1_800_000_000_000;
   const hour = 3600;
@@ -1721,6 +1753,8 @@ test('removal advice applies the hit and run rule with margins and proves time o
     ['waiting for metadata', { sizeBytes: 0, completedBytes: 0, finishedAt: 0, firstSeenAt: now - hour * 1000 }, 'keep',
       "Waiting for the torrent's metadata; nothing downloaded yet"],
     ['no rule', { host: 'tracker.opentrackr.org', seconds: blutopiaNeeds }, 'unconfirmed', "Can't tell; keep seeding: no hit and run rule for tracker.opentrackr.org"],
+    // An added tracker with no rule yet must not borrow one.
+    ['added tracker, no rule', { host: 'tracker.example.net', seconds: blutopiaNeeds }, 'unconfirmed', "Can't tell; keep seeding: no hit and run rule for tracker.example.net"],
     ['no tracker', { host: null }, 'unconfirmed', "Can't tell; keep seeding: its tracker is not known"],
     // Incomplete torrents: judging them by the complete rule, letting the counter prove PrivateHD's 60 days, dropping the
     // ratio margin, or calling a running download under 10% safe turns these red.
@@ -1765,6 +1799,7 @@ test('incomplete torrents follow the tracker partial-download rules', async (t) 
   const { checkHitAndRun, findTrackerRule } = await import(trackerRulesModuleUrl);
   const database = openDatabase(join(root, 'database.sqlite'));
   t.after(() => database.close());
+  await saveOwnerRules(database);
   const privatehd = findTrackerRule(database, 'privatehd.to').rule;
   const blutopia = findTrackerRule(database, 'blutopia.cc').rule;
   const gb = 1000 ** 3;
@@ -1799,29 +1834,28 @@ test('incomplete torrents follow the tracker partial-download rules', async (t) 
   }
 });
 
-// A startup storage failure must exit unsuccessfully with one fixed message and never begin listening.
-test('production startup stops when database initialization fails', async (t) => {
+// A startup storage failure, or a TRACKER_RULES that would otherwise be dropped, must exit unsuccessfully with one
+// fixed message and never begin listening.
+test('production startup stops when database initialization fails or TRACKER_RULES is invalid', async (t) => {
   const workingDirectory = await mkdtemp(join(tmpdir(), 'media-manager-2-startup-failure-'));
   t.after(() => rm(workingDirectory, { recursive: true, force: true }));
-  const child = spawn(process.execPath, [serverPath], {
-    cwd: workingDirectory,
-    env: {
-      ...process.env,
-      DB_PATH: 'relative.sqlite',
-      HOST: '127.0.0.1',
-      NODE_NO_WARNINGS: '1',
-      PORT: '0',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let output = '';
-  child.stdout.on('data', (chunk) => { output += chunk; });
-  child.stderr.on('data', (chunk) => { output += chunk; });
-  const [code, signal] = await once(child, 'exit');
-  assert.equal(signal, null);
-  assert.notEqual(code, 0);
-  assert.equal(output.trim(), 'Database initialization failed.');
-  assert.doesNotMatch(output, /Listening on|relative\.sqlite/);
+  for (const [trackerRules, message] of [
+    [undefined, 'Database initialization failed.'],
+    ['{"blutopia.cc":{"minHours":-1}}', 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
+  ]) {
+    const env = { ...process.env, DB_PATH: 'relative.sqlite', HOST: '127.0.0.1', NODE_NO_WARNINGS: '1', PORT: '0' };
+    delete env.TRACKER_RULES;
+    if (trackerRules !== undefined) env.TRACKER_RULES = trackerRules;
+    const child = spawn(process.execPath, [serverPath], { cwd: workingDirectory, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    child.stdout.on('data', (chunk) => { output += chunk; });
+    child.stderr.on('data', (chunk) => { output += chunk; });
+    const [code, signal] = await once(child, 'exit');
+    assert.equal(signal, null);
+    assert.notEqual(code, 0);
+    assert.equal(output.trim(), message);
+    assert.doesNotMatch(output, /Listening on|relative\.sqlite/);
+  }
 });
 
 // Credential values must remain absent from every production and development response and from server output.
@@ -2132,6 +2166,119 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   const mounted = await makeApp({ api: createApiRoutes(database) });
   const signedIn = await signIn(mounted.app);
   assert.equal((await mounted.app.request('/api/settings', { headers: { Cookie: signedIn.session } })).status, 200);
+});
+
+// Losing a tracker the owner added, letting TRACKER_RULES beat a saved rule, accepting a junk or duplicate host or an invalid
+// rule, removing a tracker set in the env file, hiding the list behind one bad saved value, or skipping the browser write checks turns this red.
+test('the settings screen adds trackers and saves, clears and removes their hit and run rules', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { listSettingKeys, setSetting } = await import(settingsModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createTrackerRoutes } = await import(trackerSettingsModuleUrl);
+  const { findTrackerRule } = await import(trackerRulesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tracker-settings-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const env = { TRACKER_RULES: JSON.stringify({ 'blutopia.cc': ownerRules['blutopia.cc'] }) };
+  const { app } = await makeApp({ api: createTrackerRoutes(database, env) });
+  const { session } = await signIn(app);
+  const send = (method, path, body, headers = jsonHeaders('https://media.example')) => app.request(path, {
+    method, headers: { ...headers, Cookie: session }, body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const list = async () => {
+    const response = await app.request('/api/settings/trackers', { headers: { Cookie: session } });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const trackerKeys = () => listSettingKeys(database).filter((entry) => entry.category === 'trackerConfiguration');
+  const defaultMargins = { timeFactor: 1.1, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 };
+  const unset = { minHoursFormula: null, minRatio: null, minGlobalRatio: null, logic: null, partialExemptBelow: null, partialRatio: null, partialMaxHours: null };
+  const blutopiaEnv = { ...unset, minHours: 168, minGlobalRatio: 0.4 };
+  const blutopia = (fields) => ({ host: 'blutopia.cc', margins: defaultMargins, problem: null, ...fields });
+  const example = (fields) => ({ host: 'example.net', margins: defaultMargins, problem: null, ...fields });
+
+  assert.deepEqual(await list(), [blutopia({ status: 'configured_env', rule: blutopiaEnv, ruleSource: 'env' })]);
+
+  // Adding cuts the input down to a bare hostname; junk and duplicates are refused and save nothing.
+  assert.equal((await send('POST', '/api/settings/trackers', { host: ' HTTPS://Example.net:443/announce/abc ' })).status, 201);
+  const before = trackerKeys();
+  for (const [body, status, error] of [
+    [{ host: 'example.net' }, 409, 'duplicate'], [{ host: 'EXAMPLE.NET' }, 409, 'duplicate'], [{ host: 'blutopia.cc' }, 409, 'duplicate'],
+    [{ host: 'not a host' }, 400, 'invalid_host'], [{ host: 'localhost' }, 400, 'invalid_host'], [{ host: '127.0.0.1' }, 400, 'invalid_host'],
+    [{ host: '' }, 400, 'invalid_host'], [{ host: 5 }, 400, 'invalid_request'], [{ host: 'a.example', extra: 1 }, 400, 'invalid_request'],
+  ]) {
+    const response = await send('POST', '/api/settings/trackers', body);
+    assert.deepEqual([response.status, (await response.json()).error], [status, error], JSON.stringify(body));
+  }
+  assert.deepEqual(trackerKeys(), before);
+  assert.deepEqual((await list())[1], example({ status: 'no_rule', rule: null, ruleSource: null }));
+  assert.equal(findTrackerRule(database, 'tracker.example.net', env), undefined);
+
+  // A bad rule or margin names its field and saves nothing.
+  for (const [body, error, field, reason] of [
+    [{ rule: { minHours: 100, minRatio: 1 } }, 'invalid_rule', 'logic', 'logic must be "and" or "or" when minRatio is set'],
+    [{ rule: { minHours: -1 } }, 'invalid_rule', 'minHours', 'minHours must be a number of 0 or more'],
+    [{ rule: { minHours: 1, partialExemptBelow: 2 } }, 'invalid_rule', 'partialExemptBelow', 'partialExemptBelow must be a fraction from 0 to 1'],
+    [{ rule: [] }, 'invalid_rule', null, 'the rule must be a JSON object'],
+    [{ rule: { minHours: 1 }, margins: { timeFactor: 0.9 } }, 'invalid_margins', 'timeFactor', 'timeFactor must be a number of 1 or more'],
+  ]) {
+    const response = await send('PUT', '/api/settings/trackers/example.net/rule', body);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error, field, reason });
+  }
+  assert.equal((await send('PUT', '/api/settings/trackers/example.net/rule', { minHours: 1 })).status, 400);
+  assert.equal((await send('PUT', '/api/settings/trackers/unknown.org/rule', { rule: { minHours: 1 } })).status, 404);
+  assert.deepEqual(trackerKeys(), before);
+
+  // The saved rule is found through an announce subdomain, and wins over the TRACKER_RULES one.
+  const rule = { minHours: 100, minRatio: 1.5, logic: 'and' };
+  assert.equal((await send('PUT', '/api/settings/trackers/example.net/rule', { rule, margins: { timeFactor: 1.2 } })).status, 204);
+  assert.equal((await send('PUT', '/api/settings/trackers/blutopia.cc/rule', { rule: { minHours: 200 } })).status, 204);
+  const exampleRule = { ...unset, ...rule };
+  assert.deepEqual(findTrackerRule(database, 'tracker.example.net', env), { host: 'example.net', rule: exampleRule });
+  assert.deepEqual(await list(), [
+    blutopia({ status: 'configured', rule: { ...unset, minHours: 200 }, ruleSource: 'settings' }),
+    example({ status: 'configured', rule: exampleRule, ruleSource: 'settings', margins: { ...defaultMargins, timeFactor: 1.2 } }),
+  ]);
+
+  // One bad saved value is reported on its tracker without hiding the list.
+  setSetting(database, 'trackerConfiguration', 'rules.example.net', 'not json');
+  assert.deepEqual((await list())[1], example({
+    status: 'configured', rule: null, ruleSource: 'settings', margins: { ...defaultMargins, timeFactor: 1.2 }, problem: 'The saved hit and run rule for example.net is not valid.',
+  }));
+
+  // Clearing a rule brings back the TRACKER_RULES one, or none, and keeps the tracker.
+  assert.equal((await send('DELETE', '/api/settings/trackers/blutopia.cc/rule')).status, 204);
+  assert.equal((await send('DELETE', '/api/settings/trackers/example.net/rule')).status, 204);
+  assert.deepEqual(await list(), [
+    blutopia({ status: 'configured_env', rule: blutopiaEnv, ruleSource: 'env' }),
+    example({ status: 'no_rule', rule: null, ruleSource: null }),
+  ]);
+
+  // A tracker set in the env file is removed there, not here; removing an added one leaves nothing saved for it.
+  const envOnly = await send('DELETE', '/api/settings/trackers/blutopia.cc');
+  assert.deepEqual([envOnly.status, await envOnly.json()], [409, {
+    error: 'in_environment', message: 'blutopia.cc is set in TRACKER_RULES in the env file; remove it there and restart the server.',
+  }]);
+  assert.equal((await send('PUT', '/api/settings/trackers/example.net/rule', { rule, margins: {} })).status, 204);
+  assert.equal((await send('DELETE', '/api/settings/trackers/example.net')).status, 204);
+  assert.equal((await send('DELETE', '/api/settings/trackers/example.net')).status, 404);
+  assert.deepEqual(trackerKeys(), []);
+  assert.deepEqual(await list(), [blutopia({ status: 'configured_env', rule: blutopiaEnv, ruleSource: 'env' })]);
+
+  // Writes without the browser's own headers are refused before they reach the routes.
+  for (const [method, path, body] of [['POST', '/api/settings/trackers', { host: 'other.org' }], ['PUT', '/api/settings/trackers/blutopia.cc/rule', { rule }], ['DELETE', '/api/settings/trackers/blutopia.cc/rule']]) {
+    assert.equal((await send(method, path, body, { 'Content-Type': 'application/json' })).status, 403, `${method} ${path}`);
+  }
+  assert.deepEqual(trackerKeys(), []);
+
+  // Leaving the routes out of the browser API turns this red.
+  const mounted = await makeApp({ api: createApiRoutes(database) });
+  const signedIn = await signIn(mounted.app);
+  assert.equal((await mounted.app.request('/api/settings/trackers', { headers: { Cookie: signedIn.session } })).status, 200);
 });
 
 // Classifying a status differently, dropping the service name from a message, or changing any operation's request turns a subtest red.
@@ -4881,6 +5028,7 @@ test('interactive searches are kept with their age and refreshed only on request
     database.close();
     await rm(root, { recursive: true, force: true });
   });
+  await saveOwnerRules(database);
   for (const [service, port] of [['sonarr', 65031], ['radarr', 65032]]) {
     setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
     setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
@@ -5056,6 +5204,7 @@ test('pick a release shows the owned file with its seeding and compares each rel
     database.close();
     await rm(root, { recursive: true, force: true });
   });
+  await saveOwnerRules(database);
   setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65033');
   setSetting(database, 'credentials', 'sonarr.apiKey', 'sonarr-key');
   const hash = 'CD'.repeat(20);

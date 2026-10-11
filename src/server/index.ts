@@ -37,6 +37,7 @@ import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller } from './torrents.js';
+import { trackerRulesFromEnvironment } from './trackerRules.js';
 import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
 import { createStallFix } from './stalls.js';
@@ -49,9 +50,16 @@ const port = Number(process.env.PORT ?? '3000');
 
 let database: DatabaseSync | undefined;
 try {
-  database = openDatabase();
-} catch {
-  console.error('Database initialization failed.');
+  // Checked once here so a bad TRACKER_RULES stops startup instead of failing each rule lookup later.
+  trackerRulesFromEnvironment();
+  try {
+    database = openDatabase();
+  } catch {
+    console.error('Database initialization failed.');
+    process.exitCode = 1;
+  }
+} catch (error) {
+  console.error((error as Error).message);
   process.exitCode = 1;
 }
 
