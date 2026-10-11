@@ -1197,6 +1197,23 @@ test('background job runner', async (t) => {
     assert.equal(runs, 2);
   });
 
+  // Making stop wait on a hung run without a limit turns this red: deploy.sh gives the old server 30 seconds.
+  await t.test('stop gives up on a run still going after 20 seconds', async () => {
+    const { timers, runner } = setup();
+    runner.register('hung', 1000, () => new Promise(() => {}));
+    runner.start();
+    timers.advance(1000);
+    await drain();
+    let stopped = false;
+    const stopping = runner.stop().then(() => { stopped = true; });
+    timers.advance(19_999);
+    await drain();
+    assert.equal(stopped, false);
+    timers.advance(1);
+    await drain();
+    assert.equal(stopped, true);
+  });
+
   // Silently accepting a duplicate or late registration turns this red.
   await t.test('duplicate names and registering after start throw', () => {
     const { runner } = setup();
