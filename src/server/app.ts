@@ -18,6 +18,7 @@ import { createSearchRoutes, type Search } from './search.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersionRoutes, type SecondVersions } from './secondVersions.js';
 import type { SetupEnvironment } from './setup.js';
+import { createTitleDeleteRoutes, type TitleDelete } from './titleDelete.js';
 
 export type CreateAppOptions = {
   clientDirectory: string;
@@ -37,6 +38,7 @@ export type CreateAppOptions = {
   owned?: Owned;
   protection?: Protection;
   library?: Library;
+  titleDelete?: TitleDelete;
   setup?: Hono<SetupEnvironment>;
   api?: Hono;
   images?: Hono;
@@ -164,7 +166,8 @@ export const createApp = (options: CreateAppOptions) => {
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
   });
 
-  // A manual import lists every file of a season pack, so it gets more room than the other private writes.
+  // A manual import lists every file of a season pack, and a movie or show delete every torrent and second version chosen,
+  // so they get more room than the other private writes.
   const importRequestLimit = bodyLimit({
     maxSize: 64 * 1_024,
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
@@ -184,7 +187,8 @@ export const createApp = (options: CreateAppOptions) => {
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
     if (context.req.path === '/api/grabs' || context.req.path === '/api/second-versions') return grabRequestLimit(context, next);
-    if (context.req.path.startsWith('/api/imports/')) return importRequestLimit(context, next);
+    // A movie or show delete lists every torrent and second version chosen, which for a long show is many.
+    if (context.req.path.startsWith('/api/imports/') || /^\/api\/library\/(movie|series)\/\d+\/delete$/.test(context.req.path)) return importRequestLimit(context, next);
     return requestLimit(context, next);
   };
 
@@ -377,6 +381,7 @@ export const createApp = (options: CreateAppOptions) => {
   }
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
+  if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
   if (options.images !== undefined) app.route('/api/images', options.images);
   if (options.setup !== undefined) app.route('/api/setup', options.setup);
   if (options.api !== undefined) app.route('/api', options.api);

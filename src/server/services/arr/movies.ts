@@ -193,5 +193,14 @@ export const createMovies = ({ label, send }: { label: string; send: Send }) => 
     return { kind: 'ok', value: records(body).flatMap(parseCredit) };
   };
 
-  return { listMovies, movie, lookupMovies, addMovie, monitorMovie, setTag, credits };
+  // Radarr deletes the files in the background after it answers, and never adds an import list exclusion here.
+  const deleteMovie = async (movieId: number): Promise<Result<void>> => done(
+    await send('the movie delete', `/api/v3/movie/${movieId}?deleteFiles=true&addImportExclusion=false`, { method: 'DELETE' }),
+  );
+
+  const deleteMovieFile = async (fileId: number): Promise<Result<void>> => done(
+    await send('the movie file delete', `/api/v3/moviefile/${fileId}`, { method: 'DELETE' }),
+  );
+
+  return { listMovies, movie, lookupMovies, addMovie, monitorMovie, setTag, credits, deleteMovie, deleteMovieFile };
 };

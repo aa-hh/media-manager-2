@@ -192,5 +192,10 @@ export const createSeries = ({ label, send }: { label: string; send: Send }) => 
     return done(await send(operation, `/api/v3/series/${seriesId}`, { method: 'PUT', body }));
   };
 
-  return { listSeries, series, lookupSeries, addSeries, monitorSeries, monitorSeason, setTag };
+  // Sonarr deletes the files in the background after it answers, and never adds an import list exclusion here.
+  const deleteSeries = async (seriesId: number): Promise<Result<void>> => done(
+    await send('the series delete', `/api/v3/series/${seriesId}?deleteFiles=true&addImportListExclusion=false`, { method: 'DELETE' }),
+  );
+
+  return { listSeries, series, lookupSeries, addSeries, monitorSeries, monitorSeason, setTag, deleteSeries };
 };
