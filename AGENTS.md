@@ -181,5 +181,5 @@ override once with `--no-verify`):
   lines unchanged re-posts the last status without using a round. So does
   merging `origin/main` in, even after round 2: a clean merge re-posts the
   last status, and a merge that resolved conflicts gets one cheap check of
-  just the resolutions. Any commit of the branch's own, a rebase or a
-  force-push still counts as a round.
+  just the resolutions. A commit of the branch's own, a rebase or a
+  force-push gets no such exception for merges.
