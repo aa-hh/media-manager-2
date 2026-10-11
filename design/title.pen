@@ -43832,7 +43832,30 @@
           "type": "ref",
           "ref": "5:F5qou",
           "name": "AppBar",
-          "width": "fill_container"
+          "width": "fill_container",
+          "fill": [
+            "#000000b3",
+            {
+              "type": "gradient",
+              "gradientType": "linear",
+              "enabled": true,
+              "opacity": 0.7,
+              "rotation": 0,
+              "size": {
+                "height": 1
+              },
+              "colors": [
+                {
+                  "color": "#000000ff",
+                  "position": 0
+                },
+                {
+                  "color": "#ffffffff",
+                  "position": 1
+                }
+              ]
+            }
+          ]
         },
         {
           "type": "frame",
@@ -45035,7 +45058,7 @@
             }
           ],
           "width": 1440,
-          "height": 400
+          "height": 460
         },
         {
           "id": "RKX9T",
@@ -45092,7 +45115,7 @@
                   "name": "Title header, movie in library",
                   "width": "fill_container",
                   "padding": [
-                    40,
+                    100,
                     40,
                     32,
                     40
