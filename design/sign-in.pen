@@ -1,6 +1,1767 @@
 {
   "version": "2.21",
-  "children": [],
+  "children": [
+    {
+      "type": "frame",
+      "id": "K2I1Es",
+      "x": 12000,
+      "y": 6000,
+      "name": "v2 / Desktop / Sign in, loading",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "d7Go8k",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "FaGSv",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:lmLf2": {
+              "fill": "$5:muted"
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Loading…",
+              "fill": "$5:faint-foreground"
+            },
+            "5:lmLf2/5:T1Pftv": {
+              "enabled": false
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "D7dAD",
+      "x": 12000,
+      "y": 7060,
+      "name": "v2 / Desktop / Sign in",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "Fhfjm",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "ZrUf7",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "izTk3",
+      "x": 12000,
+      "y": 8120,
+      "name": "v2 / Desktop / Sign in, opening Plex",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "mWtJQ",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "K5Sjc",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Opening Plex…"
+            },
+            "5:BEk5a": {
+              "content": "You’ll continue on Plex in this tab."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "type": "icon",
+              "id": "ca2js",
+              "name": "Icon",
+              "width": 18,
+              "height": 18,
+              "icon": "loader-circle",
+              "library": "lucide",
+              "fill": "$5:primary-foreground"
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Opening Plex…"
+            },
+            "5:lmLf2/5:T1Pftv": {
+              "enabled": false
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "J86CY",
+      "x": 12000,
+      "y": 9180,
+      "name": "v2 / Desktop / Sign in, checking Plex account",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "pYwl2",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "YObHW",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Checking your Plex account…"
+            },
+            "5:BEk5a": {
+              "content": "Please wait while the server verifies the account with Plex."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "type": "icon",
+              "id": "jaOM4",
+              "x": 20,
+              "y": 15,
+              "name": "Icon",
+              "enabled": false,
+              "width": 18,
+              "height": 18,
+              "icon": "loader-circle",
+              "library": "lucide",
+              "fill": "$5:primary-foreground"
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Checking…"
+            },
+            "5:lmLf2/5:T1Pftv": {
+              "enabled": false
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "riQkR",
+      "x": 13600,
+      "y": 6000,
+      "name": "v2 / Desktop / Sign in, not finished on Plex",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "sQy1h",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "jUmtz",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Plex sign-in isn’t finished."
+            },
+            "5:BEk5a": {
+              "content": "Finish signing in on Plex, then check again."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Check again"
+            },
+            "5:f186pm": {
+              "enabled": true
+            },
+            "5:pHS1b": {
+              "enabled": true
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "D0VRr9",
+      "x": 13600,
+      "y": 7060,
+      "name": "v2 / Desktop / Sign in, cancelling",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "jMyK5",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "sW8l3",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Plex sign-in isn’t finished."
+            },
+            "5:BEk5a": {
+              "content": "Finish signing in on Plex, then check again."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:lmLf2": {
+              "fill": "$5:muted"
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Check again",
+              "fill": "$5:faint-foreground"
+            },
+            "5:lmLf2/5:T1Pftv": {
+              "enabled": false
+            },
+            "5:f186pm": {
+              "enabled": true
+            },
+            "5:f186pm/5:OXVvv": {
+              "fill": "$5:faint-foreground"
+            },
+            "5:pHS1b": {
+              "enabled": true
+            },
+            "5:pHS1b/5:OXVvv": {
+              "content": "Cancelling…",
+              "fill": "$5:faint-foreground"
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "M6iHXq",
+      "x": 13600,
+      "y": 8120,
+      "name": "v2 / Desktop / Sign in, interrupted",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "ILLBr",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "h1LKUh",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Plex sign-in was interrupted."
+            },
+            "5:BEk5a": {
+              "content": "Start again to return to Plex, or cancel this attempt."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Try again"
+            },
+            "5:f186pm": {
+              "enabled": true
+            },
+            "5:f186pm/5:OXVvv": {
+              "content": "Cancel"
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "R9C9xD",
+      "x": 13600,
+      "y": 9180,
+      "name": "v2 / Desktop / Sign in, wrong owner",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "mSvKQ",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "xIbcQ",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "This Plex account can’t open this app."
+            },
+            "5:BEk5a": {
+              "content": "Sign in with the owner’s account."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Try again"
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "toTgB",
+      "x": 15200,
+      "y": 6000,
+      "name": "v2 / Desktop / Sign in, Plex unavailable",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "DQ0U7",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "N1VphL",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Plex sign-in is unavailable."
+            },
+            "5:BEk5a": {
+              "content": "Try again."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Try again"
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "fbROf",
+      "x": 15200,
+      "y": 7060,
+      "name": "v2 / Desktop / Sign in, not configured",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "Y0X1er",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "J47bl",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Sign-in isn’t configured."
+            },
+            "5:BEk5a": {
+              "content": "The server needs an owner Plex ID and public app address before sign-in can start."
+            },
+            "5:UfeJ0": {
+              "content": "PLEX_OWNER_ID · APP_ORIGIN",
+              "fontFamily": "$5:font-data",
+              "fontSize": 14,
+              "fill": "$5:foreground"
+            },
+            "5:Bs63D": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "XyOlM",
+      "x": 15200,
+      "y": 8120,
+      "name": "v2 / Desktop / Sign in, attempt expired",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "C1DmF",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "X9mVz5",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "This sign-in attempt expired."
+            },
+            "5:BEk5a": {
+              "content": "Sign in again to create a new attempt."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Try again"
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "fLj2X",
+      "x": 15200,
+      "y": 9180,
+      "name": "v2 / Desktop / Sign in, could not be verified",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "Pc6eY",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "kSc80",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Plex sign-in couldn’t be verified."
+            },
+            "5:BEk5a": {
+              "content": "The return from Plex was missing or no longer matched this browser. Try again."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Try again"
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "L1mv0",
+      "x": 16800,
+      "y": 6000,
+      "name": "v2 / Desktop / Sign in, session expired",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "c950x",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "l3pVAR",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Your session expired."
+            },
+            "5:BEk5a": {
+              "content": "Sign in again."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Try again"
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "J76Fv5",
+      "x": 16800,
+      "y": 7060,
+      "name": "v2 / Desktop / Sign in, could not be cancelled",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "GsenA",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "rTlCC",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:SKxTr": {
+              "content": "Plex sign-in couldn’t be cancelled."
+            },
+            "5:BEk5a": {
+              "content": "Try cancelling again, or start a new sign-in attempt."
+            },
+            "5:UfeJ0": {
+              "enabled": false
+            },
+            "5:a0PNj": {
+              "enabled": false
+            },
+            "5:lmLf2/5:OXVvv": {
+              "content": "Try cancelling again"
+            },
+            "5:f186pm": {
+              "enabled": true
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "pDOyQ",
+      "x": 16800,
+      "y": 8120,
+      "name": "v2 / Desktop / Signed in, signing out",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "xSihI",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            },
+            "5:W2Rua8": {
+              "id": "zGxc1",
+              "type": "ref",
+              "ref": "5:ht3RN",
+              "name": "Sign out",
+              "height": 40,
+              "padding": [
+                0,
+                "$5:control-px-default"
+              ],
+              "cornerRadius": "$5:control-radius-default",
+              "fill": "#FFFFFF00",
+              "descendants": {
+                "5:HQLEf": {
+                  "enabled": false
+                },
+                "5:OXVvv": {
+                  "content": "Signing out…",
+                  "fill": "$5:faint-foreground"
+                },
+                "5:T1Pftv": {
+                  "enabled": false
+                },
+                "5:iwvSz": {
+                  "enabled": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "vyuoX",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ]
+        },
+        {
+          "id": "Y5vzSk",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "PDZwf",
+      "x": 16800,
+      "y": 9180,
+      "name": "v2 / Desktop / Signed in, sign-out failed",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "JnFEZ",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            },
+            "5:W2Rua8": {
+              "id": "X3l21",
+              "type": "ref",
+              "ref": "5:ht3RN",
+              "name": "Sign out",
+              "height": 40,
+              "padding": [
+                0,
+                "$5:control-px-default"
+              ],
+              "cornerRadius": "$5:control-radius-default",
+              "fill": "#FFFFFF00",
+              "descendants": {
+                "5:HQLEf": {
+                  "enabled": false
+                },
+                "5:OXVvv": {
+                  "content": "Try sign out again",
+                  "fill": "$5:foreground"
+                },
+                "5:T1Pftv": {
+                  "enabled": false
+                },
+                "5:iwvSz": {
+                  "enabled": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "H5leXk",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ],
+          "children": [
+            {
+              "id": "l0pqz",
+              "type": "ref",
+              "ref": "5:BXgoa",
+              "name": "Sign-out problem",
+              "descendants": {
+                "5:hDbgA": {
+                  "content": "Sign-out failed."
+                },
+                "5:EcQDN": {
+                  "content": "Your session may still be active."
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "a9vEec",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "ZCaMf",
+      "x": 18400,
+      "y": 6000,
+      "name": "v2 / Desktop / Signed out",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "none",
+      "children": [
+        {
+          "id": "UTRot",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "descendants": {
+            "5:OIwjX": {
+              "enabled": false
+            },
+            "5:f6yp9": {
+              "enabled": false
+            },
+            "5:gaNhn": {
+              "enabled": false
+            }
+          }
+        },
+        {
+          "id": "hhMwj",
+          "type": "ref",
+          "ref": "5:X2BYp",
+          "name": "Sign-in block",
+          "x": 40,
+          "y": 160,
+          "height": 716,
+          "descendants": {
+            "5:RreFa": {
+              "enabled": true,
+              "height": 32,
+              "alignItems": "start"
+            },
+            "5:RreFa/5:yO8o3": {
+              "content": "Signed out."
+            },
+            "5:Bq7tJ": {
+              "enabled": true,
+              "layoutPosition": "absolute",
+              "x": 0,
+              "y": 659
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "exGG2",
+      "x": 18400,
+      "y": 7060,
+      "name": "v2 / Motion / Initial to Opening Plex",
+      "clip": true,
+      "width": 1440,
+      "fill": "$5:background",
+      "gap": 24,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "vkbQd",
+          "name": "Stage before",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "bZHWb",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Before · 0 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "DRGrk",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 420,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "JIgQw",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "descendants": {
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "jUO9g",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Initial",
+                  "x": 40,
+                  "y": 160
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Y2rVY",
+          "name": "Stage mid",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "JoFAj",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Mid · 80 ms · duration-base ease-out",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "chqYD",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 420,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "nZR1q",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "descendants": {
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "RAy9f",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Initial, fading out",
+                  "x": 40,
+                  "y": 160,
+                  "opacity": 0.5,
+                  "descendants": {
+                    "5:Bs63D": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "Q6Usp",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Opening Plex, fading in",
+                  "x": 40,
+                  "y": 160,
+                  "opacity": 0.5,
+                  "descendants": {
+                    "5:SKxTr": {
+                      "content": "Opening Plex…"
+                    },
+                    "5:BEk5a": {
+                      "content": "You’ll continue on Plex in this tab."
+                    },
+                    "5:UfeJ0": {
+                      "enabled": false
+                    },
+                    "5:a0PNj": {
+                      "type": "icon",
+                      "id": "VM1NG",
+                      "name": "Icon",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "$5:primary-foreground"
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "content": "Opening Plex…"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "enabled": false
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "E7ZME",
+          "name": "Stage after",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "lgNbM",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "After · 160 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "SFDZi",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 420,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "r0RCQE",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "descendants": {
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "z5FxjS",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Opening Plex",
+                  "x": 40,
+                  "y": 160,
+                  "descendants": {
+                    "5:SKxTr": {
+                      "content": "Opening Plex…"
+                    },
+                    "5:BEk5a": {
+                      "content": "You’ll continue on Plex in this tab."
+                    },
+                    "5:UfeJ0": {
+                      "enabled": false
+                    },
+                    "5:a0PNj": {
+                      "type": "icon",
+                      "id": "qAuOL",
+                      "name": "Icon",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "$5:primary-foreground"
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "content": "Opening Plex…"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "enabled": false
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "exMjS",
+      "x": 18400,
+      "y": 8120,
+      "name": "v2 / Motion / Checking to Library",
+      "clip": true,
+      "width": 1440,
+      "fill": "$5:background",
+      "gap": 24,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "JignG",
+          "name": "Stage before",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "xXtx2",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Before · 0 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "VYW0A",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 420,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "oysQQ",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar, sign-in",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "descendants": {
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "uXJCG",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Checking",
+                  "x": 40,
+                  "y": 160,
+                  "descendants": {
+                    "5:SKxTr": {
+                      "content": "Checking your Plex account…"
+                    },
+                    "5:BEk5a": {
+                      "content": "Please wait while the server verifies the account with Plex."
+                    },
+                    "5:UfeJ0": {
+                      "enabled": false
+                    },
+                    "5:a0PNj": {
+                      "type": "icon",
+                      "id": "kM8a4",
+                      "x": 20,
+                      "y": 15,
+                      "name": "Icon",
+                      "enabled": false,
+                      "width": 18,
+                      "height": 18,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "$5:primary-foreground"
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "content": "Checking…"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "enabled": false
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "FzPmr",
+          "name": "Stage mid",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "iYevu",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Mid · 60 ms · duration-fast ease-out",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "LbyUa",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 420,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "IUvee",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar, sign-in, fading out",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "opacity": 0.5,
+                  "descendants": {
+                    "5:OIwjX": {
+                      "enabled": false
+                    },
+                    "5:f6yp9": {
+                      "enabled": false
+                    },
+                    "5:gaNhn": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "a7E6An",
+                  "type": "ref",
+                  "ref": "5:X2BYp",
+                  "name": "Checking, fading out",
+                  "x": 40,
+                  "y": 160,
+                  "opacity": 0.5,
+                  "descendants": {
+                    "5:SKxTr": {
+                      "content": "Checking your Plex account…"
+                    },
+                    "5:BEk5a": {
+                      "content": "Please wait while the server verifies the account with Plex."
+                    },
+                    "5:UfeJ0": {
+                      "enabled": false
+                    },
+                    "5:a0PNj": {
+                      "type": "icon",
+                      "id": "zHDn9",
+                      "x": 20,
+                      "y": 15,
+                      "name": "Icon",
+                      "enabled": false,
+                      "width": 18,
+                      "height": 18,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "$5:primary-foreground"
+                    },
+                    "5:lmLf2/5:OXVvv": {
+                      "content": "Checking…"
+                    },
+                    "5:lmLf2/5:T1Pftv": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "id": "Vlk4M",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "opacity": 0.5,
+                  "descendants": {
+                    "5:qGq1V/5:HSPSn": {
+                      "content": "3"
+                    },
+                    "5:Y8D5o/5:HSPSn": {
+                      "content": "5"
+                    }
+                  }
+                },
+                {
+                  "id": "hFx0n",
+                  "type": "ref",
+                  "ref": "5:jXjdR",
+                  "name": "Downloads live bar",
+                  "x": 0,
+                  "y": 380,
+                  "width": 1440,
+                  "opacity": 0.5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "yPycP",
+          "name": "Stage after",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "anSSS",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "After · 120 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "abqEW",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 420,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "Q4VRZG",
+                  "type": "ref",
+                  "ref": "5:F5qou",
+                  "name": "App bar",
+                  "x": 0,
+                  "y": 0,
+                  "width": 1440,
+                  "opacity": 1,
+                  "descendants": {
+                    "5:qGq1V/5:HSPSn": {
+                      "content": "3"
+                    },
+                    "5:Y8D5o/5:HSPSn": {
+                      "content": "5"
+                    }
+                  }
+                },
+                {
+                  "id": "Ie8rO",
+                  "type": "ref",
+                  "ref": "5:jXjdR",
+                  "name": "Downloads live bar",
+                  "x": 0,
+                  "y": 380,
+                  "width": 1440,
+                  "opacity": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "variables": {
     "row": {
       "type": "color",

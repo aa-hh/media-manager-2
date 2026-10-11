@@ -93,6 +93,21 @@
             },
             {
               "type": "frame",
+              "id": "zYSrG",
+              "name": "Logo/Plex gold",
+              "context": "Official Plex chevron in Plex's own gold (#E5A00D), outline unchanged. Use only on the black primary button. Source: logos/plex-icon.svg with the fill set to #E5A00D (logos/plex-icon-gold.svg), rendered to logos/plex-icon-gold.png.",
+              "reusable": true,
+              "width": 20,
+              "height": 20,
+              "fill": {
+                "type": "image",
+                "enabled": true,
+                "url": "logos/plex-icon-gold.png",
+                "mode": "contain"
+              }
+            },
+            {
+              "type": "frame",
               "id": "z7AOoy",
               "name": "Logo/Blutopia",
               "context": "Official logo, unchanged. Source and checksum: src/client/assets/service-logos.md",
@@ -14033,6 +14048,426 @@
         },
         {
           "type": "frame",
+          "id": "SzF3i",
+          "name": "Section v2/Skeleton rows",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "DFxqJ",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Skeleton rows",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "bSpZA",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Loading rows that match each row family's shape: row 40, row two-line 56, poster card, search result, calendar entry. Shimmer 1.4 s (duration-shimmer), static under reduced motion. Maps to shadcn Skeleton.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "LSeuE",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "aAuYV",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "xPzpz",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "row",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "g34znm",
+                      "name": "v2/Skeleton/row",
+                      "reusable": true,
+                      "width": 1360,
+                      "height": 40,
+                      "gap": 16,
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "D6B2jg",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 1",
+                          "width": 48,
+                          "height": 14
+                        },
+                        {
+                          "id": "fJf4F",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 2",
+                          "width": "fill_container",
+                          "height": 14
+                        },
+                        {
+                          "id": "aN3be",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 3",
+                          "width": 120,
+                          "height": 14
+                        },
+                        {
+                          "id": "nWUAS",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 4",
+                          "width": 120,
+                          "height": 14
+                        },
+                        {
+                          "id": "U8lqE",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 5",
+                          "width": 90,
+                          "height": 14
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "V8HTi",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "BDQAU",
+                  "name": "State row two-line",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "D7Dx8x",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "row two-line",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "kJlIx",
+                      "name": "v2/Skeleton/row-two-line",
+                      "reusable": true,
+                      "width": 1360,
+                      "height": 56,
+                      "gap": 16,
+                      "padding": [
+                        0,
+                        16
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "U72n7",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 1",
+                          "width": 48,
+                          "height": 14
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Pczwk",
+                          "name": "Cell 2",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 6,
+                          "children": [
+                            {
+                              "id": "EKJIT",
+                              "type": "ref",
+                              "ref": "ZWg7X",
+                              "name": "Line 1",
+                              "width": 280,
+                              "height": 14
+                            },
+                            {
+                              "id": "EAmrR",
+                              "type": "ref",
+                              "ref": "ZWg7X",
+                              "name": "Line 2",
+                              "width": 180,
+                              "height": 12
+                            }
+                          ]
+                        },
+                        {
+                          "id": "R9K1Wg",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 3",
+                          "width": 120,
+                          "height": 14
+                        },
+                        {
+                          "id": "i3wHl",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 4",
+                          "width": 120,
+                          "height": 14
+                        },
+                        {
+                          "id": "v1aH53",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Cell 5",
+                          "width": 90,
+                          "height": 14
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "wNTPB",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "WntWW",
+                  "name": "State poster card",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "RfrUe",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "poster card",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Om6ge",
+                      "name": "v2/Skeleton/poster card",
+                      "reusable": true,
+                      "width": 152,
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "id": "aJ5mi",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Poster block",
+                          "width": 152,
+                          "height": 228,
+                          "cornerRadius": "$radius-md"
+                        },
+                        {
+                          "id": "v0urW4",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Title line",
+                          "width": 120,
+                          "height": 14
+                        },
+                        {
+                          "id": "I6A0pQ",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Meta line",
+                          "width": 80,
+                          "height": 12
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "gcS1w",
+                  "name": "State search result",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "viQEM",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "search result",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "MFkuO",
+                      "name": "v2/Skeleton/search result",
+                      "reusable": true,
+                      "width": 880,
+                      "height": 84,
+                      "gap": 14,
+                      "padding": [
+                        10,
+                        16
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "ybOr3",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Poster block",
+                          "width": 40,
+                          "height": 60,
+                          "cornerRadius": "$radius-xs"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "HKVUn",
+                          "name": "Text",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "vxMWA",
+                              "type": "ref",
+                              "ref": "ZWg7X",
+                              "name": "Title line",
+                              "width": 240,
+                              "height": 14
+                            },
+                            {
+                              "id": "l4rvI",
+                              "type": "ref",
+                              "ref": "ZWg7X",
+                              "name": "Meta line",
+                              "width": 420,
+                              "height": 12
+                            },
+                            {
+                              "id": "br0JY",
+                              "type": "ref",
+                              "ref": "ZWg7X",
+                              "name": "Overview line",
+                              "width": 560,
+                              "height": 12
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "V6PI48",
+                  "name": "State calendar entry",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "UtxBE",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "calendar entry",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "jhCRH",
+                      "name": "v2/Skeleton/calendar entry",
+                      "reusable": true,
+                      "width": 180,
+                      "height": 44,
+                      "fill": "$muted",
+                      "cornerRadius": "$radius-sm",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "padding": [
+                        6,
+                        8,
+                        6,
+                        10
+                      ],
+                      "children": [
+                        {
+                          "id": "cyUQ8",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Title line",
+                          "width": 100,
+                          "height": 12,
+                          "fill": "$border"
+                        },
+                        {
+                          "id": "a8jLTL",
+                          "type": "ref",
+                          "ref": "ZWg7X",
+                          "name": "Meta line",
+                          "width": 70,
+                          "height": 10,
+                          "fill": "$border"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
           "id": "ZnJSF",
           "name": "Section v2/Empty state",
           "width": "fill_container",
@@ -14837,7 +15272,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "Dims the page behind a phone sheet or an inline panel on small screens. scrim (black 30%). Override width and height to the screen. Maps to the shadcn overlay.",
+              "content": "Dims the page behind a phone sheet or a dialog. scrim (black 30%). Override width and height to the screen. Maps to the shadcn overlay.",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -14908,7 +15343,7 @@
               "fill": "$muted-foreground",
               "textGrowth": "fixed-width",
               "width": 900,
-              "content": "Opens in place under a row or in the title header (pick a release, monitoring, delete). Radius 10, 1 px line edge, float shadow, Header and Footer padded 20 (root padding 20 top only, clip on); the Content slot is full-bleed so an edge-to-edge table fits without overriding padding. Overrides: Title, Close (ghost with Esc), Content slot, Primary, Secondary, Hint. Maps to shadcn Popover for anchored use, or a Collapsible panel in the page.",
+              "content": "Opens in place under a row or in the title header (pick a release, monitoring, remove, import, discard). It sits in the page flow, so it has a 1 px line edge and no shadow; only dialogs, menus, toasts and sheets float. Radius 10, Header and Footer padded 20 (root padding 20 top only, clip on); the Content slot is full-bleed so an edge-to-edge table fits without overriding padding. Overrides: Title, Close (ghost with Esc), Content slot, Primary, Secondary, Hint. Maps to shadcn Popover for anchored use, or a Collapsible panel in the page.",
               "lineHeight": 1.45,
               "fontFamily": "$font-ui",
               "fontSize": 13,
@@ -14950,28 +15385,6 @@
                       "cornerRadius": "$radius-lg",
                       "stroke": "$border",
                       "strokeWidth": 1,
-                      "effect": [
-                        {
-                          "type": "shadow",
-                          "shadowType": "outer",
-                          "color": "#1111110F",
-                          "offset": {
-                            "x": 0,
-                            "y": 2
-                          },
-                          "blur": 6
-                        },
-                        {
-                          "type": "shadow",
-                          "shadowType": "outer",
-                          "color": "#1111111F",
-                          "offset": {
-                            "x": 0,
-                            "y": 8
-                          },
-                          "blur": 24
-                        }
-                      ],
                       "layout": "vertical",
                       "gap": 16,
                       "padding": [
@@ -15852,6 +16265,937 @@
                   ]
                 }
               ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "D6cKZ",
+          "name": "Section v2/Status/inline",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "CQ3wy",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Status/inline",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "rd2ic",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Inline result of an action next to the control that started it: sent, failed, busy. Replaces loose status words. Maps to shadcn: none (plain text with an icon).",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "m8OFhc",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "A5jvkI",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "A05Kp7",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "UMUhR",
+                      "name": "v2/Status/inline",
+                      "reusable": true,
+                      "height": 20,
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "PMpjn",
+                          "name": "Icon",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "check",
+                          "library": "lucide",
+                          "fill": "$muted-foreground"
+                        },
+                        {
+                          "id": "WnEQF",
+                          "type": "ref",
+                          "ref": "SHXXo",
+                          "name": "Spinner",
+                          "width": 12,
+                          "height": 12,
+                          "enabled": false
+                        },
+                        {
+                          "type": "text",
+                          "id": "yO8o3",
+                          "name": "Text",
+                          "fill": "$muted-foreground",
+                          "content": "search sent",
+                          "fontFamily": "$font-ui",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "iQLOt",
+                  "name": "State sent",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "diOEO",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "sent",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "MNIw9",
+                      "type": "ref",
+                      "ref": "UMUhR",
+                      "name": "Instance sent"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "t8xFA",
+                  "name": "State failed",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "wqvG4",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "failed",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "eIPtU",
+                      "type": "ref",
+                      "ref": "UMUhR",
+                      "name": "Instance failed",
+                      "descendants": {
+                        "PMpjn": {
+                          "icon": "alert-circle",
+                          "fill": "$destructive"
+                        },
+                        "yO8o3": {
+                          "fill": "$destructive",
+                          "content": "Sonarr didn't answer."
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "eeuSD",
+                  "name": "State busy",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "t2RUq",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "busy",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "iPYXh",
+                      "type": "ref",
+                      "ref": "UMUhR",
+                      "name": "Instance busy",
+                      "descendants": {
+                        "PMpjn": {
+                          "enabled": false
+                        },
+                        "WnEQF": {
+                          "enabled": true
+                        },
+                        "yO8o3": {
+                          "content": "Searching…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "zwbXg",
+          "name": "Section v2/Dialog",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "dXMc1",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Dialog",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "Zsl3K",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Centred confirmation over v2/Scrim for rare, destructive or lossy actions: delete a file or version, delete a title, discard unsaved edits. Not for decisions that need the rows in view; those stay in v2/Panel/inline. Maps to shadcn AlertDialog.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "E6sOg",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "D4IHqu",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "uWRdp",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "Component",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Oi69B",
+                      "name": "v2/Dialog",
+                      "reusable": true,
+                      "width": 560,
+                      "fill": "$card",
+                      "cornerRadius": "$radius-lg",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "effect": [
+                        {
+                          "type": "shadow",
+                          "shadowType": "outer",
+                          "color": "#1111110F",
+                          "offset": {
+                            "x": 0,
+                            "y": 2
+                          },
+                          "blur": 6
+                        },
+                        {
+                          "type": "shadow",
+                          "shadowType": "outer",
+                          "color": "#1111111F",
+                          "offset": {
+                            "x": 0,
+                            "y": 8
+                          },
+                          "blur": 24
+                        }
+                      ],
+                      "layout": "vertical",
+                      "padding": 24,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "f4uXl",
+                          "name": "Header",
+                          "width": "fill_container",
+                          "gap": 16,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "s4tw0J",
+                              "name": "Title",
+                              "fill": "$foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Delete the 720p second version?",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 18,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "id": "iUMAD",
+                              "type": "ref",
+                              "ref": "ht3RN",
+                              "name": "Close",
+                              "fill": "#FFFFFF00",
+                              "height": 40,
+                              "padding": [
+                                0,
+                                10
+                              ],
+                              "gap": 6,
+                              "cornerRadius": "$control-radius-default",
+                              "descendants": {
+                                "HQLEf": {
+                                  "icon": "x",
+                                  "fill": "$muted-foreground"
+                                },
+                                "OXVvv": {
+                                  "enabled": false,
+                                  "fontSize": "$control-text-default"
+                                },
+                                "T1Pftv": {
+                                  "fill": "$muted",
+                                  "stroke": "$border",
+                                  "strokeWidth": {
+                                    "top": 1,
+                                    "right": 1,
+                                    "bottom": 2,
+                                    "left": 1
+                                  }
+                                },
+                                "T1Pftv/BvVhW": {
+                                  "content": "Esc",
+                                  "fill": "$muted-foreground"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "c0AVV",
+                          "name": "Subject",
+                          "width": "fill_container",
+                          "padding": [
+                            8,
+                            0,
+                            0,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "r45NK",
+                              "name": "Subject text",
+                              "fill": "$muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "S02E04 · 720p · 1.4 GB. The 2160p tracked version is not touched.",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-ui",
+                              "fontSize": 14,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "pJNJH",
+                          "name": "Options",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "padding": [
+                            20,
+                            0,
+                            0,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "id": "JVFmZ",
+                              "type": "ref",
+                              "ref": "E7Mh6m",
+                              "name": "Choice 1",
+                              "width": "fill_container",
+                              "stroke": "$foreground",
+                              "strokeWidth": 2,
+                              "descendants": {
+                                "ameDv": {
+                                  "fill": "$primary",
+                                  "stroke": "$primary"
+                                },
+                                "ameDv/hDXPq": {
+                                  "enabled": true
+                                },
+                                "eND9v": {
+                                  "content": "Delete file, keep seeding"
+                                },
+                                "Evy0C/BvVhW": {
+                                  "content": "1"
+                                },
+                                "awp72": {
+                                  "content": "Removes the 720p file from the library. The torrent keeps seeding until PrivateHD's 72 h rule is met."
+                                }
+                              }
+                            },
+                            {
+                              "id": "RNDEm",
+                              "type": "ref",
+                              "ref": "E7Mh6m",
+                              "name": "Choice 2",
+                              "width": "fill_container",
+                              "descendants": {
+                                "eND9v": {
+                                  "content": "Delete file and torrent"
+                                },
+                                "Evy0C/BvVhW": {
+                                  "content": "2"
+                                },
+                                "awp72": {
+                                  "content": "Removes both now. PrivateHD needs 31 more hours of seeding to avoid a hit and run."
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "V3LVl4",
+                          "x": 0,
+                          "y": 0,
+                          "name": "Groups",
+                          "enabled": false,
+                          "width": "fill_container(0)",
+                          "layout": "vertical",
+                          "gap": 16,
+                          "padding": [
+                            20,
+                            0,
+                            0,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "yr6iQ",
+                              "name": "Group Files",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "aNyAE",
+                                  "name": "Heading",
+                                  "fill": "$foreground",
+                                  "content": "Files",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "id": "u8BCB",
+                                  "type": "ref",
+                                  "ref": "E7Mh6m",
+                                  "name": "Choice 1",
+                                  "width": "fill_container",
+                                  "stroke": "$foreground",
+                                  "strokeWidth": 2,
+                                  "descendants": {
+                                    "ameDv": {
+                                      "fill": "$primary",
+                                      "stroke": "$primary"
+                                    },
+                                    "ameDv/hDXPq": {
+                                      "enabled": true
+                                    },
+                                    "eND9v": {
+                                      "content": "Delete all files"
+                                    },
+                                    "Evy0C/BvVhW": {
+                                      "content": "1"
+                                    },
+                                    "awp72": {
+                                      "content": "Removes the 2160p file and the 1080p second version from the library."
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "yIeQV",
+                                  "type": "ref",
+                                  "ref": "E7Mh6m",
+                                  "name": "Choice 2",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "eND9v": {
+                                      "content": "Keep the files"
+                                    },
+                                    "Evy0C/BvVhW": {
+                                      "content": "2"
+                                    },
+                                    "awp72": {
+                                      "content": "Only removes Dune: Part Two from Radarr."
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "COGyM",
+                              "name": "Group Torrents",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "M1SgQk",
+                                  "name": "Heading",
+                                  "fill": "$foreground",
+                                  "content": "Torrents",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 14,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "id": "mI7ih",
+                                  "type": "ref",
+                                  "ref": "E7Mh6m",
+                                  "name": "Choice 1",
+                                  "width": "fill_container",
+                                  "stroke": "$foreground",
+                                  "strokeWidth": 2,
+                                  "descendants": {
+                                    "ameDv": {
+                                      "fill": "$primary",
+                                      "stroke": "$primary"
+                                    },
+                                    "ameDv/hDXPq": {
+                                      "enabled": true
+                                    },
+                                    "eND9v": {
+                                      "content": "Keep seeding"
+                                    },
+                                    "Evy0C/BvVhW": {
+                                      "content": "3"
+                                    },
+                                    "awp72": {
+                                      "content": "Both torrents keep seeding until each tracker's rule is met."
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "qyT4y",
+                                  "type": "ref",
+                                  "ref": "E7Mh6m",
+                                  "name": "Choice 2",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "eND9v": {
+                                      "content": "Remove torrents"
+                                    },
+                                    "Evy0C/BvVhW": {
+                                      "content": "4"
+                                    },
+                                    "awp72": {
+                                      "content": "Stops seeding now. PrivateHD needs 31 more hours to avoid a hit and run."
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nnfu7",
+                          "x": 0,
+                          "y": 0,
+                          "name": "Callout",
+                          "enabled": false,
+                          "width": "fill_container(0)",
+                          "padding": [
+                            12,
+                            0,
+                            0,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "id": "xplqO",
+                              "type": "ref",
+                              "ref": "BXgoa",
+                              "name": "Callout",
+                              "width": "fill_container",
+                              "fill": "$warning-soft",
+                              "descendants": {
+                                "tPrsU": {
+                                  "fill": "$warning",
+                                  "icon": "circle-alert"
+                                },
+                                "hDbgA": {
+                                  "content": "No seeding record, so keep the torrent to be safe."
+                                },
+                                "EcQDN": {
+                                  "content": "rTorrent has no history for this torrent, so the hit and run rule can't be checked."
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "lM0li",
+                          "name": "Footer",
+                          "width": "fill_container",
+                          "gap": 8,
+                          "padding": [
+                            24,
+                            0,
+                            0,
+                            0
+                          ],
+                          "justifyContent": "end",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "fV7RX",
+                              "type": "ref",
+                              "ref": "ht3RN",
+                              "name": "Cancel",
+                              "fill": "$card",
+                              "stroke": "$input",
+                              "strokeWidth": 1,
+                              "descendants": {
+                                "HQLEf": {
+                                  "enabled": false
+                                },
+                                "OXVvv": {
+                                  "content": "Cancel",
+                                  "fill": "$foreground"
+                                },
+                                "T1Pftv": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "D8VI1F",
+                              "type": "ref",
+                              "ref": "ht3RN",
+                              "name": "Primary",
+                              "fill": "$destructive",
+                              "height": 48,
+                              "padding": [
+                                0,
+                                "$control-px-large"
+                              ],
+                              "cornerRadius": "$control-radius-large",
+                              "descendants": {
+                                "HQLEf": {
+                                  "enabled": false
+                                },
+                                "OXVvv": {
+                                  "content": "Delete file, keep seeding",
+                                  "fill": "$primary-foreground",
+                                  "fontSize": "$control-text-large"
+                                },
+                                "T1Pftv": {
+                                  "enabled": true
+                                },
+                                "T1Pftv/BvVhW": {
+                                  "content": "↵"
+                                },
+                                "iwvSz": {
+                                  "enabled": false
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "kMELR",
+                  "name": "State default",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "N3AjKx",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "default",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "JYmpS",
+                      "type": "ref",
+                      "ref": "Oi69B",
+                      "name": "Instance default"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "kbYQf",
+              "name": "Demo row continued",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "RaJU8",
+                  "name": "State with warning callout",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "HdLCQ",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "with warning callout",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "Z7YXr",
+                      "type": "ref",
+                      "ref": "Oi69B",
+                      "name": "Instance with warning callout",
+                      "descendants": {
+                        "nnfu7": {
+                          "enabled": true
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "fhyMl",
+                  "name": "State with risk callout",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "JMBXM",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "with risk callout",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "F81HS",
+                      "type": "ref",
+                      "ref": "Oi69B",
+                      "name": "Instance with risk callout",
+                      "descendants": {
+                        "nnfu7": {
+                          "enabled": true
+                        },
+                        "xplqO": {
+                          "fill": "$destructive-soft"
+                        },
+                        "xplqO/tPrsU": {
+                          "fill": "$destructive",
+                          "icon": "triangle-alert"
+                        },
+                        "xplqO/hDbgA": {
+                          "content": "Removing the torrent now breaks the PrivateHD rule"
+                        },
+                        "xplqO/EcQDN": {
+                          "content": "Seeded 41 h of 72 h. Keep seeding, or delete only the library file."
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "yrdit",
+              "name": "Demo row grouped",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "f0JDBj",
+                  "name": "State grouped",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "xVAUy",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "grouped (Files + Torrents)",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "RljJf",
+                      "type": "ref",
+                      "ref": "Oi69B",
+                      "name": "Instance grouped",
+                      "descendants": {
+                        "s4tw0J": {
+                          "content": "Delete Dune: Part Two?"
+                        },
+                        "r45NK": {
+                          "content": "2160p WEB-DL · FLUX · 9.6 GB tracked by Radarr, plus a 1080p second version, 4.4 GB."
+                        },
+                        "pJNJH": {
+                          "enabled": false
+                        },
+                        "V3LVl4": {
+                          "enabled": true
+                        },
+                        "D8VI1F/OXVvv": {
+                          "content": "Delete movie, keep seeding"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "f2QUS",
+                  "name": "State discard edits",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "pEWOt",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "discard edits",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "dkPi5",
+                      "type": "ref",
+                      "ref": "Oi69B",
+                      "name": "Instance discard edits",
+                      "descendants": {
+                        "s4tw0J": {
+                          "content": "Discard edits to Radarr?"
+                        },
+                        "r45NK": {
+                          "content": "The new address and API key are not saved. Radarr keeps its current connection."
+                        },
+                        "pJNJH": {
+                          "enabled": false
+                        },
+                        "fV7RX/OXVvv": {
+                          "content": "Keep editing"
+                        },
+                        "D8VI1F/OXVvv": {
+                          "content": "Discard"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "M1vhR",
+          "name": "Section Decision scale, three tiers",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "LGlor",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "Decision scale, three tiers",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "y7IDT1",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Where a decision lives sets its scale. 1. In the table: opens from a row and keeps the rows in view. Row scale only: a tinted muted band under the row, text 13, choices as a 28 px ToggleGroup or 32 px Option rows, the action a 28 px Button on the row's Actions line labelled with the outcome. No 40 or 48 px control and no card surface inside a table. Grab choice, remove from downloads, inline status, history details. 2. Page panel: opens under a page header or hero, or holds its own rows. Panel/inline with an edge and no shadow, 40 px controls, one 48 px main action. Pick a release, import by hand, change monitoring. 3. Dialog: destructive or lossy confirmations leave the flow. Dialog over Scrim. Delete a file, version or title; replace the current file; discard unsaved edits.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
             }
           ]
         }
@@ -20554,6 +21898,444 @@
                         },
                         "MOSen": {
                           "content": "Monitors 1 movie · searches now"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Q9hXq",
+          "name": "Section v2/Sign-in/block",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "Y6W4wm",
+              "name": "Section title",
+              "fill": "$foreground",
+              "content": "v2/Sign-in/block",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "HIuXB",
+              "name": "Section note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Sign-in page content block, 400 wide. The page around it carries the app bar (v2/AppBar/Desktop with Search, Navigation and Icon buttons off, so only the product name shows), so the block's Product name is off by default. Place at x 40, y 160, on the app's 40 px page margin. Overrides: Status (off; on for \"Signed out.\"), Heading, Body 1, Body 2, Primary (label, loading, key hint ↵), Secondary 1 and 2 (ghost, off by default), Attribution (off; the page turns it on). Primary shows Logo/Plex gold: Plex's own chevron in Plex's own gold, only on the black button; never white or recoloured otherwise. State changes crossfade heading and body (motion row 24). Copy comes from src/client/SignIn.tsx. Custom.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "ox781",
+              "name": "Attribution note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Attribution: the page carries this line bottom left, at x 40, 24 above the bottom edge (Attribution child turned on): \"Plex and the Plex chevron are trademarks of Plex, Inc. media-manager-2 is not an official Plex product and is not endorsed by Plex.\"",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "gOXwr",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "DQHIz",
+                  "name": "State Component",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "QvqLQ",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "initial",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "X2BYp",
+                      "name": "v2/Sign-in/block",
+                      "reusable": true,
+                      "width": 400,
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "eWC0L",
+                          "x": 0,
+                          "y": 0,
+                          "name": "Product name",
+                          "enabled": false,
+                          "padding": [
+                            0,
+                            0,
+                            32,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "lbIQG",
+                              "name": "Product name text",
+                              "fill": "$muted-foreground",
+                              "content": "media-manager-2",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "RreFa",
+                          "type": "ref",
+                          "ref": "UMUhR",
+                          "name": "Status",
+                          "enabled": false
+                        },
+                        {
+                          "type": "text",
+                          "id": "SKxTr",
+                          "name": "Heading",
+                          "fill": "$foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Sign in",
+                          "lineHeight": 1.15,
+                          "fontFamily": "$font-ui",
+                          "fontSize": 36,
+                          "fontWeight": "800",
+                          "letterSpacing": -0.5
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Ij9sX",
+                          "name": "Body",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 12,
+                          "padding": [
+                            20,
+                            0,
+                            32,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "BEk5a",
+                              "name": "Body 1",
+                              "fill": "$muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Only the owner’s Plex account can open this app.",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-ui",
+                              "fontSize": 16,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "UfeJ0",
+                              "name": "Body 2",
+                              "fill": "$muted-foreground",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "You’ll sign in on Plex, then return here. This app never receives your Plex password.",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-ui",
+                              "fontSize": 16,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Bs63D",
+                          "name": "Buttons",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "lmLf2",
+                              "type": "ref",
+                              "ref": "ht3RN",
+                              "height": 48,
+                              "padding": [
+                                0,
+                                "$control-px-large"
+                              ],
+                              "cornerRadius": "$control-radius-large",
+                              "name": "Primary",
+                              "fill": "$primary",
+                              "descendants": {
+                                "HQLEf": {
+                                  "id": "a0PNj",
+                                  "type": "ref",
+                                  "ref": "hNlc0",
+                                  "name": "Icon",
+                                  "width": 20,
+                                  "height": 20,
+                                  "fill": {
+                                    "type": "image",
+                                    "enabled": true,
+                                    "url": "logos/plex-icon-gold.png",
+                                    "mode": "contain"
+                                  }
+                                },
+                                "OXVvv": {
+                                  "content": "Sign in with Plex",
+                                  "fontSize": "$control-text-large"
+                                },
+                                "T1Pftv": {
+                                  "enabled": true
+                                },
+                                "T1Pftv/BvVhW": {
+                                  "content": "↵"
+                                }
+                              }
+                            },
+                            {
+                              "id": "f186pm",
+                              "type": "ref",
+                              "ref": "ht3RN",
+                              "height": 48,
+                              "padding": [
+                                0,
+                                "$control-px-large"
+                              ],
+                              "cornerRadius": "$control-radius-large",
+                              "name": "Secondary 1",
+                              "fill": "#FFFFFF00",
+                              "enabled": false,
+                              "descendants": {
+                                "HQLEf": {
+                                  "enabled": false
+                                },
+                                "OXVvv": {
+                                  "content": "Try again",
+                                  "fill": "$foreground",
+                                  "fontSize": "$control-text-large"
+                                },
+                                "T1Pftv": {
+                                  "enabled": false
+                                }
+                              }
+                            },
+                            {
+                              "id": "pHS1b",
+                              "type": "ref",
+                              "ref": "ht3RN",
+                              "height": 48,
+                              "padding": [
+                                0,
+                                "$control-px-large"
+                              ],
+                              "cornerRadius": "$control-radius-large",
+                              "name": "Secondary 2",
+                              "fill": "#FFFFFF00",
+                              "enabled": false,
+                              "descendants": {
+                                "HQLEf": {
+                                  "enabled": false
+                                },
+                                "OXVvv": {
+                                  "content": "Cancel",
+                                  "fill": "$foreground",
+                                  "fontSize": "$control-text-large"
+                                },
+                                "T1Pftv": {
+                                  "enabled": false
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "Bq7tJ",
+                          "x": 0,
+                          "y": 0,
+                          "name": "Attribution",
+                          "enabled": false,
+                          "fill": "$muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": 400,
+                          "content": "Plex and the Plex chevron are trademarks of Plex, Inc. media-manager-2 is not an official Plex product and is not endorsed by Plex.",
+                          "lineHeight": 1.45,
+                          "fontFamily": "$font-ui",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "R8mCOQ",
+                  "name": "State opening Plex",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "RoDx6",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "opening Plex",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "JYHn0",
+                      "type": "ref",
+                      "ref": "X2BYp",
+                      "name": "Instance opening Plex",
+                      "descendants": {
+                        "SKxTr": {
+                          "content": "Opening Plex…"
+                        },
+                        "BEk5a": {
+                          "content": "You’ll continue on Plex in this tab."
+                        },
+                        "UfeJ0": {
+                          "enabled": false
+                        },
+                        "a0PNj": {
+                          "type": "icon",
+                          "id": "H9dSb",
+                          "name": "Icon",
+                          "width": 18,
+                          "height": 18,
+                          "icon": "loader-circle",
+                          "library": "lucide",
+                          "fill": "$primary-foreground"
+                        },
+                        "lmLf2/OXVvv": {
+                          "content": "Opening Plex…"
+                        },
+                        "lmLf2/T1Pftv": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "p23I0g",
+              "name": "Demo row",
+              "width": "fill_container",
+              "gap": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "YwcMp",
+                  "name": "State pending",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ifieV",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "pending",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "ZMCie",
+                      "type": "ref",
+                      "ref": "X2BYp",
+                      "name": "Instance pending",
+                      "descendants": {
+                        "SKxTr": {
+                          "content": "Plex sign-in isn’t finished."
+                        },
+                        "BEk5a": {
+                          "content": "Finish signing in on Plex, then check again."
+                        },
+                        "UfeJ0": {
+                          "enabled": false
+                        },
+                        "a0PNj": {
+                          "enabled": false
+                        },
+                        "lmLf2/OXVvv": {
+                          "content": "Check again"
+                        },
+                        "f186pm": {
+                          "enabled": true
+                        },
+                        "pHS1b": {
+                          "enabled": true
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "b4lWGg",
+                  "name": "State not configured",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "b4OwN",
+                      "name": "Caption",
+                      "fill": "$subtle-foreground",
+                      "content": "not configured",
+                      "fontFamily": "$font-ui",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "id": "wD3xo",
+                      "type": "ref",
+                      "ref": "X2BYp",
+                      "name": "Instance not configured",
+                      "descendants": {
+                        "SKxTr": {
+                          "content": "Sign-in isn’t configured."
+                        },
+                        "BEk5a": {
+                          "content": "The server needs an owner Plex ID and public app address before sign-in can start."
+                        },
+                        "UfeJ0": {
+                          "enabled": false
+                        },
+                        "Bs63D": {
+                          "enabled": false
                         }
                       }
                     }
@@ -31230,6 +33012,2749 @@
           ]
         }
       ]
+    },
+    {
+      "type": "frame",
+      "id": "vxYbM",
+      "x": 10800,
+      "y": 17640,
+      "name": "v2 · Library 6 · Motion",
+      "width": 1680,
+      "fill": "$background",
+      "layout": "vertical",
+      "gap": 56,
+      "padding": 64,
+      "children": [
+        {
+          "type": "frame",
+          "id": "ygUMG",
+          "name": "Sheet header",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 12,
+          "children": [
+            {
+              "type": "text",
+              "id": "hHqGd",
+              "name": "Sheet title",
+              "fill": "$foreground",
+              "content": "v2 component library · 6 of 6 · Motion",
+              "fontFamily": "$font-ui",
+              "fontSize": 26,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "d5UltM",
+              "name": "Sheet note",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Anything entering uses ease-out, anything leaving uses ease-in, loops use ease-linear. Under prefers-reduced-motion: reduce, every loop stops, every slide or scale becomes an opacity-only fade of duration-fast, and every size change is instant.",
+              "lineHeight": 1.5,
+              "fontFamily": "$font-ui",
+              "fontSize": 14,
+              "fontWeight": "normal"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "B9aF5",
+          "name": "Tokens",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "text",
+              "id": "eDxWw",
+              "name": "Title",
+              "fill": "$foreground",
+              "content": "Motion tokens",
+              "fontFamily": "$font-ui",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "r2px6",
+              "name": "Token line Durations",
+              "width": "fill_container",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "lOT4a",
+                  "name": "Key",
+                  "fill": "$foreground",
+                  "textGrowth": "fixed-width",
+                  "width": 96,
+                  "content": "Durations",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "Q99Vk",
+                  "name": "Values",
+                  "fill": "$muted-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "duration-fast 120 hover, press, check · duration-base 160 panels, menus, tabs, crossfades · duration-slow 220 toast, phone sheet, progress tween · duration-spin 700 · duration-shimmer 1400 · duration-toast 6000 · delay-tooltip 400",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "HLXkn",
+              "name": "Token line Easings",
+              "width": "fill_container",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ga0GD",
+                  "name": "Key",
+                  "fill": "$foreground",
+                  "textGrowth": "fixed-width",
+                  "width": 96,
+                  "content": "Easings",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "JBY89",
+                  "name": "Values",
+                  "fill": "$muted-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "ease-out cubic-bezier(0.2, 0, 0, 1) anything entering, crossfades, progress · ease-in cubic-bezier(0.4, 0, 1, 1) anything leaving · ease-in-out cubic-bezier(0.4, 0, 0.2, 1) not used by any transition below yet · ease-linear linear loops: spinner, skeleton shimmer",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "y3Nf1V",
+              "name": "Token line Reduced motion",
+              "width": "fill_container",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "EVWNw",
+                  "name": "Key",
+                  "fill": "$foreground",
+                  "textGrowth": "fixed-width",
+                  "width": 96,
+                  "content": "Reduced motion",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "s1rmK",
+                  "name": "Values",
+                  "fill": "$muted-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Under prefers-reduced-motion: reduce, every loop stops, every slide or scale becomes an opacity-only fade of duration-fast, and every size change is instant.",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Q7nTfN",
+          "name": "Transition table",
+          "width": "fill_container",
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "K6DXzB",
+              "name": "Header",
+              "width": "fill_container",
+              "gap": 16,
+              "padding": [
+                0,
+                0,
+                8,
+                0
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "YRZqI",
+                  "name": "Head 1",
+                  "fill": "$subtle-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": 220,
+                  "content": "TRIGGER",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 11,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "wOB6M",
+                  "name": "Head 2",
+                  "fill": "$subtle-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": 420,
+                  "content": "WHAT CHANGES",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 11,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "I9nx7V",
+                  "name": "Head 3",
+                  "fill": "$subtle-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": 140,
+                  "content": "DURATION",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 11,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "xOKtA",
+                  "name": "Head 4",
+                  "fill": "$subtle-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": 160,
+                  "content": "EASING",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 11,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "vgvOk",
+                  "name": "Head 5",
+                  "fill": "$subtle-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "REDUCED MOTION",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 11,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "EIm8y",
+              "name": "Row 1",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "evwAC",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "a3i1Wl",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Page change (nav click, breadcrumb)",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "oZ0RN",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "new page opacity 0→1",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Kzuah",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "cwEfk",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "XQu1C",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "E9iadQ",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XgK3J",
+              "name": "Row 2",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "TVy1a",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "EOtRl",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Hover on rows, buttons, nav items, poster cards, calendar entries, cards",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "MPJ1W",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "fill to the hover token; poster brightness 100→92%",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "MMk1Q",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "pQ7O0",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "aYLkR",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "keep (colour only)",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "yO7b7",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "E4TAl",
+              "name": "Row 3",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "KWXXp",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ytyVo",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Press",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QWCWV",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "fill to pressed token",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "G6cXV",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "0",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "i4Tyyj",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "—",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "IHrU7",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "—",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "uq456",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "b5mCg",
+              "name": "Row 4",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "GO1Qn",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "b8Ttul",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Focus ring",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "DxLmW",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "appears",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "KtvqK",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "0",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "LG8fm",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "—",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "uDCpZ",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "—",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "aK2OP",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "iQFoF",
+              "name": "Row 5",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "SvpAy",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "vQ439",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Panel/inline open (pick a release, monitoring, delete, remove, import, discard)",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "VMenq",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "height 0→full, opacity 0→1, rise 6 px; sibling rows to the dimmed look",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "aijtZ",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "XJ5BO",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "vXPO9",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "opacity only, duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "O0jn0",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "F0LrX",
+              "name": "Row 6",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "GrO5C",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "lVfs8",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Panel/inline close",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "fFY1E",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "reverse",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "oapBJ",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "v6h7Y",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-in",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "aodg5",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "opacity only",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "YPWw0",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ze0xb",
+              "name": "Row 7",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "HZ8v0",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Z8APj",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Season expand / collapse, history row expand",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "h46c6K",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "chevron rotates 90°, rows height 0→full",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "oCOIe",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Rx6w9",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "PKBlk",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "z5NrY",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "cuMz6",
+              "name": "Row 8",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "o07KZ5",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "g0Bps",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Row selection, range select",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "TRtdt",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "side bar and selected fill appear",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "BYCCh",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "uKqhI",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "rb46w",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "keep",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "S5rkf",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bRoLh",
+              "name": "Row 9",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "S6wj6o",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "vU7R7",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Selection bar in / out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "swUEf",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "slide up 16 px + fade in; fade out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "SRIjU",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base / duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "RaN3c",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out / ease-in",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "MgK6J",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "fade only",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "PtLhi",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "G2ZFN",
+              "name": "Row 10",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "YtYiA",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Z9N314",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Toast in / stay / out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Qi29j",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "slide up 12 px + fade in; stays duration-toast (paused on hover); fade out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "AmiqV",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-slow / — / duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "YiON5",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out / — / ease-in",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QOFvt",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "fade only",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "KvDFE",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "L9R3Mb",
+              "name": "Row 11",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "G2WmA",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "s6phQ",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Phone sheet + scrim",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ewY7v",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "sheet slides from the bottom edge, scrim opacity 0→1",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "mtOVG",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-slow",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "S3jmA",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out (in) / ease-in (out)",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "NgPdR",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "fade only",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "N71AF",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ZcRXR",
+              "name": "Row 12",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "CngNX",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "hsixt",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Dropdown menu, select list",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ijc4q",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "fade + 4 px slide from the trigger",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "c5e5j",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Y8O485",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out / ease-in",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "NdZPG",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "fade only",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "UNRtr",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "S7FUw",
+              "name": "Row 13",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "znalu",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "taJ9r",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Tooltip",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "SB8PQ",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "after delay-tooltip, fade in",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QcMMq",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "A0zm8",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "dWgTc",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "same",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "bqzfV",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "h3FJ3",
+              "name": "Row 14",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "sFlul",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "XFufe",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Skeleton to content",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "X9gRB0",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "shimmer loops (duration-shimmer, ease-linear); content crossfades over the skeleton",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "gille",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "BPOFu",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "zhMAW",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "no shimmer; instant swap",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "nhner",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "t1WXl",
+              "name": "Row 15",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "DIW33",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TPh2E",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Spinner",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "C2sst",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "one turn per duration-spin",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "JMlp8",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-spin",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "WmMZa",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-linear",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "XmKaL",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "still",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "B15XJ",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "cdoZI",
+              "name": "Row 16",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "nEWUi",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Bg3ED",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Progress bar update (row, live bar, poster strip)",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QpwPS",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "Fill width to the new percent; percent text swaps instantly",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "RLKKJ",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-slow",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "lyvj8",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "xG7Ef",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "Tt1PF",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "V7XUL",
+              "name": "Row 17",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bJvBD",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TkKnz",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Download completes / imports",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "gsAqF",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "state badge crossfade (Downloading → Imported), row leaves \"Everything else\" list after duration-toast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QfRxR",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "B80gfd",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "X4oSey",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "dw4fk",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "eKTzz",
+              "name": "Row 18",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "p7u8W",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "G92SN",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Grab in row",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "dsBh9",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "Grab → loading (spinner) → \"Grabbed\" badge crossfade; progress line grows from 0",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "NXDdA",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base, then 16",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "hoLwD",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "tujTQ",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "J1rmTJ",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "NygFk",
+              "name": "Row 19",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ANekU",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "F4Khl",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Undo window (blocklist, toast)",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "u92NO",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "row height → 0 after the window closes; Undo restores it",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "wf83k",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Jxvk7",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-in / ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "dLuxv",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "TRVIL",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "N902d",
+              "name": "Row 20",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "nqS8v",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "AXQ94",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Checkbox, radio, bookmark toggle",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "V1zTNY",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "glyph scale 0.85→1, check stroke draws",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "DkxcS",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "AkZnN",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "oF9AJ",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "LxxTo",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Lxb7j",
+              "name": "Row 21",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "MfSUr",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "xXhV2",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Toggle group / tabs selected marker",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Pm8Rm",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "segment or underline slides to the new item",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "z0GrG7",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "x9LmS",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "hi04r",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "dnsG1",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "BDhST",
+              "name": "Row 22",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "AWL4d",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "RAbOF",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Calendar step, view switch, search results swap, settings pane swap",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ZAZOu",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "content crossfade",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "eqxGl",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "trX6E",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ohJpH",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "tYgZV",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "o5Pri",
+              "name": "Row 23",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "VWl0v",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "YEhov",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Live bar expand / collapse",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "tnFFZ",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "panel rises from the bar",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "cvaZ5",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base / duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "P3Wnl",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out / ease-in",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Rb7mb",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "fade only",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "a2oYlD",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "chBAz",
+              "name": "Row 24",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "OdiT9",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rarPc",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Sign-in state change",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "D8vE1",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "heading and body crossfade; button label swaps instantly",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "zb30o",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "AlRP8",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "lyh72",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "m8zLYR",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "RBfav",
+              "name": "Row 25",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "w2eMkd",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "B9HO0V",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Connect (settings), Run all checks, Add and search",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "IZWSf",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "button to loading look at once; result crossfade",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Gyn6i",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "YQGx4",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "G6sja",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "instant",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "h1YQfH",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "z1zpi",
+              "name": "Row 26",
+              "width": "fill_container",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "B9dYJ",
+                  "name": "Cells",
+                  "width": "fill_container",
+                  "gap": 16,
+                  "padding": [
+                    8,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "EzTIg",
+                      "name": "Trigger",
+                      "fill": "$foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 220,
+                      "content": "Dialog open / close",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "g73br",
+                      "name": "What changes",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 420,
+                      "content": "scrim opacity 0→1, dialog opacity 0→1 and scale 0.98→1; reverse on close",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "esEwg",
+                      "name": "Duration",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 140,
+                      "content": "duration-base / duration-fast",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "YaxsZ",
+                      "name": "Easing",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": 160,
+                      "content": "ease-out / ease-in",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "f30KpI",
+                      "name": "Reduced motion",
+                      "fill": "$muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "fade only, no scale",
+                      "lineHeight": 1.2308,
+                      "fontFamily": "$font-ui",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "NV36T",
+                  "name": "Line",
+                  "fill": "$border",
+                  "width": "fill_container",
+                  "height": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "hkgPo",
+          "name": "Storyboard legend",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "FtBUT",
+              "name": "Legend",
+              "fill": "$muted-foreground",
+              "textGrowth": "fixed-width",
+              "width": 900,
+              "content": "Each screen file holds `v2 / Motion / …` frames: three stages, Before · Mid · After, with the stage time in the caption; Mid shows the state at half the duration, drawn with opacity and position overrides.",
+              "lineHeight": 1.45,
+              "fontFamily": "$font-ui",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            }
+          ]
+        }
+      ]
     }
   ],
   "variables": {
@@ -31576,6 +36101,50 @@
     "detail-indent": {
       "type": "number",
       "value": 133
+    },
+    "duration-fast": {
+      "type": "number",
+      "value": 120
+    },
+    "duration-base": {
+      "type": "number",
+      "value": 160
+    },
+    "duration-slow": {
+      "type": "number",
+      "value": 220
+    },
+    "duration-spin": {
+      "type": "number",
+      "value": 700
+    },
+    "duration-shimmer": {
+      "type": "number",
+      "value": 1400
+    },
+    "duration-toast": {
+      "type": "number",
+      "value": 6000
+    },
+    "delay-tooltip": {
+      "type": "number",
+      "value": 400
+    },
+    "ease-out": {
+      "type": "string",
+      "value": "cubic-bezier(0.2, 0, 0, 1)"
+    },
+    "ease-in": {
+      "type": "string",
+      "value": "cubic-bezier(0.4, 0, 1, 1)"
+    },
+    "ease-in-out": {
+      "type": "string",
+      "value": "cubic-bezier(0.4, 0, 0.2, 1)"
+    },
+    "ease-linear": {
+      "type": "string",
+      "value": "linear"
     }
   },
   "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"
