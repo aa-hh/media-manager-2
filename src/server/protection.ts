@@ -264,7 +264,13 @@ export const createProtection = (
       if (base === undefined || secret === undefined || !services[service].configured()) return false;
       const url = `${base.replace(/\/+$/, '')}/webhooks/${service}`;
       const notifications = await call(service, '/api/v3/notification');
-      const existing = Array.isArray(notifications) ? notifications.find((item) => isRecord(item) && (item.name === WEBHOOK_NAME || item.name === LEGACY_WEBHOOK_NAME)) : undefined;
+      const ours = Array.isArray(notifications)
+        ? notifications.filter((item): item is Record<string, unknown> => isRecord(item) && (item.name === WEBHOOK_NAME || item.name === LEGACY_WEBHOOK_NAME))
+        : [];
+      // A server that ran the rename before the old name was looked up has both webhooks, each delivering every
+      // event; keep the current one and delete the rest.
+      const existing = ours.find((item) => item.name === WEBHOOK_NAME) ?? ours[0];
+      for (const extra of ours) if (extra !== existing) await call(service, `/api/v3/notification/${extra.id}`, 'DELETE');
       const wanted = {
         name: WEBHOOK_NAME,
         implementation: 'Webhook',

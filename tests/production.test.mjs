@@ -3600,6 +3600,10 @@ test('manual downloads are protected with tags, release profiles and a grab veto
   setSetting(database, 'credentials', 'webhook.secret', 'rotated-secret');
   await protection.ensureWebhook('sonarr');
   assert.equal(state.sonarr.notifications[0].fields.find((field) => field.name === 'password').value, 'rotated-secret', 'a new secret reaches the service');
+  // Taking the first webhook with either name, or leaving the old-named one in place, turns this red: every event then arrives twice.
+  state.sonarr.notifications.unshift({ id: 89, name: 'media-manager-2 grab veto', onGrab: true, fields: [{ name: 'url', value: 'http://old/hooks/grab/sonarr?token=t' }] });
+  await protection.ensureWebhook('sonarr');
+  assert.deepEqual(state.sonarr.notifications.map(({ id, name }) => [id, name]), [[90, 'media-manager-2']], 'a leftover old webhook is deleted, not renamed into a second copy');
 
   // The stall and missed-search fixes ask whether a movie or episode is a manual download.
   assert.equal(protection.isProtected({ type: 'episode', service: 'sonarr', id: '50' }), true);
