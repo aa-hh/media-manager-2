@@ -125,15 +125,19 @@ ten minutes per service and search term; a failed lookup is never kept.
 ## Backups to Cloudflare R2
 
 Every 5 minutes the server copies its database with SQLite's `VACUUM INTO`,
-gzips the copy and uploads it to R2. A run is skipped when nothing has written
-to the database since the last upload, and when any of the four `r2.*`
-settings is missing. `backup now` runs one upload at once, even when nothing
-changed, and prints `backup: ok <key> <bytes> bytes`, `backup: skipped
+gzips the copy, encrypts it with AES-256-GCM under the key in the `BACKUP_KEY`
+environment variable (64 hex characters, read from the env file) and uploads
+it to R2. The database holds every saved credential, so an unencrypted
+snapshot in the bucket would hand them to anyone with bucket access. A run is
+skipped when nothing has written to the database since the last upload, and
+when `BACKUP_KEY` or any of the four `r2.*` settings is missing; a malformed
+`BACKUP_KEY` fails the run. `backup now` runs one upload at once, even when
+nothing changed, and prints `backup: ok <key> <bytes> bytes`, `backup: skipped
 <reason>` or `backup: failed <reason>`.
 
 Snapshots are stored as `backups/<UTC time>-<first 12 hex digits of the
-SHA-256 of the uncompressed file>.sqlite.gz`, and `backups/latest.json` names
-the newest. After each upload the server keeps every snapshot from the last 24
+SHA-256 of the uncompressed file>.sqlite.gz.enc`, and `backups/latest.json`
+names the newest. After each upload the server keeps every snapshot from the last 24
 hours plus the newest snapshot of each earlier UTC day for 7 days, and deletes
 the rest.
 
@@ -144,10 +148,12 @@ backup shows no warning yet.
 `backup list` and `backup restore` never open the database, so they work on a
 host that has none. They read the bucket from these environment variables
 instead of the settings: `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID` and
-`R2_SECRET_ACCESS_KEY`. `backup restore` downloads the newest snapshot (or
-`--object <key>`), checks its hash against its name, its integrity and its
-schema version, writes it to the `--to` path, which must not exist yet, and
-prints the row count of the main tables.
+`R2_SECRET_ACCESS_KEY`. `backup restore` also needs `BACKUP_KEY`; without the
+key that encrypted a snapshot, nothing can read it. It downloads the newest
+snapshot (or `--object <key>`), decrypts it, checks its hash against its
+name, its integrity and its schema version, writes it to the `--to` path,
+which must not exist yet and whose folder must be readable by this user only,
+and prints the row count of the main tables.
 
 The tests prove controlled behaviour against a fake bucket only. This is
 accepted once Ali runs `backup now`, `backup list` and a `backup restore` to a
@@ -157,7 +163,8 @@ spare path against the real bucket.
 
 1. Ali (Cloudflare dashboard): in R2, create a bucket, for example `mm2-backups`. Note the account ID shown on the R2 overview page.
 2. Ali (Cloudflare dashboard): under R2, "Manage API tokens", create an API token with "Object Read & Write" permission, limited to that bucket. Copy the access key ID and secret access key; the secret is shown once.
-3. Ali (on the slot): from `~/media-manager-2`, save the four settings, typing each value at the prompt and ending with Ctrl-D:
+3. Ali (on the slot): make a key with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`, add it to `~/.config/media-manager-2/env` as `BACKUP_KEY=<the 64 hex characters>`, and save a copy in a password manager. A lost key makes every snapshot unreadable.
+4. Ali (on the slot): from `~/media-manager-2`, save the four settings, typing each value at the prompt and ending with Ctrl-D:
 
    ```sh
    node dist/server/cli.js settings set serviceAddresses r2.endpoint      # https://<account id>.r2.cloudflarestorage.com
@@ -166,18 +173,19 @@ spare path against the real bucket.
    node dist/server/cli.js settings set credentials r2.secretAccessKey
    ```
 
-4. Ali (on the slot): run `node dist/server/cli.js backup now` and check it prints `backup: ok`.
+5. Ali (on the slot): restart the server so it reads the new env file (`kill $(cat ~/media-manager-2/server.pid)`; cron restarts it within a minute), then load the env file (`set -a && . ~/.config/media-manager-2/env && set +a`), run `node dist/server/cli.js backup now` and check it prints `backup: ok`.
 
 ### Recover after a disk failure on the slot
 
 1. Ali (on the slot): once the slot is back, make sure `~/.config/media-manager-2/env` exists as described under Test deploy to Whatbox, and that `crontab -l` shows the two lines from Restart after a crash or reboot.
 2. Ali (on the Mac): run `sh scripts/deploy.sh` to put the app back on the slot. It starts a server with an empty database.
 3. Ali (on the slot): run `flock -n ~/media-manager-2/ensure.lock sh`. This opens a shell that holds the ensure script's lock, so cron cannot restart the server while you work; do steps 4 to 6 inside it. Stop the server with `kill $(cat ~/media-manager-2/server.pid)`, then move the empty database aside: `mv ~/.local/share/media-manager-2/media-manager.sqlite ~/media-manager.sqlite.empty`.
-4. Ali (on the slot): export the four values for this shell session; `read -rs` keeps the secret out of shell history:
+4. Ali (on the slot): export the five values for this shell session; `read -rs` keeps the secrets out of shell history. `BACKUP_KEY` is in the env file and the password manager:
 
    ```sh
    export R2_ENDPOINT=https://<account id>.r2.cloudflarestorage.com R2_BUCKET=mm2-backups R2_ACCESS_KEY_ID=<access key id>
    read -rs R2_SECRET_ACCESS_KEY && export R2_SECRET_ACCESS_KEY
+   read -rs BACKUP_KEY && export BACKUP_KEY
    ```
 
 5. Ali (on the slot): from `~/media-manager-2`, run `node dist/server/cli.js backup list` and check the `(latest)` snapshot is recent.
@@ -189,7 +197,7 @@ spare path against the real bucket.
 
 1. Ali (on the slot): remove the two `ensure-running.sh` lines with `crontab -e` so cron cannot restart the old server, then stop it with `kill $(cat ~/media-manager-2/server.pid)` and run `node dist/server/cli.js backup now`, so the last snapshot holds every write.
 2. Ali (new host): install Node 22.13 or newer, copy the app there, and run `npm ci --omit=dev`.
-3. Ali (new host): export the four `R2_*` values as in step 4 above, run `node dist/server/cli.js backup list`, then `node dist/server/cli.js backup restore --to ~/.local/share/media-manager-2/media-manager.sqlite` and check the row counts.
+3. Ali (new host): export the four `R2_*` values and `BACKUP_KEY` as in step 4 above, run `node dist/server/cli.js backup list`, then `node dist/server/cli.js backup restore --to ~/.local/share/media-manager-2/media-manager.sqlite` and check the row counts.
 4. Ali (new host): create the env file and a Managed Link (or the new host's equivalent) as described under Test deploy to Whatbox, start the server, and run `node dist/server/cli.js connections check`.
 
 ## Plex owner sign-in
@@ -242,6 +250,7 @@ Later features add background jobs to the job runner under these rules. Every jo
    HOST=127.0.0.1
    APP_ORIGIN=<the link's https address, no trailing slash>
    PLEX_OWNER_ID=<your numeric Plex account ID>
+   BACKUP_KEY=<64 hex characters, see Set up R2>
    ```
 
    Leave `DB_PATH` unset so the database stays at its default path outside the app folder, where deploys never touch it.

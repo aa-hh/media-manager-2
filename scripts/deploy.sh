@@ -23,6 +23,7 @@ PORT=<the Managed Link's port, 10000-32767>
 HOST=127.0.0.1
 APP_ORIGIN=<the Managed Link's https address, no trailing slash>
 PLEX_OWNER_ID=<your numeric Plex account ID>
+BACKUP_KEY=<64 hex characters, see README.md, Set up R2>
 
 Leave DB_PATH unset so the database stays under ~/.local/share/media-manager-2.
 EOF

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { isAbsolute } from 'node:path';
-import { createBackup, listSnapshots, restoreBackup } from './backup.js';
+import { backupKeyFromEnvironment, createBackup, listSnapshots, restoreBackup } from './backup.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createArr } from './services/arr.js';
@@ -15,9 +15,9 @@ const usage = [
   '       node dist/server/cli.js settings delete <category> <key>',
   '       node dist/server/cli.js settings list',
   '       node dist/server/cli.js connections check',
-  '       node dist/server/cli.js backup now',
+  '       node dist/server/cli.js backup now   (BACKUP_KEY environment variable)',
   '       node dist/server/cli.js backup list   (R2_* environment variables)',
-  '       node dist/server/cli.js backup restore --to <absolute path> [--object <key>]   (R2_* environment variables)',
+  '       node dist/server/cli.js backup restore --to <absolute path> [--object <key>]   (R2_* and BACKUP_KEY environment variables)',
 ].join('\n');
 
 const readStdin = async () => {
@@ -72,8 +72,13 @@ const runWithoutDatabase = async (restoreOptions: Map<string, string> | undefine
       const { latestKey, snapshots } = await listSnapshots(store);
       for (const { key, size } of snapshots) console.log(`${key} ${size} bytes${key === latestKey ? ' (latest)' : ''}`);
     } else {
+      const sealKey = backupKeyFromEnvironment();
+      if (sealKey === undefined) {
+        console.error('BACKUP_KEY must be set.');
+        return 1;
+      }
       const target = restoreOptions.get('--to') as string;
-      const { key, counts } = await restoreBackup({ store, target, objectKey: restoreOptions.get('--object') });
+      const { key, counts } = await restoreBackup({ store, target, objectKey: restoreOptions.get('--object'), key: sealKey });
       console.log(`restored ${key} to ${target}`);
       for (const { table, count } of counts) console.log(`${table} ${count}`);
     }
