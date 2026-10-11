@@ -90,7 +90,7 @@ The label comes from mountinfo's filesystem type.
 
 What a failed hardlink means for each folder:
 - **Second versions on another drive from downloads:** the app makes these hardlinks itself and has no copy fallback, so import is impossible. Keep this a refusal.
-- **Library on another drive from downloads:** Sonarr and Radarr cannot hardlink, so with "Use hardlinks instead of copy" on they copy the file instead. Disk use doubles while the torrent seeds (copy fallback described in [TRaSH Guides, Hardlinks and Instant Moves](https://trash-guides.info/File-and-Folder-Structure/Hardlinks-and-Instant-Moves/); Sonarr's own wording not verified, the Servarr wiki did not load). The relink fix in `relink.ts` cannot re-seed from the library. Seeding itself is unaffected. A warning fits: Plex plays from a network library fine.
+- **Library on another drive from downloads:** Sonarr and Radarr cannot hardlink, so with "Use hardlinks instead of copy" on they copy the file instead. Disk use doubles while the torrent seeds. Sonarr's settings page: "If the hard link creation fails or your setup does not support hard links then Sonarr will fall back and copy the file" ([Servarr wiki source](https://github.com/Servarr/Wiki/blob/master/sonarr/settings.md); the rendered wiki does not load outside a browser). Corrected 11 Oct: this line used to cite TRaSH Guides for the fallback, but that page does not describe it. The relink fix in `relink.ts` cannot re-seed from the library. Seeding itself is unaffected. A warning fits: Plex plays from a network library fine.
 - **Downloads on a cloud mount:** seeding breaks. Refuse.
 
 ## Path views
@@ -108,9 +108,175 @@ How the code copes with two spellings:
 1. For every path a service reports (root folders, download client folders, Plex locations), `statSync` it from the app's side. Missing → that service sees the folder under another name. Show both and ask the owner for the app's spelling.
 2. If it exists, compare `realpathSync` of the service's path and of the owner's chosen path. Same real path → same folder in another spelling; store the service's spelling so the plain-string comparisons above match.
 3. Different real paths that the owner says are the same folder → compare `stat().dev` and `stat().ino` (the inode, the file's number on its disk) of both. Equal means the same folder reached two ways.
-4. Read `/api/v3/remotepathmapping`. A non-empty list means rTorrent's paths differ from Sonarr's and Radarr's; the app reads rTorrent's paths in `relink.ts`, `torrentFiles.ts` and `versionImport.ts`, so it needs the same mapping applied, which no code does today.
+4. Read `/api/v3/remotepathmapping`. A non-empty list means rTorrent's paths differ from Sonarr's and Radarr's; the app reads rTorrent's paths in `relink.ts`, `torrentFiles.ts` and `versionImport.ts`, and no code translates them today. Applying the mapping turns rTorrent's spelling into Sonarr's, which is the app's spelling only when the app sees the disk as Sonarr does. An empty list does not prove the app shares the services' spelling either: in a container setup all services agree on `/data/...` while the app on the host sees `/mnt/user/data/...`. (Corrected 11 Oct: this item used to say applying the mapping was enough. See "Other people's setups".)
 
 **If the app ever runs in a Podman container:** mount the home folder at the same path inside (`-v /home/<user>:/home/<user>`), as one volume covering downloads, libraries and second versions. Separate volumes break hardlinks (link(2) above), and different inside paths break every path the services report.
+
+## Other people's setups
+
+Findings from 11 Oct 2026, from documentation and the code only. Nothing in this section was tried on a live machine of these kinds.
+
+**How common each setup is:** I found no survey. The order below follows how much the Servarr wiki and TRaSH Guides write about each, which is a guess at popularity, not a measure (not verified).
+
+**Two terms used below.**
+- **Remote path mapping:** a Sonarr and Radarr setting (Settings → Download Clients) with three fields, Host, Remote Path and Local Path. The Servarr wiki calls it "a DUMB search/replace": when the download client on that host reports a path starting with Remote Path, Sonarr swaps that start for Local Path ([Servarr wiki source](https://github.com/Servarr/Wiki/blob/master/sonarr/settings.md), section Remote Path Mappings). Sonarr's code compares the host without regard to case and uses the first mapping whose remote path contains the reported path ([RemotePathMappingService.cs](https://github.com/Sonarr/Sonarr/blob/v5-develop/src/NzbDrone.Core/RemotePathMappings/RemotePathMappingService.cs), `RemapRemoteToLocal`). It turns the download client's paths into Sonarr's own spelling and nothing else: it says nothing about library paths, Plex's paths, or the app's spelling.
+- **Bind mount:** a folder made to appear at a second place in the folder tree. A container volume (`-v /mnt/user/data:/data`) is one; inside the container the folder exists only under the inside name.
+
+**Plex's spelling is recorded in one place.** Sonarr's and Radarr's Plex Media Server connection has two advanced fields, "Map Paths From" and "Map Paths To" (`MapFrom`, `MapTo` in [Sonarr's PlexServerSettings.cs](https://github.com/Sonarr/Sonarr/blob/v5-develop/src/NzbDrone.Core/Notifications/Plex/Server/PlexServerSettings.cs); same in [Radarr's](https://github.com/Radarr/Radarr/blob/develop/src/NzbDrone.Core/Notifications/Plex/Server/PlexServerSettings.cs)). Sonarr swaps the start of its root folder path for them before asking Plex to scan. They are readable through `GET /api/v3/notification`, and empty unless the owner set them.
+
+### What the code assumes today
+
+The `hostPaths` folders are used in several spellings at once. That only works when the app, rTorrent, Sonarr, Radarr and Plex all spell every folder the same way, as on the owner's slot.
+
+| Code | What it does with the path | Spelling it needs |
+|---|---|---|
+| `relink.ts:94`, `secondVersions.ts:263` | Sends `hostPaths downloads.*` to rTorrent with `d.directory.set` | rTorrent's |
+| `relink.ts:76-101`, `versionImport.ts:217-239`, `torrentFiles.ts:176-218` and `:299-303` | Reads, hardlinks and deletes files under the same folders | The app's |
+| `relink.ts:57-61` | Checks Sonarr's or Radarr's series or movie `path` is inside `hostPaths library.<service>`, as text | Sonarr's or Radarr's |
+| `versionImport.ts:257-258`, `:267` | Checks a Plex `Location` path contains `hostPaths versions.<service>`, then asks Plex to scan the app's spelling of the new folder | Plex's |
+| `setup.ts:190-213`, `:57-58` | Suggests Sonarr's and Radarr's root folders and rTorrent's `directory.default`, then checks them with `statSync` | Suggests in the services' spellings, checks in the app's |
+
+**When the app cannot open rTorrent's paths** (rTorrent in a container or on another machine):
+- Re-link, `relink.ts:133-152`: a stopped torrent counts as one whose files are gone whenever `existsSync` is false, so every stopped torrent with a grab qualifies. If the app can see the library, the fix then closes the torrent and points it at the app's spelling of the download folder (`relink.ts:92-94`), which rTorrent may not have. The recheck fails and the torrent stays stopped, now pointing at the wrong folder. This one does damage; it has to be switched off in such setups, not left to fail.
+- Delete dialog, `torrentFiles.ts:105-147`: a torrent file the app cannot find counts as absent with no gap noted (`:108`), so library files show `none` or `copied` instead of `unknown`, and no torrent is offered for removal.
+- Torrent removal, `torrentFiles.ts:183-189`: refused with "… is outside every hostPaths downloads folder." Safe.
+- Second-version import, `versionImport.ts:217`: `statSync` of the download fails and the row fails for good.
+
+**When the app cannot open Sonarr's or Radarr's library paths:** title delete's wait step (`titleDelete.ts:68-75`, `:181-188`) counts a file it cannot find as deleted, so it reports "Sonarr deleted N library files" before Sonarr has. Data stays safe: torrent removal then lists the app's own library folder (`torrentFiles.ts:208-218`) and refuses while a library file still shares data with the torrent, or refuses outright when it cannot list that folder.
+
+**When Plex spells the folder differently:** every import opens a false "Add … to the Plex Movies library" problem, and the scan request at `versionImport.ts:267` names a folder Plex does not know (what Plex does then: not verified).
+
+### The setups
+
+Each table says what each service calls the folders, then what the app can do from each place it could run. "Works" means today's code works there; "needs translation" means it works once the app turns each service's spelling into its own and back.
+
+#### 1. Everything on one shared seedbox (Whatbox, Feral, Ultra.cc)
+
+All services run natively on one machine as one user. One spelling, apart from symlinks (Whatbox's `/home/<user>` → `/mnt/mpathe/<user>`, covered in "Path views" above). Ultra.cc homes are `/homeN/<user>` (from an [older revision of Ultra.cc's Radarr guide](https://docs.ultra.cc/books/radarr/page/radarr/revisions/2551) seen in search results; not verified on the live page). Remote path mappings: none, except when the library sits on a cloud drive joined to local disk with mergerfs; Ultra.cc's guide then adds one so Sonarr reads downloads through the mergerfs spelling (same unverified source). Hardlinks: yes within the home disk, no on rclone mounts (label table above).
+
+| | |
+|---|---|
+| App runs | On the seedbox, as the same user. What the README describes today. |
+| Second versions | Works |
+| Re-link | Works; not with a library on a cloud mount |
+| Torrent removal | Works |
+| Plex check | Works when Plex runs on the seedbox; see setup 7 otherwise |
+
+#### 2. One machine, containers, TRaSH Guides' single `/data` layout (Unraid, Synology, plain Linux)
+
+One host folder holds everything: `/mnt/user/data` on Unraid, `/volume1/data` on Synology. Every container mounts it, or a part of it, as `/data`: rTorrent gets `/data/torrents`, Plex `/data/media`, Sonarr and Radarr all of `/data` ([Servarr Docker guide source](https://github.com/Servarr/Wiki/blob/master/docker-guide.md), section "Consistent and well planned paths"; [TRaSH Docker](https://trash-guides.info/File-and-Folder-Structure/How-to-set-up/Docker/), [TRaSH Unraid](https://trash-guides.info/File-and-Folder-Structure/How-to-set-up/Unraid/), [TRaSH Synology](https://trash-guides.info/File-and-Folder-Structure/How-to-set-up/Synology/)). hotio's images show a single `-v /<host_folder_data>:/data` too ([hotio Sonarr](https://hotio.dev/containers/sonarr/)).
+
+All services report `/data/...` and agree with each other, so remote path mappings are empty: "If both *Arr and your Download Client are Docker Containers it is rare a remote path map is needed" (Servarr wiki source above). Hardlinks work for Sonarr and Radarr, because downloads and library arrive through one mount. Unraid also needs "Tunable (support Hard Links)" switched on in Global Share Settings (TRaSH Unraid). Unraid's `/mnt/user` is Unraid's own FUSE filesystem, type `fuse.shfs` (not verified on a live Unraid); the label table above already treats an unknown FUSE type as "assume no until a test link passes", which fits.
+
+| | App in a container with the same single mount | App on the host (plain Node) |
+|---|---|---|
+| What it sees | `/data/...`, like every service | `/mnt/user/data/...`; every path a service reports fails `statSync`, and the empty mapping list gives no hint |
+| Second versions | Works (one mount, so its hardlinks work) | Needs translation (`/data` ↔ `/mnt/user/data`), which no service records: ask the owner |
+| Re-link | Works | Needs translation; dangerous untranslated (see above) |
+| Torrent removal | Works | Needs translation; refused untranslated |
+| Plex check | Works | Needs translation |
+
+The container must also run as the same user and group IDs as the services (`PUID`/`PGID` in linuxserver and hotio images: the user and group the container's program runs as), or it cannot delete or link their files.
+
+#### 3. One machine, containers with the images' own folder names (`/tv`, `/movies`, `/downloads`)
+
+linuxserver's Sonarr image documents separate `/tv` and `/downloads` volumes and warns they mean "losing the ability to hardlink" ([linuxserver Sonarr](https://docs.linuxserver.io/images/docker-sonarr/)). The Servarr Docker guide: such volumes "look like two different file systems, even if they are a single file system outside the container" (source above). Plex's own image documents `-v <path/to/media>:/data` with any layout inside ([plexinc/pms-docker](https://github.com/plexinc/pms-docker)). If rTorrent's container names its folder differently from Sonarr's (`/downloads` against `/data/downloads`), Sonarr has a remote path mapping between them. Sonarr and Radarr copy instead of hardlinking.
+
+| | App in a container with the same separate volumes | App on the host |
+|---|---|---|
+| Second versions | Cannot work: link(2) fails across bind mounts even on one disk | Needs translation, one pair per volume, asked from the owner; then its hardlinks work, because the host sees one disk |
+| Re-link | Cannot work, same reason | Needs translation. Works against Sonarr's copies too: it matches library files by size (`relink.ts:76-89`) and rTorrent's recheck accepts identical bytes |
+| Torrent removal | Needs translation if rTorrent's spelling differs | Needs translation |
+| Plex check | Needs translation | Needs translation |
+
+#### 4. One machine, some services native and some in containers
+
+Example: rTorrent native writing `/home/u/torrents`, Sonarr in a container seeing it as `/data/torrents`. Sonarr then has a remote path mapping (Host: rTorrent's address as Sonarr's download client names it; Remote `/home/u/torrents/`; Local `/data/torrents/`). The Servarr wiki names this case: a mapping is "possibly needed if mixing Docker and Native clients".
+
+| | App native, beside rTorrent | App in Sonarr's container layout |
+|---|---|---|
+| rTorrent's paths | Read as they are | Apply Sonarr's mapping (remote → local); apply it in reverse before `d.directory.set` |
+| Sonarr's download paths | Apply the mapping in reverse | Read as they are |
+| Sonarr's library paths | No record; ask the owner | Read as they are |
+| Hardlinks | Wherever the host's disk layout allows | Only if downloads and library arrive in one mount |
+
+#### 5. A NAS holds the disk; services on other machines reach it over SMB or NFS
+
+Example: rTorrent on the NAS writes `/volume1/data/torrents`; Sonarr on a PC sees it as `/mnt/nas/torrents` (Linux) or `\\nas\data\torrents` (Windows), with a remote path mapping between the two. The Servarr wiki: "Generally, a remote path map is only required if your download client is on Linux when *Arr is on Windows or vice versa." Sonarr's hardlinks over NFS are made by the NAS itself (NFS version 3 has a LINK call, [RFC 1813 §3.3.15](https://www.rfc-editor.org/rfc/rfc1813#section-3.3.15)), so they can work when downloads and library sit in one export mounted once; over SMB it depends on the server (not verified). Windows spellings (`D:\…`, `\\nas\…`) can never be opened by the app on Linux, and the code's `isAbsolute` checks reject them.
+
+| | App on the NAS (native or in a container with the single mount) | App on the Sonarr PC, over the share |
+|---|---|---|
+| rTorrent's paths | Read as they are | Apply Sonarr's mapping; reverse it for `d.directory.set` |
+| Sonarr's library paths | Ask the owner (no service records the NAS spelling of the library) | Read as they are |
+| Second versions, re-link | Works once translated; hardlinks are local | Only if the share passes hardlinks through; every file operation crosses the network |
+| Torrent removal | Works once translated | Works once translated, slowly |
+| Plex check | Needs translation unless Plex also runs on the NAS | Needs translation unless Plex runs on the PC |
+
+#### 6. rTorrent on a seedbox; Sonarr, Radarr and Plex at home, files pulled down by a sync tool
+
+Sonarr's download client points at the seedbox's rTorrent. A sync tool (Resilio Sync, Syncthing, rclone, an lftp script) copies finished downloads into a home folder, and a remote path mapping (Host: the seedbox; Remote `/home/u/files/`; Local `/mnt/sync/`) tells Sonarr where the copy lands. Sonarr imports from the home copy and hardlinks it into the library if both share a disk. Every file then exists twice: the seedbox copy that seeds and the home copy. Sync tools expose half-copied files, so Sonarr can try to import too early (Sonarr forum threads seen in search results, such as [this one](https://forums.sonarr.tv/t/sonarr-and-seedbox-integration-so-that-pulls-video-from-seedbox-to-home/7518); not opened, not verified). A variant mounts the seedbox at home with sshfs or rclone instead of copying: Sonarr then copies across the network, and no hardlinks are possible.
+
+No machine sees both rTorrent's seeding files and the library.
+
+| | App on the seedbox | App at home |
+|---|---|---|
+| Second versions | Grab works. Import cannot work: Plex and the versions folder are at home | Grab works. Import could hardlink from the synced copy if the sync also carries `downloads.versions` and the app waits for the full file size; not built |
+| Re-link | Cannot work: the home library cannot re-seed a seedbox torrent without uploading it | Cannot work |
+| Torrent removal | Deleting seedbox files is safe, because nothing on the seedbox shares data with the home library; but `torrentFiles.ts:178-179` and `:209-221` refuse without a set, readable library folder, so the check would need to know the library is elsewhere | Can drop the torrent over XML-RPC (`d.erase`, which leaves the data; not verified) but cannot delete seedbox files |
+| Plex check | Cannot check without Plex's spelling (setup 7) | Works when Plex runs natively at home |
+
+#### 7. Plex on another machine (combines with any setup above)
+
+Plex's `Location` paths are in Plex's spelling: `/data/media/movies` in a Plex container, `D:\Movies` on Windows, or the mount point of a network share. The only record of the translation is the Plex connection's "Map Paths From/To" in Sonarr and Radarr, when set. Otherwise only the owner knows. Second versions and re-link do not depend on Plex's spelling; the Plex check and the scan request do.
+
+### Summary
+
+| Setup | Where the app should run | Second versions | Re-link | Torrent removal | Plex check |
+|---|---|---|---|---|---|
+| 1. One seedbox | On it, same user | Works | Works | Works | Works |
+| 2. Containers, single `/data` | Container, same single mount and IDs | Works | Works | Works | Works |
+| 3. Containers, separate volumes | Host, with translations | Needs translation (cannot work in a container) | Needs translation | Needs translation | Needs translation |
+| 4. Mixed native and containers | Beside rTorrent | Needs translation | Needs translation | Needs translation | Needs translation |
+| 5. NAS plus other machines | On the NAS | Needs translation | Needs translation | Needs translation | Needs translation |
+| 6. Seedbox plus home | Open question | Cannot work today | Cannot work | Seedbox side only, with a changed check | Home side only |
+| 7. Plex elsewhere | No effect | No effect | No effect | No effect | Needs translation |
+
+### How the wizard can tell which setup it is in, and translate
+
+1. **Collect one sample from each service.**
+   - rTorrent: `directory.default`, and the `d.directory`, `f.path` and `f.size_bytes` of one finished torrent.
+   - Sonarr and Radarr: root folders; download clients (`/api/v3/downloadclient`: implementation, host, `tvDirectory` or `movieDirectory`); remote path mappings; one library file with its size (`/api/v3/episodefile?seriesId=`, a movie's `movieFile`); the Plex connection's `MapFrom`/`MapTo` (`/api/v3/notification`).
+   - Plex: each section's `Location` paths, and one item's file path and size from `/library/sections/{key}/all` (the `Part` element's `file` and `size`; not verified).
+2. **Test each sample from the app.** `statSync` the sample file and compare its size. Same size → the app shares that service's spelling. A folder is a weak test: the app's own container can have an unrelated `/data`. `realpathSync` and inode comparison only help within the app's own view (symlinked spellings such as Whatbox's home folder); they cannot connect a container's `/data` to the host's `/mnt/user/data`.
+3. **On a miss, try the translations the services record, then retest the same sample:**
+   - App shares Sonarr's spelling → apply Sonarr's remote path mappings to rTorrent's paths, by Sonarr's rules (host compared without case, first mapping whose remote path contains the path, swap that start). Use the host from Sonarr's rTorrent download client, not the app's `rtorrent.url`: the two can name the same rTorrent differently (container name against public address). Ask the owner if Sonarr has several rTorrent clients.
+   - App shares rTorrent's spelling → the same mappings in reverse cover Sonarr's download paths. Library paths have no record.
+   - Plex → the Plex connection's `MapFrom`/`MapTo`, reversed.
+4. **Still a miss → ask the owner.** Show the service's path (`/data/media/tv`) beside the folder browser from Decision 1. The owner picks the same folder in the app's view; the app drops the shared ending of both paths to get a pair of starts (`/data` ↔ `/mnt/user/data`) and retests the sample.
+5. **Store and use the translations.** Per service, a list of (start as the service writes it, start as the app sees it). Translate every path read from that service; translate back every path sent to it (`d.directory.set` at `relink.ts:94` and `secondVersions.ts:263`, Plex's scan path at `versionImport.ts:267`). `hostPaths` then hold the app's spelling only, and the text comparisons at `relink.ts:57-61` and `versionImport.ts:257-258` run after translation.
+6. **Prove the app's own hardlinks** with the save-time test link (Decision 4); it runs in the app's spelling, which is where the app makes its links. Sonarr's and Radarr's own hardlinks are visible only as an outcome (library files shown `linked` or `copied` in the delete dialog).
+7. **When the app cannot see a service's files at all, switch features off and say why** instead of letting them fail:
+
+| App cannot open | Switch off | Wording, for example |
+|---|---|---|
+| rTorrent's download folder | Second-version import, re-link, file deletion on torrent removal | "media-manager-2 can't open rTorrent's download folder `/data/torrents`, so it won't import second versions, re-link deleted downloads or delete torrent files." |
+| The library | Re-link, file deletion on torrent removal | "… can't open the TV library, so it can't prove a torrent's files are safe to delete." |
+| Plex's folders (no translation known) | Nothing; skip the Plex check | "Plex's name for this folder is unknown, so the app can't confirm Plex reads it." |
+
+   Features that only call the services' web APIs do not touch the disk and keep working.
+8. **Three code spots read "cannot see" as "gone"** and need fixing before any setup other than setup 1 or 2 is supported: `relink.ts:151` (the damaging one above), `titleDelete.ts:68-75`, and `torrentFiles.ts:108`, which records no gap for a torrent file it cannot find.
+
+### Where the app should run
+
+The rule: on the machine that holds the downloads disk, where it can open rTorrent's files and the libraries, ideally under the same names rTorrent and Sonarr/Radarr use, and as their user (or user and group IDs).
+
+- Setup 1: on the seedbox, as the same user.
+- Setups 2 and 3: as a container in the same stack, with one mount of the whole data folder at the inside path the services use, and their `PUID`/`PGID`. The README says the app "runs as a plain Node process with no container" (README.md, "Keep it running"), so this needs a container image or documented steps (open question 1).
+- Setups 4 and 5: on the machine with the disk, beside rTorrent.
+- Setup 6: no good place; see the open questions.
+- Plex's location does not matter: the app reaches Plex over HTTP and needs only Plex's spelling.
+
+**What the README and wizard should tell people.** README "What you need" gains a line: media-manager-2 reads, hardlinks and deletes files in your download and library folders itself, so run it on the machine that holds them, as the same user as rTorrent and Sonarr/Radarr; if those run in containers, run it in a container with the same data mount. The wizard's Folders step opens with what it found: whether it can open rTorrent's files, each library and Plex's folders, each as "same names", "translated" or "can't open", followed by the questions or the features it switched off.
 
 ## Open questions for the owner
 
@@ -125,7 +291,18 @@ How the code copes with two spellings:
 ## Decisions (owner, 11 Oct 2026)
 
 1. **Picking:** downloads and library folders arrive filled in from Sonarr, Radarr and their download clients, to confirm. A "Change" link, and both second-version folders, open a folder browser served by the app: folder names only, behind the sign-in, starting at the home folder, with "Create folder".
-2. **Second versions:** suggest the existing `~/PlexVersions` for movies and a TV sibling beside it.
+2. **Second versions:** suggest a folder a Plex Movies or TV library already reads; otherwise create one beside the library. (Owner's server: `~/PlexVersions` for movies and a TV sibling beside it.)
 3. **Downloads:** save each service's own download folder (Sonarr's and Radarr's download client folders) instead of one shared folder.
 4. **Test hardlink:** on save, write a small test file into downloads, hardlink it into each library and second-version folder, check it, and delete both at once. A failed link refuses second-version folders and warns for library folders (warning decided 11 Oct, PR #72).
 5. **Downloads on a cloud or other FUSE mount:** refused, following Whatbox's advice.
+
+## Open questions (general setups)
+
+1. Ship a container image for the app, or documented steps to run it in one? Without that, container users (setups 2 and 3) need a translation for every path.
+2. Build the per-service path translations in v1, or support only setups where the app shares rTorrent's and Sonarr's/Radarr's spelling (setups 1 and 2 with the app in a container) and switch features off everywhere else?
+3. Seedbox plus home sync (setup 6): in scope for v1? If so, should the app run on the seedbox or at home?
+4. Setup 6 with the app on the seedbox: once the owner confirms the library is on another machine, may torrent removal delete seedbox files without the library check?
+5. Windows Sonarr, Radarr or Plex: support Windows spellings (`D:\…`, `\\nas\…`), or require Linux or macOS spellings?
+6. Fix the three spots that read "cannot see" as "gone" (`relink.ts:151`, `titleDelete.ts:68-75`, `torrentFiles.ts:108`) now, ahead of the wizard? The re-link one can point a stopped torrent at a folder rTorrent does not have.
+7. May the wizard open one sample file listed by each service to test the app's view? It only reads metadata (`statSync`), writes nothing.
+8. Sonarr or Radarr with more than one rTorrent download client: ask the owner which one is the rTorrent the app talks to?
