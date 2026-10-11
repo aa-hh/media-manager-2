@@ -7548,6 +7548,10 @@ test('the veto and the replace find a queue item past the first 500', async (t) 
   const grab = { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 50 }], downloadId: 'ab'.repeat(20), release: { releaseTitle: 'Show.S01E02.1080p' } };
   assert.equal(await createProtection(database, services).veto('sonarr', grab), 'vetoed');
   assert.deepEqual(fake.sonarr.state.erasedFromClient, ['AB'.repeat(20)]);
+  // Dropping skipRedownload from the veto's removal turns this red: Sonarr then searches again and the veto removes that grab too, round after round.
+  assert.deepEqual(fake.sonarr.state.removals.map(({ removeFromClient, blocklist, skipRedownload }) => ({ removeFromClient, blocklist, skipRedownload })), [
+    { removeFromClient: true, blocklist: true, skipRedownload: true },
+  ]);
 
   fake.radarr.state.queue = [...fillers(), queueItem({ downloadId: 'CD'.repeat(20), movieId: 9, trackedDownloadState: 'downloading' })];
   const now = () => 10 * 60 * 60_000;
