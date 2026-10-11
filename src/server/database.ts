@@ -385,6 +385,8 @@ export const applicationMigrations = [
     WHEN failure = 'That torrent is already in rTorrent.' THEN 'already_in_rtorrent'
     WHEN failure IN ('The download link returned a web page, not a torrent file.', 'The download link did not return a torrent file.') THEN 'not_a_torrent'
   END WHERE failure IS NOT NULL;`,
+  // Saved Discover rows, so the home screen reads results and never waits on TMDB or Trakt.
+  `CREATE TABLE discover_rows (key TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL, read_at INTEGER NOT NULL) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
