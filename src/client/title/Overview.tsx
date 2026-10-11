@@ -4,11 +4,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { buildRows } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
 import { getJson, type MovieDetail, type OwnedMovieDetail, type SeriesDetail } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
-import { replace, useLocation } from '../navigation';
+import { passedPosterUrl, replace, useLocation, withViewTransition } from '../navigation';
 import { AddControls } from './AddControls';
 import { MovieOverview } from './MovieOverview';
 import { SeriesOverview } from './SeriesOverview';
@@ -87,7 +88,8 @@ function PreviewSeasons({ detail }: { detail: SeriesDetail }) {
 const day = (iso: string | null) => (iso === null ? null : new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
 
 export function Overview({ downloads, onUnauthenticated }: { downloads: DownloadsState; onUnauthenticated: () => void }) {
-  const { pathname } = useLocation();
+  const { pathname, state: historyState } = useLocation();
+  const passedPoster = passedPosterUrl(historyState);
   const route = useMemo(() => parseRoute(pathname), [pathname]);
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -122,7 +124,11 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
     };
     read()
       .then((loaded) => {
-        if (!controller.signal.aborted) setLoad(loaded);
+        if (controller.signal.aborted) return;
+        // The skeleton crossfades into the page; the poster stays put because both carry title-poster.
+        withViewTransition(() => {
+          if (!controller.signal.aborted) setLoad(loaded);
+        });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -146,9 +152,16 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
   return (
     <div>
       {load.kind === 'loading' && (
-        <div role="status" aria-label="Loading" className="flex flex-col gap-8 pt-25 pb-10">
+        // The poster sits where the loaded header puts it (owned pages start higher), so nothing jumps when the page arrives.
+        <div role="status" aria-label="Loading" className={cn('flex flex-col gap-8 pb-10', route?.owned === true ? 'pt-10' : 'pt-25')}>
           <div className="flex gap-8">
-            <Skeleton className="h-66 w-44 rounded-md" />
+            {passedPoster === undefined
+              ? <Skeleton className="title-poster h-66 w-44 rounded-md" />
+              : (
+                <div className="title-poster relative h-66 w-44 shrink-0 overflow-hidden rounded-md bg-muted">
+                  <img src={passedPoster} alt="" className="size-full object-cover" />
+                </div>
+              )}
             <div className="flex flex-col gap-3.5 pt-24">
               <Skeleton className="h-9 w-90" />
               <Skeleton className="w-130" />

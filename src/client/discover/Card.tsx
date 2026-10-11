@@ -2,13 +2,13 @@ import { Calendar, CalendarClock, Check, Star } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { LibraryPosterCard } from '@/components/ui/library-poster-card';
-import { navigate } from '../navigation';
+import { navigateFrom } from '../navigation';
 import { countdown, dateTab, titlePath, type DiscoverResult } from './model';
 
 export const openLink = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
   event.preventDefault();
-  navigate(path);
+  navigateFrom(path, event.currentTarget);
 };
 
 const localToday = () => {

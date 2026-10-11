@@ -205,6 +205,36 @@
   animation: skeleton-sweep var(--duration-shimmer) var(--ease-linear) infinite;
 }
 
+/*
+ * View transitions (navigation.ts withViewTransition). The old page leaves fast, the new page arrives at base speed,
+ * and a poster card's poster morphs into the title page's large poster. Reduced motion never starts one.
+ */
+.title-poster {
+  view-transition-name: title-poster;
+}
+
+::view-transition-old(root) {
+  animation-duration: var(--duration-fast);
+  animation-timing-function: var(--ease-in);
+}
+
+::view-transition-new(root) {
+  animation-duration: var(--duration-base);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-group(title-poster) {
+  animation-duration: var(--duration-slow);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-old(title-poster),
+::view-transition-new(title-poster) {
+  animation-duration: var(--duration-slow);
+  height: 100%;
+  object-fit: cover;
+}
+
 /* Content arriving in place of a skeleton crossfades in (DESIGN.md Motion: skeleton to content, base, out). */
 @keyframes content-in {
   from {

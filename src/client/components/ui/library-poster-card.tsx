@@ -50,6 +50,7 @@ function LibraryPosterCard({
   return (
     <a className={cn('group flex flex-col gap-2 outline-none animate-content-in', large ? 'w-55' : 'w-(--poster-width)', className)} {...props}>
       <span
+        data-poster
         className={cn(
           'relative block w-full overflow-hidden rounded-md bg-muted',
           showPoster && image === 'loading' && 'skeleton-shimmer motion-reduce:bg-none',

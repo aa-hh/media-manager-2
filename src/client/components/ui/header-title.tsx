@@ -93,7 +93,8 @@ function HeaderTitle({
         </div>
       )}
       <div className={cn('relative flex w-full gap-8', actionsRight && 'items-end')}>
-        <Poster url={posterUrl} className="h-66 w-44 rounded-md" />
+        {/* title-poster: a poster card opening this page morphs into it (globals.css). */}
+        <Poster url={posterUrl} className="title-poster h-66 w-44 rounded-md" />
         <div className="flex min-w-0 flex-1 flex-col gap-3 pt-15">
           {breadcrumb}
           <div className="flex items-center gap-2.5">

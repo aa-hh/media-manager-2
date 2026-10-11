@@ -266,6 +266,8 @@ The library's sixth sheet holds the motion tokens and a transition table; each s
 | Trigger | What changes | Duration | Easing |
 |---|---|---|---|
 | Page change | new page fades in | fast | out |
+| Open a title from a poster card | the card's poster morphs into the title page's large poster while the page crossfades (view transition); the loading page shows that poster in place | slow | out |
+| Title page loads | skeleton crossfades into the page; the poster stays put | base | out |
 | Hover (rows, buttons, nav, posters, calendar entries, cards) | fill to the hover token; poster brightness to 92% | fast | out |
 | Press, focus ring | instant | 0 | — |
 | Inline panel open / close | height 0 to full, fade in, rise 6px, sibling rows dim / reverse | base / fast | out / in |
