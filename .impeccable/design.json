@@ -1,158 +1,266 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-08T18:54:35.978086+00:00",
+  "generatedAt": "2026-10-11T09:37:57.821550+00:00",
   "title": "Design System: media-manager-2",
   "extensions": {
-    "themes": {
-      "axis": "mode",
-      "values": [
-        "light",
-        "dark"
-      ],
-      "note": "Light values are documented. Every color token also has a dark value on the same pen.dev variable."
-    },
+    "source": "design/design-system.lib.pen (pen.dev library, five component sheets, light mode only)",
     "colorMeta": {
-      "accent": {
+      "primary": {
         "role": "primary",
-        "displayName": "Primary action and selection"
+        "displayName": "Black actions and on states"
       },
       "best": {
         "role": "tertiary",
-        "displayName": "Best passing release"
+        "displayName": "Lime: best release, fill only"
       },
-      "risk": {
+      "live": {
+        "role": "tertiary",
+        "displayName": "Lime: downloading now, fill or on dark"
+      },
+      "destructive": {
         "role": "error",
-        "displayName": "Problem or risk"
+        "displayName": "Red: problems and risk"
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Amber: missing, warning, pending"
+      },
+      "selected": {
+        "role": "neutral",
+        "displayName": "Selected row tint, with the black side bar"
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Text"
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Secondary text, 7.5:1"
+      },
+      "subtle-foreground": {
+        "role": "neutral",
+        "displayName": "Meta and placeholder, 5.6:1"
+      },
+      "faint-foreground": {
+        "role": "neutral",
+        "displayName": "Disabled only"
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Dividers"
+      },
+      "input": {
+        "role": "neutral",
+        "displayName": "Control edges, 3.4:1"
+      },
+      "bar": {
+        "role": "neutral",
+        "displayName": "Downloads bar, toast, tooltip"
       }
     },
     "typographyMeta": {
+      "title-hero": {
+        "purpose": "Title page header (v2/Header/title)."
+      },
       "page-title": {
-        "purpose": "Page and Header/title titles."
+        "purpose": "List page titles (v2/Header/page)."
       },
-      "panel-title": {
-        "purpose": "Inline panel titles."
-      },
-      "sheet-title": {
-        "purpose": "Phone bottom sheet titles."
-      },
-      "row-title": {
-        "purpose": "Titles inside list and episode rows."
-      },
-      "button": {
-        "purpose": "Action labels."
-      },
-      "navigation": {
-        "purpose": "Page navigation labels."
+      "section": {
+        "purpose": "Section and panel titles."
       },
       "body": {
-        "purpose": "Release data, counts and file names in tables."
+        "purpose": "Reading text and interface copy."
       },
-      "meta": {
-        "purpose": "Secondary details in ink-2."
+      "label": {
+        "purpose": "Labels and buttons; 13 in rows, 14 default, 15 large."
       },
-      "column-header": {
-        "purpose": "Uppercase table column headers."
+      "caption": {
+        "purpose": "Column headers, 11/600 capitals in subtle-foreground."
       },
-      "key": {
-        "purpose": "Visual keyboard hints."
+      "data": {
+        "purpose": "Release data and numbers in tables."
+      },
+      "data-small": {
+        "purpose": "Small data: downloads bar, Kbd, meta numbers."
       }
     },
-    "states": {
-      "hover": "row-hover fill; accent-hover or risk-hover on filled buttons",
-      "selected": "accent-soft fill on rows; selected fill on chosen controls",
-      "best": "best-soft fill plus 2px best left bar",
-      "focus": "2px accent stroke; outside on controls, inside on rows",
-      "dimmed": "opacity 0.65",
-      "disabled": "ink-3 text and opacity 0.6"
+    "controlSizes": {
+      "row": {
+        "height": "28px",
+        "paddingX": "10px",
+        "text": "13px",
+        "radius": "6px",
+        "icon": "14px",
+        "use": "Inside table rows and dense lists only."
+      },
+      "default": {
+        "height": "40px",
+        "paddingX": "16px",
+        "text": "14px",
+        "radius": "8px",
+        "icon": "16px",
+        "use": "Everywhere else."
+      },
+      "large": {
+        "height": "48px",
+        "paddingX": "20px",
+        "text": "15px",
+        "radius": "10px",
+        "icon": "18px",
+        "use": "The one main action on a page or panel."
+      }
     },
-    "shadows": "none"
+    "layout": {
+      "topbar": "64px",
+      "livebar": "40px",
+      "row": "40px",
+      "row-header": "32px",
+      "row-two-line": "56px",
+      "page-margin": "40px",
+      "page-margin-phone": "16px",
+      "poster-width": "152px",
+      "poster-gutter": "20px",
+      "postersPerRow": "8 at 1440px",
+      "searchWidth": "560px to 720px"
+    },
+    "states": {
+      "hover": "surface-hover fill",
+      "pressed": "surface-pressed fill",
+      "selected": "selected tint plus 3px black side bar on rows; black fill or check on controls",
+      "risk": "red side bar on rows",
+      "warning": "amber side bar on rows",
+      "best": "best-soft tint and the lime comparison mark",
+      "focus": "2px ring outline with a 2px white gap on controls; 2px inner black edge on rows; focus-on-dark on black bars",
+      "disabled": "grey fill and faint-foreground text, never opacity"
+    },
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 2px 6px #1111110F, 0 8px 24px #1111111F",
+        "purpose": "Menus, tooltips, toasts, inline panel, phone sheet, selection bar. Nothing in the page flow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "spinner",
+        "value": "700ms per turn, linear",
+        "purpose": "Loading; still under reduced motion."
+      },
+      {
+        "name": "skeleton",
+        "value": "1.4s shimmer",
+        "purpose": "Loading blocks; still under reduced motion."
+      },
+      {
+        "name": "tooltip-delay",
+        "value": "400ms",
+        "purpose": "Tooltip open delay."
+      }
+    ],
+    "codeNames": {
+      "note": "Target names. src/client/globals.css on main still uses older names; proposed mapping, not done.",
+      "--ground": "background",
+      "--control": "card",
+      "--control-hover": "surface-hover",
+      "--quiet-hover": "surface-pressed",
+      "--ink": "foreground",
+      "--secondary-ink": "muted-foreground",
+      "--border": "border",
+      "--focus": "ring",
+      "--mm-*": "removed (archived dark values)"
+    }
   },
   "components": [
     {
-      "name": "AppBar/Desktop",
-      "kind": "nav",
-      "family": "chrome",
-      "description": "Static top bar with navigation; the current page uses darker, heavier text. Not wired to routing.",
-      "html": "<header class=\"ds-appbar\"><strong>media-manager-2</strong><nav><span class=\"ds-nav-current\">Search</span><span>Downloads 3</span><span>Calendar</span><span>Flagged 5</span><span>Health</span></nav></header>",
-      "css": ".ds-appbar { display: flex; align-items: center; gap: 24px; height: 48px; padding: 0 20px; background: #FFFFFF; border-bottom: 1px solid #D1D5DB; color: #171B20; font: 600 14px Barlow; } .ds-appbar nav { display: flex; gap: 20px; color: #58616C; font: 500 13px Barlow; } .ds-nav-current { color: #171B20; font-weight: 600; }"
-    },
-    {
-      "name": "Button/default",
+      "name": "v2/Button primary",
       "kind": "button",
-      "family": "controls",
       "refersTo": "button-default",
-      "description": "Primary action with outline and focus examples. Static style only.",
-      "html": "<div class=\"ds-row-gap\"><button class=\"ds-btn ds-btn-default\">Search automatically</button><button class=\"ds-btn ds-btn-outline\">Pick a release</button><button class=\"ds-btn ds-btn-default ds-focus\">Grab</button><button class=\"ds-btn ds-btn-outline\" disabled>Replace</button></div>",
-      "css": ".ds-row-gap { display: flex; gap: 8px; } .ds-btn { height: 32px; padding: 0 12px; border-radius: 0; font: 600 14px Barlow; border: 1px solid transparent; } .ds-btn-default { background: #215D47; color: #FFFFFF; } .ds-btn-default:hover { background: #194A38; } .ds-btn-outline { background: #FFFFFF; color: #171B20; border-color: #D1D5DB; } .ds-btn-outline:hover { background: #EDEFF2; } .ds-focus { outline: 2px solid #215D47; outline-offset: 0; } .ds-btn:disabled { color: #9AA1AB; opacity: 0.6; }"
+      "description": "Black button for actions, 40px default size.",
+      "html": "<button class=\"ds-btn\">Grab</button>",
+      "css": ".ds-btn{font-family:'Schibsted Grotesk',sans-serif;background:#111111;color:#FFFFFF;border:0;border-radius:8px;height:40px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;}.ds-btn:hover{background:#2E2E2C;}.ds-btn:active{background:#000000;}.ds-btn:focus-visible{outline:2px solid #111111;outline-offset:2px;}"
     },
     {
-      "name": "Badge",
+      "name": "v2/Button outline",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "White button with a 3.4:1 edge for secondary actions.",
+      "html": "<button class=\"ds-btn-outline\">Pick a release</button>",
+      "css": ".ds-btn-outline{font-family:'Schibsted Grotesk',sans-serif;background:#FFFFFF;color:#111111;border:1px solid #8C8C85;border-radius:8px;height:40px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;}.ds-btn-outline:hover{background:#F6F6F3;}.ds-btn-outline:active{background:#EAEAE6;}.ds-btn-outline:focus-visible{outline:2px solid #111111;outline-offset:2px;}"
+    },
+    {
+      "name": "v2/Button destructive",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Red button for removing or deleting.",
+      "html": "<button class=\"ds-btn-red\">Remove</button>",
+      "css": ".ds-btn-red{font-family:'Schibsted Grotesk',sans-serif;background:#CC1F17;color:#FFFFFF;border:0;border-radius:8px;height:40px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;}.ds-btn-red:hover{background:#AD1912;}.ds-btn-red:active{background:#8E140E;}.ds-btn-red:focus-visible{outline:2px solid #111111;outline-offset:2px;}"
+    },
+    {
+      "name": "v2/Input/Search",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "48px search in the middle of the 64px app bar.",
+      "html": "<label class=\"ds-search\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#55554F\" stroke-width=\"2\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-3.5-3.5\"/></svg><input placeholder=\"Search movies and TV\"><kbd>/</kbd></label>",
+      "css": ".ds-search{font-family:'Schibsted Grotesk',sans-serif;display:flex;align-items:center;gap:12px;width:640px;max-width:100%;height:48px;padding:0 16px;background:#F2F2EF;border:1px solid transparent;border-radius:10px;}.ds-search:hover{background:#EAEAE6;}.ds-search:focus-within{background:#FFFFFF;border-color:#8C8C85;outline:2px solid #111111;outline-offset:2px;}.ds-search input{flex:1;border:0;background:transparent;font:inherit;font-size:16px;color:#111111;outline:none;}.ds-search input::placeholder{color:#55554F;}.ds-search kbd{font-family:'Barlow Semi Condensed',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;background:#FFFFFF;border:1px solid #E3E3DE;border-radius:4px;padding:0 6px;color:#55554F;}"
+    },
+    {
+      "name": "v2/Badge",
       "kind": "chip",
-      "family": "badges and status",
-      "refersTo": "badge-accent",
-      "description": "Badge variants: secondary, accent, best, destructive. Status is a word in a tinted chip.",
-      "html": "<div class=\"ds-row-gap\"><span class=\"ds-badge ds-b-secondary\">Missing</span><span class=\"ds-badge ds-b-accent\">In library</span><span class=\"ds-badge ds-b-best\">best</span><span class=\"ds-badge ds-b-risk\">0 seeders</span></div>",
-      "css": ".ds-row-gap { display: flex; gap: 8px; } .ds-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 2px; font: 500 12px Barlow; } .ds-b-secondary { background: #EDEFF2; color: #171B20; } .ds-b-accent { background: #D6E5DB; color: #215D47; } .ds-b-best { background: #EDE9FE; color: #6D28D9; } .ds-b-risk { background: #FBE3E1; color: #B42318; }"
+      "refersTo": "badge-best",
+      "description": "20px status badge: neutral, strong, lime, risk, warning.",
+      "html": "<span class=\"ds-badge\">2160p</span> <span class=\"ds-badge ds-badge-strong\">In library</span> <span class=\"ds-badge ds-badge-best\">Downloading 64%</span> <span class=\"ds-badge ds-badge-risk\">Stalled</span> <span class=\"ds-badge ds-badge-warn\">Missing 2 episodes</span>",
+      "css": ".ds-badge{font-family:'Schibsted Grotesk',sans-serif;display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:4px;font-size:12px;font-weight:600;background:#F2F2EF;color:#55554F;}.ds-badge-strong{background:#111111;color:#FFFFFF;}.ds-badge-best{background:#C6F135;color:#111111;}.ds-badge-risk{background:#FDE9E7;color:#CC1F17;}.ds-badge-warn{background:#FDF0D9;color:#A15C00;}"
     },
     {
-      "name": "Row/release",
+      "name": "v2/Table/Row",
       "kind": "custom",
-      "family": "tables and rows",
       "refersTo": "table-row",
-      "description": "Release table with header, a best row, a selected row and a plain row. Sorting and selection are implementation work.",
-      "html": "<div class=\"ds-table\"><div class=\"ds-th\"><span>Release</span><span>Quality</span><span class=\"ds-num\">Size</span><span class=\"ds-num\">Seeders</span></div><div class=\"ds-tr ds-best\"><span>Dune.Part.Two.2024.2160p.WEB-DL</span><span>2160p</span><span class=\"ds-num\">18.4 GB</span><span class=\"ds-num\">412</span></div><div class=\"ds-tr ds-sel\"><span>Dune.Part.Two.2024.1080p.BluRay</span><span>1080p</span><span class=\"ds-num\">11.2 GB</span><span class=\"ds-num\">208</span></div><div class=\"ds-tr\"><span>Dune.Part.Two.2024.720p.WEB</span><span>720p</span><span class=\"ds-num\">4.1 GB</span><span class=\"ds-num\">96</span></div></div>",
-      "css": ".ds-table { background: #FFFFFF; border: 1px solid #D1D5DB; } .ds-th, .ds-tr { display: grid; grid-template-columns: 3fr 1fr 1fr 1fr; align-items: center; padding: 0 20px; border-bottom: 1px solid #D1D5DB; } .ds-th { height: 30px; color: #58616C; font: 600 11px Barlow; letter-spacing: 0.6px; text-transform: uppercase; } .ds-tr { height: 34px; color: #171B20; font: 400 13px \"Barlow Semi Condensed\"; } .ds-tr:hover { background: #EDEFF2; } .ds-sel { background: #D6E5DB; } .ds-best { background: #EDE9FE; border-left: 2px solid #6D28D9; padding-left: 18px; } .ds-best span:first-child { color: #6D28D9; } .ds-num { text-align: right; font-variant-numeric: tabular-nums; }"
+      "description": "40px base row: hover, selected with the black side bar, best tint.",
+      "html": "<div class=\"ds-table\"><div class=\"ds-row ds-head\"><span>Quality</span><span>Release</span><span class=\"n\">Size</span></div><div class=\"ds-row\" tabindex=\"0\"><span>1080p</span><span>Show.S01E01.1080p.WEB-DL</span><span class=\"n\">2.1 GB</span></div><div class=\"ds-row ds-sel\" tabindex=\"0\"><span>2160p</span><span>Show.S01E01.2160p.WEB-DL</span><span class=\"n\">8.4 GB</span></div><div class=\"ds-row ds-best\" tabindex=\"0\"><span>2160p</span><span>Show.S01E01.2160p.BluRay</span><span class=\"n\">14.0 GB</span></div></div>",
+      "css": ".ds-table{border:1px solid #E3E3DE;border-radius:10px;overflow:hidden;background:#FFFFFF;}.ds-row{font-family:'Barlow Semi Condensed',sans-serif;font-variant-numeric:tabular-nums;display:grid;grid-template-columns:104px 1fr 72px;align-items:center;height:40px;padding:0 16px;font-size:14px;color:#111111;border-top:1px solid #E3E3DE;}.ds-row .n{text-align:right;}.ds-head{font-family:'Schibsted Grotesk',sans-serif;height:32px;border-top:0;font-size:11px;font-weight:600;text-transform:uppercase;color:#686862;}.ds-row:not(.ds-head):hover{background:#F6F6F3;}.ds-sel{background:#EDEDE9;box-shadow:inset 3px 0 0 #111111;}.ds-best{background:#F3FCD6;}.ds-row:focus-visible{outline:2px solid #111111;outline-offset:-2px;}"
     },
     {
-      "name": "Library/Poster",
-      "kind": "card",
-      "family": "lists and cards",
-      "description": "Poster card with a muted placeholder hue and title. Real posters come from Sonarr or Radarr.",
-      "html": "<figure class=\"ds-poster\"><div class=\"ds-poster-img\"></div><figcaption><strong>Severance</strong><span>2022 · TV</span></figcaption></figure>",
-      "css": ".ds-poster { width: 128px; margin: 0; } .ds-poster-img { height: 192px; background: #2C4650; border-radius: 2px; } .ds-poster figcaption { display: flex; flex-direction: column; padding-top: 6px; } .ds-poster strong { color: #171B20; font: 600 14px Barlow; } .ds-poster span { color: #58616C; font: 400 12px Barlow; }"
-    },
-    {
-      "name": "Panel/inline",
+      "name": "v2/Downloads live bar",
       "kind": "custom",
-      "family": "panels and selection",
-      "description": "One open inline panel with a risk callout; surrounding rows dim to 0.65. Static only.",
-      "html": "<div class=\"ds-dim\">Severance S02E06 · downloaded</div><section class=\"ds-panel\"><h3>Remove release?</h3><div class=\"ds-callout\">PHD seeding 41h of 72h. Removing now risks a hit and run.</div><button class=\"ds-btn-risk\">Remove</button></section>",
-      "css": ".ds-dim { opacity: 0.65; height: 34px; display: flex; align-items: center; padding: 0 20px; background: #FFFFFF; color: #171B20; font: 400 13px \"Barlow Semi Condensed\"; } .ds-panel { background: #FFFFFF; border: 1px solid #D1D5DB; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; } .ds-panel h3 { margin: 0; color: #171B20; font: 700 20px Barlow; } .ds-callout { background: #FBE3E1; color: #171B20; padding: 8px 12px; font: 400 13px Barlow; } .ds-btn-risk { align-self: flex-start; height: 32px; padding: 0 12px; border: 0; border-radius: 0; background: #B42318; color: #FFFFFF; font: 600 14px Barlow; } .ds-btn-risk:hover { background: #912018; }"
-    },
-    {
-      "name": "Downloads/Live bar",
-      "kind": "custom",
-      "family": "status composites",
       "refersTo": "downloads-live-bar",
-      "description": "One-line live download summary shown on every screen, plus a stalled download row. Values are prototype copy.",
-      "html": "<div class=\"ds-live\"><strong>3 downloading</strong><span>41.6 MB/s down · 12.3 MB/s up</span><span>Severance S02E07 64% · The Bear S03 23%</span><span class=\"ds-end\">D expand</span></div><div class=\"ds-dl\"><span>Andor S02E09</span><span class=\"ds-risk\">Stalled · 0 seeders</span></div>",
-      "css": ".ds-live { display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 20px; background: #FFFFFF; border-top: 1px solid #D1D5DB; color: #58616C; font: 400 13px \"Barlow Semi Condensed\"; } .ds-live strong { color: #171B20; font-weight: 600; } .ds-end { margin-left: auto; } .ds-dl { display: flex; justify-content: space-between; align-items: center; height: 34px; padding: 0 20px; background: #FFFFFF; border-bottom: 1px solid #D1D5DB; color: #171B20; font: 400 13px \"Barlow Semi Condensed\"; } .ds-risk { color: #B42318; }"
+      "description": "40px black bar at the bottom of every desktop screen; lime allowed here.",
+      "html": "<div class=\"ds-live\"><span>3 downloading</span><span class=\"ds-live-item\">Show S01E02<i><b style=\"width:64%\"></b></i>64%</span><span class=\"ds-live-speed\">12.4 MB/s</span></div>",
+      "css": ".ds-live{font-family:'Barlow Semi Condensed',sans-serif;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:24px;height:40px;padding:0 40px;background:#111111;color:#FFFFFF;font-size:13px;font-weight:500;}.ds-live-item{display:flex;align-items:center;gap:8px;}.ds-live-item i{display:block;width:80px;height:4px;border-radius:999px;background:#2E2E2C;}.ds-live-item b{display:block;height:4px;border-radius:999px;background:#C6F135;}.ds-live-speed{color:#B5B5AE;margin-left:auto;}"
     },
     {
-      "name": "Sheet/Content/phone",
-      "kind": "custom",
-      "family": "phone",
-      "refersTo": "phone-row",
-      "description": "Phone bottom sheet with 44px action rows. Static only; no gesture or focus handling.",
-      "html": "<div class=\"ds-sheet\"><h4>S02E07 · Chikhai Bardo</h4><div class=\"ds-prow\">Search automatically</div><div class=\"ds-prow\">Pick a release</div><div class=\"ds-prow\">Details</div></div>",
-      "css": ".ds-sheet { width: 390px; background: #FFFFFF; border-top: 1px solid #D1D5DB; } .ds-sheet h4 { margin: 0; padding: 12px 16px; color: #171B20; font: 700 17px Barlow; } .ds-prow { height: 44px; display: flex; align-items: center; padding: 0 16px; border-top: 1px solid #D1D5DB; color: #171B20; font: 500 14px Barlow; }"
+      "name": "v2/Library poster card",
+      "kind": "card",
+      "refersTo": "poster-card",
+      "description": "152 by 228 poster in full colour with title and meta.",
+      "html": "<a class=\"ds-poster\" href=\"#\"><span class=\"ds-poster-img\"></span><strong>Severance</strong><small>2022 · TV</small></a>",
+      "css": ".ds-poster{font-family:'Schibsted Grotesk',sans-serif;display:flex;flex-direction:column;gap:4px;width:152px;color:#111111;text-decoration:none;border-radius:8px;}.ds-poster-img{display:block;width:152px;height:228px;border-radius:8px;background:linear-gradient(160deg,#2C4650,#4A3A2A);box-shadow:inset 0 0 0 1px rgba(17,17,17,.12);}.ds-poster:hover .ds-poster-img{filter:brightness(.92);}.ds-poster strong{font-size:14px;font-weight:600;}.ds-poster small{font-size:13px;color:#686862;}.ds-poster:focus-visible{outline:2px solid #111111;outline-offset:2px;}"
     }
   ],
   "narrative": {
-    "northStar": "White panels on a soft grey page, one green for action, purple for the single best release, red for risk",
-    "overview": "White panels sit on a soft grey page. Dark ink carries the content, one green marks the primary action and the current selection, purple marks the one best release, and red marks risk. These are static pen.dev components in design/mediaManager2.pen; behaviour and accessibility are implementation work. The dark theme remains on the token axis mode, and the 26 dark frames are kept as the record of what changed.",
+    "northStar": "Paper white and black with lime",
+    "overview": "Paper white and black with lime. Black carries the content, the actions and every on state. Lime appears in two places only: the best release and live downloads. Red means something went wrong, amber means something is missing or waiting. Tables stay dense: 40px rows inside a 40px page margin, 8 posters per row on Library. Light mode only; the dark design is archived. These are static pen.dev components; keyboard, focus, screen reader and runtime behaviour are implementation work.",
+    "keyCharacteristics": [
+      "Black for actions and on states",
+      "Lime only as a fill for the best release and live downloads",
+      "Red for problems, amber for missing or waiting",
+      "40px rows, 40px page margin",
+      "Corners 4 to 10px; shadows only on floating things",
+      "Schibsted Grotesk for the interface, Barlow Semi Condensed for data"
+    ],
+    "rules": [],
     "dos": [
-      "Do keep normal states quiet: monitored, meets profile, not aired, downloaded.",
-      "Do show row actions and key hints on the selected or hovered row only.",
-      "Do open one inline panel at a time and dim the rest; destructive actions take two steps.",
-      "Do write status as words plus a tinted chip, and every chip as a Badge instance.",
+      "Do keep normal states quiet: monitored, meets profile, not aired, downloaded show nothing extra.",
+      "Do use black for actions and \"on\" states, and grey tint plus the black side bar for selection.",
+      "Do use the real service and tracker logos from the library, never drawn stand-ins.",
+      "Do write status in words, every chip as a `v2/Badge` instance.",
       "Do use the words in CONTEXT.md: Release, Grab, Replace, Second version, Manual download, Pick a release, Search automatically."
     ],
     "donts": [
-      "Don't use green for decoration or for comparisons; \"better\" and \"not better\" are text marks.",
-      "Don't use purple on more than one row per table, or red for anything that has not gone wrong.",
-      "Don't use ink-3 for readable text.",
-      "Don't add shadows, rounded controls or cards around rows.",
+      "Don't put lime on white as text, icons, lines or a thin progress bar.",
+      "Don't use red for anything that has not gone wrong, or amber for decoration.",
+      "Don't put shadows on anything in the page flow, or corners outside 4 to 10px.",
+      "Don't use `faint-foreground` for readable text, or opacity for disabled.",
+      "Don't draw a coloured side bar on callouts.",
       "Don't describe these static components as working keyboard controls or tested accessibility."
     ]
   }
