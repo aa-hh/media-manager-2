@@ -41,6 +41,7 @@ const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url)
 const releaseDetailsModuleUrl = new URL('../dist/server/releaseDetails.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const secondVersionsModuleUrl = new URL('../dist/server/secondVersions.js', import.meta.url).href;
+const secondVersionRowsModuleUrl = new URL('../dist/server/secondVersionRows.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
 const libraryModuleUrl = new URL('../dist/server/library.js', import.meta.url).href;
 const protectionModuleUrl = new URL('../dist/server/protection.js', import.meta.url).href;
@@ -4991,6 +4992,132 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   assert.deepEqual(states('/lost'), [['failed', 'rTorrent never received it. rTorrent is unreachable.']]);
   assert.deepEqual(states('/sonarr'), [['failed', 'Sonarr or Radarr grabbed the same torrent.']]);
   assert.equal(calls.length, 6, 'a send a restart left behind is never sent again');
+});
+
+// Reading tracked paths with a bare prefix match, resolving a problem after a failed Sonarr or Radarr read, or touching
+// the file when a title disappears turns this red.
+test('second versions are served under their movie and series, and a check flags ones that lose their title', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
+  const { createLibrary, createLibraryRoutes } = await import(libraryModuleUrl);
+  const { createSecondVersionChecks, listSecondVersionRows } = await import(secondVersionRowsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-version-rows-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const versions = { radarr: join(root, 'versions', 'radarr'), sonarr: join(root, 'versions', 'sonarr') };
+  const movieFile = join(versions.radarr, 'Dune (2021)', 'Dune (2021) - Remux-2160p FLUX.mkv');
+  const episodeFile = join(versions.sonarr, 'Show', 'Season 01', 'Show - S01E01 - WEBDL-2160p NTb.mkv');
+  for (const path of [movieFile, episodeFile]) {
+    await mkdir(join(path, '..'), { recursive: true });
+    await writeFile(path, 'video');
+  }
+  const { fake, ...arr } = connectArr(database);
+  const file = (relativePath) => ({ id: 1, relativePath, size: 5, quality: { quality: { name: 'Bluray-1080p' } } });
+  fake.radarr.state.movies = [
+    movieRecord({ id: 9, title: 'Dune', path: join(root, 'library', 'Dune (2021)'), hasFile: true, movieFile: file('Dune (2021) - Bluray-1080p.mkv') }),
+    // Beside the versions folder, not inside it.
+    movieRecord({ id: 10, path: `${versions.radarr}-old/Other`, hasFile: true, movieFile: file('Other.mkv') }),
+  ];
+  fake.sonarr.state.series = [seriesRecord({ id: 5, title: 'Show', path: join(root, 'library', 'Show') })];
+  fake.sonarr.state.episodes = [101, 102].map((id) => episodeRecord({ id, seriesId: 5, episodeNumber: id - 100 }));
+
+  const insert = (values) => {
+    const row = { movie_id: null, series_id: null, episode_id: null, file_path: null, imported_at: null, failure: null, ...values };
+    database.prepare(`
+      INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, size_bytes, hash, state, failure, file_path, created_at, updated_at, imported_at)
+      VALUES (?, ?, ?, ?, ?, 'guid', 'Blutopia', ?, 1000, ?, ?, ?, ?, ?, ?, ?)
+    `).run(row.service, row.movie_id, row.series_id, row.episode_id, row.title, row.quality, row.hash, row.state, row.failure, row.file_path, row.created_at, row.created_at, row.imported_at);
+  };
+  insert({ service: 'radarr', movie_id: 9, title: 'Dune.2021.2160p.Remux-FLUX', quality: 'Remux-2160p', hash: 'M'.repeat(40), state: 'imported', file_path: movieFile, created_at: 100, imported_at: 200 });
+  insert({ service: 'radarr', movie_id: 9, title: 'Dune 2021 old', quality: 'WEBDL-720p', hash: 'D'.repeat(40), state: 'deleted', created_at: 50 });
+  insert({ service: 'sonarr', series_id: 5, episode_id: 101, title: 'Show.S01E01.2160p-NTb', quality: 'WEBDL-2160p', hash: 'E'.repeat(40), state: 'imported', file_path: episodeFile, created_at: 300, imported_at: 400 });
+  insert({ service: 'sonarr', series_id: 5, episode_id: 102, title: 'Show S01E02 [web]', quality: 'WEBDL-2160p', hash: 'F'.repeat(40), state: 'downloading', created_at: 500 });
+  insert({ service: 'sonarr', series_id: 5, episode_id: 102, title: 'Show.S01E02-BAD', quality: 'WEBDL-2160p', hash: null, state: 'failed', failure: 'The download link returned a web page, not a torrent file.', created_at: 600 });
+  const torrent = database.prepare("INSERT INTO torrents VALUES (?, ?, 1000, ?, 0, 7, 1, 1, 1, ?, '', 0, ?, 0, 0, 'blutopia.cc', 1, 1, NULL, ?)");
+  torrent.run('M'.repeat(40), 'Dune', 1000, 1, 1500, 7200);
+  torrent.run('F'.repeat(40), 'Show S01E02', 400, 0, 0, 0);
+
+  const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title)));
+  const read = async (path) => (await routes.request(path)).json();
+
+  // The tracked version and the second version come back in one answer; a deleted second version does not.
+  const movie = await read('/movie/9');
+  assert.equal(movie.file.relativePath, 'Dune (2021) - Bluray-1080p.mkv');
+  assert.deepEqual(movie.secondVersions, [{
+    id: 1, service: 'radarr', movieId: 9, seriesId: null, episodeId: null, state: 'imported', failure: null,
+    releaseTitle: 'Dune.2021.2160p.Remux-FLUX', indexer: 'Blutopia', quality: 'Remux-2160p', group: 'FLUX', sizeBytes: 1000,
+    addedAt: 100, importedAt: 200, hash: 'M'.repeat(40), path: movieFile, percent: null,
+    seeding: { inRtorrent: true, complete: true, ratio: 1.5, seedingSeconds: 7200, upRate: 7, trackerHost: 'blutopia.cc' },
+  }]);
+  const show = await read('/series/5');
+  assert.deepEqual(show.secondVersions.map((row) => [row.episodeId, row.state, row.group, row.percent, row.seeding?.complete ?? null, row.failure]), [
+    [101, 'imported', 'NTb', null, null, null],
+    [102, 'downloading', null, 40, false, null],
+    [102, 'failed', 'BAD', null, null, 'The download link returned a web page, not a torrent file.'],
+  ]);
+
+  const problems = createProblems({ database, events: createEventHub() });
+  const checks = createSecondVersionChecks({ database, arr, problems });
+  const open = () => listOpenProblems(database).map((problem) => `${problem.kind} ${problem.subject.service} ${problem.subject.id} ${problem.state}`).sort();
+  const inode = async () => (await stat(movieFile)).ino;
+
+  // No versions folders set: only the orphan and missing-file checks run, and nothing is wrong yet.
+  await checks.check();
+  assert.deepEqual(open(), []);
+  setSetting(database, 'hostPaths', 'versions.radarr', versions.radarr);
+  setSetting(database, 'hostPaths', 'versions.sonarr', versions.sonarr);
+
+  // A Radarr upgrade, rename and refresh changes only the tracked file.
+  const before = { rows: listSecondVersionRows(database, { service: 'radarr', movieId: 9 }), inode: await inode() };
+  fake.radarr.state.movies[0].movieFile = { ...file('Dune (2021) - Remux-2160p.mkv'), id: 2 };
+  assert.equal((await arr.radarr.refreshTitle(9)).kind, 'ok');
+  await checks.check();
+  assert.deepEqual(open(), []);
+  assert.deepEqual(listSecondVersionRows(database, { service: 'radarr', movieId: 9 }), before.rows);
+  assert.equal(await inode(), before.inode);
+
+  // Tracked files inside a versions folder, a movie and an episode gone, and an imported file missing.
+  fake.radarr.state.movies.push(movieRecord({ id: 11, path: join(versions.radarr, 'Stray'), hasFile: true, movieFile: file('Stray.mkv') }));
+  fake.sonarr.state.series.push(seriesRecord({ id: 6, path: join(versions.sonarr, 'Wrong') }));
+  fake.sonarr.state.episodes.push(episodeRecord({ id: 201, seriesId: 6, hasFile: true, episodeFile: file('Season 01/Wrong - S01E01.mkv') }));
+  fake.radarr.state.movies = fake.radarr.state.movies.filter((record) => record.id !== 9);
+  fake.sonarr.state.episodes = fake.sonarr.state.episodes.filter((record) => record.id !== 102);
+  await rm(episodeFile);
+  await checks.check();
+  assert.deepEqual(open(), [
+    'second_version_missing sonarr 101 needs_you',
+    'second_version_orphaned radarr 9 needs_you',
+    'second_version_orphaned sonarr 102 needs_you',
+    'tracked_in_versions_folder radarr 11 needs_you',
+    'tracked_in_versions_folder sonarr 201 needs_you',
+  ]);
+  const orphan = listOpenProblems(database).find((problem) => problem.kind === 'second_version_orphaned' && problem.subject.id === '9');
+  assert.equal(orphan.summary, `Radarr no longer has this movie. Its second version (Dune.2021.2160p.Remux-FLUX) was left alone: ${movieFile}`);
+  assert.equal(await inode(), before.inode, 'the orphaned file is kept');
+
+  // Radarr down: its problems stay open although the cause is gone; the missing file coming back resolves at once.
+  fake.radarr.state.movies = fake.radarr.state.movies.filter((record) => record.id !== 11);
+  fake.radarr.state.down = true;
+  await writeFile(episodeFile, 'video');
+  await checks.check();
+  assert.deepEqual(open(), [
+    'second_version_orphaned radarr 9 needs_you',
+    'second_version_orphaned sonarr 102 needs_you',
+    'tracked_in_versions_folder radarr 11 needs_you',
+    'tracked_in_versions_folder sonarr 201 needs_you',
+  ]);
+  fake.radarr.state.down = false;
+  await checks.check();
+  assert.deepEqual(open(), [
+    'second_version_orphaned radarr 9 needs_you',
+    'second_version_orphaned sonarr 102 needs_you',
+    'tracked_in_versions_folder sonarr 201 needs_you',
+  ]);
 });
 
 // Forcing an import blocked for any reason but "Not an upgrade", using a move instead of a hardlink-or-copy import, forcing the same download twice, or calling a replace complete without an import breaks the replace guarantee.
