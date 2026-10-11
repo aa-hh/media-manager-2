@@ -2350,8 +2350,11 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
 
   // Skipping the saved copy, refetching before seven days, or making the visitor wait on a stale refetch turns this red.
   await t.test('a second request within seven days makes no TMDB call, and a stale copy is served while it refetches', async () => {
-    respond = json({ id: 20, title: 'First', recommendations: { results: [{ id: 21, title: 'Old' }] } });
     const before = calls;
+    // The show saved by the first subtest is found again by its TMDB id though the store keeps shows under their TVDB id.
+    assert.deepEqual((await page('/tmdb/tv/95396')).keywords, ['office']);
+    assert.equal(calls, before);
+    respond = json({ id: 20, title: 'First', recommendations: { results: [{ id: 21, title: 'Old' }] } });
     assert.equal((await page('/tmdb/movie/20')).similar[0].title, 'Old');
     clock.value += 7 * 86_400_000 - 1;
     respond = json({ id: 20, title: 'First', recommendations: { results: [{ id: 21, title: 'New' }] } });

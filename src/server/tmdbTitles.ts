@@ -40,6 +40,7 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
   // A saved copy is served at once; a stale one is refetched in the background for the next request.
   const details = async (type: TmdbMediaType, tmdbId: number): Promise<Partial<TmdbDetails> | undefined> => {
     const load = () => tmdb.details(type, tmdbId);
+    // Both arms match: the ternary only narrows the type for TitleRef.
     const saved = store.get<Partial<TmdbDetails>>(type === 'movie' ? { type, tmdbId } : { type, tmdbId }, PART);
     if (saved !== undefined) {
       const title = titleOf(type, tmdbId, saved.value.tvdbId);
