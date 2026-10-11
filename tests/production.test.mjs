@@ -39,6 +39,7 @@ const jobsModuleUrl = new URL('../dist/server/jobs.js', import.meta.url).href;
 const searchModuleUrl = new URL('../dist/server/search.js', import.meta.url).href;
 const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
 const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
+const releaseDetailsModuleUrl = new URL('../dist/server/releaseDetails.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
 const libraryModuleUrl = new URL('../dist/server/library.js', import.meta.url).href;
@@ -50,6 +51,7 @@ const apiModuleUrl = new URL('../dist/server/api.js', import.meta.url).href;
 const connectionsModuleUrl = new URL('../dist/server/connections.js', import.meta.url).href;
 const trackersModuleUrl = new URL('../dist/server/trackers.js', import.meta.url).href;
 const trackerRulesModuleUrl = new URL('../dist/server/trackerRules.js', import.meta.url).href;
+const adviceModuleUrl = new URL('../dist/server/advice.js', import.meta.url).href;
 const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
@@ -1616,11 +1618,11 @@ test('hit and run rules come from settings with the confirmed defaults and an ex
 
   const privatehd = findTrackerRule(database, 'PrivateHD').rule;
   for (const [gb, hours] of [[1, 72.0], [49.99, 171.98], [50, 172.0], [100, 241.31]]) {
-    const { requiredHours } = checkHitAndRun(privatehd, { seedHours: 0, ratio: 0, sizeBytes: gb * 1000 ** 3 });
+    const { requiredHours } = checkHitAndRun(privatehd, { seedHours: 0, ratio: 0, sizeBytes: gb * 1000 ** 3, completedBytes: gb * 1000 ** 3 });
     assert.equal(Math.round(requiredHours * 100) / 100, hours, `${gb} GB`);
   }
 
-  const torrent = (seedHours, ratio) => ({ seedHours, ratio, sizeBytes: 10 * 1000 ** 3 });
+  const torrent = (seedHours, ratio) => ({ seedHours, ratio, sizeBytes: 10 * 1000 ** 3, completedBytes: 10 * 1000 ** 3 });
   const blutopia = findTrackerRule(database, 'blutopia.cc').rule;
   const beyondhd = findTrackerRule(database, 'BeyondHD (Prowlarr)');
   assert.equal(beyondhd.host, 'beyond-hd.me');
@@ -1648,11 +1650,143 @@ test('hit and run rules come from settings with the confirmed defaults and an ex
   assert.equal(findTrackerRule(database, 'Unknown (Prowlarr)'), undefined);
 
   setSetting(database, 'trackerConfiguration', 'rules.blutopia.cc', JSON.stringify({ minHours: 200, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' }));
-  assert.deepEqual(findTrackerRule(database, 'Blutopia (API)').rule, { minHours: 200, minHoursFormula: null, minRatio: 1, minGlobalRatio: 0.5, logic: 'or' });
+  assert.deepEqual(findTrackerRule(database, 'Blutopia (API)').rule, {
+    minHours: 200, minHoursFormula: null, minRatio: 1, minGlobalRatio: 0.5, logic: 'or', partialExemptBelow: null, partialRatio: null, partialMaxHours: null,
+  });
   for (const bad of [
     'not json', '{"minHours":10,"minRatio":1,"logic":"xor"}', '{"minHours":10,"minRatio":1}',
     '{"minRatio":1,"logic":"or"}', '{"minHours":-1}', '{"minHours":10,"minGlobalRatio":"high"}',
   ]) {
+    setSetting(database, 'trackerConfiguration', 'rules.example.org', bad);
+    assert.throws(() => findTrackerRule(database, 'example.org'), { message: 'The saved hit and run rule for example.org is not valid.' });
+  }
+});
+
+// Dropping either margin, letting time since finishing prove a time rule, matching only the exact announce hostname
+// (so "tracker.beyond-hd.me" finds no rule), or letting a low global ratio leave "safe" standing turns this red.
+test('removal advice applies the hit and run rule with margins and proves time only from the seeding counter', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-advice-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { adviseRemoval } = await import(adviceModuleUrl);
+  const database = openDatabase(join(root, 'database.sqlite'));
+  t.after(() => database.close());
+
+  const now = 1_800_000_000_000;
+  const hour = 3600;
+  const GB = 1000 ** 3;
+  const finished = now / 1000 - 1000 * hour;
+  let count = 0;
+  // Each row is first seen before it finished (full seeding history) unless `firstSeenAt` says otherwise.
+  const torrent = (input) => {
+    const hash = (++count).toString(16).toUpperCase().padStart(40, '0');
+    const row = { host: 'blutopia.cc', sizeBytes: 10 * GB, ratio: 0, seconds: 0, finishedAt: finished, firstSeenAt: (finished - hour) * 1000, goneAt: null, complete: 1, active: 1, ...input };
+    database.prepare("INSERT INTO torrents VALUES (?, 'Some.Movie', ?, ?, 0, 0, 1, 1, ?, ?, '', ?, ?, 0, 0, ?, ?, ?, ?, ?)")
+      .run(hash, row.sizeBytes, row.completedBytes ?? row.sizeBytes, row.active, row.complete, row.finishedAt, row.ratio, row.host, row.firstSeenAt, now, row.goneAt, row.seconds);
+    return hash;
+  };
+  const ratios = { blutopia: 1.0, beyondhd: null, privatehd: null };
+  const advise = (hash, accountRatios = ratios) => adviseRemoval(database, hash, { now, accountRatio: async (tracker) => accountRatios[tracker] });
+  const blutopiaNeeds = 184.8 * hour;
+  const unknownRatio = (host) => `Global ratio unknown: your ${host} ratio can't be read`;
+
+  for (const [name, input, recommendation, reason, globalRatio = null] of [
+    ['Blutopia 1 s short', { seconds: blutopiaNeeds - 1, ratio: 5000 }, 'keep', 'Keep seeding: 1 hour of seeding left'],
+    ['Blutopia met', { seconds: blutopiaNeeds }, 'safe', 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin'],
+    ['Beyond-HD short on both', { host: 'tracker.beyond-hd.me', seconds: 132 * hour - 1, ratio: 1049 }, 'keep',
+      'Keep seeding: 1 hour of seeding left, or ratio 1.04 of 1.05 needed', unknownRatio('beyond-hd.me')],
+    ['Beyond-HD time met', { host: 'tracker.beyond-hd.me', seconds: 132 * hour }, 'safe',
+      'Hit and run rule met: seeded 132 hours of 132 hours needed with margin', unknownRatio('beyond-hd.me')],
+    ['Beyond-HD ratio met', { host: 'tracker.beyond-hd.me', ratio: 1050 }, 'safe', 'Hit and run rule met: ratio 1.05 of 1.05', unknownRatio('beyond-hd.me')],
+    ['PrivateHD 40 GB 1 s short', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, seconds: 167.2 * hour - 1, ratio: 949 }, 'keep',
+      'Keep seeding: 1 hour of seeding left, or ratio 0.94 of 0.95 needed'],
+    ['PrivateHD 40 GB met', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, seconds: 167.2 * hour }, 'safe',
+      'Hit and run rule met: seeded 168 hours of 168 hours needed with margin'],
+    ['PrivateHD ratio met', { host: 'tracker.privatehd.to', ratio: 950 }, 'safe', 'Hit and run rule met: ratio 0.95 of 0.95'],
+    ['no history, finished under the rule', { finishedAt: now / 1000 - 100 * hour, firstSeenAt: now - hour * 1000 }, 'keep',
+      'Keep seeding: at least 85 hours of seeding left'],
+    ['no history, finished long ago', { firstSeenAt: now - 10 * hour * 1000, seconds: 10 * hour }, 'unconfirmed',
+      "Can't confirm yet; keep seeding: seeding time not confirmed: up to 1000 hours since it finished (upper estimate, includes time not seeding); confirmed in 175 hours if it keeps seeding"],
+    ['no history, counter proves it', { firstSeenAt: now - 200 * hour * 1000, seconds: blutopiaNeeds }, 'safe',
+      'Hit and run rule met: seeded 185 hours of 185 hours needed with margin'],
+    ['no history, ratio proves it', { host: 'tracker.beyond-hd.me', firstSeenAt: now - hour * 1000, ratio: 1100 }, 'safe',
+      'Hit and run rule met: ratio 1.10 of 1.05', unknownRatio('beyond-hd.me')],
+    ['gone from rTorrent', { seconds: blutopiaNeeds, goneAt: now - 1000 }, 'keep', 'Seeding time unknown (torrent not in rTorrent)'],
+    ['no rule', { host: 'tracker.opentrackr.org', seconds: blutopiaNeeds }, 'unconfirmed', "Can't tell; keep seeding: no hit and run rule for tracker.opentrackr.org"],
+    ['no tracker', { host: null }, 'unconfirmed', "Can't tell; keep seeding: its tracker is not known"],
+    // Incomplete torrents: judging them by the complete rule, letting the counter prove PrivateHD's 60 days, dropping the
+    // ratio margin, or calling a running download under 10% safe turns these red.
+    ['PrivateHD partial ratio met', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 20 * GB, complete: 0, ratio: 950 }, 'safe',
+      'Partly downloaded: ratio 0.95 of 0.95 on the data downloaded'],
+    ['PrivateHD partial ratio short', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 20 * GB, complete: 0, ratio: 949, seconds: 2000 * hour }, 'keep',
+      "Partly downloaded: clears at ratio 0.95 of the data downloaded (now 0.94) or after 66 days seeding, which isn't measured yet"],
+    ['PrivateHD under 10%, stopped', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 3 * GB, complete: 0, active: 0 }, 'safe',
+      'Under 10% downloaded; not a hit and run on privatehd.to'],
+    ['PrivateHD under 10%, downloading', { host: 'tracker.privatehd.to', sizeBytes: 40 * GB, completedBytes: 3 * GB, complete: 0 }, 'keep', 'Still downloading'],
+    ['Blutopia incomplete', { completedBytes: 5 * GB, complete: 0, seconds: blutopiaNeeds }, 'keep', 'Download not complete; blutopia.cc counts seed time only at 100%'],
+  ]) {
+    assert.deepEqual(await advise(torrent(input)), { recommendation, reason, globalRatio }, name);
+  }
+  assert.equal((await advise('F'.repeat(40))).reason, 'Seeding time unknown (torrent not in rTorrent)');
+
+  // Blutopia's minimum is 0.4, so anything under 0.5 keeps the torrent even when its rule is met.
+  const met = torrent({ seconds: blutopiaNeeds });
+  assert.deepEqual(await advise(met, { blutopia: 0.49 }), {
+    recommendation: 'keep', reason: 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin',
+    globalRatio: 'Keep for ratio: your blutopia.cc ratio is 0.49, minimum 0.4',
+  });
+  assert.equal((await advise(met, { blutopia: 0.5 })).recommendation, 'safe');
+  assert.deepEqual(await advise(met, { blutopia: null }), {
+    recommendation: 'safe', reason: 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin', globalRatio: unknownRatio('blutopia.cc'),
+  });
+
+  setSetting(database, 'trackerConfiguration', 'margins.blutopia.cc', JSON.stringify({ timeFactor: 1.2 }));
+  assert.equal((await advise(met)).reason, 'Keep seeding: 17 hours of seeding left');
+  for (const bad of ['not json', '{"timeFactor":0.9}', '{"extraHours":-1}', '{"ratioExtra":"0.05"}', '{"other":1}', '[]']) {
+    setSetting(database, 'trackerConfiguration', 'margins.blutopia.cc', bad);
+    await assert.rejects(advise(met), { message: 'The saved hit and run margins for blutopia.cc are not valid.' }, bad);
+  }
+});
+
+// PrivateHD's rules for incomplete torrents (privatehd.to/rules/hit-run-rules). Each case names its defect.
+test('incomplete torrents follow the tracker partial-download rules', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-partial-rules-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { checkHitAndRun, findTrackerRule } = await import(trackerRulesModuleUrl);
+  const database = openDatabase(join(root, 'database.sqlite'));
+  t.after(() => database.close());
+  const privatehd = findTrackerRule(database, 'privatehd.to').rule;
+  const blutopia = findTrackerRule(database, 'blutopia.cc').rule;
+  const gb = 1000 ** 3;
+  // 15 GB torrent; `ratio` is uploaded over downloaded, as rTorrent's d.ratio reports it.
+  const stuck = (downloadedGb, uploadedGb, seedHours) => ({ seedHours, ratio: uploadedGb / downloadedGb, sizeBytes: 15 * gb, completedBytes: downloadedGb * gb });
+  for (const [label, rule, torrent, expected] of [
+    // Dividing the upload by the torrent's size instead of the data downloaded turns this red.
+    ['4.5 of 5 GB uploaded', privatehd, stuck(5, 4.5, 0), ['partial', true]],
+    // Lowering partialRatio below 0.9 turns this red.
+    ['4.4 of 5 GB uploaded', privatehd, stuck(5, 4.4, 0), ['partial', false]],
+    // Ignoring partialMaxHours, or applying the 15 GB complete seed time (102 h) to an incomplete torrent, turns these red.
+    ['1440 h partial', privatehd, stuck(5, 0, 1440), ['partial', true]],
+    ['1439 h partial', privatehd, stuck(5, 0, 1439), ['partial', false]],
+    // Dropping the under-10% exemption turns this red.
+    ['1.4 of 15 GB', privatehd, stuck(1.4, 0, 0), ['under_buffer', true]],
+    // Using <= instead of < for the exemption turns this red.
+    ['exactly 10%', privatehd, stuck(1.5, 0, 0), ['partial', false]],
+    // Letting an incomplete torrent fall back to the complete rule, or giving Blutopia partial defaults, turns these red.
+    ['Blutopia incomplete, long seed', blutopia, stuck(5, 5, 10000), ['partial', false]],
+    ['Blutopia incomplete, tiny', blutopia, stuck(0.1, 0, 0), ['partial', false]],
+  ]) {
+    const result = checkHitAndRun(rule, torrent);
+    assert.deepEqual([result.case, result.met], expected, label);
+  }
+  // Treating a finished torrent as incomplete turns this red.
+  assert.equal(checkHitAndRun(privatehd, { seedHours: 0, ratio: 0.9, sizeBytes: 15 * gb, completedBytes: 15 * gb }).case, 'complete');
+
+  // Accepting a non-numeric partialRatio, or a fraction above 1, turns this red.
+  for (const bad of ['{"minHours":10,"partialRatio":"abc"}', '{"minHours":10,"partialExemptBelow":10}']) {
     setSetting(database, 'trackerConfiguration', 'rules.example.org', bad);
     assert.throws(() => findTrackerRule(database, 'example.org'), { message: 'The saved hit and run rule for example.org is not valid.' });
   }
@@ -2363,6 +2497,10 @@ test('tracker accounts read saved settings and classify each outcome', async (t)
   const listed = await app.request('/api/trackers', { headers: { Cookie: session } });
   assert.equal(listed.status, 200);
   assert.deepEqual(await listed.json(), fixedArray);
+  // Dropping the hash check on the advice route turns this red.
+  assert.equal((await app.request('/api/advice/not-a-hash', { headers: { Cookie: session } })).status, 400);
+  const advice = await app.request(`/api/advice/${'a'.repeat(40)}`, { headers: { Cookie: session } });
+  assert.deepEqual(await advice.json(), { recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null });
   const posted = await app.request('/api/trackers', { method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: '{}' });
   assert.notEqual(posted.status, 200);
 });
@@ -4605,14 +4743,19 @@ test('interactive searches are kept with their age and refreshed only on request
     {
       guid: 'g1', indexerId: 3, indexer: 'Blutopia', title: 'Show.S01E02.1080p.WEB-DL', quality: { quality: { name: 'WEBDL-1080p' } },
       size: 2_000_000_000, ageHours: 5.5, seeders: 40, leechers: 2, approved: true, rejections: [], customFormatScore: 1200,
-      customFormats: [{ name: 'HQ' }], indexerFlags: 1 | 32, protocol: 'torrent',
+      customFormats: [{ name: 'HQ' }], indexerFlags: 1 | 32, protocol: 'torrent', qualityWeight: 304,
     },
     {
       guid: 'g2', indexerId: 3, title: 'Show.S01E02.720p.HDTV', quality: { quality: { name: 'HDTV-720p' } }, approved: false,
       rejections: [{ reason: 'Not an upgrade for existing episode file(s)' }], indexerFlags: 0, seeders: 0,
     },
     { guid: '', indexerId: 3, title: 'broken' },
+    {
+      guid: 'g3', indexerId: 4, indexer: 'PrivateHD', title: 'Show.S01E02.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10', size: 4_250_000_000,
+      approved: true, rejections: [], indexerFlags: 0,
+    },
   ];
+  database.prepare('INSERT INTO tracker_cooldowns VALUES (?, ?, ?, ?, ?)').run('blutopia.cc', 900, 'refused', 1, 'AB'.repeat(20));
   let sonarr = () => new Response(JSON.stringify(sonarrReleases), { status: 200 });
   const paths = [];
   let releaseCalls = 0;
@@ -4650,7 +4793,19 @@ test('interactive searches are kept with their age and refreshed only on request
   assert.deepEqual(first.search.releases.map((item) => [item.guid, item.approved, item.flags, item.rejections]), [
     ['g1', true, ['Freeleech', 'Internal'], []],
     ['g2', false, [], ['Not an upgrade for existing episode file(s)']],
+    ['g3', true, [], []],
   ]);
+  // Reading PrivateHD's hours without the size, giving Blutopia a ratio side, or missing an active cooldown turns these red.
+  assert.deepEqual(first.search.releases.map((item) => [item.guid, item.hitAndRun]), [
+    ['g1', { host: 'blutopia.cc', hours: 168, ratio: null, logic: null, cooldown: true, cooldownSince: 900 }],
+    ['g2', null],
+    ['g3', { host: 'privatehd.to', hours: 81, ratio: 0.9, logic: 'or', cooldown: false, cooldownSince: null }],
+  ]);
+  assert.deepEqual(first.search.releases.map((item) => [item.qualityWeight, item.compared, item.audio, item.hdr]), [
+    [304, null, null, null], [null, null, null, null], [null, null, 'Atmos 5.1', 'DV HDR10'],
+  ]);
+  // Sonarr answers nothing for the series here, so there is no owned file to compare with.
+  assert.equal(first.search.owned, null);
   assert.deepEqual(first.search.releases[0].past, []);
   assert.deepEqual(first.search.releases[1].past, [
     { kind: 'grabbed', at: '2026-10-01T10:00:00Z' },
@@ -4674,18 +4829,142 @@ test('interactive searches are kept with their age and refreshed only on request
   assert.equal(releaseCalls, 2);
   assert.equal(refreshedA, refreshedB);
   assert.equal(refreshedA.search.fetchedAt, 5_000);
-  assert.deepEqual(refreshedA.search.releases.map((item) => item.guid), ['g1']);
+  assert.deepEqual(refreshedA.search.releases.map((item) => item.guid), ['g1', 'g3']);
   release = undefined;
 
   sonarr = () => new Response('', { status: 503 });
   const failed = await releases.refresh(episode);
   assert.equal(failed.kind, 'unreachable');
   assert.equal(failed.stored.fetchedAt, 5_000);
-  assert.deepEqual((await releases.get(episode)).search.releases.map((item) => item.guid), ['g1']);
+  assert.deepEqual((await releases.get(episode)).search.releases.map((item) => item.guid), ['g1', 'g3']);
 
   const movie = await releases.get({ service: 'radarr', kind: 'movie', movieId: 9 });
   assert.deepEqual(movie.search.releases[0].flags, ['Freeleech 75%', 'Nuked']);
   assert.equal(releases.find({ service: 'radarr', kind: 'movie', movieId: 9 }, 'm1').title, 'Movie.2021.2160p');
+});
+
+// Reading the wrong codec, keeping the codec name beside Atmos, losing the channels, listing HDR beside HDR10, or ranking
+// a quality inside a profile group by its own position instead of the group's turns this red.
+test('releases read audio and HDR from their titles and compare with the owned file', async () => {
+  const { audioHdrFromTitle, audioHdrFromMediaInfo, compareToOwned, qualityWeightOf } = await import(releaseDetailsModuleUrl);
+  for (const [title, audio, hdr] of [
+    ['Movie.2021.2160p.UHD.BluRay.DDP5.1.Atmos.DV.HDR10.x265-GRP', 'Atmos 5.1', 'DV HDR10'],
+    ['Show.S01E02.1080p.WEB-DL.DDP5.1.H.264-GRP', 'DDP 5.1', null],
+    ['Movie.2021.1080p.BluRay.TrueHD.x264-GRP', 'TrueHD', null],
+    ['Movie.2021.2160p.WEB-DL.DTS-HD.MA.7.1.HDR10+.HEVC-GRP', 'DTS-HD 7.1', 'HDR10+'],
+    ['Movie.2021.2160p.BluRay.TrueHD.Atmos.7.1.DoVi.x265', 'Atmos 7.1', 'DV'],
+    ['Movie.2021.2160p.WEB-DL.AAC2.0.HDR.HLG.x265', 'AAC 2.0', 'HDR HLG'],
+    ['Show.S01E02.720p.HDTV.x264', null, null],
+  ]) assert.deepEqual(audioHdrFromTitle(title), { audio, hdr }, title);
+  for (const [audioCodec, audioChannels, videoDynamicRangeType, audio, hdr] of [
+    ['EAC3 Atmos', 5.1, 'DV HDR10', 'Atmos 5.1', 'DV HDR10'],
+    ['DTS-HD MA', 7.1, 'HDR10Plus', 'DTS-HD 7.1', 'HDR10+'],
+    ['AC3', 2, 'DV SDR', 'DD 2.0', 'DV'],
+  ]) assert.deepEqual(audioHdrFromMediaInfo({ audioCodec, audioChannels, videoDynamicRangeType }), { audio, hdr }, audioCodec);
+
+  const items = [
+    { quality: { name: 'SDTV' }, items: [] },
+    { name: 'WEB 720p', items: [{ quality: { name: 'WEBDL-720p' } }, { quality: { name: 'WEBRip-720p' } }] },
+    { quality: { name: 'Bluray-1080p' }, items: [] },
+  ];
+  assert.equal(qualityWeightOf(items, 'WEBRip-720p', { real: 0, version: 1 }), 101);
+  assert.equal(qualityWeightOf(items, 'Bluray-1080p', { real: 1, version: 2 }), 212);
+  assert.equal(qualityWeightOf(items, 'Remux-2160p', { real: 0, version: 1 }), null);
+  const owned = { qualityWeight: 101, customFormatScore: 500 };
+  for (const [release, against, expected] of [
+    [{ qualityWeight: 201, customFormatScore: 0 }, owned, 'better'],
+    [{ qualityWeight: 101, customFormatScore: 600 }, owned, 'better'],
+    [{ qualityWeight: 101, customFormatScore: 500 }, owned, 'same'],
+    [{ qualityWeight: 1, customFormatScore: 9000 }, owned, 'worse'],
+    [{ qualityWeight: 101, customFormatScore: -50 }, { qualityWeight: 101, customFormatScore: null }, 'same'],
+    [{ qualityWeight: null, customFormatScore: 0 }, owned, null],
+    [{ customFormatScore: 0 }, owned, null],
+    [{ qualityWeight: 101, customFormatScore: 0 }, { qualityWeight: null, customFormatScore: 0 }, null],
+  ]) assert.equal(compareToOwned(release, against), expected, JSON.stringify([release, against]));
+});
+
+// Comparing a search stored before quality weights were kept, matching the torrent by anything but the latest imported
+// grab's hash, missing the announce host's subdomain, or letting a failed upstream call fail the search turns this red.
+test('pick a release shows the owned file with its seeding and compares each release with it', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createArr } = await import(arrModuleUrl);
+  const { createReleases } = await import(releasesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-owned-release-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65033');
+  setSetting(database, 'credentials', 'sonarr.apiKey', 'sonarr-key');
+  const hash = 'CD'.repeat(20);
+  const insertGrab = database.prepare(`INSERT INTO torrent_grabs (hash, service, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand, imported_at)
+    VALUES (?, 'sonarr', 5, '[50]', ?, 'PrivateHD', ?, 0, ?)`);
+  insertGrab.run('EF'.repeat(20), 'Show.S01E02.720p.HDTV-OLD', 1, 2);
+  insertGrab.run(hash, 'Show.S01E02.1080p.WEB-DL.DDP5.1-OWN', 3, 4);
+  database.prepare(`INSERT INTO torrents VALUES (?, 'Show.S01E02', 10000000000, 10000000000, 0, 0, 1, 1, 1, 1, '', 0, 450, 0, 0,
+    'tracker.privatehd.to', 1, 1, NULL, ?)`).run(hash, 31 * 3600 + 100);
+  database.prepare('INSERT INTO release_searches (target, fetched_at, releases) VALUES (?, ?, ?)').run('sonarr:episode:5:50', 500, JSON.stringify([{
+    guid: 'old', indexerId: 3, indexer: null, title: 'Show.S01E02.2160p', quality: null, size: null, ageHours: null, seeders: null, leechers: null,
+    approved: true, rejections: [], customFormatScore: 0, customFormats: [], flags: [], protocol: null, past: [], qualityModel: null, languages: [],
+  }]));
+  let profileStatus = 200;
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+  const fetch = async (url) => {
+    const { pathname } = new URL(String(url));
+    if (pathname === '/api/v3/series/5') return json({ id: 5, title: 'Show', qualityProfileId: 1 });
+    if (pathname === '/api/v3/episode') {
+      return json([{
+        id: 50, seasonNumber: 1, episodeNumber: 2, hasFile: true,
+        episodeFile: {
+          id: 9, relativePath: 'Season 1/Show.S01E02.mkv', size: 10_000_000_000, releaseGroup: 'OWN', customFormatScore: 100, qualityCutoffNotMet: true,
+          quality: { quality: { name: 'WEBDL-1080p' }, revision: { version: 1, real: 0 } },
+          mediaInfo: { audioCodec: 'EAC3', audioChannels: 5.1, videoDynamicRangeType: '' },
+        },
+      }]);
+    }
+    if (pathname === '/api/v3/qualityprofile/1') {
+      return json({ items: [
+        { quality: { name: 'HDTV-720p' }, items: [] },
+        { name: 'WEB 1080p', items: [{ quality: { name: 'WEBDL-1080p' } }] },
+        { quality: { name: 'Bluray-2160p' }, items: [] },
+      ] }, profileStatus);
+    }
+    if (pathname === '/api/v3/release') {
+      return json([
+        { guid: 'up', indexerId: 3, title: 'Show.S01E02.2160p.BluRay', approved: true, rejections: [], qualityWeight: 201, customFormatScore: 0 },
+        { guid: 'same', indexerId: 3, title: 'Show.S01E02.1080p.WEB-DL', approved: true, rejections: [], qualityWeight: 101, customFormatScore: 100 },
+        { guid: 'down', indexerId: 3, title: 'Show.S01E02.720p.HDTV', approved: true, rejections: [], qualityWeight: 1, customFormatScore: 2000 },
+      ]);
+    }
+    return new Response('', { status: 500 });
+  };
+  const releases = createReleases(database, { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) }, () => 1_000);
+  const episode = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
+
+  const stored = await releases.get(episode);
+  assert.deepEqual(stored.search.releases.map((item) => [item.guid, item.compared]), [['old', null]]);
+  assert.deepEqual(stored.search.owned, {
+    quality: 'WEBDL-1080p', releaseTitle: 'Show.S01E02.1080p.WEB-DL.DDP5.1-OWN', releaseGroup: 'OWN', size: 10_000_000_000,
+    customFormatScore: 100, qualityCutoffNotMet: true, audio: 'DDP 5.1', hdr: null,
+    hitAndRun: { host: 'privatehd.to', hours: 92, ratio: 0.9, logic: 'or', seededHours: 31, currentRatio: 0.45, met: false },
+  });
+
+  // Holding a half-downloaded torrent to the complete-torrent seed time turns this red.
+  database.prepare('UPDATE torrents SET completed_bytes = 5000000000').run();
+  assert.deepEqual((await releases.get(episode)).search.owned.hitAndRun,
+    { host: 'privatehd.to', hours: 1440, ratio: 0.9, logic: 'or', seededHours: 31, currentRatio: 0.45, met: false });
+
+  const fresh = await releases.refresh(episode);
+  assert.deepEqual(fresh.search.releases.map((item) => [item.guid, item.compared]), [['up', 'better'], ['same', 'same'], ['down', 'worse']]);
+  assert.equal(database.prepare('SELECT releases FROM release_searches').get().releases.includes('compared'), false);
+
+  profileStatus = 500;
+  const failed = await releases.refresh(episode);
+  assert.equal(failed.kind, 'ok');
+  assert.equal(failed.search.owned, null);
+  assert.deepEqual(failed.search.releases.map((item) => item.compared), [null, null, null]);
 });
 
 // Grabbing through /release/push or without the stored release, reporting a refused grab as sent, losing the downloadId, or recording the searched target instead of an override breaks hand grabs and the replace that follows them.
