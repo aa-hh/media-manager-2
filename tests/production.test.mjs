@@ -3961,6 +3961,94 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
   });
 });
 
+test('TMDB posters and backdrops are copied to our server on first request', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createImageRoutes, createTmdbImages } = await import(titlesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tmdb-images-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let setups = 0;
+  const setup = async () => {
+    setups += 1;
+    const directory = join(root, `case-${setups}`);
+    const database = openDatabase(join(directory, 'media-manager.sqlite'));
+    t.after(() => database.close());
+    const clock = { value: Date.parse('2026-10-11T12:00:00Z') };
+    const fetched = [];
+    const remote = { reachable: true, bytes: new Uint8Array([1, 2, 3]) };
+    const fetchImpl = async (url) => {
+      fetched.push(String(url));
+      if (!remote.reachable) throw new TypeError('fetch failed');
+      return new Response(remote.bytes, { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+    };
+    const tmdb = createTmdbImages({ database, imageDirectory: join(directory, 'images'), fetchImpl, now: () => clock.value });
+    const { app } = await makeApp({ images: createImageRoutes({ image: () => undefined }, tmdb) });
+    const { session } = await signIn(app);
+    const get = (path) => app.request(path, { headers: { Cookie: session } });
+    const rows = () => database.prepare('SELECT size, path FROM tmdb_images').all().map(({ size, path }) => `${size}/${path}`);
+    return { app, clock, fetched, get, remote, rows };
+  };
+
+  // Fetching from TMDB on every request instead of serving the saved copy, or not sharing one fetch between concurrent misses, turns this red.
+  await t.test('the first request fetches from TMDB once and later requests serve the saved copy', async () => {
+    const { app, fetched, get } = await setup();
+    assert.equal((await app.request('/api/images/tmdb/w342/abc123.jpg')).status, 401);
+    const [first, concurrent] = await Promise.all([get('/api/images/tmdb/w342/abc123.jpg'), get('/api/images/tmdb/w342/abc123.jpg')]);
+    assert.equal(first.status, 200);
+    assert.equal(concurrent.status, 200);
+    assert.deepEqual(fetched, ['https://image.tmdb.org/t/p/w342/abc123.jpg']);
+    const second = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(second.status, 200);
+    assert.equal(second.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(new Uint8Array(await second.arrayBuffer()), new Uint8Array([1, 2, 3]));
+    assert.deepEqual(fetched, ['https://image.tmdb.org/t/p/w342/abc123.jpg']);
+    assert.equal((await get('/api/images/tmdb/w1920_and_h800_multi_faces/abc123.jpg')).status, 200);
+    assert.equal(fetched.length, 2, 'each size is its own copy');
+  });
+
+  // Loosening the size or file check, so a caller can steer the fetch or reach outside the image folder, turns this red.
+  await t.test('a size or file outside the allowed set is refused without a fetch', async () => {
+    const { fetched, get, rows } = await setup();
+    for (const path of [
+      '/api/images/tmdb/original/abc123.jpg',
+      '/api/images/tmdb/w500/abc123.jpg',
+      '/api/images/tmdb/w342/abc123.gif',
+      '/api/images/tmdb/w342/abc_123.jpg',
+      '/api/images/tmdb/w342/..%2F..%2Fmedia-manager.sqlite',
+      '/api/images/tmdb/w342/%2E%2E%2Fabc123.jpg',
+      '/api/images/tmdb/w342/abc123.jpg%2F..%2F..%2Fx.jpg',
+      '/api/images/tmdb/w342/evil.example%2Fabc123.jpg',
+    ]) {
+      assert.equal((await get(path)).status, 404, path);
+    }
+    assert.deepEqual(fetched, []);
+    assert.deepEqual(rows(), []);
+  });
+
+  // Keeping a copy past six months, against TMDB's terms, turns this red.
+  await t.test('a copy older than six months is fetched again', async () => {
+    const { clock, fetched, get, remote } = await setup();
+    await get('/api/images/tmdb/w342/abc123.jpg');
+    clock.value += 179 * 24 * 60 * 60_000;
+    await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(fetched.length, 1);
+    remote.bytes = new Uint8Array([7, 7]);
+    clock.value += 2 * 24 * 60 * 60_000;
+    const refreshed = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(fetched.length, 2);
+    assert.deepEqual(new Uint8Array(await refreshed.arrayBuffer()), new Uint8Array([7, 7]));
+  });
+
+  // Saving a row when TMDB cannot be reached, or answering anything other than a 502 JSON error, turns this red.
+  await t.test('TMDB unreachable on a miss answers 502 and saves nothing', async () => {
+    const { get, remote, rows } = await setup();
+    remote.reachable = false;
+    const response = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: 'tmdb_unreachable' });
+    assert.deepEqual(rows(), []);
+  });
+});
+
 test('problems record each fix attempt and its result', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
