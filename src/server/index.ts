@@ -29,6 +29,7 @@ import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersions } from './secondVersions.js';
+import { createVersionImport } from './versionImport.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -63,10 +64,16 @@ if (database !== undefined) {
   const poller = createTorrentPoller({ database, rtorrent, events });
   const releases = createReleases(database, arr);
   const secondVersions = createSecondVersions({ database, releases, rtorrent });
-  // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them.
+  const problems = createProblems({ database, events });
+  const plex = createPlex(database);
+  const versionImport = createVersionImport({ database, rtorrent, arr, plex, problems });
+  // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them,
+  // and finished ones are imported after it.
   runner.register('rtorrent-poll', poller.intervalMs, async () => {
     const startedAt = Date.now();
-    if (await poller.poll()) await secondVersions.reconcile(startedAt);
+    if (!await poller.poll()) return;
+    await secondVersions.reconcile(startedAt);
+    await versionImport.run();
   });
   const backup = createBackup({
     database,
@@ -79,7 +86,6 @@ if (database !== undefined) {
   runner.register('backup', 5 * 60_000, async () => { await backup.run(); });
   const torrentGrabs = createGrabTracker({ database, arr, events });
   runner.register('arr-reconcile', torrentGrabs.intervalMs, torrentGrabs.reconcile);
-  const problems = createProblems({ database, events });
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
   const trackers = createTrackerWatch({ database, rtorrent, problems, events });
   runner.register('tracker-watch', 30_000, trackers.check);
@@ -118,7 +124,6 @@ if (database !== undefined) {
     await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr')]);
     await protection.reconcile();
   });
-  const plex = createPlex(database);
   const trackerAccounts = createTrackerAccounts(database);
   const health = createHealth({ database, arr, rtorrent, plex, jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });

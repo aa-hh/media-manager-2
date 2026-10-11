@@ -306,6 +306,15 @@ export const applicationMigrations = [
     size_bytes INTEGER NOT NULL,
     PRIMARY KEY (hash, "index")
   ) STRICT;`,
+  // What happened to each second version, for history. Kind has no CHECK so later kinds need no table rebuild.
+  `CREATE TABLE version_events (
+    id INTEGER PRIMARY KEY,
+    second_version_id INTEGER NOT NULL REFERENCES second_versions (id),
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX version_events_at ON version_events (at);`,
 ] as const;
 
 class DatabaseError extends Error {}
