@@ -9394,5 +9394,3 @@ test('the discover routes check every value, mark library titles and turn a miss
     ['popularity.desc', '18,878', '8|9', 'GB', '2020-01-01', '6.5', '2'],
   );
 });
-
-// Serving a credential, overwriting one with a blank, saving tested values, or accepting a key no service reads turns this red.
