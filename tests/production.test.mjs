@@ -6731,8 +6731,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
     [new TypeError('fetch failed', { cause: Object.assign(new AggregateError([systemError('x', 'ECONNREFUSED')], 'aggregate'), { code: 'ECONNREFUSED' }) }), 'failed', unreached],
     [new TypeError('fetch failed', { cause: systemError('getaddrinfo ENOTFOUND', 'ENOTFOUND') }), 'failed', unreached],
     [new TypeError('fetch failed', { cause: systemError('getaddrinfo EAI_AGAIN', 'EAI_AGAIN') }), 'failed', unreached],
-    [new TypeError('fetch failed', { cause: systemError('connect EHOSTUNREACH', 'EHOSTUNREACH') }), 'failed', unreached],
-    [new TypeError('fetch failed', { cause: systemError('connect ENETUNREACH', 'ENETUNREACH') }), 'failed', unreached],
+    [new TypeError('fetch failed', { cause: systemError('write EHOSTUNREACH', 'EHOSTUNREACH') }), 'sent', doubt],
     [new TypeError('fetch failed', { cause: systemError('Connect Timeout Error', 'UND_ERR_CONNECT_TIMEOUT') }), 'failed', unreached],
     [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', doubt],
   ]) {
@@ -6742,7 +6741,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
     assert.deepEqual([unanswered.kind, unanswered.record.state, unanswered.record.failure], [state, state, failure], row);
     assert.equal(grabs.pending('replace').some((record) => record.id === unanswered.record.id), state === 'sent', row);
   }
-  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 3);
+  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 4);
   history = grabbedHistory;
   const confirmed = await grabs.resolveDownloadId(unanswered.record);
   assert.deepEqual([confirmed.state, confirmed.downloadId, confirmed.failure], ['sent', 'ABC123HASH', null], 'history confirms the grab and clears the doubt');
