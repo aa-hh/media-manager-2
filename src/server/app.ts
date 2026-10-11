@@ -33,6 +33,7 @@ export type CreateAppOptions = {
   protection?: Protection;
   library?: Library;
   api?: Hono;
+  images?: Hono;
   webhooks?: {
     secret(): string | undefined;
     receive(service: 'sonarr' | 'radarr', payload: unknown): 'ok' | 'ignored' | 'invalid';
@@ -137,7 +138,9 @@ export const createApp = (options: CreateAppOptions) => {
 
   app.use('*', async (context, next) => {
     await next();
-    context.header('Cache-Control', 'no-store');
+    // Cached poster and fanart may be reused by the browser for five minutes; everything else, error answers included, is never stored.
+    const reusableImage = context.req.path.startsWith('/api/images/') && (context.res.status === 200 || context.res.status === 304);
+    context.header('Cache-Control', reusableImage ? 'private, max-age=300' : 'no-store');
     context.header('Referrer-Policy', 'no-referrer');
     context.header('X-Content-Type-Options', 'nosniff');
     context.header('X-Frame-Options', 'DENY');
@@ -365,6 +368,7 @@ export const createApp = (options: CreateAppOptions) => {
   }
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
+  if (options.images !== undefined) app.route('/api/images', options.images);
   if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));

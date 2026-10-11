@@ -51,6 +51,15 @@ The server reaches Sonarr, Radarr, rTorrent and Plex, and finds their folders on
 | `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into, such as `/home/<user>/files/Radarr` |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
 | `hostPaths` | `library.radarr` | Absolute Radarr library root, such as `/home/<user>/Movies`; a stopped torrent whose download files are gone is re-linked from here |
+| `serviceAddresses` | `blutopia.url` | Blutopia base URL with scheme, such as `https://blutopia.cc` |
+| `serviceAddresses` | `privatehd.url` | PrivateHD base URL with scheme |
+| `serviceAddresses` | `beyondhd.url` | Beyond-HD base URL with scheme |
+| `credentials` | `blutopia.apiToken` | Blutopia API token from the site's API settings |
+| `credentials` | `privatehd.username` | PrivateHD account username |
+| `credentials` | `privatehd.password` | PrivateHD account password |
+| `credentials` | `privatehd.pid` | PrivateHD PID |
+| `credentials` | `beyondhd.apiKey` | Beyond-HD API key |
+| `credentials` | `beyondhd.rssKey` | Beyond-HD RSS key (optional) |
 
 Until a settings screen exists, save and check them on the server with the
 operator command:
@@ -74,7 +83,7 @@ list. One trailing line break is removed. `settings list` prints each saved
 category and key, never a value.
 
 `connections check` prints one line per service, in the order sonarr, radarr,
-rtorrent, plex, and exits 0 only when all four are `ok`:
+rtorrent, plex, blutopia, privatehd, beyondhd, and exits 0 only when all seven are `ok`. Tracker lines print `ok` without a version:
 
 - `ok <version>`: the service accepted the saved credentials and reported its version.
 - `not_configured`: the URL or a credential for that service is missing or empty.
@@ -83,8 +92,35 @@ rtorrent, plex, and exits 0 only when all four are `ok`:
 
 The output never contains a URL or a setting value. AA-38 is accepted only on
 live service evidence: the owner runs `node dist/server/cli.js connections
-check` on the slot and sees four `ok` lines with versions. The test fixtures
+check` on the slot and sees `ok` with a version on the sonarr, radarr, rtorrent and plex lines. The test fixtures
 prove controlled behaviour only.
+
+### Tracker accounts
+
+`getTrackerAccountStats(database)` in `src/server/services/trackerAccounts.ts`
+returns one entry per tracker (Blutopia, PrivateHD, Beyond-HD, in that order).
+`GET /api/trackers` (owner session) returns the same JSON. Only Blutopia
+returns stats (`username, group, uploaded, downloaded, ratio, buffer, seeding,
+leeching, seedbonus, hitAndRuns`); PrivateHD and Beyond-HD return
+`stats: "unsupported"`. The three trackers are used through their APIs only
+(AA-23). Live tracker evidence is still owed: no live keys exist and the tests
+use fixtures. Acceptance needs the owner's `connections check` showing three
+tracker `ok` lines.
+
+### Title cache
+
+The server keeps a copy of every Sonarr series and Radarr movie, Sonarr's
+episodes, and each title's poster and fanart. The `title-refresh` job re-reads
+both full lists every five minutes. Between runs the shared webhook receiver
+refreshes one title on Sonarr's `SeriesAdd`, `Download`, `EpisodeFileDelete`
+and `Rename` events and Radarr's `MovieAdded`, `Download`, `MovieFileDelete`
+and `Rename` events, and drops it on `SeriesDelete` or `MovieDelete`.
+Images are stored in an `images` folder beside the database and served to the
+signed-in owner at `GET /api/images/{sonarr|radarr}/{id}/{poster|fanart}`,
+with an `ETag` (a matching `If-None-Match` gets `304`) and
+`Cache-Control: private, max-age=300`. No Sonarr or Radarr key reaches the
+browser. Search results from Sonarr and Radarr lookups are kept in memory for
+ten minutes per service and search term; a failed lookup is never kept.
 
 ## Backups to Cloudflare R2
 
@@ -134,9 +170,9 @@ spare path against the real bucket.
 
 ### Recover after a disk failure on the slot
 
-1. Ali (on the slot): once the slot is back, make sure `~/.config/media-manager-2/env` exists as described under Test deploy to Whatbox.
+1. Ali (on the slot): once the slot is back, make sure `~/.config/media-manager-2/env` exists as described under Test deploy to Whatbox, and that `crontab -l` shows the two lines from Restart after a crash or reboot.
 2. Ali (on the Mac): run `sh scripts/deploy.sh` to put the app back on the slot. It starts a server with an empty database.
-3. Ali (on the slot): stop that server with `kill $(cat ~/media-manager-2/server.pid)`, then move the empty database aside: `mv ~/.local/share/media-manager-2/media-manager.sqlite ~/media-manager.sqlite.empty`.
+3. Ali (on the slot): run `flock -n ~/media-manager-2/ensure.lock sh`. This opens a shell that holds the ensure script's lock, so cron cannot restart the server while you work; do steps 4 to 6 inside it. Stop the server with `kill $(cat ~/media-manager-2/server.pid)`, then move the empty database aside: `mv ~/.local/share/media-manager-2/media-manager.sqlite ~/media-manager.sqlite.empty`.
 4. Ali (on the slot): export the four values for this shell session; `read -rs` keeps the secret out of shell history:
 
    ```sh
@@ -146,12 +182,12 @@ spare path against the real bucket.
 
 5. Ali (on the slot): from `~/media-manager-2`, run `node dist/server/cli.js backup list` and check the `(latest)` snapshot is recent.
 6. Ali (on the slot): run `node dist/server/cli.js backup restore --to ~/.local/share/media-manager-2/media-manager.sqlite` and check the row counts look right, for example `settings` is not 0.
-7. Ali (on the Mac): run `sh scripts/deploy.sh` again to start the server on the restored database.
-8. Ali (on the slot): run `node dist/server/cli.js connections check` and check all four lines say `ok`.
+7. Ali (on the slot): type `exit` to leave the locked shell, then run `~/media-manager-2/bin/ensure-running.sh` to start the server on the restored database. Cron would also start it within a minute.
+8. Ali (on the slot): run `node dist/server/cli.js connections check` and check the sonarr, radarr, rtorrent and plex lines say `ok`.
 
 ### Move to another host
 
-1. Ali (on the slot): stop the old server with `kill $(cat ~/media-manager-2/server.pid)` and run `node dist/server/cli.js backup now`, so the last snapshot holds every write.
+1. Ali (on the slot): remove the two `ensure-running.sh` lines with `crontab -e` so cron cannot restart the old server, then stop it with `kill $(cat ~/media-manager-2/server.pid)` and run `node dist/server/cli.js backup now`, so the last snapshot holds every write.
 2. Ali (new host): install Node 22.13 or newer, copy the app there, and run `npm ci --omit=dev`.
 3. Ali (new host): export the four `R2_*` values as in step 4 above, run `node dist/server/cli.js backup list`, then `node dist/server/cli.js backup restore --to ~/.local/share/media-manager-2/media-manager.sqlite` and check the row counts.
 4. Ali (new host): create the env file and a Managed Link (or the new host's equivalent) as described under Test deploy to Whatbox, start the server, and run `node dist/server/cli.js connections check`.
@@ -213,7 +249,38 @@ Later features add background jobs to the job runner under these rules. Every jo
 
 The script first runs `npm ci` on the Mac when the worktree has no packages installed or its lock file changed since the last install. It reaches the slot over ssh as `DEPLOY_HOST`, default `shenzhou`, and copies `dist/`, `package.json` and `package-lock.json` to `~/media-manager-2/`, runs `npm ci --omit=dev` when the lock file changed, stops the old server with SIGTERM and starts the new one. It then checks the server answers on the slot and at `APP_ORIGIN`, prints `connections check`, and prints the branch and commit now live, which it also keeps in `~/media-manager-2/DEPLOYED`. Server output goes to `~/media-manager-2/server.log`.
 
-One copy runs at a time, so a deploy from another worktree replaces it. Nothing restarts the server after a crash or reboot yet; that belongs to AA-43 "Deploy and restart the application on Whatbox".
+One copy runs at a time, so a deploy from another worktree replaces it. Each deploy moves the previous `server.log` to `server.log.1`, so the slot keeps the current log and one older one.
+
+Never give a Podman container a name containing `media-manager`. The owner's older `media-manager-ensure-running.sh` cron script removes every container whose name contains it.
+
+### Restart after a crash or reboot
+
+The plain Node process runs with no container. `scripts/deploy.sh` copies `scripts/ensure-running.sh` to `~/media-manager-2/bin/`. The script exits at once when another copy holds `~/media-manager-2/ensure.lock`, and does nothing when `/auth/status` answers on `PORT`. Otherwise it stops the saved pid if that is still this server, starts a new one and logs `started pid <pid>`. The server it starts never holds the lock, and `deploy.sh` holds the same lock while it swaps servers, so cron cannot start a second copy.
+
+Ali (on the slot): add these two lines once with `crontab -e`:
+
+```sh
+@reboot $HOME/media-manager-2/bin/ensure-running.sh >> $HOME/media-manager-2/ensure.log 2>&1
+* * * * * $HOME/media-manager-2/bin/ensure-running.sh >> $HOME/media-manager-2/ensure.log 2>&1
+```
+
+Cron runs with a short `PATH`. If `ensure.log` shows `node: not found`, add `PATH=<the output of dirname "$(command -v node)">:/usr/bin:/bin` to `~/.config/media-manager-2/env`; the script reads that file.
+
+- Start: run `~/media-manager-2/bin/ensure-running.sh`, or wait up to a minute for cron.
+- Restart: `kill $(cat ~/media-manager-2/server.pid)`; cron starts a new server within a minute.
+- Stop for maintenance: run `flock -n ~/media-manager-2/ensure.lock sh`, stop the server inside that shell, and `exit` when done. Restoring a backup works the same way; see Backups to Cloudflare R2.
+
+#### Acceptance on the slot
+
+Local tests cannot show any of this; each step runs on the real slot. Record the output of each step, and record step 6 as a manual run or a real reboot. Run the commands from `~/media-manager-2` with the env file loaded: `cd ~/media-manager-2 && set -a && . ~/.config/media-manager-2/env && set +a`.
+
+- [ ] 1. Crash. Ali (on the slot): `kill -9 $(cat server.pid)`. Within 60 seconds `curl -fs http://127.0.0.1:$PORT/auth/status` succeeds, `ensure.log` has exactly one new `started pid` line, and `pgrep -fc "node $HOME/media-manager-2/dist/server/index.js"` prints 1.
+- [ ] 2. No duplicates, stopped. Ali (on the slot): stop the server inside `flock -n ensure.lock sh` and `exit`, then run `bin/ensure-running.sh & bin/ensure-running.sh & wait`. One run logs `started pid`, the other `another run holds the lock, exiting`; the `pgrep -fc` count prints 1.
+- [ ] 3. No duplicates, healthy. Ali (on the slot): with the server answering, run `cat server.pid; bin/ensure-running.sh & bin/ensure-running.sh & wait; cat server.pid`. Both pids match and nothing new is logged.
+- [ ] 4. Lock not inherited. Ali (on the slot): `ls -l /proc/$(cat server.pid)/fd | grep -c ensure.lock` prints 0.
+- [ ] 5. Deploy against cron. Ali (on the slot): run `while :; do bin/ensure-running.sh; sleep 1; done >> ensure.log 2>&1`. Ali (on the Mac): run `sh scripts/deploy.sh`. Ali (on the slot): stop the loop with Ctrl-C; the `pgrep -fc` count prints 1 and `cat DEPLOYED` shows the new commit.
+- [ ] 6. Reboot. Ali (on the slot): the slot cannot be rebooted on demand. Stop the server inside `flock -n ensure.lock sh` and `exit`, run the exact `@reboot` line from `crontab -l` by hand, and confirm the `pgrep -fc` count prints 1. After the next real Whatbox reboot, record `uptime`, `ps -o etime= -p $(cat server.pid)` and the boot-time `started pid` line in `ensure.log`.
+- [ ] 7. Hung server. Ali (on the slot): `kill -STOP $(cat server.pid)`, then `bin/ensure-running.sh`. It logs `alive but not answering, stopping it` and `started pid`, and the `pgrep -fc` count prints 1.
 
 Use `npm run dev` for the Vite development server.
 Always build and test through `scripts/build.sh` and `scripts/test.sh`.

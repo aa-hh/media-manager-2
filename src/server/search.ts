@@ -188,18 +188,52 @@ const merge = (shows: SearchResult[], movies: SearchResult[]) => {
   return [...interleaved.filter((result) => result.inLibrary), ...interleaved.filter((result) => !result.inLibrary)];
 };
 
-export const createSearch = (services: { sonarr: ArrService; radarr: ArrService }) => ({
-  async search(query: SearchQuery): Promise<SearchResponse> {
-    const [sonarr, radarr] = await Promise.all([
-      lookup(services.sonarr, '/api/v3/series/lookup', lookupTerm(query, 'sonarr'), toSeries),
-      lookup(services.radarr, '/api/v3/movie/lookup', lookupTerm(query, 'radarr'), toMovie),
-    ]);
-    return {
-      results: merge(sonarr.results, radarr.results),
-      services: { sonarr: sonarr.outcome, radarr: radarr.outcome },
-    };
-  },
-});
+export const LOOKUP_CACHE_MS = 10 * 60_000;
+
+export const createSearch = (services: { sonarr: ArrService; radarr: ArrService }, options: { now?: () => number } = {}) => {
+  const now = options.now ?? Date.now;
+  // razor: no size cap beyond purging stale entries after each successful lookup. Upgrade path: an LRU bound on entries.
+  const cache = new Map<string, { fetchedAt: number; results: SearchResult[]; count: number }>();
+
+  const cachedLookup = async (
+    service: 'sonarr' | 'radarr',
+    path: string,
+    term: string | undefined,
+    normalize: (value: unknown) => SearchResult | undefined,
+  ): Promise<{ outcome: ServiceOutcome; results: SearchResult[] }> => {
+    const key = `${service}\n${term}`;
+    if (term !== undefined && services[service].configured()) {
+      const entry = cache.get(key);
+      if (entry !== undefined && now() - entry.fetchedAt < LOOKUP_CACHE_MS) {
+        return { outcome: { kind: 'ok', count: entry.count }, results: entry.results };
+      }
+    }
+    const result = await lookup(services[service], path, term, normalize);
+    if (result.outcome.kind === 'ok') {
+      const fetchedAt = now();
+      cache.set(key, { fetchedAt, results: result.results, count: result.outcome.count });
+      for (const [stored, entry] of cache) if (fetchedAt - entry.fetchedAt >= LOOKUP_CACHE_MS) cache.delete(stored);
+    }
+    return result;
+  };
+
+  return {
+    // An add changes which titles that service has, so its cached lookups would still offer Add.
+    forget(service: 'sonarr' | 'radarr') {
+      for (const key of cache.keys()) if (key.startsWith(`${service}\n`)) cache.delete(key);
+    },
+    async search(query: SearchQuery): Promise<SearchResponse> {
+      const [sonarr, radarr] = await Promise.all([
+        cachedLookup('sonarr', '/api/v3/series/lookup', lookupTerm(query, 'sonarr'), toSeries),
+        cachedLookup('radarr', '/api/v3/movie/lookup', lookupTerm(query, 'radarr'), toMovie),
+      ]);
+      return {
+        results: merge(sonarr.results, radarr.results),
+        services: { sonarr: sonarr.outcome, radarr: radarr.outcome },
+      };
+    },
+  };
+};
 
 export type Search = ReturnType<typeof createSearch>;
 

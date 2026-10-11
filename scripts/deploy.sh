@@ -41,6 +41,7 @@ fi
 
 sh scripts/build.sh
 rsync -a --delete dist package.json package-lock.json "$host:media-manager-2/"
+rsync -a scripts/ensure-running.sh "$host:media-manager-2/bin/"
 
 ssh "$host" sh -s -- "$branch" "$commit" <<'EOF'
 set -eu
@@ -55,6 +56,12 @@ fail() {
     tail -n 20 server.log >&2
     exit 1
 }
+
+chmod 755 bin/ensure-running.sh
+# Hold the ensure script's lock while the servers swap, so a cron run cannot
+# start a second copy in between. The lock goes when this ssh session ends.
+exec 9>ensure.lock
+flock -w 60 9 || fail "ensure script still running after 60 seconds"
 
 # Signal the saved pid only while it is still this server: a reused pid could
 # belong to rTorrent or another app on the slot.
@@ -76,8 +83,12 @@ if [ ! -d node_modules ] || ! cmp -s package-lock.json .installed-package-lock.j
     cp package-lock.json .installed-package-lock.json
 fi
 
-# setsid detaches the server from this ssh session so it outlives the logout.
-setsid node "$server" >> server.log 2>&1 < /dev/null &
+if [ -f server.log ]; then
+    mv server.log server.log.1
+fi
+# setsid detaches the server from this ssh session so it outlives the logout;
+# 9>&- keeps it from inheriting the lock.
+setsid node "$server" >> server.log 2>&1 < /dev/null 9>&- &
 pid=$!
 echo "$pid" > server.pid
 
