@@ -4576,6 +4576,29 @@ test('problems record each fix attempt and its result', async (t) => {
     assert.equal((await app.request('/api/problems/history?type=nope&id=1', { headers: { Cookie: session } })).status, 400);
     database.close();
   });
+
+  // Sending every stored grab, or dropping an imported one whose torrent still seeds, turns this red.
+  await t.test('the downloads route sends only grabs still downloading or still in rTorrent', async () => {
+    const database = openDatabase(join(root, 'api-grabs', 'media-manager.sqlite'));
+    const { app } = await makeApp({ api: createApiRoutes(database) });
+    const insertGrab = database.prepare(`INSERT INTO torrent_grabs (hash, service, movie_id, episode_ids, release_title, indexer, grabbed_at, by_hand, imported_at, failed_at)
+      VALUES (?, 'radarr', 7, '[]', 'Movie.2024', 'Blutopia', 1, 0, ?, ?)`);
+    const insertTorrent = database.prepare(`INSERT INTO torrents VALUES (?, 'Movie.2024', 10, 10, 0, 0, 1, 1, 1, 1, '', 0, 1000, 0, 0, 'blutopia.cc', 1, 1, ?, 0, '')`);
+    const downloading = 'AA'.repeat(20);
+    const seeding = 'BB'.repeat(20);
+    const removed = 'CC'.repeat(20);
+    const failed = 'DD'.repeat(20);
+    insertGrab.run(downloading, null, null);
+    insertGrab.run(seeding, 2, null);
+    insertGrab.run(removed, 2, null);
+    insertGrab.run(failed, null, 3);
+    insertTorrent.run(seeding, null);
+    insertTorrent.run(removed, 5);
+    const { session } = await signIn(app);
+    const { grabs } = await (await app.request('/api/downloads', { headers: { Cookie: session } })).json();
+    assert.deepEqual(grabs.map((grab) => grab.hash).sort(), [downloading, seeding]);
+    database.close();
+  });
 });
 
 test('queue actions grab delayed releases and remove items without touching rTorrent', async (t) => {
