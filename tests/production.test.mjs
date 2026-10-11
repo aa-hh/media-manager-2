@@ -125,9 +125,10 @@ const readUserVersion = (database) => database.prepare('PRAGMA user_version').ge
 test('production server serves the built browser application from another directory', async (t) => {
   const workingDirectory = await mkdtemp(join(tmpdir(), 'media-manager-2-production-'));
   const databasePath = join(workingDirectory, 'data', 'media-manager.sqlite');
+  // An empty HOST listening on every interface instead of the default 127.0.0.1 turns this red.
   const child = spawn(process.execPath, [serverPath], {
     cwd: workingDirectory,
-    env: { ...process.env, DB_PATH: databasePath, HOST: '127.0.0.1', PORT: '0' },
+    env: { ...process.env, DB_PATH: databasePath, HOST: '', PORT: '0' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const exited = once(child, 'exit');
@@ -1996,16 +1997,19 @@ test('incomplete torrents follow the tracker partial-download rules', async (t) 
 
 // A startup storage failure, or a TRACKER_RULES that would otherwise be dropped, must exit unsuccessfully with one
 // fixed message and never begin listening.
-test('production startup stops when database initialization fails or TRACKER_RULES is invalid', async (t) => {
+test('production startup stops when database initialization fails or TRACKER_RULES or PORT is invalid', async (t) => {
   const workingDirectory = await mkdtemp(join(tmpdir(), 'media-manager-2-startup-failure-'));
   t.after(() => rm(workingDirectory, { recursive: true, force: true }));
-  for (const [trackerRules, message] of [
-    [undefined, 'Database initialization failed.'],
-    ['{"blutopia.cc":{"minHours":-1}}', 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
+  for (const [overrides, message] of [
+    [{}, 'Database initialization failed.'],
+    [{ TRACKER_RULES: '{"blutopia.cc":{"minHours":-1}}' }, 'TRACKER_RULES: the rule for blutopia.cc is not valid: minHours must be a number of 0 or more.'],
+    // Passing a port that is not a whole number to the listener, which then fails with a stack trace or picks another port, turns these rows red.
+    [{ PORT: '3000x' }, 'PORT must be a whole number from 0 to 65535.'],
+    [{ PORT: '65536' }, 'PORT must be a whole number from 0 to 65535.'],
   ]) {
     const env = { ...process.env, DB_PATH: 'relative.sqlite', HOST: '127.0.0.1', NODE_NO_WARNINGS: '1', PORT: '0' };
     delete env.TRACKER_RULES;
-    if (trackerRules !== undefined) env.TRACKER_RULES = trackerRules;
+    Object.assign(env, overrides);
     const child = spawn(process.execPath, [serverPath], { cwd: workingDirectory, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', (chunk) => { output += chunk; });

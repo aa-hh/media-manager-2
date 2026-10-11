@@ -54,13 +54,17 @@ import { adviseRemoval } from './advice.js';
 import { createImageRoutes, createTitleCache, createTmdbImages, IMAGE_SWEEP_INTERVAL_MS } from './titles.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
-const host = process.env.HOST ?? '127.0.0.1';
-const port = Number(process.env.PORT ?? '3000');
+// An empty HOST or PORT means the default, never every interface or a random port.
+const host = process.env.HOST || '127.0.0.1';
+const portText = process.env.PORT || '3000';
+const port = Number(portText);
 
 let database: DatabaseSync | undefined;
 try {
   // Checked once here so a bad TRACKER_RULES stops startup instead of failing each rule lookup later.
   trackerRulesFromEnvironment();
+  // 0 stays allowed: the README documents it as asking the system for a free port.
+  if (!/^\d{1,5}$/.test(portText) || port > 65535) throw new Error('PORT must be a whole number from 0 to 65535.');
   try {
     database = openDatabase();
   } catch {
