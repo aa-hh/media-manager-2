@@ -31,6 +31,7 @@ import { createTitleStore } from './titleStore.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
+import { createSetupRoutes } from './setup.js';
 import { createVersionImport } from './versionImport.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
@@ -174,6 +175,7 @@ if (database !== undefined) {
     owned: createOwned(arr),
     protection,
     library: createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore),
+    setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
       arr,
       refresh: torrentGrabs.refresh,

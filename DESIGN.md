@@ -105,8 +105,8 @@ components:
   dropdown-content: {backgroundColor: "{colors.popover}", rounded: "{rounded.radius-lg}", padding: "4px", width: "248px"}
   panel-inline: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "20px"}
   dialog: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "24px", width: "560px"}
-  toast: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", width: "380px"}
-  selection-bar: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", height: "44px"}
+  toast: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", width: "400px"}
+  selection-bar: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", height: "56px"}
   episode-details: {backgroundColor: "{colors.muted}"}
   app-bar: {backgroundColor: "{colors.background}", textColor: "{colors.foreground}", padding: "0px 40px", height: "64px"}
   downloads-live-bar: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", typography: "{typography.data-small}", height: "40px"}
@@ -137,8 +137,8 @@ Neutrals do most of the work. One meaning per colour.
 - **Page and surfaces:** `background` is the page; `card` is tables, panels and menus (both white). `muted` is sunken things: tracks, Kbd keys, the neutral badge, the search field at rest. `surface-hover` and `surface-pressed` are hover and pressed. `selected` is the grey tint on a selected row, always with the 3px black side bar.
 - **Text:** `foreground` (18.9:1 on white) for text and icons. `muted-foreground` (7.5:1) for secondary text. `subtle-foreground` (5.6:1) for meta, placeholders and column headers. `faint-foreground` (2.5:1) is for disabled things only, never readable text.
 - **Lines:** `border` draws dividers and panel edges. `input` (3.4:1) draws control edges: outline buttons, checkboxes, radios, focused fields.
-- **Black:** `primary` is buttons and "on" states (checked, monitored, selected segment label, active tab underline). `bar` is the downloads bar, toasts, tooltips and the selection bar, with `bar-foreground` text.
-- **Lime:** `best` marks the single best release; `best-soft` tints its row. `live` marks downloads in progress. Lime is 1.3:1 on white, so it is only ever a fill behind black text (14.4:1) or a fill on the black downloads bar or on a poster. Never lime text, lime icons or thin lime lines on white.
+- **Black:** `primary` is buttons and "on" states (checked, monitored, selected segment label, active tab underline). `bar` is the downloads bar, toasts, tooltips and the selection bar, with `bar-foreground` text. One in-page exception: the setup wizard's "How the pieces connect" strip fills with `bar` once every part is connected, meaning the whole chain is live.
+- **Lime:** `best` marks the single best release; `best-soft` tints its row. `live` marks downloads in progress. Lime is 1.3:1 on white, so it is only ever a fill behind black text (14.4:1) or a fill on the black downloads bar or on a poster. Setup wizard exception: a connected part's pill in the "How the pieces connect" strip is black with a lime dot (connected and answering), and the finished strip's pills are lime with black text. Never lime text, lime icons or thin lime lines on white.
 - **Red:** `destructive`, `destructive-soft` and their hover and pressed steps are for problems and risk: stalled, failed, gave up, hit and run risk, tracker cooldown, a failed service.
 - **Amber:** `warning` and `warning-soft` are for missing, below cutoff, import blocked, unsaved edits and changes waiting for Sonarr or Radarr.
 - **Focus:** `ring` (black) on white; `focus-on-dark` (white) on the black bars.
@@ -217,7 +217,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 
 - **App bar:** 64px, white, line under, 40px side padding. Nav items are 40px, radius 8, with a count pill (red on `destructive-soft` for problems); the active item gets the `selected` fill and a black 600 label. Service status lives behind Health, whose count turns red when a service fails.
 - **Downloads bar:** black with white text; lime is allowed there for the arrow and progress fills because it sits on black. Idle reads "Nothing downloading". A stalled item shows a red dot and words.
-- **Floating:** menus (248px, 32px items), tooltips (`bar`, after 400ms), toasts (`bar`, 380px, bottom left above the downloads bar, Undo with the Z key), dialogs and the selection bar (`bar`, 44px, 16px above the downloads bar) take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
+- **Floating:** menus (248px, 32px items), tooltips (`bar`, after 400ms), toasts (`bar`, 400px, bottom left above the downloads bar, Undo with the Z key), dialogs and the selection bar (`bar`, 56px, 16px above the downloads bar) take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
 - **Sign-in:** a 400px block at x 40, y 160 under an app bar that shows only the product name. The Plex button carries Plex's own gold chevron, only on the black button. The Plex trademark line sits bottom left.
 
 ### Where a decision opens
