@@ -1,4 +1,4 @@
-import { Copy, DatabaseBackup, Download, KeyRound, Lock, Save } from 'lucide-react';
+import { ArrowRight, Copy, DatabaseBackup, Download, KeyRound, Lock, Save } from 'lucide-react';
 import { useState } from 'react';
 import { BarBottomAction } from '@/components/ui/bar-bottom-action';
 import { Button } from '@/components/ui/button';
@@ -20,8 +20,16 @@ const pillOnly = '[&>span:nth-child(-n+2)]:hidden';
 type BackupField = 'folder' | 'endpoint' | 'bucket' | 'accessKeyId' | 'secretAccessKey';
 type KeyField = 'accessKeyId' | 'secretAccessKey';
 
-/** The pane for the backup destination. `request` sends one request under /api/setup. */
-export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backup: SetupStatus['backup']; request: TrackerRequest; onSaved: () => void; onKeyCreated: () => void }) {
+type Wizard = { title: string; step: string; onSkip: () => void; onContinue: () => void };
+
+/** The pane for the backup destination. `request` sends one request under /api/setup; `wizard` makes it a setup step. */
+export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }: {
+  backup: SetupStatus['backup'];
+  request: TrackerRequest;
+  onSaved: () => void;
+  onKeyCreated: () => void;
+  wizard?: Wizard;
+}) {
   const [draft, setDraft] = useState(() => emptyBackupDraft(backup.destination));
   const [replacing, setReplacing] = useState<Record<KeyField, boolean>>({ accessKeyId: false, secretAccessKey: false });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<BackupField, string>>>({});
@@ -36,7 +44,9 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
   const complete = backupComplete(draft);
   const anyError = Object.values(fieldErrors).some((error) => error !== undefined);
   const savedBucket = backup.destination?.kind === 's3';
-  const pill = edited ? { state: 'unsaved' as const, text: 'Unsaved edits' } : backupPill(backup);
+  // An empty form with no destination yet is not an edit.
+  const unsaved = edited && (backup.destination !== null || complete);
+  const pill = unsaved ? { state: 'unsaved' as const, text: 'Unsaved edits' } : backupPill(backup);
 
   const change = (field: Exclude<keyof BackupDraft, 'kind'>, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -89,13 +99,18 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
     }
   };
 
+  const noKey = backup.key === 'missing' || backup.key === 'invalid';
+  // In the wizard a saved destination moves on, once a key can lock the backups.
+  const canFinish = wizard !== undefined && !edited && backup.destination !== null;
+  const verb = wizard === undefined ? 'Confirm' : 'Save and continue';
   const summary = pending ? 'Saving the destination.'
+    : canFinish ? (noKey ? 'Destination saved. Backups start once you create a key.' : 'The first backup runs within 5 minutes.')
     : created !== undefined ? 'Save the restore key first. To change the destination, leave Backup and open it again.'
     : anyError ? 'Not saved. Fix the field marked in red.'
-      : !edited ? 'Nothing to save. Change a field, then Confirm.'
-        : !complete ? (draft.kind === 'folder' ? 'Enter the folder, then Confirm.' : 'Fill in the endpoint, bucket and both keys, then Confirm.')
-          : draft.kind === 'folder' ? 'Confirm checks the folder exists, saves it and turns backups on.'
-            : 'Confirm saves the bucket and turns backups on. It is not tested here; the next backup run and the health check report a bucket that refuses.';
+      : !edited ? `Nothing to save. Change a field, then ${verb}.`
+        : !complete ? (draft.kind === 'folder' ? `Enter the folder, then ${verb}.` : `Fill in the endpoint, bucket and both keys, then ${verb}.`)
+          : draft.kind === 'folder' ? `${verb} checks the folder exists, saves it and turns backups on.`
+            : `${verb} saves the bucket and turns backups on. It is not tested here; the next backup run and the health check report a bucket that refuses.`;
 
   const plain = { autoComplete: 'off', spellCheck: false, readOnly: pending };
   // The restore-key callouts wait for a destination, and give way to the key once it is created.
@@ -148,8 +163,9 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
     >
       <div className="flex items-center gap-3">
         <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground [&>svg]:size-4"><DatabaseBackup /></span>
-        <h2 id="backup-editor" className="font-ui text-base font-bold text-foreground">Backup</h2>
+        <h2 id="backup-editor" className="font-ui text-base font-bold text-foreground">{wizard?.title ?? 'Backup'}</h2>
         <StatusServicePill logo={null} name={null} state={pill.state} className={pillOnly}>{pill.text}</StatusServicePill>
+        {wizard !== undefined && <span className="ml-auto font-data text-[13px] text-muted-foreground">{wizard.step}</span>}
       </div>
 
       {keyCallout && backup.key === 'missing' && (
@@ -313,12 +329,15 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
 
       <BarBottomAction
         summary={summary}
-        unsavedNote={edited && !pending ? 'Unsaved edits' : undefined}
-        action={(
-          <Button size="large" icon={<Save />} loading={pending} disabled={!complete || !edited || pending || creatingKey || created !== undefined} onClick={() => void save()}>
-            Confirm
-          </Button>
-        )}
+        unsavedNote={unsaved && !pending ? 'Unsaved edits' : undefined}
+        secondary={wizard !== undefined && <Button variant="outline" disabled={pending || creatingKey} onClick={wizard.onSkip}>Skip backup</Button>}
+        action={canFinish
+          ? <Button size="large" icon={<ArrowRight />} disabled={noKey || creatingKey} onClick={wizard.onContinue}>Finish setup</Button>
+          : (
+            <Button size="large" icon={<Save />} loading={pending} disabled={!complete || !edited || pending || creatingKey || created !== undefined} onClick={() => void save()}>
+              {wizard === undefined ? 'Confirm' : 'Save and continue'}
+            </Button>
+          )}
       />
       {problem !== undefined && <Callout title={problem} />}
     </section>

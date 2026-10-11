@@ -1,5 +1,5 @@
-import { ChevronRight, DatabaseBackup, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, ChevronRight, DatabaseBackup, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { OptionRow } from '@/components/ui/option-row';
@@ -15,27 +15,24 @@ import { Logo } from '@/components/ui/logo';
 import { Radio, RadioGroup } from '@/components/ui/radio';
 import { RowService } from '@/components/ui/row-service';
 import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
-import { StatusServicePill } from '@/components/ui/status-service-pill';
+import { type ServiceState, StatusServicePill } from '@/components/ui/status-service-pill';
 import { useToastManager } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import {
-  ago, chain, changedCount, changes, type Check, type Draft, emptyDraft, failureTitle, fieldWords, headerSummary, isConfigured, linkTone, pillFor,
-  savedAddress, type SavedService, type ServiceInfo, type ServiceName, services, stripSummary, type TestResult,
+  ago, chain, changedCount, changes, type Check, type Draft, failureTitle, fieldWords, headerSummary, isConfigured, linkTone, pillFor,
+  savedAddress, type SavedService, type ServiceInfo, type ServiceName, services, stripSummary,
 } from './model';
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
-import { backupPill, backupWords, type SetupStatus, usesSignInToken } from './setup';
-import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill, type TrackerRequest } from './TrackerEditor';
+import { backupPill, backupWords, type SetupStatus } from './setup';
+import { infoOf, requester, useServices } from './useServices';
+import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
-type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; saved: Record<ServiceName, SavedService> };
 // A service, a tracker as `tracker:<host>`, the add-a-tracker pane, Folders or Backup.
 type Selected = ServiceName | `tracker:${string}` | 'add' | 'folders' | 'backup';
 const trackerKey = (host: string): Selected => `tracker:${host}`;
 
-const writeHeaders = { 'Content-Type': 'application/json', 'X-Requested-With': 'media-manager-2', Accept: 'application/json' };
-const infoOf = (name: ServiceName) => services.find((info) => info.name === name)!;
-const idle = Object.fromEntries(services.map((info) => [info.name, { kind: 'idle' }])) as Record<ServiceName, Check>;
 const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected' || check.kind === 'not_configured';
 const timeOf = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 // The pill's own logo and name are off here: its first two children are hidden, the dot stays.
@@ -50,12 +47,8 @@ const changedWords = (info: ServiceInfo, saved: SavedService | undefined, draft:
 };
 
 export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void }) {
-  const [load, setLoad] = useState<Load>({ kind: 'loading' });
-  const [checks, setChecks] = useState(idle);
-  const [drafts, setDrafts] = useState<Partial<Record<ServiceName, Draft>>>({});
-  const [replacing, setReplacing] = useState<Record<string, boolean>>({});
-  const [pending, setPending] = useState<Partial<Record<ServiceName, 'connect' | 'check'>>>({});
-  const [problems, setProblems] = useState<Partial<Record<ServiceName, string>>>({});
+  const connections = useServices(onUnauthenticated);
+  const { load, setLoad, checks, replacing, pending, problems, draftOf, editedOf } = connections;
   const [selected, setSelected] = useState<Selected>('sonarr');
   const [trackers, setTrackers] = useState<TrackerRow[]>([]);
   const [checkedAt, setCheckedAt] = useState<Record<string, number>>({});
@@ -64,61 +57,18 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const [discardOpen, setDiscardOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
   const [setup, setSetup] = useState<SetupStatus>();
-  const [plexSignIn, setPlexSignIn] = useState<boolean>();
   const toasts = useToastManager();
-  const checksRef = useRef(checks);
-  checksRef.current = checks;
   const unauthorizedRef = useRef(onUnauthenticated);
   unauthorizedRef.current = onUnauthenticated;
+  const readServices = connections.read;
 
   useEffect(() => {
     const handle = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(handle);
   }, []);
 
-  /** Tests one service with the given form values laid over the saved ones; undefined when the test could not run. */
-  const test = useCallback(async (name: ServiceName, body: object, ofSaved: boolean): Promise<TestResult | undefined> => {
-    const previous = checksRef.current[name];
-    setChecks((current) => ({ ...current, [name]: { kind: 'testing' } }));
-    setProblems((current) => ({ ...current, [name]: undefined }));
-    try {
-      const response = await fetch(`/api/settings/test/${name}`, { method: 'POST', credentials: 'same-origin', headers: writeHeaders, body: JSON.stringify(body) });
-      if (response.status === 401) {
-        unauthorizedRef.current();
-        return undefined;
-      }
-      if (!response.ok) throw new Error('The test did not run.');
-      const result = await response.json() as TestResult;
-      setChecks((current) => ({ ...current, [name]: { ...result, at: Date.now(), ofSaved } }));
-      return result;
-    } catch {
-      setChecks((current) => ({ ...current, [name]: previous }));
-      setProblems((current) => ({ ...current, [name]: 'The test could not reach media-manager-2. Try again.' }));
-      return undefined;
-    }
-  }, []);
-
-  const request: TrackerRequest = useCallback(async (method, path, body) => {
-    const response = await fetch(`/api/settings/trackers${path}`, {
-      method, credentials: 'same-origin', headers: writeHeaders, body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    if (response.status === 401) {
-      unauthorizedRef.current();
-      throw new Error('Signed out.');
-    }
-    return response;
-  }, []);
-
-  const setupRequest: TrackerRequest = useCallback(async (method, path, body) => {
-    const response = await fetch(`/api/setup${path}`, {
-      method, credentials: 'same-origin', headers: writeHeaders, body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    if (response.status === 401) {
-      unauthorizedRef.current();
-      throw new Error('Signed out.');
-    }
-    return response;
-  }, []);
+  const request = useMemo(() => requester('/api/settings/trackers', () => unauthorizedRef.current()), []);
+  const setupRequest = useMemo(() => requester('/api/setup', () => unauthorizedRef.current()), []);
 
   /** Reads what /api/setup reports: whether the folders are saved, the backup destination and BACKUP_KEY, and the Plex sign-in token. */
   const readSetup = useCallback(async () => {
@@ -145,25 +95,11 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const read = useCallback(async () => {
     setLoad({ kind: 'loading' });
     try {
-      const [response] = await Promise.all([
-        fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } }),
-        readTrackers(),
-        readSetup(),
-      ]);
-      if (response.status === 401) {
-        unauthorizedRef.current();
-        return;
-      }
-      if (!response.ok) throw new Error('Settings could not be read.');
-      const body = await response.json() as { services: SavedService[] };
-      const saved = Object.fromEntries(body.services.map((service) => [service.service, service])) as Record<ServiceName, SavedService>;
-      setLoad({ kind: 'ready', saved });
-      // Opening the screen checks every saved connection, so each row says whether it answers now.
-      for (const info of services) if (isConfigured(saved[info.name])) void test(info.name, {}, true);
+      await Promise.all([readServices(), readTrackers(), readSetup()]);
     } catch {
       setLoad({ kind: 'failed' });
     }
-  }, [test, readTrackers, readSetup]);
+  }, [setLoad, readServices, readTrackers, readSetup]);
 
   useEffect(() => { void read(); }, [read]);
 
@@ -179,134 +115,16 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   }
 
   const { saved } = load;
-  const draftOf = (name: ServiceName) => drafts[name] ?? emptyDraft(saved[name]);
-  // The sign-in token is the default only while no Plex token is saved.
-  const usingSignIn = usesSignInToken(setup.plexSignInTokenAvailable, plexSignIn, saved.plex.credentials['plex.token'] === true);
-  const editedOf = (name: ServiceName) => changedCount(name, saved[name], draftOf(name));
+  const usingSignIn = connections.usingSignIn(setup.plexSignInTokenAvailable);
   const edited = services.filter((info) => editedOf(info.name) > 0).map((info) => info.name);
   const anyConfigured = services.some((info) => isConfigured(saved[info.name]));
   const testing = services.some((info) => checks[info.name].kind === 'testing');
   const times = services.flatMap((info) => { const check = checks[info.name]; return 'at' in check ? [check.at] : []; });
   const lastChecked = !testing && times.length > 0 ? ago(Math.max(...times), now) : undefined;
 
-  const clearForm = (name: ServiceName) => {
-    setDrafts((current) => ({ ...current, [name]: undefined }));
-    setReplacing((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${name}.`))));
-    setProblems((current) => ({ ...current, [name]: undefined }));
-  };
-
-  const connect = async (name: ServiceName) => {
-    const info = infoOf(name);
-    const changed = changes(name, saved[name], draftOf(name));
-    setPending((current) => ({ ...current, [name]: 'connect' }));
-    try {
-      const result = await test(name, changed, false);
-      if (result?.kind !== 'ok') return;
-      const writes = [
-        ...Object.entries(changed.serviceAddresses ?? {}).map(([key, value]) => ['serviceAddresses', key, value]),
-        ...Object.entries(changed.credentials ?? {}).map(([key, value]) => ['credentials', key, value]),
-      ];
-      let statuses: number[];
-      try {
-        statuses = await Promise.all(writes.map(async ([category, key, value]) => (await fetch(`/api/settings/${category}/${encodeURIComponent(key)}`, {
-          method: 'PUT', credentials: 'same-origin', headers: writeHeaders, body: JSON.stringify({ value }),
-        })).status));
-      } catch {
-        statuses = [0];
-      }
-      if (statuses.includes(401)) {
-        onUnauthenticated();
-        return;
-      }
-      if (statuses.some((status) => status !== 204)) {
-        // The form keeps its values, so nothing typed is lost.
-        setProblems((current) => ({ ...current, [name]: `${info.label} answered, but the new settings could not be saved. Try again.` }));
-        return;
-      }
-      // Built from the latest state: another service's Connect may have saved while this test ran.
-      setLoad((current) => (current.kind !== 'ready' ? current : {
-        kind: 'ready',
-        saved: {
-          ...current.saved,
-          [name]: {
-            ...current.saved[name],
-            serviceAddresses: { ...current.saved[name].serviceAddresses, ...changed.serviceAddresses },
-            credentials: { ...current.saved[name].credentials, ...Object.fromEntries(Object.keys(changed.credentials ?? {}).map((key) => [key, true])) },
-          },
-        },
-      }));
-      setChecks((current) => ({ ...current, [name]: { ...result, at: Date.now(), ofSaved: true } }));
-      clearForm(name);
-      const ok = services.filter((other) => other.name === name || checksRef.current[other.name].kind === 'ok').length;
-      toasts.add({
-        title: `${info.label} connected${result.version === undefined ? '' : ` · ${result.version}`}`,
-        description: `Tested, then saved. ${ok === services.length ? `All ${ok} connections answer.` : `${ok} of ${services.length} connections answer.`}`,
-      });
-    } finally {
-      setPending((current) => ({ ...current, [name]: undefined }));
-    }
-  };
-
-  /** Tests the Plex address with the token from the owner's Plex sign-in; the server saves both only when the test passes. */
-  const connectPlexWithSignIn = async () => {
-    const address = draftOf('plex').address.trim();
-    const previous = checksRef.current.plex;
-    setPending((current) => ({ ...current, plex: 'connect' }));
-    setChecks((current) => ({ ...current, plex: { kind: 'testing' } }));
-    setProblems((current) => ({ ...current, plex: undefined }));
-    const fail = (problem: string) => {
-      setChecks((current) => ({ ...current, plex: previous }));
-      setProblems((current) => ({ ...current, plex: problem }));
-    };
-    try {
-      const response = await setupRequest('POST', '/plex', { url: address });
-      if (response.status === 409) {
-        fail('Your sign-in has no Plex token to use. Sign out and sign in again, or paste a token.');
-        return;
-      }
-      if (response.status !== 200) {
-        fail('The test could not reach media-manager-2. Try again.');
-        return;
-      }
-      const result = await response.json() as TestResult;
-      setChecks((current) => ({ ...current, plex: { ...result, at: Date.now(), ofSaved: result.kind === 'ok' } }));
-      if (result.kind !== 'ok') return;
-      setLoad((current) => (current.kind !== 'ready' ? current : {
-        kind: 'ready',
-        saved: {
-          ...current.saved,
-          plex: {
-            ...current.saved.plex,
-            serviceAddresses: { ...current.saved.plex.serviceAddresses, 'plex.url': address },
-            credentials: { ...current.saved.plex.credentials, 'plex.token': true },
-          },
-        },
-      }));
-      clearForm('plex');
-      setPlexSignIn(true);
-      toasts.add({ title: `Plex connected${result.version === undefined ? '' : ` · ${result.version}`}`, description: 'Tested with your sign-in token, then saved.' });
-    } catch {
-      fail('The test could not reach media-manager-2. Try again.');
-    } finally {
-      setPending((current) => ({ ...current, plex: undefined }));
-    }
-  };
-
-  const checkSaved = async (name: ServiceName) => {
-    setPending((current) => ({ ...current, [name]: 'check' }));
-    await test(name, {}, true);
-    setPending((current) => ({ ...current, [name]: undefined }));
-  };
-
   const discard = (name: ServiceName) => {
     setDiscardOpen(false);
-    const check = checks[name];
-    clearForm(name);
-    // A failure of the discarded values says nothing about the saved ones.
-    if ('at' in check && !check.ofSaved) {
-      if (isConfigured(saved[name])) void checkSaved(name);
-      else setChecks((current) => ({ ...current, [name]: { kind: 'idle' } }));
-    }
+    connections.discard(name);
   };
 
   // The service pane shows the selected service, or keeps Sonarr's state when anything else is selected.
@@ -407,52 +225,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
         note={anyConfigured ? undefined : 'Nothing is connected yet. Add each service’s address and key, then Connect tests and saves it.'}
       />
 
-      <section aria-labelledby="pieces-title" className="flex items-center gap-8 rounded-lg border border-border px-6 py-5">
-        <div className="flex w-55 shrink-0 flex-col gap-1">
-          <h2 id="pieces-title" className="font-ui text-base font-bold text-foreground">How the pieces connect</h2>
-          <p className="font-ui text-sm text-muted-foreground">{stripSummary(checks)}</p>
-        </div>
-        <div className="flex min-w-0 flex-1 gap-3">
-          <div className="flex min-w-40 shrink-0 flex-col gap-2 pr-2">
-            <h3 className="font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase">Trackers</h3>
-            <div className="flex min-h-23.5 flex-col items-start justify-center gap-2">
-              {trackers.length === 0
-                ? <span className="font-data text-[13px] text-muted-foreground">None added yet</span>
-                : trackers.map((row) => <TrackerPill key={row.host} row={row} edited={false} strip />)}
-            </div>
-          </div>
-          {chain.map((column, index) => {
-            const next = chain[index + 1];
-            const tone = next === undefined ? 'idle' : linkTone(column.names.map((name) => checks[name]), next.names.map((name) => checks[name]));
-            return (
-              <Fragment key={column.caption}>
-                <div className="flex shrink-0 flex-col gap-2">
-                  <h3 className="font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase">{column.caption}</h3>
-                  <div className="flex h-23.5 flex-col items-start justify-center gap-2">
-                    {column.names.map((name) => {
-                      const member = infoOf(name);
-                      const pill = pillFor(member, checks[name], editedOf(name));
-                      return <StatusServicePill key={name} logo={member.logo === null ? null : <Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
-                    })}
-                  </div>
-                </div>
-                {column.linked && (
-                  <div
-                    aria-hidden="true"
-                    className={cn(
-                      'flex h-29.25 min-w-4 flex-1 items-center pt-5.75',
-                      tone === 'risk' ? 'text-destructive' : tone === 'ok' ? 'text-input' : 'text-border',
-                    )}
-                  >
-                    <span className="h-px flex-1 bg-current" />
-                    <ChevronRight className="size-3.5 shrink-0" />
-                  </div>
-                )}
-              </Fragment>
-            );
-          })}
-        </div>
-      </section>
+      <PiecesStrip summary={stripSummary(checks)} trackers={trackers} checks={checks} editedOf={editedOf} />
 
       <div className="flex items-start gap-8">
         <nav aria-label="Services" className="flex w-105 shrink-0 flex-col">
@@ -577,24 +350,11 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
               problem={problems[service]}
               replacing={replacing}
               now={now}
-              onDraft={(draft) => setDrafts((current) => ({ ...current, [service]: draft }))}
-              onReplacing={(key, value) => {
-                setReplacing((current) => ({ ...current, [key]: value }));
-                if (!value) setDrafts((current) => {
-                  const draft = current[service] ?? emptyDraft(saved[service]);
-                  return { ...current, [service]: { ...draft, secrets: Object.fromEntries(Object.entries(draft.secrets).filter(([secret]) => secret !== key)) } };
-                });
-              }}
-              signInToken={info.name === 'plex' && setup.plexSignInTokenAvailable ? {
-                on: usingSignIn,
-                onChange: (on) => {
-                  setPlexSignIn(on);
-                  // A token typed under "Paste a token" would otherwise still count as an unsaved edit once its field is hidden.
-                  if (on) setDrafts((current) => ({ ...current, plex: { ...(current.plex ?? emptyDraft(saved.plex)), secrets: {} } }));
-                },
-              } : undefined}
-              onConnect={() => void (info.name === 'plex' && usingSignIn ? connectPlexWithSignIn() : connect(service))}
-              onCheck={() => void checkSaved(service)}
+              onDraft={(draft) => connections.setDraft(service, draft)}
+              onReplacing={(key, value) => connections.setReplacingKey(service, key, value)}
+              signInToken={info.name === 'plex' && setup.plexSignInTokenAvailable ? { on: usingSignIn, onChange: connections.choosePlexSignIn } : undefined}
+              onConnect={() => void (info.name === 'plex' && usingSignIn ? connections.connectPlexWithSignIn() : connections.connect(service))}
+              onCheck={() => void connections.checkSaved(service)}
               onDiscard={() => setDiscardOpen(true)}
             />
           )}
@@ -631,6 +391,80 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   );
 }
 
+type PiecesStripProps = {
+  summary: string;
+  trackers: TrackerRow[];
+  checks: Record<ServiceName, Check>;
+  editedOf: (name: ServiceName) => number;
+  noTrackers?: string;
+  /** The setup wizard's extras: Folders under rTorrent, and lit pills (black with a lime dot, all lime once setup is done). */
+  folders?: { state: ServiceState; text: string };
+  look?: 'plain' | 'setup' | 'done';
+};
+
+/** The "How the pieces connect" strip: trackers, then each service column with the links between them. Pills in a column share the widest one's width. */
+export function PiecesStrip({ summary, trackers, checks, editedOf, noTrackers = 'None added yet', folders, look = 'plain' }: PiecesStripProps) {
+  const done = look === 'done';
+  const pillLook = look === 'setup' ? 'dark' : done ? 'lime' : 'plain';
+  const caption = 'font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase';
+  return (
+    <section
+      aria-labelledby="pieces-title"
+      className={cn('flex items-center gap-8 rounded-lg border px-6 py-5 transition-colors duration-(--duration-base) ease-out', done ? 'border-bar bg-bar' : 'border-border')}
+    >
+      <div className="flex w-55 shrink-0 flex-col gap-1">
+        <h2 id="pieces-title" className={cn('font-ui text-base font-bold', done ? 'text-bar-foreground' : 'text-foreground')}>How the pieces connect</h2>
+        <p className={cn('font-ui text-sm', done ? 'text-bar-muted-foreground' : 'text-muted-foreground')}>{summary}</p>
+      </div>
+      <div className="flex min-w-0 flex-1 gap-3">
+        <div className="flex min-w-40 shrink-0 flex-col gap-2 pr-2">
+          <h3 className={caption}>Trackers</h3>
+          <div className="flex min-h-23.5 flex-col items-start justify-center gap-2">
+            {trackers.length === 0
+              ? <span className={cn('font-data text-[13px]', done ? 'text-bar-muted-foreground' : 'text-muted-foreground')}>{noTrackers}</span>
+              : trackers.map((row) => <TrackerPill key={row.host} row={row} edited={false} strip />)}
+          </div>
+        </div>
+        {chain.map((column, index) => {
+          const next = chain[index + 1];
+          const tone = next === undefined ? 'idle' : linkTone(column.names.map((name) => checks[name]), next.names.map((name) => checks[name]));
+          return (
+            <Fragment key={column.caption}>
+              <div className="flex shrink-0 flex-col gap-2">
+                <h3 className={caption}>{column.caption}</h3>
+                <div className="flex h-23.5 flex-col items-stretch justify-center gap-2">
+                  {column.names.map((name) => {
+                    const member = infoOf(name);
+                    const pill = pillFor(member, checks[name], editedOf(name));
+                    return <StatusServicePill key={name} look={pillLook} logo={member.logo === null ? null : <Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
+                  })}
+                  {folders !== undefined && column.names.includes('rtorrent') && (
+                    <StatusServicePill look={pillLook} logo={<Folder aria-hidden="true" className={cn('size-4', pillLook === 'dark' && folders.state === 'connected' ? 'text-bar-foreground' : 'text-foreground')} />} name="Folders" state={folders.state}>
+                      {folders.text}
+                    </StatusServicePill>
+                  )}
+                </div>
+              </div>
+              {column.linked && (
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    'flex h-29.25 min-w-4 flex-1 items-center pt-5.75',
+                    done ? 'text-bar-foreground' : tone === 'risk' ? 'text-destructive' : tone === 'ok' ? 'text-input' : 'text-border',
+                  )}
+                >
+                  <span className="h-px flex-1 bg-current" />
+                  <ChevronRight className="size-3.5 shrink-0" />
+                </div>
+              )}
+            </Fragment>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 type EditorProps = {
   info: ServiceInfo;
   saved: SavedService;
@@ -646,10 +480,12 @@ type EditorProps = {
   onCheck: () => void;
   onDiscard: () => void;
   signInToken?: { on: boolean; onChange: (on: boolean) => void };
+  /** The setup wizard's step: its heading and count, the step Connect moves on to, and Back in place of Discard and Check now. */
+  wizard?: { title: string; step: string; next: string; onBack: () => void };
 };
 
 /** The pane for the selected service. Switching services crossfades it (duration-base, ease-out). */
-function Editor({ info, saved, draft, check, pending, problem, replacing, now, onDraft, onReplacing, onConnect, onCheck, onDiscard, signInToken }: EditorProps) {
+export function Editor({ info, saved, draft, check, pending, problem, replacing, now, onDraft, onReplacing, onConnect, onCheck, onDiscard, signInToken, wizard }: EditorProps) {
   const configured = isConfigured(saved);
   const edits = changedCount(info.name, saved, draft);
   const testing = check.kind === 'testing';
@@ -672,6 +508,12 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
       : edits > 0 ? `Connect tests the new ${words}, then saves. If the test fails, nothing changes.`
         : !configured ? `Connect tests the ${fieldWords(info)}, then saves.`
           : 'Nothing to save. Change a field and Connect tests it before saving.';
+  // In the wizard a saved service with nothing changed moves on without a new test.
+  const unchanged = configured && edits === 0 && !signIn;
+  const wizardSummary = wizard === undefined || testing || formFailed ? summary
+    : unchanged ? `${info.label} is saved. Continue moves on to ${wizard.next}.`
+      : signIn ? `Connect tests the address with your sign-in token, saves both, then moves on to ${wizard.next}.`
+        : `Connect tests the ${edits > 0 ? `new ${words}` : fieldWords(info)}, saves them, then moves on to ${wizard.next}.`;
 
   return (
     <section
@@ -682,8 +524,9 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
         {info.logo === null
           ? <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground [&>svg]:size-4"><Globe /></span>
           : <Logo name={info.logo} alt="" className="size-8" />}
-        <h2 id={`${info.name}-editor`} className="font-ui text-base font-bold text-foreground">{info.label}</h2>
+        <h2 id={`${info.name}-editor`} className="font-ui text-base font-bold text-foreground">{wizard?.title ?? info.label}</h2>
         <StatusServicePill logo={null} name={null} state={pill.state} className={pillOnly}>{pill.text}</StatusServicePill>
+        {wizard !== undefined && <span className="ml-auto font-data text-[13px] text-muted-foreground">{wizard.step}</span>}
       </div>
 
       {signInToken !== undefined && (
@@ -789,14 +632,21 @@ function Editor({ info, saved, draft, check, pending, problem, replacing, now, o
       </dl>
 
       <BarBottomAction
-        summary={summary}
+        summary={wizardSummary}
         unsavedNote={edits > 0 && !testing && !formFailed ? 'Unsaved edits' : undefined}
-        secondary={edits > 0 || (testing && pending === 'connect')
-          ? <Button variant="outline" icon={<Undo2 />} disabled={testing} onClick={onDiscard}>Discard edits</Button>
-          : configured && <Button variant="ghost" icon={<RefreshCw />} loading={pending === 'check'} disabled={testing && pending !== 'check'} onClick={onCheck}>Check now</Button>}
+        secondary={wizard !== undefined ? <Button variant="outline" icon={<ArrowLeft />} disabled={testing} onClick={wizard.onBack}>Back</Button>
+          : edits > 0 || (testing && pending === 'connect')
+            ? <Button variant="outline" icon={<Undo2 />} disabled={testing} onClick={onDiscard}>Discard edits</Button>
+            : configured && <Button variant="ghost" icon={<RefreshCw />} loading={pending === 'check'} disabled={testing && pending !== 'check'} onClick={onCheck}>Check now</Button>}
         action={(
-          <Button size="large" icon={<Plug />} loading={pending === 'connect'} disabled={signIn ? address === '' || (testing && pending !== 'connect') : (configured && edits === 0) || (testing && pending !== 'connect')} onClick={onConnect}>
-            {pending === 'connect' ? 'Testing…' : 'Connect'}
+          <Button
+            size="large"
+            icon={wizard !== undefined && unchanged ? <ArrowRight /> : <Plug />}
+            loading={pending === 'connect'}
+            disabled={signIn ? address === '' || (testing && pending !== 'connect') : (wizard === undefined && configured && edits === 0) || (testing && pending !== 'connect')}
+            onClick={onConnect}
+          >
+            {pending === 'connect' ? 'Testing…' : wizard === undefined ? 'Connect' : unchanged ? 'Continue' : 'Connect and continue'}
           </Button>
         )}
       />

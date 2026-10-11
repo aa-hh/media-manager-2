@@ -110,12 +110,14 @@ type AddTrackerProps = {
   onAddress: (address: string) => void;
   request: TrackerRequest;
   onCancel: () => void;
+  /** The Cancel button's words; the setup wizard says "Skip trackers". */
+  cancelLabel?: string;
   /** Called with the hostname the server stored, and whether its site software was saved too. */
   onAdded: (host: string, softwareSaved: boolean) => void;
 };
 
 /** The pane for adding a tracker: its web address and site software. */
-export function AddTracker({ address, onAddress, request, onCancel, onAdded }: AddTrackerProps) {
+export function AddTracker({ address, onAddress, request, onCancel, cancelLabel = 'Cancel', onAdded }: AddTrackerProps) {
   const [software, setSoftware] = useState<Software>('unit3d');
   const [pending, setPending] = useState(false);
   const [fieldError, setFieldError] = useState<string>();
@@ -190,7 +192,7 @@ export function AddTracker({ address, onAddress, request, onCancel, onAdded }: A
       </div>
       <BarBottomAction
         summary="Adds the tracker with no rule. Its torrents keep seeding until you save one."
-        secondary={<Button variant="outline" disabled={pending} onClick={onCancel}>Cancel</Button>}
+        secondary={<Button variant="outline" disabled={pending} onClick={onCancel}>{cancelLabel}</Button>}
         action={<Button size="large" icon={<Plus />} loading={pending} disabled={address.trim() === ''} onClick={() => void add()}>Add tracker</Button>}
       />
       {problem !== undefined && <Callout title={problem} />}

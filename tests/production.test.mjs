@@ -9317,7 +9317,33 @@ test('the settings screen sends only changed fields and ranks each service state
   });
 
   const setupSource = await readFile(new URL('../src/client/settings/setup.ts', import.meta.url), 'utf8');
-  const { folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
+  const {
+    folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken, wantedParts, nextStep, firstStep,
+  } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
+
+  // Opening on a done step, visiting an unwanted or skipped optional part, or reaching Done with a required part missing turns this red.
+  await t.test('the wizard moves to the next open step and reaches Done only once every required part is saved', () => {
+    const status = (done, optional = {}) => ({
+      required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
+      optional: { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
+    });
+    const fresh = status([]);
+    assert.deepEqual(wantedParts(fresh), { trackers: true, backup: true });
+    assert.equal(firstStep(fresh, wantedParts(fresh)), 'what');
+    assert.equal(nextStep('what', fresh, wantedParts(fresh)), 'sonarr');
+    // Radarr saved in Settings earlier is passed over.
+    assert.equal(nextStep('sonarr', status(['sonarr', 'radarr']), { trackers: true, backup: true }), 'rtorrent');
+    assert.equal(firstStep(status(['sonarr']), { trackers: true, backup: true }), 'radarr');
+    const required = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
+    const chosen = status(required, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'not_done', wanted: true } });
+    assert.deepEqual(wantedParts(chosen), { trackers: false, backup: true });
+    assert.equal(nextStep('folders', chosen, wantedParts(chosen)), 'backup');
+    assert.equal(nextStep('backup', chosen, wantedParts(chosen)), 'done');
+    const skipped = status(required, { trackers: { status: 'skipped', wanted: true }, backup: { status: 'skipped', wanted: true } });
+    assert.equal(nextStep('folders', skipped, wantedParts(skipped)), 'done');
+    // Past the end with Plex missing goes back to Plex, not to Done.
+    assert.equal(nextStep('backup', status(['sonarr', 'radarr', 'rtorrent', 'folders']), { trackers: true, backup: true }), 'plex');
+  });
 
   // Letting a suggestion replace a saved folder, or leaving a field null when nothing is known, turns this red.
   await t.test('a saved folder beats a suggestion, a suggestion fills a gap, and nothing known is blank', () => {
