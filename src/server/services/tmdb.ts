@@ -34,6 +34,7 @@ export type TmdbCastMember = { id: number; name: string; character: string | nul
 export type TmdbDetails = {
   id: number;
   mediaType: TmdbMediaType;
+  tvdbId: number | null;
   title: string | null;
   overview: string | null;
   tagline: string | null;
@@ -88,6 +89,7 @@ const page = (body: unknown, fallback: TmdbMediaType | null): TmdbPage => {
 };
 
 // TV keywords sit under keywords.results and its cast under aggregate_credits with a list of roles.
+// A show's TVDB id comes from external_ids: the title store saves shows under it.
 const parseDetails = (body: unknown, mediaType: TmdbMediaType): TmdbDetails | undefined => {
   if (!isRecord(body)) return undefined;
   const id = number(body.id);
@@ -97,9 +99,11 @@ const parseDetails = (body: unknown, mediaType: TmdbMediaType): TmdbDetails | un
   const creditsBody = mediaType === 'movie' ? body.credits : body.aggregate_credits;
   const credits = isRecord(creditsBody) ? creditsBody : {};
   const episodeRuntimes = Array.isArray(body.episode_run_time) ? body.episode_run_time : [];
+  const externalIds = isRecord(body.external_ids) ? body.external_ids : {};
   return {
     id,
     mediaType,
+    tvdbId: number(externalIds.tvdb_id),
     title: text(body.title) ?? text(body.name),
     overview: text(body.overview),
     tagline: text(body.tagline),
@@ -208,7 +212,7 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
   // Not cached here: title details are saved in the title store.
   const details = async (mediaType: TmdbMediaType, id: number): Promise<Result<TmdbDetails>> => {
     const operation = `the ${mediaType === 'movie' ? 'movie' : 'show'} details`;
-    const append = mediaType === 'movie' ? 'keywords,recommendations,credits' : 'keywords,recommendations,aggregate_credits';
+    const append = mediaType === 'movie' ? 'keywords,recommendations,credits' : 'keywords,recommendations,aggregate_credits,external_ids';
     const result = await get(operation, `/${mediaType}/${id}`, { append_to_response: append });
     if (result.kind !== 'ok') return result;
     const parsed = parseDetails(result.value, mediaType);

@@ -2,12 +2,23 @@ import { statSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { listOpenProblems, type createProblems, type Subject } from './problems.js';
-import type { SecondVersionState } from './secondVersions.js';
+import type { FailureCode, SecondVersionState } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { checkHitAndRun, findTrackerRule } from './trackerRules.js';
 
 type Problems = ReturnType<typeof createProblems>;
 type Service = 'sonarr' | 'radarr';
+
+// The tracker's bare rule against this torrent, without the margins the removal advice adds. Hours are rounded to 0.01.
+export type HitAndRunProgress = {
+  host: string;
+  requiredHours: number | null;
+  seededHours: number;
+  ratio: number;
+  requiredRatio: number | null;
+  met: boolean;
+};
 
 export type SecondVersionRow = {
   id: number;
@@ -17,6 +28,7 @@ export type SecondVersionRow = {
   episodeId: number | null;
   state: SecondVersionState;
   failure: string | null;
+  failureCode: FailureCode | null;
   releaseTitle: string;
   indexer: string;
   quality: string;
@@ -37,6 +49,12 @@ export type SecondVersionRow = {
     upRate: number;
     trackerHost: string | null;
   } | null;
+  // Null when the torrent is not in rTorrent, its size is not known yet, or its tracker has no rule.
+  hitAndRun: HitAndRunProgress | null;
+  // The stall check flagged it and kept it in rTorrent; cleared once it downloads again.
+  stalled: boolean;
+  // Remaining bytes over the last poll's download rate; null unless downloading at a rate above 0.
+  etaSeconds: number | null;
 };
 
 export const VERSION_CHECK_INTERVAL_MS = 15 * 60_000;
@@ -48,10 +66,35 @@ const KINDS = [TRACKED_IN_VERSIONS, ORPHANED, FILE_MISSING];
 // razor: scene titles end in "-GROUP"; anything else reads as no group until the import records the real one.
 const groupOf = (title: string) => /-([A-Za-z0-9]+)$/.exec(title.trim())?.[1] ?? null;
 
-const toRow = (row: Record<string, unknown>): SecondVersionRow => {
+// A saved rule that fails validation throws in findTrackerRule; here it leaves the row without rule progress
+// instead of failing the whole title page.
+const hitAndRunOf = (database: DatabaseSync, row: Record<string, unknown>): HitAndRunProgress | null => {
+  const size = Number(row.t_size ?? 0);
+  if (row.t_hash === null || row.t_gone !== null || size === 0 || typeof row.t_tracker !== 'string' || row.t_tracker === '') return null;
+  let found: ReturnType<typeof findTrackerRule>;
+  try {
+    found = findTrackerRule(database, row.t_tracker);
+  } catch {
+    return null;
+  }
+  if (found === undefined) return null;
+  const { host, rule } = found;
+  const seededHours = Number(row.t_seeding) / 3600;
+  const ratio = Number(row.t_ratio) / 1000;
+  const result = checkHitAndRun(rule, { seedHours: seededHours, ratio, sizeBytes: size, completedBytes: Number(row.t_completed) });
+  const requiredRatio = result.case === 'complete' ? rule.ratio : result.case === 'partial' ? rule.partial.ratio : null;
+  const twoPlaces = (value: number) => Math.round(value * 100) / 100;
+  return {
+    host, requiredHours: result.requiredHours === null ? null : twoPlaces(result.requiredHours), seededHours: twoPlaces(seededHours), ratio, requiredRatio, met: result.met,
+  };
+};
+
+const toRow = (database: DatabaseSync, row: Record<string, unknown>): SecondVersionRow => {
   const state = row.state as SecondVersionState;
   const seen = row.t_hash !== null;
   const size = Number(row.t_size ?? 0);
+  const downloading = state === 'downloading' && seen && row.t_gone === null && size > 0;
+  const downRate = Number(row.t_down ?? 0);
   return {
     id: Number(row.id),
     service: row.service as Service,
@@ -60,6 +103,7 @@ const toRow = (row: Record<string, unknown>): SecondVersionRow => {
     episodeId: (row.episode_id as number | null) ?? null,
     state,
     failure: (row.failure as string | null) ?? null,
+    failureCode: (row.failure_code as FailureCode | null) ?? null,
     releaseTitle: String(row.release_title),
     indexer: String(row.indexer),
     quality: String(row.quality),
@@ -78,6 +122,10 @@ const toRow = (row: Record<string, unknown>): SecondVersionRow => {
       upRate: Number(row.t_up),
       trackerHost: (row.t_tracker as string | null) ?? null,
     } : null,
+    hitAndRun: hitAndRunOf(database, row),
+    // A flag from before the row was created belongs to an earlier use of the same torrent.
+    stalled: state === 'downloading' && row.w_replaced !== null && Number(row.w_replaced) >= Number(row.created_at),
+    etaSeconds: downloading && downRate > 0 ? Math.ceil(Math.max(0, size - Number(row.t_completed)) / downRate) : null,
   };
 };
 
@@ -85,13 +133,14 @@ const toRow = (row: Record<string, unknown>): SecondVersionRow => {
 export const listSecondVersionRows = (database: DatabaseSync, title: { service: 'radarr'; movieId: number } | { service: 'sonarr'; seriesId: number }) => database
   .prepare(`
     SELECT v.*, t.hash AS t_hash, t.size_bytes AS t_size, t.completed_bytes AS t_completed, t.complete AS t_complete,
-      t.ratio_thousandths AS t_ratio, t.seeding_seconds AS t_seeding, t.up_rate AS t_up, t.tracker_host AS t_tracker, t.gone_at AS t_gone
-    FROM second_versions v LEFT JOIN torrents t ON t.hash = v.hash
+      t.ratio_thousandths AS t_ratio, t.seeding_seconds AS t_seeding, t.up_rate AS t_up, t.tracker_host AS t_tracker, t.gone_at AS t_gone,
+      t.down_rate AS t_down, w.replaced_at AS w_replaced
+    FROM second_versions v LEFT JOIN torrents t ON t.hash = v.hash LEFT JOIN stall_watch w ON w.hash = v.hash
     WHERE v.state != 'deleted' AND v.service = ? AND ${title.service === 'radarr' ? 'v.movie_id' : 'v.series_id'} = ?
     ORDER BY v.created_at, v.id
   `)
   .all(title.service, title.service === 'radarr' ? title.movieId : title.seriesId)
-  .map((row) => toRow(row as Record<string, unknown>));
+  .map((row) => toRow(database, row as Record<string, unknown>));
 
 const inside = (folder: string, path: string) => {
   const rest = relative(folder, path);

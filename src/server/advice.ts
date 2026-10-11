@@ -5,7 +5,21 @@ import { checkHitAndRun, findTrackerRule, type HitAndRunRule, isRecord } from '.
 import { listTorrents, type Torrent } from './torrents.js';
 
 export type Recommendation = 'safe' | 'keep' | 'unconfirmed';
-export type RemovalAdvice = { recommendation: Recommendation; reason: string; globalRatio: string | null };
+// `reason` is the full sentence; `detail` is the same text without its verdict prefix ("Keep seeding: " and the like).
+// requiredHours includes the margin and is null when no seed time applies. hoursLeft is requiredHours less seededHours,
+// never below 0; it is 0 once the rule is met, even on ratio alone with seed time still short, and null when no seed
+// time applies or the seeding counter does not run (an incomplete torrent).
+// seededHours is null when the torrent is not in rTorrent. All three are rounded to 0.01 hours, hoursLeft upwards.
+export type RemovalAdvice = {
+  recommendation: Recommendation;
+  reason: string;
+  globalRatio: string | null;
+  host: string | null;
+  requiredHours: number | null;
+  seededHours: number | null;
+  hoursLeft: number | null;
+  detail: string;
+};
 type Margins = { timeFactor: number; extraHours: number; ratioExtra: number; globalRatioFactor: number };
 
 // The margins the owner accepted in AA-24 (How the delete recommendation judges hit and run).
@@ -45,9 +59,17 @@ export const saveMargins = (database: DatabaseSync, host: string, margins: Margi
 const hours = (value: number) => (Math.ceil(value) === 1 ? '1 hour' : `${Math.ceil(value)} hours`);
 // Rounded down, so a ratio of 1.049 reads 1.04 and never looks like it meets 1.05.
 const ratioText = (value: number) => (Math.floor(value * 100 + 1e-9) / 100).toFixed(2);
+const twoPlaces = (value: number | null) => (value === null ? null : Math.round(value * 100) / 100);
 
 
-type Verdict = { recommendation: Recommendation; reason: string };
+type Verdict = { recommendation: Recommendation; reason: string; detail: string; requiredHours: number | null; hoursLeft: number | null };
+
+const plain = (recommendation: Recommendation, reason: string, requiredHours: number | null = null): Verdict => (
+  { recommendation, reason, detail: reason, requiredHours, hoursLeft: null }
+);
+const prefixed = (recommendation: Recommendation, prefix: string, detail: string, hoursLeft: number | null = null, requiredHours: number | null = null): Verdict => (
+  { recommendation, reason: `${prefix}: ${detail}`, detail, requiredHours, hoursLeft }
+);
 
 // "Safe" is only ever proven by media-manager-2's own seeding counter (which can only undercount), by the ratio, or by
 // the tracker's exemption for a torrent stopped under its partial-download line; time since the download finished can only overcount, so it can rule removal out but never in.
@@ -65,28 +87,29 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
 
   if (base.case === 'under_buffer') {
     // A running download may still cross the exemption line.
-    if (torrent.started && torrent.active) return { recommendation: 'keep', reason: 'Still downloading' };
-    return { recommendation: 'safe', reason: `Under ${Math.round((rule.partial.exemptBelow ?? 0) * 100)}% downloaded; not a hit and run on ${host}` };
+    if (torrent.started && torrent.active) return plain('keep', 'Still downloading');
+    return plain('safe', `Under ${Math.round((rule.partial.exemptBelow ?? 0) * 100)}% downloaded; not a hit and run on ${host}`);
   }
 
   if (base.case === 'partial') {
     if (rule.partial.ratio === null && rule.partial.maxHours === null) {
-      return { recommendation: 'keep', reason: `Download not complete; ${host} counts seed time only at 100%` };
+      return plain('keep', `Download not complete; ${host} counts seed time only at 100%`);
     }
+    const partialHours = rule.partial.maxHours === null ? null : withMarginHours(rule.partial.maxHours);
     const neededRatio = rule.partial.ratio === null ? null : withMarginRatio(rule.partial.ratio);
     // The seeding counter never runs for an incomplete torrent, so only the ratio can make it safe.
     if (neededRatio !== null && checkHitAndRun({ ...rule, partial: { ...rule.partial, ratio: neededRatio } }, facts).ratio === true) {
-      return { recommendation: 'safe', reason: `Partly downloaded: ratio ${ratioText(facts.ratio)} of ${ratioText(neededRatio)} on the data downloaded` };
+      return plain('safe', `Partly downloaded: ratio ${ratioText(facts.ratio)} of ${ratioText(neededRatio)} on the data downloaded`, partialHours);
     }
     const ways = [
       neededRatio === null ? null : `at ratio ${ratioText(neededRatio)} of the data downloaded (now ${ratioText(facts.ratio)})`,
-      rule.partial.maxHours === null ? null : `after ${Math.ceil(withMarginHours(rule.partial.maxHours) / 24)} days seeding, which isn't measured yet`,
+      partialHours === null ? null : `after ${Math.ceil(partialHours / 24)} days seeding, which isn't measured yet`,
     ].filter((way) => way !== null);
-    return { recommendation: 'keep', reason: `Partly downloaded: clears ${ways.join(' or ')}` };
+    return plain('keep', `Partly downloaded: clears ${ways.join(' or ')}`, partialHours);
   }
 
   const { requiredHours } = base;
-  if (requiredHours === null) return { recommendation: 'unconfirmed', reason: `Can't tell; keep seeding: the rule for ${host} sets no seed time` };
+  if (requiredHours === null) return prefixed('unconfirmed', "Can't tell; keep seeding", `the rule for ${host} sets no seed time`);
   const neededHours = withMarginHours(requiredHours);
   const neededRatio = rule.ratio === null ? null : withMarginRatio(rule.ratio);
   const strict: HitAndRunRule = neededRatio === null
@@ -100,7 +123,7 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
       result.hours ? `seeded ${hours(facts.seedHours)} of ${hours(neededHours)} needed with margin` : null,
       result.ratio === true ? ratioPart : null,
     ].filter((part) => part !== null);
-    return { recommendation: 'safe', reason: `Hit and run rule met: ${metParts.join(rule.logic === 'and' ? ' and ' : ', ')}` };
+    return prefixed('safe', 'Hit and run rule met', metParts.join(rule.logic === 'and' ? ' and ' : ', '), 0, neededHours);
   }
   const hoursLeft = neededHours - facts.seedHours;
   // A torrent first seen after it finished has seeding the counter never saw.
@@ -116,10 +139,7 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
   }
   const leftParts = [timePart, result.ratio === false ? `${ratioPart} needed` : null].filter((part) => part !== null);
   const recommendation = timeUnproven && !ratioBlocks ? 'unconfirmed' : 'keep';
-  return {
-    recommendation,
-    reason: `${recommendation === 'keep' ? 'Keep seeding' : "Can't confirm yet; keep seeding"}: ${leftParts.join(rule.logic === 'and' ? ' and ' : ', or ')}`,
-  };
+  return prefixed(recommendation, recommendation === 'keep' ? 'Keep seeding' : "Can't confirm yet; keep seeding", leftParts.join(rule.logic === 'and' ? ' and ' : ', or '), Math.ceil(Math.max(0, hoursLeft) * 100 - 1e-9) / 100, neededHours);
 };
 
 export const adviseRemoval = async (
@@ -128,22 +148,25 @@ export const adviseRemoval = async (
   options: { now: number; accountStats(host: string): Promise<TrackerAccountStats | null> },
 ): Promise<RemovalAdvice> => {
   const torrent = listTorrents(database).find((row) => row.hash === hash);
-  if (torrent === undefined || torrent.goneAt !== null) {
-    return { recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null };
-  }
+  const unjudged = (verdict: Verdict, seededHours: number | null): RemovalAdvice => ({
+    recommendation: verdict.recommendation, reason: verdict.reason, globalRatio: null,
+    host: torrent?.trackerHost || null, requiredHours: null, seededHours, hoursLeft: null, detail: verdict.detail,
+  });
+  if (torrent === undefined || torrent.goneAt !== null) return unjudged(plain('keep', 'Seeding time unknown (torrent not in rTorrent)'), null);
+  const seededHours = twoPlaces(torrent.seedingSeconds / 3600);
   // A magnet still fetching its metadata reports size 0, which every rule would read as complete.
-  if (torrent.sizeBytes === 0) {
-    return { recommendation: 'keep', reason: "Waiting for the torrent's metadata; nothing downloaded yet", globalRatio: null };
-  }
+  if (torrent.sizeBytes === 0) return unjudged(plain('keep', "Waiting for the torrent's metadata; nothing downloaded yet"), seededHours);
   const found = torrent.trackerHost === null || torrent.trackerHost === '' ? undefined : findTrackerRule(database, torrent.trackerHost);
   if (found === undefined) {
     const why = torrent.trackerHost ? `no hit and run rule for ${torrent.trackerHost}` : 'its tracker is not known';
-    return { recommendation: 'unconfirmed', reason: `Can't tell; keep seeding: ${why}`, globalRatio: null };
+    return unjudged(prefixed('unconfirmed', "Can't tell; keep seeding", why), seededHours);
   }
 
   const { host, rule } = found;
   const margins = readMargins(database, host);
-  let { recommendation, reason } = judge(torrent, rule, host, margins, options.now);
+  const verdict = judge(torrent, rule, host, margins, options.now);
+  const { reason, detail, requiredHours, hoursLeft } = verdict;
+  let { recommendation } = verdict;
   let globalRatio: string | null = null;
   const account = await options.accountStats(host);
   // A Gazelle site reports the account's own required ratio, which beats the rule's.
@@ -156,5 +179,5 @@ export const adviseRemoval = async (
       recommendation = 'keep';
     }
   }
-  return { recommendation, reason, globalRatio };
+  return { recommendation, reason, globalRatio, host, requiredHours: twoPlaces(requiredHours), seededHours, hoursLeft, detail };
 };

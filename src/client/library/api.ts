@@ -160,6 +160,8 @@ export type SecondVersion = {
   episodeId: number | null;
   state: 'sending' | 'downloading' | 'importing' | 'imported' | 'failed';
   failure: string | null;
+  failureCode: 'download_link_failed' | 'not_a_torrent' | 'already_in_rtorrent' | 'rtorrent_refused' | 'send_unconfirmed'
+    | 'grabbed_by_arr' | 'never_received' | 'stalled_removed' | 'import_no_name' | 'import_no_match' | 'import_link_failed' | null;
   releaseTitle: string;
   indexer: string;
   quality: string;
@@ -173,10 +175,29 @@ export type SecondVersion = {
   percent: number | null;
   /** From the last rTorrent poll; null when media-manager-2 has never seen the torrent. */
   seeding: { inRtorrent: boolean; complete: boolean; ratio: number; seedingSeconds: number; upRate: number; trackerHost: string | null } | null;
+  /** The tracker's bare rule, without the removal advice's margins; null when the torrent is gone, unsized or its tracker has no rule. */
+  hitAndRun: { host: string; requiredHours: number | null; seededHours: number; ratio: number; requiredRatio: number | null; met: boolean } | null;
+  /** The stall check flagged it while downloading and kept it in rTorrent. */
+  stalled: boolean;
+  /** Seconds left at the last download rate; null unless downloading. */
+  etaSeconds: number | null;
 };
 
 /** GET /api/advice/:hash; src/server/advice.ts is the source of truth. */
-export type RemovalAdvice = { recommendation: 'safe' | 'keep' | 'unconfirmed'; reason: string; globalRatio: string | null };
+export type RemovalAdvice = {
+  recommendation: 'safe' | 'keep' | 'unconfirmed';
+  reason: string;
+  globalRatio: string | null;
+  host: string | null;
+  /** Includes the advice's margin; null when no seed time applies. */
+  requiredHours: number | null;
+  /** Null when the torrent is not in rTorrent. */
+  seededHours: number | null;
+  /** 0 once the rule is met; null when no seed time applies or the torrent is incomplete. */
+  hoursLeft: number | null;
+  /** `reason` without its verdict prefix. */
+  detail: string;
+};
 
 /** DELETE /api/second-versions/:id reply; src/server/secondVersionDelete.ts is the source of truth. */
 export type SecondVersionDeleted = {

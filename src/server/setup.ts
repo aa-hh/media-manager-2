@@ -2,7 +2,7 @@ import { type Stats, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { type Context, Hono } from 'hono';
-import { backupKeyFromEnvironment, backupsAreOff, setBackupsOff } from './backup.js';
+import { backupKeyFromEnvironment, backupsAreOff, createBackupKeyPair, readBackupKeyPair, setBackupsOff } from './backup.js';
 import { readBackupDestination } from './backupDestination.js';
 import { applicationMigrations, migrateDatabase } from './database.js';
 import { getPreference, setPreference } from './preferences.js';
@@ -33,10 +33,10 @@ const requiredKeys = {
   plex: [['serviceAddresses', 'plex.url'], ['credentials', 'plex.token']],
 } as const;
 const folderKeys = [
-  'downloads.sonarr', 'downloads.radarr', 'downloads.versions', 'library.sonarr', 'library.radarr', 'versions.sonarr', 'versions.radarr',
+  'downloads.sonarr', 'downloads.radarr', 'library.sonarr', 'library.radarr', 'versions.sonarr', 'versions.radarr',
 ] as const;
 
-const folderFields = ['downloads', 'librarySonarr', 'libraryRadarr', 'versionsSonarr', 'versionsRadarr'] as const;
+const folderFields = ['downloadsSonarr', 'downloadsRadarr', 'librarySonarr', 'libraryRadarr', 'versionsSonarr', 'versionsRadarr'] as const;
 type FolderField = typeof folderFields[number];
 export type FolderValues = Record<FolderField, string>;
 type FolderStat = (path: string) => Pick<Stats, 'dev' | 'isDirectory'> | undefined;
@@ -58,10 +58,10 @@ export const folderProblems = (
     if (stats === undefined || !stats.isDirectory()) fields[field] = 'This folder does not exist.';
     else found[field] = stats;
   }
-  // Imports hardlink second versions from the downloads folder, which only works within one drive.
-  for (const field of ['versionsSonarr', 'versionsRadarr'] as const) {
+  // Imports hardlink second versions from the service's downloads folder, which only works within one drive.
+  for (const [field, downloads] of [['versionsSonarr', found.downloadsSonarr], ['versionsRadarr', found.downloadsRadarr]] as const) {
     const versions = found[field];
-    if (versions !== undefined && found.downloads !== undefined && versions.dev !== found.downloads.dev) {
+    if (versions !== undefined && downloads !== undefined && versions.dev !== downloads.dev) {
       fields[field] = 'On a different drive from the downloads folder, so imports can\'t hardlink.';
     }
   }
@@ -73,9 +73,9 @@ export const folderWarnings = (
   values: FolderValues,
   stat: FolderStat = (path) => statSync(path, { throwIfNoEntry: false }),
 ): Partial<Record<FolderField, string>> => {
-  const downloads = stat(values.downloads);
   const warnings: Partial<Record<FolderField, string>> = {};
-  for (const field of ['librarySonarr', 'libraryRadarr'] as const) {
+  for (const [field, downloadsField] of [['librarySonarr', 'downloadsSonarr'], ['libraryRadarr', 'downloadsRadarr']] as const) {
+    const downloads = stat(values[downloadsField]);
     const library = stat(values[field]);
     if (downloads !== undefined && library !== undefined && library.dev !== downloads.dev) {
       warnings[field] = 'On a different drive from the downloads folder, so a deleted download can\'t be re-linked from this library.';
@@ -133,11 +133,15 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
     } catch (error) {
       problem = (error as Error).message;
     }
-    let key: 'set' | 'missing' | 'invalid';
-    try {
-      key = backupKeyFromEnvironment(env) === undefined ? 'missing' : 'set';
-    } catch {
-      key = 'invalid';
+    // A key pair made in the app replaces BACKUP_KEY, so the environment is not read once one exists.
+    const pair = readBackupKeyPair(database);
+    let key: 'pair' | 'env' | 'missing' | 'invalid' = 'pair';
+    if (pair === undefined) {
+      try {
+        key = backupKeyFromEnvironment(env) === undefined ? 'missing' : 'env';
+      } catch {
+        key = 'invalid';
+      }
     }
     const off = backupsAreOff(database);
     const choices = readChoices();
@@ -156,13 +160,14 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
       },
       requiredComplete: Object.values(required).every((status) => status === 'done'),
       plexSignInTokenAvailable: context.get('plexSignInToken') !== undefined,
-      // The access key, the secret and BACKUP_KEY's value never leave the server.
+      // The access key, the secret and BACKUP_KEY's value never leave the server, and the restore key is never returned here either.
       backup: {
         destination: destination === undefined ? null
           : destination.kind === 'folder' ? { kind: 'folder', folder: destination.folder }
             : { kind: 's3', endpoint: destination.config.endpoint, bucket: destination.config.bucket, region: destination.config.region },
         problem,
         key,
+        keyCreatedAt: pair === undefined ? null : pair.createdAt,
       },
     });
   });
@@ -181,7 +186,8 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
 
   routes.get('/folders', async (context) => {
     const saved = {
-      downloads: readSetting(database, 'hostPaths', 'downloads.sonarr') ?? null,
+      downloadsSonarr: readSetting(database, 'hostPaths', 'downloads.sonarr') ?? null,
+      downloadsRadarr: readSetting(database, 'hostPaths', 'downloads.radarr') ?? null,
       librarySonarr: readSetting(database, 'hostPaths', 'library.sonarr') ?? null,
       libraryRadarr: readSetting(database, 'hostPaths', 'library.radarr') ?? null,
       versionsSonarr: readSetting(database, 'hostPaths', 'versions.sonarr') ?? null,
@@ -193,18 +199,33 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
       const folder = body.find((entry) => isRecord(entry) && typeof entry.path === 'string' && entry.path.trim() !== '');
       return folder === undefined ? null : folder.path as string;
     };
+    // The folder the service's enabled download client puts its torrents in (tvDirectory or movieDirectory).
+    const clientFolder = async (service: 'sonarr' | 'radarr') => {
+      const name = service === 'sonarr' ? 'tvDirectory' : 'movieDirectory';
+      const { status, body } = await arr[service].request('/api/v3/downloadclient');
+      if (status < 200 || status > 299 || !Array.isArray(body)) return null;
+      for (const client of body) {
+        if (!isRecord(client) || client.enable === false || !Array.isArray(client.fields)) continue;
+        const field = client.fields.find((entry) => isRecord(entry) && entry.name === name);
+        if (isRecord(field) && typeof field.value === 'string' && field.value.trim() !== '') return field.value;
+      }
+      return null;
+    };
     const downloadDirectory = async () => {
       const value = await rtorrent.call('directory.default', []);
       return typeof value === 'string' && value !== '' ? value : null;
     };
-    const [sonarr, radarr, downloads] = (await Promise.allSettled([rootFolder('sonarr'), rootFolder('radarr'), downloadDirectory()]))
-      .map((result) => (result.status === 'fulfilled' ? result.value : null));
+    const settled = <T>(result: PromiseSettledResult<T | null>) => (result.status === 'fulfilled' ? result.value : null);
+    const [sonarr, radarr, sonarrClient, radarrClient, downloads] = (await Promise.allSettled([
+      rootFolder('sonarr'), rootFolder('radarr'), clientFolder('sonarr'), clientFolder('radarr'), downloadDirectory(),
+    ])).map(settled);
     const librarySonarr = saved.librarySonarr ?? sonarr;
     const libraryRadarr = saved.libraryRadarr ?? radarr;
     return context.json({
       saved,
       suggested: {
-        downloads,
+        downloadsSonarr: sonarrClient ?? downloads,
+        downloadsRadarr: radarrClient ?? downloads,
         librarySonarr: sonarr,
         libraryRadarr: radarr,
         versionsSonarr: librarySonarr === null ? null : `${librarySonarr}-versions`,
@@ -213,7 +234,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
     });
   });
 
-  // The wizard asks for one downloads folder; Sonarr's, Radarr's and the second versions' download keys all get it.
+  // Second versions download into the same folder as their service's own grabs, so there is no separate downloads key for them.
   routes.post('/folders', async (context) => {
     const body = await readBody(context);
     if (!hasExactly(body, folderFields) || folderFields.some((field) => typeof body[field] !== 'string')) {
@@ -222,7 +243,8 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
     const values = body as FolderValues;
     const fields = folderProblems(values);
     if (Object.keys(fields).length > 0) return context.json({ error: 'invalid_folders', fields }, 400);
-    for (const key of ['downloads.sonarr', 'downloads.radarr', 'downloads.versions']) setSetting(database, 'hostPaths', key, values.downloads);
+    setSetting(database, 'hostPaths', 'downloads.sonarr', values.downloadsSonarr);
+    setSetting(database, 'hostPaths', 'downloads.radarr', values.downloadsRadarr);
     setSetting(database, 'hostPaths', 'library.sonarr', values.librarySonarr);
     setSetting(database, 'hostPaths', 'library.radarr', values.libraryRadarr);
     setSetting(database, 'hostPaths', 'versions.sonarr', values.versionsSonarr);
@@ -312,6 +334,9 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
     setBackupsOff(database, false);
     return context.body(null, 204);
   });
+
+  // The private half is returned once, in this response, and never stored; creating another pair replaces the public half.
+  routes.post('/backup/key', (context) => context.json(createBackupKeyPair(database), 201));
 
   return routes;
 };

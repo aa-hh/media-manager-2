@@ -24,6 +24,7 @@ export type SonarrTitles = {
   episode: (episodeId: number) => Promise<Result<Episode>>;
   episodeFiles: (seriesId: number) => Promise<Result<FileDetail[]>>;
   monitorEpisodes: (episodeIds: number[], monitored: boolean) => Promise<Result<void>>;
+  deleteEpisodeFile: (fileId: number) => Promise<Result<void>>;
   deleteSeries: (seriesId: number) => Promise<Result<void>>;
 };
 

@@ -85,7 +85,9 @@ const versionWords: Record<string, string> = {
 const titleWords: Record<string, string> = {
   movie_deleted: 'Movie deleted',
   movie_file_deleted: 'Movie file deleted',
+  movie_unmonitored: 'Movie unmonitored',
   series_deleted: 'Show deleted',
+  season_deleted: 'Season deleted',
 };
 // Second version events that also show under Deletions.
 const deletionKinds: ReadonlySet<string> = new Set(['deleted', 'torrent_removed', 'torrent_kept']);

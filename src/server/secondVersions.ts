@@ -11,6 +11,9 @@ import { listTorrents } from './torrents.js';
 type XmlRpcCall = (method: string, params: readonly XmlRpcParam[]) => Promise<unknown>;
 
 export type SecondVersionState = 'sending' | 'downloading' | 'importing' | 'imported' | 'failed' | 'deleted';
+// One per place that writes a failure. send_unconfirmed sits on a row still sending, until the next poll settles it.
+export type FailureCode = 'download_link_failed' | 'not_a_torrent' | 'already_in_rtorrent' | 'rtorrent_refused' | 'send_unconfirmed'
+  | 'grabbed_by_arr' | 'never_received' | 'stalled_removed' | 'import_no_name' | 'import_no_match' | 'import_link_failed';
 
 export type SecondVersion = {
   id: number;
@@ -26,6 +29,7 @@ export type SecondVersion = {
   hash: string | null;
   state: SecondVersionState;
   failure: string | null;
+  failureCode: FailureCode | null;
   filePath: string | null;
   createdAt: number;
   updatedAt: number;
@@ -169,6 +173,7 @@ const rowToRecord = (row: Record<string, unknown>): SecondVersion => ({
   hash: (row.hash as string | null) ?? null,
   state: row.state as SecondVersionState,
   failure: (row.failure as string | null) ?? null,
+  failureCode: (row.failure_code as FailureCode | null) ?? null,
   filePath: (row.file_path as string | null) ?? null,
   createdAt: row.created_at as number,
   updatedAt: row.updated_at as number,
@@ -205,13 +210,15 @@ export const createSecondVersions = (options: {
     async grab(target: ReleaseTarget, guid: string) {
       const release = releases.find(target, guid);
       if (release === undefined) return { kind: 'unknown_release' } as const;
-      const folder = readSetting(database, 'hostPaths', 'downloads.versions');
+      // A second version downloads into the same folder as its service's own grabs.
+      const key = `downloads.${target.service}`;
+      const folder = readSetting(database, 'hostPaths', key);
       if (folder === undefined || !isAbsolute(folder)) {
-        return { kind: 'refused', reason: 'Set hostPaths downloads.versions to the folder second versions download into.' } as const;
+        return { kind: 'refused', reason: `Set hostPaths ${key} to the folder ${target.service === 'sonarr' ? 'Sonarr' : 'Radarr'} downloads into.` } as const;
       }
       // razor: rTorrent reads the folder inside a quoted command; a quote, backslash or line break would need escaping it may not honour.
       if (/["\\\r\n]/.test(folder)) {
-        return { kind: 'refused', reason: 'hostPaths downloads.versions cannot contain a quote, backslash or line break.' } as const;
+        return { kind: 'refused', reason: `hostPaths ${key} cannot contain a quote, backslash or line break.` } as const;
       }
       if (readSetting(database, 'serviceAddresses', 'rtorrent.url') === undefined) {
         return { kind: 'refused', reason: 'Set up rTorrent first.' } as const;
@@ -222,36 +229,38 @@ export const createSecondVersions = (options: {
       const subjects = subjectsFor(target, release);
       if (subjects.length === 0) return { kind: 'refused', reason: "Sonarr didn't say which episodes this release covers." } as const;
 
-      const insert = (hash: string | null, state: 'sending' | 'failed', failure: string | null) => {
+      const insert = (hash: string | null, state: 'sending' | 'failed', failure: string | null, failureCode: FailureCode | null) => {
         const at = now();
         const statement = database.prepare(`
-          INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, size_bytes, hash, state, failure, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, size_bytes, hash, state, failure, failure_code, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const ids = subjects.map((subject) => Number(statement.run(
           target.service, subject.movieId, subject.seriesId, subject.episodeId, release.title, guid, release.indexer ?? '',
-          release.quality ?? '', release.size, hash, state, failure, at, at,
+          release.quality ?? '', release.size, hash, state, failure, failureCode, at, at,
         ).lastInsertRowid));
         return ids.map((id) => rowToRecord(database.prepare('SELECT * FROM second_versions WHERE id = ?').get(id) as Record<string, unknown>));
       };
-      const failed = (reason: string) => ({ kind: 'failed', reason, records: insert(null, 'failed', reason) }) as const;
+      const failed = (reason: string, code: FailureCode) => ({ kind: 'failed', reason, records: insert(null, 'failed', reason, code) }) as const;
 
       const fetched = await fetchTorrent(fetchImpl, release.downloadUrl);
-      if (fetched.kind === 'refused') return failed(fetched.reason);
+      if (fetched.kind === 'refused') return failed(fetched.reason, 'download_link_failed');
       const hash = infoHash(fetched.bytes);
       if (hash === undefined) {
         const text = Buffer.from(fetched.bytes.subarray(0, 512)).toString('utf8').trimStart().toLowerCase();
-        return failed(text.startsWith('<') ? 'The download link returned a web page, not a torrent file.' : 'The download link did not return a torrent file.');
+        return failed(text.startsWith('<') ? 'The download link returned a web page, not a torrent file.' : 'The download link did not return a torrent file.', 'not_a_torrent');
       }
 
       // Checked and recorded with no await in between, so a second click on the same release finds the first one's rows.
       const live = listTorrents(database).some((torrent) => torrent.hash === hash && torrent.goneAt === null);
       const taken = database.prepare("SELECT 1 AS found FROM second_versions WHERE hash = ? AND state NOT IN ('failed', 'deleted')").get(hash);
-      if (live || taken !== undefined) return failed('That torrent is already in rTorrent.');
+      if (live || taken !== undefined) return failed('That torrent is already in rTorrent.', 'already_in_rtorrent');
       // Recorded before sending, so a crash between the two leaves rows to explain the torrent.
       database.exec('BEGIN IMMEDIATE;');
       try {
-        insert(hash, 'sending', null);
+        insert(hash, 'sending', null, null);
+        // A stall record left from an earlier use of this torrent would make the stall check skip it for good.
+        database.prepare('DELETE FROM stall_watch WHERE hash = ?').run(hash);
         database.exec('COMMIT;');
       } catch (error) {
         database.exec('ROLLBACK;');
@@ -264,11 +273,11 @@ export const createSecondVersions = (options: {
       } catch (error) {
         const reason = error instanceof Error ? error.message : 'rTorrent did not answer.';
         if (error instanceof RtorrentFault) {
-          database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, updated_at = ? WHERE hash = ? AND state = 'sending'").run(reason, now(), hash);
+          database.prepare("UPDATE second_versions SET state = 'failed', failure = ?, failure_code = 'rtorrent_refused', updated_at = ? WHERE hash = ? AND state = 'sending'").run(reason, now(), hash);
           return { kind: 'failed', reason, records: byHash(hash) } as const;
         }
         // A transport failure may have reached rTorrent anyway, so the next poll decides; it is never sent again.
-        database.prepare("UPDATE second_versions SET failure = ?, updated_at = ? WHERE hash = ? AND state = 'sending'").run(reason, now(), hash);
+        database.prepare("UPDATE second_versions SET failure = ?, failure_code = 'send_unconfirmed', updated_at = ? WHERE hash = ? AND state = 'sending'").run(reason, now(), hash);
         return { kind: 'unconfirmed', reason, records: byHash(hash) } as const;
       } finally {
         sending.delete(hash);
@@ -297,13 +306,13 @@ export const createSecondVersions = (options: {
             continue;
           }
           if (label === SECOND_VERSION_LABEL) {
-            database.prepare("UPDATE second_versions SET state = 'downloading', failure = NULL, updated_at = ? WHERE hash = ? AND state = 'sending'").run(at, hash);
+            database.prepare("UPDATE second_versions SET state = 'downloading', failure = NULL, failure_code = NULL, updated_at = ? WHERE hash = ? AND state = 'sending'").run(at, hash);
           } else {
-            database.prepare("UPDATE second_versions SET state = 'failed', failure = 'Sonarr or Radarr grabbed the same torrent.', updated_at = ? WHERE hash = ? AND state = 'sending'").run(at, hash);
+            database.prepare("UPDATE second_versions SET state = 'failed', failure = 'Sonarr or Radarr grabbed the same torrent.', failure_code = 'grabbed_by_arr', updated_at = ? WHERE hash = ? AND state = 'sending'").run(at, hash);
           }
         } else {
           database.prepare(`
-            UPDATE second_versions SET state = 'failed', updated_at = ?,
+            UPDATE second_versions SET state = 'failed', failure_code = 'never_received', updated_at = ?,
               failure = 'rTorrent never received it.' || CASE WHEN failure IS NULL THEN '' ELSE ' ' || failure END
             WHERE hash = ? AND state = 'sending'
           `).run(at, hash);

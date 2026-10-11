@@ -78,6 +78,14 @@ export const listTitles = (database: DatabaseSync, service: Service): CachedTitl
     .all(service) as TitleRow[]).map(toTitle)
 );
 
+// Library ids keyed by the TMDB id Sonarr or Radarr records on each title.
+export const libraryIdsByTmdbId = (database: DatabaseSync, service: Service, tmdbIds: number[]): Map<number, number> => {
+  if (tmdbIds.length === 0) return new Map();
+  const rows = database.prepare(`SELECT id, json_extract(detail, '$.tmdbId') AS tmdb_id FROM titles
+    WHERE service = ? AND json_extract(detail, '$.tmdbId') IN (${tmdbIds.map(() => '?').join(', ')})`).all(service, ...tmdbIds);
+  return new Map(rows.map((row) => [Number(row.tmdb_id), Number(row.id)]));
+};
+
 export const listEpisodes = (database: DatabaseSync, seriesId: number): CachedEpisode[] => (
   (database.prepare(`SELECT id, series_id, season_number, episode_number, title, air_date_utc, overview, has_file, monitored
     FROM episodes WHERE series_id = ? ORDER BY season_number, episode_number`).all(seriesId) as EpisodeRow[]).map((row) => ({
