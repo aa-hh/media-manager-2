@@ -72,7 +72,9 @@ function PickPanel({ target, title, onClose, onUnauthenticated }: {
     return () => { current = false; };
   }, [path, onUnauthenticated]);
   if (owned.kind === 'ready') {
-    return <PickRelease target={target} title={title} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} />;
+    // The server's labels read "Series S02E08" or "Movie (2024)"; its "Sonarr episode 12" and "Radarr movie 7" fallbacks carry no name.
+    const name = target.kind === 'movie' ? (/^Radarr movie \d+$/.test(title) ? undefined : title) : /^(.+) S\d{2,}E\d{2,}$/.exec(title)?.[1];
+    return <PickRelease target={target} title={title} name={name} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} />;
   }
   return (
     <PanelInline open title={`Pick a release for ${title}`} onClose={onClose}>

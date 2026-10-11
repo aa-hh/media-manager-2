@@ -108,7 +108,7 @@ function Sections({ snapshot, now }: { snapshot: HealthSnapshot; now: number }) 
               {snapshot.services.map((service) => {
                 const { state, words } = serviceStatus(service.status);
                 return (
-                  <StatusServicePill key={service.name} logo={service.name === 'tmdb' ? null : <Logo name={service.name} alt="" />} name={service.label} state={state}>
+                  <StatusServicePill key={service.name} logo={service.name === 'tmdb' || service.name === 'mdblist' ? null : <Logo name={service.name} alt="" />} name={service.label} state={state}>
                     {service.update === null ? words : `${words} · update available: ${service.update}`}
                   </StatusServicePill>
                 );

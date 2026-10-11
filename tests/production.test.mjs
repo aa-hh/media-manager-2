@@ -33,6 +33,7 @@ const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
 const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
+const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
 const eventsModuleUrl = new URL('../dist/server/events.js', import.meta.url).href;
@@ -2275,71 +2276,130 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
   });
 });
 
-test('the discover routes check every value, mark library titles and turn a missing TMDB key into a readable error', async (t) => {
+test('MDBList ratings fill the show page by site, are saved for a week and never fail the page', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
-  const { createTmdb } = await import(tmdbModuleUrl);
+  const { createLibrary, createLibraryRoutes } = await import(libraryModuleUrl);
   const { createTitleStore } = await import(titleStoreModuleUrl);
-  const { createDiscover } = await import(new URL('../dist/server/discover.js', import.meta.url).href);
-  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-discover-'));
+  const { createMdblist, ratingsBySite } = await import(mdblistModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-mdblist-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
     database.close();
     await rm(root, { recursive: true, force: true });
   });
-  const calls = [];
-  const tmdb = createTmdb(database, { fetch: async (url) => {
-    calls.push(new URL(String(url)));
-    return new Response(JSON.stringify({ page: 2, total_pages: 3, results: [
-      { id: 438631, title: 'Dune', release_date: '2021-09-15', poster_path: '/d5NX.jpg', backdrop_path: null, vote_average: 7.8, overview: 'Paul travels. Then more.' },
-      { id: 999, name: 'Severance', media_type: 'tv', first_air_date: '2022-02-17', poster_path: null, backdrop_path: '/bg.jpg' },
-    ] }));
-  } });
-  const store = createTitleStore(database);
-  const libraryTitles = async () => ({ titles: [{ type: 'movie', id: 7, tmdbId: 438631 }, { type: 'tv', id: 999, tmdbId: null }] });
-  const { app } = await makeApp({ discover: createDiscover({ tmdb, store, libraryTitles }) });
-  const { session } = await signIn(app);
-  const get = async (path) => {
-    const response = await app.request(path, { headers: { Cookie: session } });
-    return { status: response.status, body: await response.json() };
+  const key = `mdblist-key-${process.pid}-distinctive`;
+  const { fake, ...services } = connectArr(database);
+  fake.sonarr.state.series = [seriesRecord({ id: 7, title: 'Severance', tvdbId: 371980, tmdbId: 95396 })];
+  fake.sonarr.state.lookup = [{ title: 'Severance', tvdbId: 371980, tmdbId: 95396, seasons: [] }];
+  // The real MDBList reply for Severance (/tvdb/show/371980), 11 Oct 2026.
+  const severance = {
+    ids: { imdb: 'tt11280740', trakt: 154997, tmdb: 95396, tvdb: 371980, mal: null, mdblist: 'x' },
+    ratings: [
+      { source: 'imdb', value: 8.6, score: 86, votes: 410881, url: 63 },
+      { source: 'metacritic', value: 85, score: 85, votes: 82, url: null },
+      { source: 'metacriticuser', value: 8.3, score: 83, votes: 1048, url: null },
+      { source: 'trakt', value: 86, score: 86, votes: 25373, url: null },
+      { source: 'tomatoes', value: 95, score: 95, votes: 242, url: null, fresh: 1 },
+      { source: 'popcorn', value: 80, score: 80, votes: null, url: null },
+      { source: 'tmdb', value: 84, score: 84, votes: 3008, url: null },
+      { source: 'letterboxd', value: null, score: null, votes: null, url: null },
+      { source: 'rogerebert', value: null, score: null, votes: null, url: null },
+      { source: 'myanimelist', value: null, score: null, votes: null, url: null },
+    ],
+  };
+  const expected = {
+    imdb: { value: 8.6, votes: 410881 },
+    rottenTomatoes: { value: 95, votes: 242 },
+    rottenTomatoesAudience: { value: 80, votes: null },
+    metacritic: { value: 85, votes: 82 },
+  };
+  const none = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null };
+  const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
+  const clock = { value: 1_800_000_000_000 };
+  const connect = (respond) => {
+    database.prepare("DELETE FROM title_store_parts WHERE part = 'mdblistRatings'").run();
+    const calls = [];
+    const mdblist = createMdblist(database, { now: () => clock.value, fetch: async (url, init) => {
+      calls.push(new URL(String(url)));
+      assert.equal(init.redirect, 'error');
+      return respond(new URL(String(url)));
+    } });
+    const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value }), mdblist));
+    const page = async (path = '/series/7') => {
+      const response = await routes.request(path);
+      return { status: response.status, text: await response.text() };
+    };
+    return { mdblist, calls, page };
   };
 
-  // Mounting /api/discover outside the private guard turns this red.
-  assert.equal((await app.request('/api/discover/movie')).status, 401);
-
-  // Answering a missing TMDB key with a 500 or without its reason turns this red.
-  const unconfigured = await get('/api/discover/movie');
-  assert.equal(unconfigured.status, 503);
-  assert.equal(unconfigured.body.error, 'not_configured');
-  assert.match(unconfigured.body.reason, /TMDB is not configured/);
-
-  // Letting any one of these values through to TMDB turns its row red.
-  setSetting(database, 'credentials', 'tmdb.apiKey', 'tmdb-key');
-  for (const path of [
-    'movie?sort=trending', 'movie?region=usa', 'movie?region=us', 'movie?yearFrom=2020&yearTo=2019', 'movie?genres=18,abc',
-    'movie?providers=8|9', 'movie?page=0', 'movie?page=501', 'movie?minRating=11', 'person', 'providers/tv?region=GBR',
-  ]) {
-    assert.equal((await get(`/api/discover/${path}`)).status, 400, path);
-  }
-  assert.equal(calls.length, 0);
-
-  // Matching the library by anything but type and TMDB id, building image URLs other than the agreed route, or not saving the summary turns this red.
-  const page = await get('/api/discover/movie?genres=18,878&providers=8,9&region=GB&yearFrom=2020&minRating=6.5&page=2');
-  assert.equal(page.status, 200);
-  assert.deepEqual({ page: page.body.page, totalPages: page.body.totalPages }, { page: 2, totalPages: 3 });
-  assert.deepEqual(page.body.results[0], {
-    tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, posterUrl: '/api/images/tmdb/w342/d5NX.jpg', backdropUrl: null,
-    rating: 7.8, overview: 'Paul travels.', libraryId: 7,
+  // Reading score instead of value, mapping a source to the wrong site, or dropping the old rating field turns this red.
+  await t.test('the Severance reply maps to each site, on the library page and the preview', async () => {
+    setSetting(database, 'credentials', 'mdblist.apiKey', key);
+    const { calls, page } = connect(() => json(severance));
+    const body = JSON.parse((await page()).text);
+    assert.deepEqual(body.ratingsBySite, expected);
+    assert.equal('rating' in body, true);
+    assert.equal(calls[0].origin + calls[0].pathname, 'https://api.mdblist.com/tvdb/show/371980');
+    assert.equal(calls[0].searchParams.get('apikey'), key);
+    assert.deepEqual(JSON.parse((await page('/preview/sonarr/371980')).text).ratingsBySite, expected);
   });
-  assert.equal(page.body.results[1].backdropUrl, '/api/images/tmdb/w1920_and_h800_multi_faces/bg.jpg');
-  assert.equal(page.body.results[1].libraryId, null);
-  assert.equal(store.get({ type: 'movie', tmdbId: 438631 }, 'tmdbSummary').value.title, 'Dune');
-  assert.equal(store.get({ type: 'tv', tmdbId: 999 }, 'tmdbSummary').value.title, 'Severance');
-  const sent = calls.at(-1).searchParams;
-  assert.deepEqual(
-    ['sort_by', 'with_genres', 'with_watch_providers', 'watch_region', 'primary_release_date.gte', 'vote_average.gte', 'page'].map((name) => sent.get(name)),
-    ['popularity.desc', '18,878', '8|9', 'GB', '2020-01-01', '6.5', '2'],
-  );
+
+  // Not falling back to the TMDB id when MDBList has no such TVDB id turns this red.
+  await t.test('a TVDB id MDBList does not know falls back to the TMDB id', async () => {
+    const { calls, page } = connect((url) => (url.pathname.startsWith('/tvdb/') ? json({ error: 'not found' }, 404) : json(severance)));
+    assert.deepEqual(JSON.parse((await page()).text).ratingsBySite, expected);
+    assert.deepEqual(calls.map((url) => url.pathname), ['/tvdb/show/371980', '/tmdb/show/95396']);
+  });
+
+  // Turning a missing site or a site with a null value into anything but null turns this red.
+  await t.test('a missing site and a site whose fields are all null both give null', () => {
+    const ratings = severance.ratings
+      .filter((rating) => rating.source !== 'metacritic')
+      .map((rating) => (rating.source === 'imdb' ? { source: 'imdb', value: null, score: null, votes: null, url: null } : rating));
+    assert.deepEqual(ratingsBySite(ratings), { ...expected, imdb: null, metacritic: null });
+  });
+
+  // Failing the page when MDBList fails, saving a failure, or putting the key in a message or log line turns this red.
+  await t.test('an unset, rejected, rate-limited or unreachable MDBList leaves every site null and the page 200', async () => {
+    const logged = [];
+    const originals = { error: console.error, warn: console.warn, log: console.log };
+    for (const name of Object.keys(originals)) console[name] = (...args) => { logged.push(args.map(String).join(' ')); };
+    try {
+      const cases = [
+        { name: 'unset', set: '', respond: () => json(severance), status: { kind: 'not_configured' } },
+        { name: 'rejected', set: key, respond: () => json({ error: `Invalid API key ${key}` }, 403), status: { kind: 'rejected' } },
+        { name: 'rate-limited', set: key, respond: () => json({ error: 'limit' }, 429, { 'Retry-After': '3600' }), status: { kind: 'ok', version: 'daily request limit reached' } },
+        { name: 'unreachable', set: key, respond: () => { throw new TypeError(`fetch failed for ${key}`); }, status: { kind: 'unreachable' } },
+      ];
+      for (const entry of cases) {
+        setSetting(database, 'credentials', 'mdblist.apiKey', entry.set);
+        const { mdblist, page } = connect(entry.respond);
+        const answer = await page();
+        assert.equal(answer.status, 200, entry.name);
+        assert.deepEqual(JSON.parse(answer.text).ratingsBySite, none, entry.name);
+        const status = await mdblist.check();
+        assert.deepEqual(status, entry.status, entry.name);
+        for (const text of [answer.text, JSON.stringify(status)]) assert.equal(text.includes(key), false, entry.name);
+      }
+      assert.equal(logged.some((line) => line.includes(key)), false);
+    } finally {
+      Object.assign(console, originals);
+    }
+  });
+
+  // Asking MDBList again within seven days, or not refreshing a saved copy once it is a week old, turns this red.
+  await t.test('a second request within seven days makes no MDBList call', async () => {
+    setSetting(database, 'credentials', 'mdblist.apiKey', key);
+    const { calls, page } = connect(() => json(severance));
+    await page();
+    clock.value += 7 * 86_400_000 - 1;
+    assert.deepEqual(JSON.parse((await page()).text).ratingsBySite, expected);
+    assert.equal(calls.length, 1);
+    clock.value += 1;
+    assert.deepEqual(JSON.parse((await page()).text).ratingsBySite, expected);
+    assert.equal(calls.length, 2);
+  });
 });
 
 // Serving a credential, overwriting one with a blank, saving tested values, or accepting a key no service reads turns this red.
@@ -2376,12 +2436,14 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   for (const secret of [...secrets, 'test-key']) assert.equal(text.includes(secret), false, secret);
   const { services } = JSON.parse(text);
   // Tracker accounts live with their trackers; listing the old Blutopia, PrivateHD or Beyond-HD sign-ins here turns this red.
-  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb']);
+  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist']);
   assert.deepEqual(services[0], { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65201' }, credentials: { 'sonarr.apiKey': true } });
   assert.deepEqual(services[2].credentials, { 'rtorrent.username': false, 'rtorrent.password': true });
   assert.deepEqual(services[3].credentials, { 'plex.token': false });
   // Asking for a TMDB address, which is fixed, turns this red.
   assert.deepEqual(services[4], { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } });
+  // Asking for an MDBList address, which is fixed, turns this red.
+  assert.deepEqual(services[5], { service: 'mdblist', serviceAddresses: {}, credentials: { 'mdblist.apiKey': false } });
 
   // Saving a blank credential over the stored one, or accepting a key no service reads, turns this red.
   const before = listSettingKeys(database);
@@ -4026,6 +4088,94 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     assert.equal(database.prepare('PRAGMA user_version').get().user_version, applicationMigrations.length);
     const names = database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table'").all().map(({ name }) => name);
     for (const name of ['titles', 'episodes', 'title_images']) assert.ok(names.includes(name), name);
+  });
+});
+
+test('TMDB posters and backdrops are copied to our server on first request', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createImageRoutes, createTmdbImages } = await import(titlesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tmdb-images-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let setups = 0;
+  const setup = async () => {
+    setups += 1;
+    const directory = join(root, `case-${setups}`);
+    const database = openDatabase(join(directory, 'media-manager.sqlite'));
+    t.after(() => database.close());
+    const clock = { value: Date.parse('2026-10-11T12:00:00Z') };
+    const fetched = [];
+    const remote = { reachable: true, bytes: new Uint8Array([1, 2, 3]) };
+    const fetchImpl = async (url) => {
+      fetched.push(String(url));
+      if (!remote.reachable) throw new TypeError('fetch failed');
+      return new Response(remote.bytes, { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+    };
+    const tmdb = createTmdbImages({ database, imageDirectory: join(directory, 'images'), fetchImpl, now: () => clock.value });
+    const { app } = await makeApp({ images: createImageRoutes({ image: () => undefined }, tmdb) });
+    const { session } = await signIn(app);
+    const get = (path) => app.request(path, { headers: { Cookie: session } });
+    const rows = () => database.prepare('SELECT size, path FROM tmdb_images').all().map(({ size, path }) => `${size}/${path}`);
+    return { app, clock, fetched, get, remote, rows };
+  };
+
+  // Fetching from TMDB on every request instead of serving the saved copy, or not sharing one fetch between concurrent misses, turns this red.
+  await t.test('the first request fetches from TMDB once and later requests serve the saved copy', async () => {
+    const { app, fetched, get } = await setup();
+    assert.equal((await app.request('/api/images/tmdb/w342/abc123.jpg')).status, 401);
+    const [first, concurrent] = await Promise.all([get('/api/images/tmdb/w342/abc123.jpg'), get('/api/images/tmdb/w342/abc123.jpg')]);
+    assert.equal(first.status, 200);
+    assert.equal(concurrent.status, 200);
+    assert.deepEqual(fetched, ['https://image.tmdb.org/t/p/w342/abc123.jpg']);
+    const second = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(second.status, 200);
+    assert.equal(second.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(new Uint8Array(await second.arrayBuffer()), new Uint8Array([1, 2, 3]));
+    assert.deepEqual(fetched, ['https://image.tmdb.org/t/p/w342/abc123.jpg']);
+    assert.equal((await get('/api/images/tmdb/w1920_and_h800_multi_faces/abc123.jpg')).status, 200);
+    assert.equal(fetched.length, 2, 'each size is its own copy');
+  });
+
+  // Loosening the size or file check, so a caller can steer the fetch or reach outside the image folder, turns this red.
+  await t.test('a size or file outside the allowed set is refused without a fetch', async () => {
+    const { fetched, get, rows } = await setup();
+    for (const path of [
+      '/api/images/tmdb/original/abc123.jpg',
+      '/api/images/tmdb/w500/abc123.jpg',
+      '/api/images/tmdb/w342/abc123.gif',
+      '/api/images/tmdb/w342/abc_123.jpg',
+      '/api/images/tmdb/w342/..%2F..%2Fmedia-manager.sqlite',
+      '/api/images/tmdb/w342/%2E%2E%2Fabc123.jpg',
+      '/api/images/tmdb/w342/abc123.jpg%2F..%2F..%2Fx.jpg',
+      '/api/images/tmdb/w342/evil.example%2Fabc123.jpg',
+    ]) {
+      assert.equal((await get(path)).status, 404, path);
+    }
+    assert.deepEqual(fetched, []);
+    assert.deepEqual(rows(), []);
+  });
+
+  // Keeping a copy past six months, against TMDB's terms, turns this red.
+  await t.test('a copy older than six months is fetched again', async () => {
+    const { clock, fetched, get, remote } = await setup();
+    await get('/api/images/tmdb/w342/abc123.jpg');
+    clock.value += 179 * 24 * 60 * 60_000;
+    await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(fetched.length, 1);
+    remote.bytes = new Uint8Array([7, 7]);
+    clock.value += 2 * 24 * 60 * 60_000;
+    const refreshed = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(fetched.length, 2);
+    assert.deepEqual(new Uint8Array(await refreshed.arrayBuffer()), new Uint8Array([7, 7]));
+  });
+
+  // Saving a row when TMDB cannot be reached, or answering anything other than a 502 JSON error, turns this red.
+  await t.test('TMDB unreachable on a miss answers 502 and saves nothing', async () => {
+    const { get, remote, rows } = await setup();
+    remote.reachable = false;
+    const response = await get('/api/images/tmdb/w342/abc123.jpg');
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: 'tmdb_unreachable' });
+    assert.deepEqual(rows(), []);
   });
 });
 
@@ -7338,6 +7488,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       rtorrent: { check: async () => ok },
       plex: { check: async () => ok },
       tmdb: { check: async () => input.statuses?.tmdb ?? ok },
+      mdblist: { check: async () => input.statuses?.mdblist ?? ok },
       jobs: { status: () => input.jobs ?? [] },
       trackerAccounts: { stats: async () => input.accounts ?? notConfigured },
       events: { publish: (type, data) => { published.push({ type, data }); } },
@@ -7353,6 +7504,8 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     { name: 'Sonarr unreachable', input: { statuses: { sonarr: { kind: 'unreachable' } } }, level: 'error', errors: 1, warnings: 0, message: 'Sonarr is unreachable.' },
     // Leaving TMDB out of the service checks turns this row red.
     { name: 'TMDB key rejected', input: { statuses: { tmdb: { kind: 'rejected' } } }, level: 'error', errors: 1, warnings: 0, message: 'TMDB refused the credentials.' },
+    // Leaving MDBList out of the service checks turns this row red.
+    { name: 'MDBList unreachable', input: { statuses: { mdblist: { kind: 'unreachable' } } }, level: 'error', errors: 1, warnings: 0, message: 'MDBList is unreachable.' },
     {
       name: 'arr warning row with a string wikiUrl',
       input: { arr: { radarr: { '/api/v3/health': [{ source: 'IndexerStatusCheck', type: 'warning', message: 'Indexers unavailable: Blutopia', wikiUrl: 'https://wiki.servarr.com/radarr/1' }] } } },
@@ -8731,6 +8884,66 @@ test('backup commands upload, list and restore through a bucket or a folder from
   for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey));
 });
 
+test('the settings screen sends only changed fields and ranks each service state', async (t) => {
+  // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
+  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
+
+  // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
+  await t.test('only a changed address and typed secrets are sent', () => {
+    const cases = [
+      [{ address: ' http://localhost:8989 ', secrets: { 'sonarr.apiKey': '  ' } }, {}],
+      [{ address: 'http://localhost:8990', secrets: {} }, { serviceAddresses: { 'sonarr.url': 'http://localhost:8990' } }],
+      [{ address: 'http://localhost:8989', secrets: { 'sonarr.apiKey': 'new' } }, { credentials: { 'sonarr.apiKey': 'new' } }],
+    ];
+    for (const [draft, expected] of cases) assert.deepEqual(changes('sonarr', saved, draft), expected);
+  });
+
+  // Letting unsaved edits hide a running test or a failure turns this red.
+  await t.test('a running test, then a failure, then unsaved edits win the pill', () => {
+    const sonarr = services.find((info) => info.name === 'sonarr');
+    const connected = { kind: 'ok', version: '4.0.10.2544', at: 0, ofSaved: true };
+    const cases = [
+      [{ kind: 'testing' }, 2, 'testing'],
+      [{ kind: 'rejected', at: 0, ofSaved: false }, 2, 'failed'],
+      [connected, 1, 'unsaved'],
+      [connected, 0, 'connected'],
+      [{ kind: 'idle' }, 0, 'not-set-up'],
+    ];
+    for (const [check, edited, state] of cases) assert.equal(pillFor(sonarr, check, edited).state, state);
+    assert.equal(pillFor(sonarr, connected, 0).text, 'Connected · 4.0.10');
+  });
+
+  // Drawing a link red while one side has never answered, or grey while a whole side is failing, turns this red.
+  await t.test('a link is faint until both sides answered, and red when a side has nothing working', () => {
+    const ok = { kind: 'ok', at: 0, ofSaved: true };
+    const down = { kind: 'unreachable', at: 0, ofSaved: true };
+    assert.equal(linkTone([ok, { kind: 'idle' }], [{ kind: 'idle' }]), 'idle');
+    assert.equal(linkTone([ok, down], [down]), 'risk');
+    assert.equal(linkTone([ok, down], [ok]), 'ok');
+  });
+});
+
+test('the tracker rule form sends the saved rule back unchanged and converts percentages and days', async () => {
+  // Sending percentages or days as typed, dropping the kept curve row, writing margins nobody changed, or sending
+  // typed text as a blank turns this red.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/trackers.ts', import.meta.url), 'utf8');
+  const { draftFromRow, ruleBody, notANumber } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const rule = {
+    seedHours: [{ upToGB: 1, hours: 72 }, { upToGB: 50, hours: 72, perGB: 2 }, { hours: -219.2023, lnGB: 100 }],
+    ratio: 0.9, logic: 'or', minGlobalRatio: null, partial: { exemptBelow: 0.1, ratio: 0.9, maxHours: 1440 },
+  };
+  const row = { host: 'privatehd.to', status: 'configured', rule, ruleSource: 'settings', margins: { timeFactor: 1.1, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 } };
+  const draft = draftFromRow(row);
+  assert.deepEqual(ruleBody(draft, draft), { rule });
+  const wider = ruleBody({ ...draft, timePercent: '20' }, draft);
+  assert.deepEqual(wider.margins, { timeFactor: 1.2, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 });
+  assert.deepEqual(notANumber({ ...draft, ratio: '0.9x' }), { field: 'ratio', reason: 'Enter a number, such as 0.9 or 72.' });
+});
+
 test('deleting a movie or a show maps its files first, keeps seeding unless chosen, and stops when Sonarr or Radarr refuses', async (t) => {
   const { rmSync } = await import('node:fs');
   const { openDatabase } = await import(databaseModuleUrl);
@@ -9114,3 +9327,72 @@ test('the delete routes sit under the owner guard at /api/library and take a lon
   assert.equal(response.status, 200);
   assert.deepEqual(calls, [[{ service: 'radarr', movieId: 3 }, 60, 'keepUnmonitored']]);
 });
+
+test('the discover routes check every value, mark library titles and turn a missing TMDB key into a readable error', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTmdb } = await import(tmdbModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createDiscover } = await import(new URL('../dist/server/discover.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-discover-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const calls = [];
+  const tmdb = createTmdb(database, { fetch: async (url) => {
+    calls.push(new URL(String(url)));
+    return new Response(JSON.stringify({ page: 2, total_pages: 3, results: [
+      { id: 438631, title: 'Dune', release_date: '2021-09-15', poster_path: '/d5NX.jpg', backdrop_path: null, vote_average: 7.8, overview: 'Paul travels. Then more.' },
+      { id: 999, name: 'Severance', media_type: 'tv', first_air_date: '2022-02-17', poster_path: null, backdrop_path: '/bg.jpg' },
+    ] }));
+  } });
+  const store = createTitleStore(database);
+  const libraryTitles = async () => ({ titles: [{ type: 'movie', id: 7, tmdbId: 438631 }, { type: 'tv', id: 999, tmdbId: null }] });
+  const { app } = await makeApp({ discover: createDiscover({ tmdb, store, libraryTitles }) });
+  const { session } = await signIn(app);
+  const get = async (path) => {
+    const response = await app.request(path, { headers: { Cookie: session } });
+    return { status: response.status, body: await response.json() };
+  };
+
+  // Mounting /api/discover outside the private guard turns this red.
+  assert.equal((await app.request('/api/discover/movie')).status, 401);
+
+  // Answering a missing TMDB key with a 500 or without its reason turns this red.
+  const unconfigured = await get('/api/discover/movie');
+  assert.equal(unconfigured.status, 503);
+  assert.equal(unconfigured.body.error, 'not_configured');
+  assert.match(unconfigured.body.reason, /TMDB is not configured/);
+
+  // Letting any one of these values through to TMDB turns its row red.
+  setSetting(database, 'credentials', 'tmdb.apiKey', 'tmdb-key');
+  for (const path of [
+    'movie?sort=trending', 'movie?region=usa', 'movie?region=us', 'movie?yearFrom=2020&yearTo=2019', 'movie?genres=18,abc',
+    'movie?providers=8|9', 'movie?page=0', 'movie?page=501', 'movie?minRating=11', 'person', 'providers/tv?region=GBR',
+  ]) {
+    assert.equal((await get(`/api/discover/${path}`)).status, 400, path);
+  }
+  assert.equal(calls.length, 0);
+
+  // Matching the library by anything but type and TMDB id, building image URLs other than the agreed route, or not saving the summary turns this red.
+  const page = await get('/api/discover/movie?genres=18,878&providers=8,9&region=GB&yearFrom=2020&minRating=6.5&page=2');
+  assert.equal(page.status, 200);
+  assert.deepEqual({ page: page.body.page, totalPages: page.body.totalPages }, { page: 2, totalPages: 3 });
+  assert.deepEqual(page.body.results[0], {
+    tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, posterUrl: '/api/images/tmdb/w342/d5NX.jpg', backdropUrl: null,
+    rating: 7.8, overview: 'Paul travels.', libraryId: 7,
+  });
+  assert.equal(page.body.results[1].backdropUrl, '/api/images/tmdb/w1920_and_h800_multi_faces/bg.jpg');
+  assert.equal(page.body.results[1].libraryId, null);
+  assert.equal(store.get({ type: 'movie', tmdbId: 438631 }, 'tmdbSummary').value.title, 'Dune');
+  assert.equal(store.get({ type: 'tv', tmdbId: 999 }, 'tmdbSummary').value.title, 'Severance');
+  const sent = calls.at(-1).searchParams;
+  assert.deepEqual(
+    ['sort_by', 'with_genres', 'with_watch_providers', 'watch_region', 'primary_release_date.gte', 'vote_average.gte', 'page'].map((name) => sent.get(name)),
+    ['popularity.desc', '18,878', '8|9', 'GB', '2020-01-01', '6.5', '2'],
+  );
+});
+
+// Serving a credential, overwriting one with a blank, saving tested values, or accepting a key no service reads turns this red.
