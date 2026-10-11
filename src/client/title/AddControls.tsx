@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Button } from './components/ui/button';
-import { OwnedTitle } from './Owned';
-import { Chip, Poster, statusLabel, type SearchResult } from './Search';
+import { Button } from '../components/ui/button';
+import type { SearchResult } from '../Search';
 
 type QualityProfile = { id: number; name: string };
 type RootFolder = { path: string; freeSpace: number | null };
@@ -106,8 +105,8 @@ function Toggle({ id, label, checked, onChange }: { id: string; label: string; c
   );
 }
 
-function AddControls({ result, onAdded, onUnauthenticated }: {
-  result: SearchResult;
+export function AddControls({ result, onAdded, onUnauthenticated }: {
+  result: Pick<SearchResult, 'type' | 'tvdbId' | 'tmdbId'>;
   onAdded: (libraryId: number) => void;
   onUnauthenticated: () => void;
 }) {
@@ -315,56 +314,5 @@ function AddControls({ result, onAdded, onUnauthenticated }: {
         </Button>
       </div>
     </form>
-  );
-}
-
-export function TitleView({ result, onBack, onAdded, onUnauthenticated }: {
-  result: SearchResult;
-  onBack: () => void;
-  onAdded: (libraryId: number) => void;
-  onUnauthenticated: () => void;
-}) {
-  const status = statusLabel(result.status);
-  const [justAdded, setJustAdded] = useState(false);
-  return (
-    <article className="px-4 pb-16 pt-6 sm:px-6">
-      <button type="button" onClick={onBack} className="text-sm font-medium text-[var(--secondary-ink)] hover:text-[var(--ink)]">
-        ← Search results
-      </button>
-      <div className="mt-5 flex flex-col gap-6 sm:flex-row">
-        <Poster url={result.posterUrl} className="h-60 w-40 rounded" />
-        <div className="min-w-0 max-w-2xl flex-1">
-          <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">
-            {result.title}
-            {result.year !== null && <span className="ml-2 font-normal tabular-nums text-[var(--secondary-ink)]">{result.year}</span>}
-          </h2>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Chip>{result.type === 'tv' ? 'TV' : 'Movie'}</Chip>
-            {result.network !== null && <span className="text-sm text-[var(--secondary-ink)]">{result.network}</span>}
-            {status !== null && <Chip>{status}</Chip>}
-            {result.rating !== null && <Chip>{`${result.rating.toFixed(1)} ★`}</Chip>}
-            {result.inLibrary && <Chip tone="filled">✓ In library</Chip>}
-          </div>
-          {result.overview !== null && <p className="mt-4 line-clamp-3 text-[var(--secondary-ink)]">{result.overview}</p>}
-          {!(result.inLibrary && !justAdded) && (
-            <div className="mt-6">
-              <AddControls
-                result={result}
-                onAdded={(libraryId) => {
-                  setJustAdded(true);
-                  onAdded(libraryId);
-                }}
-                onUnauthenticated={onUnauthenticated}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-      {result.inLibrary && !justAdded && (
-        <div className="mt-6">
-          <OwnedTitle result={result} onUnauthenticated={onUnauthenticated} />
-        </div>
-      )}
-    </article>
   );
 }

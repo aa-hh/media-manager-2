@@ -37,6 +37,7 @@ const addModuleUrl = new URL('../dist/server/add.js', import.meta.url).href;
 const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
+const libraryModuleUrl = new URL('../dist/server/library.js', import.meta.url).href;
 const protectionModuleUrl = new URL('../dist/server/protection.js', import.meta.url).href;
 const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.meta.url).href;
 const torrentGrabsModuleUrl = new URL('../dist/server/torrentGrabs.js', import.meta.url).href;
@@ -376,7 +377,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks, api, library } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -391,6 +392,7 @@ const makeApp = async (input = {}) => {
     timers,
     webhooks,
     api,
+    library,
   });
   return { app, clock, fixture };
 };
@@ -3880,6 +3882,298 @@ test('a hand grab marks its torrent grab record as by hand, whichever record arr
     assert.deepEqual([grab.seriesId, grab.episodeIds, grab.grabbedAt], [3, [31], 1_000]);
     database.close();
   }
+});
+
+test('the library reads Sonarr and Radarr, orders titles newest first and forwards monitoring changes', async (t) => {
+  const { createLibrary, createLibraryRoutes, newestFirst, imageUrl } = await import(libraryModuleUrl);
+  const calls = [];
+  const window = 'start=2026-10-01T00%3A00%3A00.000Z&end=2026-10-08T00%3A00%3A00.000Z&unmonitored=false';
+  const bodies = {
+    sonarr: {
+      '/api/v3/series/3?includeSeasonImages=true': {
+        id: 3, title: 'Andor', monitored: true, qualityProfileId: 4, tags: [9],
+        images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://img/p.jpg' }],
+        seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
+      },
+      '/api/v3/series/3': {
+        id: 3, title: 'Andor', monitored: true,
+        seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
+      },
+      '/api/v3/episode?seriesId=3&includeEpisodeFile=true&includeImages=true': [
+        {
+          id: 32, seasonNumber: 1, episodeNumber: 2, title: 'Two', hasFile: false, monitored: true,
+        },
+        {
+          id: 31, seasonNumber: 1, episodeNumber: 1, title: 'One', hasFile: true, monitored: true, finaleType: 'season',
+          sceneSeasonNumber: 2, sceneEpisodeNumber: 5, unverifiedSceneNumbering: true, airDateUtc: '2022-09-21T00:00:00Z',
+          images: [{ coverType: 'screenshot', remoteUrl: 'javascript:alert(1)' }],
+          episodeFile: {
+            id: 7, size: 100, qualityCutoffNotMet: true, releaseGroup: 'GRP',
+            quality: { quality: { name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: true } },
+            languages: [{ id: 1, name: 'English' }], customFormats: [{ id: 2, name: 'HDR' }, { id: 3, name: 'Atmos' }],
+          },
+        },
+      ],
+      '/api/v3/qualityprofile': [{
+        id: 4, name: 'HD', cutoff: 1002, items: [{ id: 1001, name: 'HD group', items: [{ quality: { id: 3, name: 'WEBDL-1080p' } }] }, { id: 1002, name: 'Remux group', quality: null, items: [] }],
+      }],
+      '/api/v3/tag': [{ id: 9, label: 'kids' }],
+      '/api/v3/series': [],
+      [`/api/v3/calendar?${window}&includeSeries=true&includeEpisodeFile=true`]: [],
+    },
+    radarr: {
+      [`/api/v3/calendar?${window}`]: [
+        { id: 5, title: 'Dune', year: 2024, monitored: true, inCinemas: '2026-10-02T00:00:00Z', digitalRelease: '2026-10-05T00:00:00Z', physicalRelease: '2026-12-01T00:00:00Z' },
+      ],
+      '/api/v3/movie': [],
+      '/api/v3/qualityprofile': [],
+    },
+  };
+  const fake = (name) => ({
+    configured: () => true,
+    request: async (path, init = {}) => {
+      calls.push({ name, method: init.method ?? 'GET', path, body: init.body });
+      if (init.method !== undefined) return { status: 200, body: undefined };
+      return path in bodies[name] ? { status: 200, body: bodies[name][path] } : { status: 404, body: undefined };
+    },
+  });
+  const library = createLibrary({ sonarr: fake('sonarr'), radarr: fake('radarr') });
+  const routes = createLibraryRoutes(library);
+  const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  await t.test('newestFirst orders by added descending, missing last, ties by title', () => {
+    // Sorting by title or service instead of the added date turns this red.
+    const order = newestFirst([
+      { title: 'B', added: '2024-01-01T00:00:00Z' }, { title: 'Z', added: null }, { title: 'A', added: '2024-01-01T00:00:00Z' },
+      { title: 'New', added: '2025-05-05T00:00:00Z' }, { title: 'Bad', added: 'nope' },
+    ]).map((entry) => entry.title);
+    assert.deepEqual(order, ['New', 'A', 'B', 'Bad', 'Z']);
+  });
+
+  await t.test('series keeps the raw facts the title page marks from', async () => {
+    // Resolving the cutoff by quality id only, or dropping a raw field the markers read, turns this red.
+    const result = await library.series(3);
+    assert.equal(result.kind, 'ok');
+    const detail = result.value;
+    assert.deepEqual(detail.qualityProfile, { id: 4, name: 'HD', cutoff: 'Remux group' });
+    assert.deepEqual(detail.tags, ['kids']);
+    assert.equal(detail.posterUrl, 'https://img/p.jpg');
+    assert.deepEqual(detail.episodes.map((episode) => episode.id), [31, 32]);
+    const [first] = detail.episodes;
+    assert.equal(first.finaleType, 'season');
+    assert.deepEqual([first.sceneSeasonNumber, first.sceneEpisodeNumber, first.unverifiedSceneNumbering], [2, 5, true]);
+    assert.equal(first.imageUrl, null);
+    assert.equal(first.airDate, '2022-09-21T00:00:00Z');
+    assert.equal(first.file.qualityCutoffNotMet, true);
+    assert.deepEqual(first.file.revision, { version: 2, real: 0, isRepack: true });
+    assert.deepEqual([first.file.languages, first.file.customFormats], [['English'], ['HDR', 'Atmos']]);
+    assert.equal(imageUrl([{ coverType: 'poster', remoteUrl: '/local/p.jpg' }], 'poster'), null);
+  });
+
+  await t.test('monitor forwards each change to the right write and the routes reject bad bodies', async () => {
+    // Flipping a different season, sending the wrong endpoint, or loosening the body checks turns this red.
+    calls.length = 0;
+    await library.monitor({ service: 'sonarr', kind: 'season', seriesId: 3, seasonNumber: 2, monitored: false });
+    await library.monitor({ service: 'sonarr', kind: 'episodes', episodeIds: [31, 32], monitored: true });
+    await library.monitor({ service: 'sonarr', kind: 'series', seriesId: 3, monitored: false });
+    await library.monitor({ service: 'radarr', kind: 'movie', movieId: 5, monitored: true });
+    const writes = calls.filter((call) => call.method !== 'GET');
+    assert.deepEqual(writes.map((call) => `${call.name} ${call.method} ${call.path}`), [
+      'sonarr PUT /api/v3/series/3', 'sonarr PUT /api/v3/episode/monitor', 'sonarr PUT /api/v3/series/editor', 'radarr PUT /api/v3/movie/editor',
+    ]);
+    assert.deepEqual(writes[0].body, {
+      id: 3, title: 'Andor', monitored: true,
+      seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: false }],
+    });
+    assert.deepEqual(writes[1].body, { episodeIds: [31, 32], monitored: true });
+    assert.deepEqual(writes[2].body, { seriesIds: [3], monitored: false });
+    assert.deepEqual(writes[3].body, { movieIds: [5], monitored: true });
+    assert.equal((await post('/monitor', { service: 'sonarr', kind: 'series', seriesId: 3, monitored: true })).status, 204);
+    const tooMany = Array.from({ length: 101 }, (_, index) => index + 1);
+    assert.equal((await post('/monitor', { service: 'sonarr', kind: 'episodes', episodeIds: tooMany, monitored: true })).status, 400);
+    assert.equal((await post('/monitor', { service: 'sonarr', kind: 'series', seriesId: 3, monitored: true, extra: 1 })).status, 400);
+    assert.equal((await post('/refresh', { service: 'sonarr', kind: 'episodes', episodeIds: [1] })).status, 400);
+    assert.equal((await post('/search', { service: 'radarr', kind: 'movie', movieId: 5 })).status, 204);
+  });
+
+  await t.test('calendar emits one movie entry per release date in range and refuses long windows', async () => {
+    // Emitting one entry per movie, or dropping the 45-day cap, turns this red.
+    const result = await library.calendar('2026-10-01T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+    assert.deepEqual(result.entries.map((entry) => [entry.kind, entry.release, entry.at]), [
+      ['movie', 'cinema', '2026-10-02T00:00:00Z'], ['movie', 'digital', '2026-10-05T00:00:00Z'],
+    ]);
+    assert.equal((await routes.request('/calendar?start=2026-10-01T00:00:00Z&end=2026-11-16T00:00:00Z')).status, 400);
+    assert.equal((await routes.request('/calendar?start=2026-10-01T00:00:00Z&end=2026-10-08T00:00:00Z')).status, 200);
+  });
+
+  await t.test('the library routes need a session', async () => {
+    // Mounting /api/library outside the private guard turns this red.
+    const { app } = await makeApp({ library });
+    assert.equal((await app.request('/api/library/titles')).status, 401);
+    const { session } = await signIn(app);
+    assert.equal((await app.request('/api/library/titles', { headers: { Cookie: session } })).status, 200);
+  });
+});
+
+test('library posters and title pages derive progress and totals from the live downloads snapshot', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { buildRows } = await load('../src/client/downloads/model.ts');
+  const { progressText, totals } = await load('../src/client/library/grid.ts');
+  const { subjectProgress, seedingFacts } = await load('../src/client/library/progress.ts');
+  const hash = 'EF'.repeat(20);
+  const torrent = (overrides = {}) => ({ hash, name: 'Show.S01', sizeBytes: 1000, completedBytes: 400, downRate: 2000, upRate: 0, started: true, active: true,
+    complete: false, message: '', ratioThousandths: 1500, seedersConnected: 3, trackerHost: 'tracker.example', seedingSeconds: 90, goneAt: null, ...overrides });
+  const grab = (overrides = {}) => ({ hash, service: 'sonarr', movieId: null, episodeIds: [11, 12], seriesId: 5, importedAt: null, failedAt: null,
+    releaseTitle: 'Show.S01', indexer: 'Blutopia', byHand: false, ...overrides });
+  const queue = (overrides = {}) => ({ service: 'sonarr', queueId: 3, downloadId: null, movieId: null, episodeId: 13, seriesId: 5, title: 'Show.S01E03', label: 'Show',
+    status: 'delay', trackedStatus: 'ok', trackedState: 'downloading', statusMessages: [], errorMessage: '', indexer: '', quality: 'WEBDL-1080p', formats: [],
+    formatScore: 0, estimatedCompletion: null, ...overrides });
+  const snapshot = (overrides = {}) => ({ torrents: [], queue: [], grabs: [], problems: [], ...overrides });
+  const progressFor = (shot) => subjectProgress(shot, buildRows(shot));
+
+  // Printing "8 + 2 / 10" when nothing downloads, or "8 / 10" while something does, turns this red.
+  await t.test('progress text separates files from downloading episodes', () => {
+    assert.equal(progressText(8, 2, 10), '8 + 2 / 10');
+    assert.equal(progressText(8, 0, 10), '8 / 10');
+    assert.equal(progressText(0, 0, 0), '0 / 0');
+  });
+
+  // Counting every title's totals the same way (or ignoring a movie's file) turns this red.
+  await t.test('totals count shows, movies, episodes, files and size', () => {
+    const show = (episodeFileCount, episodeCount, sizeOnDisk) => ({ type: 'tv', sizeOnDisk, tv: { episodeFileCount, episodeCount, totalEpisodeCount: episodeCount, seasonCount: 1 }, movie: null });
+    const movie = (hasFile, sizeOnDisk) => ({ type: 'movie', sizeOnDisk, tv: null, movie: { hasFile, isAvailable: true } });
+    assert.deepEqual(totals([show(8, 10, 100), show(2, 4, 50), movie(true, 30), movie(false, 0)]),
+      { shows: 2, movies: 2, episodes: 14, files: 11, sizeBytes: 180 });
+  });
+
+  // Mapping only the first episode of a grab, or keeping imported grabs, turns this red.
+  await t.test('a grab gives each of its episodes the torrent row word and percent; imported grabs and delayed queue items behave', () => {
+    const live = progressFor(snapshot({ torrents: [torrent()], grabs: [grab()] }));
+    for (const id of [11, 12]) assert.deepEqual(live.get(`episode:${id}`), { word: 'downloading', tone: 'normal', percent: 40, downRate: 2000 });
+    assert.equal(progressFor(snapshot({ torrents: [torrent()], grabs: [grab({ importedAt: 1 })] })).size, 0, 'an imported grab is not live');
+    const delayed = progressFor(snapshot({ queue: [queue()] })).get('episode:13');
+    assert.deepEqual([delayed.word, delayed.percent], ['delayed', null]);
+  });
+
+  // Reading a gone torrent, or a grab that has not imported yet, as seeding turns this red.
+  await t.test('seeding facts come from the imported grab\'s live torrent', () => {
+    const imported = grab({ importedAt: 1 });
+    assert.deepEqual(seedingFacts(snapshot({ torrents: [torrent()], grabs: [imported] }), { episodeId: 11 }),
+      [{ trackerHost: 'tracker.example', seedingSeconds: 90, ratio: 1.5, complete: false }]);
+    assert.deepEqual(seedingFacts(snapshot({ torrents: [torrent({ goneAt: 5 })], grabs: [imported] }), { episodeId: 11 }), []);
+    assert.deepEqual(seedingFacts(snapshot({ torrents: [torrent()], grabs: [grab()] }), { episodeId: 11 }), []);
+  });
+});
+
+test('title pages mark episodes and select ranges of episodes only', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { episodeMarks, seasonMonitoredState, movieWord } = await load('../src/client/title/rows.ts');
+  const { rangeBetween } = await load('../src/client/title/selection.ts');
+
+  // Letting a season header or version row into a range, or depending on which end the range starts from, turns this red.
+  await t.test('a range takes episode rows only, in either direction', () => {
+    const rows = [
+      { kind: 'season', key: 'season:1', episodeId: null },
+      { kind: 'episode', key: 'episode:1', episodeId: 1 },
+      { kind: 'episode', key: 'episode:2', episodeId: 2 },
+      { kind: 'version', key: 'version:2', episodeId: 2 },
+      { kind: 'episode', key: 'episode:3', episodeId: 3 },
+      { kind: 'season', key: 'season:2', episodeId: null },
+      { kind: 'episode', key: 'episode:4', episodeId: 4 },
+    ];
+    assert.deepEqual(rangeBetween(rows, 1, 6), [1, 2, 3, 4]);
+    assert.deepEqual(rangeBetween(rows, 6, 1), [1, 2, 3, 4]);
+  });
+
+  // Mislabelling a premiere, finale or revision, or flagging scene numbers that match, turns this red.
+  await t.test('episode marks follow Sonarr\'s numbering, finale type, revision and scene fields', () => {
+    const file = (revision) => ({ revision: { version: 1, real: 0, isRepack: false, ...revision } });
+    const episode = (overrides = {}) => ({ seasonNumber: 2, episodeNumber: 5, finaleType: null, sceneSeasonNumber: null, sceneEpisodeNumber: null,
+      unverifiedSceneNumbering: false, file: null, ...overrides });
+    const cases = [
+      [episode(), []],
+      [episode({ seasonNumber: 1, episodeNumber: 1 }), ['Series premiere']],
+      [episode({ episodeNumber: 1 }), ['Premiere']],
+      [episode({ seasonNumber: 0, episodeNumber: 1 }), []],
+      [episode({ finaleType: 'series' }), ['Series finale']],
+      [episode({ finaleType: 'season' }), ['Season finale']],
+      [episode({ finaleType: 'midseason' }), ['Midseason finale']],
+      [episode({ file: file({ version: 2, isRepack: true }) }), ['Repack']],
+      [episode({ file: file({ version: 2 }) }), ['Proper']],
+      [episode({ file: file({ real: 1 }) }), ['Real']],
+      [episode({ sceneSeasonNumber: 2, sceneEpisodeNumber: 5 }), []],
+      [episode({ sceneSeasonNumber: 3, sceneEpisodeNumber: 1 }), ['Scene S03E01']],
+      [episode({ unverifiedSceneNumbering: true }), ['Scene numbering unverified']],
+    ];
+    for (const [input, marks] of cases) assert.deepEqual(episodeMarks(input), marks, JSON.stringify(input));
+  });
+
+  // Reading a partly monitored season as fully monitored or not monitored turns this red.
+  await t.test('a season is monitored, not monitored or partly monitored', () => {
+    assert.equal(seasonMonitoredState([{ monitored: true }, { monitored: true }]), 'all');
+    assert.equal(seasonMonitoredState([{ monitored: false }, { monitored: false }]), 'none');
+    assert.equal(seasonMonitoredState([{ monitored: true }, { monitored: false }]), 'mixed');
+  });
+
+  // Printing a word for a downloaded movie, or a different word from the Downloads screen's, turns this red.
+  await t.test('a movie prints one status word only for exceptions', () => {
+    const movie = (overrides = {}) => ({ status: 'released', hasFile: true, isAvailable: true, file: { qualityCutoffNotMet: false }, ...overrides });
+    const live = (word, percent) => ({ word, tone: 'normal', percent, downRate: 0 });
+    const cases = [
+      [movie(), undefined, null],
+      [movie({ status: 'deleted' }), live('downloading', 40), 'deleted'],
+      [movie({ hasFile: false, file: null }), live('downloading', 64), 'downloading 64%'],
+      [movie({ hasFile: false, file: null }), live('queued', null), 'queued'],
+      [movie({ hasFile: false, file: null }), undefined, 'missing'],
+      [movie({ hasFile: false, isAvailable: false, file: null }), undefined, 'not available'],
+      [movie({ file: { qualityCutoffNotMet: true } }), undefined, 'below cutoff'],
+    ];
+    for (const [input, progress, word] of cases) assert.equal(movieWord(input, progress), word, JSON.stringify([input, progress]));
+  });
+});
+
+test('the calendar groups one show\'s same-day episodes and frames week, month and forecast windows', async (t) => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/calendar/model.ts', import.meta.url), 'utf8');
+  const { windowFor, groupByDay, entryWord, shiftAnchor } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const ymd = (date) => [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+
+  // Starting the week on Sunday, or ending the month grid on the last day instead of the following Sunday, turns this red.
+  await t.test('week runs Monday to Sunday, the month grid pads to whole weeks and the forecast is five days', () => {
+    const week = windowFor('week', new Date(2026, 9, 7, 15));
+    assert.deepEqual([ymd(week.start), week.days.length, ymd(week.days[6])], [[2026, 10, 5], 7, [2026, 10, 11]]);
+    const month = windowFor('month', new Date(2026, 9, 14));
+    assert.deepEqual([ymd(month.start), ymd(month.days[month.days.length - 1]), month.days.length], [[2026, 9, 28], [2026, 11, 1], 35]);
+    assert.equal(windowFor('month', new Date(2026, 7, 14)).days.length, 42, 'August 2026 needs six weeks');
+    const forecast = windowFor('forecast', new Date(2026, 9, 8));
+    assert.deepEqual([forecast.days.length, ymd(forecast.lookback)], [5, [2026, 10, 1]]);
+    assert.deepEqual(ymd(shiftAnchor('month', new Date(2026, 0, 31), 1)), [2026, 2, 1]);
+  });
+
+  // Listing each episode separately, or merging two different shows, turns this red.
+  await t.test('two episodes of one show on one day collapse into one group; another show stays separate', () => {
+    const episode = (id, seriesId, episodeNumber, title, hasFile = false) => ({ service: 'sonarr', kind: 'episode', id, seriesId, seriesTitle: `Show ${seriesId}`,
+      seasonNumber: 2, episodeNumber, title, at: new Date(2026, 9, 7, 20).toISOString(), hasFile, monitored: true, quality: null, finaleType: null });
+    const [groups] = groupByDay([episode(1, 5, 3, 'Sweet Vitriol'), episode(2, 5, 4, 'Next'), episode(3, 6, 1, 'Pilot')], [new Date(2026, 9, 7)]);
+    assert.deepEqual(groups.map((group) => [group.title, group.subtitle, group.count]), [['Show 5', 'S02E03–E04', 2], ['Show 6', 'S02E01 Pilot', 1]]);
+  });
+
+  // Calling a downloaded or not-yet-aired episode missing, or a downloading one missing, turns this red.
+  await t.test('only aired, monitored, file-less, idle entries say missing; live progress wins', () => {
+    const now = new Date(2026, 9, 7, 22).getTime();
+    const group = (overrides = {}) => ({ entries: [{ service: 'sonarr', kind: 'episode', id: 1, seriesId: 5, seasonNumber: 2, episodeNumber: 3, title: 't',
+      at: new Date(2026, 9, 7, 20).toISOString(), hasFile: false, monitored: true, ...overrides }] });
+    const idle = new Map();
+    assert.equal(entryWord(group(), idle, now), 'missing');
+    assert.equal(entryWord(group({ hasFile: true }), idle, now), null);
+    assert.equal(entryWord(group({ at: new Date(2026, 9, 8).toISOString() }), idle, now), null);
+    assert.equal(entryWord(group(), new Map([['episode:1', { word: 'downloading', tone: 'normal', percent: 40.2, downRate: 1 }]]), now), 'downloading 40%');
+    assert.equal(entryWord(group(), new Map([['episode:1', { word: 'queued', tone: 'normal', percent: null, downRate: 0 }]]), now), 'queued');
+  });
 });
 
 const sha256Hex = (data) => createHash('sha256').update(data).digest('hex');
