@@ -16,6 +16,8 @@ import { seedingText } from './EpisodeDetails';
 // The failure text src/server/stalls.ts (STALLED_REMOVED) records when it removed a stalled torrent that had downloaded nothing.
 const STALLED_REMOVED = 'Stalled with nothing downloaded; torrent removed.';
 
+// "720p" from "720p WEB-DL", as the dialog names a version.
+const resolution = (quality: string | null) => (quality === null ? null : /\d{3,4}p/i.exec(quality)?.[0] ?? quality);
 const addedDay = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const sizeText = (version: SecondVersion) => (version.sizeBytes === null ? '' : formatBytes(version.sizeBytes));
 const deletable = (version: SecondVersion) => version.state === 'imported' || version.state === 'failed';
@@ -69,7 +71,7 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
     const ruleMet = reason.startsWith('Hit and run rule met');
     keep = recommendation === 'safe' ? 'The torrent keeps seeding in rTorrent.' : `Recommended: ${adviceReason(reason)}`;
     if (globalRatio !== null) keep = `${keep}. ${globalRatio}.`;
-    if (recommendation === 'safe') remove = `Recommended: ${reason}`;
+    if (recommendation === 'safe') remove = `Recommended: ${reason.replace(': ', ', ')}`;
     else if (recommendation === 'keep') remove = ruleMet && globalRatio !== null ? `${globalRatio}.` : `Breaks the ${name} rule`;
     else remove = "The hit and run rule can't be confirmed.";
   } else {
@@ -117,8 +119,9 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
     onClose();
   };
 
-  const quality = version.quality === '' ? '' : `${version.quality} `;
-  const what = [subject, version.quality, sizeText(version)].filter((part) => part !== null && part !== '').join(' · ');
+  const quality = version.quality === '' ? '' : `${resolution(version.quality)} `;
+  const tracked = resolution(trackedQuality);
+  const what = [subject, resolution(version.quality), sizeText(version)].filter((part) => part !== null && part !== '').join(' · ');
   const callouts = [
     choices && noHistory && (
       <Callout key="history" look="warning" title="No seeding record, so keep the torrent to be safe.">
@@ -133,7 +136,7 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
       open
       onOpenChange={(next) => { if (!next) onClose(); }}
       title={`Delete the ${quality}second version?`}
-      subject={`${what}.${trackedQuality === null ? '' : ` The ${trackedQuality} tracked version is not touched.`}`}
+      subject={`${what}.${tracked === null ? '' : ` The ${tracked} tracked version is not touched.`}`}
       scrollEdges
       footerCallout={callouts.length === 0 ? undefined : <div className="flex flex-col gap-2">{callouts}</div>}
       actions={outcome?.done ? <Button size="large" onClick={onClose}>Done</Button> : (
