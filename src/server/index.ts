@@ -5,6 +5,7 @@ import { serve } from '@hono/node-server';
 import { createAdd } from './add.js';
 import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
+import { createBlocklist } from './blocklist.js';
 import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createFlagged } from './flagged.js';
@@ -108,6 +109,7 @@ if (database !== undefined) {
       health,
       flagged: createFlagged({ database, arr, labels, isManualDownload: protection.isProtected }),
       history: createHistory({ database, arr, labels }),
+      blocklist: createBlocklist({ database, arr, isManualDownload: protection.isProtected }),
     }),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),

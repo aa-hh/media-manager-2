@@ -6,6 +6,7 @@ import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import { createHealthRoutes, type Health } from './health.js';
 import type { createManualImport } from './manualImport.js';
 import { createHistoryRoutes, type History } from './history.js';
+import { type Blocklist, createBlocklistRoutes, createHistoryFailedRoute, recordBlocklistMark } from './blocklist.js';
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
 
@@ -18,6 +19,7 @@ export type ApiActions = {
   health?: Health;
   flagged?: Flagged;
   history?: History;
+  blocklist?: Blocklist;
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -132,6 +134,7 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     if (typeof release !== 'string' || !Object.hasOwn(removals, release)) return context.json({ error: 'invalid_request' }, 400);
     const query = removals[release as keyof typeof removals];
     const result = await send(item.service, `/api/v3/queue/${item.queueId}?removeFromClient=false&${query}`, 'DELETE');
+    if (result === 'ok' && release !== 'keep') recordBlocklistMark(database, item.service, item.title, 'downloads', Date.now());
     return result === 'ok' ? context.body(null, 204) : context.json({ error: `service_${result}` }, 502);
   });
   const importTarget = (service: string, downloadId: string) => (
@@ -170,5 +173,9 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
   if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
   if (actions?.flagged !== undefined) api.route('/flagged', createFlaggedRoutes(actions.flagged));
   if (actions?.history !== undefined) api.route('/history', createHistoryRoutes(actions.history));
+  if (actions?.blocklist !== undefined) {
+    api.route('/blocklist', createBlocklistRoutes(actions.blocklist));
+    api.post('/history/:service/:id/failed', createHistoryFailedRoute(actions.blocklist));
+  }
   return api;
 };

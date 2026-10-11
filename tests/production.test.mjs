@@ -2237,8 +2237,11 @@ test('queue actions grab delayed releases and remove items without touching rTor
   // Removing from rTorrent, or mapping a removal choice to the wrong blocklist and search flags, turns this red.
   sent.length = 0;
   assert.equal((await post('/api/queue/sonarr/-51234/remove', { release: 'everything' })).status, 400);
+  const downloadMarks = () => database.prepare("SELECT COUNT(*) AS count FROM blocklist_marks WHERE origin = 'downloads'").get().count;
   for (const release of ['keep', 'blocklist', 'blocklist_search']) {
     assert.equal((await post('/api/queue/sonarr/-51234/remove', { release })).status, 204);
+    // Recording a blocklist mark for a kept release, or none for a blocklisted one, turns this red.
+    assert.equal(downloadMarks() > 0, release !== 'keep');
   }
   assert.equal((await post('/api/queue/radarr/8/remove', { release: 'keep' })).status, 502);
   assert.deepEqual(sent, [
@@ -4144,4 +4147,106 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   assert.equal((await app.request('/api/history')).status, 401);
   assert.equal((await app.request('/api/history?filter=nope', { headers: { Cookie: session } })).status, 400);
   assert.equal((await app.request('/api/history?filter=fixes', { headers: { Cookie: session } })).status, 200);
+});
+
+test('marking a grab failed keeps the file and the torrent, blocklists and searches again; the blocklist says why and by whom', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createBlocklist } = await import(new URL('../dist/server/blocklist.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-blocklist-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const andor = { series: { title: 'Andor' }, quality: { quality: { name: 'WEBDL-2160p' } }, indexer: 'Blutopia' };
+  const state = {
+    removeFailed: true,
+    autoRedownload: false,
+    refuseSearch: false,
+    blocklist: {
+      sonarr: [
+        { ...andor, id: 3, date: '2026-10-10T10:00:00Z', sourceTitle: 'andor.s02e09.2160p.web-dl-grp', episodeIds: [31], message: 'Manually marked as failed' },
+        { ...andor, id: 4, date: '2026-10-10T08:00:00Z', sourceTitle: 'Andor.S02E10.STALLED', episodeIds: [32, 33], message: 'Download failed' },
+      ],
+      radarr: [{ id: 5, date: '2026-10-10T09:00:00Z', sourceTitle: 'Dune.2021.1080p', movie: { title: 'Dune', year: 2021 }, message: 'Release was not wanted' }],
+    },
+  };
+  const calls = [];
+  const fake = (name) => ({
+    request: async (path, init = {}) => {
+      calls.push(`${name} ${init.method ?? 'GET'} ${path}`);
+      if (path === '/api/v3/downloadclient') return { status: 200, body: [{ enable: true, removeFailedDownloads: state.removeFailed }] };
+      if (path === '/api/v3/config/downloadclient') return { status: 200, body: { autoRedownloadFailed: state.autoRedownload } };
+      if (path.startsWith('/api/v3/blocklist?')) return { status: 200, body: { records: state.blocklist[name] } };
+      if (path === '/api/v3/command' && state.refuseSearch) return { status: 500, body: undefined };
+      return { status: 200, body: undefined };
+    },
+  });
+  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const blocklist = createBlocklist({ database, arr, isManualDownload: (subject) => subject.type === 'episode' && subject.id === '40', now: () => 5_000 });
+  const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, blocklist }) });
+  const { session } = await signIn(app);
+  const mark = (id, body) => app.request(`/api/history/sonarr/${id}/failed`, {
+    method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: JSON.stringify(body),
+  });
+  const grab = { movieId: null, episodeIds: [31], releaseTitle: 'Andor.S02E09.2160p.WEB-DL-GRP' };
+
+  // Marking it failed while the download client would remove the seeding torrent turns this red.
+  let response = await mark(7, grab);
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'remove_failed_on' });
+  assert.deepEqual(calls, ['sonarr GET /api/v3/downloadclient']);
+
+  // Touching the library file or the queue, or skipping the search media-manager-2 owes, turns this red.
+  state.removeFailed = false;
+  calls.length = 0;
+  response = await mark(7, grab);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { searched: 'media-manager-2' });
+  assert.deepEqual(calls, [
+    'sonarr GET /api/v3/downloadclient',
+    'sonarr POST /api/v3/history/failed/7',
+    'sonarr GET /api/v3/config/downloadclient',
+    'sonarr POST /api/v3/command',
+  ]);
+  assert.equal(calls.some((call) => /episodefile|moviefile|queue/.test(call)), false);
+  assert.equal(database.prepare('SELECT origin FROM blocklist_marks WHERE release_title = ?').get(grab.releaseTitle).origin, 'history');
+
+  // Searching on top of the service's own automatic redownload, or searching for a manual download, turns this red.
+  state.autoRedownload = true;
+  calls.length = 0;
+  assert.deepEqual(await (await mark(8, grab)).json(), { searched: 'service' });
+  assert.equal(calls.includes('sonarr POST /api/v3/command'), false);
+  state.autoRedownload = false;
+  assert.deepEqual(await (await mark(9, { ...grab, episodeIds: [40], releaseTitle: 'Protected.Release' })).json(), { searched: 'manual_download' });
+  // Reporting a refused search as a failed mark, when the grab is already marked failed, turns this red.
+  state.refuseSearch = true;
+  const refused = await mark(10, grab);
+  assert.deepEqual([refused.status, await refused.json()], [200, { searched: 'search_failed' }]);
+  state.refuseSearch = false;
+  assert.equal((await mark(7, { ...grab, extra: true })).status, 400);
+  assert.equal((await mark(7, { ...grab, releaseTitle: '' })).status, 400);
+
+  const hash = 'CD'.repeat(20);
+  createGrabTracker({ database, arr, events: createEventHub() }).recordGrab({
+    hash, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [32, 33], releaseTitle: 'Andor.S02E10.STALLED', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false,
+  });
+  createProblems({ database, events: createEventHub() })
+    .open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, summary: 'Stalled at 40% for 6 hours', hash });
+  // Losing the case-insensitive match on the owner's mark, the problem summary, or the service's own message turns this red.
+  const listed = await blocklist.list(1, 'all');
+  assert.deepEqual(listed.entries.map((entry) => [entry.id, entry.title, entry.by, entry.reason]), [
+    [3, 'Andor · 1 episode', 'you', "from the title's history"],
+    [5, 'Dune (2021)', 'Radarr', 'Release was not wanted'],
+    [4, 'Andor · 2 episodes', 'media-manager-2', 'Stalled at 40% for 6 hours'],
+  ]);
+  assert.equal(listed.hasMore, false);
+
+  // Unblocking through anything but the service's blocklist delete turns this red.
+  calls.length = 0;
+  const unblocked = await app.request('/api/blocklist/sonarr/3', { method: 'DELETE', headers: { ...jsonHeaders(), Cookie: session } });
+  assert.equal(unblocked.status, 204);
+  assert.deepEqual(calls, ['sonarr DELETE /api/v3/blocklist/3']);
 });
