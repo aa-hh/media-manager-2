@@ -5,7 +5,6 @@ import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { CardLibrary } from '@/components/ui/card-library';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Fact } from '@/components/ui/fact';
 import { FactStacked } from '@/components/ui/fact-stacked';
 import { HeaderTitle } from '@/components/ui/header-title';
 import { StatusInline } from '@/components/ui/status-inline';
@@ -76,23 +75,6 @@ const titleLinks = (subject: Subject) => {
       ? { label: 'Trailer', href: `https://www.youtube.com/watch?v=${encodeURIComponent(subject.detail.youTubeTrailerId)}` }
       : null,
   ].filter((link) => link !== null);
-};
-
-const externalLink = ({ label, href }: { label: string; href: string }) => (
-  <a key={label} href={href} target="_blank" rel="noreferrer" className="focus-ring rounded-xs underline underline-offset-2 hover:text-muted-foreground">{label}</a>
-);
-
-// What Sonarr or Radarr knows beyond the facts a not-yet-added title's page passes: shown under them, each only when the data has it.
-const titleFacts = (subject: Subject): TitleFact[] => {
-  const { detail } = subject;
-  const links = titleLinks(subject).map(externalLink);
-  return [
-    ...(subject.type === 'tv' && subject.detail.language !== null ? [{ label: 'Language', value: subject.detail.language }] : []),
-    ...(subject.type === 'movie' && subject.detail.collection !== null ? [{ label: 'Collection', value: subject.detail.collection }] : []),
-    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="[overflow-wrap:anywhere]">{detail.path}</span> }]),
-    ...(detail.tags.length === 0 ? [] : [{ label: 'Tags', value: detail.tags.join(', ') }]),
-    ...(links.length === 0 ? [] : [{ label: 'Links', value: <span className="flex gap-3">{links}</span> }]),
-  ];
 };
 
 const movieRatingSites = [
@@ -192,8 +174,8 @@ function FactGrid({ rows, className }: { rows: Cell[][]; className: string }) {
   );
 }
 
-// Under the header of an in-library title: the show or film itself on the left, the owner's copy in the card on the right.
-function OverviewBand({ subject, library }: { subject: Subject; library: TitleFact[] }) {
+// Under the header of every title: the show or film itself on the left, the owner's copy (or the add choices still to make) in the card on the right.
+function OverviewBand({ subject, owned, library }: { subject: Subject; owned: boolean; library: TitleFact[] }) {
   const { detail } = subject;
   const links = titleLinks(subject);
   const chips = [...detail.genres, ...(subject.type === 'movie' ? subject.detail.keywords : [])];
@@ -220,7 +202,7 @@ function OverviewBand({ subject, library }: { subject: Subject; library: TitleFa
           </ul>
         )}
       </div>
-      <CardLibrary ratings={cardRatings(subject)} rows={library} tags={detail.tags} />
+      <CardLibrary title={owned ? undefined : 'Not in your library'} ratings={cardRatings(subject)} rows={library} tags={detail.tags} />
     </section>
   );
 }
@@ -232,7 +214,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   owned: boolean;
   /** Status Badges under the meta line. */
   badges?: ReactNode;
-  /** In the library: the library card's rows (Added and Folder follow). Not yet added: the header's facts. */
+  /** The library card's rows; Added and Folder follow when the title is in the library. */
   facts?: TitleFact[];
   monitored?: MonitoredState;
   onToggleMonitored?: () => void;
@@ -246,13 +228,12 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   pickPanel?: ReactNode;
   compact?: boolean;
   onChangeMonitoring?: () => void;
-  /** The add controls for a title not yet in the library; they take the place of the actions. */
+  /** The add controls for a title not yet in the library, drawn between the header and the overview band. */
   add?: ReactNode;
   onUnauthenticated: () => void;
 }) {
   const { detail } = subject;
   const service = subject.type === 'tv' ? 'Sonarr' : 'Radarr';
-  const headerFacts = owned ? [] : [...(facts ?? []), ...titleFacts(subject)];
   const libraryRows: TitleFact[] = [
     ...(facts ?? []),
     ...(detail.added === null ? [] : [{ label: 'Added', value: day(detail.added) }]),
@@ -303,7 +284,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
       <HeaderTitle
         className="-mx-(--page-margin) w-auto"
         compact={compact}
-        actionsRight={owned}
+        actionsRight
         title={detail.title}
         backdropUrl={detail.backdropUrl ?? undefined}
         posterUrl={detail.posterUrl ?? undefined}
@@ -312,24 +293,21 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
         status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}
         meta={metaLine(subject)}
         badges={badges}
-        overview={owned ? undefined : detail.overview ?? undefined}
-        primary={add ?? (owned && (
+        primary={owned && (
           <Button size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
             Search automatically
           </Button>
-        ))}
+        )}
         secondary={owned && onPick !== undefined && (
           <Button variant="outline" size="large" icon={picking ? <X /> : <List />} className={picking ? 'bg-selected' : undefined} onClick={onPick}>
             {picking ? 'Close Pick a release' : 'Pick a release'}
           </Button>
         )}
         more={owned && <>{menu}{status}</>}
-        facts={headerFacts.length > 0
-          ? headerFacts.map((fact) => <Fact key={fact.label} label={fact.label}>{fact.value}</Fact>)
-          : undefined}
       />
+      {add !== undefined && !compact && <div className="pb-2">{add}</div>}
       {pickPanel}
-      {owned && !compact && <OverviewBand subject={subject} library={libraryRows} />}
+      {!compact && <OverviewBand subject={subject} owned={owned} library={libraryRows} />}
       {/* Hand-off to AA-32 (Second versions and safe deletion): delete show/movie and delete version. */}
       {showHistory && history}
     </>
