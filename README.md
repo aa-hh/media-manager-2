@@ -30,7 +30,7 @@ The server prints its listening address after database initialization succeeds.
 
 ## Service connections
 
-The server reaches Sonarr, Radarr, rTorrent and Plex with these saved settings:
+The server reaches Sonarr, Radarr, rTorrent and Plex, and finds their folders on disk, with these saved settings:
 
 | Category | Key | Meaning |
 | --- | --- | --- |
@@ -47,6 +47,10 @@ The server reaches Sonarr, Radarr, rTorrent and Plex with these saved settings:
 | `serviceAddresses` | `r2.bucket` | R2 bucket that holds the backups |
 | `credentials` | `r2.accessKeyId` | R2 API token access key ID |
 | `credentials` | `r2.secretAccessKey` | R2 API token secret access key |
+| `hostPaths` | `downloads.sonarr` | Absolute folder rTorrent downloads Sonarr's torrents into, such as `/home/<user>/files/Sonarr` |
+| `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into, such as `/home/<user>/files/Radarr` |
+| `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
+| `hostPaths` | `library.radarr` | Absolute Radarr library root, such as `/home/<user>/Movies`; a stopped torrent whose download files are gone is re-linked from here |
 
 Until a settings screen exists, save and check them on the server with the
 operator command:
