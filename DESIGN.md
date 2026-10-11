@@ -207,6 +207,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 - **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 40px, radius 6, white with an edge. Phone: 44px, full width.
 - **Select trigger:** 40px, radius 8, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
 - **Toggle group:** up to six segments, 34px each inside a 40px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
+- **Option rows:** `v2/Option row` (`option-row.tsx`) is a radio or checkbox with a title and a line of explanation, radius 6, no edge; the choice shows in the control, never as a tint. `v2/Option row/bordered` (the `bordered` prop) is the same row as a card with its own edge, for a short set of standalone choices in a grid: site software, backup destination, Plex token, the setup wizard's optional parts. Radius 8, padding 14 16, 1px `border` edge; on, the edge turns 2px `foreground`, the second pixel an inset shadow so nothing moves. `v2/Card/choice` is the larger radio card for decisions in a panel or dialog.
 
 ### Rule forms and tracker status
 

@@ -115,7 +115,7 @@ export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = 
 
 const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected';
 
-const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
+export const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
 /** What the trackers add to the header: account connections that answer, of those that exist, and their own words. */
 export type TrackerSummary = { ok: number; total: number; failed: string[]; notes: string[] };
