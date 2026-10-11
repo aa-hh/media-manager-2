@@ -2864,7 +2864,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
       ['serviceAddresses', 'sonarr.url'], ['credentials', 'sonarr.apiKey'], ['serviceAddresses', 'radarr.url'], ['credentials', 'radarr.apiKey'],
       ['serviceAddresses', 'rtorrent.url'], ['credentials', 'rtorrent.username'], ['serviceAddresses', 'plex.url'], ['credentials', 'plex.token'],
     ]) setSetting(database, category, key, 'value');
-    for (const key of ['downloads.sonarr', 'downloads.radarr', 'downloads.versions', 'library.sonarr', 'library.radarr', 'versions.sonarr']) {
+    for (const key of ['downloads.sonarr', 'downloads.radarr', 'library.sonarr', 'library.radarr', 'versions.sonarr']) {
       setSetting(database, 'hostPaths', key, '/data');
     }
     const partial = await status();
@@ -2889,42 +2889,64 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, backup: { wanted: true, skipped: false } })).status, 400);
   });
 
-  // Suggesting a blank root folder, failing the whole read when one service is down, or saving folders that failed a check turns this red.
+  // Suggesting a blank root folder or a disabled download client's folder, failing the whole read when one service is down, mixing up
+  // Sonarr's and Radarr's downloads folders, writing downloads.versions, or saving folders that failed a check turns this red.
   await t.test('folders are suggested from the services and saved only when every one checks out', async () => {
     const { database, fake, send } = await build({ which: { sonarr: {}, radarr: {} } });
     setSetting(database, 'serviceAddresses', 'rtorrent.url', 'http://127.0.0.1:65003/xmlrpc');
     setSetting(database, 'credentials', 'rtorrent.username', 'user');
     setSetting(database, 'credentials', 'rtorrent.password', 'password');
     const rootFolders = { sonarr: [{ path: '' }, { path: '/data/tv' }], radarr: [{ path: '/data/movies' }] };
+    const clients = {
+      sonarr: [
+        { enable: false, fields: [{ name: 'tvDirectory', value: '/data/off' }] },
+        { enable: true, fields: [{ name: 'host', value: 'x' }, { name: 'tvDirectory', value: '/data/sonarr-downloads' }] },
+      ],
+      radarr: [{ enable: true, fields: [{ name: 'movieDirectory', value: '' }] }],
+    };
     for (const service of ['sonarr', 'radarr']) {
-      fake[service].routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/rootfolder' ? { status: 200, body: rootFolders[service] } : undefined));
+      fake[service].routes.push((method, url) => {
+        if (method !== 'GET') return undefined;
+        if (url.pathname === '/api/v3/rootfolder') return { status: 200, body: rootFolders[service] };
+        if (url.pathname === '/api/v3/downloadclient') return { status: 200, body: clients[service] };
+        return undefined;
+      });
     }
-    const nothing = { downloads: null, librarySonarr: null, libraryRadarr: null, versionsSonarr: null, versionsRadarr: null };
+    const nothing = { downloadsSonarr: null, downloadsRadarr: null, librarySonarr: null, libraryRadarr: null, versionsSonarr: null, versionsRadarr: null };
     const folders = async () => (await send('GET', '/folders')).json();
     assert.deepEqual(await folders(), {
       saved: nothing,
       suggested: {
-        downloads: '/data/downloads', librarySonarr: '/data/tv', libraryRadarr: '/data/movies', versionsSonarr: '/data/tv-versions', versionsRadarr: '/data/movies-versions',
+        downloadsSonarr: '/data/sonarr-downloads', downloadsRadarr: '/data/downloads', librarySonarr: '/data/tv', libraryRadarr: '/data/movies',
+        versionsSonarr: '/data/tv-versions', versionsRadarr: '/data/movies-versions',
       },
     });
     fake.radarr.state.down = true;
     assert.deepEqual((await folders()).suggested, {
-      downloads: '/data/downloads', librarySonarr: '/data/tv', libraryRadarr: null, versionsSonarr: '/data/tv-versions', versionsRadarr: null,
+      downloadsSonarr: '/data/sonarr-downloads', downloadsRadarr: '/data/downloads', librarySonarr: '/data/tv', libraryRadarr: null,
+      versionsSonarr: '/data/tv-versions', versionsRadarr: null,
     });
 
     const values = {};
-    for (const field of ['downloads', 'librarySonarr', 'libraryRadarr', 'versionsSonarr', 'versionsRadarr']) {
+    for (const field of ['downloadsSonarr', 'downloadsRadarr', 'librarySonarr', 'libraryRadarr', 'versionsSonarr', 'versionsRadarr']) {
       values[field] = join(root, `folder-${field}`);
       await mkdir(values[field], { recursive: true });
     }
-    const refused = await send('POST', '/folders', { ...values, downloads: 'downloads', librarySonarr: join(root, 'missing') });
+    const refused = await send('POST', '/folders', { ...values, downloadsRadarr: 'downloads', librarySonarr: join(root, 'missing') });
     assert.equal(refused.status, 400);
     assert.deepEqual(await refused.json(), {
-      error: 'invalid_folders', fields: { downloads: 'Must be an absolute path.', librarySonarr: 'This folder does not exist.' },
+      error: 'invalid_folders', fields: { downloadsRadarr: 'Must be an absolute path.', librarySonarr: 'This folder does not exist.' },
     });
     assert.deepEqual(hostPaths(database), []);
     assert.deepEqual(folderProblems(values, (path) => ({ isDirectory: () => true, dev: path === values.versionsRadarr ? 2 : 1 })), {
       versionsRadarr: 'On a different drive from the downloads folder, so imports can\'t hardlink.',
+    });
+    // Each versions folder is checked against its own service's downloads folder only.
+    const radarrDrive = (path) => ({ isDirectory: () => true, dev: [values.downloadsRadarr, values.versionsRadarr, values.libraryRadarr].includes(path) ? 2 : 1 });
+    assert.deepEqual(folderProblems(values, radarrDrive), {});
+    assert.deepEqual(folderWarnings(values, radarrDrive), {});
+    assert.deepEqual(folderProblems(values, (path) => ({ isDirectory: () => true, dev: path === values.downloadsSonarr ? 2 : 1 })), {
+      versionsSonarr: 'On a different drive from the downloads folder, so imports can\'t hardlink.',
     });
     assert.equal((await send('POST', '/folders', { ...values, extra: '/data' })).status, 400);
 
@@ -2935,12 +2957,11 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     const saved = await send('POST', '/folders', values);
     assert.equal(saved.status, 200);
     assert.deepEqual(await saved.json(), { warnings: {} });
-    for (const key of ['downloads.sonarr', 'downloads.radarr', 'downloads.versions']) assert.equal(getSetting(database, 'hostPaths', key), values.downloads);
     assert.deepEqual(
-      ['library.sonarr', 'library.radarr', 'versions.sonarr', 'versions.radarr'].map((key) => getSetting(database, 'hostPaths', key)),
-      [values.librarySonarr, values.libraryRadarr, values.versionsSonarr, values.versionsRadarr],
+      ['downloads.sonarr', 'downloads.radarr', 'library.sonarr', 'library.radarr', 'versions.sonarr', 'versions.radarr'].map((key) => getSetting(database, 'hostPaths', key)),
+      [values.downloadsSonarr, values.downloadsRadarr, values.librarySonarr, values.libraryRadarr, values.versionsSonarr, values.versionsRadarr],
     );
-    assert.equal(hostPaths(database).length, 7);
+    assert.equal(hostPaths(database).length, 6);
     assert.deepEqual((await folders()).saved, values);
   });
 
@@ -4948,7 +4969,7 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     run.torrent.gone = true;
     await run.tick(1);
 
-    setSetting(run.database, 'hostPaths', 'downloads.versions', '/data/versions');
+    setSetting(run.database, 'hostPaths', 'downloads.radarr', '/data/movie-downloads');
     setSetting(run.database, 'serviceAddresses', 'rtorrent.url', 'http://127.0.0.1:1');
     const secondVersions = createSecondVersions({
       database: run.database,
@@ -6439,11 +6460,13 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   const states = (path) => secondVersions.byHash(files[path].hash).map((row) => [row.state, row.failure, row.failureCode]);
   const addTorrent = (path) => database.prepare("INSERT INTO torrents VALUES (?, 'down', 100, 0, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0, '')").run(files[path].hash);
 
+  // Sending a second version anywhere but its own service's downloads folder, or refusing without naming that key, turns this red.
+  setSetting(database, 'hostPaths', 'downloads.sonarr', '/data/tv-downloads');
   const unset = await post(movie, 'm/movie');
   assert.equal(unset.status, 409);
-  assert.match(unset.body.reason, /downloads\.versions/);
+  assert.match(unset.body.reason, /hostPaths downloads\.radarr/);
   assert.equal(rowCount(), 0);
-  setSetting(database, 'hostPaths', 'downloads.versions', '/data/versions');
+  setSetting(database, 'hostPaths', 'downloads.radarr', '/data/movie-downloads');
   setSetting(database, 'serviceAddresses', 'rtorrent.url', 'http://127.0.0.1:65063/RPC2');
   assert.equal((await post(movie, 'm/unknown')).status, 404);
 
@@ -6454,7 +6477,7 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   ]);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].method, 'load.raw_start');
-  assert.deepEqual([calls[0].params[0], ...calls[0].params.slice(2)], ['', 'd.directory.set="/data/versions"', 'd.custom1.set=mm2-second-version']);
+  assert.deepEqual([calls[0].params[0], ...calls[0].params.slice(2)], ['', 'd.directory.set="/data/movie-downloads"', 'd.custom1.set=mm2-second-version']);
   assert.equal(Buffer.compare(calls[0].params[1], files['/movie'].bytes), 0);
   assert.deepEqual(calls[0].rows, [{ hash: files['/movie'].hash, state: 'sending' }]);
   // rTorrent drops a hash it already has after answering 0, so only a poll that began after the reply may judge it.
@@ -6478,6 +6501,7 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   assert.equal(pack.status, 201);
   assert.deepEqual(pack.body.secondVersions.map((row) => [row.seriesId, row.episodeId, row.hash, row.state]), [101, 102, 103].map((id) => [5, id, files['/pack'].hash, 'sending']));
   assert.equal(calls.length, 2);
+  assert.equal(calls[1].params[2], 'd.directory.set="/data/tv-downloads"');
   assert.equal(arrRequests, arrRequestsBefore);
 
   // Once the hash shows up, its label settles it; a failed label read leaves it for the next poll.

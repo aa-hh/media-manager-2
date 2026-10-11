@@ -87,13 +87,12 @@ on disk, through these saved settings:
 | `credentials` | `plex.token` | Plex Media Server token |
 | `serviceAddresses` | `mediaManager.hookUrl` | The address Sonarr and Radarr can reach this app at, such as `http://127.0.0.1:3000`. With `webhook.secret`, the server adds its own webhook to both and keeps it up to date |
 | `credentials` | `webhook.secret` | A long random password Sonarr and Radarr send with each webhook call |
-| `hostPaths` | `downloads.sonarr` | Absolute folder rTorrent downloads Sonarr's torrents into, such as `/home/<user>/files/Sonarr` |
-| `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into |
+| `hostPaths` | `downloads.sonarr` | Absolute folder rTorrent downloads Sonarr's torrents into, such as `/home/<user>/files/Sonarr`. TV second versions download here too |
+| `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into. Movie second versions download here too |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
 | `hostPaths` | `library.radarr` | Absolute Radarr library root, such as `/home/<user>/Movies`; same use as above |
-| `hostPaths` | `downloads.versions` | Absolute folder rTorrent downloads second versions into |
-| `hostPaths` | `versions.radarr` | Absolute folder finished movie second versions are hardlinked into. Must be on the same drive as `downloads.versions` and inside a Plex Movies library |
-| `hostPaths` | `versions.sonarr` | Same as above for episodes, inside a Plex TV library. Episode second versions wait until it is set |
+| `hostPaths` | `versions.radarr` | Absolute folder finished movie second versions are hardlinked into. Must be on the same drive as `downloads.radarr` and inside a Plex Movies library |
+| `hostPaths` | `versions.sonarr` | Same as above for episodes, on the same drive as `downloads.sonarr` and inside a Plex TV library. Episode second versions wait until it is set |
 The backup settings are listed under [Backups](#backups-optional); tracker
 settings under [Tracker accounts](#tracker-accounts) and
 [Tracker hit-and-run rules](#tracker-hit-and-run-rules).
