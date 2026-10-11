@@ -81,10 +81,12 @@ export const createTitleDelete = (options: {
   torrentFiles: TorrentFiles;
   deleteVersion: SecondVersionDelete;
   advise: (hash: string) => Promise<RemovalAdvice>;
+  // Drops search's stored lookups for a service, which would still offer a deleted title as in the library.
+  forget: (service: DeleteTarget['service']) => void;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }) => {
-  const { database, arr, torrentFiles, deleteVersion, advise } = options;
+  const { database, arr, torrentFiles, deleteVersion, advise, forget } = options;
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }));
   const running = new Set<string>();
@@ -249,6 +251,7 @@ export const createTitleDelete = (options: {
           steps.push({ step: 'delete', outcome: 'done', message: 'Deleted the movie file in Radarr.' });
         }
       }
+      forget(target.service);
 
       const left = await waitUntilGone(files.map((file) => file.path));
       const keepAll = left.length > 0 ? `${label} still had ${plural(left.length, 'library file')} after 2 minutes, so every torrent was kept.` : null;
@@ -320,7 +323,8 @@ export const createTitleDelete = (options: {
         secondVersions: [...versionResults.values()],
       });
 
-      const kind = target.service === 'sonarr' ? 'series_deleted' : mode === 'remove' ? 'movie_deleted' : 'movie_file_deleted';
+      const kind = target.service === 'sonarr' ? 'series_deleted' : mode === 'remove' ? 'movie_deleted'
+        : files.length === 0 ? 'movie_unmonitored' : 'movie_file_deleted';
       const detail = [summary, keepAll, torrentsMessage, versionsMessage].filter((part) => part !== null).join(' ');
       database.prepare('INSERT INTO title_events (service, title_id, title, at, kind, detail) VALUES (?, ?, ?, ?, ?, ?)')
         .run(target.service, titleId(target), title, now(), kind, detail);

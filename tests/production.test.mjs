@@ -9171,6 +9171,8 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
   const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE } = await import(titleDeleteModuleUrl);
   const { createHistory } = await import(historyModuleUrl);
+  const { createSearch, parseSearchQuery } = await import(searchModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
   const roots = [];
   const databases = [];
   t.after(async () => {
@@ -9216,12 +9218,14 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     const torrentFiles = createTorrentFiles({ database, rtorrent, arr });
     const deleteVersion = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: async () => {} });
     const clock = { value: 1_800_000_000_000, sleeps: 0 };
+    const search = createSearch(database, arr, createTitleStore(database, { now: () => clock.value }));
     const routes = createTitleDeleteRoutes(createTitleDelete({
       database,
       arr,
       torrentFiles,
       deleteVersion,
       advise: async (hash) => ({ recommendation: 'safe', reason: `advice for ${hash.slice(0, 2)}`, globalRatio: null }),
+      forget: search.forget,
       now: () => clock.value,
       sleep: async (ms) => {
         clock.value += ms;
@@ -9271,7 +9275,14 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     const deletions = async (service = 'all') => (await createHistory({ database, arr, labels: { subject: async () => 'label' } })
       .list({ filter: 'deletions', service, page: 1 })).events.filter((event) => event.eventType.startsWith('mm2_title_'));
     const steps = (body) => body.steps.map((step) => `${step.step}:${step.outcome}`);
-    return { at, database, fake, arrFake, poller, clock, addTorrent, hardlink, addVersion, onDelete, plan, remove, requests, versionState, deletions, steps };
+    // Searching for the title, as its Sonarr or Radarr lookup answers now: whether search offers it as in the library.
+    const inLibrary = async (service, record) => {
+      arrFake[service].state.lookup = [record];
+      const { results } = await search.search(parseSearchQuery('Title'));
+      return results.find((result) => result.service === service).inLibrary;
+    };
+    const savedLookups = (service) => Number(database.prepare('SELECT COUNT(*) AS n FROM search_lookups WHERE service = ?').get(service).n);
+    return { at, database, fake, arrFake, poller, clock, addTorrent, hardlink, addVersion, onDelete, plan, remove, requests, versionState, deletions, steps, inLibrary, savedLookups };
   };
 
   // Dune: its file is a hardlink of CUR; OLD and SHARED were imported before an upgrade, and SHARED's data also backs another movie's file.
@@ -9311,7 +9322,10 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   await t.test('removing the movie maps first, deletes it in Radarr without an exclusion, then removes only the chosen torrent', async () => {
     const w = await dune();
     w.onDelete('radarr', '/api/v3/movie/1', { removes: [w.file] });
+    assert.equal(await w.inLibrary('radarr', { title: 'Dune', year: 2021, tmdbId: 438631, id: 1 }), true);
     const { status, body } = await w.remove('/movie/1', { mode: 'remove', removeTorrents: [CUR.toLowerCase()], secondVersions: [] });
+    // Not forgetting search's saved lookups after the delete turns this red: search keeps offering Dune as in the library.
+    assert.equal(await w.inLibrary('radarr', { title: 'Dune', year: 2021, tmdbId: 438631 }), false);
     assert.equal(status, 200);
     assert.equal(body.deleted, true);
     assert.deepEqual(w.steps(body), ['map:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:skipped', 'history:done']);
@@ -9345,10 +9359,21 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.equal((await w.deletions())[0].event, 'Movie file deleted');
   });
 
+  // Recording "Movie file deleted" when the movie had no file turns this red.
+  await t.test('keeping the record of a movie with no file records it as unmonitored, not as a file deletion', async () => {
+    const w = await world();
+    w.arrFake.radarr.state.movies.push(movieRecord({ id: 2, title: 'Arrival', year: 2016 }));
+    const { body } = await w.remove('/movie/2', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [] });
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:skipped', 'wait:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    const [event] = await w.deletions();
+    assert.deepEqual([event.title, event.event], ['Arrival (2016)', 'Movie unmonitored']);
+  });
+
   // Carrying on after Radarr refuses (removing a torrent, a second version, or writing history) turns this red.
   await t.test('a Radarr refusal stops everything else', async () => {
     const w = await dune();
     w.onDelete('radarr', '/api/v3/movie/1', { status: 500 });
+    await w.inLibrary('radarr', { title: 'Dune', year: 2021, tmdbId: 438631, id: 1 });
     const callsBefore = w.fake.calls.length;
     const { status, body } = await w.remove('/movie/1', { mode: 'remove', removeTorrents: [CUR], secondVersions: [{ id: w.version, removeTorrent: true }] });
     assert.equal(status, 200);
@@ -9360,6 +9385,8 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.equal(w.versionState(w.version), 'imported');
     assert.equal(w.clock.sleeps, 0);
     assert.deepEqual(await w.deletions(), []);
+    // Forgetting search's saved lookups before checking Radarr's answer turns this red.
+    assert.equal(w.savedLookups('radarr'), 1);
   });
 
   // Removing a torrent while the library file is still there, or waiting without a ceiling, turns this red.
@@ -9461,7 +9488,10 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   await t.test('deleting the show removes the chosen pack, deletes only ticked second versions and writes history', async () => {
     const w = await andor();
     w.onDelete('sonarr', '/api/v3/series/5', { removes: w.files });
+    assert.equal(await w.inLibrary('sonarr', { title: 'Andor', tvdbId: 393189, id: 5 }), true);
     const { body } = await w.remove('/series/5', { removeTorrents: [PACK], secondVersions: [{ id: w.versions[0], removeTorrent: false }] });
+    // Not forgetting search's saved lookups after the delete turns this red: search keeps offering Andor as in the library.
+    assert.equal(await w.inLibrary('sonarr', { title: 'Andor', tvdbId: 393189 }), false);
     assert.deepEqual(w.steps(body), ['map:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:done', 'history:done']);
     const sonarr = w.requests('sonarr');
     const mappedAt = sonarr.indexOf('GET /api/v3/history/series?seriesId=5');
@@ -9497,6 +9527,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   await t.test('a Sonarr refusal means no other call is made', async () => {
     const w = await andor();
     w.onDelete('sonarr', '/api/v3/series/5', { status: 500 });
+    await w.inLibrary('sonarr', { title: 'Andor', tvdbId: 393189, id: 5 });
     const callsBefore = w.fake.calls.length;
     const { body } = await w.remove('/series/5', { removeTorrents: [PACK], secondVersions: [{ id: w.versions[0], removeTorrent: true }] });
     assert.deepEqual(w.steps(body), ['map:done', 'delete:failed']);
@@ -9504,6 +9535,8 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(w.fake.calls.slice(callsBefore), []);
     assert.deepEqual(w.versions.map(w.versionState), ['imported', 'imported']);
     assert.deepEqual(await w.deletions(), []);
+    // Forgetting search's saved lookups before checking Sonarr's answer turns this red.
+    assert.equal(w.savedLookups('sonarr'), 1);
   });
 
   // Removing the pack while Sonarr has silently kept the show's files turns this red.

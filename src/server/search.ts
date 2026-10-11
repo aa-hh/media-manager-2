@@ -234,7 +234,7 @@ export const createSearch = (database: DatabaseSync, services: ArrServices, stor
   };
 
   return {
-    // An add changes which titles that service has, so its stored lookups would still offer Add.
+    // An add or delete changes which titles that service has, so its stored lookups would show the old answer.
     forget(service: Service) {
       database.prepare('DELETE FROM search_lookups WHERE service = ?').run(service);
       store.forget(lookups[service].part);
