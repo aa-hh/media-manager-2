@@ -5827,7 +5827,8 @@ test('backups snapshot a changing database and restore it consistently', async (
   assert.equal(await refusal({ target: join(root, 'future-restored.sqlite'), objectKey: futureKey }), 'Database schema version is newer than this application.');
 });
 
-// Opening the database before listing or restoring, printing a secret, running without a valid BACKUP_KEY, or restoring over an existing file turns this red.
+// Opening the database before listing or restoring, printing a secret, running without a valid BACKUP_KEY, backing up with both a folder
+// and a bucket set, or restoring over an existing file turns this red.
 test('backup commands upload, list and restore through a bucket or a folder from the command line', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backup-cli-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -5904,10 +5905,13 @@ test('backup commands upload, list and restore through a bucket or a folder from
   // The same commands against a folder: switch the saved destination, upload, then restore from the folder alone.
   const folder = join(root, 'folder');
   await mkdir(folder, { mode: 0o700 });
+  assert.equal((await cli(['settings', 'set', 'hostPaths', 'backup.folder'], withDatabase, folder)).code, 0);
+  const both = await cli(['backup', 'now'], withDatabase);
+  assert.equal(both.code, 1);
+  assert.equal(both.stdout, 'backup: failed Set either a backup folder or a backup bucket, not both.\n');
   for (const key of ['backup.endpoint', 'backup.bucket']) {
     assert.equal((await cli(['settings', 'delete', 'serviceAddresses', key], withDatabase)).code, 0);
   }
-  assert.equal((await cli(['settings', 'set', 'hostPaths', 'backup.folder'], withDatabase, folder)).code, 0);
   const toFolder = await cli(['backup', 'now'], withDatabase);
   assert.equal(toFolder.code, 0, toFolder.stderr);
   const folderKey = toFolder.stdout.match(/^backup: ok (backups\/\S+\.sqlite\.gz\.enc) \d+ bytes\n$/)?.[1];
