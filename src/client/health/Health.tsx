@@ -117,7 +117,10 @@ function Sections({ snapshot, now }: { snapshot: HealthSnapshot; now: number }) 
 
       <SectionHeader>BACKUP</SectionHeader>
       <Line className="text-[var(--mm-ink-2)]">
-        {snapshot.backup.kind === 'not_set_up' ? 'not set up' : `last ${formatDuration(now - snapshot.backup.lastAt)} ago`}
+        {snapshot.backup.kind === 'not_set_up' ? 'not set up'
+          : snapshot.backup.kind === 'off' ? 'off'
+            : snapshot.backup.kind === 'failing' ? `failing · ${snapshot.backup.detail}`
+              : `last ${formatDuration(now - snapshot.backup.lastAt)} ago`}
       </Line>
     </>
   );

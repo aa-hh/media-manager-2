@@ -32,7 +32,7 @@ export type HealthSnapshot = {
   }[];
   disks: { path: string; label: string; freeBytes: number; totalBytes: number; sources: ('sonarr' | 'radarr')[] }[];
   jobs: { name: string; intervalMs: number; lastStartedAt: number | null; lastFinishedAt: number | null; lastFailed: boolean; late: boolean }[];
-  backup: { kind: 'not_set_up' } | { kind: 'ok' | 'stale'; lastAt: number };
+  backup: { kind: 'not_set_up' } | { kind: 'off' } | { kind: 'failing'; detail: string } | { kind: 'ok' | 'stale'; lastAt: number };
 };
 
 export type HealthState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; snapshot: HealthSnapshot };

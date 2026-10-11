@@ -110,6 +110,7 @@ node dist/server/cli.js settings delete <category> <key>
 node dist/server/cli.js settings list
 node dist/server/cli.js connections check
 node dist/server/cli.js backup now
+node dist/server/cli.js backup off | on
 node dist/server/cli.js backup list
 node dist/server/cli.js backup restore --to <absolute path> [--object <key>]
 ```
@@ -159,16 +160,26 @@ ten minutes per service and search term; a failed lookup is never kept.
 
 ## Backups (optional)
 
-Backups are off until you set them up, and the app runs the same without
-them; the health screen notes that they are not set up. Once set up, every 5
-minutes the server copies its database with SQLite's `VACUUM INTO`, gzips the
+Backups are your choice. The app runs the same without them; until you set
+one up, the health screen carries a low-level "Backups are not set up"
+reminder. To run without backups and accept the risk, turn them off, which
+also removes the reminder:
+
+```sh
+node dist/server/cli.js backup off   # no backups, no reminder
+node dist/server/cli.js backup on    # back on; a destination and key are then needed
+```
+
+Once set up, every 5 minutes the server copies its database with SQLite's `VACUUM INTO`, gzips the
 copy, encrypts it with AES-256-GCM under `BACKUP_KEY`, and writes it to the
 destination you chose. The database holds every saved credential, so backups
 are never written unencrypted.
 
-A run is skipped when nothing has written to the database since the last
-backup, and when no destination or no `BACKUP_KEY` is set. A malformed
-`BACKUP_KEY`, or a folder and a bucket set at the same time, fails the run.
+A run is skipped when backups are off, when no destination is set, and when
+nothing has written to the database since the last backup. Once a destination
+is set, a missing or malformed `BACKUP_KEY`, or a folder and a bucket set at
+the same time, fails the run, and the health screen warns until a backup
+succeeds.
 `backup now` runs one backup at once, even when nothing changed, and prints
 `backup: ok <key> <bytes> bytes`, `backup: skipped <reason>` or
 `backup: failed <reason>`.
@@ -273,7 +284,7 @@ the app, run `npm ci --omit=dev`, and follow steps 3 to 6.
 
 `sh scripts/deploy.sh` builds the current checkout on your machine and runs it
 on a Linux host you reach over ssh, replacing whatever copy was running there.
-Set `DEPLOY_HOST` to that host's ssh name. The host needs Node 22.13 or newer,
+`DEPLOY_HOST` must name that host as ssh knows it; the script stops without it. The host needs Node 22.13 or newer,
 `rsync`, `curl`, `flock` and `setsid`, and something that serves `APP_ORIGIN`
 over HTTPS and forwards it to `PORT` on the host, such as a reverse proxy or a
 seedbox's custom app link. `/api/events` is a plain HTTP stream; WebSockets are

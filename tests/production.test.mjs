@@ -4673,6 +4673,10 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     if (input.backupAt !== null) {
       database.prepare("INSERT INTO backup_runs (started_at, finished_at, outcome, detail) VALUES (?, ?, 'ok', '')").run(0, input.backupAt ?? now - hour);
     }
+    if (input.backupFailed !== undefined) {
+      database.prepare("INSERT INTO backup_runs (started_at, finished_at, outcome, detail) VALUES (?, ?, 'failed', ?)").run(now, now, input.backupFailed);
+    }
+    if (input.backupsOff) database.prepare("INSERT INTO preferences (key, value) VALUES ('backups', 'off')").run();
     if (input.cooldown !== undefined) {
       database.prepare('INSERT INTO tracker_cooldowns VALUES (?, ?, ?, ?, ?)').run('blutopia.cc', now - hour, input.cooldown.text, input.cooldown.known ? 1 : 0, 'AB'.repeat(20));
     }
@@ -4734,6 +4738,13 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     },
     { name: 'no ok backup yet', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Backups are not set up' },
     { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last backup finished 30h 0m ago' },
+    // Reporting a destination that never worked as "not set up", or nagging an owner who turned backups off, turns these rows red.
+    {
+      name: 'backups failing before any upload', input: { backupAt: null, backupFailed: 'BACKUP_KEY is not set.' },
+      level: 'warning', errors: 0, warnings: 1, message: 'Backups are failing: BACKUP_KEY is not set.',
+    },
+    { name: 'backups turned off', input: { backupAt: null, backupsOff: true }, level: 'ok', errors: 0, warnings: 0, message: undefined },
+    { name: 'stale backups turned off', input: { backupAt: now - 30 * hour, backupsOff: true }, level: 'ok', errors: 0, warnings: 0, message: undefined },
     // Mapping tracker account stats to the wrong account kind, or warning on a first look at a ratio above its minimum, turns these rows red.
     {
       name: 'tracker with no account stats', input: { torrentHost: 'blutopia.cc' }, level: 'ok', errors: 0, warnings: 0, message: undefined,
@@ -5828,7 +5839,7 @@ test('backups snapshot a changing database and restore it consistently', async (
 });
 
 // Opening the database before listing or restoring, printing a secret, running without a valid BACKUP_KEY, backing up with both a folder
-// and a bucket set, or restoring over an existing file turns this red.
+// and a bucket set, backing up while turned off, or restoring over an existing file turns this red.
 test('backup commands upload, list and restore through a bucket or a folder from the command line', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backup-cli-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -5862,7 +5873,12 @@ test('backup commands upload, list and restore through a bucket or a folder from
     assert.equal(saved.code, 0, saved.stderr);
   }
   const keyless = await cli(['backup', 'now'], withoutKey);
-  assert.equal(keyless.stdout, 'backup: skipped not_configured\n');
+  assert.equal(keyless.code, 1);
+  assert.equal(keyless.stdout, 'backup: failed BACKUP_KEY is not set.\n');
+  const off = await cli(['backup', 'off'], withoutKey);
+  assert.equal(off.stdout, 'backups: off\n');
+  assert.equal((await cli(['backup', 'now'], withDatabase)).stdout, 'backup: skipped off\n');
+  assert.equal((await cli(['backup', 'on'], withoutKey)).stdout, 'backups: on\n');
   const malformed = await cli(['backup', 'now'], { ...withoutKey, BACKUP_KEY: 'not-hex' });
   assert.equal(malformed.code, 1);
   assert.equal(malformed.stdout, 'backup: failed BACKUP_KEY must be 64 hex characters.\n');
@@ -5880,7 +5896,7 @@ test('backup commands upload, list and restore through a bucket or a folder from
   assert.equal(restored.code, 0, restored.stderr);
   assert.equal(
     restored.stdout,
-    `restored ${key} to ${target}\nsettings 4\ntorrents 0\ntorrent_grabs 0\ngrabs 0\nproblems 0\nprotected_items 0\npreferences 0\n`,
+    `restored ${key} to ${target}\nsettings 4\ntorrents 0\ntorrent_grabs 0\ngrabs 0\nproblems 0\nprotected_items 0\npreferences 1\n`,
   );
 
   const { BACKUP_KEY: _, ...r2Only } = withR2;

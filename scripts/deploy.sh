@@ -3,11 +3,15 @@
 # address, replacing whatever copy was running there. One-time host setup is in
 # README.md, "Run it on a server".
 #
-# Usage: sh scripts/deploy.sh   (DEPLOY_HOST overrides the ssh host)
+# Usage: DEPLOY_HOST=<ssh host> sh scripts/deploy.sh
 set -eu
 cd "$(dirname "$0")/.."
 
-host=${DEPLOY_HOST:-shenzhou}
+if [ -z "${DEPLOY_HOST:-}" ]; then
+    echo "deploy: set DEPLOY_HOST to the ssh host to deploy to, such as DEPLOY_HOST=myhost sh scripts/deploy.sh" >&2
+    exit 2
+fi
+host=$DEPLOY_HOST
 branch=$(git rev-parse --abbrev-ref HEAD)
 commit=$(git rev-parse --short HEAD)
 [ -z "$(git status --porcelain)" ] || commit="$commit+uncommitted"

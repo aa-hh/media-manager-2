@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import { backupsAreOff } from './backup.js';
 import { readDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import type { createJobRunner } from './jobs.js';
@@ -33,7 +34,7 @@ export type HealthSnapshot = {
   trackers: { host: string; reachable: boolean; cooldown: Cooldown | null; account: TrackerAccount }[];
   disks: { path: string; label: string; freeBytes: number; totalBytes: number; sources: Service[] }[];
   jobs: JobStatus;
-  backup: { kind: 'not_set_up' } | { kind: 'ok' | 'stale'; lastAt: number };
+  backup: { kind: 'not_set_up' } | { kind: 'off' } | { kind: 'failing'; detail: string } | { kind: 'ok' | 'stale'; lastAt: number };
 };
 
 type ArrClient = {
@@ -93,6 +94,11 @@ const docsUrl = (value: unknown) => {
 const lastBackupAt = (database: DatabaseSync): number | null => {
   const row = database.prepare("SELECT MAX(finished_at) AS at FROM backup_runs WHERE outcome = 'ok'").get();
   return row === undefined || row.at === null ? null : Number(row.at);
+};
+
+const lastBackupFailure = (database: DatabaseSync): string | null => {
+  const row = database.prepare('SELECT outcome, detail FROM backup_runs ORDER BY id DESC LIMIT 1').get();
+  return row?.outcome === 'failed' ? String(row.detail) : null;
 };
 
 export const createHealth = (options: {
@@ -242,8 +248,14 @@ export const createHealth = (options: {
     }
 
     const lastAt = lastBackupAt(database);
+    const failure = lastBackupFailure(database);
     let backup: HealthSnapshot['backup'];
-    if (lastAt === null) {
+    if (backupsAreOff(database)) {
+      backup = { kind: 'off' };
+    } else if (lastAt === null && failure !== null) {
+      backup = { kind: 'failing', detail: failure };
+      ours('backup', 'warning', 'backup', `Backups are failing: ${failure}`);
+    } else if (lastAt === null) {
       backup = { kind: 'not_set_up' };
       ours('backup', 'notice', 'backup', 'Backups are not set up');
     } else if (checkedAt - lastAt > BACKUP_STALE_MS) {
