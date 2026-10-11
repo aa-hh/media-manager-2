@@ -3,7 +3,7 @@ import { type ArrServices, valueOrThrow } from './services/arr.js';
 import type { createLabels } from './labels.js';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
-import { listOpenProblems, RELEASE_LIMIT } from './problems.js';
+import { findOpenProblem, RELEASE_LIMIT } from './problems.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import type { Removal } from './torrentFiles.js';
 import { listTorrents, type Torrent } from './torrents.js';
@@ -236,8 +236,7 @@ export const createStallFix = (options: {
   const clearRecovered = (torrent: Torrent) => {
     if (!torrent.complete && torrent.downRate === 0) return;
     if ((readWatch(database, torrent.hash)?.replacedAt ?? null) === null || downloadingVersions(torrent.hash).length === 0) return;
-    const problem = listOpenProblems(database)
-      .find((open) => open.kind === 'stalled' && open.subject.type === 'torrent' && open.subject.id === torrent.hash);
+    const problem = findOpenProblem(database, 'stalled', { type: 'torrent', service: null, id: torrent.hash });
     if (problem !== undefined) problems.setState(problem.id, 'resolved', torrent.complete ? 'Finished downloading.' : 'Downloading again.');
     saveWatch(database, emptyWatch(torrent.hash));
   };

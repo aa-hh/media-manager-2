@@ -2,7 +2,7 @@ import { existsSync, linkSync, mkdirSync, readdirSync, statSync, unlinkSync } fr
 import { dirname, isAbsolute, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
-import { listOpenProblems, type createProblems, type Subject } from './problems.js';
+import { findOpenProblem, type createProblems, type Subject } from './problems.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
@@ -166,7 +166,7 @@ export const createRelinkFix = (options: {
       if (database.prepare('SELECT 1 FROM torrent_issues WHERE hash = ? AND replace = 1').get(hash) !== undefined) continue;
       if (problems.pausedBy(['rtorrent', grab.service]).length > 0) continue;
 
-      const earlier = listOpenProblems(database).find((problem) => problem.kind === PROBLEM_KIND && problem.hash === hash);
+      const earlier = findOpenProblem(database, PROBLEM_KIND, { type: 'torrent', service: null, id: hash });
       if (earlier?.state === 'needs_you') continue;
       if (earlier?.state === 'handling') {
         problems.setState(earlier.id, 'needs_you', 'An earlier attempt was interrupted; check the torrent in rTorrent.');

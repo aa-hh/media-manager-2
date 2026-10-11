@@ -4836,7 +4836,7 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
 test('problems record each fix attempt and its result', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
-  const { createProblems, listOpenProblems, subjectHistory, countReleaseAttempts } = await import(problemsModuleUrl);
+  const { createProblems, findOpenProblem, listOpenProblems, subjectHistory, countReleaseAttempts } = await import(problemsModuleUrl);
   const { writeDependency } = await import(dependenciesModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-problems-'));
@@ -4878,6 +4878,26 @@ test('problems record each fix attempt and its result', async (t) => {
     const reopened = problems.open({ kind: 'stalled', subject: episode, summary: 'Stalled again.' });
     assert.notEqual(reopened.id, first.id);
     assert.equal(published.filter((event) => event.type === 'problem').length, 5);
+    database.close();
+  });
+
+  // Loading all listed problems' steps together and attaching a step to the wrong problem, or out of order, turns this red.
+  await t.test('listed problems each carry their own steps in order, and a kind filter or single lookup finds the same', async () => {
+    const database = openDatabase(join(root, 'listing', 'media-manager.sqlite'));
+    const problems = createProblems({ database, events: createEventHub(), now: () => 7_000 });
+    const torrent = { type: 'torrent', service: null, id: 'CD'.repeat(20) };
+    const first = problems.open({ kind: 'stalled', subject: episode, summary: 'Stalled.' });
+    const second = problems.open({ kind: 'unfinished', subject: torrent, summary: 'Unfinished.' });
+    problems.step(first.id, 'fix', 'first fix');
+    problems.step(second.id, 'fix', 'second fix');
+    problems.setState(first.id, 'needs_you', 'first result');
+    assert.deepEqual(listOpenProblems(database).map((problem) => [problem.kind, problem.steps.map((step) => step.text)]), [
+      ['stalled', ['Stalled.', 'first fix', 'first result']],
+      ['unfinished', ['Unfinished.', 'second fix']],
+    ]);
+    assert.deepEqual(listOpenProblems(database, ['unfinished']), [listOpenProblems(database)[1]]);
+    assert.deepEqual(findOpenProblem(database, 'unfinished', torrent), listOpenProblems(database)[1]);
+    assert.equal(findOpenProblem(database, 'unfinished', episode), undefined);
     database.close();
   });
 

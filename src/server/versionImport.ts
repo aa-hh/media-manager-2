@@ -1,7 +1,7 @@
 import { linkSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { listOpenProblems, type createProblems, type Subject } from './problems.js';
+import { findOpenProblem, type createProblems, type Subject } from './problems.js';
 import type { FailureCode } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -103,8 +103,7 @@ export const createVersionImport = (options: {
     : { type: 'episode', service: 'sonarr', id: String(row.episodeId) });
 
   const resolveOpen = (kind: string, subject: Subject, text: string) => {
-    const open = listOpenProblems(database).find((problem) => problem.kind === kind && problem.subject.type === subject.type
-      && problem.subject.service === subject.service && problem.subject.id === subject.id);
+    const open = findOpenProblem(database, kind, subject);
     if (open !== undefined) problems.setState(open.id, 'resolved', text);
   };
 

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import { type ArrServices, type QueueItem, valueOrThrow } from './services/arr.js';
@@ -224,6 +225,8 @@ export const createImportFix = (options: {
         groups.set(item.downloadId, [...(groups.get(item.downloadId) ?? []), item]);
       }
       for (const [downloadId, items] of groups) {
+        // Hundreds of downloads can sit blocked; letting requests in between them keeps a check from freezing the server.
+        await nextTurn();
         try {
           await handle(service, downloadId, items, at);
           closeImportProblems(downloadId, 'The import fix worked on a later try.', (item) => item.kind !== 'import_fix_failed');
