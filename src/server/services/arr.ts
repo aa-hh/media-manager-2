@@ -22,6 +22,7 @@ export type SonarrTitles = {
   setTag: (seriesId: number, tagId: number, tagged: boolean) => Promise<Result<void>>;
   episodes: (seriesId: number, options?: { seasonNumber?: number; withFiles?: boolean }) => Promise<Result<Episode[]>>;
   episode: (episodeId: number) => Promise<Result<Episode>>;
+  episodeFiles: (seriesId: number) => Promise<Result<FileDetail[]>>;
   monitorEpisodes: (episodeIds: number[], monitored: boolean) => Promise<Result<void>>;
 };
 

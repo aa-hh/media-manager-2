@@ -85,6 +85,7 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     series: [],
     movies: [],
     episodes: [],
+    episodeFiles: [],
     lookup: [],
     copyUsingHardlinks: true,
     down: false,
@@ -141,6 +142,9 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
         status: 200,
         body: state.episodes.filter((episode) => episode.seriesId === seriesId && (season === undefined || episode.seasonNumber === season)),
       };
+    }
+    if (method === 'GET' && path === '/api/v3/episodefile') {
+      return { status: 200, body: state.episodeFiles.filter((file) => file.seriesId === Number(params.get('seriesId'))) };
     }
     if (method === 'GET' && /^\/api\/v3\/episode\/-?\d+$/.test(path)) {
       const episode = state.episodes.find((record) => record.id === id);

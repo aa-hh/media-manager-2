@@ -269,6 +269,15 @@ export const applicationMigrations = [
   // Backups once went only to Cloudflare R2; the same four settings now describe any S3-compatible bucket.
   `UPDATE OR IGNORE settings SET key = 'backup.' || substr(key, 4)
     WHERE key IN ('r2.endpoint', 'r2.bucket', 'r2.accessKeyId', 'r2.secretAccessKey');`,
+  // A hash's file list never changes, so it is read from rTorrent once and dropped when the torrent is gone.
+  `ALTER TABLE torrents ADD COLUMN directory TEXT NOT NULL DEFAULT '';
+  CREATE TABLE torrent_files (
+    hash TEXT NOT NULL,
+    "index" INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    PRIMARY KEY (hash, "index")
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

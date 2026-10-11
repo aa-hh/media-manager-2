@@ -20,6 +20,7 @@ export type Torrent = {
   ratioThousandths: number;
   peersConnected: number;
   seedersConnected: number;
+  directory: string;
   trackerHost: string | null;
   firstSeenAt: number;
   lastSeenAt: number;
@@ -30,6 +31,23 @@ export type Torrent = {
 export const POLL_INTERVAL_MS = 30_000;
 // razor: at most this many tracker lookups per poll, so a first run against a full client stays one light call per torrent.
 const TRACKER_LOOKUPS_PER_POLL = 20;
+// razor: same ceiling for file list reads; a full client fills in over a few minutes of polls.
+const FILE_LIST_READS_PER_POLL = 20;
+
+export type TorrentFile = { path: string; sizeBytes: number };
+
+// A list with a path that is absolute or climbs out with '..' is not stored, so the torrent counts as unread.
+const parseFileList = (value: unknown): TorrentFile[] | null => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const files: TorrentFile[] = [];
+  for (const row of value) {
+    if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'number' || !Number.isSafeInteger(row[1]) || row[1] < 0) return null;
+    const path = row[0];
+    if (path === '' || path.startsWith('/') || path.split('/').some((part) => part === '..')) return null;
+    files.push({ path, sizeBytes: row[1] });
+  }
+  return files;
+};
 
 const fields = [
   ['hash', 'd.hash=', 'string'],
@@ -47,6 +65,7 @@ const fields = [
   ['ratioThousandths', 'd.ratio=', 'number'],
   ['peersConnected', 'd.peers_connected=', 'number'],
   ['seedersConnected', 'd.peers_complete=', 'number'],
+  ['directory', 'd.directory=', 'string'],
 ] as const;
 
 type Observed = Pick<Torrent, (typeof fields)[number][0]>;
@@ -67,6 +86,7 @@ const columns: Record<keyof Torrent, string> = {
   ratioThousandths: 'ratio_thousandths',
   peersConnected: 'peers_connected',
   seedersConnected: 'seeders_connected',
+  directory: 'directory',
   trackerHost: 'tracker_host',
   firstSeenAt: 'first_seen_at',
   lastSeenAt: 'last_seen_at',
@@ -158,6 +178,19 @@ export const createTorrentPoller = (options: {
     return hosts;
   };
 
+  const readFileLists = async (hashes: string[]) => {
+    const lists = new Map<string, TorrentFile[]>();
+    for (const hash of hashes.slice(0, FILE_LIST_READS_PER_POLL)) {
+      try {
+        const files = parseFileList(await rtorrent.call('f.multicall', [hash, '', 'f.path=', 'f.size_bytes=']));
+        if (files !== null) lists.set(hash, files);
+      } catch {
+        continue;
+      }
+    }
+    return lists;
+  };
+
   const poll = async () => {
     const startedAt = now();
     let observed: Observed[];
@@ -173,6 +206,8 @@ export const createTorrentPoller = (options: {
     const hosts = await lookUpTrackers(observed
       .filter((torrent) => (existing.get(torrent.hash)?.trackerHost ?? null) === null)
       .map((torrent) => torrent.hash));
+    const listed = new Set(database.prepare('SELECT DISTINCT hash FROM torrent_files').all().map((row) => String(row.hash)));
+    const fileLists = await readFileLists(observed.map((torrent) => torrent.hash).filter((hash) => !listed.has(hash)));
 
     const changed: Torrent[] = [];
     const gone: string[] = [];
@@ -182,8 +217,10 @@ export const createTorrentPoller = (options: {
       VALUES (${keys.map(() => '?').join(', ')})
       ON CONFLICT (hash) DO UPDATE SET ${keys.filter((key) => key !== 'hash').map((key) => `${columns[key]} = excluded.${columns[key]}`).join(', ')}
     `);
+    const insertFile = database.prepare('INSERT OR IGNORE INTO torrent_files (hash, "index", path, size_bytes) VALUES (?, ?, ?, ?)');
     database.exec('BEGIN IMMEDIATE;');
     try {
+      for (const [hash, files] of fileLists) files.forEach((file, index) => insertFile.run(hash, index, file.path, file.sizeBytes));
       for (const torrent of observed) {
         if (seen.has(torrent.hash)) continue;
         seen.add(torrent.hash);
@@ -212,6 +249,7 @@ export const createTorrentPoller = (options: {
       for (const previous of existing.values()) {
         if (seen.has(previous.hash) || previous.goneAt !== null) continue;
         database.prepare('UPDATE torrents SET gone_at = ? WHERE hash = ?').run(at, previous.hash);
+        database.prepare('DELETE FROM torrent_files WHERE hash = ?').run(previous.hash);
         gone.push(previous.hash);
       }
       database.exec('COMMIT;');
