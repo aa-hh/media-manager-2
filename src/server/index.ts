@@ -14,6 +14,7 @@ import { createJobRunner } from './jobs.js';
 import { createOwned } from './owned.js';
 import { createProblems } from './problems.js';
 import { createProtection, vetoInBackground } from './protection.js';
+import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
@@ -66,6 +67,8 @@ if (database !== undefined) {
   const replaces = createReplaces(arr, grabs, { onCompleted: (grab) => protection.protect(grab) });
   const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected });
   runner.register('stall-fix', 60_000, stalls.check);
+  const relink = createRelinkFix({ database, rtorrent, arr, problems, isManualDownload: protection.isProtected });
+  runner.register('relink-fix', 60_000, relink.check);
   // Two minutes keeps Radarr's whole-library read light while still searching close to each release time.
   const searches = createSearchScheduler({ database, arr, problems, isManualDownload: protection.isProtected });
   runner.register('search-schedule', 2 * 60_000, searches.check);
