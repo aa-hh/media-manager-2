@@ -4,6 +4,7 @@ import type { createLabels } from './labels.js';
 import { listOpenProblems, type Problem, type Subject } from './problems.js';
 import type { ReleaseTarget } from './releases.js';
 import { searchDueAt } from './searches.js';
+import { FILE_MISSING, ORPHANED } from './secondVersionRows.js';
 import type { ArrServices } from './services/arr.js';
 import { findGrab, listGrabs, listQueue, type Grab, type Service } from './torrentGrabs.js';
 
@@ -86,6 +87,9 @@ export const createFlagged = (options: {
   const actionsFor = async (problem: Problem, label: string): Promise<FlaggedAction[]> => {
     const { subject } = problem;
     if (problem.kind === 'tracker_cooldown' || subject.type === 'tracker' || subject.type === 'dependency') return [{ kind: 'open_health' }];
+    // The title or the file is gone, so picking a release or searching cannot help.
+    // AA-97 (Delete a second version, with the choice to keep or remove its torrent) adds a delete action here.
+    if (problem.kind === ORPHANED || problem.kind === FILE_MISSING) return [];
     if (subject.type === 'movie') {
       const movieId = Number(subject.id);
       return [{ kind: 'pick_release', target: { service: 'radarr', kind: 'movie', movieId }, title: label }, searchAction('radarr', [movieId])];
