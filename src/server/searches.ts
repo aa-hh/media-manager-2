@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
+import { getPreference, setPreference } from './preferences.js';
 
 type Problems = ReturnType<typeof createProblems>;
 type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
@@ -116,8 +117,10 @@ export const createSearchScheduler = (options: {
   const checkService = async (service: Service, at: number) => {
     const candidates = service === 'sonarr' ? await missingEpisodes() : await missingMovies(at);
     const queued = inQueue(service);
+    const inBacklog = database.prepare('SELECT 1 FROM search_backlog WHERE subject = ?');
     const due = candidates.flatMap((candidate) => {
       if (isManualDownload(candidate.subject) || queued.has(candidate.subject.id)) return [];
+      if (inBacklog.get(key(candidate.subject)) !== undefined) return [];
       // Our own record covers the gap before Sonarr or Radarr update lastSearchTime, so a search is never sent twice.
       const ours = ourLastSearch(candidate.subject);
       const known = [candidate.lastSearchAt, ours].filter((value): value is number => value !== null);
@@ -127,8 +130,33 @@ export const createSearchScheduler = (options: {
     await search(service, due, at);
   };
 
+  // razor: backlog rows never expire; DELETE FROM search_backlog by hand to let the scheduler chase the old gaps. A UI control is the upgrade path.
+  // A fresh install accepts the library as it finds it: the first run records every gap it sees and searches nothing.
+  const seedBacklog = async (at: number) => {
+    const insert = database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
+    let complete = true;
+    for (const service of ['sonarr', 'radarr'] as const) {
+      if (problems.pausedBy([service]).length > 0) {
+        complete = false;
+        continue;
+      }
+      try {
+        const candidates = service === 'sonarr' ? await missingEpisodes() : await missingMovies(at);
+        for (const candidate of candidates) insert.run(key(candidate.subject), at);
+      } catch {
+        complete = false;
+        console.error(`Search backlog could not be recorded for ${service}.`);
+      }
+    }
+    if (complete) setPreference(database, 'searches.baselineAt', String(at));
+  };
+
   const check = async () => {
     const at = now();
+    if (getPreference(database, 'searches.baselineAt') === undefined) {
+      await seedBacklog(at);
+      return;
+    }
     for (const service of ['sonarr', 'radarr'] as const) {
       if (problems.pausedBy([service]).length > 0) continue;
       try {

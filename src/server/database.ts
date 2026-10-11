@@ -255,6 +255,10 @@ export const applicationMigrations = [
     fetched_at INTEGER NOT NULL,
     PRIMARY KEY (service, id, kind)
   ) STRICT;`,
+  `CREATE TABLE search_backlog (
+    subject TEXT PRIMARY KEY,
+    seen_at INTEGER NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

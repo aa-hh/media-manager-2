@@ -182,6 +182,15 @@ export const createTrackerWatch = (options: {
           problems.step(issueProblem(current, text).id, 'fix', asked ? 'Asked the tracker again.' : 'Could not ask the tracker again.');
         }
       } else if (kind === 'damaged') {
+        if (torrent.completedBytes === 0) {
+          // A recheck of a torrent with no data on disk can never pass, and replacing it would chase a download nobody kept.
+          const problem = problems.open({
+            kind: 'damaged', subject: torrentSubject(torrent.hash), hash: torrent.hash,
+            summary: `rTorrent found damaged data: "${text}"`, state: 'needs_you',
+          });
+          if (problem.steps.length === 1) problems.step(problem.id, 'result', 'The download files are gone; nothing to recheck.');
+          continue;
+        }
         const current: Issue = issue?.kind === 'damaged'
           ? issue
           : { hash: torrent.hash, kind, since: at, lastRetryAt: null, recheckedAt: null, replace: false };
