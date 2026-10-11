@@ -1241,8 +1241,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -1270,8 +1270,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -2615,8 +2615,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -2644,8 +2644,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -4013,8 +4013,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -4042,8 +4042,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -5449,8 +5449,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -5478,8 +5478,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -5609,8 +5609,8 @@
                                   "ref": "5:ht3RN",
                                   "name": "Secondary",
                                   "fill": "$5:card",
-                                  "stroke": "$5:input",
-                                  "strokeWidth": 1,
+                                  "stroke": "$5:foreground",
+                                  "strokeWidth": 1.5,
                                   "descendants": {
                                     "5:HQLEf": {
                                       "enabled": false
@@ -7589,8 +7589,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -7618,8 +7618,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -36718,8 +36718,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -36747,8 +36747,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -38098,8 +38098,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -38127,8 +38127,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -39472,8 +39472,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -39501,8 +39501,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -41170,8 +41170,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -41199,8 +41199,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -42726,8 +42726,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -42755,8 +42755,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -44022,8 +44022,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -44051,8 +44051,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -45258,8 +45258,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -45287,8 +45287,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -46406,8 +46406,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -46435,8 +46435,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",
@@ -47508,8 +47508,8 @@
                           ],
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "list",
@@ -47537,8 +47537,8 @@
                           "padding": 0,
                           "cornerRadius": "$5:control-radius-large",
                           "fill": "$5:card",
-                          "stroke": "$5:input",
-                          "strokeWidth": 1,
+                          "stroke": "$5:foreground",
+                          "strokeWidth": 1.5,
                           "descendants": {
                             "5:HQLEf": {
                               "icon": "ellipsis",

@@ -29103,7 +29103,7 @@
                                   "name": "Value",
                                   "fill": "$card",
                                   "stroke": "$destructive",
-                                  "strokeWidth": 1,
+                                  "strokeWidth": 1.5,
                                   "height": 28,
                                   "padding": [
                                     0,
@@ -30726,8 +30726,8 @@
                                   "ref": "ht3RN",
                                   "name": "Value",
                                   "fill": "$card",
-                                  "stroke": "$input",
-                                  "strokeWidth": 1,
+                                  "stroke": "$foreground",
+                                  "strokeWidth": 1.5,
                                   "height": 28,
                                   "padding": [
                                     0,
@@ -31233,8 +31233,8 @@
                                       "ref": "ht3RN",
                                       "name": "Pick a release",
                                       "fill": "$card",
-                                      "stroke": "$input",
-                                      "strokeWidth": 1,
+                                      "stroke": "$foreground",
+                                      "strokeWidth": 1.5,
                                       "height": 28,
                                       "padding": [
                                         0,
