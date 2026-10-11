@@ -7,6 +7,7 @@ import type { DownloadsState } from '../downloads/useDownloads';
 import type { MovieDetail } from '../library/api';
 import { seedingFacts, type SubjectProgress } from '../library/progress';
 import { PickRelease, type ReleaseTarget } from '../PickRelease';
+import { statusLabel } from '../Search';
 import { TrackedVersion } from './EpisodeDetails';
 import { History } from './History';
 import { movieWord } from './rows';
@@ -44,12 +45,14 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
     setProblem("Radarr didn't answer.");
   };
 
-  const digital = detail.releaseDates.digital;
+  const availableWhen = statusLabel(detail.minimumAvailability);
+  const file = detail.file === null ? '' : [detail.file.quality, detail.file.releaseGroup].filter((part) => part !== null && part !== '').join(' · ');
   const facts: TitleFact[] = [
     { label: 'Monitoring', value: detail.monitored ? 'Monitored' : 'Not monitored' },
+    ...(availableWhen === null ? [] : [{ label: 'Available when', value: availableWhen }]),
     ...(detail.qualityProfile === null ? [] : [{ label: 'Quality profile', value: detail.qualityProfile.name }]),
+    ...(file === '' ? [] : [{ label: 'File', value: file }]),
     { label: 'On disk', value: detail.hasFile ? `${formatBytes(detail.sizeOnDisk)} · 1 file` : 'Nothing yet' },
-    { label: 'Digital release', value: digital === null ? 'Not announced' : new Date(digital).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) },
   ];
 
   return (

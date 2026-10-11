@@ -11,7 +11,7 @@ import type { SubjectProgress } from '../library/progress';
 import { EpisodeRows, type MonitorChange } from './EpisodeRows';
 import { History } from './History';
 import { episodeWord } from './rows';
-import { sendAction, TitleHeader, type TitleFact } from './TitleHeader';
+import { episodeCode as code, sendAction, TitleHeader, type TitleFact } from './TitleHeader';
 
 const MAX_EPISODE_IDS = 100;
 
@@ -37,7 +37,6 @@ const apply = (detail: SeriesDetail, change: MonitorChange, previous?: SeriesDet
   };
 };
 
-const code = (episode: EpisodeDetail) => `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
 const aired = (episode: EpisodeDetail, now: number) => episode.airDate !== null && Date.parse(episode.airDate) <= now;
 
 // The monitoring choices Sonarr offers for a whole show, applied here as episode changes through the monitor endpoint.
@@ -136,9 +135,6 @@ export function SeriesOverview({ detail: loaded, protectedIds, downloads, progre
 
   const regular = detail.episodes.filter((episode) => episode.seasonNumber > 0);
   const monitoredCount = regular.filter((episode) => episode.monitored).length;
-  const next = detail.episodes
-    .filter((episode) => episode.airDate !== null && Date.parse(episode.airDate) > now)
-    .sort((a, b) => Date.parse(a.airDate!) - Date.parse(b.airDate!))[0];
   const downloading = detail.episodes.filter((episode) => progress.get(`episode:${episode.id}`)?.percent != null);
   const missing = detail.episodes.filter((episode) => episodeWord(episode, progress.get(`episode:${episode.id}`), protectedIds, now) === 'Missing');
   const { statistics } = detail;
@@ -149,13 +145,10 @@ export function SeriesOverview({ detail: loaded, protectedIds, downloads, progre
         : monitoredCount === regular.length ? 'All episodes'
           : monitoredCount === 0 ? 'No episodes' : `${monitoredCount} of ${plural(regular.length, 'episode')}`,
     },
+    ...(detail.monitorNewItems === null ? [] : [{ label: 'New seasons', value: detail.monitorNewItems === 'all' ? 'Monitored' : detail.monitorNewItems === 'none' ? 'Not monitored' : detail.monitorNewItems }]),
     ...(detail.qualityProfile === null ? [] : [{ label: 'Quality profile', value: detail.qualityProfile.name }]),
+    { label: 'Episodes', value: `${statistics.episodeFileCount} of ${statistics.episodeCount} on disk` },
     { label: 'On disk', value: statistics.episodeFileCount === 0 ? 'Nothing yet' : `${formatBytes(statistics.sizeOnDisk)} · ${plural(statistics.episodeFileCount, 'file')}` },
-    {
-      label: 'Next episode',
-      value: next === undefined ? 'None announced'
-        : `${code(next)} · ${new Date(next.airDate!).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}`,
-    },
   ];
   const live = downloading.length === 1 ? progress.get(`episode:${downloading[0].id}`) : undefined;
   const badges = (

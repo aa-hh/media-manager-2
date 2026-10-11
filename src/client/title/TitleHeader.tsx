@@ -1,13 +1,16 @@
-import { Ellipsis, History as HistoryIcon, List, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Ellipsis, ExternalLink, History as HistoryIcon, List, RefreshCw, Search, SlidersHorizontal, Tag, X } from 'lucide-react';
 import { useState, type MouseEvent, type ReactNode } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
+import { CardLibrary } from '@/components/ui/card-library';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Fact } from '@/components/ui/fact';
+import { FactStacked } from '@/components/ui/fact-stacked';
 import { HeaderTitle } from '@/components/ui/header-title';
 import { StatusInline } from '@/components/ui/status-inline';
 import type { BookmarkState } from '@/components/ui/toggle-bookmark';
-import { postJson, type MovieDetail, type SeriesDetail } from '../library/api';
+import { postJson, type EpisodeDetail, type MovieDetail, type SeriesDetail, type TitleRating } from '../library/api';
 import { navigate, useLocation } from '../navigation';
 import { statusLabel } from '../Search';
 
@@ -52,19 +55,36 @@ const metaLine = (subject: Subject) => {
   return parts.filter((part) => part !== '').join(' · ');
 };
 
-const externalLink = (label: string, href: string) => (
+export const episodeCode = (episode: Pick<EpisodeDetail, 'seasonNumber' | 'episodeNumber'>) => (
+  `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`
+);
+
+const day = (iso: string | null | undefined) => (
+  iso === null || iso === undefined ? null : new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+);
+
+// External pages for the title, each only when the data has its id.
+const titleLinks = (subject: Subject) => {
+  const { detail } = subject;
+  const tmdbKind = subject.type === 'tv' ? 'tv' : 'movie';
+  return [
+    detail.links.imdbId === null ? null : { label: 'IMDb', href: `https://www.imdb.com/title/${detail.links.imdbId}/` },
+    subject.type === 'tv' && subject.detail.links.tvdbId !== null ? { label: 'TVDB', href: `https://www.thetvdb.com/?tab=series&id=${subject.detail.links.tvdbId}` } : null,
+    detail.links.tmdbId === null ? null : { label: 'TMDB', href: `https://www.themoviedb.org/${tmdbKind}/${detail.links.tmdbId}` },
+    subject.type === 'movie' && typeof subject.detail.youTubeTrailerId === 'string' && subject.detail.youTubeTrailerId !== ''
+      ? { label: 'Trailer', href: `https://www.youtube.com/watch?v=${encodeURIComponent(subject.detail.youTubeTrailerId)}` }
+      : null,
+  ].filter((link) => link !== null);
+};
+
+const externalLink = ({ label, href }: { label: string; href: string }) => (
   <a key={label} href={href} target="_blank" rel="noreferrer" className="focus-ring rounded-xs underline underline-offset-2 hover:text-muted-foreground">{label}</a>
 );
 
-// What Sonarr or Radarr knows beyond the facts each page passes: shown under them, each only when the data has it.
+// What Sonarr or Radarr knows beyond the facts a not-yet-added title's page passes: shown under them, each only when the data has it.
 const titleFacts = (subject: Subject): TitleFact[] => {
   const { detail } = subject;
-  const tmdbKind = subject.type === 'tv' ? 'tv' : 'movie';
-  const links = [
-    detail.links.imdbId === null ? null : externalLink('IMDb', `https://www.imdb.com/title/${detail.links.imdbId}/`),
-    subject.type === 'tv' && subject.detail.links.tvdbId !== null ? externalLink('TVDB', `https://www.thetvdb.com/?tab=series&id=${subject.detail.links.tvdbId}`) : null,
-    detail.links.tmdbId === null ? null : externalLink('TMDB', `https://www.themoviedb.org/${tmdbKind}/${detail.links.tmdbId}`),
-  ].filter((link) => link !== null);
+  const links = titleLinks(subject).map(externalLink);
   return [
     ...(subject.type === 'tv' && subject.detail.language !== null ? [{ label: 'Language', value: subject.detail.language }] : []),
     ...(subject.type === 'movie' && subject.detail.collection !== null ? [{ label: 'Collection', value: subject.detail.collection }] : []),
@@ -74,6 +94,124 @@ const titleFacts = (subject: Subject): TitleFact[] => {
   ];
 };
 
+const ratingSources: Record<TitleRating['source'], string> = {
+  imdb: 'IMDb', tmdb: 'TMDB', tvdb: 'TVDB', trakt: 'Trakt', rottenTomatoes: 'RT', metacritic: 'Metacritic',
+};
+
+// TMDB scores out of 10 but shows as a percentage; Rotten Tomatoes and Metacritic already score out of 100.
+const ratingValue = (rating: TitleRating) => {
+  if (rating.source === 'tmdb') return `${Math.round(rating.value * 10)}%`;
+  if (rating.source === 'rottenTomatoes') return `${rating.value}%`;
+  if (rating.source === 'metacritic') return String(rating.value);
+  return rating.value.toFixed(1);
+};
+
+// Sonarr gives each season's next and previous air time; the show's are the earliest next and the latest previous.
+const airing = (tv: SeriesDetail, which: 'nextAiring' | 'previousAiring') => {
+  const times = tv.seasons
+    .map((season) => season.statistics[which])
+    .filter((time) => time !== null)
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  const at = which === 'nextAiring' ? times[0] : times[times.length - 1];
+  if (at === undefined) return null;
+  const episode = tv.episodes.find((candidate) => candidate.airDate !== null && Date.parse(candidate.airDate) === Date.parse(at));
+  const when = new Date(at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return episode === undefined ? when : `${episodeCode(episode)} · ${when}`;
+};
+
+type Cell = { label: string; value: string | null | undefined };
+
+const tvFacts = (tv: SeriesDetail): Cell[][] => {
+  const firstAired = tv.episodes
+    .filter((episode) => episode.seasonNumber > 0 && episode.airDate !== null)
+    .map((episode) => episode.airDate!)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+  const seasons = tv.statistics.seasonCount || tv.seasons.filter((season) => season.seasonNumber > 0).length;
+  const episodes = tv.statistics.totalEpisodeCount;
+  return [
+    [{ label: 'Status', value: statusLabel(tv.status) }, { label: 'First aired', value: day(firstAired) }, { label: 'Last aired', value: day(tv.lastAired) }],
+    [{ label: 'Network', value: tv.network }, { label: 'Air time', value: tv.airTime }, { label: 'Runtime', value: runtimeText(tv.runtime) }],
+    [{ label: 'Certification', value: tv.certification }, { label: 'Original language', value: tv.language }, { label: 'Also known as', value: tv.alternateTitles?.join(', ') }],
+    [
+      { label: 'Next episode', value: airing(tv, 'nextAiring') },
+      { label: 'Previous episode', value: airing(tv, 'previousAiring') },
+      { label: 'Seasons', value: seasons === 0 ? null : episodes === 0 ? String(seasons) : `${seasons} · ${episodes} episodes` },
+    ],
+  ];
+};
+
+const movieFacts = (movie: MovieDetail): Cell[][] => [
+  [{ label: 'Status', value: statusLabel(movie.status) }, { label: 'In cinemas', value: day(movie.releaseDates.inCinemas) }, { label: 'Digital', value: day(movie.releaseDates.digital) }],
+  [{ label: 'Studio', value: movie.studio }, { label: 'Runtime', value: runtimeText(movie.runtime) }, { label: 'Physical', value: day(movie.releaseDates.physical) }],
+  [{ label: 'Certification', value: movie.certification }, { label: 'Original language', value: movie.originalLanguage }, { label: 'Collection', value: movie.collection }],
+];
+
+const credits = (movie: MovieDetail, job: string) => movie.crew?.filter((member) => member.job === job).map((member) => member.name).join(', ');
+
+const crewFacts = (movie: MovieDetail): Cell[][] => [
+  [{ label: 'Director', value: credits(movie, 'Director') }, { label: 'Screenplay', value: credits(movie, 'Screenplay') }, { label: 'Novel', value: credits(movie, 'Novel') }],
+  [
+    { label: 'Producers', value: credits(movie, 'Producer') },
+    { label: 'Director of photography', value: credits(movie, 'Director of Photography') },
+    { label: 'Music', value: credits(movie, 'Original Music Composer') },
+  ],
+];
+
+// Rows of three; a row with no values is left out and a part-filled row keeps its values from the left.
+function FactGrid({ rows, className }: { rows: Cell[][]; className: string }) {
+  const filled = rows
+    .map((row) => row.filter((cell) => cell.value !== null && cell.value !== undefined && cell.value !== ''))
+    .filter((row) => row.length > 0);
+  if (filled.length === 0) return null;
+  return (
+    <div className={`flex flex-col gap-4 ${className}`}>
+      {filled.map((row) => (
+        <dl key={row[0].label} className="m-0 grid grid-cols-3 gap-6">
+          {row.map((cell) => <FactStacked key={cell.label} label={cell.label}>{cell.value}</FactStacked>)}
+        </dl>
+      ))}
+    </div>
+  );
+}
+
+// Under the header of an in-library title: the show or film itself on the left, the owner's copy in the card on the right.
+function OverviewBand({ subject, library }: { subject: Subject; library: TitleFact[] }) {
+  const { detail } = subject;
+  const links = titleLinks(subject);
+  const chips = [...detail.genres, ...(subject.type === 'movie' ? subject.detail.keywords ?? [] : [])];
+  const ratings = (detail.ratings ?? []).map((rating) => ({
+    source: ratingSources[rating.source],
+    value: ratingValue(rating),
+    votes: rating.votes === null ? undefined : `${rating.votes.toLocaleString('en-GB')} votes`,
+  }));
+  return (
+    <section aria-label="About" className="flex items-start gap-10 pt-6 pb-8">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <h2 className="m-0 font-ui text-xl font-bold text-foreground">Overview</h2>
+        {detail.overview !== null && <p className="m-0 text-body leading-normal text-muted-foreground">{detail.overview}</p>}
+        <FactGrid rows={subject.type === 'tv' ? tvFacts(subject.detail) : movieFacts(subject.detail)} className="pt-2" />
+        {subject.type === 'movie' && <FactGrid rows={crewFacts(subject.detail)} className="pt-4" />}
+        {links.length > 0 && (
+          <div className="flex items-center gap-5 pt-1">
+            {links.map((link) => (
+              <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="focus-ring flex items-center gap-1 rounded-xs text-label text-foreground hover:underline">
+                {link.label}
+                <ExternalLink aria-hidden="true" className="size-3 text-muted-foreground" />
+              </a>
+            ))}
+          </div>
+        )}
+        {chips.length > 0 && (
+          <ul aria-label="Genres and keywords" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+            {chips.map((chip, index) => <li key={`${index}-${chip}`}><Badge variant="outline" icon={<Tag />}>{chip}</Badge></li>)}
+          </ul>
+        )}
+      </div>
+      <CardLibrary ratings={ratings} rows={library} tags={detail.tags} />
+    </section>
+  );
+}
+
 type Sent = 'sending' | 'sent' | 'failed';
 
 export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, onUnauthenticated }: {
@@ -81,6 +219,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   owned: boolean;
   /** Status Badges under the meta line. */
   badges?: ReactNode;
+  /** In the library: the library card's rows (Added and Folder follow). Not yet added: the header's facts. */
   facts?: TitleFact[];
   monitored?: MonitoredState;
   onToggleMonitored?: () => void;
@@ -98,7 +237,12 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
 }) {
   const { detail } = subject;
   const service = subject.type === 'tv' ? 'Sonarr' : 'Radarr';
-  const allFacts = [...(facts ?? []), ...titleFacts(subject)];
+  const headerFacts = owned ? [] : [...(facts ?? []), ...titleFacts(subject)];
+  const libraryRows: TitleFact[] = [
+    ...(facts ?? []),
+    ...(detail.added === null ? [] : [{ label: 'Added', value: day(detail.added) }]),
+    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="[overflow-wrap:anywhere]">{detail.path}</span> }]),
+  ];
   const { state } = useLocation();
   const [search, setSearch] = useState<Sent | undefined>(undefined);
   const [refresh, setRefresh] = useState<Sent | undefined>(undefined);
@@ -128,7 +272,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
 
   const menu = (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="large" iconOnly icon={<Ellipsis />} aria-label="More actions" />} />
+      <DropdownMenuTrigger render={<Button variant={compact ? 'ghost' : 'outline'} size="large" iconOnly icon={<Ellipsis />} aria-label="More actions" />} />
       <DropdownMenuContent>
         <DropdownMenuItem icon={<RefreshCw />} disabled={refresh === 'sending'} onClick={() => void send('/api/library/refresh', setRefresh)}>Refresh</DropdownMenuItem>
         {history !== undefined && (
@@ -144,6 +288,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
       <HeaderTitle
         className="-mx-(--page-margin) w-auto"
         compact={compact}
+        actionsRight={owned}
         title={detail.title}
         backdropUrl={detail.backdropUrl ?? undefined}
         posterUrl={detail.posterUrl ?? undefined}
@@ -152,7 +297,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
         status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}
         meta={metaLine(subject)}
         badges={badges}
-        overview={detail.overview ?? undefined}
+        overview={owned ? undefined : detail.overview ?? undefined}
         primary={add ?? (owned && (
           <Button size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
             Search automatically
@@ -164,10 +309,11 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
           </Button>
         )}
         more={owned && <>{menu}{status}</>}
-        facts={allFacts.length > 0
-          ? allFacts.map((fact) => <Fact key={fact.label} label={fact.label}>{fact.value}</Fact>)
+        facts={headerFacts.length > 0
+          ? headerFacts.map((fact) => <Fact key={fact.label} label={fact.label}>{fact.value}</Fact>)
           : undefined}
       />
+      {owned && !compact && <OverviewBand subject={subject} library={libraryRows} />}
       {/* Hand-off to AA-32 (Second versions and safe deletion): delete show/movie and delete version. */}
       {showHistory && history}
     </>

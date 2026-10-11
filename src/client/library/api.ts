@@ -64,6 +64,9 @@ export type EpisodeDetail = {
 
 type Profile = { id: number; name: string; cutoff: string | null } | null;
 
+/** One rating site's score as the site gives it (IMDb and TMDB out of 10, Rotten Tomatoes and Metacritic out of 100). */
+export type TitleRating = { source: 'imdb' | 'tmdb' | 'tvdb' | 'trakt' | 'rottenTomatoes' | 'metacritic'; value: number; votes: number | null };
+
 export type SeriesDetail = {
   id: number;
   title: string;
@@ -94,6 +97,11 @@ export type SeriesDetail = {
     statistics: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; sizeOnDisk: number; nextAiring: string | null; previousAiring: string | null };
   }>;
   episodes: EpisodeDetail[];
+  // Not sent by the server yet; the title page shows each once it arrives.
+  lastAired?: string | null;
+  airTime?: string | null;
+  alternateTitles?: string[] | null;
+  ratings?: TitleRating[] | null;
 };
 
 export type MovieDetail = {
@@ -123,6 +131,13 @@ export type MovieDetail = {
   sizeOnDisk: number;
   releaseDates: { inCinemas: string | null; digital: string | null; physical: string | null };
   file: FileDetail | null;
+  // Not sent by the server yet; the title page shows each once it arrives.
+  originalLanguage?: string | null;
+  keywords?: string[] | null;
+  youTubeTrailerId?: string | null;
+  /** Crew credits with TMDB job names, such as Director, Screenplay, Novel, Producer. */
+  crew?: Array<{ name: string; job: string }> | null;
+  ratings?: TitleRating[] | null;
 };
 
 export type HistoryEntry = {
