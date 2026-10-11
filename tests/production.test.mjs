@@ -2973,25 +2973,32 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
       error: 'invalid_folders', fields: { downloadsRadarr: 'Must be an absolute path.', librarySonarr: 'This folder does not exist.' },
     });
     assert.deepEqual(hostPaths(database), []);
-    assert.deepEqual(folderProblems(values, (path) => ({ isDirectory: () => true, dev: path === values.versionsRadarr ? 2 : 1 })), {
-      versionsRadarr: 'On a different drive from the downloads folder, so imports can\'t hardlink.',
+    const exists = () => ({ isDirectory: () => true });
+    // Accepting a versions folder whose test hardlink fails with EXDEV, or losing the service name, turns this red.
+    assert.deepEqual(folderProblems(values, exists, (from, to) => (to === values.versionsRadarr ? 'EXDEV' : 'ok')), {
+      versionsRadarr: 'On a different drive from the Movies downloads folder, so imports can\'t hardlink.',
     });
-    // Each versions folder is checked against its own service's downloads folder only.
-    const radarrDrive = (path) => ({ isDirectory: () => true, dev: [values.downloadsRadarr, values.versionsRadarr, values.libraryRadarr].includes(path) ? 2 : 1 });
-    assert.deepEqual(folderProblems(values, radarrDrive), {});
-    assert.deepEqual(folderWarnings(values, radarrDrive), {});
-    assert.deepEqual(folderProblems(values, (path) => ({ isDirectory: () => true, dev: path === values.downloadsSonarr ? 2 : 1 })), {
-      versionsSonarr: 'On a different drive from the downloads folder, so imports can\'t hardlink.',
+    // Testing a folder against the other service's downloads folder turns this red.
+    const radarrFails = (from) => (from === values.downloadsRadarr ? 'EXDEV' : 'ok');
+    assert.deepEqual(Object.keys(folderProblems(values, exists, radarrFails)), ['versionsRadarr']);
+    assert.deepEqual(Object.keys(folderWarnings(values, radarrFails)), ['libraryRadarr']);
+    // Treating a non-EXDEV failure as success, or dropping its error code, turns this red.
+    assert.deepEqual(folderProblems(values, exists, (from, to) => (to === values.versionsSonarr ? 'EACCES' : 'ok')), {
+      versionsSonarr: 'A test hardlink from the TV downloads folder failed (EACCES), so imports can\'t hardlink here.',
     });
     assert.equal((await send('POST', '/folders', { ...values, extra: '/data' })).status, 400);
 
     // Refusing a library on another drive, or dropping its warning, turns this red.
-    assert.deepEqual(folderWarnings(values, (path) => ({ isDirectory: () => true, dev: path === values.libraryRadarr ? 2 : 1 })), {
-      libraryRadarr: 'On a different drive from the downloads folder, so a deleted download can\'t be re-linked from this library.',
+    assert.deepEqual(folderWarnings(values, (from, to) => (to === values.libraryRadarr ? 'EXDEV' : 'ok')), {
+      libraryRadarr: 'On a different drive from the Movies downloads folder, so a deleted download can\'t be re-linked from this library.',
     });
     const saved = await send('POST', '/folders', values);
     assert.equal(saved.status, 200);
     assert.deepEqual(await saved.json(), { warnings: {} });
+    // Skipping the test hardlink's cleanup turns this red.
+    for (const folder of Object.values(values)) {
+      assert.deepEqual((await readdir(folder)).filter((name) => name.startsWith('.media-manager-2-link-test-')), []);
+    }
     assert.deepEqual(
       ['downloads.sonarr', 'downloads.radarr', 'library.sonarr', 'library.radarr', 'versions.sonarr', 'versions.radarr'].map((key) => getSetting(database, 'hostPaths', key)),
       [values.downloadsSonarr, values.downloadsRadarr, values.librarySonarr, values.libraryRadarr, values.versionsSonarr, values.versionsRadarr],

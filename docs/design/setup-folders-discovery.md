@@ -70,7 +70,7 @@ Mostly, with three traps.
 
 A symlink in the path does not mislead `statSync`, which follows it: `/home/<user>` reports device 64784 like `/mnt/mpathe/<user>`. `lstat` on the symlink itself reports the system disk (2431).
 
-**Recommended check:** same mountinfo mount ID → "same drive"; then, at save time, a test hardlink between downloads and each second-versions folder (refuse on failure) and between downloads and each library folder (warn on failure).
+**Recommended check:** same mountinfo mount ID → "same drive"; then, at save time, a test hardlink between downloads and each second-versions folder (refuse on failure) and between downloads and each library folder (warn on failure). Save now makes this test hardlink (`testHardlink` in `setup.ts`) instead of comparing `dev`.
 
 ### Labels and what each means
 

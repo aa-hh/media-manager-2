@@ -1,5 +1,6 @@
-import { type Stats, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { linkSync, rmSync, type Stats, statSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { type Context, Hono } from 'hono';
 import { backupKeyFromEnvironment, backupsAreOff, createBackupKeyPair, readBackupKeyPair, setBackupsOff } from './backup.js';
@@ -39,15 +40,39 @@ const folderKeys = [
 const folderFields = ['downloadsSonarr', 'downloadsRadarr', 'librarySonarr', 'libraryRadarr', 'versionsSonarr', 'versionsRadarr'] as const;
 type FolderField = typeof folderFields[number];
 export type FolderValues = Record<FolderField, string>;
-type FolderStat = (path: string) => Pick<Stats, 'dev' | 'isDirectory'> | undefined;
+type FolderStat = (path: string) => Pick<Stats, 'isDirectory'> | undefined;
+// 'ok', or the failing error code ('EXDEV', 'EACCES', 'mismatch', ...).
+export type LinkTest = (fromFolder: string, toFolder: string) => 'ok' | string;
+
+// Bind mounts and pooled disks fool a device-number check; only a real link proves imports can hardlink.
+export const testHardlink: LinkTest = (fromFolder, toFolder) => {
+  const name = `.media-manager-2-link-test-${randomBytes(6).toString('hex')}`;
+  const from = join(fromFolder, name);
+  const to = join(toFolder, name);
+  try {
+    writeFileSync(from, 'x', { flag: 'wx' });
+    linkSync(from, to);
+    const fromStats = statSync(from);
+    const toStats = statSync(to);
+    return fromStats.ino === toStats.ino && toStats.nlink >= 2 ? 'ok' : 'mismatch';
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return typeof code === 'string' ? code : 'failed';
+  } finally {
+    try { rmSync(from, { force: true }); } catch { /* cleanup never throws */ }
+    try { rmSync(to, { force: true }); } catch { /* cleanup never throws */ }
+  }
+};
+
+const serviceName = { Sonarr: 'TV', Radarr: 'Movies' } as const;
 
 // Every failing field's message; an empty object means the folders can be saved.
 export const folderProblems = (
   values: FolderValues,
   stat: FolderStat = (path) => statSync(path, { throwIfNoEntry: false }),
+  link: LinkTest = testHardlink,
 ): Partial<Record<FolderField, string>> => {
   const fields: Partial<Record<FolderField, string>> = {};
-  const found: Partial<Record<FolderField, Pick<Stats, 'dev'>>> = {};
   for (const field of folderFields) {
     const path = values[field];
     if (!isAbsolute(path)) {
@@ -56,29 +81,35 @@ export const folderProblems = (
     }
     const stats = stat(path);
     if (stats === undefined || !stats.isDirectory()) fields[field] = 'This folder does not exist.';
-    else found[field] = stats;
   }
-  // Imports hardlink second versions from the service's downloads folder, which only works within one drive.
-  for (const [field, downloads] of [['versionsSonarr', found.downloadsSonarr], ['versionsRadarr', found.downloadsRadarr]] as const) {
-    const versions = found[field];
-    if (versions !== undefined && downloads !== undefined && versions.dev !== downloads.dev) {
-      fields[field] = 'On a different drive from the downloads folder, so imports can\'t hardlink.';
+  // Imports hardlink second versions from the service's downloads folder.
+  for (const service of ['Sonarr', 'Radarr'] as const) {
+    const downloads = `downloads${service}` as const;
+    const versions = `versions${service}` as const;
+    if (fields[downloads] !== undefined || fields[versions] !== undefined) continue;
+    const result = link(values[downloads], values[versions]);
+    if (result === 'EXDEV') {
+      fields[versions] = `On a different drive from the ${serviceName[service]} downloads folder, so imports can't hardlink.`;
+    } else if (result !== 'ok') {
+      fields[versions] = `A test hardlink from the ${serviceName[service]} downloads folder failed (${result}), so imports can't hardlink here.`;
     }
   }
   return fields;
 };
 
 // A library on another drive still saves (a network library is fine), but a deleted download can't be re-linked from it.
+// Runs only after folderProblems passed, so every folder exists.
 export const folderWarnings = (
   values: FolderValues,
-  stat: FolderStat = (path) => statSync(path, { throwIfNoEntry: false }),
+  link: LinkTest = testHardlink,
 ): Partial<Record<FolderField, string>> => {
   const warnings: Partial<Record<FolderField, string>> = {};
-  for (const [field, downloadsField] of [['librarySonarr', 'downloadsSonarr'], ['libraryRadarr', 'downloadsRadarr']] as const) {
-    const downloads = stat(values[downloadsField]);
-    const library = stat(values[field]);
-    if (downloads !== undefined && library !== undefined && library.dev !== downloads.dev) {
-      warnings[field] = 'On a different drive from the downloads folder, so a deleted download can\'t be re-linked from this library.';
+  for (const service of ['Sonarr', 'Radarr'] as const) {
+    const result = link(values[`downloads${service}`], values[`library${service}`]);
+    if (result === 'EXDEV') {
+      warnings[`library${service}`] = `On a different drive from the ${serviceName[service]} downloads folder, so a deleted download can't be re-linked from this library.`;
+    } else if (result !== 'ok') {
+      warnings[`library${service}`] = `A test hardlink from the ${serviceName[service]} downloads folder failed (${result}), so a deleted download can't be re-linked from this library.`;
     }
   }
   return warnings;
