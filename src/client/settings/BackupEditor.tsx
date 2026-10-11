@@ -49,6 +49,9 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
     try {
       const response = await request('POST', '/backup', backupBody(draft));
       if (response.status === 204) {
+        // The same bucket with new keys reads back unchanged, so the parent does not remount this pane: drop the sent keys here.
+        setDraft((current) => ({ ...current, accessKeyId: '', secretAccessKey: '' }));
+        setReplacing({ accessKeyId: false, secretAccessKey: false });
         onSaved();
         return;
       }

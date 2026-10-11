@@ -9290,7 +9290,7 @@ test('the settings screen sends only changed fields and ranks each service state
   });
 
   // Reading a key pair or BACKUP_KEY as missing, or letting a missing key outrank a bad destination, turns this red.
-  await t.test('the backup pill ranks no destination, then a bad destination, then a missing key', () => {
+  await t.test('the backup pill ranks a bad destination, then no destination, then a missing key', () => {
     const folder = { kind: 'folder', folder: '/backups' };
     const cases = [
       [{ destination: null, problem: null, key: 'missing', keyCreatedAt: null }, 'not-set-up'],
