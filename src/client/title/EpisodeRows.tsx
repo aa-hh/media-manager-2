@@ -183,7 +183,8 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
     }
     if (event.key === ' ' || event.key === 'm') {
       event.preventDefault();
-      if (selected.size > 0) {
+      // Acts on the selection only while the selection bar shows it; one selected row elsewhere must not steal the key from the focused row.
+      if (selected.size >= 2) {
         const anchorEpisode = detail.episodes.find((episode) => episodeKey(episode.id) === anchorKey)
           ?? detail.episodes.find((episode) => selected.has(episode.id));
         setSelection([...selected], !(anchorEpisode?.monitored ?? false));
