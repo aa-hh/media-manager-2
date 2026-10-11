@@ -57,6 +57,8 @@ export const handGrab = (record: GrabRecord & { downloadId: string }) => {
 };
 
 const GRAB_TIMEOUT_MS = 60_000;
+// A grab that never shows up in history within an hour is failed for the owner to see, not polled forever.
+const UNREPORTED_GRAB_LIMIT_MS = 3_600_000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -140,6 +142,11 @@ export const createGrabs = (
     return row === undefined ? undefined : rowToRecord(row as Record<string, unknown>);
   };
 
+  const pending = (intent?: GrabIntent) => database
+    .prepare("SELECT * FROM grabs WHERE state = 'sent' AND (? IS NULL OR intent = ?) ORDER BY id")
+    .all(intent ?? null, intent ?? null)
+    .map((row) => rowToRecord(row as Record<string, unknown>));
+
   const update = (id: number, fields: { state?: GrabState; failure?: string | null; downloadId?: string }) => {
     database.prepare(`
       UPDATE grabs SET
@@ -204,11 +211,7 @@ export const createGrabs = (
         .all(targetKey(target), targetKey(target))
         .map((row) => rowToRecord(row as Record<string, unknown>));
     },
-    pending(intent?: GrabIntent) {
-      return database.prepare("SELECT * FROM grabs WHERE state = 'sent' AND (? IS NULL OR intent = ?) ORDER BY id")
-        .all(intent ?? null, intent ?? null)
-        .map((row) => rowToRecord(row as Record<string, unknown>));
-    },
+    pending,
     recentTitles(service: 'sonarr' | 'radarr', since: number) {
       return database.prepare("SELECT release_title FROM grabs WHERE service = ? AND created_at >= ? AND state != 'failed'")
         .all(service, since)
@@ -221,6 +224,14 @@ export const createGrabs = (
     },
     update,
     resolveDownloadId,
+
+    async resolvePending() {
+      for (const record of pending()) {
+        if (record.downloadId !== null) continue;
+        if (record.createdAt > now() - UNREPORTED_GRAB_LIMIT_MS) await resolveDownloadId(record);
+        else update(record.id, { state: 'failed', failure: 'Sonarr or Radarr never reported this grab.' });
+      }
+    },
 
     async grab(searchedFor: ReleaseTarget, guid: string, intent: GrabIntent, overrides: Overrides = {}) {
       const release = releases.find(searchedFor, guid);

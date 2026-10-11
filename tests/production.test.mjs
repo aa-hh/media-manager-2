@@ -6648,7 +6648,8 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const sonarr = createArr('sonarr', database, { fetch });
   const releases = createReleases(database, { sonarr, radarr: sonarr });
   const changes = [];
-  const grabs = createGrabs(database, { sonarr, radarr: sonarr }, releases, { onChange: (record) => changes.push(record.state) });
+  let clock = 1_000_000;
+  const grabs = createGrabs(database, { sonarr, radarr: sonarr }, releases, { now: () => clock, onChange: (record) => changes.push(record) });
   const target = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
 
   assert.deepEqual(await grabs.grab(target, 'g-rejected', 'replace'), { kind: 'unknown_release' });
@@ -6657,7 +6658,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const sent = await grabs.grab(target, 'g-rejected', 'replace');
   assert.equal(sent.kind, 'sent');
   assert.deepEqual(posts.at(-1), { pathname: '/api/v3/release', body: { guid: 'g-rejected', indexerId: 3, downloadAllowed: true } });
-  assert.deepEqual(changes, ['sending', 'sent', 'sent']);
+  assert.deepEqual(changes.map((record) => record.state), ['sending', 'sent', 'sent']);
   assert.equal(sent.record.downloadId, 'ABC123HASH');
   assert.equal(sent.record.intent, 'replace');
   assert.deepEqual(grabs.pending('replace').map((record) => record.id), [sent.record.id]);
@@ -6738,6 +6739,25 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
     ['list', () => call('/?kind=episode&seriesId=5&episodeId=50'), 200],
   ];
   for (const [name, run, status] of cases) assert.equal(await run(), status, name);
+
+  // Leaving a never-reported grab sent past the hour, or failing one the service may still report, turns this red.
+  await t.test('a sent grab Sonarr never reports fails after an hour', async () => {
+    history = [];
+    grabResponse = () => new Response('{}', { status: 200 });
+    const old = [(await grabs.grab(target, 'g-rejected', 'replace')).record.id, (await grabs.grab(target, 'g-rejected', 'replace')).record.id];
+    clock += 3_600_001;
+    const young = (await grabs.grab(target, 'g-rejected', 'replace')).record.id;
+    history = grabbedHistory;
+    const before = changes.length;
+    await grabs.resolvePending();
+    for (const id of old) {
+      const record = grabs.read(id);
+      assert.deepEqual([record.state, record.failure, record.downloadId], ['failed', 'Sonarr or Radarr never reported this grab.', null], `grab ${id}`);
+    }
+    assert.deepEqual([grabs.read(young).state, grabs.read(young).downloadId], ['sent', 'ABC123HASH']);
+    assert.equal(grabs.pending().some((record) => old.includes(record.id)), false);
+    assert.deepEqual(changes.slice(before).filter((record) => old.includes(record.id)).map((record) => [record.id, record.state]), old.map((id) => [id, 'failed']));
+  });
 
   assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
   assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
