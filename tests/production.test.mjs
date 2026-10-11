@@ -2526,6 +2526,37 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     assert.equal(readTitle(database, 'sonarr', 3).title, 'Pluribus');
   });
 
+  // Skipping the episode re-read when a webhook refresh finds the series resource unchanged turns this red.
+  await t.test('a webhook refresh picks up an episode-only change', async () => {
+    const { cache, clock, database, published, state } = setup();
+    assert.equal(cache.receiveWebhook('sonarr', { eventType: 'SeriesAdd', series: { id: 1 } }), 'ok');
+    await settle();
+    published.length = 0;
+    state.episodes[1][1].title = 'Kassa (renamed)';
+    clock.value += 60_000;
+    assert.equal(cache.receiveWebhook('sonarr', { eventType: 'Download', series: { id: 1 } }), 'ok');
+    await settle();
+    assert.equal(listEpisodes(database, 1).find(({ id }) => id === 11).title, 'Kassa (renamed)');
+    assert.deepEqual(published, [{ service: 'sonarr', id: 1, change: 'updated' }]);
+  });
+
+  // Writing the image file and row without checking the title still exists after the download turns this red.
+  await t.test('a delete during an image download leaves no image behind', async () => {
+    const { cache, imageDirectory, state } = setup();
+    let release;
+    state.gate = { service: 'radarr', path: '/api/v3/mediacover/7/poster.jpg', promise: new Promise((resolve) => { release = resolve; }) };
+    const pending = cache.refresh('radarr', 7);
+    await settle();
+    assert.equal(state.gate, null, 'the image download is in flight');
+    assert.equal(cache.receiveWebhook('radarr', { eventType: 'MovieDelete', movie: { id: 7 } }), 'ok');
+    release();
+    await pending;
+    await settle();
+    assert.equal(cache.image('radarr', 7, 'poster'), undefined);
+    const files = await readdir(imageDirectory).catch(() => []);
+    assert.deepEqual(files.filter((name) => name.startsWith('radarr-7-')), []);
+  });
+
   // Registering the fallback on another interval, or not registering it, turns this red.
   await t.test('the five-minute fallback runs on the job runner', async () => {
     const { cache, calls, clock } = setup();

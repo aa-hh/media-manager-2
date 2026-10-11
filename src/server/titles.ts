@@ -172,6 +172,8 @@ export const createTitleCache = (options: {
       try {
         const response = await arr[service].download(`/api/v3/mediacover/${id}/${name}`);
         if (!isSuccess(response.status)) continue;
+        // A delete that landed while the download was in flight leaves nothing to attach the image to.
+        if (database.prepare('SELECT 1 FROM titles WHERE service = ? AND id = ?').get(service, id) === undefined) return;
         const extension = match[1].toLowerCase();
         const file = `${service}-${id}-${kind}.${extension}`;
         mkdirSync(imageDirectory, { recursive: true, mode: 0o700 });
@@ -230,7 +232,14 @@ export const createTitleCache = (options: {
       const startedAt = now();
       const response = await arr[service].request(`${resourcePath[service]}/${id}`);
       if (response.status === 404) deleteTitle(service, id);
-      else if (isSuccess(response.status) && isRecord(response.body)) await upsertTitle(service, response.body, startedAt);
+      else if (isSuccess(response.status) && isRecord(response.body)) {
+        const result = await upsertTitle(service, response.body, startedAt);
+        if (result === 'unchanged' && service === 'sonarr') {
+          const before = JSON.stringify(listEpisodes(database, id));
+          await syncEpisodes(id, startedAt);
+          if (JSON.stringify(listEpisodes(database, id)) !== before) events.publish('title', { service, id, change: 'updated' });
+        }
+      }
     } catch {
       // An unreachable or unconfigured service leaves the cached row as it is.
     }
@@ -245,6 +254,7 @@ export const createTitleCache = (options: {
       for (const item of response.body) {
         const id = isRecord(item) ? positiveInteger(item.id) : null;
         if (id !== null) listed.add(id);
+        // razor: episode-only changes are picked up when Sonarr's metadata refresh changes the series resource or on the next webhook refresh; upgrade path is a per-series episode check in the fallback.
         await upsertTitle(service, item, startedAt);
       }
       const older = database.prepare('SELECT id FROM titles WHERE service = ? AND fetched_at < ?')
