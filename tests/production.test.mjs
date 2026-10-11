@@ -1218,6 +1218,85 @@ test('the Plex sign-in popup is used when it opens, skipped when blocked or on a
   });
 });
 
+test('the sign-in screen re-checks an unfinished Plex sign-in a few times, holds on success, and shows one line per screen', async (t) => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/signInFlow.ts', import.meta.url), 'utf8');
+  const { RECHECK_TRIES, SUCCESS_HOLD_MS, holdSuccess, recheckLater, signInScreen } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const makeTimers = () => ({
+    queued: [],
+    setTimeout(cb, ms) { this.queued.push({ cb, ms }); return this.queued.length; },
+    runNext() { this.queued.shift().cb(); },
+  });
+
+  // Dropping the retriesLeft check, re-checking without lowering the count, or skipping the isCurrent guard turns this red.
+  await t.test('an unfinished sign-in is asked again with one try fewer until the tries run out, and not at all once replaced', () => {
+    const timers = makeTimers();
+    const rechecks = [];
+    assert.equal(recheckLater(timers, 3, 2000, () => true, (left) => rechecks.push(left)), true);
+    assert.deepEqual(timers.queued.map(({ ms }) => ms), [2000]);
+    assert.deepEqual(rechecks, []);
+    timers.runNext();
+    assert.deepEqual(rechecks, [2]);
+    assert.equal(recheckLater(timers, 0, 2000, () => true, (left) => rechecks.push(left)), false);
+    assert.equal(timers.queued.length, 0);
+    assert.equal(recheckLater(timers, 3, 1000, () => false, (left) => rechecks.push(left)), true);
+    timers.runNext();
+    assert.deepEqual(rechecks, [2]);
+  });
+
+  // Giving the 202 pending and 409 in_progress answers separate budgets, or changing the five-try budget, turns this red.
+  await t.test('pending and in-progress answers share one budget of five re-checks before the wait is shown', () => {
+    const timers = makeTimers();
+    const answers = [202, 409, 202, 202, 409, 202];
+    const asked = [];
+    let view = 'checking';
+    const check = (retriesLeft) => {
+      const status = answers.shift();
+      asked.push(status);
+      if (!recheckLater(timers, retriesLeft, status === 202 ? 2000 : 1000, () => true, check)) view = 'pending';
+    };
+    check(RECHECK_TRIES);
+    for (let run = 0; run < 10 && timers.queued.length > 0; run += 1) timers.runNext();
+    assert.equal(RECHECK_TRIES, 5);
+    assert.deepEqual(asked, [202, 409, 202, 202, 409, 202]);
+    assert.equal(view, 'pending');
+    assert.deepEqual(signInScreen(view, false, false), { screen: 'error', line: 'Couldn\'t log you in. Try again.' });
+  });
+
+  // Calling onSignedIn before the hold, more than once, or waiting under reduced motion turns this red.
+  await t.test('a successful sign-in hands over once, after the hold or at once under reduced motion', () => {
+    const timers = makeTimers();
+    let calls = 0;
+    assert.equal(holdSuccess(timers, false, () => { calls += 1; }), 1);
+    assert.equal(SUCCESS_HOLD_MS, 2200);
+    assert.deepEqual(timers.queued.map(({ ms }) => ms), [SUCCESS_HOLD_MS]);
+    assert.equal(calls, 0);
+    timers.runNext();
+    assert.equal(calls, 1);
+    const still = makeTimers();
+    assert.equal(holdSuccess(still, true, () => { calls += 1; }), undefined);
+    assert.equal(calls, 2);
+    assert.equal(still.queued.length, 0);
+  });
+
+  // Changing which screen or line any sign-in state shows, including splitting the one failure line by cause, turns this red.
+  await t.test('each sign-in state maps to its screen and line', () => {
+    const failed = { screen: 'error', line: 'Couldn\'t log you in. Try again.' };
+    assert.deepEqual(signInScreen('unavailable', true, true), { screen: 'success' });
+    assert.deepEqual(signInScreen('status', false, false), { screen: 'loading' });
+    assert.deepEqual(signInScreen('initial', false, false), { screen: 'idle' });
+    assert.deepEqual(signInScreen('session-expired', false, false), { screen: 'idle', line: 'Your session expired. Sign in again.' });
+    assert.deepEqual(signInScreen('not-configured', false, false), { screen: 'idle', line: 'Sign-in isn’t configured.' });
+    assert.deepEqual(signInScreen('preparing', false, false), { screen: 'waiting' });
+    assert.deepEqual(signInScreen('checking', false, false), { screen: 'waiting' });
+    assert.deepEqual(signInScreen('pending', true, false), { screen: 'waiting' });
+    assert.deepEqual(signInScreen('pending', false, false), failed);
+    for (const view of ['interrupted', 'wrong-owner', 'unavailable', 'expired', 'invalid']) {
+      assert.deepEqual(signInScreen(view, false, false), failed, view);
+    }
+  });
+});
+
 test('event stream delivery', async (t) => {
   const setup = async () => {
     const clock = { value: 1_800_000_000_000 };
