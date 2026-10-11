@@ -1,0 +1,4623 @@
+{
+  "version": "2.21",
+  "children": [
+    {
+      "type": "frame",
+      "id": "xImYC",
+      "x": 12000,
+      "y": 6000,
+      "name": "v2 / Desktop / Calendar, week",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "qSDmV",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:qMw06": {
+              "fill": "$5:selected"
+            },
+            "5:qMw06/5:dDmBl": {
+              "fill": "$5:foreground",
+              "fontWeight": "600"
+            },
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "uE3zA",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ],
+          "children": [
+            {
+              "id": "ph83M",
+              "type": "ref",
+              "ref": "5:kGPpG",
+              "name": "Calendar header",
+              "width": "fill_container",
+              "descendants": {
+                "5:XK8UT": {
+                  "content": "6 – 12 October 2026"
+                },
+                "5:h8e4l/5:hmSso/5:DC0sr": {
+                  "content": "Forecast"
+                }
+              }
+            },
+            {
+              "type": "frame",
+              "id": "HXkps",
+              "name": "Week grid",
+              "width": "fill_container",
+              "height": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "F51vc",
+                  "name": "Column MON 6",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "O6t0Gg",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "MON"
+                        },
+                        "5:ofehh": {
+                          "content": "6"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "y07XvR",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "QFwYN",
+                  "name": "Column TUE 7",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "V0K0DI",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "TUE"
+                        },
+                        "5:ofehh": {
+                          "content": "7"
+                        }
+                      }
+                    },
+                    {
+                      "id": "d2Dxo",
+                      "type": "ref",
+                      "ref": "5:zrJc8",
+                      "name": "Entry Andor",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:Ddi5D": {
+                          "content": "Andor"
+                        },
+                        "5:tQimH": {
+                          "content": "09:00 · S02E09 · 91%"
+                        },
+                        "5:eeptz": {
+                          "enabled": true
+                        },
+                        "5:eeptz/5:zJG1E": {
+                          "width": 155
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "pjovY",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "f0SjJ",
+                  "name": "Column WED 8",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "PMico",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "WED"
+                        },
+                        "5:ofehh": {
+                          "content": "8"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "XgCsF",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "wrzxV",
+                  "name": "Column THU 9",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "EZuVG",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "THU"
+                        },
+                        "5:ofehh": {
+                          "content": "9"
+                        }
+                      }
+                    },
+                    {
+                      "id": "DTuIP",
+                      "type": "ref",
+                      "ref": "5:zrJc8",
+                      "name": "Entry The Bear",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:Ddi5D": {
+                          "content": "The Bear"
+                        },
+                        "5:tQimH": {
+                          "content": "09:00 · S03E01–E10 · 23%"
+                        },
+                        "5:eeptz": {
+                          "enabled": true
+                        },
+                        "5:eeptz/5:zJG1E": {
+                          "width": 39
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "V4cAIU",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "D9QUBi",
+                  "name": "Column FRI 10",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "dn8PL",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "FRI"
+                        },
+                        "5:ofehh": {
+                          "content": "10"
+                        }
+                      }
+                    },
+                    {
+                      "id": "Bz2Pg",
+                      "type": "ref",
+                      "ref": "5:zrJc8",
+                      "name": "Entry Severance",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:OzPND": {
+                          "enabled": true,
+                          "fill": "$5:destructive"
+                        },
+                        "5:Ddi5D": {
+                          "content": "Severance"
+                        },
+                        "5:tQimH": {
+                          "content": "03:00 · S02E08 · gave up searching",
+                          "fill": "$5:destructive"
+                        }
+                      }
+                    },
+                    {
+                      "id": "VSU5I",
+                      "type": "ref",
+                      "ref": "5:zrJc8",
+                      "name": "Entry Civil War",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:OzPND": {
+                          "enabled": true,
+                          "fill": "$5:destructive"
+                        },
+                        "5:Ddi5D": {
+                          "content": "Civil War"
+                        },
+                        "5:tQimH": {
+                          "content": "Digital release · gave up searching",
+                          "fill": "$5:destructive"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "EHqz7",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "mz0nF",
+                  "name": "Column SAT 11",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "QG6kh",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "SAT"
+                        },
+                        "5:wiQIe": {
+                          "fill": "$5:foreground"
+                        },
+                        "5:ofehh": {
+                          "content": "11",
+                          "fill": "$5:primary-foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": true
+                        }
+                      }
+                    },
+                    {
+                      "id": "clvUN",
+                      "type": "ref",
+                      "ref": "5:zrJc8",
+                      "name": "Entry Slow Horses",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:Ddi5D": {
+                          "content": "Slow Horses"
+                        },
+                        "5:tQimH": {
+                          "content": "21:00 · S04E05"
+                        }
+                      }
+                    },
+                    {
+                      "id": "DaeGd",
+                      "type": "ref",
+                      "ref": "5:Ey0Ju",
+                      "name": "Now line",
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 442,
+                      "width": 188
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "mNNfL",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "OJvYW",
+                  "name": "Column SUN 12",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "dZ9y8",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "SUN"
+                        },
+                        "5:ofehh": {
+                          "content": "12"
+                        },
+                        "5:npoZc": {
+                          "enabled": true,
+                          "content": "tomorrow",
+                          "fill": "$5:muted-foreground",
+                          "fontWeight": "500"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "reBzj",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "I90XOe",
+      "x": 12000,
+      "y": 7060,
+      "name": "v2 / Desktop / Calendar, month",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "O4nuhx",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:qMw06": {
+              "fill": "$5:selected"
+            },
+            "5:qMw06/5:dDmBl": {
+              "fill": "$5:foreground",
+              "fontWeight": "600"
+            },
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "JbfSJ",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ],
+          "children": [
+            {
+              "id": "UIMY8",
+              "type": "ref",
+              "ref": "5:kGPpG",
+              "name": "Calendar header",
+              "width": "fill_container",
+              "descendants": {
+                "5:XK8UT": {
+                  "content": "October 2026"
+                },
+                "5:h8e4l/5:rk0Z8": {
+                  "fill": "#FFFFFF00",
+                  "strokeWidth": 0
+                },
+                "5:h8e4l/5:rk0Z8/5:DC0sr": {
+                  "fill": "$5:muted-foreground",
+                  "fontWeight": "500"
+                },
+                "5:h8e4l/5:M9EEU9": {
+                  "fill": "$5:card",
+                  "stroke": "$5:border",
+                  "strokeWidth": 1
+                },
+                "5:h8e4l/5:M9EEU9/5:DC0sr": {
+                  "fill": "$5:foreground",
+                  "fontWeight": "600"
+                },
+                "5:h8e4l/5:hmSso/5:DC0sr": {
+                  "content": "Forecast"
+                }
+              }
+            },
+            {
+              "type": "frame",
+              "id": "Skd9q",
+              "name": "Month grid",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "gwF9d",
+                  "name": "Weekdays",
+                  "height": 20,
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "S1z48F",
+                      "name": "MON",
+                      "width": 188,
+                      "padding": [
+                        0,
+                        6
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "z8WNo0",
+                          "name": "Day",
+                          "fill": "$5:subtle-foreground",
+                          "content": "MON",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.6
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "VXUNV",
+                      "name": "TUE",
+                      "width": 188,
+                      "padding": [
+                        0,
+                        6
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "t6tJX",
+                          "name": "Day",
+                          "fill": "$5:subtle-foreground",
+                          "content": "TUE",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.6
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "pMhFN",
+                      "name": "WED",
+                      "width": 188,
+                      "padding": [
+                        0,
+                        6
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "to3CE",
+                          "name": "Day",
+                          "fill": "$5:subtle-foreground",
+                          "content": "WED",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.6
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "XMzIt",
+                      "name": "THU",
+                      "width": 188,
+                      "padding": [
+                        0,
+                        6
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "qOzq3",
+                          "name": "Day",
+                          "fill": "$5:subtle-foreground",
+                          "content": "THU",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.6
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SjbnK",
+                      "name": "FRI",
+                      "width": 188,
+                      "padding": [
+                        0,
+                        6
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "r1pJHJ",
+                          "name": "Day",
+                          "fill": "$5:subtle-foreground",
+                          "content": "FRI",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.6
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "AleAX",
+                      "name": "SAT",
+                      "width": 188,
+                      "padding": [
+                        0,
+                        6
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "nSEuL",
+                          "name": "Day",
+                          "fill": "$5:subtle-foreground",
+                          "content": "SAT",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.6
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "XJaeu",
+                      "name": "SUN",
+                      "width": 188,
+                      "padding": [
+                        0,
+                        6
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "C1R06",
+                          "name": "Day",
+                          "fill": "$5:subtle-foreground",
+                          "content": "SUN",
+                          "fontFamily": "$5:font-ui",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.6
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "TZ35q",
+                  "name": "Week 1",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "ZcPFp",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Out Day 28",
+                      "height": 128,
+                      "fill": "$5:surface-hover",
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "28",
+                          "fill": "$5:faint-foreground"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "h7fUUw",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Out Day 29",
+                      "height": 128,
+                      "fill": "$5:surface-hover",
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "29",
+                          "fill": "$5:faint-foreground"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "CIrvv",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Out Day 30",
+                      "height": 128,
+                      "fill": "$5:surface-hover",
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "30",
+                          "fill": "$5:faint-foreground"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "sJYsv",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 1",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "1"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:OzPND": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Slow Horses S04E04"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "eMlbf",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 2",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "2"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "f9Q237",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 3",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "3"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Severance S02E07"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "d1YHs",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 4",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "4"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ZdQVp",
+                  "name": "Week 2",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "GAsMO",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 5",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "5"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "wnwy8",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 6",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "6"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "LUvGv",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 7",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "7"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Andor S02E09"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "t0uFSv",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 8",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "8"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "rcNgB",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 9",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "9"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "The Bear S03"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "BmypF",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 10",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "10"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:OzPND": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Severance S02E08"
+                        },
+                        "5:QdnJD": {
+                          "enabled": true
+                        },
+                        "5:QdnJD/5:OzPND": {
+                          "enabled": true
+                        },
+                        "5:QdnJD/5:Ddi5D": {
+                          "content": "Civil War"
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "z0hHck",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 11",
+                      "height": 128,
+                      "descendants": {
+                        "5:UWe5j": {
+                          "fill": "$5:foreground"
+                        },
+                        "5:Obg4v": {
+                          "content": "11",
+                          "fill": "$5:primary-foreground"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Slow Horses S04E05"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "AN7tV",
+                  "name": "Week 3",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "vSY0e",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 12",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "12"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "s2HCMR",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 13",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "13"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "Ekn8r",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 14",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "14"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Andor S02E10"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "qjPcL",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 15",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "15"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Dune: Prophecy S02E01"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "LUkG7",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 16",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "16"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "QrnLg",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 17",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "17"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Severance S02E09"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "iZ8oJ",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 18",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "18"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Slow Horses S04E06"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "K5x89",
+                  "name": "Week 4",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "xyvXk",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 19",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "19"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "NMhc1",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 20",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "20"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "h9dKd",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 21",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "21"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Andor S02E11"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "nuHJ4",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 22",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "22"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "j4rRbT",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 23",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "23"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "dLIj4",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 24",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "24"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Severance S02E10"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "GdCKP",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 25",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "25"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Slow Horses S04E07"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "J85kST",
+                  "name": "Week 5",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "KKLma",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 26",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "26"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "Ij2Tj",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 27",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "27"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "ZtCnv",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 28",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "28"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "FemWW",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 29",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "29"
+                        },
+                        "5:lR96U": {
+                          "enabled": true
+                        },
+                        "5:lR96U/5:Ddi5D": {
+                          "content": "Dune: Prophecy S02E03"
+                        },
+                        "5:QdnJD": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "vtgk4",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 30",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "30"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "hOUI5",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Day 31",
+                      "height": 128,
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "31"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "qQRUI",
+                      "type": "ref",
+                      "ref": "5:z4pNq0",
+                      "name": "Out Day 1",
+                      "height": 128,
+                      "fill": "$5:surface-hover",
+                      "descendants": {
+                        "5:Obg4v": {
+                          "content": "1",
+                          "fill": "$5:faint-foreground"
+                        },
+                        "5:iMXRl": {
+                          "enabled": false
+                        },
+                        "5:TeEM1": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "a2cAZ",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "ejGu2",
+      "x": 12000,
+      "y": 8120,
+      "name": "v2 / Desktop / Calendar, forecast",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "SaogY",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:qMw06": {
+              "fill": "$5:selected"
+            },
+            "5:qMw06/5:dDmBl": {
+              "fill": "$5:foreground",
+              "fontWeight": "600"
+            },
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "WmXTn",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ],
+          "children": [
+            {
+              "id": "VyJ61",
+              "type": "ref",
+              "ref": "5:kGPpG",
+              "name": "Calendar header",
+              "width": "fill_container",
+              "descendants": {
+                "5:XK8UT": {
+                  "content": "Next 5 days · 11 – 15 October"
+                },
+                "5:BiIMb/5:rMeqR": {
+                  "content": "4 missing"
+                },
+                "5:h8e4l/5:rk0Z8": {
+                  "fill": "#FFFFFF00",
+                  "strokeWidth": 0
+                },
+                "5:h8e4l/5:rk0Z8/5:DC0sr": {
+                  "fill": "$5:muted-foreground",
+                  "fontWeight": "500"
+                },
+                "5:h8e4l/5:hmSso": {
+                  "fill": "$5:card",
+                  "stroke": "$5:border",
+                  "strokeWidth": 1
+                },
+                "5:h8e4l/5:hmSso/5:DC0sr": {
+                  "content": "Forecast",
+                  "fill": "$5:foreground",
+                  "fontWeight": "600"
+                }
+              }
+            },
+            {
+              "type": "frame",
+              "id": "qlsXT",
+              "name": "Forecast list",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "id": "effRo",
+                  "type": "ref",
+                  "ref": "5:mk4uT",
+                  "name": "Group Aired, still missing",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xTran": {
+                      "content": "Aired, still missing"
+                    },
+                    "5:sx2YK": {
+                      "content": "4",
+                      "fill": "$5:warning",
+                      "fontWeight": "600"
+                    }
+                  }
+                },
+                {
+                  "id": "GfUrA",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Severance",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:OzPND": {
+                      "enabled": true,
+                      "fill": "$5:destructive"
+                    },
+                    "5:Ddi5D": {
+                      "content": "Severance"
+                    },
+                    "5:tQimH": {
+                      "content": "S02E08 · aired Fri 10 Oct · gave up searching",
+                      "fill": "$5:destructive"
+                    }
+                  }
+                },
+                {
+                  "id": "xvP7v",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Slow Horses",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:OzPND": {
+                      "enabled": true
+                    },
+                    "5:Ddi5D": {
+                      "content": "Slow Horses"
+                    },
+                    "5:tQimH": {
+                      "content": "S04E04 · aired Wed 1 Oct · missing",
+                      "fill": "$5:warning"
+                    }
+                  }
+                },
+                {
+                  "id": "BqBCc",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Slow Horses",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:OzPND": {
+                      "enabled": true,
+                      "fill": "$5:destructive"
+                    },
+                    "5:Ddi5D": {
+                      "content": "Slow Horses"
+                    },
+                    "5:tQimH": {
+                      "content": "S04E02 · aired Wed 17 Sep · gave up searching",
+                      "fill": "$5:destructive"
+                    }
+                  }
+                },
+                {
+                  "id": "Ghhin",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry The Last of Us",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:OzPND": {
+                      "enabled": true,
+                      "fill": "$5:destructive"
+                    },
+                    "5:Ddi5D": {
+                      "content": "The Last of Us"
+                    },
+                    "5:tQimH": {
+                      "content": "S02E03 · aired 27 Apr · gave up searching",
+                      "fill": "$5:destructive"
+                    }
+                  }
+                },
+                {
+                  "id": "AulAd",
+                  "type": "ref",
+                  "ref": "5:mk4uT",
+                  "name": "Group Sat 11 Oct · today",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xTran": {
+                      "content": "Sat 11 Oct · today"
+                    },
+                    "5:sx2YK": {
+                      "content": "1"
+                    }
+                  }
+                },
+                {
+                  "id": "yvXwo",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Slow Horses",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:Ddi5D": {
+                      "content": "Slow Horses"
+                    },
+                    "5:tQimH": {
+                      "content": "21:00 · S04E05"
+                    }
+                  }
+                },
+                {
+                  "id": "j9M90j",
+                  "type": "ref",
+                  "ref": "5:mk4uT",
+                  "name": "Group Sun 12 Oct",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xTran": {
+                      "content": "Sun 12 Oct"
+                    },
+                    "5:sx2YK": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "P46hm",
+                  "name": "Nothing airs",
+                  "fill": "$5:subtle-foreground",
+                  "content": "Nothing airs.",
+                  "fontFamily": "$5:font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "id": "zVSfc",
+                  "type": "ref",
+                  "ref": "5:mk4uT",
+                  "name": "Group Mon 13 Oct",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xTran": {
+                      "content": "Mon 13 Oct"
+                    },
+                    "5:sx2YK": {
+                      "enabled": false
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "J52Ma",
+                  "name": "Nothing airs",
+                  "fill": "$5:subtle-foreground",
+                  "content": "Nothing airs.",
+                  "fontFamily": "$5:font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "id": "SYxvU",
+                  "type": "ref",
+                  "ref": "5:mk4uT",
+                  "name": "Group Tue 14 Oct",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xTran": {
+                      "content": "Tue 14 Oct"
+                    },
+                    "5:sx2YK": {
+                      "content": "1"
+                    }
+                  }
+                },
+                {
+                  "id": "ih62f",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Andor",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:Ddi5D": {
+                      "content": "Andor"
+                    },
+                    "5:tQimH": {
+                      "content": "09:00 · S02E10"
+                    }
+                  }
+                },
+                {
+                  "id": "p7rx1u",
+                  "type": "ref",
+                  "ref": "5:mk4uT",
+                  "name": "Group Wed 15 Oct",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:xTran": {
+                      "content": "Wed 15 Oct"
+                    },
+                    "5:sx2YK": {
+                      "content": "1"
+                    }
+                  }
+                },
+                {
+                  "id": "CaRQh",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Dune: Prophecy",
+                  "width": "fill_container",
+                  "descendants": {
+                    "5:Ddi5D": {
+                      "content": "Dune: Prophecy"
+                    },
+                    "5:tQimH": {
+                      "content": "03:00 · S02E01"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "EsEnI",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "bIfeE",
+      "x": 12000,
+      "y": 9180,
+      "name": "v2 / Desktop / Calendar, loading",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "OjtVn",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:qMw06": {
+              "fill": "$5:selected"
+            },
+            "5:qMw06/5:dDmBl": {
+              "fill": "$5:foreground",
+              "fontWeight": "600"
+            },
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "mjGGP",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ],
+          "children": [
+            {
+              "id": "oDoyi",
+              "type": "ref",
+              "ref": "5:kGPpG",
+              "name": "Calendar header",
+              "width": "fill_container",
+              "descendants": {
+                "5:XK8UT": {
+                  "content": "6 – 12 October 2026"
+                },
+                "5:BiIMb": {
+                  "enabled": false
+                },
+                "5:h8e4l/5:hmSso/5:DC0sr": {
+                  "content": "Forecast"
+                }
+              }
+            },
+            {
+              "type": "frame",
+              "id": "MDGEL",
+              "name": "Week grid",
+              "width": "fill_container",
+              "height": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "hHlth",
+                  "name": "Column MON 6",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "QDkMC",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "MON"
+                        },
+                        "5:ofehh": {
+                          "content": "6"
+                        }
+                      }
+                    },
+                    {
+                      "id": "bxhjX",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 1",
+                      "width": "fill_container"
+                    },
+                    {
+                      "id": "bGly6",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 2",
+                      "width": "fill_container"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "F3oSZe",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "pWCwO",
+                  "name": "Column TUE 7",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "vnzBC",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "TUE"
+                        },
+                        "5:ofehh": {
+                          "content": "7"
+                        }
+                      }
+                    },
+                    {
+                      "id": "G58WO",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 1",
+                      "width": "fill_container"
+                    },
+                    {
+                      "id": "qVHgk",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 2",
+                      "width": "fill_container"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "qpH3d",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "Ou7eZ",
+                  "name": "Column WED 8",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "r2VkFu",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "WED"
+                        },
+                        "5:ofehh": {
+                          "content": "8"
+                        }
+                      }
+                    },
+                    {
+                      "id": "ROck5",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 1",
+                      "width": "fill_container"
+                    },
+                    {
+                      "id": "i1FNM",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 2",
+                      "width": "fill_container"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "Q90RD",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "NxqHz",
+                  "name": "Column THU 9",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "SccO9",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "THU"
+                        },
+                        "5:ofehh": {
+                          "content": "9"
+                        }
+                      }
+                    },
+                    {
+                      "id": "fMFZq",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 1",
+                      "width": "fill_container"
+                    },
+                    {
+                      "id": "i41lQY",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 2",
+                      "width": "fill_container"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "k4Q7Q",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "HM1fr",
+                  "name": "Column FRI 10",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "fwrBx",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "FRI"
+                        },
+                        "5:ofehh": {
+                          "content": "10"
+                        }
+                      }
+                    },
+                    {
+                      "id": "x2OCKq",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 1",
+                      "width": "fill_container"
+                    },
+                    {
+                      "id": "e6HKIH",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 2",
+                      "width": "fill_container"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "O0QN6N",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "z9DrJK",
+                  "name": "Column SAT 11",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "s8ju3",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "SAT"
+                        },
+                        "5:wiQIe": {
+                          "fill": "$5:foreground"
+                        },
+                        "5:ofehh": {
+                          "content": "11",
+                          "fill": "$5:primary-foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": true
+                        }
+                      }
+                    },
+                    {
+                      "id": "e3oTo",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 1",
+                      "width": "fill_container"
+                    },
+                    {
+                      "id": "VSkpD",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 2",
+                      "width": "fill_container"
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "KWyAn",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "oYMjY",
+                  "name": "Column SUN 12",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "Es96s",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "SUN"
+                        },
+                        "5:ofehh": {
+                          "content": "12"
+                        },
+                        "5:npoZc": {
+                          "enabled": true,
+                          "content": "tomorrow",
+                          "fill": "$5:muted-foreground",
+                          "fontWeight": "500"
+                        }
+                      }
+                    },
+                    {
+                      "id": "Y1nMo",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 1",
+                      "width": "fill_container"
+                    },
+                    {
+                      "id": "g2bmqS",
+                      "type": "ref",
+                      "ref": "5:jhCRH",
+                      "name": "Skeleton entry 2",
+                      "width": "fill_container"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hxHdn",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "p9ZOyS",
+      "x": 13600,
+      "y": 6000,
+      "name": "v2 / Desktop / Calendar, could not be read",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "nAsTX",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:qMw06": {
+              "fill": "$5:selected"
+            },
+            "5:qMw06/5:dDmBl": {
+              "fill": "$5:foreground",
+              "fontWeight": "600"
+            },
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "SZgiI",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ],
+          "children": [
+            {
+              "id": "Y41KD",
+              "type": "ref",
+              "ref": "5:kGPpG",
+              "name": "Calendar header",
+              "width": "fill_container",
+              "descendants": {
+                "5:XK8UT": {
+                  "content": "6 – 12 October 2026"
+                },
+                "5:BiIMb": {
+                  "enabled": false
+                },
+                "5:h8e4l/5:hmSso/5:DC0sr": {
+                  "content": "Forecast"
+                }
+              }
+            },
+            {
+              "id": "Dg4Vm",
+              "type": "ref",
+              "ref": "5:BXgoa",
+              "name": "Callout could not be read",
+              "descendants": {
+                "5:hDbgA": {
+                  "content": "The calendar could not be read."
+                },
+                "5:EcQDN": {
+                  "enabled": false
+                },
+                "5:ikNaK": {
+                  "enabled": true
+                },
+                "5:ikNaK/5:OXVvv": {
+                  "content": "Retry"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "eL7LP",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "t5KGuu",
+      "x": 13600,
+      "y": 7060,
+      "name": "v2 / Desktop / Calendar, Sonarr not connected",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "s1nve",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:qMw06": {
+              "fill": "$5:selected"
+            },
+            "5:qMw06/5:dDmBl": {
+              "fill": "$5:foreground",
+              "fontWeight": "600"
+            },
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "wXfe3",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ],
+          "children": [
+            {
+              "id": "Uu9XK",
+              "type": "ref",
+              "ref": "5:kGPpG",
+              "name": "Calendar header",
+              "width": "fill_container",
+              "descendants": {
+                "5:XK8UT": {
+                  "content": "6 – 12 October 2026"
+                },
+                "5:BiIMb/5:rMeqR": {
+                  "content": "1 missing"
+                },
+                "5:h8e4l/5:hmSso/5:DC0sr": {
+                  "content": "Forecast"
+                }
+              }
+            },
+            {
+              "id": "yoqfv",
+              "type": "ref",
+              "ref": "5:BXgoa",
+              "name": "Callout Sonarr not connected",
+              "fill": "$5:warning-soft",
+              "descendants": {
+                "5:tPrsU": {
+                  "fill": "$5:warning",
+                  "icon": "circle-alert"
+                },
+                "5:hDbgA": {
+                  "content": "Sonarr isn't connected yet, so episodes are missing."
+                },
+                "5:EcQDN": {
+                  "enabled": false
+                }
+              }
+            },
+            {
+              "type": "frame",
+              "id": "TIReC",
+              "name": "Week grid",
+              "width": "fill_container",
+              "height": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "YWRR4",
+                  "name": "Column MON 6",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "U93IF",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "MON"
+                        },
+                        "5:ofehh": {
+                          "content": "6"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "P85dQe",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "p3Ao7",
+                  "name": "Column TUE 7",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "kzUOA",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "TUE"
+                        },
+                        "5:ofehh": {
+                          "content": "7"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "ftzC2",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "RcXoN",
+                  "name": "Column WED 8",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "W327Q8",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "WED"
+                        },
+                        "5:ofehh": {
+                          "content": "8"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "xGVCX",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "FuAhI",
+                  "name": "Column THU 9",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "eQt9l",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "THU"
+                        },
+                        "5:ofehh": {
+                          "content": "9"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "SPPYF",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "dzTsN",
+                  "name": "Column FRI 10",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "tqYnc",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "FRI"
+                        },
+                        "5:ofehh": {
+                          "content": "10"
+                        }
+                      }
+                    },
+                    {
+                      "id": "N3rd2T",
+                      "type": "ref",
+                      "ref": "5:zrJc8",
+                      "name": "Entry Civil War",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:OzPND": {
+                          "enabled": true,
+                          "fill": "$5:destructive"
+                        },
+                        "5:Ddi5D": {
+                          "content": "Civil War"
+                        },
+                        "5:tQimH": {
+                          "content": "Digital release · gave up searching",
+                          "fill": "$5:destructive"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "WY3jf",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "U0RqP",
+                  "name": "Column SAT 11",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "eR6Hg",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "SAT"
+                        },
+                        "5:wiQIe": {
+                          "fill": "$5:foreground"
+                        },
+                        "5:ofehh": {
+                          "content": "11",
+                          "fill": "$5:primary-foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": true
+                        }
+                      }
+                    },
+                    {
+                      "id": "qpBHG",
+                      "type": "ref",
+                      "ref": "5:Ey0Ju",
+                      "name": "Now line",
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 403,
+                      "width": 188
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "Ew0j8",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "s48Sv",
+                  "name": "Column SUN 12",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "yUDGK",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "SUN"
+                        },
+                        "5:ofehh": {
+                          "content": "12"
+                        },
+                        "5:npoZc": {
+                          "enabled": true,
+                          "content": "tomorrow",
+                          "fill": "$5:muted-foreground",
+                          "fontWeight": "500"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "AQdv0",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "Sua5M",
+      "x": 13600,
+      "y": 8120,
+      "name": "v2 / Desktop / Calendar, empty week",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "$5:background",
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "wCkyY",
+          "type": "ref",
+          "ref": "5:F5qou",
+          "name": "App bar",
+          "width": "fill_container",
+          "descendants": {
+            "5:H0TcR": {
+              "fill": "#FFFFFF00"
+            },
+            "5:H0TcR/5:dDmBl": {
+              "fill": "$5:muted-foreground",
+              "fontWeight": "500"
+            },
+            "5:qMw06": {
+              "fill": "$5:selected"
+            },
+            "5:qMw06/5:dDmBl": {
+              "fill": "$5:foreground",
+              "fontWeight": "600"
+            },
+            "5:qGq1V/5:HSPSn": {
+              "content": "3"
+            },
+            "5:Y8D5o/5:HSPSn": {
+              "content": "5"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "Xf2w5",
+          "name": "Page",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            8,
+            40,
+            24,
+            40
+          ],
+          "children": [
+            {
+              "id": "n455wJ",
+              "type": "ref",
+              "ref": "5:kGPpG",
+              "name": "Calendar header",
+              "width": "fill_container",
+              "descendants": {
+                "5:XK8UT": {
+                  "content": "26 October – 1 November 2026"
+                },
+                "5:BiIMb": {
+                  "enabled": false
+                },
+                "5:h8e4l/5:hmSso/5:DC0sr": {
+                  "content": "Forecast"
+                }
+              }
+            },
+            {
+              "type": "text",
+              "id": "u26GZt",
+              "name": "Nothing airs",
+              "fill": "$5:muted-foreground",
+              "content": "Nothing airs this week.",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 14,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "J6m4QP",
+              "name": "Week grid",
+              "width": "fill_container",
+              "height": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "z23wLh",
+                  "name": "Column MON 26",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "C5sNj",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "MON"
+                        },
+                        "5:wiQIe": {
+                          "fill": "#FFFFFF00"
+                        },
+                        "5:ofehh": {
+                          "content": "26",
+                          "fill": "$5:foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "Teq0c",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "uysxU",
+                  "name": "Column TUE 27",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "mTrRE",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "TUE"
+                        },
+                        "5:wiQIe": {
+                          "fill": "#FFFFFF00"
+                        },
+                        "5:ofehh": {
+                          "content": "27",
+                          "fill": "$5:foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "o9CPu",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "d5Mmx",
+                  "name": "Column WED 28",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "t8EhgA",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "WED"
+                        },
+                        "5:wiQIe": {
+                          "fill": "#FFFFFF00"
+                        },
+                        "5:ofehh": {
+                          "content": "28",
+                          "fill": "$5:foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "qmPmx",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "dtohp",
+                  "name": "Column THU 29",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "zgu4N",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "THU"
+                        },
+                        "5:wiQIe": {
+                          "fill": "#FFFFFF00"
+                        },
+                        "5:ofehh": {
+                          "content": "29",
+                          "fill": "$5:foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "WXPbR",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "RvUVn",
+                  "name": "Column FRI 30",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "oyNh6",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "FRI"
+                        },
+                        "5:wiQIe": {
+                          "fill": "#FFFFFF00"
+                        },
+                        "5:ofehh": {
+                          "content": "30",
+                          "fill": "$5:foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "VseYZ",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "Wbdwk",
+                  "name": "Column SAT 31",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "A5Qkd",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "SAT"
+                        },
+                        "5:wiQIe": {
+                          "fill": "#FFFFFF00"
+                        },
+                        "5:ofehh": {
+                          "content": "31",
+                          "fill": "$5:foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "rectangle",
+                  "id": "EA1UL",
+                  "name": "Day separator",
+                  "fill": "$5:border",
+                  "width": 1,
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "CKmGj",
+                  "name": "Column SUN 1",
+                  "width": 188,
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "JJRzo",
+                      "type": "ref",
+                      "ref": "5:t2YxG",
+                      "name": "Day header",
+                      "width": "fill_container",
+                      "descendants": {
+                        "5:bRnc2": {
+                          "content": "SUN"
+                        },
+                        "5:wiQIe": {
+                          "fill": "#FFFFFF00"
+                        },
+                        "5:ofehh": {
+                          "content": "1",
+                          "fill": "$5:foreground"
+                        },
+                        "5:npoZc": {
+                          "enabled": false,
+                          "content": "tomorrow",
+                          "fill": "$5:muted-foreground",
+                          "fontWeight": "500"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "Td77T",
+          "type": "ref",
+          "ref": "5:jXjdR",
+          "name": "Downloads live bar",
+          "width": "fill_container"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "Vl8uM",
+      "x": 13600,
+      "y": 9180,
+      "name": "v2 / Motion / Calendar week step",
+      "clip": true,
+      "width": 1440,
+      "fill": "$5:background",
+      "gap": 24,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "ZNQzl",
+          "name": "Stage before",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "pdsmE",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Before · 0 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "i7Y9d",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 240,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "lANdH",
+                  "x": 24,
+                  "y": 20,
+                  "name": "Old week",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "r3Tt0",
+                      "name": "Range",
+                      "fill": "$5:foreground",
+                      "content": "6 – 12 October 2026",
+                      "fontFamily": "$5:font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "dnegw",
+                      "name": "Days",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "sOFH3",
+                          "name": "Column",
+                          "width": 188,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "pnaLb",
+                              "type": "ref",
+                              "ref": "5:t2YxG",
+                              "name": "Day header",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:bRnc2": {
+                                  "content": "FRI"
+                                },
+                                "5:ofehh": {
+                                  "content": "10"
+                                }
+                              }
+                            },
+                            {
+                              "id": "rgSqE",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Severance",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:OzPND": {
+                                  "enabled": true,
+                                  "fill": "$5:destructive"
+                                },
+                                "5:Ddi5D": {
+                                  "content": "Severance"
+                                },
+                                "5:tQimH": {
+                                  "content": "03:00 · S02E08 · gave up",
+                                  "fill": "$5:destructive"
+                                }
+                              }
+                            },
+                            {
+                              "id": "ZvK2x",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Civil War",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:OzPND": {
+                                  "enabled": true,
+                                  "fill": "$5:destructive"
+                                },
+                                "5:Ddi5D": {
+                                  "content": "Civil War"
+                                },
+                                "5:tQimH": {
+                                  "content": "Digital release · gave up",
+                                  "fill": "$5:destructive"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "rectangle",
+                          "id": "U2Tr0i",
+                          "name": "Day separator",
+                          "fill": "$5:border",
+                          "width": 1,
+                          "height": 180
+                        },
+                        {
+                          "type": "frame",
+                          "id": "oqZUP",
+                          "name": "Column",
+                          "width": 188,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "ipvbp",
+                              "type": "ref",
+                              "ref": "5:t2YxG",
+                              "name": "Day header",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:bRnc2": {
+                                  "content": "SAT"
+                                },
+                                "5:wiQIe": {
+                                  "fill": "$5:foreground"
+                                },
+                                "5:ofehh": {
+                                  "content": "11",
+                                  "fill": "$5:primary-foreground"
+                                },
+                                "5:npoZc": {
+                                  "enabled": true
+                                }
+                              }
+                            },
+                            {
+                              "id": "Q9C3Ob",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Slow Horses",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:Ddi5D": {
+                                  "content": "Slow Horses"
+                                },
+                                "5:tQimH": {
+                                  "content": "21:00 · S04E05"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "HDCTl",
+          "name": "Stage mid",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "cgVfi",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Mid · 80 ms · duration-base ease-out",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "EhuCn",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 240,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "D0lBod",
+                  "x": 24,
+                  "y": 20,
+                  "name": "Old week",
+                  "opacity": 0.5,
+                  "layout": "vertical",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ke8mm",
+                      "name": "Range",
+                      "fill": "$5:foreground",
+                      "content": "6 – 12 October 2026",
+                      "fontFamily": "$5:font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "o1oShL",
+                      "name": "Days",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "kvkXK",
+                          "name": "Column",
+                          "width": 188,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "NBref",
+                              "type": "ref",
+                              "ref": "5:t2YxG",
+                              "name": "Day header",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:bRnc2": {
+                                  "content": "FRI"
+                                },
+                                "5:ofehh": {
+                                  "content": "10"
+                                }
+                              }
+                            },
+                            {
+                              "id": "O9c7MB",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Severance",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:OzPND": {
+                                  "enabled": true,
+                                  "fill": "$5:destructive"
+                                },
+                                "5:Ddi5D": {
+                                  "content": "Severance"
+                                },
+                                "5:tQimH": {
+                                  "content": "03:00 · S02E08 · gave up",
+                                  "fill": "$5:destructive"
+                                }
+                              }
+                            },
+                            {
+                              "id": "e6JVkd",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Civil War",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:OzPND": {
+                                  "enabled": true,
+                                  "fill": "$5:destructive"
+                                },
+                                "5:Ddi5D": {
+                                  "content": "Civil War"
+                                },
+                                "5:tQimH": {
+                                  "content": "Digital release · gave up",
+                                  "fill": "$5:destructive"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "rectangle",
+                          "id": "ampya",
+                          "name": "Day separator",
+                          "fill": "$5:border",
+                          "width": 1,
+                          "height": 180
+                        },
+                        {
+                          "type": "frame",
+                          "id": "vngRI",
+                          "name": "Column",
+                          "width": 188,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "x1iD7",
+                              "type": "ref",
+                              "ref": "5:t2YxG",
+                              "name": "Day header",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:bRnc2": {
+                                  "content": "SAT"
+                                },
+                                "5:wiQIe": {
+                                  "fill": "$5:foreground"
+                                },
+                                "5:ofehh": {
+                                  "content": "11",
+                                  "fill": "$5:primary-foreground"
+                                },
+                                "5:npoZc": {
+                                  "enabled": true
+                                }
+                              }
+                            },
+                            {
+                              "id": "u428w",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Slow Horses",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:Ddi5D": {
+                                  "content": "Slow Horses"
+                                },
+                                "5:tQimH": {
+                                  "content": "21:00 · S04E05"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "T15Avd",
+                  "x": 24,
+                  "y": 20,
+                  "name": "New week",
+                  "opacity": 0.5,
+                  "layout": "vertical",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "XlOoB",
+                      "name": "Range",
+                      "fill": "$5:foreground",
+                      "content": "13 – 19 October 2026",
+                      "fontFamily": "$5:font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "q5MfnV",
+                      "name": "Days",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "e7XDzF",
+                          "name": "Column",
+                          "width": 188,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "oaEeh",
+                              "type": "ref",
+                              "ref": "5:t2YxG",
+                              "name": "Day header",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:bRnc2": {
+                                  "content": "TUE"
+                                },
+                                "5:ofehh": {
+                                  "content": "14"
+                                }
+                              }
+                            },
+                            {
+                              "id": "Us656",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Andor",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:Ddi5D": {
+                                  "content": "Andor"
+                                },
+                                "5:tQimH": {
+                                  "content": "09:00 · S02E10"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "rectangle",
+                          "id": "B1yu3t",
+                          "name": "Day separator",
+                          "fill": "$5:border",
+                          "width": 1,
+                          "height": 180
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ihg2T",
+                          "name": "Column",
+                          "width": 188,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "pGfPP",
+                              "type": "ref",
+                              "ref": "5:t2YxG",
+                              "name": "Day header",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:bRnc2": {
+                                  "content": "WED"
+                                },
+                                "5:ofehh": {
+                                  "content": "15"
+                                }
+                              }
+                            },
+                            {
+                              "id": "eL0NS",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Dune: Prophecy",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:Ddi5D": {
+                                  "content": "Dune: Prophecy"
+                                },
+                                "5:tQimH": {
+                                  "content": "03:00 · S02E01"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "gyET4",
+          "name": "Stage after",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "WvAvZ",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "After · 160 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "uDD5y",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 240,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Z0KHSO",
+                  "x": 24,
+                  "y": 20,
+                  "name": "New week",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "IErLD",
+                      "name": "Range",
+                      "fill": "$5:foreground",
+                      "content": "13 – 19 October 2026",
+                      "fontFamily": "$5:font-ui",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "XRILb",
+                      "name": "Days",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "uubMR",
+                          "name": "Column",
+                          "width": 188,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "PTaV0",
+                              "type": "ref",
+                              "ref": "5:t2YxG",
+                              "name": "Day header",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:bRnc2": {
+                                  "content": "TUE"
+                                },
+                                "5:ofehh": {
+                                  "content": "14"
+                                }
+                              }
+                            },
+                            {
+                              "id": "Kurr1",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Andor",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:Ddi5D": {
+                                  "content": "Andor"
+                                },
+                                "5:tQimH": {
+                                  "content": "09:00 · S02E10"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "rectangle",
+                          "id": "R1h387",
+                          "name": "Day separator",
+                          "fill": "$5:border",
+                          "width": 1,
+                          "height": 180
+                        },
+                        {
+                          "type": "frame",
+                          "id": "dxvh2",
+                          "name": "Column",
+                          "width": 188,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "id": "K3Itjm",
+                              "type": "ref",
+                              "ref": "5:t2YxG",
+                              "name": "Day header",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:bRnc2": {
+                                  "content": "WED"
+                                },
+                                "5:ofehh": {
+                                  "content": "15"
+                                }
+                              }
+                            },
+                            {
+                              "id": "okCPj",
+                              "type": "ref",
+                              "ref": "5:zrJc8",
+                              "name": "Entry Dune: Prophecy",
+                              "width": "fill_container",
+                              "descendants": {
+                                "5:Ddi5D": {
+                                  "content": "Dune: Prophecy"
+                                },
+                                "5:tQimH": {
+                                  "content": "03:00 · S02E01"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "LTBUK",
+      "x": 15200,
+      "y": 6000,
+      "name": "v2 / Motion / Calendar entry downloading to imported",
+      "clip": true,
+      "width": 1440,
+      "fill": "$5:background",
+      "gap": 24,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "WzmdN",
+          "name": "Stage before",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "jXlAR",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Before · 0 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "wIqxj",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 120,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "i38492",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Andor downloading",
+                  "x": 130,
+                  "y": 35,
+                  "opacity": 1,
+                  "descendants": {
+                    "5:Ddi5D": {
+                      "content": "Andor"
+                    },
+                    "5:tQimH": {
+                      "content": "09:00 · S02E09 · 91%"
+                    },
+                    "5:eeptz": {
+                      "enabled": true
+                    },
+                    "5:eeptz/5:zJG1E": {
+                      "width": 147
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "FpTzP",
+          "name": "Stage mid",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "JnfGx",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Mid · 80 ms · duration-base ease-out",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "ZzCIs",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 120,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "yPXn4",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Andor downloading",
+                  "x": 130,
+                  "y": 35,
+                  "opacity": 0.5,
+                  "descendants": {
+                    "5:Ddi5D": {
+                      "content": "Andor"
+                    },
+                    "5:tQimH": {
+                      "content": "09:00 · S02E09 · 91%"
+                    },
+                    "5:eeptz": {
+                      "enabled": true
+                    },
+                    "5:eeptz/5:zJG1E": {
+                      "width": 147
+                    }
+                  }
+                },
+                {
+                  "id": "w99mVn",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Andor imported",
+                  "x": 130,
+                  "y": 35,
+                  "opacity": 0.5,
+                  "descendants": {
+                    "5:Ddi5D": {
+                      "content": "Andor"
+                    },
+                    "5:tQimH": {
+                      "content": "09:00 · S02E09"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Q7mq5",
+          "name": "Stage after",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "w1hu7",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "After · 160 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "VGKzc",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 120,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "felSt",
+                  "type": "ref",
+                  "ref": "5:zrJc8",
+                  "name": "Entry Andor imported",
+                  "x": 130,
+                  "y": 35,
+                  "opacity": 1,
+                  "descendants": {
+                    "5:Ddi5D": {
+                      "content": "Andor"
+                    },
+                    "5:tQimH": {
+                      "content": "09:00 · S02E09"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "K2ysA",
+      "x": 15200,
+      "y": 7060,
+      "name": "v2 / Motion / Calendar view switch",
+      "clip": true,
+      "width": 1440,
+      "fill": "$5:background",
+      "gap": 24,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "wTa9L",
+          "name": "Stage before",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "P7evi4",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Before · 0 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "IaBxN",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 80,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "MmKPr",
+                  "type": "ref",
+                  "ref": "5:cofqY",
+                  "name": "View, Week selected",
+                  "x": 108,
+                  "y": 20,
+                  "descendants": {
+                    "5:rk0Z8": {
+                      "fill": "$5:card",
+                      "stroke": "$5:border",
+                      "strokeWidth": 1
+                    },
+                    "5:rk0Z8/5:DC0sr": {
+                      "content": "Week",
+                      "fill": "$5:foreground",
+                      "fontWeight": "600"
+                    },
+                    "5:rk0Z8/5:IkgcV": {
+                      "enabled": false
+                    },
+                    "5:M9EEU9": {
+                      "fill": "#FFFFFF00",
+                      "strokeWidth": 0
+                    },
+                    "5:M9EEU9/5:DC0sr": {
+                      "content": "Month",
+                      "fill": "$5:muted-foreground",
+                      "fontWeight": "500"
+                    },
+                    "5:M9EEU9/5:IkgcV": {
+                      "enabled": false
+                    },
+                    "5:hmSso/5:DC0sr": {
+                      "content": "Forecast"
+                    },
+                    "5:hmSso/5:IkgcV": {
+                      "enabled": false
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "CjEdB",
+          "name": "Stage mid",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "ag8FH",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "Mid · 80 ms · duration-base ease-out",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "mEGmz",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 80,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": "$5:control-radius-default",
+                  "id": "q34cT",
+                  "x": 108,
+                  "y": 20,
+                  "name": "Track",
+                  "fill": "$5:muted",
+                  "width": 223,
+                  "height": 40
+                },
+                {
+                  "type": "rectangle",
+                  "cornerRadius": "$5:control-radius-row",
+                  "id": "tsduw",
+                  "x": 144,
+                  "y": 23,
+                  "name": "Selected marker, halfway",
+                  "fill": "$5:card",
+                  "width": 66,
+                  "height": 34,
+                  "stroke": "$5:border",
+                  "strokeWidth": 1
+                },
+                {
+                  "id": "g4zPl",
+                  "type": "ref",
+                  "ref": "5:cofqY",
+                  "name": "View, moving",
+                  "x": 108,
+                  "y": 20,
+                  "fill": "#FFFFFF00",
+                  "descendants": {
+                    "5:rk0Z8": {
+                      "fill": "#FFFFFF00",
+                      "strokeWidth": 0
+                    },
+                    "5:rk0Z8/5:DC0sr": {
+                      "content": "Week",
+                      "fill": "$5:foreground",
+                      "fontWeight": "500"
+                    },
+                    "5:rk0Z8/5:IkgcV": {
+                      "enabled": false
+                    },
+                    "5:M9EEU9": {
+                      "fill": "#FFFFFF00",
+                      "strokeWidth": 0
+                    },
+                    "5:M9EEU9/5:DC0sr": {
+                      "content": "Month",
+                      "fill": "$5:foreground",
+                      "fontWeight": "500"
+                    },
+                    "5:M9EEU9/5:IkgcV": {
+                      "enabled": false
+                    },
+                    "5:hmSso/5:DC0sr": {
+                      "content": "Forecast"
+                    },
+                    "5:hmSso/5:IkgcV": {
+                      "enabled": false
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "WlyDj",
+          "name": "Stage after",
+          "width": 440,
+          "layout": "vertical",
+          "gap": 8,
+          "children": [
+            {
+              "type": "text",
+              "id": "aVz3t",
+              "name": "Caption",
+              "fill": "$5:subtle-foreground",
+              "content": "After · 160 ms",
+              "fontFamily": "$5:font-ui",
+              "fontSize": 13,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "pW3hD",
+              "name": "Stage",
+              "clip": true,
+              "width": 440,
+              "height": 80,
+              "fill": "$5:card",
+              "stroke": "$5:border",
+              "strokeWidth": 1,
+              "layout": "none",
+              "children": [
+                {
+                  "id": "ulehC",
+                  "type": "ref",
+                  "ref": "5:cofqY",
+                  "name": "View, Month selected",
+                  "x": 108,
+                  "y": 20,
+                  "descendants": {
+                    "5:rk0Z8": {
+                      "fill": "#FFFFFF00",
+                      "strokeWidth": 0
+                    },
+                    "5:rk0Z8/5:DC0sr": {
+                      "content": "Week",
+                      "fill": "$5:muted-foreground",
+                      "fontWeight": "500"
+                    },
+                    "5:rk0Z8/5:IkgcV": {
+                      "enabled": false
+                    },
+                    "5:M9EEU9": {
+                      "fill": "$5:card",
+                      "stroke": "$5:border",
+                      "strokeWidth": 1
+                    },
+                    "5:M9EEU9/5:DC0sr": {
+                      "content": "Month",
+                      "fill": "$5:foreground",
+                      "fontWeight": "600"
+                    },
+                    "5:M9EEU9/5:IkgcV": {
+                      "enabled": false
+                    },
+                    "5:hmSso/5:DC0sr": {
+                      "content": "Forecast"
+                    },
+                    "5:hmSso/5:IkgcV": {
+                      "enabled": false
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "row": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "best": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "font-ui": {
+      "type": "string",
+      "value": "Schibsted Grotesk"
+    },
+    "font-data": {
+      "type": "string",
+      "value": "Barlow Semi Condensed"
+    },
+    "best-soft": {
+      "type": "color",
+      "value": "#F3FCD6"
+    },
+    "accent": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "selected": {
+      "type": "color",
+      "value": "#EDEDE9"
+    },
+    "background": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "card": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "muted": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "surface-hover": {
+      "type": "color",
+      "value": "#F6F6F3"
+    },
+    "surface-pressed": {
+      "type": "color",
+      "value": "#EAEAE6"
+    },
+    "foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "muted-foreground": {
+      "type": "color",
+      "value": "#55554F"
+    },
+    "subtle-foreground": {
+      "type": "color",
+      "value": "#686862"
+    },
+    "faint-foreground": {
+      "type": "color",
+      "value": "#A3A39D"
+    },
+    "border": {
+      "type": "color",
+      "value": "#E3E3DE"
+    },
+    "input": {
+      "type": "color",
+      "value": "#8C8C85"
+    },
+    "primary": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "primary-hover": {
+      "type": "color",
+      "value": "#2E2E2C"
+    },
+    "primary-pressed": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "primary-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "best-foreground": {
+      "type": "color",
+      "value": "#3D5600"
+    },
+    "live": {
+      "type": "color",
+      "value": "#C6F135"
+    },
+    "destructive": {
+      "type": "color",
+      "value": "#CC1F17"
+    },
+    "destructive-hover": {
+      "type": "color",
+      "value": "#AD1912"
+    },
+    "destructive-pressed": {
+      "type": "color",
+      "value": "#8E140E"
+    },
+    "destructive-soft": {
+      "type": "color",
+      "value": "#FDE9E7"
+    },
+    "warning": {
+      "type": "color",
+      "value": "#A15C00"
+    },
+    "warning-soft": {
+      "type": "color",
+      "value": "#FDF0D9"
+    },
+    "ring": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "focus-on-dark": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "bar-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "bar-muted-foreground": {
+      "type": "color",
+      "value": "#B5B5AE"
+    },
+    "scrim": {
+      "type": "color",
+      "value": "#1111114D"
+    },
+    "shadow": {
+      "type": "color",
+      "value": "#1111111F"
+    },
+    "radius-xs": {
+      "type": "number",
+      "value": 4
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-full": {
+      "type": "number",
+      "value": 999
+    },
+    "row-header": {
+      "type": "number",
+      "value": 32
+    },
+    "row-two-line": {
+      "type": "number",
+      "value": 56
+    },
+    "topbar": {
+      "type": "number",
+      "value": 64
+    },
+    "livebar": {
+      "type": "number",
+      "value": 40
+    },
+    "space-1": {
+      "type": "number",
+      "value": 4
+    },
+    "space-2": {
+      "type": "number",
+      "value": 8
+    },
+    "space-3": {
+      "type": "number",
+      "value": 12
+    },
+    "space-4": {
+      "type": "number",
+      "value": 16
+    },
+    "space-5": {
+      "type": "number",
+      "value": 20
+    },
+    "space-6": {
+      "type": "number",
+      "value": 24
+    },
+    "space-8": {
+      "type": "number",
+      "value": 32
+    },
+    "space-10": {
+      "type": "number",
+      "value": 40
+    },
+    "space-12": {
+      "type": "number",
+      "value": 48
+    },
+    "space-16": {
+      "type": "number",
+      "value": 64
+    },
+    "page-margin": {
+      "type": "number",
+      "value": 40
+    },
+    "page-margin-phone": {
+      "type": "number",
+      "value": 16
+    },
+    "poster-gutter": {
+      "type": "number",
+      "value": 20
+    },
+    "poster-width": {
+      "type": "number",
+      "value": 152
+    },
+    "control-h-row": {
+      "type": "number",
+      "value": 28
+    },
+    "control-h-default": {
+      "type": "number",
+      "value": 40
+    },
+    "control-h-large": {
+      "type": "number",
+      "value": 48
+    },
+    "control-px-row": {
+      "type": "number",
+      "value": 10
+    },
+    "control-px-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-px-large": {
+      "type": "number",
+      "value": 20
+    },
+    "control-text-row": {
+      "type": "number",
+      "value": 13
+    },
+    "control-text-default": {
+      "type": "number",
+      "value": 14
+    },
+    "control-text-large": {
+      "type": "number",
+      "value": 15
+    },
+    "control-radius-row": {
+      "type": "number",
+      "value": 6
+    },
+    "control-radius-default": {
+      "type": "number",
+      "value": 8
+    },
+    "control-radius-large": {
+      "type": "number",
+      "value": 10
+    },
+    "control-icon-row": {
+      "type": "number",
+      "value": 14
+    },
+    "control-icon-default": {
+      "type": "number",
+      "value": 16
+    },
+    "control-icon-large": {
+      "type": "number",
+      "value": 18
+    },
+    "card-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "popover": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "popover-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "secondary": {
+      "type": "color",
+      "value": "#F2F2EF"
+    },
+    "secondary-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "accent-foreground": {
+      "type": "color",
+      "value": "#111111"
+    },
+    "destructive-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "warning-foreground": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "radius": {
+      "type": "number",
+      "value": 10
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 14
+    },
+    "detail-indent": {
+      "type": "number",
+      "value": 133
+    }
+  },
+  "imports": {
+    "5": "design-system.lib.pen"
+  },
+  "fileToken": "1ce2eb35-5301-412c-93cb-edad859b1d6d"
+}
