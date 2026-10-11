@@ -488,6 +488,14 @@ commit now live, which it also keeps in `~/media-manager-2/DEPLOYED`. Server
 output goes to `~/media-manager-2/server.log`; each deploy moves the previous
 log to `server.log.1`.
 
+Performance logs go to the same file, one JSON object per line. Every line
+with a `kind` field is a timing record: `api` is a request to this server,
+`upstream` a call to Sonarr, Radarr, TMDB, Trakt or another service,
+`discover` a Discover row served, `discover-build` a Discover row built, and
+`web` a page-speed number posted to `/api/metrics` by the browser. Query
+strings, headers and keys are never logged. Watch them with
+`ssh <host> 'tail -f ~/media-manager-2/server.log'`.
+
 Some seedbox hosts only accept a custom app port when something already
 answers on it. A placeholder that stops itself after 15 minutes does the job;
 stop it (`pgrep -af placeholder` shows its pid) before the first deploy:

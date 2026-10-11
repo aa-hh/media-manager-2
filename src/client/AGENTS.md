@@ -18,7 +18,7 @@ React client for a server that grabs releases and deletes files; a click here ha
 
 ## Map
 
-- `main.tsx` → session check and routing by address.
+- `main.tsx`, `metrics.ts` → session check, routing by address, page-speed log.
 - `Home.tsx`, `Search.tsx`, `SignIn.tsx` → home, search and sign-in screens.
 - `PickRelease.tsx` → Pick a release screen and its grab.
 - `navigation.ts`, `plexPopup.ts` → in-page navigation; Plex sign-in popup.
