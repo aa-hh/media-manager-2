@@ -27,6 +27,7 @@ import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
+import { createSecondVersions } from './secondVersions.js';
 import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -58,7 +59,13 @@ if (database !== undefined) {
   const runner = createJobRunner();
   const rtorrent = createRtorrent(database);
   const poller = createTorrentPoller({ database, rtorrent, events });
-  runner.register('rtorrent-poll', poller.intervalMs, poller.poll);
+  const releases = createReleases(database, arr);
+  const secondVersions = createSecondVersions({ database, releases, rtorrent });
+  // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them.
+  runner.register('rtorrent-poll', poller.intervalMs, async () => {
+    const startedAt = Date.now();
+    if (await poller.poll()) secondVersions.reconcile(startedAt);
+  });
   const backup = createBackup({
     database,
     events,
@@ -83,7 +90,6 @@ if (database !== undefined) {
   runner.register('title-refresh', titles.intervalMs, titles.reconcile);
   const imports = createImportFix({ database, arr, problems, events });
   runner.register('import-fix', 60_000, imports.check);
-  const releases = createReleases(database, arr);
   // 'grab' events carry torrent grab records for the Downloads screen, so a hand grab's own record goes out under its own name.
   const grabs = createGrabs(database, arr, releases, {
     onChange: (grab) => {
@@ -140,6 +146,7 @@ if (database !== undefined) {
     },
     releases,
     grabs,
+    secondVersions,
     owned: createOwned(arr),
     protection,
     library: createLibrary(arr),

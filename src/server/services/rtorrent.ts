@@ -15,10 +15,12 @@ const escapeText = (value: string) => value
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;');
 
-export type XmlRpcParam = string | number;
+// Bytes go as base64, which is how load.raw_start takes a .torrent file.
+export type XmlRpcParam = string | number | Uint8Array;
 
 const encodeParam = (param: XmlRpcParam) => {
   if (typeof param === 'string') return `<string>${escapeText(param)}</string>`;
+  if (param instanceof Uint8Array) return `<base64>${Buffer.from(param).toString('base64')}</base64>`;
   if (!Number.isSafeInteger(param)) throw new TypeError('XML-RPC integers must be safe integers.');
   return `<i8>${param}</i8>`;
 };
