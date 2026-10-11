@@ -234,7 +234,7 @@ function OverridePanel({ target, episodes, qualities, value, onApply, onCancel }
         >
           Use this
         </Button>
-        <Button variant="quiet" className="min-h-9" onClick={onCancel}>Cancel</Button>
+        <Button variant="ghost" className="min-h-9" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   );
@@ -405,7 +405,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
           {list.kind === 'ready' && (list.refreshing ? 'Searching again…' : `Results from ${formatSince(list.stored.fetchedAt, now)}`)}
         </span>
         {list.kind === 'ready' && (
-          <Button variant="quiet" className="min-h-8 px-2 text-sm" disabled={list.refreshing} onClick={() => void load(true)}>
+          <Button variant="ghost" className="min-h-8 px-2 text-sm" disabled={list.refreshing} onClick={() => void load(true)}>
             Refresh <kbd className="ml-1 text-xs">⇧R</kbd>
           </Button>
         )}
@@ -496,7 +496,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
                   </span>
                   {isSelected && panel === undefined && (
                     <>
-                      <Button variant="quiet" className="min-h-8 px-2 text-sm" onClick={(event) => { event.stopPropagation(); setPanel('override'); }}>Override</Button>
+                      <Button variant="ghost" className="min-h-8 px-2 text-sm" onClick={(event) => { event.stopPropagation(); setPanel('override'); }}>Override</Button>
                       <Button className="min-h-8 px-3 text-sm" disabled={grabbing} onClick={(event) => { event.stopPropagation(); onGrab(release.guid); }}>
                         {grabbing ? 'Grabbing…' : 'Grab'}
                       </Button>

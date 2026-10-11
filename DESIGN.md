@@ -150,11 +150,7 @@ Posters keep their own colour; the interface stays black and white around them.
 
 ### Names in the current code
 
-`src/client/globals.css` on main still uses older names. Moving it to the names above is implementation work, not done. Proposed mapping:
-
-- `--ground` to `background`; `--control` to `card`; `--control-hover` to `surface-hover`; `--quiet-hover` to `surface-pressed`; `--ink` to `foreground`; `--secondary-ink` to `muted-foreground`; `--border` stays `border`; `--focus` to `ring`.
-- The `--mm-*` set (`--mm-ground`, `--mm-row`, `--mm-ink`, `--mm-best`, `--mm-risk` and the rest) holds the archived dark values. It goes away; the library's Tokens sheet lists each old `mm-` name with its new name.
-- The fonts change too: the code loads Inter and Barlow; the target is Schibsted Grotesk and Barlow Semi Condensed.
+`src/client/globals.css` now uses the names above, with Schibsted Grotesk and Barlow Semi Condensed bundled in `src/client/assets/fonts/`.
 
 ## Typography
 

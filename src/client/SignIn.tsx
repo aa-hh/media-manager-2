@@ -358,20 +358,20 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
           {view === 'pending' && (
             <>
               <Button disabled={cancellationBusy} onClick={checkAgain}>Check again</Button>
-              <Button disabled={cancellationBusy} variant="quiet" onClick={() => void startSignIn()}>Try again</Button>
-              <Button disabled={cancellationBusy} variant="quiet" onClick={() => void cancelSignIn()}>{cancellationBusy ? 'Cancelling…' : 'Cancel'}</Button>
+              <Button disabled={cancellationBusy} variant="ghost" onClick={() => void startSignIn()}>Try again</Button>
+              <Button disabled={cancellationBusy} variant="ghost" onClick={() => void cancelSignIn()}>{cancellationBusy ? 'Cancelling…' : 'Cancel'}</Button>
             </>
           )}
           {view === 'interrupted' && (
             <>
               <Button disabled={cancellationBusy} onClick={() => void startSignIn()}>Try again</Button>
-              <Button disabled={cancellationBusy} variant="quiet" onClick={() => void cancelSignIn()}>{cancellationBusy ? 'Cancelling…' : 'Cancel'}</Button>
+              <Button disabled={cancellationBusy} variant="ghost" onClick={() => void cancelSignIn()}>{cancellationBusy ? 'Cancelling…' : 'Cancel'}</Button>
             </>
           )}
           {view === 'cancel-failed' && (
             <>
               <Button disabled={cancellationBusy} onClick={() => void cancelSignIn()}>{cancellationBusy ? 'Cancelling…' : 'Try cancelling again'}</Button>
-              <Button disabled={cancellationBusy} variant="quiet" onClick={() => void startSignIn()}>Try again</Button>
+              <Button disabled={cancellationBusy} variant="ghost" onClick={() => void startSignIn()}>Try again</Button>
             </>
           )}
           {(view === 'wrong-owner' || view === 'unavailable' || view === 'expired' || view === 'invalid' || view === 'session-expired') && (

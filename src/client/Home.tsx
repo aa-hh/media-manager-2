@@ -109,7 +109,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {signOutProblem}
-          <Button variant="quiet" className="min-h-9 px-3 text-sm" onClick={onSignOut} disabled={signOutDisabled}>
+          <Button variant="ghost" className="min-h-9 px-3 text-sm" onClick={onSignOut} disabled={signOutDisabled}>
             {signOutLabel}
           </Button>
         </div>
