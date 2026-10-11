@@ -3,12 +3,12 @@ import { dirname, isAbsolute, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import { listOpenProblems, type createProblems, type Subject } from './problems.js';
+import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import { listTorrents } from './torrents.js';
 
 type Problems = ReturnType<typeof createProblems>;
-type ArrRequest = (path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }) => Promise<{ status: number; body: unknown }>;
 type XmlRpcCall = (method: string, params: readonly XmlRpcParam[]) => Promise<unknown>;
 
 export const HOST_PATH_KEYS = ['downloads.sonarr', 'downloads.radarr', 'library.sonarr', 'library.radarr'] as const;
@@ -19,10 +19,6 @@ export const HASH_WAIT_LIMIT_MS = 2 * 60 * 60_000;
 
 const labels: Record<Service, string> = { sonarr: 'Sonarr', radarr: 'Radarr' };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
 const subjectsOf = (grab: Grab): Subject[] => (grab.movieId !== null
   ? [{ type: 'movie', service: grab.service, id: String(grab.movieId) }]
   : grab.episodeIds.map((id) => ({ type: 'episode' as const, service: grab.service, id: String(id) })));
@@ -32,7 +28,7 @@ const subjectsOf = (grab: Grab): Subject[] => (grab.movieId !== null
 export const createRelinkFix = (options: {
   database: DatabaseSync;
   rtorrent: { call: XmlRpcCall };
-  arr: Record<Service, { request: ArrRequest }>;
+  arr: ArrServices;
   problems: Problems;
   isManualDownload: (subject: Subject) => boolean;
   now?: () => number;
@@ -54,11 +50,11 @@ export const createRelinkFix = (options: {
   const libraryFolder = async (grab: Grab, root: string) => {
     const id = grab.service === 'radarr' ? grab.movieId : grab.seriesId;
     if (id === null) throw new Error(grab.service === 'radarr' ? 'No movie is recorded for this grab.' : 'No series is recorded for this grab.');
-    const { status, body } = await arr[grab.service].request(grab.service === 'radarr' ? `/api/v3/movie/${id}` : `/api/v3/series/${id}`);
-    if (status < 200 || status > 299 || !isRecord(body) || typeof body.path !== 'string') {
+    const result = grab.service === 'radarr' ? await arr.radarr.movie(id) : await arr.sonarr.series(id);
+    if (result.kind !== 'ok' || result.value.path === null) {
       throw new Error(`${labels[grab.service]} did not give the library folder.`);
     }
-    const folder = body.path;
+    const folder = result.value.path;
     const inside = relative(root, folder);
     if (!isAbsolute(folder) || inside.startsWith('..') || isAbsolute(inside)) {
       throw new Error(`${folder} is outside hostPaths library.${grab.service}.`);

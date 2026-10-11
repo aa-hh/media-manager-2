@@ -76,17 +76,15 @@ export const createSearchScheduler = (options: {
   };
 
   const missingMovies = async (at: number): Promise<Candidate[]> => {
-    const { status, body } = await arr.radarr.request('/api/v3/movie');
-    if (status < 200 || status > 299 || !Array.isArray(body)) throw new Error('Radarr movies could not be read.');
-    return body.flatMap((movie) => {
-      if (!isRecord(movie) || typeof movie.id !== 'number' || movie.monitored !== true || movie.hasFile === true || movie.isAvailable !== true) return [];
+    return valueOrThrow(await arr.radarr.listMovies()).flatMap((movie) => {
+      if (movie.id === null || !movie.monitored || movie.hasFile || !movie.isAvailable) return [];
       const subject: Subject = { type: 'movie', service: 'radarr', id: String(movie.id) };
       return [{
         subject,
         availableAt: availableSince(subject, at),
         addedAt: time(movie.added) ?? 0,
         lastSearchAt: time(movie.lastSearchTime),
-        title: typeof movie.title === 'string' ? movie.title : 'Movie',
+        title: movie.title === '' ? 'Movie' : movie.title,
       }];
     });
   };

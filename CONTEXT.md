@@ -12,6 +12,18 @@ _Avoid_: Sear, the TV backend
 The external service that manages movies. media-manager-2 searches for, grabs and manages movies through it.
 _Avoid_: radar, the movie backend
 
+**Series**:
+One TV show as Sonarr holds it, with its seasons, episodes and files. Sonarr's own term; "show" is fine in words to the user.
+_Avoid_: programme
+
+**Movie**:
+One film as Radarr holds it, with the one file it tracks. Radarr's own term.
+_Avoid_: film
+
+**Episode**:
+One episode of a series as Sonarr holds it, with whether it is monitored and has a file. Sonarr's own term.
+_Avoid_: ep, installment
+
 **rTorrent**:
 The download client that Sonarr and Radarr hand torrents to. It does the downloading; they only check on it. media-manager-2 reads torrent status from it directly.
 _Avoid_: the downloader, the torrent client

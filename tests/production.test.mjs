@@ -22,7 +22,7 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { connectArr, createArrFake, historyRecord, importFile, queueItem } from './fakes/arr.mjs';
+import { connectArr, createArrFake, episodeRecord, historyRecord, importFile, movieRecord, queueItem, seriesRecord } from './fakes/arr.mjs';
 
 const serverPath = fileURLToPath(new URL('../dist/server/index.js', import.meta.url));
 const databaseModuleUrl = new URL('../dist/server/database.js', import.meta.url).href;
@@ -2605,22 +2605,21 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     setSetting(database, 'credentials', 'sonarr.apiKey', sonarrKey);
     setSetting(database, 'credentials', 'radarr.apiKey', radarrKey);
     const clock = { value: Date.parse('2026-10-11T12:00:00Z') };
+    const fake = { sonarr: createArrFake({ apiKey: sonarrKey }), radarr: createArrFake({ apiKey: radarrKey }) };
+    fake.sonarr.state.series = [
+      { id: 1, title: 'Andor', year: 2022, overview: 'Rebels.', images: [cover(1, 'poster'), cover(1, 'fanart')] },
+      { id: 2, title: 'Severance', year: 2022, overview: 'Work.', images: [cover(2, 'poster')] },
+    ];
+    fake.sonarr.state.episodes = [
+      { id: 12, seriesId: 1, seasonNumber: 1, episodeNumber: 2, title: 'That Would Be Me', airDateUtc: '2022-09-21T02:00:00Z', overview: 'Two.', hasFile: true, monitored: true },
+      { id: 11, seriesId: 1, seasonNumber: 1, episodeNumber: 1, title: 'Kassa', airDateUtc: '2022-09-21T01:00:00Z', overview: 'One.', hasFile: false, monitored: true },
+      { id: 21, seriesId: 2, seasonNumber: 1, episodeNumber: 1, monitored: false },
+    ];
+    fake.radarr.state.movies = [
+      { id: 7, title: 'Dune', year: 2021, overview: 'Spice.', hasFile: false, images: [cover(7, 'poster')] },
+      { id: 8, title: 'Arrival', year: 2016, overview: 'Words.', hasFile: true, images: [cover(8, 'poster')] },
+    ];
     const state = {
-      series: [
-        { id: 1, title: 'Andor', year: 2022, overview: 'Rebels.', images: [cover(1, 'poster'), cover(1, 'fanart')] },
-        { id: 2, title: 'Severance', year: 2022, overview: 'Work.', images: [cover(2, 'poster')] },
-      ],
-      episodes: {
-        1: [
-          { id: 12, seriesId: 1, seasonNumber: 1, episodeNumber: 2, title: 'That Would Be Me', airDateUtc: '2022-09-21T02:00:00Z', overview: 'Two.', hasFile: true, monitored: true },
-          { id: 11, seriesId: 1, seasonNumber: 1, episodeNumber: 1, title: 'Kassa', airDateUtc: '2022-09-21T01:00:00Z', overview: 'One.', hasFile: false, monitored: true },
-        ],
-        2: [{ id: 21, seriesId: 2, seasonNumber: 1, episodeNumber: 1, monitored: false }],
-      },
-      movies: [
-        { id: 7, title: 'Dune', year: 2021, overview: 'Spice.', hasFile: false, images: [cover(7, 'poster')] },
-        { id: 8, title: 'Arrival', year: 2016, overview: 'Words.', hasFile: true, images: [cover(8, 'poster')] },
-      ],
       images: {
         'sonarr/1/poster.jpg': new Uint8Array([1, 1, 1]),
         'sonarr/1/fanart.jpg': new Uint8Array([1, 1, 2]),
@@ -2634,30 +2633,19 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     };
     const calls = [];
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-    const answer = (service, path, search) => {
-      const records = service === 'sonarr' ? state.series : state.movies;
-      const listPath = service === 'sonarr' ? '/api/v3/series' : '/api/v3/movie';
-      if (path === listPath) return json(records);
-      const detail = new RegExp(`^${listPath}/(\\d+)$`).exec(path);
-      if (detail) {
-        const record = records.find((item) => item.id === Number(detail[1]));
-        return record === undefined ? json({ message: 'NotFound' }, 404) : json(record);
-      }
-      if (service === 'sonarr' && path === '/api/v3/episode') return json(state.episodes[search.get('seriesId')] ?? []);
-      const image = /^\/api\/v3\/mediacover\/(\d+)\/([^/]+)$/.exec(path);
-      if (image) {
-        const bytes = state.images[`${service}/${image[1]}/${image[2]}`];
-        return bytes === undefined ? json({}, 404) : new Response(bytes.slice(), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
-      }
-      return json({}, 404);
+    // Images, the failure flags and the gate stay here; everything else is the shared fake's.
+    const answer = async (service, url, init) => {
+      const image = /^\/api\/v3\/mediacover\/(\d+)\/([^/]+)$/.exec(new URL(String(url)).pathname);
+      if (!image) return fake[service].fetch(url, init);
+      const bytes = state.images[`${service}/${image[1]}/${image[2]}`];
+      return bytes === undefined ? json({}, 404) : new Response(bytes.slice(), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
     };
-    const fetch = async (url, init = {}) => {
+    const wrap = (service) => async (url, init = {}) => {
       const parsed = new URL(String(url));
-      const service = parsed.port === '65031' ? 'sonarr' : 'radarr';
       calls.push({ service, path: parsed.pathname, key: new Headers(init.headers).get('x-api-key') });
       if (state.throws) throw new TypeError('fetch failed');
       if (state.down) return json({}, 500);
-      const response = answer(service, parsed.pathname, parsed.searchParams);
+      const response = await answer(service, url, init);
       const gate = state.gate;
       if (gate !== null && gate.service === service && gate.path === parsed.pathname) {
         state.gate = null;
@@ -2665,20 +2653,20 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
       }
       return response;
     };
-    const arr = { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) };
+    const arr = { sonarr: createArr('sonarr', database, { fetch: wrap('sonarr') }), radarr: createArr('radarr', database, { fetch: wrap('radarr') }) };
     const events = createEventHub();
     const published = [];
     events.subscribe((event) => { if (event.type === 'title') published.push(event.data); });
     const imageDirectory = join(directory, 'images');
     const cache = createTitleCache({ database, arr, events, imageDirectory, now: () => clock.value });
-    return { arr, cache, calls, clock, database, events, imageDirectory, published, state };
+    return { arr, cache, calls, clock, database, events, fake, imageDirectory, published, state };
   };
   const sorted = (items) => [...items].sort((a, b) => `${a.service}${a.id}`.localeCompare(`${b.service}${b.id}`));
   const gone = (path) => assert.rejects(stat(path), { code: 'ENOENT' });
 
   // Dropping the episode or image writes, the delete pass for titles missing from the list, or the unchanged-row skip turns this red.
   await t.test('fallback stores titles, episodes and images and removes deleted ones', async () => {
-    const { cache, clock, database, imageDirectory, published, state } = setup();
+    const { cache, clock, database, fake, imageDirectory, published, state } = setup();
     await cache.reconcile();
     assert.deepEqual(listTitles(database, 'sonarr').map(({ id, title, year, detail }) => [id, title, year, detail.overview]), [
       [1, 'Andor', 2022, 'Rebels.'], [2, 'Severance', 2022, 'Work.'],
@@ -2706,8 +2694,8 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
 
     const removedFiles = [cache.image('sonarr', 2, 'poster').path, cache.image('radarr', 8, 'poster').path];
     published.length = 0;
-    state.series = state.series.filter((item) => item.id !== 2);
-    state.movies = state.movies.filter((item) => item.id !== 8);
+    fake.sonarr.state.series = fake.sonarr.state.series.filter((item) => item.id !== 2);
+    fake.radarr.state.movies = fake.radarr.state.movies.filter((item) => item.id !== 8);
     clock.value += 60_000;
     await cache.reconcile();
     assert.deepEqual(listTitles(database, 'sonarr').map(({ id }) => id), [1]);
@@ -2726,14 +2714,14 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
 
   // Writing or deleting anything when the list request fails or throws turns this red.
   await t.test('a failed fallback writes nothing', async () => {
-    const { cache, clock, database, published, state } = setup();
+    const { cache, clock, database, fake, published, state } = setup();
     await cache.reconcile();
     const snapshot = () => [listTitles(database, 'sonarr'), listTitles(database, 'radarr'), listEpisodes(database, 1)];
     const before = snapshot();
     published.length = 0;
-    state.series[0].title = 'Andor (changed)';
-    state.series.pop();
-    state.movies.pop();
+    fake.sonarr.state.series[0].title = 'Andor (changed)';
+    fake.sonarr.state.series.pop();
+    fake.radarr.state.movies.pop();
     for (const failure of ['down', 'throws']) {
       state[failure] = true;
       clock.value += 60_000;
@@ -2746,7 +2734,7 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
 
   // Not wiring the title cache into the shared receiver, refreshing on the wrong events, or leaving rows, episodes or files after a delete event turns this red.
   await t.test('webhooks refresh and delete single titles through the shared receiver', async () => {
-    const { arr, cache, clock, database, events, state } = setup();
+    const { arr, cache, clock, database, events, fake } = setup();
     assert.equal(cache.receiveWebhook('sonarr', { eventType: 'SeriesAdd', series: { id: 1 } }), 'ok');
     assert.equal(cache.receiveWebhook('radarr', { eventType: 'MovieAdded', movie: { id: 7 } }), 'ok');
     await settle();
@@ -2754,7 +2742,7 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     assert.equal(listEpisodes(database, 1).length, 2);
     assert.equal(readTitle(database, 'radarr', 7).detail.hasFile, false);
 
-    state.movies[0].hasFile = true;
+    fake.radarr.state.movies[0].hasFile = true;
     clock.value += 60_000;
     assert.equal(cache.receiveWebhook('radarr', { eventType: 'Download', movie: { id: 7 } }), 'ok');
     await settle();
@@ -2800,18 +2788,18 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
 
   // Writing a row without comparing fetch start times, or deleting rows newer than the list being reconciled, turns this red.
   await t.test('an older fetch never overwrites a newer row and a stale list never deletes a fresher row', async () => {
-    const { cache, clock, database, state } = setup();
+    const { cache, clock, database, fake, state } = setup();
     await cache.reconcile();
     clock.value += 60_000;
-    state.series[0].overview = 'Listed.';
+    fake.sonarr.state.series[0].overview = 'Listed.';
     let release;
     state.gate = { service: 'sonarr', path: '/api/v3/series', promise: new Promise((resolve) => { release = resolve; }) };
     const pending = cache.reconcile();
     await settle();
     assert.equal(state.gate, null, 'the list request is in flight');
 
-    state.series[0].overview = 'Newest.';
-    state.series.push({ id: 3, title: 'Pluribus', year: 2025, overview: 'Joy.', images: [] });
+    fake.sonarr.state.series[0].overview = 'Newest.';
+    fake.sonarr.state.series.push(seriesRecord({ id: 3, title: 'Pluribus', year: 2025, overview: 'Joy.' }));
     clock.value += 60_000;
     const refreshedAt = clock.value;
     await cache.refresh('sonarr', 1);
@@ -2827,11 +2815,11 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
 
   // Skipping the episode re-read when a webhook refresh finds the series resource unchanged turns this red.
   await t.test('a webhook refresh picks up an episode-only change', async () => {
-    const { cache, clock, database, published, state } = setup();
+    const { cache, clock, database, fake, published } = setup();
     assert.equal(cache.receiveWebhook('sonarr', { eventType: 'SeriesAdd', series: { id: 1 } }), 'ok');
     await settle();
     published.length = 0;
-    state.episodes[1][1].title = 'Kassa (renamed)';
+    fake.sonarr.state.episodes.find(({ id }) => id === 11).title = 'Kassa (renamed)';
     clock.value += 60_000;
     assert.equal(cache.receiveWebhook('sonarr', { eventType: 'Download', series: { id: 1 } }), 'ok');
     await settle();
@@ -2913,7 +2901,7 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
 
   // Serving images outside the owner guard, dropping the ETag or 304, re-downloading an unchanged source, or leaking a service key turns this red.
   await t.test('images are served to the owner with ETag, 304 and no service key', async () => {
-    const { cache, calls, clock, database, state } = setup();
+    const { cache, calls, clock, database, fake, state } = setup();
     await cache.reconcile();
     const { app } = await makeApp({ images: createImageRoutes(cache) });
     const seen = [];
@@ -2943,7 +2931,7 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     assert.equal(notModified.headers.get('cache-control'), 'private, max-age=300');
 
     state.images['sonarr/1/poster.jpg'] = new Uint8Array([9, 9, 9, 9]);
-    state.series[0].images = [cover(1, 'poster', 2), cover(1, 'fanart')];
+    fake.sonarr.state.series[0].images = [cover(1, 'poster', 2), cover(1, 'fanart')];
     clock.value += 60_000;
     await cache.refresh('sonarr', 1);
     const changed = await get(path, { 'If-None-Match': firstTag });
@@ -2952,7 +2940,7 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     assert.notEqual(changed.headers.get('etag'), firstTag);
 
     state.images['sonarr/1/poster.jpg'] = new Uint8Array([5, 5]);
-    state.series[0].overview = 'Touched.';
+    fake.sonarr.state.series[0].overview = 'Touched.';
     clock.value += 60_000;
     calls.length = 0;
     await cache.refresh('sonarr', 1);
@@ -3153,11 +3141,9 @@ test('an import is finished by hand only with a complete, conflict-free assignme
     if (method !== 'GET') return undefined;
     if (url.pathname === '/api/v3/qualitydefinition') return { status: 200, body: [{ quality: { id: 3, name: 'WEBDL-1080p' }, title: 'WEBDL-1080p' }] };
     if (url.pathname === '/api/v3/language') return { status: 200, body: [{ id: 1, name: 'English' }] };
-    if (url.pathname === '/api/v3/episode' && url.searchParams.get('seriesId') === '9') {
-      return { status: 200, body: [{ id: 101, seasonNumber: 1, episodeNumber: 1 }, { id: 102, seasonNumber: 1, episodeNumber: 2 }] };
-    }
     return undefined;
   });
+  state.episodes = [episodeRecord({ id: 101, seriesId: 9, seasonNumber: 1, episodeNumber: 1 }), episodeRecord({ id: 102, seriesId: 9, seasonNumber: 1, episodeNumber: 2 })];
   const tracker = createGrabTracker({ database, arr, events });
   tracker.recordGrab({ hash, service: 'sonarr', movieId: null, seriesId: 9, episodeIds: [101, 102], releaseTitle: 'Show.S01', indexer: 'BHD', grabbedAt: 1, publishedAt: null, byHand: false });
   const flagged = problems.open({ kind: 'import_matching', subject: { type: 'torrent', service: null, id: hash }, hash, summary: 'Show.S01: Episode unexpected', state: 'needs_you' });
@@ -3579,7 +3565,7 @@ test('a stopped torrent whose download files were deleted is re-linked to its li
     };
     const { fake: arrFake, ...arr } = connectArr(database);
     arrFake.radarr.state.history = [historyRecord({ downloadId: hash, movieId: 7, sourceTitle: 'Movie.2024.1080p', date: new Date(start - 60_000).toISOString() })];
-    arrFake.radarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/movie/7' ? { status: 200, body: { path: movieFolder } } : undefined));
+    arrFake.radarr.state.movies.push(movieRecord({ id: 7, path: movieFolder }));
     const events = createEventHub();
     const poller = createTorrentPoller({ database, rtorrent, events, now });
     const grabs = createGrabTracker({ database, arr, events, now });
@@ -3697,7 +3683,7 @@ test('missing movies and episodes are searched when they come out and every six 
     const { fake, ...arr } = connectArr(database);
     fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
       ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
-    fake.radarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/movie' ? { status: 200, body: movies } : undefined));
+    fake.radarr.state.movies = movies;
     const commands = () => [...fake.sonarr.state.commands.map((c) => ['sonarr', c]), ...fake.radarr.state.commands.map((c) => ['radarr', c])];
     database.prepare(`INSERT INTO arr_queue (service, queue_id, download_id, movie_id, series_id, episode_id, title, status, tracked_status,
       tracked_state, status_messages, error_message, indexer, protocol, quality, formats, format_score, size_bytes, size_left_bytes)
@@ -4036,7 +4022,6 @@ test('operator command stores settings from stdin and checks connections without
 test('one search routes to Sonarr and Radarr and reports each outcome', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { deleteSetting, setSetting } = await import(settingsModuleUrl);
-  const { createArr } = await import(arrModuleUrl);
   const { createSearch, LOOKUP_CACHE_MS, parseSearchQuery } = await import(searchModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-search-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
@@ -4067,22 +4052,16 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
     { title: 'Dune', year: 2021, tmdbId: 438631, imdbId: 'tt1160419', studio: 'Legendary', status: 'released', ratings: { imdb: { value: 8 }, tmdb: { value: 7.8 } }, images: poster('https://image.tmdb.example/dune.jpg') },
     { title: 'Dune', year: 1984, tmdbId: 841, id: 4, ratings: { tmdb: { value: 0 }, imdb: { value: 6.3 } } },
   ];
-  let responders;
-  const calls = [];
-  const fetch = async (url, init = {}) => {
-    const parsed = new URL(String(url));
-    const service = parsed.port === '65011' ? 'sonarr' : 'radarr';
-    calls.push({ service, path: parsed.pathname, term: parsed.searchParams.get('term'), key: new Headers(init.headers).get('x-api-key') });
-    return responders[service]();
+  const { fake, ...services } = connectArr(database, { sonarr: { apiKey: sonarrKey }, radarr: { apiKey: radarrKey } });
+  const calls = () => ['sonarr', 'radarr'].flatMap((service) => fake[service].requests.map(({ path, params }) => [service, path, params.get('term')]));
+  const clearCalls = () => {
+    fake.sonarr.requests.length = 0;
+    fake.radarr.requests.length = 0;
   };
-  const ok = (body) => () => new Response(JSON.stringify(body), { status: 200 });
   const clock = { value: 1_800_000_000_000 };
-  const search = createSearch(
-    { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) },
-    { now: () => clock.value },
-  );
+  const search = createSearch(services, { now: () => clock.value });
   const lookUp = async (text) => {
-    calls.length = 0;
+    clearCalls();
     return search.search(parseSearchQuery(text));
   };
   // Every run below starts past the lookup cache, so each one reaches the services.
@@ -4091,11 +4070,12 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
     return lookUp(text);
   };
 
-  responders = { sonarr: ok(shows), radarr: ok(movies) };
+  fake.sonarr.state.lookup = shows;
+  fake.radarr.state.lookup = movies;
   const both = await run('  Dune ');
-  assert.deepEqual(calls.map(({ service, path, term, key }) => [service, path, term, key]), [
-    ['sonarr', '/api/v3/series/lookup', 'Dune', sonarrKey],
-    ['radarr', '/api/v3/movie/lookup', 'Dune', radarrKey],
+  assert.deepEqual(calls(), [
+    ['sonarr', '/api/v3/series/lookup', 'Dune'],
+    ['radarr', '/api/v3/movie/lookup', 'Dune'],
   ]);
   assert.deepEqual(both.services, { sonarr: { kind: 'ok', count: 2 }, radarr: { kind: 'ok', count: 2 } });
   assert.deepEqual(both.results.map((result) => [result.key, result.inLibrary]), [
@@ -4122,60 +4102,63 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
     ['tvdb 81189', [['sonarr', 'tvdb 81189'], ['radarr', 'tvdb 81189']]],
   ]) {
     const result = await run(text);
-    assert.deepEqual(calls.map(({ service, term }) => [service, term]), expected, text);
+    assert.deepEqual(calls().map(([service, , term]) => [service, term]), expected, text);
     if (expected.length === 1) assert.deepEqual(result.services[expected[0][0] === 'sonarr' ? 'radarr' : 'sonarr'], { kind: 'skipped' }, text);
   }
 
-  for (const [label, sonarr, kind] of [
-    ['401', () => new Response('', { status: 401 }), 'rejected'],
-    ['network failure', () => { throw new TypeError('fetch failed'); }, 'unreachable'],
-    ['500', () => new Response('', { status: 500 }), 'unreachable'],
-    ['not a list', ok({ title: 'Dune' }), 'unreachable'],
+  for (const [label, answer, kind] of [
+    ['401', { status: 401, body: '' }, 'rejected'],
+    ['network failure', undefined, 'unreachable'],
+    ['500', { status: 500, body: '' }, 'unreachable'],
+    ['not a list', { status: 200, body: { title: 'Dune' } }, 'unreachable'],
   ]) {
-    responders = { sonarr, radarr: ok(movies) };
+    if (answer === undefined) fake.sonarr.state.down = true;
+    else fake.sonarr.routes.push(() => answer);
     const partial = await run('Dune');
+    if (answer === undefined) fake.sonarr.state.down = false;
+    else fake.sonarr.routes.pop();
     assert.deepEqual(partial.services, { sonarr: { kind }, radarr: { kind: 'ok', count: 2 } }, label);
     assert.deepEqual(partial.results.map((result) => result.service), ['radarr', 'radarr'], label);
   }
 
-  responders = { sonarr: ok([]), radarr: ok([]) };
+  fake.sonarr.state.lookup = [];
+  fake.radarr.state.lookup = [];
   assert.deepEqual(await run('zzzz'), { results: [], services: { sonarr: { kind: 'ok', count: 0 }, radarr: { kind: 'ok', count: 0 } } });
+  fake.sonarr.state.lookup = shows;
+  fake.radarr.state.lookup = movies;
 
   deleteSetting(database, 'credentials', 'radarr.apiKey');
-  responders = { sonarr: ok(shows), radarr: () => assert.fail('unconfigured Radarr was called') };
   assert.deepEqual((await run('Dune')).services.radarr, { kind: 'not_configured' });
+  assert.equal(fake.radarr.requests.length, 0, 'unconfigured Radarr was called');
   configure();
 
   for (const text of ['', '   ', 'x'.repeat(201)]) assert.equal(parseSearchQuery(text), undefined, JSON.stringify(text));
 
-  responders = { sonarr: ok(shows), radarr: ok(movies) };
   const first = await run('Dune');
   const cached = await lookUp('Dune');
-  assert.equal(calls.length, 0);
+  assert.equal(calls().length, 0);
   assert.deepEqual(cached, first);
   clock.value += LOOKUP_CACHE_MS - 1;
   await lookUp('Dune');
-  assert.equal(calls.length, 0);
+  assert.equal(calls().length, 0);
   clock.value += 1;
   await lookUp('Dune');
-  assert.deepEqual(calls.map(({ service }) => service), ['sonarr', 'radarr']);
+  assert.deepEqual(calls().map(([service]) => service), ['sonarr', 'radarr']);
   // Making forget a no-op, or dropping the other service's entries too, turns this red.
   search.forget('sonarr');
   await lookUp('Dune');
-  assert.deepEqual(calls.map(({ service }) => service), ['sonarr']);
+  assert.deepEqual(calls().map(([service]) => service), ['sonarr']);
 
-  responders = { sonarr: () => new Response('', { status: 500 }), radarr: ok(movies) };
+  fake.sonarr.routes.push(() => ({ status: 500, body: '' }));
   await run('Dune');
-  const failedFirst = calls.map(({ service }) => service);
+  const failedFirst = calls().map(([service]) => service);
   await lookUp('Dune');
-  assert.deepEqual([...failedFirst, ...calls.map(({ service }) => service)], ['sonarr', 'radarr', 'sonarr']);
+  assert.deepEqual([...failedFirst, ...calls().map(([service]) => service)], ['sonarr', 'radarr', 'sonarr']);
 });
 
 // Sending the owner's choices under the wrong fields, dropping the lookup record, saving defaults from a refused add, or offering defaults whose profile is gone breaks adding a title.
 test('adding a title sends the monitor decision and remembers it as the next default', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
-  const { setSetting } = await import(settingsModuleUrl);
-  const { createArr } = await import(arrModuleUrl);
   const { createAdd, parseMovieChoices, parseSeriesChoices } = await import(addModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-add-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
@@ -4183,28 +4166,17 @@ test('adding a title sends the monitor decision and remembers it as the next def
     database.close();
     await rm(root, { recursive: true, force: true });
   });
-  for (const [service, port] of [['sonarr', 65021], ['radarr', 65022]]) {
-    setSetting(database, 'serviceAddresses', `${service}.url`, `http://127.0.0.1:${port}`);
-    setSetting(database, 'credentials', `${service}.apiKey`, `${service}-key`);
-  }
   let profiles = [{ id: 4, name: 'HD-1080p' }, { id: 6, name: 'Ultra-HD' }];
   const folders = [{ path: '/home/owner/TV', freeSpace: 10 }];
-  let addResponse = { status: 201, body: { id: 77 } };
-  const posts = [];
-  const fetch = async (url, init = {}) => {
-    const parsed = new URL(String(url));
-    const path = parsed.pathname;
-    if (init.method === 'POST') {
-      posts.push({ path, body: JSON.parse(init.body) });
-      return new Response(JSON.stringify(addResponse.body), { status: addResponse.status });
-    }
-    const body = path.endsWith('/qualityprofile') ? profiles
-      : path.endsWith('/rootfolder') ? folders
-        : path.endsWith('/series/lookup') ? [{ title: 'Other', tvdbId: 1 }, { title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }] }]
-          : [{ title: 'Dune', tmdbId: 438631, images: [] }];
-    return new Response(JSON.stringify(body), { status: 200 });
-  };
-  const add = createAdd(database, { sonarr: createArr('sonarr', database, { fetch }), radarr: createArr('radarr', database, { fetch }) });
+  const { fake, ...services } = connectArr(database);
+  for (const service of ['sonarr', 'radarr']) {
+    fake[service].routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/qualityprofile' ? { status: 200, body: profiles } : undefined));
+    fake[service].routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/rootfolder' ? { status: 200, body: folders } : undefined));
+  }
+  fake.sonarr.state.lookup = [{ title: 'Other', tvdbId: 1 }, { title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }] }];
+  fake.radarr.state.lookup = [{ title: 'Dune', tmdbId: 438631, images: [] }];
+  const posts = (service) => fake[service].requests.filter((request) => request.method === 'POST').map(({ path, body }) => ({ path, body }));
+  const add = createAdd(database, services);
   const series = {
     monitor: 'none', monitorNewSeasons: true, qualityProfileId: 6, rootFolderPath: '/home/owner/TV',
     seasonFolder: true, seriesType: 'standard', searchOnAdd: false,
@@ -4212,8 +4184,8 @@ test('adding a title sends the monitor decision and remembers it as the next def
 
   assert.deepEqual(await add.options('sonarr'), { kind: 'ok', qualityProfiles: profiles, rootFolders: folders, defaults: null });
 
-  assert.deepEqual(await add.addSeries(371980, series), { kind: 'added', libraryId: 77 });
-  assert.deepEqual(posts.at(-1), {
+  assert.deepEqual(await add.addSeries(371980, series), { kind: 'added', libraryId: fake.sonarr.state.series.at(-1).id });
+  assert.deepEqual(posts('sonarr').at(-1), {
     path: '/api/v3/series',
     body: {
       title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }],
@@ -4224,19 +4196,23 @@ test('adding a title sends the monitor decision and remembers it as the next def
   });
   assert.deepEqual((await add.options('sonarr')).defaults, series);
 
-  addResponse = { status: 400, body: [{ propertyName: 'TvdbId', errorMessage: 'This series has already been added' }] };
-  assert.deepEqual(await add.addSeries(371980, { ...series, qualityProfileId: 4 }), { kind: 'refused', reason: 'This series has already been added' });
+  fake.sonarr.routes.push((method, url) => (method === 'POST' && url.pathname === '/api/v3/series'
+    ? { status: 400, body: [{ propertyName: 'TvdbId', errorMessage: 'This series has already been added' }] }
+    : undefined));
+  assert.deepEqual(await add.addSeries(371980, { ...series, qualityProfileId: 4 }), {
+    kind: 'refused', reason: 'Sonarr refused the series add with HTTP 400: This series has already been added.',
+  });
+  fake.sonarr.routes.pop();
   assert.deepEqual((await add.options('sonarr')).defaults, series);
   assert.deepEqual(await add.addSeries(5, series), { kind: 'not_found' });
 
   profiles = [{ id: 4, name: 'HD-1080p' }];
   assert.equal((await add.options('sonarr')).defaults, null);
 
-  addResponse = { status: 201, body: { id: 12 } };
   const movie = { monitor: 'none', minimumAvailability: 'inCinemas', qualityProfileId: 4, rootFolderPath: '/home/owner/TV', searchOnAdd: true };
-  assert.deepEqual(await add.addMovie(438631, movie), { kind: 'added', libraryId: 12 });
-  const { body } = posts.at(-1);
-  assert.equal(posts.at(-1).path, '/api/v3/movie');
+  assert.deepEqual(await add.addMovie(438631, movie), { kind: 'added', libraryId: fake.radarr.state.movies.at(-1).id });
+  const { body } = posts('radarr').at(-1);
+  assert.equal(posts('radarr').at(-1).path, '/api/v3/movie');
   assert.equal(body.title, 'Dune');
   assert.equal(body.monitored, false);
   assert.equal(body.minimumAvailability, 'inCinemas');
@@ -4883,19 +4859,14 @@ test('subject labels come from Sonarr and Radarr once and fall back to ids', asy
   t.after(() => rm(root, { recursive: true, force: true }));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(() => database.close());
-  const requests = [];
-  const bodies = {
-    '/api/v3/movie/7': { title: 'Dune', year: 2021 },
-    '/api/v3/episode/31': { seasonNumber: 2, episodeNumber: 9, series: { title: 'Andor' } },
-    '/api/v3/episode/32': { seasonNumber: 2, episodeNumber: 10, series: { title: 'Andor' } },
-  };
-  const fake = (service) => ({
-    request: async (path) => {
-      requests.push(`${service} ${path}`);
-      return path in bodies ? { status: 200, body: bodies[path] } : { status: 404, body: undefined };
-    },
-  });
-  const arr = { sonarr: fake('sonarr'), radarr: fake('radarr') };
+  const { fake, ...arr } = connectArr(database);
+  fake.radarr.state.movies = [movieRecord({ id: 7, title: 'Dune', year: 2021 })];
+  fake.sonarr.state.series = [seriesRecord({ id: 3, title: 'Andor' })];
+  fake.sonarr.state.episodes = [
+    episodeRecord({ id: 31, seriesId: 3, seasonNumber: 2, episodeNumber: 9 }),
+    episodeRecord({ id: 32, seriesId: 3, seasonNumber: 2, episodeNumber: 10 }),
+  ];
+  const requests = () => ['radarr', 'sonarr'].flatMap((service) => fake[service].requests.map(({ path }) => `${service} ${path}`));
   const labels = createLabels(arr);
   const grabs = createGrabTracker({ database, arr, events: createEventHub() });
   const grab = { service: 'sonarr', movieId: null, seriesId: 3, releaseTitle: 'Andor.S02', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false };
@@ -4907,10 +4878,10 @@ test('subject labels come from Sonarr and Radarr once and fall back to ids', asy
   assert.equal(await labels.episode(31), 'Andor S02E09');
   assert.equal(await labels.movie(7), 'Dune (2021)');
   assert.equal(await labels.subject({ type: 'episode', service: 'sonarr', id: '31' }, database), 'Andor S02E09');
-  assert.deepEqual(requests, ['radarr /api/v3/movie/7', 'sonarr /api/v3/episode/31']);
+  assert.deepEqual(requests(), ['radarr /api/v3/movie/7', 'sonarr /api/v3/episode/31']);
   assert.equal(await labels.movie(8), 'Radarr movie 8');
   assert.equal(await labels.movie(8), 'Radarr movie 8');
-  assert.equal(requests.filter((request) => request === 'radarr /api/v3/movie/8').length, 2);
+  assert.equal(requests().filter((request) => request === 'radarr /api/v3/movie/8').length, 2);
   assert.equal(await labels.episode(99), 'Sonarr episode 99');
   assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'ab'.repeat(20) }, database), 'Andor S02E09 + 1 more');
   assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'CD'.repeat(20) }, database), 'CD'.repeat(20));
@@ -5097,9 +5068,6 @@ test('flagged lists what automation gave up on with the right next step, and wan
   const clock = { value: Date.parse('2026-10-08T12:00:00Z') };
   const added = '2026-01-01T00:00:00Z';
   const bodies = {
-    '/api/v3/movie/7': { title: 'Dune', year: 2021 },
-    '/api/v3/episode/31': { seriesId: 3, seasonNumber: 2, episodeNumber: 9, series: { title: 'Andor' } },
-    '/api/v3/episode/32': { seriesId: 5, seasonNumber: 1, episodeNumber: 2, series: { title: 'Severance' } },
     '/api/v3/wanted/missing?page=1&pageSize=500&monitored=true&includeSeries=true': { totalRecords: 2, records: [
       { id: 50, seriesId: 3, seasonNumber: 2, episodeNumber: 1, airDateUtc: '2026-10-01T00:00:00Z', series: { title: 'Andor', added } },
       { id: 51, seriesId: 3, seasonNumber: 2, episodeNumber: 2, airDateUtc: '2026-09-01T00:00:00Z', lastSearchTime: '2026-10-07T00:00:00Z', series: { title: 'Andor', added } },
@@ -5118,6 +5086,12 @@ test('flagged lists what automation gave up on with the right next step, and wan
   for (const name of ['sonarr', 'radarr']) {
     fake[name].routes.push((method, url) => (method === 'GET' && url.pathname + url.search in bodies ? { status: 200, body: bodies[url.pathname + url.search] } : undefined));
   }
+  fake.radarr.state.movies = [movieRecord({ id: 7, title: 'Dune', year: 2021 })];
+  fake.sonarr.state.series = [seriesRecord({ id: 3, title: 'Andor' }), seriesRecord({ id: 5, title: 'Severance' })];
+  fake.sonarr.state.episodes = [
+    episodeRecord({ id: 31, seriesId: 3, seasonNumber: 2, episodeNumber: 9 }),
+    episodeRecord({ id: 32, seriesId: 5, seasonNumber: 1, episodeNumber: 2 }),
+  ];
   const commandCount = () => fake.sonarr.state.commands.length + fake.radarr.state.commands.length;
   const events = createEventHub();
   const problems = createProblems({ database, events, now: () => clock.value });
@@ -5292,8 +5266,7 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   const { fake, ...arr } = connectArr(database, { sonarr: {} });
   const { requests } = fake.sonarr;
   fake.sonarr.state.history = [grabbed, imported];
-  fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/episode' && url.searchParams.get('seriesId') === '3'
-    ? { status: 200, body: [{ id: 31 }] } : undefined));
+  fake.sonarr.state.episodes = [episodeRecord({ id: 31, seriesId: 3 })];
   const grabs = createGrabTracker({ database, arr, events: createEventHub() });
   grabs.recordGrab({ hash, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [31], releaseTitle: 'Andor.S02', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false });
   const history = createHistory({ database, arr, labels: { subject: async (subject) => `label ${subject.id}` } });
@@ -5492,52 +5465,44 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   const window = 'start=2026-10-01T00%3A00%3A00.000Z&end=2026-10-08T00%3A00%3A00.000Z&unmonitored=false';
   const bodies = {
     sonarr: {
-      '/api/v3/series/3?includeSeasonImages=true': {
-        id: 3, title: 'Andor', monitored: true, qualityProfileId: 4, tags: [9],
-        images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://img/p.jpg' }],
-        seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
-      },
-      '/api/v3/series/3': {
-        id: 3, title: 'Andor', monitored: true,
-        seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
-      },
-      '/api/v3/episode?seriesId=3&includeEpisodeFile=true&includeImages=true': [
-        {
-          id: 32, seasonNumber: 1, episodeNumber: 2, title: 'Two', hasFile: false, monitored: true,
-        },
-        {
-          id: 31, seasonNumber: 1, episodeNumber: 1, title: 'One', hasFile: true, monitored: true, finaleType: 'season',
-          sceneSeasonNumber: 2, sceneEpisodeNumber: 5, unverifiedSceneNumbering: true, airDateUtc: '2022-09-21T00:00:00Z',
-          images: [{ coverType: 'screenshot', remoteUrl: 'javascript:alert(1)' }],
-          episodeFile: {
-            id: 7, size: 100, qualityCutoffNotMet: true, releaseGroup: 'GRP',
-            quality: { quality: { name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: true } },
-            languages: [{ id: 1, name: 'English' }], customFormats: [{ id: 2, name: 'HDR' }, { id: 3, name: 'Atmos' }],
-          },
-        },
-      ],
       '/api/v3/qualityprofile': [{
         id: 4, name: 'HD', cutoff: 1002, items: [{ id: 1001, name: 'HD group', items: [{ quality: { id: 3, name: 'WEBDL-1080p' } }] }, { id: 1002, name: 'Remux group', quality: null, items: [] }],
       }],
       '/api/v3/tag': [{ id: 9, label: 'kids' }],
-      '/api/v3/series': [],
       [`/api/v3/calendar?${window}&includeSeries=true&includeEpisodeFile=true`]: [],
     },
     radarr: {
       [`/api/v3/calendar?${window}`]: [
         { id: 5, title: 'Dune', year: 2024, monitored: true, inCinemas: '2026-10-02T00:00:00Z', digitalRelease: '2026-10-05T00:00:00Z', physicalRelease: '2026-12-01T00:00:00Z' },
       ],
-      '/api/v3/movie': [],
       '/api/v3/qualityprofile': [],
     },
   };
   const { fake, ...services } = connectArr(database);
+  fake.sonarr.state.series = [seriesRecord({
+    id: 3, title: 'Andor', monitored: true, qualityProfileId: 4, tags: [9],
+    images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://img/p.jpg' }],
+    seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
+  })];
+  fake.sonarr.state.episodes = [
+    {
+      id: 32, seriesId: 3, seasonNumber: 1, episodeNumber: 2, title: 'Two', hasFile: false, monitored: true,
+    },
+    {
+      id: 31, seriesId: 3, seasonNumber: 1, episodeNumber: 1, title: 'One', hasFile: true, monitored: true, finaleType: 'season',
+      sceneSeasonNumber: 2, sceneEpisodeNumber: 5, unverifiedSceneNumbering: true, airDateUtc: '2022-09-21T00:00:00Z',
+      images: [{ coverType: 'screenshot', remoteUrl: 'javascript:alert(1)' }],
+      episodeFile: {
+        id: 7, size: 100, qualityCutoffNotMet: true, releaseGroup: 'GRP',
+        quality: { quality: { name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: true } },
+        languages: [{ id: 1, name: 'English' }], customFormats: [{ id: 2, name: 'HDR' }, { id: 3, name: 'Atmos' }],
+      },
+    },
+  ];
   for (const name of ['sonarr', 'radarr']) {
     fake[name].routes.push((method, url) => {
       const key = url.pathname + url.search;
       if (method === 'GET') return key in bodies[name] ? { status: 200, body: bodies[name][key] } : undefined;
-      // Commands fall through to the fake's own handler, which records them.
-      return (method === 'PUT' || method === 'POST') && url.pathname !== '/api/v3/command' ? { status: 200, body: {} } : undefined;
     });
   }
   const calls = () => ['sonarr', 'radarr'].flatMap((name) => fake[name].requests.map(({ method, path, body }) => ({ name, method, path, body })));
@@ -5585,10 +5550,8 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     assert.deepEqual(writes.map((call) => `${call.name} ${call.method} ${call.path}`), [
       'sonarr PUT /api/v3/series/3', 'sonarr PUT /api/v3/episode/monitor', 'sonarr PUT /api/v3/series/editor', 'radarr PUT /api/v3/movie/editor',
     ]);
-    assert.deepEqual(writes[0].body, {
-      id: 3, title: 'Andor', monitored: true,
-      seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: false }],
-    });
+    assert.deepEqual(fake.sonarr.state.series[0].seasons, [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: false }]);
+    assert.equal(writes[0].body.id, 3);
     assert.deepEqual(writes[1].body, { episodeIds: [31, 32], monitored: true });
     assert.deepEqual(writes[2].body, { seriesIds: [3], monitored: false });
     assert.deepEqual(writes[3].body, { movieIds: [5], monitored: true });

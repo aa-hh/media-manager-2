@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { etag } from 'hono/etag';
 import type { EventHub } from './events.js';
-import type { createArr } from './services/arr.js';
+import type { ArrServices, Image, Movie, Series } from './services/arr.js';
 
 export type Service = 'sonarr' | 'radarr';
 export type ImageKind = 'poster' | 'fanart';
@@ -32,7 +32,6 @@ export type CachedEpisode = {
   monitored: boolean;
 };
 
-type Arr = Pick<ReturnType<typeof createArr>, 'request' | 'download'>;
 type TitleRow = { service: Service; id: number; title: string; year: number | null; detail: string; fetched_at: number };
 type EpisodeRow = {
   id: number;
@@ -48,7 +47,6 @@ type EpisodeRow = {
 
 const SERVICES: Service[] = ['sonarr', 'radarr'];
 const KINDS: ImageKind[] = ['poster', 'fanart'];
-const resourcePath = { sonarr: '/api/v3/series', radarr: '/api/v3/movie' } as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -96,7 +94,7 @@ export const listEpisodes = (database: DatabaseSync, seriesId: number): CachedEp
 
 export const createTitleCache = (options: {
   database: DatabaseSync;
-  arr: Record<Service, Arr>;
+  arr: ArrServices;
   events: EventHub;
   imageDirectory: string;
   now?: () => number;
@@ -110,13 +108,8 @@ export const createTitleCache = (options: {
   );
 
   const syncEpisodes = async (seriesId: number, startedAt: number) => {
-    let response: { status: number; body: unknown };
-    try {
-      response = await arr.sonarr.request(`/api/v3/episode?seriesId=${seriesId}`);
-    } catch {
-      return;
-    }
-    if (!isSuccess(response.status) || !Array.isArray(response.body)) return;
+    const result = await arr.sonarr.episodes(seriesId);
+    if (result.kind !== 'ok') return;
     const insert = database.prepare(`INSERT OR REPLACE INTO episodes
       (id, series_id, season_number, episode_number, title, air_date_utc, overview, has_file, monitored, fetched_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -128,19 +121,15 @@ export const createTitleCache = (options: {
         return;
       }
       database.prepare('DELETE FROM episodes WHERE series_id = ?').run(seriesId);
-      for (const episode of response.body) {
-        if (!isRecord(episode)) continue;
-        const id = positiveInteger(episode.id);
-        const { seasonNumber, episodeNumber } = episode;
-        if (id === null || !Number.isInteger(seasonNumber) || !Number.isInteger(episodeNumber)) continue;
+      for (const episode of result.value) {
         insert.run(
-          id,
+          episode.id,
           seriesId,
-          seasonNumber as number,
-          episodeNumber as number,
-          typeof episode.title === 'string' ? episode.title : null,
-          typeof episode.airDateUtc === 'string' ? episode.airDateUtc : null,
-          typeof episode.overview === 'string' ? episode.overview : '',
+          episode.seasonNumber,
+          episode.episodeNumber,
+          episode.title,
+          episode.airDateUtc,
+          episode.overview ?? '',
           episode.hasFile === true ? 1 : 0,
           episode.monitored === true ? 1 : 0,
           startedAt,
@@ -154,20 +143,19 @@ export const createTitleCache = (options: {
 
   // razor: a failed image download is retried on the next change of its source url, not on a timer.
   // Upgrade path: a retry timestamp on title_images checked by the fallback run.
-  const syncImages = async (service: Service, id: number, resource: Record<string, unknown>, startedAt: number) => {
-    const images = Array.isArray(resource.images) ? resource.images : [];
+  const syncImages = async (service: Service, id: number, images: Image[], startedAt: number) => {
     for (const kind of KINDS) {
-      const entry = images.find((image) => isRecord(image) && image.coverType === kind && typeof image.url === 'string');
+      const entry = images.find((image) => image.coverType === kind && image.url !== null);
       const stored = database.prepare('SELECT source, file FROM title_images WHERE service = ? AND id = ? AND kind = ?')
         .get(service, id, kind) as { source: string; file: string } | undefined;
-      if (!isRecord(entry)) {
+      if (entry === undefined || entry.url === null) {
         if (stored !== undefined) {
           database.prepare('DELETE FROM title_images WHERE service = ? AND id = ? AND kind = ?').run(service, id, kind);
           removeImageFile(stored.file);
         }
         continue;
       }
-      const source = entry.url as string;
+      const source = entry.url;
       if (stored?.source === source && existsSync(join(imageDirectory, stored.file))) continue;
       let name: string;
       try {
@@ -204,18 +192,17 @@ export const createTitleCache = (options: {
   // razor: every write is stamped with the time its fetch started and only replaces an older row, so a delete
   // webhook racing a fallback list that started earlier can re-insert the row until the next fallback run.
   // Upgrade path: keep deleted ids with their deletion time and refuse older inserts for them.
-  const upsertTitle = async (service: Service, resource: unknown, startedAt: number) => {
-    if (!isRecord(resource)) return 'skipped';
-    const id = positiveInteger(resource.id);
-    if (id === null || typeof resource.title !== 'string' || resource.title === '') return 'skipped';
-    const detail = JSON.stringify(resource);
+  const upsertTitle = async (service: Service, record: Series | Movie, startedAt: number) => {
+    const { id } = record;
+    if (id === null || record.title === '') return 'skipped';
+    const detail = JSON.stringify(record);
     const fingerprint = sha256(detail);
     const stored = database.prepare('SELECT fingerprint FROM titles WHERE service = ? AND id = ?')
       .get(service, id) as { fingerprint: string } | undefined;
     if (stored?.fingerprint === fingerprint) {
       // A restored database or a wiped images folder keeps rows whose files are gone; fetch those again.
       const files = database.prepare('SELECT file FROM title_images WHERE service = ? AND id = ?').all(service, id) as { file: string }[];
-      if (files.some(({ file }) => !existsSync(join(imageDirectory, file)))) await syncImages(service, id, resource, startedAt);
+      if (files.some(({ file }) => !existsSync(join(imageDirectory, file)))) await syncImages(service, id, record.images, startedAt);
       return 'unchanged';
     }
     const { changes } = database.prepare(`INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at)
@@ -223,10 +210,10 @@ export const createTitleCache = (options: {
       ON CONFLICT (service, id) DO UPDATE SET title = excluded.title, year = excluded.year, detail = excluded.detail,
         fingerprint = excluded.fingerprint, fetched_at = excluded.fetched_at
       WHERE titles.fetched_at < excluded.fetched_at`)
-      .run(service, id, resource.title, Number.isInteger(resource.year) ? resource.year as number : null, detail, fingerprint, startedAt);
+      .run(service, id, record.title, Number.isInteger(record.year) ? record.year : null, detail, fingerprint, startedAt);
     if (Number(changes) === 0) return 'stale';
     if (service === 'sonarr') await syncEpisodes(id, startedAt);
-    await syncImages(service, id, resource, startedAt);
+    await syncImages(service, id, record.images, startedAt);
     if (titleExists(service, id)) events.publish('title', { service, id, change: 'updated' });
     return 'written';
   };
@@ -243,10 +230,10 @@ export const createTitleCache = (options: {
   const refresh = async (service: Service, id: number) => {
     try {
       const startedAt = now();
-      const response = await arr[service].request(`${resourcePath[service]}/${id}`);
-      if (response.status === 404) deleteTitle(service, id);
-      else if (isSuccess(response.status) && isRecord(response.body)) {
-        const result = await upsertTitle(service, response.body, startedAt);
+      const response = service === 'sonarr' ? await arr.sonarr.series(id) : await arr.radarr.movie(id);
+      if (response.kind === 'not_found') deleteTitle(service, id);
+      else if (response.kind === 'ok') {
+        const result = await upsertTitle(service, response.value, startedAt);
         if (result === 'unchanged' && service === 'sonarr') {
           const before = JSON.stringify(listEpisodes(database, id));
           await syncEpisodes(id, startedAt);
@@ -261,12 +248,11 @@ export const createTitleCache = (options: {
   const reconcileService = async (service: Service) => {
     try {
       const startedAt = now();
-      const response = await arr[service].request(resourcePath[service]);
-      if (!isSuccess(response.status) || !Array.isArray(response.body)) return;
+      const response = service === 'sonarr' ? await arr.sonarr.listSeries() : await arr.radarr.listMovies();
+      if (response.kind !== 'ok') return;
       const listed = new Set<number>();
-      for (const item of response.body) {
-        const id = isRecord(item) ? positiveInteger(item.id) : null;
-        if (id !== null) listed.add(id);
+      for (const item of response.value) {
+        if (item.id !== null) listed.add(item.id);
         // razor: episode-only changes are picked up when Sonarr's metadata refresh changes the series resource or on the next webhook refresh; upgrade path is a per-series episode check in the fallback.
         await upsertTitle(service, item, startedAt);
       }

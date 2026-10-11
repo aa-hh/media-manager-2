@@ -79,12 +79,8 @@ export const createFlagged = (options: {
   const episodeSeries = async (episodeId: number, hash: string | null) => {
     const grabbed = hash === null ? undefined : findGrab(database, hash)?.seriesId;
     if (grabbed !== undefined && grabbed !== null) return grabbed;
-    try {
-      const { status, body } = await arr.sonarr.request(`/api/v3/episode/${episodeId}`);
-      return status >= 200 && status <= 299 && isRecord(body) && typeof body.seriesId === 'number' ? body.seriesId : null;
-    } catch {
-      return null;
-    }
+    const result = await arr.sonarr.episode(episodeId);
+    return result.kind === 'ok' ? result.value.seriesId : null;
   };
 
   const actionsFor = async (problem: Problem, label: string): Promise<FlaggedAction[]> => {
