@@ -30,6 +30,7 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
   const [created, setCreated] = useState<{ restoreKey: string; createdAt: number }>();
   const [creatingKey, setCreatingKey] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmingNewKey, setConfirmingNewKey] = useState(false);
 
   const edited = backupEdited(draft, backup.destination);
   const complete = backupComplete(draft);
@@ -276,11 +277,39 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
       <dl className="flex flex-col">
         <FactRow label="How often">Every 5 minutes</FactRow>
         {backup.key === 'pair' && backup.keyCreatedAt !== null && (
-          <FactRow label="Restore key">
+          <FactRow
+            label="Restore key"
+            note={created === undefined && !creatingKey && !pending && !confirmingNewKey
+              ? <Button variant="outline" size="row" icon={<KeyRound />} onClick={() => setConfirmingNewKey(true)}>Create new key</Button>
+              : undefined}
+          >
             Created {new Date(backup.keyCreatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, not stored here
           </FactRow>
         )}
       </dl>
+      {confirmingNewKey && (
+        <Callout
+          look="warning"
+          title="Replace the restore key?"
+          action={(
+            <div className="flex gap-2">
+              <Button
+                icon={<KeyRound />}
+                loading={creatingKey}
+                onClick={() => {
+                  setConfirmingNewKey(false);
+                  void createKey();
+                }}
+              >
+                Create new key
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirmingNewKey(false)}>Keep this key</Button>
+            </div>
+          )}
+        >
+          Backups made from now on use the new key. Backups made before still need the key you have now, so keep it.
+        </Callout>
+      )}
 
       <BarBottomAction
         summary={summary}

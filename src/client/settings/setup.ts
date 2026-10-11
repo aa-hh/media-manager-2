@@ -74,7 +74,7 @@ export const usesSignInToken = (available: boolean, choice: boolean | undefined,
 export const backupEdited = (draft: BackupDraft, destination: BackupDestination) => {
   if (destination === null || draft.kind !== destination.kind) return true;
   if (destination.kind === 'folder') return draft.folder.trim() !== destination.folder;
-  return draft.endpoint.trim() !== destination.endpoint || draft.bucket.trim() !== destination.bucket || draft.region.trim() !== destination.region
+  return draft.endpoint.trim() !== destination.endpoint || draft.bucket.trim() !== destination.bucket || (draft.region.trim() || 'auto') !== destination.region
     || draft.accessKeyId.trim() !== '' || draft.secretAccessKey.trim() !== '';
 };
 
