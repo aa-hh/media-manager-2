@@ -44,7 +44,7 @@ const useClock = () => {
   return now;
 };
 
-// Lime while bytes arrive, amber when the import is blocked, red for every other risk, grey otherwise.
+// Lime while bytes arrive, amber when the import is blocked, red for every other risk except waiting for peers, grey otherwise.
 const downloadState = (row: Row): DownloadState => {
   if (row.status.word === 'import blocked') return 'import-blocked';
   if (row.status.tone === 'risk' && row.status.word !== 'waiting for peers') return 'stalled';
@@ -95,6 +95,7 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
     if (status === 204) onDone();
     else setFailed(true);
   };
+  const cancel = () => { setFailed(false); onCancel(); };
   const chosen = releaseChoices.find((choice) => choice.value === release)!;
   const descriptions: Record<Release, string> = {
     blocklist: `${service} won't grab this release again.`,
@@ -104,13 +105,13 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => { if (!next) onCancel(); }}
+      onOpenChange={(next) => { if (!next) cancel(); }}
       title="Remove from downloads?"
       subject={`${[row.label, row.quality, row.release].filter((part) => part !== '').join(' · ')}. The torrent keeps seeding in rTorrent; media-manager-2 never removes a torrent from here.`}
       callout={failed ? <Callout look="risk" title={`${service} did not remove it. Try again.`} /> : undefined}
       actions={(
         <>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button variant="outline" onClick={cancel}>Cancel</Button>
           <Button variant="destructive" size="large" loading={sending} onClick={() => void confirm()}>
             {release === 'blocklist_search' ? 'Remove and search again' : `Remove from downloads, keep seeding, ${chosen.summary}`}
           </Button>

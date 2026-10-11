@@ -243,10 +243,11 @@ a rule in settings always writes the new shape.
 
 The settings screen uses these routes under the owner guard:
 
-- `GET /api/settings/trackers` lists `{ host, status, rule, ruleSource, margins, problem }`
+- `GET /api/settings/trackers` lists `{ host, status, rule, ruleSource, envRule, margins, problem }`
   per tracker. `status` is `configured` (saved rule), `configured_env` (env
-  file rule only) or `no_rule`; `problem` names a saved value that fails
-  validation.
+  file rule only) or `no_rule`; `envRule` is true when `TRACKER_RULES` has a
+  rule for the host, even while a saved rule overrides it; `problem` names a
+  saved value that fails validation.
 - `POST /api/settings/trackers` `{ host }` adds a tracker. A URL is cut down to
   its hostname; a duplicate gets 409, anything that is not a hostname 400.
 - `PUT /api/settings/trackers/<host>/rule` `{ rule, margins? }` saves a rule. An

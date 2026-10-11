@@ -152,7 +152,8 @@ const pastText = (event: PastEvent) => {
   return event.kind === 'grabbed' ? `Grabbed before${when}` : event.kind === 'failed' ? `Failed before${when}` : `Blocklisted${when}`;
 };
 
-// Risks are what could make this grab go wrong, always spelled out rather than coloured alone.
+// Risks are what could make this grab go wrong, always spelled out rather than coloured alone: the first in the
+// fit cell, the rest behind a "+N" that opens on hover or keyboard focus.
 const risksOf = (release: Release) => [
   ...release.rejections,
   ...(release.seeders === 0 ? ['0 seeders'] : []),
@@ -395,7 +396,6 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
         });
         setPanel(undefined);
       } else {
-        setPanel(undefined);
         setOutcome({
           guid,
           outOfDate: typeof body.reason !== 'string' && body.error === 'unknown_release',
@@ -405,7 +405,6 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
         });
       }
     } catch {
-      setPanel(undefined);
       setOutcome({ guid, outOfDate: false, message: "The grab didn't reach media-manager-2's server." });
     } finally {
       setGrabbing(false);
@@ -423,9 +422,9 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
         return;
       }
       const body = await readBody(response);
-      setPanel(undefined);
       // 202: rTorrent may have the torrent even though the send failed; the next check settles it and it is never sent twice.
       if (response.status === 201 || response.status === 202) {
+        setPanel(undefined);
         setGrabbed((current) => new Set(current).add(guid));
         toasts.add({
           title: 'Sent to rTorrent as a second version.',
@@ -443,7 +442,6 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
         });
       }
     } catch {
-      setPanel(undefined);
       setOutcome({ guid, outOfDate: false, message: "The grab didn't reach media-manager-2's server." });
     } finally {
       setGrabbing(false);
@@ -698,7 +696,23 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
                     group={group}
                     comparison={release.guid === best ? <MarkComparison kind="best" />
                       : release.compared == null ? '' : <MarkComparison kind={release.compared} />}
-                    fit={<CellProfileFit fit={fit}>{text}</CellProfileFit>}
+                    fit={(
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <CellProfileFit fit={fit}>{text}</CellProfileFit>
+                        {risks.length > 1 && (
+                          <Tooltip text={risks.slice(1).join(' · ')}>
+                            <button
+                              type="button"
+                              tabIndex={isSelected || (selected === undefined && release === visible[0]) ? 0 : -1}
+                              aria-label={`${risks.length - 1} more: ${risks.slice(1).join(', ')}`}
+                              className="shrink-0 rounded-xs font-data text-sm text-muted-foreground focus-ring"
+                            >
+                              +{risks.length - 1}
+                            </button>
+                          </Tooltip>
+                        )}
+                      </span>
+                    )}
                     size={formatSize(release.size)}
                     seeders={release.seeders ?? '?'}
                     tracker={release.indexer ?? ''}
@@ -739,6 +753,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
           ? `${seasonName(target.seasonNumber)} ${target.seasonNumber === 0 ? 'are' : 'is'} already in your library`
           : 'This is already in your library'}
         subject={decisionSubject}
+        footerCallout={outcome === undefined || outcome.guid !== selected ? undefined : <Callout look={outcome.outOfDate ? 'warning' : 'risk'} title={outcome.message} />}
         actions={(
           <>
             <Button variant="outline" kbd="Esc" data-cancel="" disabled={grabbing} onClick={() => setPanel(undefined)}>Cancel</Button>
