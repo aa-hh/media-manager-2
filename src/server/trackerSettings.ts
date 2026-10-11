@@ -2,6 +2,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import { type Context, Hono } from 'hono';
 import { parseMargins, readMargins, saveMargins } from './advice.js';
 import {
+  createTrackerAccounts, forgetTrackerAccount, isSoftware, saveTrackerCredential, saveTrackerSoftware, type TrackerAccounts, trackerCredential, trackerSoftware,
+} from './services/trackerAccounts.js';
+import {
   addTracker, bareHost, isRecord, listTrackerHosts, parseRule, removeTracker, saveTrackerRule, trackerRule, trackerRulesFromEnvironment,
 } from './trackerRules.js';
 
@@ -15,7 +18,11 @@ const readBody = async (context: Context): Promise<unknown> => {
 
 // Routes for the trackers part of the settings screen; app.ts mounts them behind the sign-in guard, which also checks
 // every write's origin. A tracker in the path must already be listed, under its exact hostname.
-export const createTrackerRoutes = (database: DatabaseSync, env: NodeJS.ProcessEnv = process.env) => {
+export const createTrackerRoutes = (
+  database: DatabaseSync,
+  env: NodeJS.ProcessEnv = process.env,
+  accounts: TrackerAccounts = createTrackerAccounts(database, { env }),
+) => {
   const routes = new Hono();
   const listed = (host: string) => listTrackerHosts(database, env).includes(host);
 
@@ -41,7 +48,16 @@ export const createTrackerRoutes = (database: DatabaseSync, env: NodeJS.ProcessE
     return { host, status, rule: found?.rule ?? null, ruleSource, margins, problem };
   };
 
-  routes.get('/settings/trackers', (context) => context.json(listTrackerHosts(database, env).map(describe)));
+  // The account credential never leaves the server: the browser learns only whether one is saved.
+  const account = async (host: string) => ({
+    software: trackerSoftware(database, host),
+    credentialSet: trackerCredential(database, host) !== undefined,
+    connection: await accounts.connection(host),
+  });
+
+  routes.get('/settings/trackers', async (context) => context.json(await Promise.all(
+    listTrackerHosts(database, env).map(async (host) => ({ ...describe(host), ...await account(host) })),
+  )));
 
   routes.post('/settings/trackers', async (context) => {
     const body = await readBody(context);
@@ -88,7 +104,43 @@ export const createTrackerRoutes = (database: DatabaseSync, env: NodeJS.ProcessE
     }
     removeTracker(database, host);
     saveMargins(database, host, null);
+    forgetTrackerAccount(database, host);
     return context.body(null, 204);
+  });
+
+  routes.put('/settings/trackers/:host/software', async (context) => {
+    const host = context.req.param('host');
+    if (!listed(host)) return context.json({ error: 'not_found' }, 404);
+    const body = await readBody(context);
+    if (!isRecord(body) || Object.keys(body).length !== 1 || !isSoftware(body.software)) return context.json({ error: 'invalid_request' }, 400);
+    saveTrackerSoftware(database, host, body.software);
+    return context.body(null, 204);
+  });
+
+  // A blank value keeps the saved credential, so the owner never has to retype a secret.
+  routes.put('/settings/trackers/:host/credential', async (context) => {
+    const host = context.req.param('host');
+    if (!listed(host)) return context.json({ error: 'not_found' }, 404);
+    const body = await readBody(context);
+    if (!isRecord(body) || Object.keys(body).length !== 1 || typeof body.value !== 'string') return context.json({ error: 'invalid_request' }, 400);
+    if (body.value.trim() !== '') saveTrackerCredential(database, host, body.value);
+    return context.body(null, 204);
+  });
+
+  // Tests the form's values over the saved ones without saving either; a left-out or blank credential means the saved one.
+  // A Gazelle test still remembers which header form worked.
+  routes.post('/settings/trackers/:host/test', async (context) => {
+    const host = context.req.param('host');
+    if (!listed(host)) return context.json({ error: 'not_found' }, 404);
+    const body = await readBody(context);
+    if (!isRecord(body) || Object.keys(body).some((key) => key !== 'software' && key !== 'credential')
+      || (body.software !== undefined && !isSoftware(body.software))
+      || (body.credential !== undefined && typeof body.credential !== 'string')) {
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    const software = isSoftware(body.software) ? body.software : trackerSoftware(database, host);
+    const credential = typeof body.credential === 'string' && body.credential.trim() !== '' ? body.credential : trackerCredential(database, host);
+    return context.json(await accounts.test(host, software, credential));
   });
 
   return routes;

@@ -1809,8 +1809,13 @@ test('removal advice applies the hit and run rule with margins and proves time o
       .run(hash, row.sizeBytes, row.completedBytes ?? row.sizeBytes, row.active, row.complete, row.finishedAt, row.ratio, row.host, row.firstSeenAt, now, row.goneAt, row.seconds);
     return hash;
   };
-  const ratios = { blutopia: 1.0, beyondhd: null, privatehd: null };
-  const advise = (hash, accountRatios = ratios) => adviseRemoval(database, hash, { now, accountRatio: async (tracker) => accountRatios[tracker] });
+  const ratios = { 'blutopia.cc': 1.0 };
+  const account = (ratio, requiredRatio = null) => ({
+    ratio, uploadedBytes: null, downloadedBytes: null, bufferBytes: null, seeding: null, leeching: null, bonus: null, hitAndRuns: null, requiredRatio,
+  });
+  const advise = (hash, accountRatios = ratios) => adviseRemoval(database, hash, {
+    now, accountStats: async (host) => (Object.hasOwn(accountRatios, host) ? account(accountRatios[host]) : null),
+  });
   const blutopiaNeeds = 184.8 * hour;
   const unknownRatio = (host) => `Global ratio unknown: your ${host} ratio can't be read`;
 
@@ -1860,14 +1865,29 @@ test('removal advice applies the hit and run rule with margins and proves time o
 
   // Blutopia's minimum is 0.4, so anything under 0.5 keeps the torrent even when its rule is met.
   const met = torrent({ seconds: blutopiaNeeds });
-  assert.deepEqual(await advise(met, { blutopia: 0.49 }), {
+  assert.deepEqual(await advise(met, { 'blutopia.cc': 0.49 }), {
     recommendation: 'keep', reason: 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin',
     globalRatio: 'Keep for ratio: your blutopia.cc ratio is 0.49, minimum 0.4',
   });
-  assert.equal((await advise(met, { blutopia: 0.5 })).recommendation, 'safe');
-  assert.deepEqual(await advise(met, { blutopia: null }), {
+  assert.equal((await advise(met, { 'blutopia.cc': 0.5 })).recommendation, 'safe');
+  assert.deepEqual(await advise(met, { 'blutopia.cc': null }), {
     recommendation: 'safe', reason: 'Hit and run rule met: seeded 185 hours of 185 hours needed with margin', globalRatio: unknownRatio('blutopia.cc'),
   });
+
+  // A Gazelle account's own required ratio beats the rule's minGlobalRatio: 0.7 clears 0.4 with margin but not 0.6.
+  setSetting(database, 'trackerConfiguration', 'rules.gazelle.example', JSON.stringify({ seedHours: [{ hours: 1 }], minGlobalRatio: 0.4 }));
+  const gazelle = torrent({ host: 'gazelle.example', seconds: 10 * hour });
+  const adviseGazelle = (ratio, requiredRatio) => adviseRemoval(database, gazelle, {
+    now, accountStats: async (host) => (host === 'gazelle.example' ? account(ratio, requiredRatio) : null),
+  });
+  assert.deepEqual(await adviseGazelle(0.7, 0.6), {
+    recommendation: 'keep', reason: 'Hit and run rule met: seeded 10 hours of 7 hours needed with margin',
+    globalRatio: 'Keep for ratio: your gazelle.example ratio is 0.70, minimum 0.6',
+  });
+  assert.deepEqual(await adviseGazelle(0.7, null), {
+    recommendation: 'safe', reason: 'Hit and run rule met: seeded 10 hours of 7 hours needed with margin', globalRatio: null,
+  });
+  assert.equal((await adviseGazelle(0.75, 0.6)).recommendation, 'safe');
 
   setSetting(database, 'trackerConfiguration', 'margins.blutopia.cc', JSON.stringify({ timeFactor: 1.2 }));
   assert.equal((await advise(met)).reason, 'Keep seeding: 17 hours of seeding left');
@@ -2189,9 +2209,8 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
     await rm(root, { recursive: true, force: true });
   });
   const { fake } = connectArr(database, { sonarr: {} });
-  const secrets = [`rtorrent-password-${process.pid}-distinctive`, `blutopia-token-${process.pid}-distinctive`];
+  const secrets = [`rtorrent-password-${process.pid}-distinctive`];
   setSetting(database, 'credentials', 'rtorrent.password', secrets[0]);
-  setSetting(database, 'credentials', 'blutopia.apiToken', secrets[1]);
   setSetting(database, 'credentials', 'plex.token', '');
   // Only the fake Sonarr's port answers; every other address is unreachable.
   const fetch = async (url, init) => {
@@ -2210,7 +2229,8 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   const text = await read.text();
   for (const secret of [...secrets, 'test-key']) assert.equal(text.includes(secret), false, secret);
   const { services } = JSON.parse(text);
-  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'blutopia', 'privatehd', 'beyondhd']);
+  // Tracker accounts live with their trackers; listing the old Blutopia, PrivateHD or Beyond-HD sign-ins here turns this red.
+  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex']);
   assert.deepEqual(services[0], { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65201' }, credentials: { 'sonarr.apiKey': true } });
   assert.deepEqual(services[2].credentials, { 'rtorrent.username': false, 'rtorrent.password': true });
   assert.deepEqual(services[3].credentials, { 'plex.token': false });
@@ -2219,7 +2239,7 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   const before = listSettingKeys(database);
   assert.equal((await send('PUT', '/api/settings/credentials/rtorrent.password', { value: '  ' })).status, 204);
   assert.equal(getSetting(database, 'credentials', 'rtorrent.password'), secrets[0]);
-  for (const path of ['hostPaths/sonarr.url', 'credentials/webhook.secret', 'serviceAddresses/sonarr.apiKey', 'credentials/anything']) {
+  for (const path of ['hostPaths/sonarr.url', 'credentials/webhook.secret', 'serviceAddresses/sonarr.apiKey', 'credentials/anything', 'credentials/blutopia.apiToken', 'serviceAddresses/beyondhd.url']) {
     assert.equal((await send('PUT', `/api/settings/${path}`, { value: 'x' })).status, 404, path);
   }
   assert.equal((await send('PUT', '/api/settings/serviceAddresses/radarr.url', { value: 1 })).status, 400);
@@ -2240,14 +2260,11 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   assert.deepEqual(await check('sonarr', { credentials: { 'sonarr.apiKey': '' } }), { kind: 'ok', version: '4.0.0.0' });
   assert.deepEqual(await check('sonarr', { serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65299' } }), { kind: 'unreachable' });
   assert.deepEqual(await check('sonarr', { serviceAddresses: { 'sonarr.url': '' } }), { kind: 'not_configured' });
-  assert.deepEqual(await check('blutopia', { serviceAddresses: { 'blutopia.url': 'http://127.0.0.1:65298' } }), { kind: 'unreachable' });
-  assert.deepEqual(await check('privatehd', {}), { kind: 'not_configured' });
   assert.equal(getSetting(database, 'credentials', 'sonarr.apiKey'), 'test-key');
   assert.equal(getSetting(database, 'serviceAddresses', 'sonarr.url'), 'http://127.0.0.1:65201');
-  assert.equal(getSetting(database, 'serviceAddresses', 'blutopia.url'), undefined);
   assert.equal((await send('POST', '/api/settings/test/sonarr', { credentials: { 'radarr.apiKey': 'x' } })).status, 400);
   assert.equal((await send('POST', '/api/settings/test/sonarr', { hostPaths: {} })).status, 400);
-  assert.equal((await send('POST', '/api/settings/test/webhook', {})).status, 404);
+  for (const service of ['webhook', 'blutopia', 'privatehd', 'beyondhd']) assert.equal((await send('POST', `/api/settings/test/${service}`, {})).status, 404, service);
 
   // Leaving the routes out of the browser API turns this red.
   const mounted = await makeApp({ api: createApiRoutes(database) });
@@ -2284,8 +2301,9 @@ test('the settings screen adds trackers and saves, clears and removes their hit 
   const defaultMargins = { timeFactor: 1.1, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 };
   const unset = { ratio: null, logic: null, minGlobalRatio: null, partial: { exemptBelow: null, ratio: null, maxHours: null } };
   const blutopiaEnv = { ...unset, seedHours: [{ hours: 168 }], minGlobalRatio: 0.4 };
-  const blutopia = (fields) => ({ host: 'blutopia.cc', margins: defaultMargins, problem: null, ...fields });
-  const example = (fields) => ({ host: 'example.net', margins: defaultMargins, problem: null, ...fields });
+  const noAccount = { software: 'other', credentialSet: false, connection: { kind: 'unsupported' } };
+  const blutopia = (fields) => ({ host: 'blutopia.cc', margins: defaultMargins, problem: null, ...noAccount, ...fields });
+  const example = (fields) => ({ host: 'example.net', margins: defaultMargins, problem: null, ...noAccount, ...fields });
 
   assert.deepEqual(await list(), [blutopia({ status: 'configured_env', rule: blutopiaEnv, ruleSource: 'env' })]);
 
@@ -2372,6 +2390,125 @@ test('the settings screen adds trackers and saves, clears and removes their hit 
   const mounted = await makeApp({ api: createApiRoutes(database) });
   const signedIn = await signIn(mounted.app);
   assert.equal((await mounted.app.request('/api/settings/trackers', { headers: { Cookie: signedIn.session } })).status, 200);
+});
+
+// Serving the account credential, saving a blank one over it, saving the values a test ran with, accepting an unknown software,
+// or leaving the credential behind when the tracker is removed turns this red.
+test('the settings screen sets a tracker\'s site software and account credential and tests them without saving', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { getSetting } = await import(settingsModuleUrl);
+  const { createTrackerRoutes } = await import(trackerSettingsModuleUrl);
+  const { createTrackerAccounts } = await import(trackerAccountsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-tracker-accounts-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const secret = `account-token-${process.pid}-distinctive`;
+  const calls = [];
+  // The fake site runs UNIT3D at /api/user and NexusPHP at /api/profile, and knows only `secret`.
+  const fetch = async (url, init) => {
+    calls.push(String(url));
+    if (init.headers.Authorization !== `Bearer ${secret}`) return new Response('{}', { status: 401 });
+    if (String(url).endsWith('/api/user')) return new Response('{"ratio":1.5,"hit_and_runs":2}', { status: 200 });
+    if (String(url).endsWith('/api/profile')) return new Response('{"ret":0,"data":{"data":{"uploaded":4,"downloaded":2}}}', { status: 200 });
+    return new Response('{}', { status: 404 });
+  };
+  const env = {};
+  const { app } = await makeApp({ api: createTrackerRoutes(database, env, createTrackerAccounts(database, { env, fetch })) });
+  const { session } = await signIn(app);
+  const send = (method, path, body, headers = jsonHeaders('https://media.example')) => app.request(path, {
+    method, headers: { ...headers, Cookie: session }, body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const row = async () => {
+    const response = await app.request('/api/settings/trackers', { headers: { Cookie: session } });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.equal(text.includes(secret), false);
+    const [{ software, credentialSet, connection }] = JSON.parse(text);
+    return { software, credentialSet, connection };
+  };
+  const unit3dStats = {
+    ratio: 1.5, uploadedBytes: null, downloadedBytes: null, bufferBytes: null, seeding: null, leeching: null, bonus: null, hitAndRuns: { count: 2, kind: 'lifetime' }, requiredRatio: null,
+  };
+
+  assert.equal((await send('POST', '/api/settings/trackers', { host: 'site.example' })).status, 201);
+  assert.deepEqual(await row(), { software: 'other', credentialSet: false, connection: { kind: 'unsupported' } });
+
+  for (const [path, body, status] of [
+    ['site.example/software', { software: 'xbtit' }, 400], ['site.example/software', { software: 'unit3d', extra: 1 }, 400], ['unknown.org/software', { software: 'unit3d' }, 404],
+    ['site.example/credential', { value: 5 }, 400], ['site.example/credential', { value: 'x', extra: 1 }, 400], ['unknown.org/credential', { value: 'x' }, 404],
+  ]) assert.equal((await send('PUT', `/api/settings/trackers/${path}`, body)).status, status, `${path} ${JSON.stringify(body)}`);
+  assert.equal((await send('PUT', '/api/settings/trackers/site.example/software', { software: 'unit3d' })).status, 204);
+  assert.deepEqual(await row(), { software: 'unit3d', credentialSet: false, connection: { kind: 'not_configured' } });
+  assert.equal((await send('PUT', '/api/settings/trackers/site.example/credential', { value: secret })).status, 204);
+  assert.equal((await send('PUT', '/api/settings/trackers/site.example/credential', { value: '  ' })).status, 204);
+  assert.equal(getSetting(database, 'credentials', 'trackers.site.example'), secret);
+  assert.deepEqual(await row(), { software: 'unit3d', credentialSet: true, connection: { kind: 'ok', stats: unit3dStats } });
+
+  // The test route lays the form over the saved values and saves neither.
+  const tryForm = async (body) => {
+    const response = await send('POST', '/api/settings/trackers/site.example/test', body);
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.equal(text.includes(secret), false);
+    return JSON.parse(text);
+  };
+  calls.length = 0;
+  assert.deepEqual(await tryForm({ credential: 'wrong' }), { kind: 'rejected' });
+  assert.deepEqual(await tryForm({ credential: '' }), { kind: 'ok', stats: unit3dStats });
+  assert.deepEqual((await tryForm({ software: 'nexusphp' })).stats.ratio, 2);
+  assert.deepEqual(await tryForm({ software: 'other' }), { kind: 'unsupported' });
+  assert.deepEqual(calls, ['https://site.example/api/user', 'https://site.example/api/user', 'https://site.example/api/profile']);
+  assert.equal(getSetting(database, 'credentials', 'trackers.site.example'), secret);
+  assert.equal(getSetting(database, 'trackerConfiguration', 'software.site.example'), 'unit3d');
+  for (const body of [{ software: 'xbtit' }, { credential: 5 }, { other: 1 }, []]) {
+    assert.equal((await send('POST', '/api/settings/trackers/site.example/test', body)).status, 400, JSON.stringify(body));
+  }
+  assert.equal((await send('POST', '/api/settings/trackers/unknown.org/test', {})).status, 404);
+
+  // Writes without the browser's own headers are refused before they reach the routes.
+  for (const [method, path, body] of [
+    ['PUT', '/api/settings/trackers/site.example/software', { software: 'gazelle' }], ['PUT', '/api/settings/trackers/site.example/credential', { value: 'x' }],
+    ['POST', '/api/settings/trackers/site.example/test', {}],
+  ]) assert.equal((await send(method, path, body, { 'Content-Type': 'application/json' })).status, 403, path);
+  assert.equal(getSetting(database, 'trackerConfiguration', 'software.site.example'), 'unit3d');
+
+  assert.equal((await send('DELETE', '/api/settings/trackers/site.example')).status, 204);
+  assert.equal(getSetting(database, 'credentials', 'trackers.site.example'), undefined);
+  assert.equal(getSetting(database, 'trackerConfiguration', 'software.site.example'), undefined);
+});
+
+// Leaving Blutopia's token where nothing reads it, giving blutopia.cc no software, adding a tracker for an empty token, or keeping the
+// Beyond-HD and PrivateHD sign-ins turns this red.
+test('the Blutopia token moves to the blutopia.cc tracker and the Beyond-HD and PrivateHD sign-ins are dropped', async () => {
+  const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+  const before = applicationMigrations.length - 1;
+  const migrate = (rows) => {
+    const database = new DatabaseSync(':memory:');
+    migrateDatabase(database, applicationMigrations.slice(0, before));
+    const insert = database.prepare('INSERT INTO settings (category, key, value) VALUES (?, ?, ?)');
+    for (const row of rows) insert.run(...row);
+    migrateDatabase(database, applicationMigrations);
+    const settings = database.prepare('SELECT category, key, value FROM settings ORDER BY category, key').all().map((row) => [row.category, row.key, row.value]);
+    database.close();
+    return settings;
+  };
+  const old = [
+    ['serviceAddresses', 'blutopia.url', 'https://blutopia.cc'], ['serviceAddresses', 'privatehd.url', 'https://privatehd.to'], ['serviceAddresses', 'beyondhd.url', 'https://beyond-hd.me'],
+    ['credentials', 'privatehd.username', 'u'], ['credentials', 'privatehd.password', 'p'], ['credentials', 'privatehd.pid', 'i'],
+    ['credentials', 'beyondhd.apiKey', 'k'], ['credentials', 'beyondhd.rssKey', 'r'], ['credentials', 'sonarr.apiKey', 'kept'],
+  ];
+  assert.deepEqual(migrate([...old, ['credentials', 'blutopia.apiToken', 'token']]), [
+    ['credentials', 'sonarr.apiKey', 'kept'], ['credentials', 'trackers.blutopia.cc', 'token'],
+    ['trackerConfiguration', 'software.blutopia.cc', 'unit3d'], ['trackerConfiguration', 'trackers.blutopia.cc', 'added'],
+  ]);
+  // A tracker added with no token gets its software; an empty token adds nothing.
+  assert.deepEqual(migrate([['trackerConfiguration', 'rules.blutopia.cc', '{"seedHours":[{"hours":168}]}']]), [
+    ['trackerConfiguration', 'rules.blutopia.cc', '{"seedHours":[{"hours":168}]}'], ['trackerConfiguration', 'software.blutopia.cc', 'unit3d'],
+  ]);
+  assert.deepEqual(migrate([['credentials', 'blutopia.apiToken', '']]), []);
 });
 
 // Classifying a status differently, dropping the service name from a message, or changing any operation's request turns a subtest red.
@@ -2554,11 +2691,12 @@ test('Sonarr and Radarr operations answer with one result shape and never throw'
   });
 });
 
-// Reading a tracker credential from the wrong key, putting a secret in a URL the app builds, mis-mapping 401/422/'Invalid API Key' to unreachable, or dropping a tracker from the stats list turns this red.
-test('tracker accounts read saved settings and classify each outcome', async (t) => {
+// Reading the wrong response field, counting UNIT3D's "1.23 TiB" in 1000s, missing Redacted's bare-key form, putting the credential in a URL
+// or a result, mis-classifying 401/403/404/5xx or a bad or oversized body, or checking a tracker on every call turns this red.
+test('tracker account connectors read UNIT3D, Gazelle and NexusPHP accounts and classify each outcome', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
-  const { deleteSetting, setSetting } = await import(settingsModuleUrl);
-  const { createTrackerAccounts, getTrackerAccountStats } = await import(trackerAccountsModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTrackerAccounts, parseBytes, saveTrackerCredential, saveTrackerSoftware } = await import(trackerAccountsModuleUrl);
   const { createApiRoutes } = await import(apiModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-trackers-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
@@ -2566,190 +2704,152 @@ test('tracker accounts read saved settings and classify each outcome', async (t)
     database.close();
     await rm(root, { recursive: true, force: true });
   });
-  const pid = process.pid;
-  const secret = (name) => `${name}-${pid}-distinctive`;
-  const respond = (status, body) => () => new Response(body, { status });
+  const token = `tracker-token-${process.pid}-distinctive`;
+  const respond = (status, body) => () => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
   const timeout = () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); };
   const networkFailure = () => { throw new TypeError('fetch failed'); };
-
-  const descriptors = [
-    {
-      tracker: 'blutopia',
-      url: 'http://127.0.0.1:65021',
-      credentials: { 'blutopia.apiToken': secret('blutopia-token') },
-      request: {
-        method: 'GET',
-        url: 'http://127.0.0.1:65021/api/user',
-        headers: { authorization: `Bearer ${secret('blutopia-token')}`, accept: 'application/json' },
-        body: undefined,
-      },
-      ok: [
-        {
-          // Blutopia's /api/user sends byte counts and ratio as numbers and seedbonus as a string; reading the byte counts as text turns this red.
-          body: '{"username":"alec","group":"User","uploaded":1649267441664,"downloaded":644245094400,"ratio":2.56,"buffer":966367641600,"seeding":12,"leeching":0,"seedbonus":"1234.50","hit_and_runs":1}',
-          stats: { username: 'alec', group: 'User', uploaded: 1649267441664, downloaded: 644245094400, ratio: 2.56, buffer: 966367641600, seeding: 12, leeching: 0, seedbonus: 1234.5, hitAndRuns: 1 },
-        },
-        {
-          body: '{"username":"alec"}',
-          stats: { username: 'alec', group: '', uploaded: null, downloaded: null, ratio: null, buffer: null, seeding: null, leeching: null, seedbonus: null, hitAndRuns: null },
-        },
-      ],
-      rejected: [],
-      unreachable: [['[]', 200]],
-    },
-    {
-      tracker: 'privatehd',
-      url: 'http://127.0.0.1:65022',
-      credentials: {
-        'privatehd.username': secret('privatehd-user'),
-        'privatehd.password': secret('privatehd-password'),
-        'privatehd.pid': secret('privatehd-pid'),
-      },
-      request: {
-        method: 'POST',
-        url: 'http://127.0.0.1:65022/api/v1/jackett/auth',
-        headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
-        body: new URLSearchParams({
-          username: secret('privatehd-user'),
-          password: secret('privatehd-password'),
-          pid: secret('privatehd-pid'),
-        }).toString(),
-      },
-      ok: [{ body: '{"token":"tok-123","expiry":"2027-01-01 00:00:00"}', stats: 'unsupported' }],
-      rejected: [['{}', 422]],
-      unreachable: [['{}', 200]],
-    },
-    {
-      tracker: 'beyondhd',
-      url: 'http://127.0.0.1:65023',
-      credentials: { 'beyondhd.apiKey': secret('beyondhd-key') },
-      request: {
-        method: 'POST',
-        url: `http://127.0.0.1:65023/api/torrents/${secret('beyondhd-key')}`,
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: '{"action":"search","page":1}',
-      },
-      ok: [{ body: '{"status_code":1,"page":1,"results":[],"total_results":0,"total_pages":0,"success":true}', stats: 'unsupported' }],
-      rejected: [['{"status_code":0,"status_message":"Invalid API Key"}', 200], ['{"status_code":0,"status_message":"Invalid RSS key"}', 200]],
-      unreachable: [['{"status_code":0,"status_message":"Nope"}', 200], ['{}', 200]],
-    },
-  ];
-  const urlKey = (descriptor) => `${descriptor.tracker}.url`;
-  const allKeys = (descriptor) => [['serviceAddresses', urlKey(descriptor)], ...Object.keys(descriptor.credentials).map((key) => ['credentials', key])];
-  const clear = () => {
-    for (const descriptor of descriptors) {
-      for (const [category, key] of allKeys(descriptor)) deleteSetting(database, category, key);
-    }
-    deleteSetting(database, 'credentials', 'beyondhd.rssKey');
+  const fakeFetch = (handler, calls) => async (url, init) => {
+    assert.equal(init.redirect, 'error');
+    assert.ok(init.signal instanceof AbortSignal);
+    assert.equal(init.headers.Accept, 'application/json');
+    calls.push({ url: String(url), authorization: init.headers.Authorization });
+    return handler(String(url), init);
   };
-  const configure = (descriptor) => {
-    setSetting(database, 'serviceAddresses', urlKey(descriptor), descriptor.url);
-    for (const [key, value] of Object.entries(descriptor.credentials)) setSetting(database, 'credentials', key, value);
-  };
-  const run = async (descriptor, handler) => {
+  const run = async (software, handler, credential = token, accounts = undefined) => {
     const calls = [];
-    const fetch = async (url, init) => {
-      assert.equal(init.redirect, 'error');
-      assert.ok(init.signal instanceof AbortSignal);
-      calls.push({ url, init, headers: Object.fromEntries(Object.entries(init.headers ?? {}).map(([name, value]) => [name.toLowerCase(), value])) });
-      return handler(url, init);
-    };
-    const result = await createTrackerAccounts(database, { fetch }).check(descriptor.tracker);
+    const checker = accounts ?? createTrackerAccounts(database, { fetch: fakeFetch(handler, calls), env: {} });
+    const result = await checker.test('site.example', software, credential);
+    assert.equal(JSON.stringify(result).includes(token), false, `${software} result mentions the credential`);
+    for (const call of calls) assert.equal(call.url.includes(token), false, `${software} URL carries the credential`);
     return { calls, result };
   };
-  const secretsOf = (descriptor) => Object.values(descriptor.credentials);
-  const assertQuiet = (descriptor, result, label) => {
-    const text = JSON.stringify(result);
-    for (const value of [...secretsOf(descriptor), '127.0.0.1']) assert.equal(text.includes(value), false, `${label} mentions ${value}`);
-  };
+  const stats = (fields) => ({
+    ratio: null, uploadedBytes: null, downloadedBytes: null, bufferBytes: null, seeding: null, leeching: null, bonus: null, hitAndRuns: null, requiredRatio: null, ...fields,
+  });
 
-  for (const descriptor of descriptors) {
-    const { tracker } = descriptor;
-    clear();
+  for (const [input, expected] of [
+    [1649267441664, 1649267441664], ['1649267441664', 1649267441664], ['1,234', 1234], ['1.23 TiB', Math.round(1.23 * 2 ** 40)], ['1.23 TiB', Math.round(1.23 * 2 ** 40)],
+    ['512 KiB', 524288], ['1.5 GB', 1.5e9], ['2 TB', 2e12], ['-5.5 GiB', Math.round(-5.5 * 2 ** 30)], ['0 B', 0], ['∞', null], ['', null], [null, null], ['1.2 XB', null],
+  ]) assert.equal(parseBytes(input), expected, String(input));
 
-    const nothing = await run(descriptor, respond(200, '{}'));
-    assert.deepEqual(nothing.result, { tracker, kind: 'not_configured' });
-    assert.equal(nothing.calls.length, 0);
-    for (const [category, key] of allKeys(descriptor)) {
-      clear();
-      configure(descriptor);
-      deleteSetting(database, category, key);
-      const partial = await run(descriptor, respond(200, '{}'));
-      assert.deepEqual(partial.result, { tracker, kind: 'not_configured' }, `${tracker} without ${key}`);
-      assert.equal(partial.calls.length, 0);
-    }
+  // UNIT3D: Blutopia sends numbers, stock UNIT3D display text; both read the same.
+  const blutopiaBody = '{"username":"alec","group":"User","uploaded":1649267441664,"downloaded":644245094400,"ratio":2.56,"buffer":966367641600,"seeding":12,"leeching":0,"seedbonus":"1234.50","hit_and_runs":1}';
+  const numeric = await run('unit3d', respond(200, blutopiaBody));
+  assert.deepEqual(numeric.calls, [{ url: 'https://site.example/api/user', authorization: `Bearer ${token}` }]);
+  assert.deepEqual(numeric.result, { kind: 'ok', stats: stats({
+    ratio: 2.56, uploadedBytes: 1649267441664, downloadedBytes: 644245094400, bufferBytes: 966367641600, seeding: 12, leeching: 0, bonus: 1234.5, hitAndRuns: { count: 1, kind: 'lifetime' },
+  }) });
+  const text = await run('unit3d', respond(200, { uploaded: '1.5 TiB', downloaded: '512 GiB', ratio: '3', buffer: '-5.5 GiB', seeding: 3, leeching: 1, seedbonus: '10.00', hit_and_runs: 0 }));
+  assert.deepEqual(text.result, { kind: 'ok', stats: stats({
+    ratio: 3, uploadedBytes: 1.5 * 2 ** 40, downloadedBytes: 512 * 2 ** 30, bufferBytes: Math.round(-5.5 * 2 ** 30), seeding: 3, leeching: 1, bonus: 10, hitAndRuns: { count: 0, kind: 'lifetime' },
+  }) });
+  assert.deepEqual((await run('unit3d', respond(200, { ratio: '∞', buffer: '∞' }))).result, { kind: 'ok', stats: stats({}) });
+  assert.deepEqual((await run('unit3d', respond(404, '{"message":"Not Found"}'))).result, { kind: 'too_old' });
 
-    clear();
-    configure(descriptor);
-    for (const okCase of descriptor.ok) {
-      const { calls, result } = await run(descriptor, respond(200, okCase.body));
-      assert.deepEqual(result, { tracker, kind: 'ok', stats: okCase.stats });
-      assert.equal(calls.length, 1);
-      assert.equal(calls[0].url, descriptor.request.url);
-      assert.equal(calls[0].init.method, descriptor.request.method);
-      assert.deepEqual(calls[0].headers, descriptor.request.headers);
-      assert.equal(calls[0].init.body, descriptor.request.body);
-      if (tracker !== 'beyondhd') {
-        for (const value of secretsOf(descriptor)) assert.equal(calls[0].url.includes(value), false, `${tracker} URL contains a credential`);
-      }
-      assertQuiet(descriptor, result, `${tracker} ok`);
-    }
+  // Gazelle: Orpheus's "token <key>" first; Redacted's bare key when that is refused, remembered for the next check.
+  const passkey = `passkey-${process.pid}-distinctive`;
+  const gazelleOk = { status: 'success', response: {
+    username: 'alec', id: 7, authkey: `authkey-${process.pid}`, passkey,
+    userstats: { uploaded: 2e12, downloaded: 1e12, ratio: 2, requiredratio: 0.6, bonusPoints: 500, bonusPointsPerHour: 1.5, class: 'Member' },
+  } };
+  const gazelleStats = stats({ ratio: 2, uploadedBytes: 2e12, downloadedBytes: 1e12, bonus: 500, requiredRatio: 0.6 });
+  const orpheus = await run('gazelle', respond(200, gazelleOk));
+  assert.deepEqual(orpheus.calls, [{ url: 'https://site.example/ajax.php?action=index', authorization: `token ${token}` }]);
+  assert.deepEqual(orpheus.result, { kind: 'ok', stats: gazelleStats });
+  assert.equal(JSON.stringify(orpheus.result).includes(passkey), false);
+  const redactedCalls = [];
+  const redacted = createTrackerAccounts(database, {
+    env: {},
+    fetch: fakeFetch((url, init) => (init.headers.Authorization === token
+      ? respond(200, gazelleOk)()
+      : respond(200, { status: 'failure', error: 'invalid token' })()), redactedCalls),
+  });
+  assert.deepEqual((await run('gazelle', undefined, token, redacted)).result, { kind: 'ok', stats: gazelleStats });
+  assert.deepEqual(redactedCalls.map((call) => call.authorization), [`token ${token}`, token]);
+  await run('gazelle', undefined, token, redacted);
+  assert.deepEqual(redactedCalls.map((call) => call.authorization), [`token ${token}`, token, token]);
+  const refused = await run('gazelle', respond(200, { status: 'failure', error: 'invalid token' }));
+  assert.deepEqual([refused.result, refused.calls.length], [{ kind: 'rejected' }, 2]);
+  assert.deepEqual((await run('gazelle', respond(200, { status: 'success', response: { userstats: { ratio: -1, uploaded: 5 } } }))).result,
+    { kind: 'ok', stats: stats({ uploadedBytes: 5 }) });
 
-    const failures = [
-      ...descriptor.rejected.map(([body, status]) => [body, status, 'rejected']),
-      ...descriptor.unreachable.map(([body, status]) => [body, status, 'unreachable']),
-      ['{}', 401, 'rejected'],
-      ['{}', 403, 'rejected'],
-      ['{}', 500, 'unreachable'],
-    ];
-    for (const [body, status, kind] of failures) {
-      const { result } = await run(descriptor, respond(status, body));
-      assert.deepEqual(result, { tracker, kind }, `${tracker} ${status} ${body}`);
-      assertQuiet(descriptor, result, `${tracker} ${kind}`);
+  // NexusPHP: the user sits in data.data, and its share_ratio is HTML, so the ratio comes from the byte counts.
+  const nexus = await run('nexusphp', respond(200, { ret: 0, msg: 'OK', data: { data: {
+    id: 3, username: 'alec', uploaded: 3e12, downloaded: 1e12, bonus: 1234.5, seedtime: 3600, share_ratio: '<font color="#000">3.000</font>',
+  } } }));
+  assert.deepEqual(nexus.calls, [{ url: 'https://site.example/api/profile', authorization: `Bearer ${token}` }]);
+  assert.deepEqual(nexus.result, { kind: 'ok', stats: stats({ ratio: 3, uploadedBytes: 3e12, downloadedBytes: 1e12, bonus: 1234.5 }) });
+  assert.deepEqual((await run('nexusphp', respond(200, { ret: -1, msg: 'ERROR', data: [] }))).result, { kind: 'unreachable' });
+
+  for (const software of ['unit3d', 'gazelle', 'nexusphp']) {
+    for (const [handler, kind] of [
+      [respond(401, '{}'), 'rejected'], [respond(403, '{}'), 'rejected'], [respond(500, '{}'), 'unreachable'], [respond(200, '[]'), 'unreachable'],
+      [respond(200, 'not json'), 'unreachable'], [respond(200, `{"pad":"${'x'.repeat(1_000_001)}"}`), 'unreachable'], [networkFailure, 'unreachable'], [timeout, 'unreachable'],
+    ]) assert.deepEqual((await run(software, handler)).result, { kind }, `${software} ${kind}`);
+    for (const credential of ['', '  ']) {
+      const nothing = await run(software, respond(200, '{}'), credential);
+      assert.deepEqual([nothing.result, nothing.calls.length], [{ kind: 'not_configured' }, 0], software);
     }
-    for (const handler of [networkFailure, timeout]) {
-      const { result } = await run(descriptor, handler);
-      assert.deepEqual(result, { tracker, kind: 'unreachable' });
-      assertQuiet(descriptor, result, `${tracker} thrown`);
-    }
+    assert.deepEqual(await createTrackerAccounts(database, { fetch: networkFailure, env: {} }).test('site.example', software, undefined), { kind: 'not_configured' });
   }
+  const other = await run('other', respond(200, '{}'));
+  assert.deepEqual([other.result, other.calls.length], [{ kind: 'unsupported' }, 0]);
 
-  clear();
-  const beyond = descriptors[2];
-  configure(beyond);
-  setSetting(database, 'credentials', 'beyondhd.rssKey', secret('beyondhd-rss'));
-  const withRss = await run(beyond, respond(200, beyond.ok[0].body));
-  assert.deepEqual(withRss.result, { tracker: 'beyondhd', kind: 'ok', stats: 'unsupported' });
-  assert.equal(withRss.calls[0].init.body, JSON.stringify({ action: 'search', page: 1, rsskey: secret('beyondhd-rss') }));
-  assertQuiet({ credentials: { rss: secret('beyondhd-rss') } }, withRss.result, 'beyondhd rss');
+  // Saved values: one check per tracker every five minutes, and a new one as soon as the software or credential changes.
+  let clock = 0;
+  const savedCalls = [];
+  const accounts = createTrackerAccounts(database, { env: {}, now: () => clock, fetch: fakeFetch(respond(200, blutopiaBody), savedCalls) });
+  setSetting(database, 'trackerConfiguration', 'trackers.site.example', 'added');
+  assert.deepEqual(await accounts.stats(), [{ host: 'site.example', software: 'other', connection: { kind: 'unsupported' } }]);
+  saveTrackerSoftware(database, 'site.example', 'unit3d');
+  assert.deepEqual(await accounts.connection('site.example'), { kind: 'not_configured' });
+  saveTrackerCredential(database, 'site.example', token);
+  assert.deepEqual(await accounts.connection('site.example'), numeric.result);
+  await Promise.all([accounts.connection('site.example'), accounts.stats()]);
+  clock += 5 * 60_000 - 1;
+  await accounts.connection('site.example');
+  assert.equal(savedCalls.length, 1);
+  clock += 1;
+  await accounts.connection('site.example');
+  assert.equal(savedCalls.length, 2);
+  saveTrackerCredential(database, 'site.example', `${token}-new`);
+  await accounts.connection('site.example');
+  assert.equal(savedCalls.length, 3);
 
-  clear();
-  const emptyFetch = async () => { throw new Error('no request expected'); };
-  assert.deepEqual(await getTrackerAccountStats(database, { fetch: emptyFetch }), [
-    { tracker: 'blutopia', kind: 'not_configured' },
-    { tracker: 'privatehd', kind: 'not_configured' },
-    { tracker: 'beyondhd', kind: 'not_configured' },
-  ]);
-  for (const descriptor of descriptors) configure(descriptor);
-  const bodies = new Map(descriptors.map((descriptor) => [descriptor.url, descriptor.ok[0].body]));
-  const allOkFetch = async (url) => new Response(bodies.get(new URL(url).origin), { status: 200 });
-  assert.deepEqual(await getTrackerAccountStats(database, { fetch: allOkFetch }), descriptors.map((descriptor) => ({
-    tracker: descriptor.tracker, kind: 'ok', stats: descriptor.ok[0].stats,
-  })));
-
-  const fixedArray = [{ tracker: 'blutopia', kind: 'not_configured' }, { tracker: 'privatehd', kind: 'rejected' }, { tracker: 'beyondhd', kind: 'ok', stats: 'unsupported' }];
-  const { app } = await makeApp({ api: createApiRoutes(database, { trackers: { stats: async () => fixedArray } }) });
+  // The browser's tracker list is the shared checker's, and the advice route reads that tracker's account.
+  const { app } = await makeApp({ api: createApiRoutes(database, { trackers: accounts }) });
   assert.equal((await app.request('/api/trackers')).status, 401);
   const { session } = await signIn(app);
   const listed = await app.request('/api/trackers', { headers: { Cookie: session } });
   assert.equal(listed.status, 200);
-  assert.deepEqual(await listed.json(), fixedArray);
+  const listedText = await listed.text();
+  assert.equal(listedText.includes(token), false);
+  assert.deepEqual(JSON.parse(listedText), [{ host: 'site.example', software: 'unit3d', connection: numeric.result }]);
+  assert.equal(savedCalls.length, 3);
   // Dropping the hash check on the advice route turns this red.
   assert.equal((await app.request('/api/advice/not-a-hash', { headers: { Cookie: session } })).status, 400);
   const advice = await app.request(`/api/advice/${'a'.repeat(40)}`, { headers: { Cookie: session } });
   assert.deepEqual(await advice.json(), { recommendation: 'keep', reason: 'Seeding time unknown (torrent not in rTorrent)', globalRatio: null });
   const posted = await app.request('/api/trackers', { method: 'POST', headers: { ...jsonHeaders('https://media.example'), Cookie: session }, body: '{}' });
   assert.notEqual(posted.status, 200);
+
+  // Gazelle's "Rate limit exceeded" (HTTP 200) or a 429 says nothing about the key: reading it as rejected, trying the
+  // other header form, or reusing it for five minutes turns this red.
+  for (const handler of [respond(200, { status: 'failure', error: 'Rate limit exceeded' }), respond(429, '')]) {
+    const limited = await run('gazelle', handler);
+    assert.deepEqual([limited.result, limited.calls.length], [{ kind: 'unreachable' }, 1]);
+  }
+  let gazelleAnswer = { status: 'failure', error: 'Rate limit exceeded' };
+  const limitedCalls = [];
+  const limitedAccounts = createTrackerAccounts(database, { env: {}, now: () => clock, fetch: fakeFetch(() => respond(200, gazelleAnswer)(), limitedCalls) });
+  setSetting(database, 'trackerConfiguration', 'trackers.limited.example', 'added');
+  saveTrackerSoftware(database, 'limited.example', 'gazelle');
+  saveTrackerCredential(database, 'limited.example', token);
+  assert.deepEqual(await limitedAccounts.connection('limited.example'), { kind: 'unreachable' });
+  gazelleAnswer = gazelleOk;
+  assert.deepEqual(await limitedAccounts.connection('limited.example'), { kind: 'ok', stats: gazelleStats });
+  assert.deepEqual(await limitedAccounts.connection('limited.example'), { kind: 'ok', stats: gazelleStats });
+  assert.equal(limitedCalls.length, 2);
 });
 
 // Dropping an escape, mis-reading a scalar, or resolving a fault or malformed response corrupts every rTorrent call.
@@ -4832,11 +4932,7 @@ test('operator command stores settings from stdin and checks connections without
     'rtorrent.username': `rtorrent-user-${pid}-distinctive`,
     'rtorrent.password': `rtorrent-password-${pid}-distinctive`,
     'plex.token': `plex-token-${pid}-distinctive`,
-    'blutopia.apiToken': `blutopia-token-${pid}-distinctive`,
-    'privatehd.username': `privatehd-user-${pid}-distinctive`,
-    'privatehd.password': `privatehd-password-${pid}-distinctive`,
-    'privatehd.pid': `privatehd-pid-${pid}-distinctive`,
-    'beyondhd.apiKey': `beyondhd-key-${pid}-distinctive`,
+    'trackers.unreachable.invalid': `tracker-token-${pid}-distinctive`,
   };
 
   const usage = await cli([]);
@@ -4858,7 +4954,7 @@ test('operator command stores settings from stdin and checks connections without
 
   const unconfigured = await cli(['connections', 'check']);
   assert.equal(unconfigured.code, 1, unconfigured.stderr);
-  assert.equal(unconfigured.stdout, 'sonarr: not_configured\nradarr: not_configured\nrtorrent: not_configured\nplex: not_configured\nblutopia: not_configured\nprivatehd: not_configured\nbeyondhd: not_configured\n');
+  assert.equal(unconfigured.stdout, 'sonarr: not_configured\nradarr: not_configured\nrtorrent: not_configured\nplex: not_configured\n');
 
   const { createServer } = await import('node:http');
   const requests = [];
@@ -4873,7 +4969,7 @@ test('operator command stores settings from stdin and checks connections without
     server.close();
   });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const urls = { 'sonarr.url': base, 'radarr.url': base, 'rtorrent.url': `${base}/xmlrpc`, 'plex.url': base, 'blutopia.url': base, 'privatehd.url': base, 'beyondhd.url': base };
+  const urls = { 'sonarr.url': base, 'radarr.url': base, 'rtorrent.url': `${base}/xmlrpc`, 'plex.url': base };
   for (const [category, entries] of [['serviceAddresses', urls], ['credentials', credentials]]) {
     for (const [key, value] of Object.entries(entries)) {
       const result = await cli(['settings', 'set', category, key], value);
@@ -4881,9 +4977,20 @@ test('operator command stores settings from stdin and checks connections without
     }
   }
 
+  // One line per added tracker, by hostname: "other" software has no account connection, a tracker with no credential is
+  // not configured, and a UNIT3D one at a name that never resolves (.invalid) is unreachable.
+  for (const [category, key, value] of [
+    ['trackerConfiguration', 'trackers.example.net', 'added'],
+    ['trackerConfiguration', 'trackers.notset.example', 'added'], ['trackerConfiguration', 'software.notset.example', 'gazelle'],
+    ['trackerConfiguration', 'trackers.unreachable.invalid', 'added'], ['trackerConfiguration', 'software.unreachable.invalid', 'unit3d'],
+  ]) {
+    const result = await cli(['settings', 'set', category, key], value);
+    assert.equal(result.code, 0, result.stderr);
+  }
+
   const rejected = await cli(['connections', 'check']);
   assert.equal(rejected.code, 1, rejected.stderr);
-  assert.equal(rejected.stdout, 'sonarr: rejected\nradarr: rejected\nrtorrent: rejected\nplex: rejected\nblutopia: rejected\nprivatehd: rejected\nbeyondhd: rejected\n');
+  assert.equal(rejected.stdout, 'sonarr: rejected\nradarr: rejected\nrtorrent: rejected\nplex: rejected\nexample.net: unsupported\nnotset.example: not_configured\nunreachable.invalid: unreachable\n');
   for (const value of Object.values(credentials)) {
     assert.equal(rejected.stdout.includes(value), false);
     assert.equal(rejected.stderr.includes(value), false);
@@ -4894,8 +5001,6 @@ test('operator command stores settings from stdin and checks connections without
   const basic = Buffer.from(`${credentials['rtorrent.username']}:${credentials['rtorrent.password']}`).toString('base64');
   assert.ok(sent('authorization').includes(`Basic ${basic}`));
   assert.ok(sent('x-plex-token').includes(credentials['plex.token']));
-  assert.ok(sent('authorization').includes(`Bearer ${credentials['blutopia.apiToken']}`));
-  assert.ok(requests.some((request) => request.url.startsWith(`/api/torrents/${credentials['beyondhd.apiKey']}`)));
 
   const deleted = await cli(['settings', 'delete', 'credentials', 'plex.token']);
   assert.equal(deleted.code, 0, deleted.stderr);
@@ -6723,16 +6828,20 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 2_000_000_000_000, totalSpace: 4_000_000_000_000 }],
     '/api/v3/update': [],
   };
-  const blutopiaStats = (ratio, hitAndRuns) => ({
-    tracker: 'blutopia',
-    kind: 'ok',
-    stats: { username: 'owner', group: 'User', uploaded: '', downloaded: '', ratio, buffer: '', seeding: null, leeching: null, seedbonus: null, hitAndRuns },
+  const accountStats = (host, fields) => ({
+    host,
+    connection: { kind: 'ok', stats: {
+      ratio: null, uploadedBytes: null, downloadedBytes: null, bufferBytes: null, seeding: null, leeching: null, bonus: null, hitAndRuns: null, requiredRatio: null, ...fields,
+    } },
   });
+  const blutopiaStats = (ratio, hitAndRuns) => accountStats('blutopia.cc', { ratio, hitAndRuns: { count: hitAndRuns, kind: 'lifetime' } });
   let caseNumber = 0;
   const run = async (input = {}) => {
     caseNumber += 1;
     const database = openDatabase(join(root, String(caseNumber), 'media-manager.sqlite'));
     t.after(() => database.close());
+    // Blutopia's minimum ratio of 0.4 comes from its rule.
+    await saveOwnerRules(database);
     // A recent ok backup row keeps the healthy baseline quiet; backupAt null leaves backup_runs empty.
     if (input.backupAt !== null) {
       database.prepare("INSERT INTO backup_runs (started_at, finished_at, outcome, detail) VALUES (?, ?, 'ok', '')").run(0, input.backupAt ?? now - hour);
@@ -6752,7 +6861,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       check: async () => input.statuses?.[service] ?? ok,
       request: async (path) => ({ status: 200, body: { ...healthy, ...input.arr?.[service] }[path] }),
     });
-    const notConfigured = ['blutopia', 'privatehd', 'beyondhd'].map((tracker) => ({ tracker, kind: 'not_configured' }));
+    const notConfigured = [{ host: 'blutopia.cc', connection: { kind: 'not_configured' } }];
     const published = [];
     const health = createHealth({
       database,
@@ -6821,15 +6930,29 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       host: 'blutopia.cc', account: { kind: 'ok', ratio: 1.5, ratioMinimum: 0.4, hitAndRuns: 2, hitAndRunsIsLifetime: true },
     },
     {
-      name: 'PrivateHD stats unsupported, no torrent yet', input: { accounts: [{ tracker: 'privatehd', kind: 'ok', stats: 'unsupported' }] },
+      name: 'announce subdomain shows its tracker\'s account', input: { torrentHost: 'tracker.blutopia.cc', accounts: [blutopiaStats(1.5, 2)] },
       level: 'ok', errors: 0, warnings: 0, message: undefined,
-      host: 'privatehd', account: { kind: 'unavailable', reason: 'unsupported' },
+      host: 'tracker.blutopia.cc', account: { kind: 'ok', ratio: 1.5, ratioMinimum: 0.4, hitAndRuns: 2, hitAndRunsIsLifetime: true },
+    },
+    {
+      name: 'UNIT3D older than v8.3.4, no torrent yet', input: { accounts: [{ host: 'old.example', connection: { kind: 'too_old' } }] },
+      level: 'ok', errors: 0, warnings: 0, message: undefined,
+      host: 'old.example', account: { kind: 'unavailable', reason: 'unsupported' },
     },
     {
       name: 'Blutopia ratio below its minimum', input: { torrentHost: 'blutopia.cc', accounts: [blutopiaStats(0.3, 0)] },
-      level: 'warning', errors: 0, warnings: 1, message: 'Blutopia ratio 0.30 is below its minimum 0.4',
+      level: 'warning', errors: 0, warnings: 1, message: 'blutopia.cc ratio 0.30 is below its minimum 0.4',
+    },
+    // A Gazelle account's own required ratio beats its rule's minimum.
+    {
+      name: 'Gazelle ratio below its required ratio', input: { accounts: [accountStats('gazelle.example', { ratio: 0.5, requiredRatio: 0.6 })] },
+      level: 'warning', errors: 0, warnings: 1, message: 'gazelle.example ratio 0.50 is below its minimum 0.6',
+      host: 'gazelle.example', account: { kind: 'ok', ratio: 0.5, ratioMinimum: 0.6, hitAndRuns: null, hitAndRunsIsLifetime: false },
     },
   ];
+  // A tracker on "other" software has no account connection, so it is listed only once it has torrents.
+  const otherOnly = await run({ accounts: [{ host: 'other.example', connection: { kind: 'unsupported' } }] });
+  assert.deepEqual(otherOnly.snapshot.trackers, []);
   for (const { name, input, level, errors, warnings, message, docsUrl, host, account } of cases) {
     const { snapshot, badge } = await run(input);
     if (host !== undefined) assert.deepEqual(snapshot.trackers.find((tracker) => tracker.host === host)?.account, account, name);
@@ -6844,19 +6967,19 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
   }
 
   // Dropping the remembered hit-and-run count, or warning on the first check after a start, turns this red.
-  await t.test('a rise in the Blutopia hit-and-run count warns on the next check', async () => {
+  await t.test('a rise in a UNIT3D tracker\'s hit-and-run count warns on the next check', async () => {
     const input = { accounts: [blutopiaStats(1.5, 2)] };
     const { snapshot: first, health } = await run(input);
     assert.deepEqual(first.problems, []);
     input.accounts = [blutopiaStats(1.5, 3)];
     const second = await health.check();
     assert.deepEqual(second.problems.map(({ id, level, message }) => ({ id, level, message })), [
-      { id: 'hnr:blutopia', level: 'warning', message: 'Blutopia hit-and-run count rose from 2 to 3 (lifetime count)' },
+      { id: 'hnr:blutopia.cc', level: 'warning', message: 'blutopia.cc hit-and-run count rose from 2 to 3 (lifetime count)' },
     ]);
     // Moving the baseline to the latest count on every check, so the warning clears at the next check, turns this red.
     const third = await health.check();
     assert.deepEqual(third.problems.map(({ id, message }) => ({ id, message })), [
-      { id: 'hnr:blutopia', message: 'Blutopia hit-and-run count rose from 2 to 3 (lifetime count)' },
+      { id: 'hnr:blutopia.cc', message: 'blutopia.cc hit-and-run count rose from 2 to 3 (lifetime count)' },
     ]);
   });
 

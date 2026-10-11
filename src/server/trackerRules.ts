@@ -1,6 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { deleteSetting, getSetting, listSettingKeys, setSetting } from './settings.js';
-import { trackers } from './services/trackerAccounts.js';
 
 // One row of a seed-time table: the first row whose upToGB covers the size (the boundary belongs to the row) gives
 // hours + perGB·GB + lnGB·ln(GB), with GB as 1000^3 bytes. The last row has no upToGB and covers every larger size.
@@ -218,9 +217,6 @@ export const removeTracker = (database: DatabaseSync, host: string) => {
 // "BeyondHD (Prowlarr)" and "beyond-hd.me" both become "beyondhd"; the hostname loses its last label.
 const normalise = (name: string) => name.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[^a-z0-9]/g, '');
 const hostName = (host: string) => normalise(host.replace(/\.[^.]*$/, ''));
-
-// The tracker whose account stats belong to this rule hostname.
-export const trackerOf = (host: string) => trackers.find((tracker) => tracker === hostName(host));
 
 // Matches an added tracker's hostname (or one of its parent domains) exactly, or a Sonarr/Radarr indexer name whose normalised form
 // equals exactly one hostname's normalised form. Substring matches never count, so "hd" matches nothing.

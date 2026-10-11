@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { deleteSetting, getSetting, setSetting } from './settings.js';
-import type { Tracker } from './services/trackerAccounts.js';
-import { checkHitAndRun, findTrackerRule, type HitAndRunRule, isRecord, trackerOf } from './trackerRules.js';
+import type { TrackerAccountStats } from './services/trackerAccounts.js';
+import { checkHitAndRun, findTrackerRule, type HitAndRunRule, isRecord } from './trackerRules.js';
 import { listTorrents, type Torrent } from './torrents.js';
 
 export type Recommendation = 'safe' | 'keep' | 'unconfirmed';
@@ -125,7 +125,7 @@ const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Mar
 export const adviseRemoval = async (
   database: DatabaseSync,
   hash: string,
-  options: { now: number; accountRatio(tracker: Tracker): Promise<number | null> },
+  options: { now: number; accountStats(host: string): Promise<TrackerAccountStats | null> },
 ): Promise<RemovalAdvice> => {
   const torrent = listTorrents(database).find((row) => row.hash === hash);
   if (torrent === undefined || torrent.goneAt !== null) {
@@ -145,12 +145,14 @@ export const adviseRemoval = async (
   const margins = readMargins(database, host);
   let { recommendation, reason } = judge(torrent, rule, host, margins, options.now);
   let globalRatio: string | null = null;
-  if (rule.minGlobalRatio !== null) {
-    const tracker = trackerOf(host);
-    const ratio = tracker === undefined ? null : await options.accountRatio(tracker);
+  const account = await options.accountStats(host);
+  // A Gazelle site reports the account's own required ratio, which beats the rule's.
+  const minimum = account?.requiredRatio ?? rule.minGlobalRatio;
+  if (minimum !== null) {
+    const ratio = account?.ratio ?? null;
     if (ratio === null) globalRatio = `Global ratio unknown: your ${host} ratio can't be read`;
-    else if (ratio < rule.minGlobalRatio * margins.globalRatioFactor) {
-      globalRatio = `Keep for ratio: your ${host} ratio is ${ratioText(ratio)}, minimum ${rule.minGlobalRatio}`;
+    else if (ratio < minimum * margins.globalRatioFactor) {
+      globalRatio = `Keep for ratio: your ${host} ratio is ${ratioText(ratio)}, minimum ${minimum}`;
       recommendation = 'keep';
     }
   }
