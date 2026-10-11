@@ -6331,7 +6331,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const { setSetting } = await import(settingsModuleUrl);
   const { createArr } = await import(arrModuleUrl);
   const { createReleases } = await import(releasesModuleUrl);
-  const { createGrabs, parseOverrides } = await import(grabsModuleUrl);
+  const { createGrabRoutes, createGrabs, parseOverrides } = await import(grabsModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-grabs-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -6343,6 +6343,8 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   const quality = { quality: { id: 3, name: 'WEBDL-1080p' }, revision: { version: 2, real: 0, isRepack: false } };
   const posts = [];
   let grabResponse = () => new Response('{}', { status: 200 });
+  const grabbedHistory = [{ downloadId: 'OTHER', data: { guid: 'g-other' } }, { downloadId: 'ABC123HASH', data: { guid: 'g-rejected' } }];
+  let history = grabbedHistory;
   const fetch = async (url, init = {}) => {
     const { pathname } = new URL(String(url));
     if (init.method === 'POST') {
@@ -6355,12 +6357,7 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
         rejections: ['Not an upgrade for existing episode file(s)'],
       }]), { status: 200 });
     }
-    if (pathname === '/api/v3/history') {
-      return new Response(JSON.stringify({ records: [
-        { downloadId: 'OTHER', data: { guid: 'g-other' } },
-        { downloadId: 'ABC123HASH', data: { guid: 'g-rejected' } },
-      ] }), { status: 200 });
-    }
+    if (pathname === '/api/v3/history') return new Response(JSON.stringify({ records: history }), { status: 200 });
     if (pathname === '/api/v3/qualitydefinition') {
       return new Response(JSON.stringify([{ quality: { id: 3, name: 'WEBDL-1080p' } }, { quality: { id: 4, name: 'HDTV-720p', resolution: 720 } }]), { status: 200 });
     }
@@ -6403,6 +6400,48 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.equal(refused.record.state, 'failed');
   assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
   assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent', 'sent']);
+
+  // Recording a grab whose request threw as failed turns this red: Sonarr may have grabbed it, and the veto would then remove the owner's own grab.
+  const ownTitles = grabs.recentTitles('sonarr', 0).length;
+  grabResponse = () => { throw new TypeError('fetch failed'); };
+  history = [];
+  const unanswered = await grabs.grab(target, 'g-rejected', 'replace');
+  assert.equal(unanswered.record.state, 'sent');
+  assert.equal(unanswered.record.failure, "Sonarr didn't answer the grab, so it may still have gone through.");
+  assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 1);
+  assert.ok(grabs.pending('replace').some((record) => record.id === unanswered.record.id));
+  history = grabbedHistory;
+  const confirmed = await grabs.resolveDownloadId(unanswered.record);
+  assert.deepEqual([confirmed.state, confirmed.downloadId, confirmed.failure], ['sent', 'ABC123HASH', null], 'history confirms the grab and clears the doubt');
+
+  // Mapping a route outcome to the wrong status turns the matching row red, and the screen then shows the wrong message.
+  const routes = createGrabRoutes(grabs);
+  const call = async (path, init) => (await routes.request(path, init)).status;
+  const post = (body) => call('/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  const cases = [
+    ['bad JSON', () => post('{'), 400],
+    ['unknown body key', () => post({ target, guid: 'g-rejected', intent: 'grab', extra: 1 }), 400],
+    ['bad intent', () => post({ target, guid: 'g-rejected', intent: 'upgrade' }), 400],
+    ['bad overrides', () => post({ target, guid: 'g-rejected', intent: 'grab', overrides: { movieId: 9 } }), 400],
+    ['unknown release', () => post({ target, guid: 'g-missing', intent: 'grab' }), 404],
+    ['refused grab', () => {
+      grabResponse = () => new Response(JSON.stringify({ message: 'Release rejected' }), { status: 400 });
+      return post({ target, guid: 'g-rejected', intent: 'grab' });
+    }, 409],
+    ['sent grab', () => {
+      grabResponse = () => new Response('{}', { status: 200 });
+      return post({ target, guid: 'g-rejected', intent: 'grab' });
+    }, 201],
+    ['not configured', async () => {
+      setSetting(database, 'serviceAddresses', 'sonarr.url', '');
+      const status = await post({ target, guid: 'g-rejected', intent: 'grab' });
+      setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65041');
+      return status;
+    }, 503],
+    ['list for a bad target', () => call('/?kind=episode&seriesId=5'), 400],
+    ['list', () => call('/?kind=episode&seriesId=5&episodeId=50'), 200],
+  ];
+  for (const [name, run, status] of cases) assert.equal(await run(), status, name);
 
   assert.equal(parseOverrides({ seriesId: 5 }, 'sonarr'), undefined);
   assert.equal(parseOverrides({ movieId: 5 }, 'sonarr'), undefined);
