@@ -7,7 +7,7 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import { createAuthentication, isLoopback } from './auth.js';
-import { createDiscoverRoutes, type Discover } from './discover.js';
+import { createDiscoverRoutes, type Discover } from './discover/index.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
 import { createAddRoutes, type Add } from './add.js';

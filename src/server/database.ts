@@ -387,6 +387,8 @@ export const applicationMigrations = [
   END WHERE failure IS NOT NULL;`,
   // Where the history check last read imports and failures; null makes the next check backfill the full lookback.
   `ALTER TABLE grab_checkpoints ADD COLUMN outcomes_checked_at INTEGER;`,
+  // Saved Discover rows, so the home screen reads results and never waits on TMDB or Trakt.
+  `CREATE TABLE discover_rows (key TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL, read_at INTEGER NOT NULL) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

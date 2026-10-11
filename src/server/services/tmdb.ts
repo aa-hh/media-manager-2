@@ -6,6 +6,9 @@ const BASE_URL = 'https://api.themoviedb.org/3';
 const LABEL = 'TMDB';
 const LIST_TTL_MS = 5 * 60_000;
 const REFERENCE_TTL_MS = 24 * 60 * 60_000;
+// TMDB allows about 50 requests a second per address; a cold Discover load asks for a few hundred summaries at once.
+const MAX_IN_FLIGHT = 20;
+const DEFAULT_RETRY_AFTER_SECONDS = 2;
 
 export type TmdbMediaType = 'movie' | 'tv';
 export type TmdbDiscoverParams = Partial<Record<
@@ -25,6 +28,7 @@ export type TmdbListItem = {
   date: string | null;
   voteAverage: number | null;
   genreIds: number[];
+  popularity: number | null;
 };
 export type TmdbPage = { page: number; totalPages: number; totalResults: number; results: TmdbListItem[] };
 export type TmdbGenre = { id: number; name: string };
@@ -74,6 +78,7 @@ const listItem = (item: Record<string, unknown>, fallback: TmdbMediaType | null)
     date: text(item.release_date) ?? text(item.first_air_date),
     voteAverage: number(item.vote_average),
     genreIds: Array.isArray(item.genre_ids) ? item.genre_ids.filter((genre): genre is number => typeof genre === 'number') : [],
+    popularity: number(item.popularity),
   };
 };
 const listItems = (value: unknown, fallback: TmdbMediaType | null) => records(value).flatMap((item) => listItem(item, fallback) ?? []);
@@ -134,26 +139,51 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
 
   const apiKey = () => readSetting(database, 'credentials', 'tmdb.apiKey');
 
+  // At most MAX_IN_FLIGHT requests at once; a finished request hands its place straight to the next one waiting.
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  const acquire = () => {
+    if (active < MAX_IN_FLIGHT) {
+      active += 1;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => waiting.push(resolve));
+  };
+  const release = () => {
+    const next = waiting.shift();
+    if (next === undefined) active -= 1;
+    else next();
+  };
+  const send = async (url: string): Promise<{ status: number; retryAfter: string | null; body: unknown } | undefined> => {
+    await acquire();
+    try {
+      const response = await requestWithTimeout(fetchImpl, url, { headers: { Accept: 'application/json' } });
+      const body: unknown = await response.json().catch(() => undefined);
+      return { status: response.status, retryAfter: response.headers.get('Retry-After'), body };
+    } catch {
+      return undefined;
+    } finally {
+      release();
+    }
+  };
+
   // The key goes only into the request URL; no message or cache key carries that URL.
+  // A 429 waits for TMDB's Retry-After and tries once more.
   const get = async (operation: string, path: string, query: Record<string, string | number | boolean> = {}): Promise<Result<unknown>> => {
     const key = apiKey();
     if (key === undefined) return notConfigured(LABEL, operation);
     const url = new URL(BASE_URL + path);
     for (const [name, value] of Object.entries(query)) url.searchParams.set(name, String(value));
     url.searchParams.set('api_key', key);
-    let response: Response;
-    try {
-      response = await requestWithTimeout(fetchImpl, url.href, { headers: { Accept: 'application/json' } });
-    } catch {
-      return unreachable(LABEL, operation);
+    let answer = await send(url.href);
+    if (answer?.status === 429) {
+      const seconds = Number.parseInt(answer.retryAfter ?? '', 10);
+      await new Promise((resolve) => setTimeout(resolve, (seconds >= 0 ? seconds : DEFAULT_RETRY_AFTER_SECONDS) * 1000));
+      answer = await send(url.href);
     }
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      body = undefined;
-    }
-    const result = classify(LABEL, operation, { status: response.status, body });
+    if (answer === undefined) return unreachable(LABEL, operation);
+    const { status, body } = answer;
+    const result = classify(LABEL, operation, { status, body });
     return result.kind === 'ok' ? { kind: 'ok', value: result.value.body } : result;
   };
 
@@ -219,6 +249,29 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
     return parsed === undefined ? { kind: 'refused', status: null, message: `${LABEL} sent no usable ${operation}.` } : { kind: 'ok', value: parsed };
   };
 
+  // Not cached here either: the title store keeps summaries and availability.
+  // A single title's reply names its genres as { id, name } instead of a list's genre_ids.
+  const summary = async (mediaType: TmdbMediaType, id: number): Promise<Result<TmdbListItem>> => {
+    const operation = `the ${mediaType === 'movie' ? 'movie' : 'show'} summary`;
+    const result = await get(operation, `/${mediaType}/${id}`);
+    if (result.kind !== 'ok') return result;
+    const body = isRecord(result.value) ? result.value : {};
+    const parsed = listItem(body, mediaType);
+    return parsed === undefined
+      ? { kind: 'refused', status: null, message: `${LABEL} sent no usable ${operation}.` }
+      : { kind: 'ok', value: { ...parsed, genreIds: named(body.genres).map((genre) => genre.id) } };
+  };
+
+  // Flatrate provider ids by country code; rent, buy, free and ads entries are not streaming subscriptions.
+  const watchProviders = async (mediaType: TmdbMediaType, id: number): Promise<Result<Record<string, number[]>>> => {
+    const result = await get(`the ${mediaType === 'movie' ? 'movie' : 'show'} streaming availability`, `/${mediaType}/${id}/watch/providers`);
+    if (result.kind !== 'ok') return result;
+    const countries = isRecord(result.value) && isRecord(result.value.results) ? result.value.results : {};
+    return { kind: 'ok', value: Object.fromEntries(Object.entries(countries).flatMap(([country, entry]) => (
+      isRecord(entry) ? [[country, records(entry.flatrate).flatMap((provider) => number(provider.provider_id) ?? [])]] : []
+    ))) };
+  };
+
   const check = async (): Promise<ConnectionStatus> => {
     const result = await get('the connection check', '/authentication');
     if (result.kind === 'not_configured' || result.kind === 'rejected') return { kind: result.kind };
@@ -226,5 +279,5 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
     return { kind: 'ok', version: '3' };
   };
 
-  return { check, discover, trending, genres, regions, providers, details };
+  return { check, discover, trending, genres, regions, providers, details, summary, watchProviders };
 };

@@ -1023,6 +1023,19 @@ test('Plex owner authentication', async (t) => {
   });
 });
 
+test('discover routes, rows and recipes never reach upstream', async () => {
+  // A route or read-model file importing a client or the title store, or a route calling fetch, turns this red.
+  for (const name of ['routes', 'rows', 'recipes']) {
+    const source = await readFile(new URL(`../src/server/discover/${name}.ts`, import.meta.url), 'utf8');
+    // Type-only imports never reach a client at runtime.
+    const imports = source.split('\n').filter((line) => line.startsWith('import') && !line.startsWith('import type'));
+    for (const banned of ['services/tmdb', 'services/trakt', 'titleStore']) {
+      assert.equal(imports.some((line) => line.includes(banned)), false, `${name}.ts imports ${banned}`);
+    }
+    if (name === 'routes') assert.equal(source.includes('.fetch('), false);
+  }
+});
+
 test('the Plex sign-in popup is used when it opens, skipped when blocked or on a phone, and noticed when closed early', async (t) => {
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/plexPopup.ts', import.meta.url), 'utf8');
@@ -2323,6 +2336,65 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
       assert.equal(JSON.stringify(failure).includes(key), false, failure.kind);
     }
   });
+
+  // Asking for appended parts, dropping genre ids, date or popularity, or accepting a body without an id turns this red.
+  await t.test('a title summary parses one title and refuses a body without an id', async () => {
+    const { tmdb, calls } = connect(() => json({ id: 7, name: 'Show', genres: [{ id: 18, name: 'Drama' }], first_air_date: '2022-02-17', popularity: 12.5, vote_average: 8.1 }));
+    assert.deepEqual(await tmdb.summary('tv', 7), { kind: 'ok', value: {
+      id: 7, mediaType: 'tv', title: 'Show', overview: null, posterPath: null, backdropPath: null, date: '2022-02-17', voteAverage: 8.1, genreIds: [18], popularity: 12.5,
+    } });
+    assert.equal(calls[0].origin + calls[0].pathname, 'https://api.themoviedb.org/3/tv/7');
+    assert.equal(calls[0].searchParams.has('append_to_response'), false);
+    const refused = await connect(() => json({ name: 'No id' })).tmdb.summary('movie', 1);
+    assert.equal(refused.kind, 'refused');
+  });
+
+  // Removing the in-flight limit, or letting a waiting request jump the queue past it, turns this red.
+  await t.test('no more than 20 requests are in flight at once', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const { tmdb, calls } = connect(async (url) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setImmediate(resolve));
+      inFlight -= 1;
+      return json({ id: Number(url.pathname.split('/').at(-1)), title: 'Film' });
+    });
+    const results = await Promise.all(Array.from({ length: 50 }, (_, index) => tmdb.summary('movie', index + 1)));
+    assert.ok(results.every((result) => result.kind === 'ok'));
+    assert.equal(calls.length, 50);
+    assert.equal(peak, 20);
+  });
+
+  // Giving up on the first 429, or retrying more than once, turns this red.
+  await t.test('a 429 waits for Retry-After and retries once', async () => {
+    let answers = 0;
+    const { tmdb, calls } = connect(() => {
+      answers += 1;
+      return answers === 1 ? new Response('', { status: 429, headers: { 'Retry-After': '0' } }) : json({ id: 5, title: 'Film' });
+    });
+    assert.equal((await tmdb.summary('movie', 5)).kind, 'ok');
+    assert.equal(calls.length, 2);
+    const limited = connect(() => new Response('', { status: 429, headers: { 'Retry-After': '0' } }));
+    assert.equal((await limited.tmdb.summary('movie', 5)).kind, 'refused');
+    assert.equal(limited.calls.length, 2);
+  });
+
+  // Reading rent or buy entries as streaming, keeping a non-numeric id, or putting the key anywhere but the api_key parameter turns this red.
+  await t.test('streaming availability keeps flatrate provider ids by country', async () => {
+    const { tmdb, calls } = connect(() => json({ results: { US: { flatrate: [{ provider_id: 8 }, { provider_id: 'x' }], rent: [{ provider_id: 2 }] }, GB: {} } }));
+    assert.deepEqual(await tmdb.watchProviders('movie', 550), { kind: 'ok', value: { US: [8], GB: [] } });
+    assert.equal(calls[0].origin + calls[0].pathname, 'https://api.themoviedb.org/3/movie/550/watch/providers');
+    assert.deepEqual([...calls[0].searchParams.keys()], ['api_key']);
+    assert.equal(calls[0].href.replace(`api_key=${key}`, '').includes(key), false);
+    for (const failure of [
+      await connect(() => json({ status_message: `bad ${key}` }, 401)).tmdb.watchProviders('tv', 1),
+      await connect(() => { throw new TypeError(`fetch failed for ${key}`); }).tmdb.watchProviders('movie', 1),
+    ]) {
+      assert.notEqual(failure.kind, 'ok');
+      assert.equal(JSON.stringify(failure).includes(key), false, failure.kind);
+    }
+  });
 });
 
 test('the Trakt check sends the Client ID only to Trakt and classifies each answer', async (t) => {
@@ -2365,6 +2437,119 @@ test('the Trakt check sends the Client ID only to Trakt and classifies each answ
     [() => { throw new TypeError(`fetch failed for ${clientId}`); }, 'unreachable'],
   ];
   for (const [respond, kind] of cases) assert.deepEqual((await check(respond)).status, { kind });
+
+  // Dropping a header, putting the Client ID in the URL, or parsing a wrapped title wrongly turns this red.
+  await t.test('list asks for a section with the Trakt headers and parses wrapped titles', async () => {
+    const calls = [];
+    const trakt = createTrakt(database, { fetch: async (url, init) => {
+      calls.push({ url: new URL(String(url)), headers: new Headers(init.headers) });
+      return new Response(JSON.stringify([
+        { watchers: 5, show: { title: 'Severance', year: 2022, rating: 8.7, first_aired: '2026-11-03T01:00:00.000Z', ids: { tmdb: 95396, tvdb: 371980 } } },
+        { watchers: 1, show: { title: 'No ids', ids: {} } },
+      ]), { status: 200 });
+    } });
+    const result = await trakt.list({ type: 'tv', kind: 'trending', limit: 20 });
+    assert.equal(calls[0].url.href, 'https://api.trakt.tv/shows/trending?extended=full&limit=20');
+    assert.equal(calls[0].url.href.includes(clientId), false);
+    assert.equal(calls[0].headers.get('content-type'), 'application/json');
+    assert.equal(calls[0].headers.get('trakt-api-version'), '2');
+    assert.equal(calls[0].headers.get('trakt-api-key'), clientId);
+    assert.equal(calls[0].headers.get('user-agent'), 'media-manager-2');
+    assert.deepEqual(result, { kind: 'ok', value: [
+      { type: 'tv', tmdbId: 95396, tvdbId: 371980, title: 'Severance', year: 2022, date: '2026-11-03', rating: 8.7 },
+      { type: 'tv', tmdbId: null, tvdbId: null, title: 'No ids', year: null, date: null, rating: null },
+    ] });
+  });
+
+  // Changing how a request maps to a Trakt path or filter query turns this red.
+  await t.test('list maps each request to its path and filter query', async () => {
+    const full = { genres: ['action', 'science-fiction'], years: [2020, 2026], ratings: [60, 100], tmdbRatings: [6.5, 10], languages: ['en'], countries: ['us'], runtimes: [30, 90], certifications: ['pg-13'] };
+    const rows = [
+      [{ type: 'movie', kind: 'trending' }, '/movies/trending', { extended: 'full', limit: '20' }],
+      [{ type: 'movie', kind: 'popular' }, '/movies/popular', { extended: 'full', limit: '20' }],
+      [{ type: 'movie', kind: 'watched' }, '/movies/watched/weekly', { extended: 'full', limit: '20' }],
+      [{ type: 'tv', kind: 'collected', period: 'monthly' }, '/shows/collected/monthly', { extended: 'full', limit: '20' }],
+      [{ type: 'tv', kind: 'played', period: 'all' }, '/shows/played/all', { extended: 'full', limit: '20' }],
+      [{ type: 'movie', kind: 'favorited', period: 'daily' }, '/movies/favorited/daily', { extended: 'full', limit: '20' }],
+      [{ type: 'tv', kind: 'anticipated' }, '/shows/anticipated', { extended: 'full', limit: '20' }],
+      [{ type: 'movie', kind: 'boxoffice', filters: { genres: ['action'] } }, '/movies/boxoffice', { extended: 'full' }],
+      [{ type: 'movie', kind: 'trending', filters: full }, '/movies/trending', { extended: 'full', limit: '20', genres: 'action,science-fiction', years: '2020-2026', ratings: '60-100', tmdb_ratings: '6.5-10', languages: 'en', countries: 'us', runtimes: '30-90', certifications: 'pg-13' }],
+      [{ type: 'movie', kind: 'trending', filters: { years: [2024, 2024] } }, '/movies/trending', { extended: 'full', limit: '20', years: '2024' }],
+      [{ type: 'tv', kind: 'trending', filters: { networkIds: [53], status: ['returning series', 'upcoming'] } }, '/shows/trending', { extended: 'full', limit: '20', network_ids: '53', status: 'returning series,upcoming' }],
+    ];
+    for (const [request, pathname, query] of rows) {
+      const calls = [];
+      const trakt = createTrakt(database, { fetch: async (url) => {
+        calls.push(new URL(String(url)));
+        return new Response('[]', { status: 200 });
+      } });
+      await trakt.list({ limit: 20, ...request });
+      assert.equal(calls[0].pathname, pathname, JSON.stringify(request));
+      assert.deepEqual(Object.fromEntries([...calls[0].searchParams.entries()].sort()), Object.fromEntries(Object.entries(query).sort()), JSON.stringify(request));
+    }
+    const popular = await createTrakt(database, { fetch: async () => new Response(JSON.stringify([{ title: 'Bare', year: 2026, ids: { tmdb: 7 }, released: '2026-10-30' }]), { status: 200 }) }).list({ type: 'movie', kind: 'popular', limit: 1 });
+    assert.deepEqual(popular, { kind: 'ok', value: [{ type: 'movie', tmdbId: 7, tvdbId: null, title: 'Bare', year: 2026, date: '2026-10-30', rating: null }] });
+  });
+
+  // Asking for the wrong genre section, or keeping entries without a slug, turns this red.
+  await t.test('genres reads the movie or show section and keeps only complete entries', async () => {
+    const paths = [];
+    const trakt = createTrakt(database, { fetch: async (url) => {
+      paths.push(new URL(String(url)).pathname);
+      return new Response(JSON.stringify([{ name: 'Action', slug: 'action' }, { name: 'x' }]), { status: 200 });
+    } });
+    assert.deepEqual(await trakt.genres('movie'), { kind: 'ok', value: [{ name: 'Action', slug: 'action' }] });
+    await trakt.genres('tv');
+    assert.deepEqual(paths, ['/genres/movies', '/genres/shows']);
+  });
+
+  // Ignoring Retry-After on a 429, or pausing check() with the lists, turns this red.
+  await t.test('a 429 pauses list and genres until Retry-After has passed but not check', async () => {
+    let clock = 1_000_000;
+    let fetches = 0;
+    let status = 429;
+    const trakt = createTrakt(database, { now: () => clock, fetch: async () => {
+      fetches += 1;
+      return new Response('[]', { status, headers: status === 429 ? { 'Retry-After': '30' } : {} });
+    } });
+    const first = await trakt.list({ type: 'movie', kind: 'trending', limit: 5 });
+    assert.equal(first.kind, 'refused');
+    assert.equal(first.status, 429);
+    clock += 29_000;
+    const paused = await trakt.list({ type: 'movie', kind: 'trending', limit: 5 });
+    assert.equal(paused.kind, 'refused');
+    assert.equal(paused.status, 429);
+    assert.equal((await trakt.genres('tv')).kind, 'refused');
+    assert.equal(fetches, 1);
+    status = 200;
+    assert.equal((await trakt.check()).kind, 'ok');
+    assert.equal(fetches, 2);
+    clock += 1_000;
+    assert.equal((await trakt.list({ type: 'movie', kind: 'trending', limit: 5 })).kind, 'ok');
+    assert.equal(fetches, 3);
+  });
+
+  // Reading a 403 as anything but rejected, or letting a failure carry the Client ID, turns this red.
+  await t.test('list failures are classified and never carry the Client ID', async () => {
+    const cases = [
+      [() => new Response('<html>Cloudflare challenge</html>', { status: 403, headers: { 'Content-Type': 'text/html' } }), 'rejected'],
+      [() => new Response('Forbidden', { status: 403, headers: { 'Content-Type': 'text/plain' } }), 'rejected'],
+      [() => { throw new TypeError(`fetch failed for ${clientId}`); }, 'unreachable'],
+    ];
+    for (const [respond, kind] of cases) {
+      const failure = await createTrakt(database, { fetch: async () => respond() }).list({ type: 'movie', kind: 'trending', limit: 5 });
+      assert.equal(failure.kind, kind);
+      assert.equal(JSON.stringify(failure).includes(clientId), false);
+    }
+  });
+
+  // Calling Trakt before a Client ID is saved turns this red.
+  await t.test('list and genres send nothing without a Client ID', async () => {
+    setSetting(database, 'credentials', 'trakt.clientId', '');
+    const trakt = createTrakt(database, { fetch: async () => assert.fail('unexpected request') });
+    assert.equal((await trakt.list({ type: 'movie', kind: 'trending', limit: 5 })).kind, 'not_configured');
+    assert.equal((await trakt.genres('movie')).kind, 'not_configured');
+  });
 });
 
 test('MDBList ratings fill the show page by site, are saved for a week and never fail the page', async (t) => {
@@ -10333,24 +10518,31 @@ test('the discover routes check every value, mark library titles and turn a miss
   const { setSetting } = await import(settingsModuleUrl);
   const { createTmdb } = await import(tmdbModuleUrl);
   const { createTitleStore } = await import(titleStoreModuleUrl);
-  const { createDiscover } = await import(new URL('../dist/server/discover.js', import.meta.url).href);
+  const { createDiscover } = await import(new URL('../dist/server/discover/index.js', import.meta.url).href);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-discover-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
     database.close();
     await rm(root, { recursive: true, force: true });
   });
+  const clock = { value: 1_800_000_000_000 };
+  const now = () => clock.value;
   const calls = [];
-  const tmdb = createTmdb(database, { fetch: async (url) => {
-    calls.push(new URL(String(url)));
-    return new Response(JSON.stringify({ page: 2, total_pages: 3, results: [
-      { id: 438631, title: 'Dune', release_date: '2021-09-15', poster_path: '/d5NX.jpg', backdrop_path: null, vote_average: 7.8, overview: 'Paul travels. Then more.' },
+  const json = (body) => new Response(JSON.stringify(body));
+  const tmdb = createTmdb(database, { now, fetch: async (url) => {
+    const target = new URL(String(url));
+    calls.push(target);
+    if (target.pathname === '/3/genre/movie/list') return json({ genres: [{ id: 878, name: 'Science Fiction' }, { id: 18, name: 'Drama' }] });
+    if (target.pathname === '/3/genre/tv/list') return json({ genres: [] });
+    return json({ page: 2, total_pages: 3, results: [
+      { id: 438631, title: 'Dune', release_date: '2021-09-15', poster_path: '/d5NX.jpg', backdrop_path: null, vote_average: 7.8, overview: 'Paul travels. Then more.', genre_ids: [878, 18], popularity: 90.5 },
       { id: 999, name: 'Severance', media_type: 'tv', first_air_date: '2022-02-17', poster_path: null, backdrop_path: '/bg.jpg' },
-    ] }));
+    ] });
   } });
-  const store = createTitleStore(database);
-  const libraryTitles = async () => ({ titles: [{ type: 'movie', id: 7, tmdbId: 438631 }, { type: 'tv', id: 999, tmdbId: null }] });
-  const { app } = await makeApp({ discover: createDiscover({ tmdb, store, libraryTitles }) });
+  const store = createTitleStore(database, { now });
+  database.prepare('INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run('radarr', 7, 'Dune', 2021, '{"tmdbId":438631}', 'fp', 0);
+  const { app } = await makeApp({ clock, discover: createDiscover({ tmdb, store, database, trakt: undefined, now }) });
   const { session } = await signIn(app);
   const get = async (path) => {
     const response = await app.request(path, { headers: { Cookie: session } });
@@ -10376,23 +10568,531 @@ test('the discover routes check every value, mark library titles and turn a miss
   }
   assert.equal(calls.length, 0);
 
-  // Matching the library by anything but type and TMDB id, building image URLs other than the agreed route, or not saving the summary turns this red.
-  const page = await get('/api/discover/movie?genres=18,878&providers=8,9&region=GB&yearFrom=2020&minRating=6.5&page=2');
+  // Matching the library by anything but the saved title's TMDB id, building image URLs other than the agreed route, cutting the overview,
+  // dropping genre names or the date, or not saving the summary with its date and popularity turns this red.
+  const path = '/api/discover/movie?genres=18,878&providers=8,9&region=GB&yearFrom=2020&minRating=6.5&page=2';
+  const page = await get(path);
   assert.equal(page.status, 200);
-  assert.deepEqual({ page: page.body.page, totalPages: page.body.totalPages }, { page: 2, totalPages: 3 });
+  assert.deepEqual({ page: page.body.page, totalPages: page.body.totalPages, pending: page.body.pending }, { page: 2, totalPages: 3, pending: false });
   assert.deepEqual(page.body.results[0], {
-    tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, posterUrl: '/api/images/tmdb/w342/d5NX.jpg', backdropUrl: null,
-    rating: 7.8, overview: 'Paul travels.', libraryId: 7,
+    tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, date: '2021-09-15', posterUrl: '/api/images/tmdb/w342/d5NX.jpg', backdropUrl: null,
+    rating: 7.8, genres: ['Science Fiction', 'Drama'], overview: 'Paul travels. Then more.', libraryId: 7,
   });
   assert.equal(page.body.results[1].backdropUrl, '/api/images/tmdb/w1920_and_h800_multi_faces/bg.jpg');
   assert.equal(page.body.results[1].libraryId, null);
-  assert.equal(store.get({ type: 'movie', tmdbId: 438631 }, 'tmdbSummary').value.title, 'Dune');
+  assert.deepEqual([page.body.results[1].genres, page.body.results[1].date], [[], '2022-02-17']);
+  const saved = store.get({ type: 'movie', tmdbId: 438631 }, 'tmdbSummary').value;
+  assert.deepEqual([saved.title, saved.date, saved.popularity], ['Dune', '2021-09-15', 90.5]);
   assert.equal(store.get({ type: 'tv', tmdbId: 999 }, 'tmdbSummary').value.title, 'Severance');
-  const sent = calls.at(-1).searchParams;
+  const sent = calls.find((call) => call.pathname === '/3/discover/movie').searchParams;
   assert.deepEqual(
     ['sort_by', 'with_genres', 'with_watch_providers', 'watch_region', 'primary_release_date.gte', 'vote_average.gte', 'page'].map((name) => sent.get(name)),
     ['popularity.desc', '18,878', '8|9', 'GB', '2020-01-01', '6.5', '2'],
   );
+
+  // Asking TMDB again for a grid saved under five minutes ago, or never refilling it after that, turns this red.
+  const before = calls.length;
+  assert.deepEqual((await get(path)).body, page.body);
+  assert.equal(calls.length, before);
+  clock.value += 5 * 60_000 + 1;
+  assert.equal((await get(path)).status, 200);
+  assert.equal(calls.slice(before).filter((call) => call.pathname === '/3/discover/movie').length, 1);
+});
+
+test('the discover home serves recipe rows from saved results, blends sources by weighted rank, applies the filter bar and never leaks a key', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTmdb } = await import(tmdbModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createDiscover } = await import(new URL('../dist/server/discover/index.js', import.meta.url).href);
+  const { rowKey } = await import(new URL('../dist/server/discover/rows.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-discover-home-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const key = `tmdb-key-${process.pid}-home`;
+  setSetting(database, 'credentials', 'tmdb.apiKey', key);
+  const clock = { value: 1_800_000_000_000 };
+  const now = () => clock.value;
+  const day = (offset) => new Date(clock.value + offset * 86_400_000).toISOString().slice(0, 10);
+  const genreNames = { 18: 'Drama', 878: 'Science Fiction' };
+
+  // Every title the fakes know. `in` dates a title that many days after the current clock; a title without a date has none.
+  const movie = (id, title, extra) => [`movie:${id}`, { type: 'movie', id, title, genres: [18], rating: 7, date: '2024-01-01', ...extra }];
+  const show = (id, title, extra) => [`tv:${id}`, { type: 'tv', id, title, genres: [18], rating: 7, date: '2024-01-01', ...extra }];
+  const catalogue = new Map([
+    movie(101, 'Arrival', { genres: [878, 18], rating: 7.5, date: '2025-03-01' }),
+    movie(102, 'Yesterday', { date: '2024-05-01' }),
+    movie(103, 'Xanadu', { rating: 7.2, date: '2023-01-01' }),
+    movie(201, 'Babel', { genres: [878], rating: 6.9, date: '2022-01-01' }),
+    movie(401, 'Service film'),
+    movie(501, 'Soon', { genres: [878], rating: 6, in: 5 }),
+    movie(502, 'Later', { in: 20 }),
+    movie(503, 'Much later', { in: 60 }),
+    movie(601, 'Popular film', { rating: 8, date: '2020-06-01' }),
+    movie(901, 'Awaited film', { genres: [878], in: 100 }),
+    movie(1101, 'Watched film'),
+    movie(1301, 'Collected film'),
+    movie(1501, 'Favourite film'),
+    ...Array.from({ length: 10 }, (_, index) => movie(1701 + index, `Box office ${index + 1}`, { date: '2026-12-01' })),
+    show(301, 'Severance', { rating: 8, date: '2024-02-01' }),
+    show(302, 'Slow Horses', { rating: 7.5, date: '2023-02-01' }),
+    show(402, 'Service show'),
+    show(701, 'New show', { in: 10 }),
+    show(702, 'Newer show', { in: 40 }),
+    show(801, 'Popular show'),
+    show(1001, 'Coming show', { in: 30 }),
+    show(1002, 'Undated show', { date: undefined }),
+    show(1003, 'Far show', { in: 120 }),
+    show(1201, 'Watched show'),
+    show(1401, 'Collected show'),
+    show(1601, 'Favourite show'),
+  ]);
+  const dateOf = (entry) => (entry.in === undefined ? entry.date ?? null : day(entry.in));
+  const overviewOf = (entry) => `${entry.title} begins. Then it continues.`;
+  const listItem = (type, id, withType = false) => {
+    const entry = catalogue.get(`${type}:${id}`);
+    return {
+      id, ...(withType ? { media_type: type } : {}), [type === 'movie' ? 'title' : 'name']: entry.title, [type === 'movie' ? 'release_date' : 'first_air_date']: dateOf(entry),
+      genre_ids: entry.genres, vote_average: entry.rating, overview: overviewOf(entry), poster_path: `/p${id}.jpg`, popularity: 10,
+    };
+  };
+  // Availability: Xanadu and Severance stream on service 9, everything else on service 8.
+  const flatrate = (id) => ([103, 301].includes(id) ? [9] : [8]);
+
+  const tmdbCalls = [];
+  const unexpected = [];
+  let tmdbDown = false;
+  let trendingMovies = [102, 101, 103];
+  let providersDown = false;
+  let failingSummary;
+  let genresDown = false;
+  const json = (body) => new Response(JSON.stringify(body));
+  const page = (type, ids, withType = false) => json({ page: 1, total_pages: 1, results: ids.map((id) => listItem(type, id, withType)) });
+  const tmdb = createTmdb(database, { now, fetch: async (url) => {
+    const target = new URL(String(url));
+    tmdbCalls.push(target);
+    if (tmdbDown) return new Response('', { status: 500 });
+    const path = target.pathname.replace(/^\/3/, '');
+    const params = target.searchParams;
+    if (path === '/trending/movie/week') return page('movie', trendingMovies);
+    if (path === '/trending/tv/week') return page('tv', [301, 302]);
+    // Trending no longer asks for TMDB's mixed list; it answers here so a recipe that asked again would count Yesterday twice.
+    if (path === '/trending/all/week') return json({ results: [listItem('movie', 102, true), listItem('tv', 301, true)] });
+    if (path === '/discover/movie') {
+      if (params.get('with_watch_monetization_types') === 'flatrate') return page('movie', [401]);
+      if (params.get('primary_release_date.lte') === day(30)) return page('movie', [502, 501]);
+      if (params.get('primary_release_date.lte') === day(90)) return page('movie', [503, 502, 501]);
+      return page('movie', [601]);
+    }
+    if (path === '/discover/tv') {
+      if (params.get('with_watch_monetization_types') === 'flatrate') return page('tv', [402]);
+      if (params.has('first_air_date.lte')) return page('tv', [702, 701]);
+      return page('tv', [801]);
+    }
+    if (genresDown && path.startsWith('/genre/')) return new Response('', { status: 500 });
+    if (path === '/genre/movie/list') return json({ genres: [{ id: 878, name: 'Science Fiction' }, { id: 18, name: 'Drama' }] });
+    if (path === '/genre/tv/list') return json({ genres: [{ id: 18, name: 'Drama' }] });
+    if (path === '/watch/providers/movie') return json({ results: [{ provider_id: 8, provider_name: 'Netflix' }] });
+    let match = path.match(/^\/(movie|tv)\/(\d+)\/watch\/providers$/);
+    if (match && providersDown) return new Response('', { status: 500 });
+    if (match) return json({ id: Number(match[2]), results: { US: { flatrate: flatrate(Number(match[2])).map((id) => ({ provider_id: id })) } } });
+    match = path.match(/^\/(movie|tv)\/(\d+)$/);
+    if (match && path === failingSummary) return new Response('', { status: 500 });
+    if (match && catalogue.has(`${match[1]}:${match[2]}`)) {
+      const { genre_ids: ids, ...item } = listItem(match[1], Number(match[2]));
+      return json({ ...item, genres: ids.map((id) => ({ id, name: genreNames[id] })) });
+    }
+    unexpected.push(path);
+    return new Response('', { status: 404 });
+  } });
+
+  // A Trakt title as the Trakt client returns it; F has neither a TMDB nor a TVDB id.
+  const trakt = (type, id, tvdbId = null) => ({ type, tmdbId: id, tvdbId, title: catalogue.get(`${type}:${id}`).title, year: null, date: null, rating: null });
+  const traktLists = {
+    'movie:trending': [trakt('movie', 201), trakt('movie', 101), trakt('movie', 103)],
+    'tv:trending': [trakt('tv', 301, 9301)],
+    'movie:popular': [trakt('movie', 601)],
+    'tv:popular': [trakt('tv', 801, 9801)],
+    'movie:anticipated': [trakt('movie', 901)],
+    'tv:anticipated': [trakt('tv', 1001, 91001), trakt('tv', 1002, 91002), trakt('tv', 1003, 91003), { type: 'tv', tmdbId: null, tvdbId: null, title: 'F', year: null, date: null, rating: null }],
+    'movie:watched': [trakt('movie', 1101)],
+    'tv:watched': [trakt('tv', 1201, 91201)],
+    'movie:collected': [trakt('movie', 1301)],
+    'tv:collected': [trakt('tv', 1401, 91401)],
+    'movie:favorited': [trakt('movie', 1501)],
+    'tv:favorited': [trakt('tv', 1601, 91601)],
+    'movie:boxoffice': Array.from({ length: 10 }, (_, index) => trakt('movie', 1701 + index)),
+  };
+  const traktCalls = [];
+  const traktGenreCalls = [];
+  let traktHold;
+  const traktFake = {
+    list: async (request) => {
+      traktCalls.push(request);
+      if (traktHold !== undefined && request.type === 'movie' && request.kind === 'trending') return traktHold.promise;
+      return { kind: 'ok', value: traktLists[`${request.type}:${request.kind}`] };
+    },
+    genres: async (type) => {
+      traktGenreCalls.push(type);
+      return { kind: 'ok', value: [{ name: 'Science Fiction', slug: 'science-fiction' }, { name: 'Drama', slug: 'drama' }] };
+    },
+  };
+
+  const store = createTitleStore(database, { now });
+  // A long fill cap, so no subtest but the one about the cap depends on the real timer.
+  const discover = createDiscover({ tmdb, trakt: traktFake, store, database, now, fillTimeoutMs: 10_000 });
+  database.prepare('INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run('radarr', 7, 'Arrival', 2025, '{"tmdbId":101}', 'fp', 0);
+  database.prepare('INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run('sonarr', 9, 'Severance', 2024, '{"tmdbId":301}', 'fp', 0);
+  const { app } = await makeApp({ clock, discover });
+  let { session } = await signIn(app);
+  // The sign-in lapses when the clock jumps days ahead, so those subtests sign in again.
+  const signInAgain = async () => { ({ session } = await signIn(app)); };
+  const get = async (path, target = app, cookie = session) => {
+    const response = await target.request(path, { headers: { Cookie: cookie } });
+    return { status: response.status, body: await response.json() };
+  };
+  const home = async (query = '') => {
+    const response = await get(`/api/discover/home${query}`);
+    assert.equal(JSON.stringify(response.body).includes(key), false);
+    return response;
+  };
+  const ids = (row) => row.results.map((item) => item.tmdbId);
+  const rowsOf = (body) => [
+    body.trending.all, body.trending.movie, body.trending.tv, body.popularMovies, body.popularTv,
+    body.upcomingMovies?.days30, body.upcomingMovies?.days90, body.upcomingTv, ...body.services, ...body.extraRows,
+  ].filter((row) => row !== null && row !== undefined);
+  const mark = () => ({ tmdb: tmdbCalls.length, trakt: traktCalls.length });
+  const since = (at) => ({ tmdb: tmdbCalls.slice(at.tmdb), trakt: traktCalls.slice(at.trakt) });
+
+  // Mounting the home outside the private guard, or letting an unchecked value reach TMDB or Trakt, turns this red.
+  await t.test('the home refuses a signed-out caller and every invalid value before any upstream call', async () => {
+    assert.equal((await app.request('/api/discover/home')).status, 401);
+    for (const query of ['?type=person', '?services=a', '?providers=8|9']) {
+      const response = await home(query);
+      assert.equal(response.status, 400, query);
+      assert.deepEqual(response.body, { error: 'invalid_request' });
+    }
+    assert.deepEqual(mark(), { tmdb: 0, trakt: 0 });
+  });
+
+  let first;
+  // Dropping a row, reordering the extra rows, sending box office filters, calling a weekly list without its period, cutting an overview,
+  // losing genre names, dates or library ids, or fetching one missing summary twice turns this red.
+  await t.test('the default home carries every row filled, with full cards', async () => {
+    const response = await home();
+    assert.equal(response.status, 200);
+    first = response.body;
+    assert.deepEqual(Object.keys(first), ['trending', 'popularMovies', 'popularTv', 'upcomingMovies', 'upcomingTv', 'services', 'extraRows']);
+    assert.deepEqual(Object.keys(first.trending), ['all', 'movie', 'tv']);
+    assert.deepEqual(Object.keys(first.upcomingMovies), ['days30', 'days90']);
+    assert.deepEqual(first.services, []);
+    assert.deepEqual(first.extraRows.map(({ id, label }) => [id, label]), [
+      ['most-anticipated', 'Most anticipated'], ['most-watched', 'Most watched'], ['most-collected', 'Most collected'],
+      ['box-office', 'Weekend box office'], ['most-favorited', 'Most favorited'],
+    ]);
+    for (const row of rowsOf(first)) {
+      assert.equal(row.pending, false);
+      assert.ok(row.results.length > 0);
+      for (const item of row.results) {
+        const entry = catalogue.get(`${item.type}:${item.tmdbId}`);
+        assert.equal(item.title, entry.title);
+        assert.equal(item.date, dateOf(entry));
+        assert.equal(item.overview, overviewOf(entry));
+        assert.deepEqual(item.genres, entry.genres.filter((id) => item.type === 'movie' || id === 18).map((id) => genreNames[id]));
+        assert.equal(item.posterUrl, `/api/images/tmdb/w342/p${item.tmdbId}.jpg`);
+        assert.equal(item.libraryId, { 'movie:101': 7, 'tv:301': 9 }[`${item.type}:${item.tmdbId}`] ?? null);
+      }
+    }
+    const boxOffice = first.extraRows.find((row) => row.id === 'box-office');
+    assert.equal(boxOffice.results.length, 10);
+    const boxCall = traktCalls.find((call) => call.kind === 'boxoffice');
+    assert.deepEqual([boxCall.type, boxCall.kind, 'filters' in boxCall], ['movie', 'boxoffice', false]);
+    assert.deepEqual(traktCalls.filter((call) => call.kind === 'watched').map((call) => [call.type, call.period]).sort(), [['movie', 'weekly'], ['tv', 'weekly']]);
+    assert.equal(tmdbCalls.filter((call) => call.pathname === '/3/movie/201').length, 1);
+    assert.equal(store.get({ type: 'movie', tmdbId: 201 }, 'tmdbSummary').value.title, 'Babel');
+    assert.deepEqual(unexpected, []);
+  });
+
+  // Ranking by anything but the weighted reciprocal rank (Trakt 0.65, TMDB 0.35, K 10), listing a title twice,
+  // or adding TMDB's mixed trending list back to the All tab turns this red.
+  await t.test('trending blends Trakt and TMDB by weighted rank', async () => {
+    // Arrival is second in both lists and Xanadu third in both; Babel is first on Trakt only; Yesterday is first on TMDB only.
+    // Titles in both lists outrank both single-list leaders, and Trakt-only Babel outranks TMDB-only Yesterday at the same rank.
+    assert.deepEqual(ids(first.trending.movie), [101, 103, 201, 102]);
+    const all = ids(first.trending.all);
+    assert.ok(all.indexOf(201) < all.indexOf(102), all.join());
+  });
+
+  // Asking TMDB or Trakt again for a row already saved turns this red.
+  await t.test('the same request again is served from saved rows', async () => {
+    const at = mark();
+    assert.deepEqual((await home()).body, first);
+    assert.deepEqual(mark(), at);
+  });
+
+  // Showing movie rows on the TV filter, or a movie in a TV row, turns this red.
+  await t.test('the TV filter hides movie rows and keeps shows only', async () => {
+    const { body } = await home('?type=tv');
+    assert.deepEqual([body.popularMovies, body.upcomingMovies], [null, null]);
+    assert.deepEqual(body.trending.movie, { results: [], pending: false });
+    assert.equal(body.extraRows.some((row) => row.id === 'box-office'), false);
+    const watched = body.extraRows.find((row) => row.id === 'most-watched');
+    assert.ok(watched.results.length > 0);
+    assert.ok(watched.results.every((item) => item.type === 'tv'));
+  });
+
+  // Not passing the filter bar to TMDB or Trakt, mapping a genre to the wrong Trakt slug, asking Trakt for its genres per row,
+  // or keeping a Trakt title whose saved genres miss the filter turns this red.
+  await t.test('the filter bar reaches TMDB, Trakt and the saved summaries', async () => {
+    const at = mark();
+    const { status, body } = await home('?genres=18&yearFrom=2020&minRating=6.5');
+    assert.equal(status, 200);
+    const { tmdb: tmdbSent, trakt: traktSent } = since(at);
+    const discoverCalls = tmdbSent.filter((call) => call.pathname.startsWith('/3/discover/'));
+    assert.ok(discoverCalls.length > 0);
+    for (const call of discoverCalls) {
+      const field = call.pathname.endsWith('/movie') ? 'primary_release_date' : 'first_air_date';
+      assert.equal(call.searchParams.get('with_genres'), '18');
+      assert.ok(call.searchParams.get(`${field}.gte`) >= '2020-01-01', call.href);
+      assert.equal(call.searchParams.get('vote_average.gte'), '6.5');
+    }
+    assert.ok(traktSent.length > 0);
+    for (const call of traktSent) {
+      if (call.kind === 'boxoffice') assert.equal('filters' in call, false);
+      else assert.deepEqual(call.filters, { genres: ['drama'], years: [2020, 2200], tmdbRatings: [6.5, 10] });
+    }
+    assert.equal(traktGenreCalls.filter((type) => type === 'movie').length, 1);
+    assert.deepEqual(ids(body.trending.movie), [101, 103, 102]);
+  });
+
+  // Filtering Trakt titles out by streaming service, looking up a title twice, dropping a TMDB-only show unchecked,
+  // or keeping a title not on the chosen service turns this red.
+  await t.test('the services filter checks each title once and keeps Trakt-only titles on that service', async () => {
+    const at = mark();
+    const { body } = await home('?providers=8');
+    const lookups = since(at).tmdb.filter((call) => call.pathname.endsWith('/watch/providers')).map((call) => call.pathname);
+    assert.ok(lookups.length > 0 && lookups.length <= 40 * rowsOf(body).length);
+    assert.equal(new Set(lookups).size, lookups.length, lookups.filter((path, index) => lookups.indexOf(path) !== index).join());
+    assert.deepEqual(ids(body.trending.movie), [101, 201, 102]);
+    assert.deepEqual(ids(body.trending.tv), [302]);
+    assert.deepEqual(store.get({ type: 'movie', tmdbId: 201 }, 'tmdbProviders').value, { US: [8] });
+    assert.deepEqual(store.get({ type: 'tv', tmdbId: 302 }, 'tmdbProviders').value, { US: [8] });
+    const again = mark();
+    await home('?providers=8');
+    database.prepare('DELETE FROM discover_rows').run();
+    await home('?providers=8');
+    assert.equal(since(again).tmdb.some((call) => call.pathname.endsWith('/watch/providers')), false);
+  });
+
+  // Asking TMDB for a service row without flatrate, the region or the service id, naming it wrongly, or showing a service the providers filter excludes turns this red.
+  await t.test('a chosen service gets its own row of streaming titles', async () => {
+    const at = mark();
+    const { body } = await home('?services=8');
+    assert.equal(body.services.length, 1);
+    const [service] = body.services;
+    assert.deepEqual([service.providerId, service.name, service.pending, ids(service)], [8, 'Netflix', false, [401, 402]]);
+    const serviceCalls = since(at).tmdb.filter((call) => call.searchParams.get('with_watch_monetization_types') === 'flatrate');
+    assert.deepEqual(serviceCalls.map((call) => call.pathname).sort(), ['/3/discover/movie', '/3/discover/tv']);
+    for (const call of serviceCalls) {
+      assert.deepEqual(['with_watch_providers', 'watch_region', 'sort_by'].map((name) => call.searchParams.get(name)), ['8', 'US', 'popularity.desc']);
+    }
+    assert.deepEqual((await home('?services=8&providers=9')).body.services, []);
+  });
+
+  // Windowing upcoming titles on anything but today's date, ordering them by anything but date, or keeping a show dated past 90 days turns this red.
+  await t.test('upcoming rows run from today and ascend by date', async () => {
+    const days30 = tmdbCalls.find((call) => call.searchParams.get('primary_release_date.lte') === day(30));
+    const days90 = tmdbCalls.find((call) => call.searchParams.get('primary_release_date.lte') === day(90));
+    assert.equal(days30.searchParams.get('primary_release_date.gte'), day(0));
+    assert.equal(days90.searchParams.get('primary_release_date.gte'), day(0));
+    assert.deepEqual(ids(first.upcomingMovies.days30), [501, 502]);
+    assert.deepEqual(ids(first.upcomingMovies.days90), [501, 502, 503]);
+    assert.deepEqual(ids(first.upcomingTv), [701, 1001, 702, 1002]);
+  });
+
+  // Refreshing a row before its time, skipping a stale row someone reads, refreshing a row nobody reads, or never deleting an abandoned row turns this red.
+  await t.test('the refresh job renews stale rows people read and deletes abandoned ones', async () => {
+    clock.value += 30 * 60_000 + 1;
+    let at = mark();
+    await home();
+    assert.deepEqual(mark(), at);
+    at = mark();
+    await discover.refresh();
+    let sent = since(at);
+    assert.ok(sent.tmdb.length > 0 && sent.tmdb.every((call) => call.pathname.startsWith('/3/trending/')), sent.tmdb.map((call) => call.pathname).join());
+    assert.ok(sent.trakt.length > 0 && sent.trakt.every((call) => call.kind === 'trending'));
+    clock.value += 6 * 60 * 60_000;
+    at = mark();
+    await discover.refresh();
+    sent = since(at);
+    assert.ok(sent.tmdb.some((call) => call.pathname === '/3/discover/movie'));
+    assert.ok(sent.trakt.some((call) => call.kind === 'watched'));
+    clock.value += 24 * 60 * 60_000 + 1;
+    at = mark();
+    await discover.refresh();
+    assert.deepEqual(mark(), at);
+    clock.value += 7 * 24 * 60 * 60_000;
+    await discover.refresh();
+    assert.equal(database.prepare('SELECT COUNT(*) AS count FROM discover_rows').get().count, 0);
+  });
+
+  // Waiting on a slow source past the cap, building one key twice at once, or never saving the late result turns this red.
+  await t.test('a missing row waits only up to the cap, then fills in the background', async () => {
+    await signInAgain();
+    // Every other row is built first on the long cap, so only movie trending depends on the real timer.
+    await home('?type=movie');
+    discover.rows.remove(rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } }));
+    const capped = createDiscover({ tmdb, trakt: traktFake, store, database, now, fillTimeoutMs: 20 });
+    const { app: cappedApp } = await makeApp({ clock, discover: capped });
+    const { session: cappedSession } = await signIn(cappedApp);
+    let release;
+    traktHold = { promise: new Promise((resolve) => { release = resolve; }) };
+    const before = traktCalls.filter((call) => call.type === 'movie' && call.kind === 'trending').length;
+    const waiting = await get('/api/discover/home?type=movie', cappedApp, cappedSession); // real-time-ok: the fill cap is the behaviour under test
+    assert.deepEqual(waiting.body.trending.movie, { results: [], pending: true });
+    for (const row of [waiting.body.popularMovies, waiting.body.upcomingMovies.days30, waiting.body.upcomingMovies.days90, ...waiting.body.extraRows]) {
+      assert.equal(row.pending, false);
+      assert.ok(row.results.length > 0);
+    }
+    assert.deepEqual((await get('/api/discover/home?type=movie', cappedApp, cappedSession)).body.trending.movie, { results: [], pending: true });
+    release({ kind: 'ok', value: traktLists['movie:trending'] });
+    traktHold = undefined;
+    await capped.idle();
+    const filled = await get('/api/discover/home?type=movie', cappedApp, cappedSession);
+    assert.equal(filled.body.trending.movie.pending, false);
+    assert.deepEqual(ids(filled.body.trending.movie), [101, 103, 201, 102]);
+    assert.equal(traktCalls.filter((call) => call.type === 'movie' && call.kind === 'trending').length - before, 1);
+  });
+
+  // Answering a missing TMDB key with anything but a readable 503, or replacing saved rows with a failed or partial refresh, turns this red.
+  await t.test('a missing key is a readable error and a failing TMDB keeps the saved rows', async () => {
+    clock.value += 8 * 24 * 60 * 60_000;
+    await signInAgain();
+    setSetting(database, 'credentials', 'tmdb.apiKey', '');
+    database.prepare('DELETE FROM discover_rows').run();
+    const unconfigured = await home();
+    assert.equal(unconfigured.status, 503);
+    assert.equal(unconfigured.body.error, 'not_configured');
+    setSetting(database, 'credentials', 'tmdb.apiKey', key);
+    await discover.idle();
+    database.prepare('DELETE FROM discover_rows').run();
+    await home();
+    await discover.idle();
+    const saved = (await home()).body;
+    assert.ok(saved.upcomingMovies.days30.results.length > 0);
+    tmdbDown = true;
+    clock.value += 6 * 60 * 60_000 + 1;
+    assert.deepEqual((await home()).body, saved);
+    const at = mark();
+    await discover.refresh();
+    assert.ok(since(at).tmdb.length > 0);
+    const after = (await home()).body;
+    assert.deepEqual(after, saved);
+    assert.ok(ids(after.trending.movie).includes(102));
+    tmdbDown = false;
+  });
+
+  // Saving a row without genre names as fresh, or never rebuilding it once the genre list works, turns this red.
+  await t.test('a row built while the genre list fails shows now and is rebuilt by the next refresh', async () => {
+    clock.value += 25 * 60 * 60_000;
+    await signInAgain();
+    database.prepare('DELETE FROM discover_rows').run();
+    genresDown = true;
+    await home('?type=movie');
+    await discover.idle();
+    const stale = (await home('?type=movie')).body.popularMovies;
+    assert.ok(stale.results.length > 0);
+    assert.ok(stale.results.every((item) => item.genres.length === 0));
+    genresDown = false;
+    await discover.refresh();
+    const fixed = (await home('?type=movie')).body.popularMovies;
+    assert.ok(fixed.results.length > 0 && fixed.results.every((item) => item.genres.length > 0));
+  });
+
+  // Saving a service-filtered rebuild whose availability lookups failed, which empties the row, turns this red.
+  await t.test('a refresh whose availability lookups fail keeps the saved service rows', async () => {
+    await signInAgain();
+    database.prepare('DELETE FROM discover_rows').run();
+    const query = '?services=8&providers=8';
+    await home(query);
+    // Read again just before the lookups go stale, so the refresh renews these rows and has to ask TMDB.
+    clock.value += 23 * 60 * 60_000;
+    await signInAgain();
+    const saved = (await home(query)).body;
+    assert.ok(saved.services[0].results.length > 0);
+    clock.value += 60 * 60_000 + 1;
+    providersDown = true;
+    const at = mark();
+    await discover.refresh();
+    assert.ok(since(at).tmdb.some((call) => call.pathname.endsWith('/watch/providers')));
+    providersDown = false;
+    assert.deepEqual((await home(query)).body, saved);
+  });
+
+  // Saving a Trakt list thinned by a failed summary as a complete row turns this red.
+  await t.test('a refresh where one Trakt summary fails keeps the saved blended row', async () => {
+    await signInAgain();
+    database.prepare('DELETE FROM discover_rows').run();
+    const saved = (await home()).body;
+    assert.ok(ids(saved.trending.movie).includes(201));
+    database.prepare("DELETE FROM title_store_parts WHERE key = 'movie:201' AND part = 'tmdbSummary'").run();
+    failingSummary = '/movie/201';
+    clock.value += 30 * 60_000 + 1;
+    const at = mark();
+    await discover.refresh();
+    assert.ok(since(at).tmdb.some((call) => call.pathname === '/3/movie/201'));
+    failingSummary = undefined;
+    assert.deepEqual((await home()).body.trending, saved.trending);
+  });
+
+  // Requiring Trakt for a TMDB row, failing the home when Trakt alone is missing, saving a Trakt-only row empty,
+  // or answering anything but a readable 503 when neither service is set up turns this red.
+  await t.test('without Trakt every row builds from TMDB alone', async () => {
+    database.prepare('DELETE FROM discover_rows').run();
+    const withoutTrakt = createDiscover({ tmdb, store, database, now, fillTimeoutMs: 10_000 });
+    const { app: bare } = await makeApp({ clock, discover: withoutTrakt });
+    const { session: bareSession } = await signIn(bare);
+    const at = mark();
+    const { status, body } = await get('/api/discover/home', bare, bareSession);
+    assert.equal(status, 200);
+    assert.deepEqual(ids(body.trending.movie), [102, 101, 103]);
+    for (const row of body.extraRows) assert.deepEqual([row.results, row.pending], [[], false]);
+    assert.equal(traktCalls.length, at.trakt);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM discover_rows WHERE key LIKE '%most-watched%'").get().count, 0);
+    await withoutTrakt.idle();
+    // Past the TMDB client's five-minute memory of lists, so every row has to ask TMDB.
+    clock.value += 5 * 60_000 + 1;
+    setSetting(database, 'credentials', 'tmdb.apiKey', '');
+    database.prepare('DELETE FROM discover_rows').run();
+    const unconfigured = await get('/api/discover/home', bare, bareSession);
+    assert.deepEqual([unconfigured.status, unconfigured.body.error], [503, 'not_configured']);
+    setSetting(database, 'credentials', 'tmdb.apiKey', key);
+  });
+
+  // Counting a Trakt list with no Client ID as a failed source (which freezes blended rows), or saving a Trakt-only row empty, turns this red.
+  await t.test('Trakt without a Client ID leaves blended rows fresh and Trakt-only rows unsaved', async () => {
+    const unset = { kind: 'not_configured', message: 'Trakt is not configured.' };
+    const noClientId = createDiscover({ tmdb, trakt: { list: async () => unset, genres: async () => unset }, store, database, now, fillTimeoutMs: 10_000 });
+    const { app: plain } = await makeApp({ clock, discover: noClientId });
+    const { session: plainSession } = await signIn(plain);
+    database.prepare('DELETE FROM discover_rows').run();
+    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
+    const before = await get('/api/discover/home', plain, plainSession);
+    assert.equal(before.status, 200);
+    assert.deepEqual(ids(before.body.trending.movie), [102, 101, 103]);
+    assert.equal(database.prepare('SELECT fetched_at FROM discover_rows WHERE key = ?').get(trendingKey).fetched_at, clock.value);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM discover_rows WHERE key LIKE '%most-watched%'").get().count, 0);
+    trendingMovies = [103, 102];
+    clock.value += 30 * 60_000 + 1;
+    await noClientId.refresh();
+    assert.deepEqual(ids((await get('/api/discover/home', plain, plainSession)).body.trending.movie), [103, 102]);
+    trendingMovies = [102, 101, 103];
+  });
 });
 
 test('second-version rows and hit and run advice word themselves from the structured fields', async (t) => {

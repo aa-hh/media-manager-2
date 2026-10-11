@@ -27,7 +27,7 @@ import { createRelinkFix } from './relink.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
-import { createDiscover } from './discover.js';
+import { createDiscover } from './discover/index.js';
 import { createTitleStore } from './titleStore.js';
 import { createTmdbTitles } from './tmdbTitles.js';
 import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
@@ -41,6 +41,7 @@ import { readSetting } from './services/connection.js';
 import { createMdblist } from './services/mdblist.js';
 import { createPlex } from './services/plex.js';
 import { createTmdb } from './services/tmdb.js';
+import { createTrakt } from './services/trakt.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller } from './torrents.js';
@@ -145,6 +146,7 @@ if (database !== undefined) {
   });
   const trackerAccounts = createTrackerAccounts(database);
   const tmdb = createTmdb(database);
+  const trakt = createTrakt(database);
   const mdblist = createMdblist(database);
   const health = createHealth({ database, arr, rtorrent, plex, tmdb, mdblist, jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
@@ -169,6 +171,8 @@ if (database !== undefined) {
   });
   const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist);
   const add = createAdd(database, arr, titleStore);
+  const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
+  runner.register('discover-refresh', 10 * 60_000, discover.refresh);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
@@ -197,7 +201,7 @@ if (database !== undefined) {
     owned: createOwned(arr),
     protection,
     library,
-    discover: createDiscover({ tmdb, store: titleStore, libraryTitles: library.titles }),
+    discover,
     tmdbTitles: createTmdbTitles({ database, tmdb, store: titleStore }),
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
