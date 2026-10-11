@@ -63,8 +63,8 @@ const readLink = () => {
   return { service: service === 'sonarr' || service === 'radarr' ? service as Service : 'all' as const, link };
 };
 
-// Reads one list page by page; a page only adds items whose id is not already shown, since the server repeats newer steps.
-const usePaged = <T,>(onUnauthorized: () => void, url: string, read: (body: unknown) => { items: T[]; hasMore: boolean }, idOf: (item: T) => string) => {
+// While active, reads one list page by page; a page only adds items whose id is not already shown, since the server repeats newer steps.
+const usePaged = <T,>(onUnauthorized: () => void, active: boolean, url: string, read: (body: unknown) => { items: T[]; hasMore: boolean }, idOf: (item: T) => string) => {
   const [state, setState] = useState<Paged<T>>({ kind: 'loading' });
   const unauthorizedRef = useRef(onUnauthorized);
   unauthorizedRef.current = onUnauthorized;
@@ -96,9 +96,10 @@ const usePaged = <T,>(onUnauthorized: () => void, url: string, read: (body: unkn
   }, [url, read, idOf]);
 
   useEffect(() => {
+    if (!active) return;
     void load(1);
     return () => { versionRef.current += 1; };
-  }, [load]);
+  }, [load, active]);
 
   const loadMore = useCallback(() => {
     if (state.kind === 'ready' && state.hasMore && !state.loadingMore) void load(state.page + 1);
@@ -113,13 +114,24 @@ const readEvents = (body: unknown) => {
 };
 const eventId = (event: HistoryEvent) => event.id;
 
-export const useHistory = (onUnauthorized: () => void) => {
+export const useHistory = (onUnauthorized: () => void, active: boolean) => {
   const [initial] = useState(readLink);
+  const [link, setLink] = useState<TitleLink>(initial.link);
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const [service, setService] = useState<ServiceChoice>(initial.service);
-  const ids = Object.entries(initial.link).map(([key, value]) => `&${key}=${value}`).join('');
-  const paged = usePaged(onUnauthorized, `/api/history?filter=${filter}&service=${service}${ids}`, readEvents, eventId);
-  return { ...paged, filter, setFilter, service, setService, link: initial.link };
+  // Re-reads the link during render when the screen opens, so the first load already uses it.
+  const [wasActive, setWasActive] = useState(active);
+  if (active !== wasActive) {
+    setWasActive(active);
+    if (active) {
+      const next = readLink();
+      setLink(next.link);
+      setService(next.service);
+    }
+  }
+  const ids = Object.entries(link).map(([key, value]) => `&${key}=${value}`).join('');
+  const paged = usePaged(onUnauthorized, active, `/api/history?filter=${filter}&service=${service}${ids}`, readEvents, eventId);
+  return { ...paged, filter, setFilter, service, setService, link };
 };
 
 const readEntries = (body: unknown) => {
@@ -128,7 +140,7 @@ const readEntries = (body: unknown) => {
 };
 const entryId = (entry: BlockEntry) => `${entry.service}:${entry.id}`;
 
-export const useBlocklist = (onUnauthorized: () => void) => usePaged(onUnauthorized, '/api/blocklist', readEntries, entryId);
+export const useBlocklist = (onUnauthorized: () => void, active: boolean) => usePaged(onUnauthorized, active, '/api/blocklist', readEntries, entryId);
 
 export const sendJson = async (path: string, method: 'POST' | 'DELETE', body?: unknown) => {
   const response = await fetch(path, {

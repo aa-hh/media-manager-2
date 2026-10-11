@@ -245,12 +245,12 @@ function App() {
 // Search and the title view come from Home; the Downloads screen fills Home while the search box is empty.
 function SignedIn(props: ComponentProps<typeof Home>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
-  const history = useHistory(props.onUnauthenticated);
-  const blocklist = useBlocklist(props.onUnauthenticated);
-  const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
-  const flagged = useFlagged(props.onUnauthenticated);
-  const flaggedHeadingRef = useRef<HTMLDivElement>(null);
   const screen = useRoute();
+  const history = useHistory(props.onUnauthenticated, screen === 'history');
+  const blocklist = useBlocklist(props.onUnauthenticated, screen === 'blocklist');
+  const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const flagged = useFlagged(props.onUnauthenticated, screen === 'flagged');
+  const flaggedHeadingRef = useRef<HTMLDivElement>(null);
   const health = useHealth(props.onUnauthenticated);
   const healthHeadingRef = useRef<HTMLDivElement>(null);
   const healthBadge = (() => {

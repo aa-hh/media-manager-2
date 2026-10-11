@@ -32,8 +32,8 @@ export type Load<T> = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'
 
 export type FlaggedState = { needsYou: Load<NeedsYou>; wanted: Load<WantedLists> };
 
-// Reads both lists on open and whenever the window comes back into focus; a failed re-read keeps what was shown.
-export const useFlagged = (onUnauthorized: () => void) => {
+// While active, reads both lists on open and whenever the window comes back into focus; a failed re-read keeps what was shown.
+export const useFlagged = (onUnauthorized: () => void, active: boolean) => {
   const [needsYou, setNeedsYou] = useState<Load<NeedsYou>>({ kind: 'loading' });
   const [wanted, setWanted] = useState<Load<WantedLists>>({ kind: 'loading' });
   const unauthorizedRef = useRef(onUnauthorized);
@@ -59,11 +59,12 @@ export const useFlagged = (onUnauthorized: () => void) => {
   }, [read]);
 
   useEffect(() => {
+    if (!active) return;
     void reload();
     const onFocus = () => { void reload(); };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [reload]);
+  }, [reload, active]);
 
   return { needsYou, wanted, reload };
 };
