@@ -4028,3 +4028,120 @@ test('flagged lists what automation gave up on with the right next step, and wan
   }
   assert.equal(sent.length, 1);
 });
+
+test('history merges Sonarr, Radarr and media-manager-2 events newest first with their details', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createGrabTracker } = await import(torrentGrabsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createApiRoutes } = await import(apiModuleUrl);
+  const { createHistory, normalizeArrEvent } = await import(new URL('../dist/server/history.js', import.meta.url).href);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-history-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(() => database.close());
+  const hash = 'AB'.repeat(20);
+  const andor = { series: { title: 'Andor' }, episode: { seasonNumber: 2, episodeNumber: 9 }, episodeId: 31, seriesId: 3 };
+  const grabbed = {
+    ...andor,
+    id: 11,
+    eventType: 'grabbed',
+    date: '2026-10-10T10:00:00Z',
+    sourceTitle: 'Andor.S02E09.2160p.WEB-DL-GRP',
+    downloadId: hash,
+    quality: { quality: { name: 'WEBDL-2160p' } },
+    customFormats: [{ name: 'DV' }, { name: 'HDR10' }],
+    customFormatScore: 1250,
+    data: { indexer: 'Blutopia', releaseGroup: 'GRP', releaseSource: 'Rss', ageHours: '5.4', age: '0' },
+  };
+  const imported = {
+    ...andor,
+    id: 12,
+    eventType: 'downloadFolderImported',
+    date: '2026-10-10T08:00:00Z',
+    sourceTitle: 'Andor.S02E09.2160p.WEB-DL-GRP',
+    data: { importedPath: '/tv/Andor/Season 2/Andor S02E09.mkv' },
+  };
+
+  // Dropping a data field, the "picked by you" mark or the episode code from the words turns this red.
+  assert.deepEqual(normalizeArrEvent('sonarr', grabbed, (id) => id === hash), {
+    id: 'sonarr:11',
+    at: Date.parse('2026-10-10T10:00:00Z'),
+    service: 'sonarr',
+    source: 'Sonarr',
+    subject: { type: 'episode', service: 'sonarr', id: '31' },
+    title: 'Andor S02E09',
+    event: 'Grabbed',
+    detail: 'Blutopia · RSS · picked by you',
+    release: 'Andor.S02E09.2160p.WEB-DL-GRP',
+    quality: 'WEBDL-2160p',
+    byHand: true,
+    eventType: 'grabbed',
+    details: {
+      tracker: 'Blutopia',
+      releaseGroup: 'GRP',
+      formats: ['DV', 'HDR10'],
+      score: 1250,
+      howFound: 'RSS',
+      ageWhenGrabbed: '5 hours',
+      deletionReason: null,
+      droppedPath: null,
+      importedPath: null,
+      message: null,
+    },
+    markFailed: { service: 'sonarr', historyId: 11, movieId: null, episodeIds: [31], releaseTitle: 'Andor.S02E09.2160p.WEB-DL-GRP' },
+  });
+  const deleted = normalizeArrEvent('radarr', {
+    id: 21, eventType: 'movieFileDeleted', date: '2026-10-09T08:00:00Z', sourceTitle: 'Dune.2021.1080p', movieId: 7,
+    movie: { title: 'Dune', year: 2021 }, quality: { quality: { name: 'Bluray-1080p' } }, data: { reason: 'Upgrade' },
+  }, () => true);
+  // Offering Mark as failed on anything but a grab, or losing the deletion reason, turns this red.
+  assert.deepEqual(
+    [deleted.title, deleted.event, deleted.detail, deleted.byHand, deleted.markFailed, deleted.subject],
+    ['Dune (2021)', 'File deleted', 'Upgrade', false, null, { type: 'movie', service: 'radarr', id: '7' }],
+  );
+  assert.equal(normalizeArrEvent('sonarr', { ...grabbed, eventType: 'unknown' }, () => false), null);
+
+  const clock = { value: Date.parse('2026-10-10T09:00:00Z') };
+  const problems = createProblems({ database, events: createEventHub(), now: () => clock.value });
+  problems.open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, summary: 'Stalled at 40%', hash });
+  clock.value = Date.parse('2026-10-10T07:00:00Z');
+  problems.open({ kind: 'missed_search', subject: { type: 'movie', service: 'radarr', id: '7' }, summary: 'Nothing found' });
+  const requests = [];
+  const arr = {
+    sonarr: {
+      request: async (path) => {
+        requests.push(path);
+        if (path.startsWith('/api/v3/history?')) return { status: 200, body: { records: [grabbed, imported] } };
+        if (path === '/api/v3/episode?seriesId=3') return { status: 200, body: [{ id: 31 }] };
+        return { status: 404, body: undefined };
+      },
+    },
+    radarr: { request: async () => { throw new Error('Radarr is not configured.'); } },
+  };
+  const grabs = createGrabTracker({ database, arr, events: createEventHub() });
+  grabs.recordGrab({ hash, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [31], releaseTitle: 'Andor.S02', indexer: 'Blutopia', grabbedAt: 1_000, publishedAt: null, byHand: false });
+  const history = createHistory({ database, arr, labels: { subject: async (subject) => `label ${subject.id}` } });
+
+  // Sorting per source instead of by time, or letting an unconfigured Radarr throw, turns this red.
+  const all = await history.list({ filter: 'all', service: 'all', page: 1 });
+  assert.deepEqual(all.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12', 'mm2:2']);
+  assert.equal(all.hasMore, false);
+  assert.deepEqual(
+    [all.events[1].title, all.events[1].event, all.events[1].release, all.events[2].detail],
+    [`label ${hash}`, 'Problem', 'Andor.S02', 'Andor S02E09.mkv'],
+  );
+  // Letting Sonarr or Radarr events through the Automatic fixes filter turns this red.
+  assert.deepEqual((await history.list({ filter: 'fixes', service: 'all', page: 1 })).events.map((event) => event.id), ['mm2:1', 'mm2:2']);
+  // Not forwarding the series id, or keeping problems on other titles in a title's history, turns this red.
+  const series = await history.list({ filter: 'all', service: 'sonarr', page: 1, seriesId: 3 });
+  assert.match(requests.find((path) => path.startsWith('/api/v3/history?') && path.includes('seriesIds=3')) ?? '', /includeSeries=true&includeEpisode=true/);
+  assert.deepEqual(series.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
+
+  const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, history }) });
+  const { session } = await signIn(app);
+  // Serving history without a session, or accepting a filter name it doesn't know, turns this red.
+  assert.equal((await app.request('/api/history')).status, 401);
+  assert.equal((await app.request('/api/history?filter=nope', { headers: { Cookie: session } })).status, 400);
+  assert.equal((await app.request('/api/history?filter=fixes', { headers: { Cookie: session } })).status, 200);
+});

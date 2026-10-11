@@ -10,6 +10,7 @@ import { createEventHub } from './events.js';
 import { createFlagged } from './flagged.js';
 import { createGrabs, handGrab } from './grabs.js';
 import { createHealth } from './health.js';
+import { createHistory } from './history.js';
 import { createImportFix } from './imports.js';
 import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
@@ -67,6 +68,7 @@ if (database !== undefined) {
     },
   });
   const protection = createProtection(database, arr, { recentGrabTitles: (service, since) => grabs.recentTitles(service, since) });
+  const labels = createLabels(arr);
   const replaces = createReplaces(arr, grabs, { onCompleted: (grab) => protection.protect(grab) });
   const stalls = createStallFix({ database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected });
   runner.register('stall-fix', 60_000, stalls.check);
@@ -87,7 +89,6 @@ if (database !== undefined) {
       if (grab.downloadId === null && grab.createdAt > Date.now() - 3_600_000) await grabs.resolveDownloadId(grab);
     }
   });
-  const labels = createLabels(arr);
   const app = createApp({
     clientDirectory,
     listeningHost: host,
@@ -106,6 +107,7 @@ if (database !== undefined) {
       manualImport: createManualImport({ database, arr, problems }),
       health,
       flagged: createFlagged({ database, arr, labels, isManualDownload: protection.isProtected }),
+      history: createHistory({ database, arr, labels }),
     }),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),

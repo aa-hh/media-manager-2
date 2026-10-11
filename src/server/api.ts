@@ -5,6 +5,7 @@ import { createFlaggedRoutes, type Flagged } from './flagged.js';
 import { listGrabs, listQueue, type Service } from './torrentGrabs.js';
 import { createHealthRoutes, type Health } from './health.js';
 import type { createManualImport } from './manualImport.js';
+import { createHistoryRoutes, type History } from './history.js';
 import { listOpenProblems, type SubjectType, subjectHistory } from './problems.js';
 import { listTorrents } from './torrents.js';
 
@@ -16,6 +17,7 @@ export type ApiActions = {
   manualImport: ReturnType<typeof createManualImport>;
   health?: Health;
   flagged?: Flagged;
+  history?: History;
 };
 
 const subjectTypes = new Set<SubjectType>(['movie', 'episode', 'torrent', 'tracker', 'dependency']);
@@ -167,5 +169,6 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
   });
   if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
   if (actions?.flagged !== undefined) api.route('/flagged', createFlaggedRoutes(actions.flagged));
+  if (actions?.history !== undefined) api.route('/history', createHistoryRoutes(actions.history));
   return api;
 };
