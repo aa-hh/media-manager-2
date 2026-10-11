@@ -10,12 +10,16 @@ type Problems = ReturnType<typeof createProblems>;
 
 export type ImportCategory = 'replace' | 'matching' | 'not_better' | 'bad_release' | 'leftover' | 'temporary' | 'file_move' | 'setup' | 'unknown';
 
+// Every way Sonarr and Radarr refuse an import for not being better than the file in place. A replace overrides exactly
+// these, so the import fix's hand-off and the replace flow must read the same wording.
+export const NOT_BETTER = /not an upgrade|not a quality revision upgrade|not a custom format upgrade|existing file.*(better|equal)/i;
+
 // AA-13 grouped Sonarr's and Radarr's import rejections; these patterns read their wording. Order matters: the first match wins.
 const patterns: [ImportCategory, RegExp][] = [
   ['setup', /free space|disk space|root folder|path does not exist|permission|access to the path|access denied|read-only|recycl/i],
   ['bad_release', /no audio|dangerous|executable|unsupported extension|invalid video file|not a valid video/i],
   ['leftover', /already imported|is a sample|sample file|extras?\b/i],
-  ['not_better', /not an upgrade|not a quality revision upgrade|not a custom format upgrade|existing file.*(better|equal)/i],
+  ['not_better', NOT_BETTER],
   ['temporary', /locked|being used by another process|unpack|tba title|title is not yet|recently aired|still being written/i],
   ['file_move', /failed to (move|import|copy|hardlink)|couldn't (move|import|copy)|unable to (move|copy)|file move/i],
   ['matching', /mismatch|matched to (series|movie) by id|was unexpected|not found in the grab|unable to (parse|identify)|partial season|contains all episodes|invalid season|unknown (series|movie|episode)|manual import required|automatic import is not possible/i],

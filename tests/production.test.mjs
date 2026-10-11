@@ -7281,7 +7281,8 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   const releases = createReleases(database, services);
   let clock = 1_000_000;
   const grabs = createGrabs(database, services, releases, { now: () => clock });
-  const replaces = createReplaces(services, grabs, { now: () => clock });
+  let onCompleted = async () => {};
+  const replaces = createReplaces(services, grabs, { now: () => clock, onCompleted: (record) => onCompleted(record) });
   const start = async (target, downloadId) => {
     await releases.get(target);
     const guid = (await releases.get(target)).search.releases[0].guid;
@@ -7338,12 +7339,36 @@ test('a replace is forced only past "Not an upgrade" and completes only on impor
   delete queue.e;
   history[hashEpisode].push({ eventType: 'downloadFolderImported' });
   clock += 31 * 60_000;
+  // Marking the replace completed before protecting it turns this red: one failed protect then leaves the manual download unprotected for good.
+  const protectedIds = [];
+  let protectFails = true;
+  onCompleted = async (record) => {
+    if (protectFails) {
+      protectFails = false;
+      throw new Error('Sonarr is unreachable.');
+    }
+    protectedIds.push(record.id);
+  };
   await replaces.run();
   assert.equal(grabs.read(vanished).state, 'failed');
   assert.equal(grabs.read(vanished).failure, 'The download left the queue without being imported.');
-  assert.equal(grabs.read(episode).state, 'completed');
+  assert.equal(grabs.read(episode).state, 'importing', 'a replace whose protection failed is not completed yet');
   assert.equal(grabs.read(movie).state, 'failed', 'a forced import still blocked after the grace period has failed');
   assert.equal(commands.length, 2);
+  await replaces.run();
+  await replaces.run();
+  assert.equal(grabs.read(episode).state, 'completed');
+  assert.deepEqual(protectedIds, [episode], 'the next pass protects it once');
+
+  // Overriding only "Not an upgrade" turns this red: a same-quality replace with a lower custom format score then fails.
+  const notFormatUpgrade = 'Not a Custom Format upgrade for existing episode file(s). New: [] (0) do not improve on Existing: [x264] (10)';
+  const hashFormat = '34'.repeat(20);
+  const format = await start({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 52 }, hashFormat);
+  queue.f = { ...blocked('sonarr', [notFormatUpgrade]), id: 5, downloadId: hashFormat };
+  manual[hashFormat] = [episodeFile('/dl/Show.S01E03/ep.mkv', [notFormatUpgrade], [{ id: 52 }])];
+  await replaces.run();
+  assert.equal(grabs.read(format).state, 'importing');
+  assert.deepEqual(commands[2].body.files.map((file) => [file.path, file.episodeIds]), [['/dl/Show.S01E03/ep.mkv', [52]]]);
 });
 
 // An ignored term that misses a naming of the protected episode lets Sonarr upgrade over a manual download; one that also matches a neighbouring episode stops that episode upgrading.
