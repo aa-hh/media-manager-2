@@ -105,8 +105,8 @@ components:
   dropdown-content: {backgroundColor: "{colors.popover}", rounded: "{rounded.radius-lg}", padding: "4px", width: "248px"}
   panel-inline: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "20px"}
   dialog: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "24px", width: "560px"}
-  toast: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", width: "380px"}
-  selection-bar: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", height: "44px"}
+  toast: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", width: "400px"}
+  selection-bar: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-lg}", height: "56px"}
   episode-details: {backgroundColor: "{colors.muted}"}
   app-bar: {backgroundColor: "{colors.background}", textColor: "{colors.foreground}", padding: "0px 40px", height: "64px"}
   downloads-live-bar: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", typography: "{typography.data-small}", height: "40px"}
@@ -217,7 +217,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 
 - **App bar:** 64px, white, line under, 40px side padding. Nav items are 40px, radius 8, with a count pill (red on `destructive-soft` for problems); the active item gets the `selected` fill and a black 600 label. Service status lives behind Health, whose count turns red when a service fails.
 - **Downloads bar:** black with white text; lime is allowed there for the arrow and progress fills because it sits on black. Idle reads "Nothing downloading". A stalled item shows a red dot and words.
-- **Floating:** menus (248px, 32px items), tooltips (`bar`, after 400ms), toasts (`bar`, 380px, bottom left above the downloads bar, Undo with the Z key), dialogs and the selection bar (`bar`, 44px, 16px above the downloads bar) take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
+- **Floating:** menus (248px, 32px items), tooltips (`bar`, after 400ms), toasts (`bar`, 400px, bottom left above the downloads bar, Undo with the Z key), dialogs and the selection bar (`bar`, 56px, 16px above the downloads bar) take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
 - **Sign-in:** a 400px block at x 40, y 160 under an app bar that shows only the product name. The Plex button carries Plex's own gold chevron, only on the black button. The Plex trademark line sits bottom left.
 
 ### Where a decision opens
