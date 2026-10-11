@@ -184,8 +184,11 @@ folder:
 | --- | --- | --- |
 | `hostPaths` | `backup.folder` | Absolute path of an existing folder |
 
-The server never creates this folder itself, so an unmounted drive fails the
-backup instead of quietly filling the local disk.
+The server never creates this folder itself; a folder that does not exist
+fails the backup. On a separate drive or share, point it at a folder *inside*
+the drive, such as `/mnt/backup-drive/media-manager-2`, not at the mount point
+itself: an unmounted drive's mount point is still an empty folder, and
+backups written there would fill the local disk.
 
 **An S3-compatible bucket**, such as Cloudflare R2, Backblaze B2, Amazon S3,
 Wasabi or MinIO:

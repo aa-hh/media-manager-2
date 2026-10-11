@@ -49,7 +49,8 @@ export const backupDestinationFromEnvironment = (env: NodeJS.ProcessEnv = proces
 
 const isMissing = (error: unknown) => (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
 
-// The folder itself is never created: when a backup drive is not mounted, the run fails instead of filling the local disk.
+// The folder itself is never created, so a folder inside an unmounted drive fails the run instead of filling the local disk.
+// The mount point itself would not: it stays behind as an empty folder.
 export const createFolderStore = (folder: string): BackupStore => {
   const root = resolve(folder);
   const pathOf = (key: string) => {
