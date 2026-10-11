@@ -1,4 +1,4 @@
-// Rules for the Folders and Backup panes. No runtime imports, so tests can load it from source.
+// Rules for the Folders and Backup panes and the setup wizard's steps. No runtime imports, so tests can load it from source.
 import type { ServiceState } from '../components/ui/status-service-pill';
 
 // Shapes served by /api/setup; src/server/setup.ts is the source of truth.

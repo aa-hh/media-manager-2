@@ -16,7 +16,7 @@ import { useToastManager } from '@/components/ui/toast';
 import { navigate } from '../navigation';
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
-import { isConfigured, pillFor, savedAddress, stripSummary } from './model';
+import { isConfigured, list, pillFor, savedAddress, stripSummary } from './model';
 import { Editor, PiecesStrip } from './Settings';
 import {
   backupPill, backupWords, firstStep, nextStep, type OptionalPart, previousStep, type RequiredPart, requiredParts, type SetupStatus, wantedParts, type WizardStep, wizardSummary,
@@ -38,7 +38,6 @@ const serviceSteps: { name: ServiceStep; about: string; needs: string }[] = [
 const stepNames: Record<WizardStep, string> = {
   what: 'What to set up', sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex', folders: 'Folders', trackers: 'trackers', backup: 'backup', done: 'the end of setup',
 };
-const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
 type Props = {
   status: SetupStatus;
@@ -72,6 +71,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   unauthorizedRef.current = onUnauthenticated;
   const setupRequest = useMemo(() => requester('/api/setup', () => unauthorizedRef.current()), []);
   const trackerRequest = useMemo(() => requester('/api/settings/trackers', () => unauthorizedRef.current()), []);
+  const setupTrackerRequest = useMemo(() => requester('/api/setup/trackers', () => unauthorizedRef.current()), []);
   const { read: readServices, setLoad } = connections;
 
   const readTrackers = useCallback(async () => {
@@ -242,7 +242,8 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           <AddTracker
             address={newAddress}
             onAddress={setNewAddress}
-            request={trackerRequest}
+            request={setupTrackerRequest}
+            withCredential
             cancelLabel={trackers.length === 0 ? 'Skip trackers' : 'Cancel'}
             onCancel={() => (trackers.length === 0 ? void skip('trackers') : setTrackerView('list'))}
             onAdded={async (host, softwareSaved) => {

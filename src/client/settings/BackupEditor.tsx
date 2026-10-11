@@ -38,6 +38,8 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
   const [created, setCreated] = useState<{ restoreKey: string; createdAt: number }>();
   const [creatingKey, setCreatingKey] = useState(false);
   const [copied, setCopied] = useState(false);
+  // The wizard holds Finish setup until the new restore key has been copied or downloaded.
+  const [keySaved, setKeySaved] = useState(false);
   const [confirmingNewKey, setConfirmingNewKey] = useState(false);
 
   const edited = backupEdited(draft, backup.destination);
@@ -104,6 +106,7 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
   const canFinish = wizard !== undefined && !edited && backup.destination !== null;
   const verb = wizard === undefined ? 'Confirm' : 'Save and continue';
   const summary = pending ? 'Saving the destination.'
+    : canFinish && created !== undefined ? (keySaved ? 'The first backup runs within 5 minutes.' : 'Copy or download the restore key, then finish setup.')
     : canFinish ? (noKey ? 'Destination saved. Backups start once you create a key.' : 'The first backup runs within 5 minutes.')
     : created !== undefined ? 'Save the restore key first. To change the destination, leave Backup and open it again.'
     : anyError ? 'Not saved. Fix the field marked in red.'
@@ -116,6 +119,8 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
   // The restore-key callouts wait for a destination, and give way to the key once it is created.
   const keyCallout = backup.destination !== null && created === undefined;
   const createButton = <Button variant="outline" icon={<KeyRound />} loading={creatingKey} disabled={pending} onClick={() => void createKey()}>Create key</Button>;
+  // In the wizard the missing and invalid key callouts drop their button: the footer carries Create key instead.
+  const noKeyAction = wizard === undefined ? createButton : undefined;
 
   const keyField = (key: KeyField, label: string, type: 'text' | 'password') => {
     const locked = savedBucket && !replacing[key];
@@ -169,12 +174,12 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
       </div>
 
       {keyCallout && backup.key === 'missing' && (
-        <Callout look="warning" title="Backups can't run until you create a key" action={createButton}>
+        <Callout look="warning" title="Backups can't run until you create a key" action={noKeyAction}>
           The key locks every backup. You see its restore key once, so have your password manager ready.
         </Callout>
       )}
       {keyCallout && backup.key === 'invalid' && (
-        <Callout title="Backups can't run: BACKUP_KEY is not valid" action={createButton}>
+        <Callout title="Backups can't run: BACKUP_KEY is not valid" action={noKeyAction}>
           Create a restore key here instead. Once one exists the env file's key is no longer read.
         </Callout>
       )}
@@ -195,7 +200,10 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
               variant="outline"
               icon={<Copy />}
               onClick={() => void (navigator.clipboard?.writeText(created.restoreKey) ?? Promise.reject(new Error('No clipboard'))).then(
-                () => setCopied(true),
+                () => {
+                  setCopied(true);
+                  setKeySaved(true);
+                },
                 () => setProblem('The key could not be copied. Select it and copy it by hand, or download it.'),
               )}
             >
@@ -210,6 +218,7 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
                 anchor.href = url;
                 anchor.download = 'media-manager-2-restore-key.txt';
                 anchor.click();
+                setKeySaved(true);
                 setTimeout(() => URL.revokeObjectURL(url));
               }}
             >
@@ -330,9 +339,12 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
       <BarBottomAction
         summary={summary}
         unsavedNote={unsaved && !pending ? 'Unsaved edits' : undefined}
-        secondary={wizard !== undefined && <Button variant="outline" disabled={pending || creatingKey} onClick={wizard.onSkip}>Skip backup</Button>}
-        action={canFinish
-          ? <Button size="large" icon={<ArrowRight />} disabled={noKey || creatingKey} onClick={wizard.onContinue}>Finish setup</Button>
+        // Once a destination is saved and a key exists, skipping would turn working backups off, so the button goes.
+        secondary={wizard !== undefined && !(canFinish && !noKey) && <Button variant="outline" disabled={pending || creatingKey} onClick={wizard.onSkip}>Skip backup</Button>}
+        action={canFinish && noKey
+          ? <Button size="large" icon={<KeyRound />} loading={creatingKey} disabled={pending || created !== undefined} onClick={() => void createKey()}>Create key</Button>
+          : canFinish
+          ? <Button size="large" icon={<ArrowRight />} disabled={noKey || creatingKey || (created !== undefined && !keySaved)} onClick={wizard.onContinue}>Finish setup</Button>
           : (
             <Button size="large" icon={<Save />} loading={pending} disabled={!complete || !edited || pending || creatingKey || created !== undefined} onClick={() => void save()}>
               {wizard === undefined ? 'Confirm' : 'Save and continue'}

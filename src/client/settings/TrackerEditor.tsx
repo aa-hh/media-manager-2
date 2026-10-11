@@ -114,25 +114,39 @@ type AddTrackerProps = {
   cancelLabel?: string;
   /** Called with the hostname the server stored, and whether its site software was saved too. */
   onAdded: (host: string, softwareSaved: boolean) => void;
+  /** Asks for the account's credential and adds through /api/setup/trackers, which tests it first (the setup wizard). */
+  withCredential?: boolean;
 };
 
-/** The pane for adding a tracker: its web address and site software. */
-export function AddTracker({ address, onAddress, request, onCancel, cancelLabel = 'Cancel', onAdded }: AddTrackerProps) {
+/** The pane for adding a tracker: its web address and site software, and in the setup wizard its credential. */
+export function AddTracker({ address, onAddress, request, onCancel, cancelLabel = 'Cancel', onAdded, withCredential = false }: AddTrackerProps) {
   const [software, setSoftware] = useState<Software>('unit3d');
+  const [credential, setCredential] = useState('');
   const [pending, setPending] = useState(false);
   const [fieldError, setFieldError] = useState<string>();
+  const [credentialError, setCredentialError] = useState<string>();
   const [problem, setProblem] = useState<string>();
+  const askCredential = withCredential && software !== 'other';
+  const ready = address.trim() !== '' && (!askCredential || credential.trim() !== '');
 
   const add = async () => {
     setPending(true);
     setFieldError(undefined);
+    setCredentialError(undefined);
     setProblem(undefined);
     try {
-      const response = await request('POST', '', { host: address });
+      const response = await request('POST', '', withCredential ? { host: address, software, ...(askCredential && { credential }) } : { host: address });
       if (response.status === 400) return setFieldError('Enter the address you open the tracker at, such as blutopia.cc.');
       if (response.status === 409) return setFieldError('This tracker is already added.');
+      if (withCredential && response.status === 200) {
+        const { connection } = await response.json() as { connection: Connection };
+        if (connection.kind === 'rejected') return setCredentialError(`${trackerInfo(address.trim()).name} refused this ${credentialName(software)}.`);
+        if (connection.kind === 'unreachable') return setFieldError('The tracker did not answer within 10 seconds. Check the address.');
+        return setProblem('The account could not be checked. Try again, or pick Other to add it without one.');
+      }
       if (response.status !== 201) return setProblem('The tracker could not be added. Try again.');
       const { host } = await response.json() as { host: string };
+      if (withCredential) return onAdded(host, true);
       let softwareSaved = true;
       if (software !== 'other') {
         try {
@@ -172,7 +186,7 @@ export function AddTracker({ address, onAddress, request, onCancel, cancelLabel 
           readOnly={pending}
           aria-invalid={fieldError !== undefined || undefined}
           onValueChange={(value) => onAddress(value)}
-          onKeyDown={(event) => { if (event.key === 'Enter' && address.trim() !== '') void add(); }}
+          onKeyDown={(event) => { if (event.key === 'Enter' && ready) void add(); }}
         />
       </FieldLabelled>
       <div className="flex flex-col gap-1.5">
@@ -190,10 +204,28 @@ export function AddTracker({ address, onAddress, request, onCancel, cancelLabel 
         </RadioGroup>
         <p className="font-ui text-xs text-subtle-foreground">Picks how media-manager-2 reads your account. Other: no account connection; only the hit and run rule is used.</p>
       </div>
+      {askCredential && (
+        <FieldLabelled label={credentialName(software)} error={credentialError} help={credentialSource(software)}>
+          <InputSearch
+            variant="field"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={`Paste the ${credentialName(software)}`}
+            value={credential}
+            readOnly={pending}
+            aria-invalid={credentialError !== undefined || undefined}
+            onValueChange={(value) => setCredential(value)}
+            onKeyDown={(event) => { if (event.key === 'Enter' && ready) void add(); }}
+          />
+        </FieldLabelled>
+      )}
       <BarBottomAction
-        summary="Adds the tracker with no rule. Its torrents keep seeding until you save one."
+        summary={askCredential
+          ? `Tests the ${credentialName(software)} with the site, then adds the tracker. Its torrents keep seeding until you give it a rule.`
+          : 'Adds the tracker with no rule. Its torrents keep seeding until you save one.'}
         secondary={<Button variant="outline" disabled={pending} onClick={onCancel}>{cancelLabel}</Button>}
-        action={<Button size="large" icon={<Plus />} loading={pending} disabled={address.trim() === ''} onClick={() => void add()}>Add tracker</Button>}
+        action={<Button size="large" icon={<Plus />} loading={pending} disabled={!ready} onClick={() => void add()}>Add tracker</Button>}
       />
       {problem !== undefined && <Callout title={problem} />}
     </section>
