@@ -25,7 +25,7 @@ import {
   statFacts, trackerInfo, type TrackerRow,
 } from './trackers';
 
-/** Sends one request under /api/settings/trackers. Throws when media-manager-2 did not answer or the session ended. */
+/** Sends one request under the API path the caller picks (/api/settings/trackers or /api/setup). Throws when media-manager-2 did not answer or the session ended. */
 export type TrackerRequest = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown) => Promise<Response>;
 
 const noAnswer = 'media-manager-2 did not answer. Try again.';
@@ -77,7 +77,7 @@ export function TrackerPill({ row, edited, strip = false }: { row: TrackerRow; e
 
 type TrackerListRowProps = { host: string; title: ReactNode; subline: ReactNode; pill?: ReactNode; selected: boolean; adding?: boolean; icon?: ReactNode; onClick: () => void };
 
-/** A tracker in the settings list, 56 px, laid out as RowService. */
+/** A tracker, or Folders and Backup with an icon in place of the tracker mark, in the settings list, 56 px, laid out as RowService. */
 export function TrackerListRow({ host, title, subline, pill, selected, adding = false, icon, onClick }: TrackerListRowProps) {
   return (
     <button

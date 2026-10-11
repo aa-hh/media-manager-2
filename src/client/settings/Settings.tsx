@@ -29,7 +29,7 @@ import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill, type TrackerReq
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; saved: Record<ServiceName, SavedService> };
-// A service, a tracker as `tracker:<host>`, or the add-a-tracker pane.
+// A service, a tracker as `tracker:<host>`, the add-a-tracker pane, Folders or Backup.
 type Selected = ServiceName | `tracker:${string}` | 'add' | 'folders' | 'backup';
 const trackerKey = (host: string): Selected => `tracker:${host}`;
 
@@ -283,6 +283,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
         },
       }));
       clearForm('plex');
+      setPlexSignIn(true);
       toasts.add({ title: `Plex connected${result.version === undefined ? '' : ` · ${result.version}`}`, description: 'Tested with your sign-in token, then saved.' });
     } catch {
       fail('The test could not reach media-manager-2. Try again.');
@@ -308,7 +309,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     }
   };
 
-  // The service pane shows the selected service, or keeps Sonarr's state when a tracker is selected.
+  // The service pane shows the selected service, or keeps Sonarr's state when anything else is selected.
   const service = (services.some((member) => member.name === selected) ? selected : 'sonarr') as ServiceName;
   const selectedTracker = trackers.find((tracker) => trackerKey(tracker.host) === selected);
   const info = infoOf(service);
@@ -567,7 +568,14 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
                   return { ...current, [service]: { ...draft, secrets: Object.fromEntries(Object.entries(draft.secrets).filter(([secret]) => secret !== key)) } };
                 });
               }}
-              signInToken={info.name === 'plex' && setup.plexSignInTokenAvailable ? { on: usingSignIn, onChange: setPlexSignIn } : undefined}
+              signInToken={info.name === 'plex' && setup.plexSignInTokenAvailable ? {
+                on: usingSignIn,
+                onChange: (on) => {
+                  setPlexSignIn(on);
+                  // A token typed under "Paste a token" would otherwise still count as an unsaved edit once its field is hidden.
+                  if (on) setDrafts((current) => ({ ...current, plex: { ...(current.plex ?? emptyDraft(saved.plex)), secrets: {} } }));
+                },
+              } : undefined}
               onConnect={() => void (info.name === 'plex' && usingSignIn ? connectPlexWithSignIn() : connect(service))}
               onCheck={() => void checkSaved(service)}
               onDiscard={() => setDiscardOpen(true)}

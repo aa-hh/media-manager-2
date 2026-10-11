@@ -76,10 +76,10 @@ export const backupEdited = (draft: BackupDraft, destination: BackupDestination)
 export const backupWords = (destination: BackupDestination) => (destination === null ? undefined
   : destination.kind === 'folder' ? destination.folder : `${destination.bucket} at ${destination.endpoint}`);
 
-/** No destination, then a bad destination, then a missing restore key or a bad BACKUP_KEY. */
+/** A bad destination (the server then reports none), then no destination, then a missing restore key or a bad BACKUP_KEY. */
 export const backupPill = (backup: SetupStatus['backup']): { state: ServiceState; text: string } => {
-  if (backup.destination === null) return { state: 'not-set-up', text: 'Not set up' };
   if (backup.problem !== null) return { state: 'failed', text: 'Can\'t run: bad destination' };
+  if (backup.destination === null) return { state: 'not-set-up', text: 'Not set up' };
   if (backup.key === 'missing') return { state: 'failed', text: 'Can\'t run: no key yet' };
   if (backup.key === 'invalid') return { state: 'failed', text: 'Can\'t run: BACKUP_KEY invalid' };
   return { state: 'connected', text: 'On · every 5 min' };

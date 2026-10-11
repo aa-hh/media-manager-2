@@ -86,6 +86,7 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
   };
 
   const summary = pending ? 'Saving the destination.'
+    : created !== undefined ? 'Save the restore key first. To change the destination, leave Backup and open it again.'
     : anyError ? 'Not saved. Fix the field marked in red.'
       : !complete ? (draft.kind === 'folder' ? 'Enter the folder, then Confirm.' : 'Fill in the endpoint, bucket and both keys, then Confirm.')
         : !edited ? 'Nothing to save. Change a field, then Confirm.'

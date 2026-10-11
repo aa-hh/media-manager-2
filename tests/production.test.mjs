@@ -9294,14 +9294,16 @@ test('the settings screen sends only changed fields and ranks each service state
     const folder = { kind: 'folder', folder: '/backups' };
     const cases = [
       [{ destination: null, problem: null, key: 'missing', keyCreatedAt: null }, 'not-set-up'],
+      // The server reports no destination when the saved one is bad, so checking the destination first turns this row red.
+      [{ destination: null, problem: 'A folder and a bucket are both set.', key: 'missing', keyCreatedAt: null }, 'failed'],
       [{ destination: folder, problem: 'The folder is gone.', key: 'missing', keyCreatedAt: null }, 'failed'],
       [{ destination: folder, problem: null, key: 'missing', keyCreatedAt: null }, 'failed'],
       [{ destination: folder, problem: null, key: 'env', keyCreatedAt: null }, 'connected'],
       [{ destination: folder, problem: null, key: 'pair', keyCreatedAt: 0 }, 'connected'],
     ];
     for (const [backup, state] of cases) assert.equal(backupPill(backup).state, state);
-    assert.equal(backupPill(cases[1][0]).text, 'Can\'t run: bad destination');
-    assert.equal(backupPill(cases[2][0]).text, 'Can\'t run: no key yet');
+    assert.equal(backupPill(cases[2][0]).text, 'Can\'t run: bad destination');
+    assert.equal(backupPill(cases[3][0]).text, 'Can\'t run: no key yet');
   });
 });
 
