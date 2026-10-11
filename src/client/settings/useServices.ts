@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useToastManager } from '@/components/ui/toast';
-import { changedCount, changes, type Check, type Draft, emptyDraft, isConfigured, type SavedService, type ServiceName, services, type TestResult } from './model';
+import { changedCount, changes, type Check, type Draft, emptyDraft, isConfigured, list, type SavedService, type ServiceName, services, type TestResult } from './model';
 import { usesSignInToken } from './setup';
 import type { TrackerRequest } from './TrackerEditor';
 
@@ -37,6 +37,8 @@ export function useServices(onUnauthenticated: () => void) {
   const toasts = useToastManager();
   const checksRef = useRef(checks);
   checksRef.current = checks;
+  const loadRef = useRef(load);
+  loadRef.current = load;
   const unauthorizedRef = useRef(onUnauthenticated);
   unauthorizedRef.current = onUnauthenticated;
 
@@ -132,10 +134,15 @@ export function useServices(onUnauthenticated: () => void) {
       }));
       setChecks((current) => ({ ...current, [name]: { ...result, at: Date.now(), ofSaved: true } }));
       clearForm(name);
-      const ok = services.filter((other) => other.name === name || checksRef.current[other.name].kind === 'ok').length;
+      // Names saved services only, never a count, so the wording does not depend on which optional services the owner chose.
+      // Read from the ref: a service saved earlier in the same run of Connects is missing from this render's `saved`.
+      const latest = loadRef.current.kind === 'ready' ? loadRef.current.saved : saved;
+      const silent = services
+        .filter((other) => other.name !== name && isConfigured(latest[other.name]) && checksRef.current[other.name].kind !== 'ok')
+        .map((other) => other.label);
       toasts.add({
         title: `${info.label} connected${result.version === undefined ? '' : ` · ${result.version}`}`,
-        description: `Tested, then saved. ${ok === services.length ? `All ${ok} connections answer.` : `${ok} of ${services.length} connections answer.`}`,
+        description: `Tested, then saved. ${silent.length === 0 ? 'All saved connections answer.' : `${list(silent)} ${silent.length === 1 ? "doesn't" : "don't"} answer.`}`,
       });
       return true;
     } finally {

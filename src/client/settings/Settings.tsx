@@ -20,7 +20,7 @@ import { useToastManager } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import {
   ago, chain, changedCount, changes, type Check, type Draft, failureTitle, fieldWords, headerSummary, isConfigured, linkTone, pillFor,
-  savedAddress, type SavedService, type ServiceInfo, type ServiceName, services, stripSummary,
+  savedAddress, type SavedService, type ServiceInfo, type ServiceName, services,
 } from './model';
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
@@ -225,7 +225,11 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
         note={anyConfigured ? undefined : 'Nothing is connected yet. Add each service’s address and key, then Connect tests and saves it.'}
       />
 
-      <PiecesStrip summary={stripSummary(checks)} trackers={trackers} checks={checks} editedOf={editedOf} />
+      <PiecesStrip
+        checks={checks}
+        editedOf={editedOf}
+        folders={setup.required.folders === 'done' ? { state: 'connected', text: 'Saved' } : { state: 'not-set-up', text: 'Not set up' }}
+      />
 
       <div className="flex items-start gap-8">
         <nav aria-label="Services" className="flex w-105 shrink-0 flex-col">
@@ -392,75 +396,61 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
 }
 
 type PiecesStripProps = {
-  summary: string;
-  trackers: TrackerRow[];
   checks: Record<ServiceName, Check>;
   editedOf: (name: ServiceName) => number;
-  noTrackers?: string;
-  /** The setup wizard's extras: Folders under rTorrent, and lit pills (black with a lime dot, all lime once setup is done). */
-  folders?: { state: ServiceState; text: string };
+  /** Folders sits under rTorrent. */
+  folders: { state: ServiceState; text: string };
+  /** The setup wizard's lit pills: black with a lime dot, all lime once setup is done. */
   look?: 'plain' | 'setup' | 'done';
 };
 
-/** The "How the pieces connect" strip: trackers, then each service column with the links between them. Pills in a column share the widest one's width. */
-export function PiecesStrip({ summary, trackers, checks, editedOf, noTrackers = 'None added yet', folders, look = 'plain' }: PiecesStripProps) {
+/** The "How the pieces connect" strip: each service column with the links between them. Pills in a column share the widest one's width. */
+export function PiecesStrip({ checks, editedOf, folders, look = 'plain' }: PiecesStripProps) {
   const done = look === 'done';
   const pillLook = look === 'setup' ? 'dark' : done ? 'lime' : 'plain';
   const caption = 'font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase';
   return (
-    <section
-      aria-labelledby="pieces-title"
-      className={cn('flex items-center gap-8 rounded-lg border px-6 py-5 transition-colors duration-(--duration-base) ease-out', done ? 'border-bar bg-bar' : 'border-border')}
-    >
-      <div className="flex w-55 shrink-0 flex-col gap-1">
-        <h2 id="pieces-title" className={cn('font-ui text-base font-bold', done ? 'text-bar-foreground' : 'text-foreground')}>How the pieces connect</h2>
-        <p className={cn('font-ui text-sm', done ? 'text-bar-muted-foreground' : 'text-muted-foreground')}>{summary}</p>
-      </div>
-      <div className="flex min-w-0 flex-1 gap-3">
-        <div className="flex min-w-40 shrink-0 flex-col gap-2 pr-2">
-          <h3 className={caption}>Trackers</h3>
-          <div className="flex min-h-23.5 flex-col items-start justify-center gap-2">
-            {trackers.length === 0
-              ? <span className={cn('font-data text-[13px]', done ? 'text-bar-muted-foreground' : 'text-muted-foreground')}>{noTrackers}</span>
-              : trackers.map((row) => <TrackerPill key={row.host} row={row} edited={false} strip />)}
-          </div>
+    <section aria-labelledby="pieces-title" className="flex flex-col">
+      <LabelGroup id="pieces-title" className="pt-0">How the pieces connect</LabelGroup>
+      <div className={cn('flex items-center rounded-lg border px-6 py-5 transition-colors duration-(--duration-base) ease-out', done ? 'border-bar bg-bar' : 'border-border')}>
+        <div className="flex min-w-0 flex-1 gap-3">
+          {chain.map((column, index) => {
+            const next = chain[index + 1];
+            const tone = next === undefined ? 'idle' : linkTone(column.names.map((name) => checks[name]), next.names.map((name) => checks[name]));
+            return (
+              <Fragment key={column.caption}>
+                {/* A floor wide enough for "Connected · 4.0.10", so a pill changing state does not reflow the strip. */}
+                <div className="flex min-w-48 shrink-0 flex-col gap-2">
+                  <h3 className={caption}>{column.caption}</h3>
+                  <div className="flex h-23.5 flex-col items-stretch justify-center gap-2">
+                    {column.names.map((name) => {
+                      const member = infoOf(name);
+                      const pill = pillFor(member, checks[name], editedOf(name));
+                      return <StatusServicePill key={name} look={pillLook} logo={member.logo === null ? null : <Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
+                    })}
+                    {column.names.includes('rtorrent') && (
+                      <StatusServicePill look={pillLook} logo={<Folder aria-hidden="true" className={cn('size-4', pillLook === 'dark' && folders.state === 'connected' ? 'text-bar-foreground' : 'text-foreground')} />} name="Folders" state={folders.state}>
+                        {folders.text}
+                      </StatusServicePill>
+                    )}
+                  </div>
+                </div>
+                {column.linked && (
+                  <div
+                    aria-hidden="true"
+                    className={cn(
+                      'flex h-29.25 min-w-4 flex-1 items-center pt-5.75',
+                      done ? 'text-bar-foreground' : tone === 'risk' ? 'text-destructive' : tone === 'ok' ? 'text-input' : 'text-border',
+                    )}
+                  >
+                    <span className="h-px flex-1 bg-current" />
+                    <ChevronRight className="size-3.5 shrink-0" />
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
         </div>
-        {chain.map((column, index) => {
-          const next = chain[index + 1];
-          const tone = next === undefined ? 'idle' : linkTone(column.names.map((name) => checks[name]), next.names.map((name) => checks[name]));
-          return (
-            <Fragment key={column.caption}>
-              {/* A floor wide enough for "Connected · 4.0.10", so a pill changing state does not reflow the strip. */}
-              <div className="flex min-w-48 shrink-0 flex-col gap-2">
-                <h3 className={caption}>{column.caption}</h3>
-                <div className="flex h-23.5 flex-col items-stretch justify-center gap-2">
-                  {column.names.map((name) => {
-                    const member = infoOf(name);
-                    const pill = pillFor(member, checks[name], editedOf(name));
-                    return <StatusServicePill key={name} look={pillLook} logo={member.logo === null ? null : <Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
-                  })}
-                  {folders !== undefined && column.names.includes('rtorrent') && (
-                    <StatusServicePill look={pillLook} logo={<Folder aria-hidden="true" className={cn('size-4', pillLook === 'dark' && folders.state === 'connected' ? 'text-bar-foreground' : 'text-foreground')} />} name="Folders" state={folders.state}>
-                      {folders.text}
-                    </StatusServicePill>
-                  )}
-                </div>
-              </div>
-              {column.linked && (
-                <div
-                  aria-hidden="true"
-                  className={cn(
-                    'flex h-29.25 min-w-4 flex-1 items-center pt-5.75',
-                    done ? 'text-bar-foreground' : tone === 'risk' ? 'text-destructive' : tone === 'ok' ? 'text-input' : 'text-border',
-                  )}
-                >
-                  <span className="h-px flex-1 bg-current" />
-                  <ChevronRight className="size-3.5 shrink-0" />
-                </div>
-              )}
-            </Fragment>
-          );
-        })}
       </div>
     </section>
   );
@@ -481,8 +471,8 @@ type EditorProps = {
   onCheck: () => void;
   onDiscard: () => void;
   signInToken?: { on: boolean; onChange: (on: boolean) => void };
-  /** The setup wizard's step: its heading and count, the step Connect moves on to, and Back in place of Discard and Check now. */
-  wizard?: { title: string; step: string; next: string; onBack: () => void };
+  /** The setup wizard's step: its heading and count, the step Connect moves on to, Back in place of Discard and Check now, and wording that replaces the address's label and help or a credential's placeholder and help (keyed by the credential key). */
+  wizard?: { title: string; step: string; next: string; onBack: () => void; hints?: { address?: { label?: string; help?: string }; credentials?: Record<string, { placeholder?: string; help?: string }> } };
 };
 
 /** The pane for the selected service. Switching services crossfades it (duration-base, ease-out). */
@@ -554,11 +544,11 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
 
       <div className="grid grid-cols-2 gap-4">
         {info.addressPlaceholder !== undefined && <FieldLabelled
-          label="Address"
+          label={wizard?.hints?.address?.label ?? 'Address'}
           error={check.kind === 'unreachable' ? 'Nothing answered at this address within 10 seconds. Check the port.' : undefined}
           help={savedUrl !== '' && address !== savedUrl
             ? <span className="text-muted-foreground">Changed from {savedUrl}. Not saved yet.</span>
-            : `Where media-manager-2 reaches ${info.label} on the seedbox, with the port.`}
+            : wizard?.hints?.address?.help ?? `Where media-manager-2 reaches ${info.label} on the seedbox, with the port.`}
         >
           <InputSearch
             variant="field"
@@ -578,14 +568,16 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
           const locked = isSaved && !replacing[credential.key];
           const typed = (draft.secrets[credential.key] ?? '').trim() !== '';
           const refused = check.kind === 'rejected' && index === 0;
+          const hint = wizard?.hints?.credentials?.[credential.key];
+          const help = hint?.help ?? credential.help;
           return (
             <FieldLabelled
               key={credential.key}
               label={credential.label}
               error={refused ? `${info.label} refused this ${info.refused}.` : undefined}
               help={typed
-                ? <span className="text-muted-foreground">New {credential.short}, not saved yet. {credential.help}</span>
-                : locked ? `Saved. ${credential.help}` : credential.help}
+                ? <span className="text-muted-foreground">New {credential.short}, not saved yet. {help}</span>
+                : locked ? `Saved. ${help}` : help}
               action={isSaved && (
                 <Button
                   variant="outline"
@@ -610,7 +602,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
                     autoComplete="off"
                     spellCheck={false}
                     ref={(element) => { inputs.current[credential.key] = element; }}
-                    placeholder={credential.placeholder}
+                    placeholder={hint?.placeholder ?? credential.placeholder}
                     value={draft.secrets[credential.key] ?? ''}
                     readOnly={testing}
                     aria-invalid={refused || undefined}

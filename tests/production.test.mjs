@@ -3217,7 +3217,9 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     const fresh = await status();
     assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', plex: 'not_done', folders: 'not_done' });
     assert.equal(fresh.requiredComplete, false);
-    assert.deepEqual(fresh.optional, { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false } });
+    assert.deepEqual(fresh.optional, {
+      trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false },
+    });
     assert.deepEqual(fresh.backup, { destination: null, problem: null, key: 'missing', keyCreatedAt: null });
     assert.equal(fresh.plexSignInTokenAvailable, true);
     assert.equal((await (await build({ env: { BACKUP_KEY: 'ab'.repeat(32) } })).status()).backup.key, 'env');
@@ -3277,14 +3279,64 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
   // Dropping a stored choice, leaving backups on after the owner skipped them, or turning them on from a tick alone, turns this red.
   await t.test('the owner\'s choices round-trip and a skipped backup turns backups off', async () => {
     const { database, send, status } = await build();
-    const choose = (trackers, backup) => send('PUT', '/choices', { trackers, backup });
-    assert.equal((await choose({ wanted: false, skipped: false }, { wanted: true, skipped: true })).status, 204);
-    assert.deepEqual((await status()).optional, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'skipped', wanted: true } });
+    const choose = (trackers, metadata, backup) => send('PUT', '/choices', { trackers, metadata, backup });
+    assert.equal((await choose({ wanted: false, skipped: false }, { wanted: false, skipped: false }, { wanted: true, skipped: true })).status, 204);
+    assert.deepEqual((await status()).optional, {
+      trackers: { status: 'skipped', wanted: false }, metadata: { status: 'skipped', wanted: false }, backup: { status: 'skipped', wanted: true },
+    });
     assert.equal(backupsAreOff(database), true);
-    assert.equal((await choose({ wanted: true, skipped: false }, { wanted: true, skipped: false })).status, 204);
-    assert.deepEqual((await status()).optional, { trackers: { status: 'not_done', wanted: true }, backup: { status: 'not_done', wanted: true } });
+    assert.equal((await choose({ wanted: true, skipped: false }, { wanted: true, skipped: false }, { wanted: true, skipped: false })).status, 204);
+    assert.deepEqual((await status()).optional, {
+      trackers: { status: 'not_done', wanted: true }, metadata: { status: 'not_done', wanted: true }, backup: { status: 'not_done', wanted: true },
+    });
     assert.equal(backupsAreOff(database), true);
-    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, backup: { wanted: true, skipped: false } })).status, 400);
+    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, metadata: { wanted: true, skipped: false }, backup: { wanted: true, skipped: false } })).status, 400);
+    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true, skipped: false }, backup: { wanted: true, skipped: false } })).status, 400);
+    setSetting(database, 'credentials', 'mdblist.apiKey', 'value');
+    assert.equal((await status()).optional.metadata.status, 'done');
+
+    // Dropping the metadata default that readChoices lays under choices saved before the posters and ratings step turns this red.
+    const older = await build();
+    older.database.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)')
+      .run('setup.choices', JSON.stringify({ trackers: { wanted: true, skipped: false }, backup: { wanted: false, skipped: true } }));
+    assert.deepEqual((await older.status()).optional.metadata, { status: 'skipped', wanted: false });
+  });
+
+  // Returning the masked password, using a disabled or non-rTorrent client, or keeping a localhost host turns this red.
+  await t.test('rTorrent is suggested from the first enabled rTorrent download client, never its password', async () => {
+    const { database, fake, send } = await build({ which: { sonarr: {}, radarr: {} } });
+    const client = (implementation, enable, values) => ({
+      implementation, enable, fields: Object.entries(values).map(([name, value]) => ({ name, value })),
+    });
+    const clients = {
+      sonarr: [
+        client('QBittorrent', true, { host: 'qbit.example', port: 8080 }),
+        client('RTorrent', false, { host: 'off.example', port: 80, username: 'off' }),
+        client('RTorrent', true, { host: 'localhost', port: 443, useSsl: true, urlBase: 'xmlrpc', username: 'alec', password: '****' }),
+      ],
+      radarr: [client('RTorrent', true, { host: 'box.example', port: 8080, useSsl: false, urlBase: '/rtorrent/' })],
+    };
+    for (const service of ['sonarr', 'radarr']) {
+      fake[service].routes.push((method, url) => (
+        method === 'GET' && url.pathname === '/api/v3/downloadclient' ? { status: 200, body: clients[service] } : undefined
+      ));
+    }
+    const suggestion = async () => {
+      const response = await send('GET', '/rtorrent');
+      assert.equal(response.status, 200);
+      return response.text();
+    };
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://seedbox.example:8989');
+    const remote = await suggestion();
+    assert.deepEqual(JSON.parse(remote), { address: 'https://seedbox.example/xmlrpc', username: 'alec' });
+    assert.equal(remote.includes('****') || remote.includes('password'), false);
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://127.0.0.1:65201');
+    assert.deepEqual(JSON.parse(await suggestion()), { address: null, username: 'alec' });
+    fake.sonarr.state.down = true;
+    assert.deepEqual(JSON.parse(await suggestion()), { address: 'http://box.example:8080/rtorrent', username: null });
+    const unconfigured = await (await build()).send('GET', '/rtorrent');
+    assert.equal(unconfigured.status, 200);
+    assert.deepEqual(await unconfigured.json(), { address: null, username: null });
   });
 
   // Suggesting a blank root folder or a disabled download client's folder, failing the whole read when one service is down, mixing up
@@ -10017,7 +10069,7 @@ test('the settings screen sends only changed fields and ranks each service state
   // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
-  const { changes, pillFor, linkTone, services, stripSummary } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
   const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
 
   // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
@@ -10036,13 +10088,6 @@ test('the settings screen sends only changed fields and ranks each service state
     const tmdb = { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } };
     assert.deepEqual(changes('tmdb', tmdb, { address: 'https://api.themoviedb.org', secrets: { 'tmdb.apiKey': 'new' } }), { credentials: { 'tmdb.apiKey': 'new' } });
     assert.deepEqual(changes('trakt', undefined, { address: '', secrets: {} }), {});
-  });
-
-  // Counting a metadata service in the strip turns this red: the strip shows only the chain from Sonarr and Radarr to Plex.
-  await t.test('the strip sentence ignores metadata services', () => {
-    const ok = { kind: 'ok', at: 0, ofSaved: true };
-    const checks = Object.fromEntries(services.map((info) => [info.name, info.group === 'Services' ? ok : { kind: 'idle' }]));
-    assert.match(stripSummary(checks), /^Every link answers\./);
   });
 
   // Letting unsaved edits hide a running test or a failure turns this red.
@@ -10074,14 +10119,14 @@ test('the settings screen sends only changed fields and ranks each service state
     folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken, wantedParts, nextStep, firstStep,
   } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
 
-  // Opening on a done step, visiting an unwanted or skipped optional part, or reaching Done with a required part missing turns this red.
+  // Opening on a done step, visiting an unwanted or skipped optional part, skipping the posters and ratings step between trackers and backup, or reaching Done with a required part missing turns this red.
   await t.test('the wizard moves to the next open step and reaches Done only once every required part is saved', () => {
     const status = (done, optional = {}) => ({
       required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
-      optional: { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
+      optional: { trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
     });
     const fresh = status([]);
-    assert.deepEqual(wantedParts(fresh), { trackers: true, backup: true });
+    assert.deepEqual(wantedParts(fresh), { trackers: true, metadata: true, backup: true });
     assert.equal(firstStep(fresh, wantedParts(fresh)), 'what');
     assert.equal(nextStep('what', fresh, wantedParts(fresh)), 'sonarr');
     // Radarr saved in Settings earlier is passed over.
@@ -10089,9 +10134,13 @@ test('the settings screen sends only changed fields and ranks each service state
     assert.equal(firstStep(status(['sonarr']), { trackers: true, backup: true }), 'radarr');
     const required = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
     const chosen = status(required, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'not_done', wanted: true } });
-    assert.deepEqual(wantedParts(chosen), { trackers: false, backup: true });
+    assert.deepEqual(wantedParts(chosen), { trackers: false, metadata: false, backup: true });
     assert.equal(nextStep('folders', chosen, wantedParts(chosen)), 'backup');
     assert.equal(nextStep('backup', chosen, wantedParts(chosen)), 'done');
+    const all = { trackers: true, metadata: true, backup: true };
+    assert.equal(nextStep('trackers', status(required), all), 'metadata');
+    assert.equal(nextStep('metadata', status(required), all), 'backup');
+    assert.equal(nextStep('trackers', status(required, { metadata: { status: 'skipped', wanted: true } }), all), 'backup');
     const skipped = status(required, { trackers: { status: 'skipped', wanted: true }, backup: { status: 'skipped', wanted: true } });
     assert.equal(nextStep('folders', skipped, wantedParts(skipped)), 'done');
     // Past the end with Plex missing goes back to Plex, not to Done.

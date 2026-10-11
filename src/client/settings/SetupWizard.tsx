@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, CircleCheck, DatabaseBackup, Folder, Library, ListChecks, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleCheck, DatabaseBackup, Folder, Globe, Library, ListChecks, Lock, Plus, RefreshCw, ShieldCheck, Star } from 'lucide-react';
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppBarDesktop } from '@/components/ui/app-bar';
 import { BarBottomAction } from '@/components/ui/bar-bottom-action';
@@ -6,8 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Checkbox } from '@/components/ui/checkbox';
 import { FactRow } from '@/components/ui/fact';
+import { FieldLabelled } from '@/components/ui/field-labelled';
 import { HeaderPage } from '@/components/ui/header-page';
+import { InputSearch } from '@/components/ui/input-search';
 import { LabelGroup } from '@/components/ui/label-group';
+import { Logo } from '@/components/ui/logo';
 import { OptionRow } from '@/components/ui/option-row';
 import { RowService } from '@/components/ui/row-service';
 import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
@@ -16,10 +19,10 @@ import { useToastManager } from '@/components/ui/toast';
 import { navigate } from '../navigation';
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
-import { isConfigured, list, pillFor, savedAddress, stripSummary } from './model';
+import { isConfigured, list, pillFor, savedAddress, services } from './model';
 import { Editor, PiecesStrip } from './Settings';
 import {
-  backupPill, backupWords, firstStep, nextStep, type OptionalPart, previousStep, type RequiredPart, requiredParts, type SetupStatus, wantedParts, type WizardStep, wizardSummary,
+  backupPill, backupWords, firstStep, nextStep, type OptionalPart, previousStep, type RequiredPart, requiredParts, type RtorrentSuggestion, type SetupStatus, wantedParts, type WizardStep, wizardSummary,
 } from './setup';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, trackerInfo, type TrackerRow } from './trackers';
@@ -32,11 +35,11 @@ type ServiceStep = Exclude<RequiredPart, 'folders'>;
 const serviceSteps: { name: ServiceStep; about: string; needs: string }[] = [
   { name: 'sonarr', about: 'TV shows', needs: 'Address and API key, from Sonarr\'s Settings > General' },
   { name: 'radarr', about: 'Movies', needs: 'Address and API key, from Radarr\'s Settings > General' },
-  { name: 'rtorrent', about: 'Downloads', needs: 'Address, username and password' },
+  { name: 'rtorrent', about: 'Downloads', needs: 'Password. The address and username come from Sonarr' },
   { name: 'plex', about: 'Media server', needs: 'Address. The token comes from your Plex sign-in' },
 ];
 const stepNames: Record<WizardStep, string> = {
-  what: 'What to set up', sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex', folders: 'Folders', trackers: 'trackers', backup: 'backup', done: 'the end of setup',
+  what: 'What to set up', sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex', folders: 'Folders', trackers: 'trackers', metadata: 'posters and ratings', backup: 'backup', done: 'the end of setup',
 };
 
 type Props = {
@@ -65,6 +68,8 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   const [trackerView, setTrackerView] = useState<string>('list');
   const [newAddress, setNewAddress] = useState('');
   const [choosing, setChoosing] = useState(false);
+  const [savingMetadata, setSavingMetadata] = useState(false);
+  const [query, setQuery] = useState('');
   const [problem, setProblem] = useState<string>();
   const toasts = useToastManager();
   const unauthorizedRef = useRef(onUnauthenticated);
@@ -94,6 +99,28 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   }, [setLoad, readServices, readTrackers]);
 
   useEffect(() => { void read(); }, [read]);
+
+  // The rTorrent form starts filled in from Sonarr's download client: asked once, and only while the form is untouched.
+  const rtorrentAsked = useRef(false);
+  const [rtorrentSuggestion, setRtorrentSuggestion] = useState<RtorrentSuggestion>();
+  const editedOfRef = useRef(editedOf);
+  editedOfRef.current = editedOf;
+  useEffect(() => {
+    if (step !== 'rtorrent' || saved === undefined || isConfigured(saved.rtorrent) || editedOfRef.current('rtorrent') !== 0 || rtorrentAsked.current) return;
+    rtorrentAsked.current = true;
+    void (async () => {
+      try {
+        const response = await setupRequest('GET', '/rtorrent');
+        if (!response.ok) return;
+        const { address, username } = await response.json() as RtorrentSuggestion;
+        if (editedOfRef.current('rtorrent') !== 0 || (address === null && username === null)) return;
+        connections.setDraft('rtorrent', { address: address ?? '', secrets: username === null ? {} : { 'rtorrent.username': username } });
+        setRtorrentSuggestion({ address, username });
+      } catch {
+        // Nothing to suggest; the owner types the form.
+      }
+    })();
+  }, [step, saved]);
 
   // A step change unmounts the button that caused it. Focus moves to the new pane's heading, unless the owner picked the
   // step from the list (focus stays there), and the pane scrolls into view when its top is above the screen.
@@ -152,10 +179,10 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   const saveChoices = async (choice: Record<OptionalPart, boolean>, skip?: OptionalPart) => {
     setChoosing(true);
     setProblem(undefined);
-    // Skipping one part keeps the other's skip; Start clears both.
+    // Skipping one part keeps the others' skips; Start clears them all.
     const part = (name: OptionalPart) => ({ wanted: choice[name], skipped: name === skip || (skip !== undefined && status.optional[name].status === 'skipped') });
     try {
-      const response = await setupRequest('PUT', '/choices', { trackers: part('trackers'), backup: part('backup') });
+      const response = await setupRequest('PUT', '/choices', { trackers: part('trackers'), metadata: part('metadata'), backup: part('backup') });
       if (response.status !== 204) throw new Error('The choices could not be saved.');
       return true;
     } catch {
@@ -169,16 +196,8 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
     if (await saveChoices(wanted, part)) await advance(part);
   };
 
-  const finish = (search: boolean) => {
-    onFinished();
-    navigate('/');
-    if (search) window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>('input[type="search"]')?.focus());
-  };
-
   const chosen = Object.values(status.optional).some((part) => part.wanted || part.status === 'skipped');
   const doneCount = requiredParts.filter((part) => status.required[part] === 'done').length;
-  const optionalWanted = (['trackers', 'backup'] as const).filter((part) => wanted[part]);
-  const optionalStep = (part: OptionalPart) => (wanted[part] ? `Optional · ${optionalWanted.indexOf(part) + 1} of ${optionalWanted.length}` : 'Optional');
   const requiredStep = (part: RequiredPart) => `Step ${requiredParts.indexOf(part) + 1} of 5 required`;
   const back = () => setStep(previousStep(step));
   const noRule = trackers.filter((row) => row.status === 'no_rule').map((row) => trackerInfo(row.host).name);
@@ -186,6 +205,10 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   const backupSkipped = status.optional.backup.status === 'skipped';
   const backupState = backupPill(status.backup);
   const foldersReady = step === 'folders' || (['sonarr', 'radarr', 'rtorrent'] as const).every((part) => status.required[part] === 'done');
+  const metadataServices = services.filter((info) => info.group === 'Metadata');
+  const connected = metadataServices.filter((info) => isConfigured(saved?.[info.name]));
+  const metadataPill = connected.length > 0 ? pill('connected', `${connected.length} connected`)
+    : status.optional.metadata.status === 'skipped' ? pill('not-set-up', 'Skipped') : pill('not-set-up', 'Not set up');
 
   const connectStep = async (name: ServiceStep) => {
     const signIn = name === 'plex' && connections.usingSignIn(status.plexSignInTokenAvailable);
@@ -211,11 +234,17 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           </div>
           <div className="flex flex-col gap-2">
             <h3 className="font-ui text-sm font-semibold text-foreground">Optional, after the required steps:</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <OptionRow
                 control={<Checkbox checked={wanted.trackers} onCheckedChange={(on) => setWanted((current) => ({ ...current, trackers: on }))} />}
                 title="Trackers"
                 description="Add each private tracker and its hit and run rule, so deleting a version never breaks one."
+                bordered
+              />
+              <OptionRow
+                control={<Checkbox checked={wanted.metadata} onCheckedChange={(on) => setWanted((current) => ({ ...current, metadata: on }))} />}
+                title="Posters and ratings"
+                description="Posters, title details and ratings from TMDB, MDBList and Trakt."
                 bordered
               />
               <OptionRow
@@ -245,7 +274,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           key={JSON.stringify(status.backup.destination)}
           backup={status.backup}
           request={setupRequest}
-          wizard={{ title: 'Back up the database', step: optionalStep('backup'), onSkip: () => void skip('backup'), onContinue: () => void advance('backup') }}
+          wizard={{ title: 'Back up the database', step: 'Optional', onSkip: () => void skip('backup'), onContinue: () => void advance('backup') }}
           onSaved={() => void refresh().then((fresh) => {
             if (fresh !== undefined && fresh.backup.key !== 'missing' && fresh.backup.key !== 'invalid') setStep(nextStep('backup', fresh, wanted));
           })}
@@ -313,7 +342,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
             <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground [&>svg]:size-4"><ShieldCheck /></span>
             <h2 id="trackers-title" className="font-ui text-base font-bold text-foreground">Trackers</h2>
             {pill('connected', `${trackers.length} added`)}
-            <span className="ml-auto font-data text-[13px] text-muted-foreground">{optionalStep('trackers')}</span>
+            <span className="ml-auto font-data text-[13px] text-muted-foreground">Optional</span>
           </div>
           <div className="flex flex-col">
             {trackers.map((tracker) => (
@@ -337,7 +366,96 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           <BarBottomAction
             summary="Rules can wait: set them here or later in Settings."
             secondary={<Button variant="outline" icon={<ArrowLeft />} onClick={back}>Back</Button>}
-            action={<Button size="large" icon={<ArrowRight />} onClick={() => void advance('trackers')}>{next === 'backup' ? 'Continue to backup' : 'Finish setup'}</Button>}
+            action={<Button size="large" icon={<ArrowRight />} onClick={() => void advance('trackers')}>{next === 'done' ? 'Finish setup' : `Continue to ${stepNames[next]}`}</Button>}
+          />
+        </section>
+      );
+    }
+    if (step === 'metadata') {
+      const typed = metadataServices.filter((info) => (draftOf(info.name).secrets[info.credentials[0].key] ?? '').trim() !== '');
+      const anyTesting = metadataServices.some((info) => checks[info.name].kind === 'testing');
+      // A Check still running would make Save and continue connect the same service a second time alongside it.
+      const anyBusy = anyTesting || metadataServices.some((info) => connections.pending[info.name] !== undefined);
+      // Each Check already saves a passing key, so this connects only what is typed and still unsaved.
+      const saveMetadata = async () => {
+        setSavingMetadata(true);
+        try {
+          let all = true;
+          for (const info of typed) if (!await connections.connect(info.name)) all = false;
+          if (all) await advance('metadata');
+        } finally {
+          setSavingMetadata(false);
+        }
+      };
+      return (
+        <section aria-labelledby="metadata-title" className="flex flex-col gap-6 rounded-lg border border-border p-6 transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
+          <div className="flex items-center gap-3">
+            <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground [&>svg]:size-4"><Star /></span>
+            <h2 id="metadata-title" className="font-ui text-base font-bold text-foreground">Posters and ratings</h2>
+            {metadataPill}
+            <span className="ml-auto font-data text-[13px] text-muted-foreground">Optional</span>
+          </div>
+          {metadataServices.map((info) => {
+            const [credential] = info.credentials;
+            const check = checks[info.name];
+            const draft = draftOf(info.name);
+            const value = draft.secrets[credential.key] ?? '';
+            const state = pillFor(info, check, editedOf(info.name));
+            return (
+              <div key={info.name} className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  {info.logo === null ? <Globe aria-hidden="true" className="size-6 shrink-0" /> : <Logo name={info.logo} alt="" className="size-6" />}
+                  <span className="font-ui text-sm font-semibold text-foreground">{info.label}</span>
+                  <span className="font-ui text-[13px] text-muted-foreground">{info.usedFor}</span>
+                  {pill(state.state, state.text)}
+                </div>
+                {isConfigured(saved?.[info.name]) ? (
+                  <FieldLabelled label={credential.label} help={`Saved. ${credential.help}`}>
+                    <InputSearch key="locked" variant="field" readOnly value="" icon={<Lock aria-hidden="true" />} placeholder="••••••••••••••••••••" wrapperClassName="bg-muted" />
+                  </FieldLabelled>
+                ) : (
+                  <FieldLabelled
+                    label={credential.label}
+                    error={check.kind === 'rejected' ? `${info.label} refused this ${info.refused}.`
+                      : check.kind === 'unreachable' ? `Check that the seedbox can reach ${info.label} over the internet.` : undefined}
+                    help={credential.help}
+                    action={(
+                      <Button
+                        variant="outline"
+                        loading={connections.pending[info.name] === 'connect'}
+                        disabled={value.trim() === '' || anyTesting}
+                        onClick={() => void connections.connect(info.name)}
+                      >
+                        Check
+                      </Button>
+                    )}
+                  >
+                    <InputSearch
+                      key="open"
+                      variant="field"
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder={credential.placeholder}
+                      value={value}
+                      readOnly={check.kind === 'testing'}
+                      aria-invalid={check.kind === 'rejected' || check.kind === 'unreachable' || undefined}
+                      onValueChange={(next) => connections.setDraft(info.name, { ...draft, secrets: { ...draft.secrets, [credential.key]: next } })}
+                    />
+                  </FieldLabelled>
+                )}
+                {connections.problems[info.name] !== undefined && <Callout title={connections.problems[info.name]} />}
+              </div>
+            );
+          })}
+          <BarBottomAction
+            summary="Check tests each key. Leave any blank to add it later in Settings."
+            secondary={<Button variant="outline" onClick={() => void skip('metadata')}>Skip posters and ratings</Button>}
+            action={(
+              <Button size="large" loading={savingMetadata} disabled={(typed.length === 0 && connected.length === 0) || anyBusy} onClick={() => void saveMetadata()}>
+                Save and continue
+              </Button>
+            )}
           />
         </section>
       );
@@ -352,18 +470,35 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           <p className="max-w-170 font-ui text-sm text-foreground">
             media-manager-2 now watches every download in rTorrent and retries missed searches, stalled torrents and blocked imports on its own.
           </p>
+          <form
+            role="search"
+            className="flex flex-col gap-1.5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (query.trim() === '') return;
+              onFinished();
+              navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+            }}
+          >
+            <InputSearch variant="search" type="search" aria-label="Find something to watch" placeholder="Find something to watch" value={query} onValueChange={setQuery} />
+            <p className="font-ui text-xs text-subtle-foreground">Search Sonarr and Radarr for a show or movie to add.</p>
+          </form>
           <dl className="flex flex-col">
             <FactRow label="Hit and run rules">
               {trackers.length === 0 ? 'No trackers added. Settings has them when you want them'
                 : noRule.length > 0 ? `${list(noRule)} ${noRule.length === 1 ? 'has none yet, so its' : 'have none yet, so their'} torrents keep seeding`
                   : 'Every tracker has one'}
             </FactRow>
+            <FactRow label="Posters and ratings">
+              {connected.length === 0 ? 'None yet. Settings has them when you want them'
+                : connected.length === metadataServices.length ? `${list(connected.map((info) => info.label))} connected`
+                  : `${list(connected.map((info) => info.label))} connected. ${list(metadataServices.filter((info) => !connected.includes(info)).map((info) => info.label))} can wait for Settings`}
+            </FactRow>
             <FactRow label="Backup">{backupSkipped || status.backup.destination === null ? 'Skipped. Settings has it when you want it' : backupState.text}</FactRow>
           </dl>
           <BarBottomAction
             summary="Everything here can change later in Settings."
-            secondary={<Button variant="outline" size="large" icon={<Search />} onClick={() => finish(true)}>Search for something</Button>}
-            action={<Button size="large" icon={<Library />} onClick={() => finish(false)}>Open the library</Button>}
+            action={<Button variant="outline" size="large" icon={<Library />} onClick={() => { onFinished(); navigate('/'); }}>Open the app</Button>}
           />
         </section>
       );
@@ -389,7 +524,22 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
         onConnect={() => void connectStep(step)}
         onCheck={() => void connections.checkSaved(step)}
         onDiscard={() => connections.discard(step)}
-        wizard={{ title: `Connect ${info.label}`, step: requiredStep(step), next: stepNames[nextStep(step, status, wanted)], onBack: back }}
+        wizard={{
+          title: `Connect ${info.label}`,
+          step: requiredStep(step),
+          next: stepNames[nextStep(step, status, wanted)],
+          onBack: back,
+          // Each prefill hint stays only while its field still holds the suggested value.
+          hints: step === 'rtorrent' && rtorrentSuggestion !== undefined ? {
+            ...(rtorrentSuggestion.address !== null && draftOf('rtorrent').address === rtorrentSuggestion.address
+              ? { address: { label: 'XML-RPC address', help: 'Read from Sonarr\'s download client.' } } : {}),
+            credentials: {
+              ...(rtorrentSuggestion.username !== null && draftOf('rtorrent').secrets['rtorrent.username'] === rtorrentSuggestion.username
+                ? { 'rtorrent.username': { help: 'Read from Sonarr\'s download client.' } } : {}),
+              'rtorrent.password': { placeholder: 'Type the password', help: 'Sonarr hides the password, so type it here.' },
+            },
+          } : undefined,
+        }}
       />
     );
   };
@@ -414,22 +564,14 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           </Callout>
         ) : (
           <>
-            <PiecesStrip
-              summary={step === 'done' ? 'Every link answers. Search for something, pick a release, and watch it download live.' : stripSummary(checks)}
-              trackers={trackers}
-              noTrackers="Optional, no tracker yet"
-              checks={checks}
-              editedOf={editedOf}
-              folders={folders}
-              look={step === 'done' ? 'done' : 'setup'}
-            />
+            <PiecesStrip checks={checks} editedOf={editedOf} folders={folders} look={step === 'done' ? 'done' : 'setup'} />
             <div className="flex items-start gap-8">
               <nav aria-label="Setup steps" className="flex w-80 shrink-0 flex-col">
                 <TrackerListRow
                   host=""
                   icon={<ListChecks />}
                   title="What to set up"
-                  subline={chosen ? 'Trackers and backup chosen' : 'Pick the optional parts'}
+                  subline={chosen ? 'Optional parts chosen' : 'Pick the optional parts'}
                   pill={chosen ? pill('connected', 'Done') : pill('not-set-up', 'In progress')}
                   selected={step === 'what'}
                   onClick={() => setStep('what')}
@@ -471,6 +613,15 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
                     : status.optional.trackers.status === 'skipped' ? pill('not-set-up', 'Skipped') : pill('not-set-up', 'Not set up')}
                   selected={step === 'trackers'}
                   onClick={() => { setTrackerView('list'); setStep('trackers'); }}
+                />
+                <TrackerListRow
+                  host=""
+                  icon={<Star />}
+                  title="Posters and ratings"
+                  subline={connected.length > 0 ? list(connected.map((info) => info.label)) : 'TMDB, MDBList and Trakt'}
+                  pill={metadataPill}
+                  selected={step === 'metadata'}
+                  onClick={() => setStep('metadata')}
                 />
                 <TrackerListRow
                   host=""
