@@ -10,7 +10,7 @@ import { InputSearch } from '@/components/ui/input-search';
 import { OptionRow } from '@/components/ui/option-row';
 import { Radio, RadioGroup } from '@/components/ui/radio';
 import { StatusServicePill } from '@/components/ui/status-service-pill';
-import { backupBody, backupComplete, type BackupDraft, backupEdited, backupPill, emptyBackupDraft, type SetupStatus } from './setup';
+import { backupBody, backupComplete, type BackupDraft, backupEdited, backupPill, clearSentKeys, emptyBackupDraft, type SetupStatus } from './setup';
 import type { TrackerRequest } from './TrackerEditor';
 
 const noAnswer = 'media-manager-2 did not answer. Try again.';
@@ -50,7 +50,7 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
       const response = await request('POST', '/backup', backupBody(draft));
       if (response.status === 204) {
         // The same bucket with new keys reads back unchanged, so the parent does not remount this pane: drop the sent keys here.
-        setDraft((current) => ({ ...current, accessKeyId: '', secretAccessKey: '' }));
+        setDraft(clearSentKeys);
         setReplacing({ accessKeyId: false, secretAccessKey: false });
         onSaved();
         return;
@@ -91,8 +91,8 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
   const summary = pending ? 'Saving the destination.'
     : created !== undefined ? 'Save the restore key first. To change the destination, leave Backup and open it again.'
     : anyError ? 'Not saved. Fix the field marked in red.'
-      : !complete ? (draft.kind === 'folder' ? 'Enter the folder, then Confirm.' : 'Fill in the endpoint, bucket and both keys, then Confirm.')
-        : !edited ? 'Nothing to save. Change a field, then Confirm.'
+      : !edited ? 'Nothing to save. Change a field, then Confirm.'
+        : !complete ? (draft.kind === 'folder' ? 'Enter the folder, then Confirm.' : 'Fill in the endpoint, bucket and both keys, then Confirm.')
           : draft.kind === 'folder' ? 'Confirm checks the folder exists, saves it and turns backups on.'
             : 'Confirm saves the bucket and turns backups on. It is not tested here; the next backup run and the health check report a bucket that refuses.';
 
@@ -177,7 +177,7 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated }: { backu
             <Button
               variant="outline"
               icon={<Copy />}
-              onClick={() => void navigator.clipboard.writeText(created.restoreKey).then(
+              onClick={() => void (navigator.clipboard?.writeText(created.restoreKey) ?? Promise.reject(new Error('No clipboard'))).then(
                 () => setCopied(true),
                 () => setProblem('The key could not be copied. Select it and copy it by hand, or download it.'),
               )}

@@ -24,7 +24,7 @@ import {
 } from './model';
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
-import { backupPill, backupWords, type SetupStatus } from './setup';
+import { backupPill, backupWords, type SetupStatus, usesSignInToken } from './setup';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill, type TrackerRequest } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
@@ -181,7 +181,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const { saved } = load;
   const draftOf = (name: ServiceName) => drafts[name] ?? emptyDraft(saved[name]);
   // The sign-in token is the default only while no Plex token is saved.
-  const usingSignIn = setup.plexSignInTokenAvailable && (plexSignIn ?? saved.plex.credentials['plex.token'] !== true);
+  const usingSignIn = usesSignInToken(setup.plexSignInTokenAvailable, plexSignIn, saved.plex.credentials['plex.token'] === true);
   const editedOf = (name: ServiceName) => changedCount(name, saved[name], draftOf(name));
   const edited = services.filter((info) => editedOf(info.name) > 0).map((info) => info.name);
   const anyConfigured = services.some((info) => isConfigured(saved[info.name]));
@@ -524,7 +524,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
               request={setupRequest}
               onSaved={() => {
                 void rereadSetup();
-                toasts.add(setup.backup.key === 'missing'
+                toasts.add(setup.backup.key === 'missing' || setup.backup.key === 'invalid'
                   ? { title: 'Destination saved', description: 'Create a key so backups can run.' }
                   : { title: 'Backups on', description: 'Every 5 minutes, to the destination you confirmed.' });
               }}

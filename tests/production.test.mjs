@@ -9257,7 +9257,7 @@ test('the settings screen sends only changed fields and ranks each service state
   });
 
   const setupSource = await readFile(new URL('../src/client/settings/setup.ts', import.meta.url), 'utf8');
-  const { folderDraft, backupBody, backupEdited, backupPill } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
+  const { folderDraft, backupBody, backupEdited, backupPill, clearSentKeys, usesSignInToken } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(setupSource))}`);
 
   // Letting a suggestion replace a saved folder, or leaving a field null when nothing is known, turns this red.
   await t.test('a saved folder beats a suggestion, a suggestion fills a gap, and nothing known is blank', () => {
@@ -9271,7 +9271,7 @@ test('the settings screen sends only changed fields and ranks each service state
     });
   });
 
-  // Sending bucket fields with a folder, an empty region, or untrimmed values turns this red: the server refuses any field it does not expect.
+  // Sending bucket fields with a folder, an empty region, or untrimmed values turns this red: the server refuses any field it does not expect, and an empty region is needless.
   await t.test('the backup body holds only the chosen destination, trimmed, with the region only when typed', () => {
     const draft = { kind: 'folder', folder: ' /backups ', endpoint: 'https://s3.example', bucket: 'b', region: 'r', accessKeyId: 'a', secretAccessKey: 's' };
     assert.deepEqual(backupBody(draft), { folder: '/backups' });
@@ -9287,6 +9287,23 @@ test('the settings screen sends only changed fields and ranks each service state
     assert.equal(backupEdited({ ...blank, kind: 's3', folder: '/backups' }, { kind: 'folder', folder: '/backups' }), true);
     const savedBucket = { kind: 's3', endpoint: 'https://s3.example', bucket: 'media', region: 'auto' };
     assert.equal(backupEdited({ ...blank, ...savedBucket, folder: '', accessKeyId: 'new' }, savedBucket), true);
+    assert.equal(backupEdited({ ...blank, ...savedBucket, folder: '' }, savedBucket), false);
+  });
+
+  // Keeping the sent keys in the form after a save turns this red: the same bucket would still read as unsaved edits.
+  await t.test('a saved bucket reads as unedited once its sent keys are cleared', () => {
+    const savedBucket = { kind: 's3', endpoint: 'https://s3.example', bucket: 'media', region: 'auto' };
+    const sent = { ...savedBucket, folder: '', accessKeyId: 'id', secretAccessKey: 'secret' };
+    assert.equal(backupEdited(clearSentKeys(sent), savedBucket), false);
+  });
+
+  // Ignoring the owner's pick, or defaulting to the sign-in token when a Plex token is already saved, turns this red.
+  await t.test('Plex uses the sign-in token by the owner\'s pick, else only while no token is saved', () => {
+    assert.equal(usesSignInToken(false, true, false), false);
+    assert.equal(usesSignInToken(true, undefined, false), true);
+    assert.equal(usesSignInToken(true, undefined, true), false);
+    assert.equal(usesSignInToken(true, false, false), false);
+    assert.equal(usesSignInToken(true, true, true), true);
   });
 
   // Reading a key pair or BACKUP_KEY as missing, or letting a missing key outrank a bad destination, turns this red.

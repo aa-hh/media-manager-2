@@ -65,6 +65,12 @@ export const backupComplete = (draft: BackupDraft) => (draft.kind === 'folder'
   ? draft.folder.trim() !== ''
   : [draft.endpoint, draft.bucket, draft.accessKeyId, draft.secretAccessKey].every((value) => value.trim() !== ''));
 
+/** After a save the typed keys are sent and gone, so the same bucket reads back as unedited. */
+export const clearSentKeys = (draft: BackupDraft): BackupDraft => ({ ...draft, accessKeyId: '', secretAccessKey: '' });
+
+/** Plex uses the sign-in token when the session has one and the owner picked it, or by default while no Plex token is saved. */
+export const usesSignInToken = (available: boolean, choice: boolean | undefined, tokenSaved: boolean) => available && (choice ?? !tokenSaved);
+
 export const backupEdited = (draft: BackupDraft, destination: BackupDestination) => {
   if (destination === null || draft.kind !== destination.kind) return true;
   if (destination.kind === 'folder') return draft.folder.trim() !== destination.folder;
