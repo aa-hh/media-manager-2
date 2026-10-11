@@ -270,9 +270,8 @@ The library's sixth sheet holds the motion tokens and a transition table; each s
 
 | Trigger | What changes | Duration | Easing |
 |---|---|---|---|
-| Page change | new page fades in | fast | out |
-| Open a title from a poster card | the card's poster morphs into the title page's large poster while the page crossfades (view transition); the loading page shows that poster in place | slow | out |
-| Title page loads | skeleton crossfades into the page; the poster stays put | base | out |
+| Page change (links, back, forward) | one view transition per change: the old screen holds up to 350ms while the new one loads, then the old fades out and the new fades in; a new screen opens at the top, back and forward return to their scroll | fast out / base in | in / out |
+| Open a title from a poster card | the card's poster morphs into the title page's large poster during the page change; a title page still loading shows that poster in place | slow | out |
 | Hover (rows, buttons, nav, posters, calendar entries, cards) | fill to the hover token; poster brightness to 92% | fast | out |
 | Press, focus ring | instant | 0 | — |
 | Inline panel open / close | height 0 to full, fade in, rise 6px, sibling rows dim / reverse | base / fast | out / in |
@@ -283,7 +282,7 @@ The library's sixth sheet holds the motion tokens and a transition table; each s
 | Phone sheet and scrim | sheet slides up, scrim fades in | slow | out / in |
 | Dropdown menu, select list | fade and 4px slide from the trigger | fast | out / in |
 | Tooltip | fades in after `delay-tooltip` | fast | out |
-| Skeleton to content | content crossfades over the shimmer | base | out |
+| Skeleton to content | only when content arrives after its screen is showing: the skeleton stays underneath and fades out while the content fades in, so shared parts such as a poster stay solid; content ready within the hold just appears with the page change | base | out / in |
 | Progress update | fill width moves; percent text swaps at once | slow | out |
 | Download imports | badge crossfades Downloading to Imported; row leaves the list after `duration-toast` | base | out |
 | Grab in a row | Grab, then spinner, then Grabbed badge crossfade; progress line grows from 0 | base | out |

@@ -25,6 +25,7 @@ import {
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
 import { backupPill, backupWords, type SetupStatus } from './setup';
+import { useScreenReady } from '../navigation';
 import { infoOf, requester, useServices } from './useServices';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
@@ -49,6 +50,7 @@ const changedWords = (info: ServiceInfo, saved: SavedService | undefined, draft:
 export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void }) {
   const connections = useServices(onUnauthenticated);
   const { load, setLoad, checks, replacing, pending, problems, draftOf, editedOf } = connections;
+  useScreenReady(load.kind !== 'loading');
   const [selected, setSelected] = useState<Selected>('sonarr');
   const [trackers, setTrackers] = useState<TrackerRow[]>([]);
   const [checkedAt, setCheckedAt] = useState<Record<string, number>>({});

@@ -175,8 +175,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         )}
       />
       <main className="px-(--page-margin) pb-(--livebar)">
-        {/* A new screen fades in; each title page counts as its own screen, so going from one title to another fades too. */}
-        <div key={view === 'title' ? pathname : view} className="transition-opacity duration-(--duration-fast) ease-out starting:opacity-0">
+        {/* Each title page counts as its own screen. Screen changes crossfade in navigation.ts, so this adds no fade of its own. */}
+        <div key={view === 'title' ? pathname : view}>
         {view === 'search'
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'
