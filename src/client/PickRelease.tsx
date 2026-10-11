@@ -38,6 +38,8 @@ export type OwnedEpisode = {
   airDate: string | null;
   monitored: boolean;
   hasFile: boolean;
+  /** The title page passes the episode's file, so the season pack choice can name each owned quality. */
+  file?: { quality: string | null } | null;
 };
 
 type PastEvent = { kind: 'grabbed' | 'failed' | 'blocklisted'; at: string | null };
@@ -91,6 +93,8 @@ type Quality = { id: number; name: string };
 type Overrides = { episodeIds?: number[]; qualityId?: number };
 
 type GrabOutcome = { guid: string; message: string; outOfDate: boolean };
+
+type Choice = 'replace' | 'second';
 
 const ALL = 'all';
 
@@ -183,6 +187,8 @@ const seededText = (rule: NonNullable<Owned['hitAndRun']>) => {
 const audioHdrText = (item: { audio?: string | null; hdr?: string | null }) => (
   [item.audio, item.hdr].filter((part) => part != null && part !== '').join(' · ') || '–'
 );
+
+const seasonName = (number: number) => (number === 0 ? 'Specials' : `Season ${number}`);
 
 // The release group is the part after the last dash; the rest is the dotted name.
 const splitName = (title: string) => {
@@ -284,6 +290,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
   const [list, setList] = useState<ListState>({ kind: 'loading' });
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const [panel, setPanel] = useState<'decision' | 'override' | undefined>(undefined);
+  const [choice, setChoice] = useState<Choice>('replace');
   const [overrides, setOverrides] = useState<Overrides>({});
   const [qualityFilter, setQualityFilter] = useState<string>(ALL);
   const [qualities, setQualities] = useState<Quality[] | undefined>(undefined);
@@ -388,6 +395,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
         });
         setPanel(undefined);
       } else {
+        setPanel(undefined);
         setOutcome({
           guid,
           outOfDate: typeof body.reason !== 'string' && body.error === 'unknown_release',
@@ -397,6 +405,45 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
         });
       }
     } catch {
+      setPanel(undefined);
+      setOutcome({ guid, outOfDate: false, message: "The grab didn't reach media-manager-2's server." });
+    } finally {
+      setGrabbing(false);
+    }
+  };
+
+  // A second version goes from media-manager-2 to rTorrent directly; Sonarr and Radarr never see it.
+  const sendSecondVersion = async (guid: string) => {
+    setGrabbing(true);
+    setOutcome(undefined);
+    try {
+      const response = await postJson('/api/second-versions', { target: targetBody(target), guid });
+      if (response.status === 401) {
+        onUnauthenticated();
+        return;
+      }
+      const body = await readBody(response);
+      setPanel(undefined);
+      // 202: rTorrent may have the torrent even though the send failed; the next check settles it and it is never sent twice.
+      if (response.status === 201 || response.status === 202) {
+        setGrabbed((current) => new Set(current).add(guid));
+        toasts.add({
+          title: 'Sent to rTorrent as a second version.',
+          description: response.status === 202 && typeof body.reason === 'string'
+            ? `rTorrent didn't confirm it yet: ${body.reason}`
+            : undefined,
+        });
+      } else {
+        setOutcome({
+          guid,
+          outOfDate: body.error === 'unknown_release',
+          message: typeof body.reason === 'string' ? `The second version wasn't sent. ${body.reason}`
+            : body.error === 'unknown_release' ? 'These results are out of date. Refresh and pick again.'
+              : "The second version didn't reach rTorrent.",
+        });
+      }
+    } catch {
+      setPanel(undefined);
       setOutcome({ guid, outOfDate: false, message: "The grab didn't reach media-manager-2's server." });
     } finally {
       setGrabbing(false);
@@ -409,8 +456,31 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
   const onGrab = (guid: string) => {
     if (onCooldown(releases.find((release) => release.guid === guid))) return;
     setSelected(guid);
-    if (grabTargetHasFile) setPanel('decision');
-    else void sendGrab(guid, 'grab');
+    if (grabTargetHasFile) {
+      setChoice('replace');
+      setPanel('decision');
+    } else void sendGrab(guid, 'grab');
+  };
+
+  const overridden = overrides.episodeIds !== undefined || overrides.qualityId !== undefined;
+  const confirm = () => {
+    if (selected === undefined || grabbing) return;
+    // The second-version route takes no overrides, so an overridden release can only replace.
+    if (choice === 'second' && !overridden) void sendSecondVersion(selected);
+    else void sendGrab(selected, 'replace');
+  };
+
+  // The dialog's keys reach here through its portal. 1 and 2 pick; Enter grabs wherever focus sits except on Cancel,
+  // caught before the focused button (the dialog starts on Close) can act on it.
+  const onDecisionKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (panel !== 'decision') return;
+    if (event.key === '1') setChoice('replace');
+    if (event.key === '2' && !overridden) setChoice('second');
+    if (event.key === 'Enter' && (event.target as HTMLElement).closest('[data-cancel]') === null) {
+      event.preventDefault();
+      event.stopPropagation();
+      confirm();
+    }
   };
 
   const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -438,11 +508,35 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
   };
 
   const refreshing = list.kind === 'ready' && list.refreshing;
+
+  // What the grab decision describes: the owned file for one episode or movie, the pack and its episodes for a season.
+  const chosen = releases.find((release) => release.guid === selected);
+  const secondAllowed = !overridden;
+  const packEpisodes = target.kind !== 'season' ? [] : episodes
+    .filter((episode) => (chosen?.episodeIds !== undefined && chosen.episodeIds.length > 0
+      ? chosen.episodeIds.includes(episode.id)
+      : episode.seasonNumber === target.seasonNumber))
+    .sort((a, b) => a.episodeNumber - b.episodeNumber);
+  const missing = packEpisodes.filter((episode) => !episode.hasFile).map((episode) => `E${String(episode.episodeNumber).padStart(2, '0')}`);
+  const packNote = [
+    `All ${packEpisodes.length} share one torrent, which stays while any of these second versions remains.`,
+    missing.length === 0 ? undefined : missing.length === 1
+      ? `${missing[0]} has no file yet: it gets a second version only, and Sonarr still lists it as missing.`
+      : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]} have no file yet: they get a second version only, and Sonarr still lists them as missing.`,
+  ].filter((part) => part !== undefined).join(' ');
+  const decisionSubject = target.kind === 'season'
+    ? `${[chosen?.quality, chosen === undefined ? undefined : splitName(chosen.title).group, chosen === undefined ? undefined : formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}, one torrent with ${packEpisodes.length} episodes. You have files for ${packEpisodes.length - missing.length} of them; their torrents keep seeding either way.`
+    : `${owned === null ? '' : `Your ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
+  const second = choice === 'second' && secondAllowed;
+  const confirmLabel = grabbing
+    ? (second ? 'Grabbing…' : 'Replacing…')
+    : second
+      ? (target.kind === 'season' ? `Grab ${packEpisodes.length} second versions` : 'Grab as second version')
+      : (target.kind === 'season' ? 'Grab and replace the current files' : 'Grab and replace the current file');
   const showRows = list.kind === 'ready' && releases.length > 0;
-  const overridden = overrides.episodeIds !== undefined || overrides.qualityId !== undefined;
 
   return (
-    <div onKeyDown={onListKeyDown}>
+    <div onKeyDown={onListKeyDown} onKeyDownCapture={onDecisionKeyDown}>
       <PanelInline
         open
         title={`Pick a release for ${title}`}
@@ -641,30 +735,67 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
       <Dialog
         open={panel === 'decision' && grabTargetHasFile}
         onOpenChange={(open) => { if (!open) setPanel(undefined); }}
-        title="This is already in your library"
-        subject="The current file's torrent keeps seeding either way."
+        title={target.kind === 'season'
+          ? `${seasonName(target.seasonNumber)} ${target.seasonNumber === 0 ? 'are' : 'is'} already in your library`
+          : 'This is already in your library'}
+        subject={decisionSubject}
         actions={(
           <>
-            <Button variant="outline" kbd="Esc" disabled={grabbing} onClick={() => setPanel(undefined)}>Cancel</Button>
+            <Button variant="outline" kbd="Esc" data-cancel="" disabled={grabbing} onClick={() => setPanel(undefined)}>Cancel</Button>
             <Button
               size="large"
+              kbd="↵"
               icon={grabbing ? <Spinner className="text-current" /> : undefined}
               disabled={grabbing || selected === undefined}
-              onClick={() => { if (selected !== undefined) void sendGrab(selected, 'replace'); }}
+              onClick={confirm}
             >
-              {grabbing ? 'Replacing…' : 'Grab and replace the current file'}
+              {confirmLabel}
             </Button>
           </>
         )}
       >
-        <RadioGroup value="replace" aria-label="Replace or keep as a second version" className="flex flex-col gap-2">
+        <RadioGroup
+          value={secondAllowed ? choice : 'replace'}
+          onValueChange={(value) => setChoice(value as Choice)}
+          aria-label="Replace or keep as a second version"
+          className="flex flex-col gap-2"
+        >
           <CardChoice
             value="replace"
-            title="Replace tracked version"
-            description="The new release becomes the tracked file, even at lower quality, and is kept from automatic upgrades."
+            kbd="1"
+            title={target.kind === 'season' ? 'Replace tracked versions' : 'Replace tracked version'}
+            description={target.kind === 'season'
+              ? `The pack becomes the tracked file for all ${packEpisodes.length} episodes, even at lower quality, and is kept from automatic upgrades.`
+              : 'The new release becomes the tracked file, even at lower quality, and is kept from automatic upgrades.'}
           />
-          <CardChoice value="second" disabled title="Keep as second version" description="Keeps both files side by side in Plex. Not available yet." />
+          <CardChoice
+            value="second"
+            kbd={secondAllowed ? '2' : undefined}
+            disabled={!secondAllowed}
+            title={target.kind === 'season' ? 'Keep as second versions' : 'Keep as second version'}
+            description={`${target.kind === 'season' ? 'Adds a second version to each episode below, side by side in Plex.' : 'Keeps both files side by side in Plex.'}${secondAllowed ? '' : ' Not available while this release is overridden.'}`}
+          />
         </RadioGroup>
+        {target.kind === 'season' && packEpisodes.length > 0 && (
+          <div className="flex flex-col gap-2 pt-3">
+            <span className="flex items-center gap-1.5 font-ui text-sm font-semibold text-foreground">
+              Episodes in this release
+              <span className="font-data text-[13px] font-normal text-subtle-foreground">{packEpisodes.length}</span>
+            </span>
+            <div className="flex flex-col rounded-md border border-border">
+              {packEpisodes.map((episode) => (
+                <div key={episode.id} className="flex h-7 items-center gap-2 border-b border-border px-3 last:border-b-0">
+                  <span className="w-6 shrink-0 font-data text-[13px] font-medium text-muted-foreground">E{String(episode.episodeNumber).padStart(2, '0')}</span>
+                  <span className="min-w-0 flex-1 truncate font-ui text-[13px] text-foreground">{episode.title ?? ''}</span>
+                  {episode.hasFile
+                    ? <Badge>{episode.file?.quality == null ? 'yours' : `yours: ${episode.file.quality}`}</Badge>
+                    : <Badge variant="warning">no file yet</Badge>}
+                </div>
+              ))}
+            </div>
+            {choice === 'second' && secondAllowed && <p className="font-ui text-xs leading-normal text-muted-foreground">{packNote}</p>}
+          </div>
+        )}
       </Dialog>
     </div>
   );
