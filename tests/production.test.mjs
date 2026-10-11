@@ -2459,6 +2459,25 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
     assert.equal(limited.calls.length, 2);
   });
 
+  // Waiting the full Retry-After, however long TMDB asks for, turns this red.
+  await t.test('a 429 waits at most 10 seconds whatever Retry-After says', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let answers = 0;
+    const { tmdb, calls } = connect(() => {
+      answers += 1;
+      return answers === 1 ? new Response('', { status: 429, headers: { 'Retry-After': '86400' } }) : json({ id: 5, title: 'Film' });
+    });
+    const pending = tmdb.summary('movie', 5);
+    for (let turn = 0; turn < 5; turn += 1) await drain();
+    t.mock.timers.tick(9_999);
+    await drain();
+    assert.equal(calls.length, 1);
+    t.mock.timers.tick(1);
+    for (let turn = 0; turn < 5; turn += 1) await drain();
+    assert.equal(calls.length, 2);
+    assert.equal((await pending).kind, 'ok');
+  });
+
   // Reading rent or buy entries as streaming, keeping a non-numeric id, or putting the key anywhere but the api_key parameter turns this red.
   await t.test('streaming availability keeps flatrate provider ids by country', async () => {
     const { tmdb, calls } = connect(() => json({ results: { US: { flatrate: [{ provider_id: 8 }, { provider_id: 'x' }], rent: [{ provider_id: 2 }] }, GB: {} } }));
@@ -10759,6 +10778,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
   let trendingMovies = [102, 101, 103];
   let providersDown = false;
   let failingSummary;
+  let missingSummary;
   let genresDown = false;
   const json = (body) => new Response(JSON.stringify(body));
   const page = (type, ids, withType = false) => json({ page: 1, total_pages: 1, results: ids.map((id) => listItem(type, id, withType)) });
@@ -10792,6 +10812,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     if (match) return json({ id: Number(match[2]), results: { US: { flatrate: flatrate(Number(match[2])).map((id) => ({ provider_id: id })) } } });
     match = path.match(/^\/(movie|tv)\/(\d+)$/);
     if (match && path === failingSummary) return new Response('', { status: 500 });
+    if (match && path === missingSummary) return new Response('', { status: 404 });
     if (match && catalogue.has(`${match[1]}:${match[2]}`)) {
       const { genre_ids: ids, ...item } = listItem(match[1], Number(match[2]));
       return json({ ...item, genres: ids.map((id) => ({ id, name: genreNames[id] })) });
@@ -11139,6 +11160,24 @@ test('the discover home serves recipe rows from saved results, blends sources by
     assert.ok(since(at).tmdb.some((call) => call.pathname === '/3/movie/201'));
     failingSummary = undefined;
     assert.deepEqual((await home()).body.trending, saved.trending);
+  });
+
+  // Counting a summary TMDB answers 404 for as a failed source, which leaves the row partial for good, turns this red.
+  await t.test('a Trakt title TMDB no longer has is dropped and the row saves fresh', async () => {
+    await signInAgain();
+    database.prepare('DELETE FROM discover_rows').run();
+    database.prepare("DELETE FROM title_store_parts WHERE key = 'movie:201' AND part = 'tmdbSummary'").run();
+    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
+    missingSummary = '/movie/201';
+    const without = (await home()).body;
+    await discover.idle();
+    assert.equal(ids(without.trending.movie).includes(201), false);
+    assert.equal(database.prepare('SELECT fetched_at FROM discover_rows WHERE key = ?').get(trendingKey).fetched_at, clock.value);
+    missingSummary = undefined;
+    clock.value += 30 * 60_000 + 1;
+    await discover.refresh();
+    assert.equal(database.prepare('SELECT fetched_at FROM discover_rows WHERE key = ?').get(trendingKey).fetched_at, clock.value);
+    assert.ok(ids((await home()).body.trending.movie).includes(201));
   });
 
   // Requiring Trakt for a TMDB row, failing the home when Trakt alone is missing, saving a Trakt-only row empty,

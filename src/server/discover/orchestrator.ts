@@ -220,7 +220,8 @@ export const createOrchestrator = (options: {
         return summary.kind === 'ok' ? { kind: 'ok', value: { item: toItem(title.type, tmdbId, summary.value), tvdbId: title.tvdbId, rank: index + 1 } } : summary;
       }));
       const entries = resolved.flatMap((entry) => (entry?.kind === 'ok' ? [entry.value] : []));
-      const failure = resolved.find((entry): entry is Failure => entry !== undefined && entry.kind !== 'ok');
+      // A title TMDB no longer has is dropped, not counted as a failure, or the row would stay partial for good.
+      const failure = resolved.find((entry): entry is Failure => entry !== undefined && entry.kind !== 'ok' && entry.kind !== 'not_found');
       // Every summary failing means TMDB is down or not set up, which fails this source like any other upstream failure.
       return entries.length === 0 && failure !== undefined ? failure : { kind: 'ok', value: entries, thinned: failure !== undefined };
     }
@@ -263,8 +264,8 @@ export const createOrchestrator = (options: {
       const available = await Promise.all(candidates.map(({ item, tvdbId }) => savedPart(
         item.type, item.tmdbId, tvdbId, 'tmdbProviders', PROVIDERS_MAX_AGE_MS, () => tmdb.watchProviders(item.type, item.tmdbId),
       )));
-      // A failed lookup drops its title, so the row is partial rather than complete without it.
-      lookupsFailed = available.some((result) => result.kind !== 'ok');
+      // A failed lookup drops its title, so the row is partial rather than complete without it. A title TMDB no longer has is simply dropped.
+      lookupsFailed = available.some((result) => result.kind !== 'ok' && result.kind !== 'not_found');
       candidates = candidates.filter((_, index) => {
         const result = available[index];
         return result.kind === 'ok' && (result.value[filters.region] ?? []).some((id) => filters.providers.includes(id));
@@ -305,7 +306,7 @@ export const createOrchestrator = (options: {
   };
 
   // One build per key at a time. A failure keeps the old row. A partial build (a source or the genre list failed) never
-  // replaces a saved row; with nothing saved it is saved already past its age limit, so the next refresh or read rebuilds it.
+  // replaces a saved row; with nothing saved it is saved already past its age limit, so the next refresh rebuilds it (a grid page, on its next read).
   const fill = (key: string) => {
     const running = inFlight.get(key);
     if (running !== undefined) return running;
