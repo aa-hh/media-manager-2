@@ -20,9 +20,10 @@
 # (`none` when there are none). A push that leaves it unchanged, such as a
 # docs-only commit, uses no round: the run re-posts that round's status on
 # the new HEAD and exits with its result. Round 2 reviews only the fix for
-# round 1's HIGH findings: its base is round 1's head with origin/main merged
-# in (`git merge-tree --write-tree`, git 2.38 or newer), so a merge of main
-# between rounds adds nothing to the diff. It never skips; a third run
+# round 1's HIGH findings: its base is round 1's head with the branch's merge
+# base with origin/main merged in (`git merge-tree --write-tree`, git 2.38 or
+# newer), so a merge of main between rounds adds nothing to the diff, and
+# main moving on after that merge shows nothing reversed. It never skips; a third run
 # refuses. No PR yet means round 1 against main. Only a HIGH finding fails
 # the status; MEDIUM and LOW are posted and do not block.
 #
@@ -198,7 +199,7 @@ elif [ "$round" = 2 ]; then
   git rev-parse --verify -q "$base^{commit}" > /dev/null \
     || { echo "Round 1's head $base (from PR #$pr) is not in this clone; git fetch, then run again." >&2; exit 2; }
   if git merge-base --is-ancestor "$prev_head" "$tip" 2>/dev/null; then
-    base=$(git merge-tree --write-tree origin/main "$prev_head" 2>/dev/null) || {
+    base=$(git merge-tree --write-tree "$main_base" "$prev_head" 2>/dev/null) || {
       base=$prev_head
       echo "Warning: could not merge origin/main into round 1's head (conflicts, or git older than 2.38); the round 2 diff may include changes merged in from main." >&2
     }

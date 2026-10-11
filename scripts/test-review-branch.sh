@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Tests for scripts/review-branch.sh after two review rounds: merging
-# origin/main in must not use a round, anything else must keep refusing.
+# Tests for scripts/review-branch.sh across review rounds: merging origin/main
+# in must not use a round or widen round 2, anything else after round 2 must
+# keep refusing.
 # Builds a throwaway origin and clone, runs the script from THIS checkout with
 # cwd in the clone and GH pointed at a stub that keeps comments and statuses
 # in files.
@@ -142,11 +143,13 @@ printf '<!-- agent-review round=1 head=%s level=cheap high=1 changes=old -->\n##
 on_main b.txt 'b-unrelated-main-line\n' main-other
 g merge -q --no-edit origin/main
 commit_file a.txt 'one\nTWO-fix\nthree\n' own-fix
+# Main moving on after the branch's last merge must not show up reversed.
+on_main c.txt 'c-newer-main-line\n' main-newer
 run_review
 prompt=$(printf '%s\n' "$OUT" | sed -n 's/^cheap .* prompt=\(.*\)  save reply to=.*/\1/p')
 if expect_rc "round 2 after a main merge" 3; then
   if ! printf '%s\n' "$OUT" | grep -q 'round 2$' || [ -z "$prompt" ]; then fail "round 2 after a main merge: wanted one cheap round 2 pass, got: $OUT"
-  elif ! grep -q 'TWO-fix' "$prompt" || grep -q 'b-unrelated-main-line' "$prompt"; then fail "round 2 after a main merge: prompt is not just the fix"
+  elif ! grep -q 'TWO-fix' "$prompt" || grep -q 'b-unrelated-main-line' "$prompt" || grep -q 'c-newer-main-line' "$prompt"; then fail "round 2 after a main merge: prompt is not just the fix"
   else ok "round 2 after a main merge reviews only the fix"
   fi
 fi
