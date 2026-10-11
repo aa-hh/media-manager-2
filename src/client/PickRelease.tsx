@@ -11,7 +11,7 @@ import { SelectContent, SelectItem } from './components/ui/dropdown-menu';
 import { EmptyState } from './components/ui/empty-state';
 import { FieldLabelled } from './components/ui/field-labelled';
 import { Kbd } from './components/ui/kbd';
-import { MarkComparison } from './components/ui/mark-comparison';
+import { MarkComparison, type Comparison } from './components/ui/mark-comparison';
 import { OptionRow } from './components/ui/option-row';
 import { PanelInline } from './components/ui/panel-inline';
 import { RadioGroup } from './components/ui/radio';
@@ -56,9 +56,30 @@ type Release = {
   customFormatScore: number;
   flags: string[];
   past: PastEvent[];
+  // The episodes Sonarr maps the release to; a season pack lists every one it covers.
+  episodeIds?: number[];
+  // Worked out by the server on every read; absent from replies of servers that predate them.
+  compared?: Comparison | null;
+  audio?: string | null;
+  hdr?: string | null;
+  hitAndRun?: (Rule & { cooldown: boolean; cooldownSince: number | null }) | null;
 };
 
-type Stored = { fetchedAt: number; releases: Release[] };
+type Rule = { host: string; hours: number | null; ratio: number | null; logic: 'and' | 'or' | null };
+
+type Owned = {
+  quality: string | null;
+  releaseTitle: string | null;
+  releaseGroup: string | null;
+  size: number;
+  customFormatScore: number | null;
+  qualityCutoffNotMet: boolean;
+  audio: string | null;
+  hdr: string | null;
+  hitAndRun: (Rule & { seededHours: number; currentRatio: number; met: boolean }) | null;
+};
+
+type Stored = { fetchedAt: number; releases: Release[]; owned?: Owned | null };
 
 type ListState =
   | { kind: 'loading' }
@@ -141,6 +162,27 @@ const fitOf = (release: Release, risks: string[]): { fit: ProfileFit; text: stri
   if (risks.length > 0) return { fit: 'warning', text: risks[0] };
   return { fit: 'meets', text: `${release.customFormatScore > 0 ? '+' : ''}${release.customFormatScore}` };
 };
+
+// Ratios keep a decimal place, so "1.0" reads as a ratio, without rounding away a finer one such as 0.95.
+const formatRatio = (ratio: number) => (Number.isInteger(ratio * 10) ? ratio.toFixed(1) : String(ratio));
+
+// The tracker's rule in words, such as "120 h or ratio 1.0"; Blutopia's has hours only.
+const ruleText = (rule: Rule) => [
+  rule.hours === null ? undefined : `${rule.hours} h`,
+  rule.ratio === null ? undefined : `ratio ${formatRatio(rule.ratio)}`,
+].filter((part) => part !== undefined).join(rule.logic === 'and' ? ' and ' : ' or ') || '–';
+
+// The owned file's progress against its tracker's rule, such as "seeded 31 h of 120 h".
+const seededText = (rule: NonNullable<Owned['hitAndRun']>) => {
+  if (rule.hours !== null) return `seeded ${rule.seededHours} h of ${rule.hours} h`;
+  if (rule.ratio !== null) return `ratio ${formatRatio(rule.currentRatio)} of ${formatRatio(rule.ratio)}`;
+  return '–';
+};
+
+// No HDR shows the audio alone.
+const audioHdrText = (item: { audio?: string | null; hdr?: string | null }) => (
+  [item.audio, item.hdr].filter((part) => part != null && part !== '').join(' · ') || '–'
+);
 
 // The release group is the part after the last dash; the rest is the dotted name.
 const splitName = (title: string) => {
@@ -304,6 +346,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
   }, [target.service]);
 
   const releases = list.kind === 'ready' ? list.stored.releases : [];
+  const owned = list.kind === 'ready' ? list.stored.owned ?? null : null;
   // Sonarr and Radarr return releases in their own preference order, so the first one that
   // passes the profile is the one they would grab themselves.
   const best = releases.find((release) => release.approved)?.guid;
@@ -360,7 +403,11 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
     }
   };
 
+  // A tracker cooldown refuses every grab from it, so Grab stays off until it ends.
+  const onCooldown = (release: Release | undefined) => release?.hitAndRun?.cooldown === true;
+
   const onGrab = (guid: string) => {
+    if (onCooldown(releases.find((release) => release.guid === guid))) return;
     setSelected(guid);
     if (grabTargetHasFile) setPanel('decision');
     else void sendGrab(guid, 'grab');
@@ -470,7 +517,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
 
         {list.kind === 'loading' && (
           <>
-            <RowReleaseHeader age />
+            <RowReleaseHeader comparison hitAndRun audio />
             {Array.from({ length: 6 }, (_, index) => <SkeletonRow key={index} className="border-b border-border" />)}
           </>
         )}
@@ -485,7 +532,29 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
         )}
         {showRows && (
           <div ref={listRef} role="table" aria-label="Releases" className="flex flex-col border-t border-border">
-            <RowReleaseHeader age />
+            <RowReleaseHeader comparison hitAndRun audio />
+            {owned !== null && (() => {
+              // The owned file stays pinned under the header whatever the quality filter shows.
+              const { name, group } = splitName((owned.releaseTitle ?? '').replace(/\.(mkv|mp4|m4v|avi|ts)$/i, ''));
+              return (
+                <RowRelease
+                  yours
+                  aria-label="Your current file"
+                  quality={owned.quality ?? '–'}
+                  name={name}
+                  group={group ?? owned.releaseGroup ?? undefined}
+                  comparison={<MarkComparison kind="yours" />}
+                  fit={owned.qualityCutoffNotMet
+                    ? <CellProfileFit fit="warning">below cutoff</CellProfileFit>
+                    : <CellProfileFit fit="meets">cutoff met</CellProfileFit>}
+                  size={formatSize(owned.size)}
+                  seeders=""
+                  tracker={owned.hitAndRun?.host ?? ''}
+                  hitAndRun={owned.hitAndRun === null ? '–' : seededText(owned.hitAndRun)}
+                  audio={audioHdrText(owned)}
+                />
+              );
+            })()}
             {visible.map((release) => {
               const isSelected = release.guid === selected;
               const risks = risksOf(release);
@@ -495,6 +564,8 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
                 ...risks,
                 ...release.flags.filter((flag) => flag !== 'Nuked'),
                 ...release.past.filter((event) => event.kind === 'grabbed').map(pastText),
+                // The table follows the design's columns, which leave out Age, so the age moves to the hover text.
+                ...(release.ageHours === null ? [] : [`${formatAge(release.ageHours)} old`]),
               ];
               const actions = grabbed.has(release.guid)
                 ? <Badge variant="live" className="bg-best transition-opacity duration-(--duration-base) ease-out starting:opacity-0">Grabbed</Badge>
@@ -512,7 +583,7 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
                         />
                       </Tooltip>
                     )}
-                    <Button size="row" disabled={grabbing} onClick={(event) => { event.stopPropagation(); onGrab(release.guid); }}>
+                    <Button size="row" disabled={grabbing || onCooldown(release)} onClick={(event) => { event.stopPropagation(); onGrab(release.guid); }}>
                       {grabbing && isSelected ? 'Grabbing…' : 'Grab'}
                     </Button>
                   </>
@@ -531,16 +602,16 @@ export function PickRelease({ target, title, episodes, movieHasFile, onClose, on
                     quality={release.quality ?? '–'}
                     name={name}
                     group={group}
-                    fit={(
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        {release.guid === best && <MarkComparison kind="best" />}
-                        <CellProfileFit fit={fit}>{text}</CellProfileFit>
-                      </span>
-                    )}
+                    comparison={release.guid === best ? <MarkComparison kind="best" />
+                      : release.compared == null ? '' : <MarkComparison kind={release.compared} />}
+                    fit={<CellProfileFit fit={fit}>{text}</CellProfileFit>}
                     size={formatSize(release.size)}
-                    age={formatAge(release.ageHours)}
                     seeders={release.seeders ?? '?'}
                     tracker={release.indexer ?? ''}
+                    hitAndRun={release.hitAndRun == null ? '–'
+                      : release.hitAndRun.cooldown ? <span className="text-destructive">cooldown</span>
+                        : ruleText(release.hitAndRun)}
+                    audio={audioHdrText(release)}
                     actions={actions}
                   />
                   {outcome?.guid === release.guid && !outcome.outOfDate && (
