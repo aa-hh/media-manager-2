@@ -70,6 +70,7 @@ const manualImportModuleUrl = new URL('../dist/server/manualImport.js', import.m
 const s3ModuleUrl = new URL('../dist/server/services/s3.js', import.meta.url).href;
 const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js', import.meta.url).href;
 const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).href;
+const setupModuleUrl = new URL('../dist/server/setup.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
 // The owner's confirmed rules (AA-23). The code ships none, so tests that judge these trackers supply them.
 const ownerRules = {
@@ -407,7 +408,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api, library, titleDelete, images } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks, api, library, titleDelete, images, setup } = input;
   const { createApp } = await import(appModuleUrl);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
@@ -425,6 +426,7 @@ const makeApp = async (input = {}) => {
     library,
     titleDelete,
     images,
+    setup,
   });
   return { app, clock, fixture };
 };
@@ -2305,8 +2307,9 @@ test('the settings screen adds trackers and saves, clears and removes their hit 
   const unset = { ratio: null, logic: null, minGlobalRatio: null, partial: { exemptBelow: null, ratio: null, maxHours: null } };
   const blutopiaEnv = { ...unset, seedHours: [{ hours: 168 }], minGlobalRatio: 0.4 };
   const noAccount = { software: 'other', credentialSet: false, connection: { kind: 'unsupported' } };
-  const blutopia = (fields) => ({ host: 'blutopia.cc', margins: defaultMargins, problem: null, ...noAccount, ...fields });
-  const example = (fields) => ({ host: 'example.net', margins: defaultMargins, problem: null, ...noAccount, ...fields });
+  // envRule follows TRACKER_RULES alone: dropping it, or deriving it from ruleSource so a Settings rule hides it, turns this red.
+  const blutopia = (fields) => ({ host: 'blutopia.cc', envRule: true, margins: defaultMargins, problem: null, ...noAccount, ...fields });
+  const example = (fields) => ({ host: 'example.net', envRule: false, margins: defaultMargins, problem: null, ...noAccount, ...fields });
 
   assert.deepEqual(await list(), [blutopia({ status: 'configured_env', rule: blutopiaEnv, ruleSource: 'env' })]);
 
@@ -2481,6 +2484,238 @@ test('the settings screen sets a tracker\'s site software and account credential
   assert.equal((await send('DELETE', '/api/settings/trackers/site.example')).status, 204);
   assert.equal(getSetting(database, 'credentials', 'trackers.site.example'), undefined);
   assert.equal(getSetting(database, 'trackerConfiguration', 'software.site.example'), undefined);
+});
+
+// Counting a part done before its last key is saved, losing a skip, saving folders, Plex or a tracker that failed its check, or
+// serving the Plex token, a bucket secret or BACKUP_KEY turns a case red.
+test('the setup wizard reports each part, keeps the owner\'s choices and saves what it checked', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { getSetting, listSettingKeys, setSetting } = await import(settingsModuleUrl);
+  const { createRtorrent } = await import(rtorrentModuleUrl);
+  const { createTrackerAccounts } = await import(trackerAccountsModuleUrl);
+  const { listTrackerHosts } = await import(trackerRulesModuleUrl);
+  const { backupsAreOff, setBackupsOff } = await import(backupModuleUrl);
+  const { createSetupRoutes, folderProblems } = await import(setupModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-setup-'));
+  const databases = [];
+  t.after(async () => {
+    for (const database of databases) database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const wrap = (value) => `<methodResponse><params><param><value>${value}</value></param></params></methodResponse>`;
+  const build = async ({ env = {}, which = {}, fetch, trackerFetch } = {}) => {
+    const database = openDatabase(join(root, `setup-${databases.length}.sqlite`));
+    databases.push(database);
+    const { fake, ...arr } = connectArr(database, which);
+    const rtorrent = createRtorrent(database, { fetch: async () => new Response(wrap('<string>/data/downloads</string>'), { status: 200 }) });
+    const trackers = createTrackerAccounts(database, { env, fetch: trackerFetch });
+    const { app } = await makeApp({ setup: createSetupRoutes({ database, arr, rtorrent, trackers, env, fetch }) });
+    const { session } = await signIn(app);
+    const send = (method, path, body) => app.request(`/api/setup${path}`, {
+      method, headers: { ...jsonHeaders(), Cookie: session }, body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const statusText = async () => {
+      const response = await send('GET', '');
+      assert.equal(response.status, 200);
+      return response.text();
+    };
+    const status = async () => JSON.parse(await statusText());
+    return { app, database, fake, send, session, status, statusText };
+  };
+  const hostPaths = (database) => listSettingKeys(database).filter((entry) => entry.category === 'hostPaths');
+
+  // Counting a service done while one of its keys is unset, or reporting BACKUP_KEY as set when it is missing or malformed, turns this red.
+  await t.test('the status reports each part and BACKUP_KEY', async () => {
+    const { database, status } = await build();
+    const fresh = await status();
+    assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', plex: 'not_done', folders: 'not_done' });
+    assert.equal(fresh.requiredComplete, false);
+    assert.deepEqual(fresh.optional, { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false } });
+    assert.deepEqual(fresh.backup, { destination: null, problem: null, key: 'missing' });
+    assert.equal(fresh.plexSignInTokenAvailable, true);
+    assert.equal((await (await build({ env: { BACKUP_KEY: 'ab'.repeat(32) } })).status()).backup.key, 'set');
+    assert.equal((await (await build({ env: { BACKUP_KEY: 'nope' } })).status()).backup.key, 'invalid');
+
+    for (const [category, key] of [
+      ['serviceAddresses', 'sonarr.url'], ['credentials', 'sonarr.apiKey'], ['serviceAddresses', 'radarr.url'], ['credentials', 'radarr.apiKey'],
+      ['serviceAddresses', 'rtorrent.url'], ['credentials', 'rtorrent.username'], ['serviceAddresses', 'plex.url'], ['credentials', 'plex.token'],
+    ]) setSetting(database, category, key, 'value');
+    for (const key of ['downloads.sonarr', 'downloads.radarr', 'downloads.versions', 'library.sonarr', 'library.radarr', 'versions.sonarr']) {
+      setSetting(database, 'hostPaths', key, '/data');
+    }
+    const partial = await status();
+    assert.deepEqual(partial.required, { sonarr: 'done', radarr: 'done', rtorrent: 'not_done', plex: 'done', folders: 'not_done' });
+    setSetting(database, 'credentials', 'rtorrent.password', 'value');
+    setSetting(database, 'hostPaths', 'versions.radarr', '/data');
+    const complete = await status();
+    assert.deepEqual(complete.required, { sonarr: 'done', radarr: 'done', rtorrent: 'done', plex: 'done', folders: 'done' });
+    assert.equal(complete.requiredComplete, true);
+  });
+
+  // Dropping a stored choice, or leaving backups on after the owner skipped them, turns this red.
+  await t.test('the owner\'s choices round-trip and a skipped backup turns backups off', async () => {
+    const { database, send, status } = await build();
+    const choose = (trackers, backup) => send('PUT', '/choices', { trackers, backup });
+    assert.equal((await choose({ wanted: false, skipped: false }, { wanted: true, skipped: true })).status, 204);
+    assert.deepEqual((await status()).optional, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'skipped', wanted: true } });
+    assert.equal(backupsAreOff(database), true);
+    assert.equal((await choose({ wanted: true, skipped: false }, { wanted: true, skipped: false })).status, 204);
+    assert.deepEqual((await status()).optional, { trackers: { status: 'not_done', wanted: true }, backup: { status: 'not_done', wanted: true } });
+    assert.equal(backupsAreOff(database), false);
+    assert.equal((await send('PUT', '/choices', { trackers: { wanted: true }, backup: { wanted: true, skipped: false } })).status, 400);
+  });
+
+  // Suggesting a blank root folder, failing the whole read when one service is down, or saving folders that failed a check turns this red.
+  await t.test('folders are suggested from the services and saved only when every one checks out', async () => {
+    const { database, fake, send } = await build({ which: { sonarr: {}, radarr: {} } });
+    setSetting(database, 'serviceAddresses', 'rtorrent.url', 'http://127.0.0.1:65003/xmlrpc');
+    setSetting(database, 'credentials', 'rtorrent.username', 'user');
+    setSetting(database, 'credentials', 'rtorrent.password', 'password');
+    const rootFolders = { sonarr: [{ path: '' }, { path: '/data/tv' }], radarr: [{ path: '/data/movies' }] };
+    for (const service of ['sonarr', 'radarr']) {
+      fake[service].routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/rootfolder' ? { status: 200, body: rootFolders[service] } : undefined));
+    }
+    const nothing = { downloads: null, librarySonarr: null, libraryRadarr: null, versionsSonarr: null, versionsRadarr: null };
+    const folders = async () => (await send('GET', '/folders')).json();
+    assert.deepEqual(await folders(), {
+      saved: nothing,
+      suggested: {
+        downloads: '/data/downloads', librarySonarr: '/data/tv', libraryRadarr: '/data/movies', versionsSonarr: '/data/tv-versions', versionsRadarr: '/data/movies-versions',
+      },
+    });
+    fake.radarr.state.down = true;
+    assert.deepEqual((await folders()).suggested, {
+      downloads: '/data/downloads', librarySonarr: '/data/tv', libraryRadarr: null, versionsSonarr: '/data/tv-versions', versionsRadarr: null,
+    });
+
+    const values = {};
+    for (const field of ['downloads', 'librarySonarr', 'libraryRadarr', 'versionsSonarr', 'versionsRadarr']) {
+      values[field] = join(root, `folder-${field}`);
+      await mkdir(values[field], { recursive: true });
+    }
+    const refused = await send('POST', '/folders', { ...values, downloads: 'downloads', librarySonarr: join(root, 'missing') });
+    assert.equal(refused.status, 400);
+    assert.deepEqual(await refused.json(), {
+      error: 'invalid_folders', fields: { downloads: 'Must be an absolute path.', librarySonarr: 'This folder does not exist.' },
+    });
+    assert.deepEqual(hostPaths(database), []);
+    assert.deepEqual(folderProblems(values, (path) => ({ isDirectory: () => true, dev: path === values.versionsRadarr ? 2 : 1 })), {
+      versionsRadarr: 'On a different drive from the downloads folder, so imports can\'t hardlink.',
+    });
+    assert.equal((await send('POST', '/folders', { ...values, extra: '/data' })).status, 400);
+
+    assert.equal((await send('POST', '/folders', values)).status, 204);
+    for (const key of ['downloads.sonarr', 'downloads.radarr', 'downloads.versions']) assert.equal(getSetting(database, 'hostPaths', key), values.downloads);
+    assert.deepEqual(
+      ['library.sonarr', 'library.radarr', 'versions.sonarr', 'versions.radarr'].map((key) => getSetting(database, 'hostPaths', key)),
+      [values.librarySonarr, values.libraryRadarr, values.versionsSonarr, values.versionsRadarr],
+    );
+    assert.equal(hostPaths(database).length, 7);
+    assert.deepEqual((await folders()).saved, values);
+  });
+
+  // Saving Plex after a failed check, or sending the sign-in token back in any response, turns this red.
+  await t.test('Plex connects with the sign-in token and saves only after the check passes', async () => {
+    let plexAnswers = 'rejected';
+    const fetch = async (url, init) => {
+      if (plexAnswers === 'rejected') return responseJson({}, 401);
+      const signedIn = new Headers(init.headers).get('X-Plex-Token') === 'plex-secret-token';
+      return signedIn && new URL(url).pathname === '/' ? responseJson({ MediaContainer: { version: '1.0' } }) : responseJson({}, 401);
+    };
+    const { app, database, send, session, statusText } = await build({ fetch });
+    const url = 'http://plex.example:32400';
+    const rejected = await send('POST', '/plex', { url });
+    assert.equal(rejected.status, 200);
+    assert.deepEqual(await rejected.json(), { kind: 'rejected' });
+    assert.equal(getSetting(database, 'serviceAddresses', 'plex.url'), undefined);
+    assert.equal(getSetting(database, 'credentials', 'plex.token'), undefined);
+
+    plexAnswers = 'ok';
+    const connected = await send('POST', '/plex', { url });
+    assert.equal(connected.status, 200);
+    const connectedText = await connected.text();
+    assert.equal(connectedText.includes('plex-secret-token'), false);
+    assert.deepEqual(JSON.parse(connectedText), { kind: 'ok', version: '1.0' });
+    assert.equal(getSetting(database, 'serviceAddresses', 'plex.url'), url);
+    assert.equal(getSetting(database, 'credentials', 'plex.token'), 'plex-secret-token');
+    const text = await statusText();
+    assert.equal(text.includes('plex-secret-token'), false);
+    assert.equal(JSON.parse(text).required.plex, 'done');
+
+    // Fails if logout stops dropping the session, so the sign-in token stays usable.
+    const loggedOut = await app.request('/auth/logout', {
+      method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: '{}',
+    });
+    assert.equal(loggedOut.status, 204);
+    assert.equal((await send('POST', '/plex', { url })).status, 401);
+    assert.equal(getSetting(database, 'credentials', 'plex.token'), 'plex-secret-token');
+  });
+
+  // Adding a tracker whose token was refused, testing an "other" tracker, or adding the same host twice turns this red.
+  await t.test('a tracker is added in one call once its account connects', async () => {
+    const secret = `setup-tracker-token-${process.pid}-distinctive`;
+    const calls = [];
+    const trackerFetch = async (url, init) => {
+      calls.push(String(url));
+      if (init.headers.Authorization !== `Bearer ${secret}`) return new Response('{}', { status: 401 });
+      return new Response('{"ratio":1.5,"hit_and_runs":2}', { status: 200 });
+    };
+    const { database, send, status } = await build({ trackerFetch });
+    const refused = await send('POST', '/trackers', { host: 'https://Site.Example/', software: 'unit3d', credential: 'wrong' });
+    assert.equal(refused.status, 200);
+    assert.deepEqual(await refused.json(), { host: 'site.example', connection: { kind: 'rejected' } });
+    assert.deepEqual(listTrackerHosts(database, {}), []);
+    assert.deepEqual(listSettingKeys(database), []);
+
+    const added = await send('POST', '/trackers', { host: 'site.example', software: 'unit3d', credential: secret });
+    assert.equal(added.status, 201);
+    assert.equal((await added.json()).connection.kind, 'ok');
+    assert.deepEqual(listTrackerHosts(database, {}), ['site.example']);
+    assert.equal(getSetting(database, 'trackerConfiguration', 'software.site.example'), 'unit3d');
+    assert.equal(getSetting(database, 'credentials', 'trackers.site.example'), secret);
+    assert.equal((await status()).optional.trackers.status, 'done');
+
+    const callsBefore = calls.length;
+    const other = await send('POST', '/trackers', { host: 'other.example', software: 'other' });
+    assert.equal(other.status, 201);
+    assert.deepEqual(await other.json(), { host: 'other.example', connection: { kind: 'unsupported' } });
+    assert.equal(calls.length, callsBefore);
+    assert.equal(getSetting(database, 'trackerConfiguration', 'software.other.example'), 'other');
+
+    assert.equal((await send('POST', '/trackers', { host: 'site.example', software: 'unit3d', credential: secret })).status, 409);
+    assert.equal((await send('POST', '/trackers', { host: 'new.example', software: 'unit3d' })).status, 400);
+  });
+
+  // Saving a missing folder or a bucket with a blank field, keeping a folder and a bucket together, or serving the secret turns this red.
+  await t.test('the backup destination is checked, saved as one kind only, and turns backups on', async () => {
+    const { database, send, status, statusText } = await build();
+    const secret = `setup-bucket-secret-${process.pid}-distinctive`;
+    const missing = await send('POST', '/backup', { folder: join(root, 'no-such-folder') });
+    assert.equal(missing.status, 400);
+    assert.deepEqual(await missing.json(), { error: 'invalid_backup', field: 'folder', reason: 'This folder does not exist.' });
+    const bucket = { endpoint: 'https://s3.example', bucket: 'backups', accessKeyId: 'access-id', secretAccessKey: secret };
+    const blank = await send('POST', '/backup', { ...bucket, secretAccessKey: ' ' });
+    assert.equal(blank.status, 400);
+    assert.deepEqual(await blank.json(), { error: 'invalid_backup', field: 'secretAccessKey', reason: 'Required.' });
+    assert.deepEqual(listSettingKeys(database), []);
+
+    setBackupsOff(database, true);
+    assert.equal((await send('POST', '/backup', bucket)).status, 204);
+    assert.equal(backupsAreOff(database), false);
+    const text = await statusText();
+    assert.equal(text.includes(secret), false);
+    assert.deepEqual(JSON.parse(text).backup.destination, { kind: 's3', endpoint: 'https://s3.example', bucket: 'backups', region: 'auto' });
+
+    const folder = join(root, 'backups');
+    await mkdir(folder);
+    setBackupsOff(database, true);
+    assert.equal((await send('POST', '/backup', { folder })).status, 204);
+    assert.equal(backupsAreOff(database), false);
+    assert.deepEqual(listSettingKeys(database).filter((entry) => entry.key.startsWith('backup.')), [{ category: 'hostPaths', key: 'backup.folder' }]);
+    const saved = await status();
+    assert.deepEqual(saved.backup.destination, { kind: 'folder', folder });
+    assert.equal(saved.optional.backup.status, 'done');
+  });
 });
 
 // Leaving Blutopia's token where nothing reads it, giving blutopia.cc no software, adding a tracker for an empty token, or keeping the

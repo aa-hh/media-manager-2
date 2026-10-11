@@ -17,6 +17,7 @@ import { createReleaseRoutes, type Releases } from './releases.js';
 import { createSearchRoutes, type Search } from './search.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersionRoutes, type SecondVersions } from './secondVersions.js';
+import type { SetupEnvironment } from './setup.js';
 import { createTitleDeleteRoutes, type TitleDelete } from './titleDelete.js';
 
 export type CreateAppOptions = {
@@ -38,6 +39,7 @@ export type CreateAppOptions = {
   protection?: Protection;
   library?: Library;
   titleDelete?: TitleDelete;
+  setup?: Hono<SetupEnvironment>;
   api?: Hono;
   images?: Hono;
   webhooks?: {
@@ -50,6 +52,7 @@ type AppEnvironment = {
   Variables: {
     sessionExpiresAt: number;
     sessionToken: string;
+    plexSignInToken: string | undefined;
   };
 };
 
@@ -326,6 +329,7 @@ export const createApp = (options: CreateAppOptions) => {
     }
     context.set('sessionExpiresAt', validated.expiresAt);
     context.set('sessionToken', session.value);
+    context.set('plexSignInToken', authentication.plexToken(session.value));
     if (!['GET', 'HEAD', 'OPTIONS'].includes(context.req.method)) return requireBrowserPost(context, next);
     return next();
   };
@@ -379,6 +383,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
   if (options.images !== undefined) app.route('/api/images', options.images);
+  if (options.setup !== undefined) app.route('/api/setup', options.setup);
   if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
   app.all('/api/*', (context) => context.json({ error: 'not_found' }, 404));

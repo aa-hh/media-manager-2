@@ -1,4 +1,18 @@
-import { type ReactNode, type RefObject, useEffect, useMemo, useState } from 'react';
+import { Clock, Download, Ellipsis } from 'lucide-react';
+import { type RefObject, useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { CardChoice } from '@/components/ui/card-choice';
+import { Dialog } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
+import { HeaderPage } from '@/components/ui/header-page';
+import { LabelGroup } from '@/components/ui/label-group';
+import { RadioGroup } from '@/components/ui/radio';
+import { type DownloadState, RowDownload, RowDownloadHeader } from '@/components/ui/row-download';
+import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
+import { StatusInline } from '@/components/ui/status-inline';
+import { Table } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { ImportPanel } from './ImportPanel';
 import { buildRows, formatDuration, formatSpeed, groupRows, latestStep, type Group, type QueueItem, type Row } from './model';
@@ -12,9 +26,14 @@ const releaseChoices: { value: Release; label: string; summary: string }[] = [
   { value: 'keep', label: "Don't blocklist", summary: "don't blocklist" },
 ];
 
-const columns = 'grid grid-cols-[44px_minmax(0,1fr)_112px] items-center gap-3 md:grid-cols-[56px_minmax(0,1fr)_152px_150px] lg:grid-cols-[56px_minmax(0,1fr)_96px_152px_64px_170px_56px_48px_minmax(0,200px)_52px]';
-const wide = 'hidden lg:block';
-const medium = 'hidden md:block';
+const groupTitles: Record<Group['key'], string> = {
+  needs_you: 'Needs you',
+  handling: 'Being handled by media-manager-2',
+  rest: 'Everything else',
+};
+
+const serviceName = (item: QueueItem) => (item.service === 'sonarr' ? 'Sonarr' : 'Radarr');
+const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 const useClock = () => {
   const [now, setNow] = useState(() => Date.now());
@@ -25,38 +44,49 @@ const useClock = () => {
   return now;
 };
 
-function ActionButton({ children, onClick, disabled, filled }: { children: ReactNode; onClick: () => void; disabled?: boolean; filled?: boolean }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={(event) => { event.stopPropagation(); onClick(); }}
-      className={cn(
-        'h-8 shrink-0 px-3 font-ui text-[14px] font-semibold disabled:opacity-50',
-        'focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-[var(--mm-ink)]',
-        filled ? 'bg-[var(--mm-ink)] text-[var(--mm-on-cell)]' : 'border border-[var(--mm-ink-3)] text-[var(--mm-ink)] hover:bg-[var(--mm-row-hover)]',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+// Lime while bytes arrive, amber when the import is blocked, red for every other risk except waiting for peers, grey otherwise.
+const downloadState = (row: Row): DownloadState => {
+  if (row.status.word === 'import blocked') return 'import-blocked';
+  if (row.status.tone === 'risk' && row.status.word !== 'waiting for peers') return 'stalled';
+  if (row.downloading && row.status.word === 'downloading') return 'downloading';
+  return 'waiting';
+};
 
-function Progress({ value }: { value: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-24 bg-[var(--mm-seam)]" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}>
-        <div className="h-full bg-[var(--mm-ink)]" style={{ width: `${value}%` }} />
-      </div>
-      <span className="w-10 tabular-nums">{value}%</span>
-    </div>
-  );
-}
+const stateLabel = (row: Row, now: number) => {
+  if (row.delayedUntil !== null) {
+    return <><Clock aria-hidden="true" />{`Delayed · ${row.delayedUntil > now ? `grabs in ${formatDuration(row.delayedUntil - now)}` : 'grabbing now'}`}</>;
+  }
+  const word = capitalised(row.status.word);
+  if (row.status.word === 'seeding' && row.ratio !== '') return `${word} · ratio ${row.ratio}`;
+  if (row.seeders !== null && ['downloading', 'stalled', 'waiting for peers'].includes(row.status.word)) return `${word} · ${row.seeders} seeders`;
+  return word;
+};
 
-function RemovePanel({ row, item, onDone, onCancel }: { row: Row; item: QueueItem; onDone: () => void; onCancel: () => void }) {
+const speedText = (row: Row) => {
+  if (row.downloading) return formatSpeed(row.downRate);
+  return row.upRate > 0 ? `${formatSpeed(row.upRate)} up` : '';
+};
+
+// The second line: what media-manager-2 is doing about a problem, else why it stopped, else the release.
+const detailText = (row: Row) => {
+  if (row.problems.length > 0) {
+    const needsYou = row.problems.some((problem) => problem.state === 'needs_you');
+    const text = row.problems.map((problem) => (latestStep(problem) === problem.summary ? problem.summary : `${problem.summary} ${latestStep(problem)}`)).join(' · ');
+    return <span className={cn(needsYou && 'text-foreground')}>{text}</span>;
+  }
+  if (row.status.tone === 'risk' && row.status.detail !== '') return <span className="text-foreground">{row.status.detail}</span>;
+  const parts = [row.quality, row.release];
+  if (row.status.word === 'importing' || row.status.word === 'queued') parts.push(row.status.detail);
+  if (row.progress === null && row.queueItem !== null) parts.push(`in ${row.queueItem.service === 'sonarr' ? "Sonarr's" : "Radarr's"} queue, not in rTorrent yet`);
+  const text = parts.filter((part) => part !== '').join(' · ');
+  return text === '' ? undefined : text;
+};
+
+function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; row: Row; item: QueueItem; onDone: () => void; onCancel: () => void }) {
   const [release, setRelease] = useState<Release>(row.byHand ? 'keep' : 'blocklist_search');
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
+  const service = serviceName(item);
   const confirm = async () => {
     setSending(true);
     setFailed(false);
@@ -65,47 +95,42 @@ function RemovePanel({ row, item, onDone, onCancel }: { row: Row; item: QueueIte
     if (status === 204) onDone();
     else setFailed(true);
   };
+  const cancel = () => { setFailed(false); onCancel(); };
   const chosen = releaseChoices.find((choice) => choice.value === release)!;
+  const descriptions: Record<Release, string> = {
+    blocklist: `${service} won't grab this release again.`,
+    blocklist_search: `${service} won't grab it again and searches for another release now.`,
+    keep: `${service} may grab this same release again.${row.byHand ? ' You picked this release.' : ''}`,
+  };
   return (
-    <div className="space-y-3 border-t border-[var(--mm-seam)] bg-[var(--mm-row-hover)] px-5 py-4" onClick={(event) => event.stopPropagation()}>
-      <p className="text-[var(--mm-ink)]">Remove from downloads</p>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <span className="w-[110px] text-[var(--mm-ink-2)]">Torrent</span>
-        <span>Keep seeding in rTorrent</span>
-        <span className="text-[var(--mm-ink-2)]">media-manager-2 never removes a torrent from here</span>
-      </div>
-      <fieldset className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <legend className="float-left w-[110px] text-[var(--mm-ink-2)]">Release</legend>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => { if (!next) cancel(); }}
+      title="Remove from downloads?"
+      subject={`${[row.label, row.quality, row.release].filter((part) => part !== '').join(' · ')}. The torrent keeps seeding in rTorrent; media-manager-2 never removes a torrent from here.`}
+      callout={failed ? <Callout look="risk" title={`${service} did not remove it. Try again.`} /> : undefined}
+      actions={(
+        <>
+          <Button variant="outline" onClick={cancel}>Cancel</Button>
+          <Button variant="destructive" size="large" loading={sending} onClick={() => void confirm()}>
+            {release === 'blocklist_search' ? 'Remove and search again' : `Remove from downloads, keep seeding, ${chosen.summary}`}
+          </Button>
+        </>
+      )}
+    >
+      <RadioGroup value={release} onValueChange={(value) => setRelease(value as Release)} className="flex flex-col gap-2">
         {releaseChoices.map((choice) => (
-          <label key={choice.value} className={cn('flex cursor-pointer items-center gap-2', release === choice.value ? 'text-[var(--mm-ink)]' : 'text-[var(--mm-ink-2)]')}>
-            <input
-              type="radio"
-              name={`release-${row.key}`}
-              value={choice.value}
-              checked={release === choice.value}
-              onChange={() => setRelease(choice.value)}
-              className="accent-[var(--mm-ink)]"
-            />
-            {choice.label}
-            {choice.value === 'keep' && row.byHand && <span className="text-[var(--mm-ink-2)]">you picked this release</span>}
-          </label>
+          <CardChoice key={choice.value} value={choice.value} title={choice.label} description={descriptions[choice.value]} />
         ))}
-      </fieldset>
-      {failed && <p role="alert" className="text-[var(--mm-risk)]">{item.service === 'sonarr' ? 'Sonarr' : 'Radarr'} did not remove it. Try again.</p>}
-      <div className="flex items-center gap-3">
-        <ActionButton filled disabled={sending} onClick={() => void confirm()}>
-          {sending ? 'Removing…' : `Remove from downloads, keep seeding, ${chosen.summary}`}
-        </ActionButton>
-        <ActionButton onClick={onCancel}>Cancel</ActionButton>
-      </div>
-    </div>
+      </RadioGroup>
+    </Dialog>
   );
 }
 
 type Panel = 'remove' | 'import';
 
-function DownloadRow({ row, index, now, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged }: {
-  row: Row; index: number; now: number; selected: boolean; dimmed: boolean; panel: Panel | null;
+function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged }: {
+  row: Row; now: number; selected: boolean; dimmed: boolean; panel: Panel | null;
   onSelect: () => void; onOpen: (panel: Panel) => void; onClose: () => void; onChanged: () => void;
 }) {
   const [grabbing, setGrabbing] = useState(false);
@@ -121,71 +146,58 @@ function DownloadRow({ row, index, now, selected, dimmed, panel, onSelect, onOpe
     if (status === 204) onChanged();
     else setGrabFailed(true);
   };
-  const statusDetail = delayed
-    ? (row.delayedUntil! > now ? `grabs in ${formatDuration(row.delayedUntil! - now)}` : 'grabbing now')
-    : row.status.detail;
+  const canGrab = delayed && item !== null;
+  const canImport = row.importable !== null;
+  const canRemove = item !== null;
+  const hasActions = canGrab || canImport || canRemove;
   return (
-    <div
-      className={cn(
-        'border-b border-[var(--mm-seam)] font-data text-[13px]',
-        selected ? 'bg-[var(--mm-row-hover)]' : index % 2 === 0 ? 'bg-[var(--mm-row)]' : 'bg-[var(--mm-row-alt)]',
-        dimmed && 'opacity-35',
-      )}
-      onClick={onSelect}
-      aria-selected={selected}
-      role="row"
-    >
-      <div className={cn(columns, 'min-h-[34px] px-5 py-1')}>
-        <span className="text-[var(--mm-ink-2)]">{row.quality}</span>
-        <span className="min-w-0 [overflow-wrap:anywhere]">
-          <span className="text-[var(--mm-ink)]">{row.label}</span>
-          {row.progress !== null && <span className="ml-2 tabular-nums text-[var(--mm-ink-2)] md:hidden">{row.progress}%</span>}
-          {row.release !== '' && <span className="ml-2 text-[var(--mm-ink-3)]">{row.release}</span>}
-        </span>
-        <span className={cn(wide, 'truncate text-[var(--mm-ink-2)]')}>{row.tracker}</span>
-        <span className={cn(medium, 'min-w-0', row.progress === null && 'text-[var(--mm-ink-3)]')}>
-          {row.progress !== null
-            ? <Progress value={row.progress} />
-            : item !== null ? `in ${item.service === 'sonarr' ? "Sonarr's" : "Radarr's"} queue, not in rTorrent yet` : ''}
-        </span>
-        <span className={cn(wide, 'tabular-nums text-[var(--mm-ink-2)]')}>{row.timeLeft}</span>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2">
-          <span className={row.status.tone === 'risk' ? 'text-[var(--mm-risk)]' : 'text-[var(--mm-ink)]'}>{row.status.word}</span>
-          {statusDetail !== '' && <span className="truncate text-[var(--mm-ink-2)]" title={statusDetail}>{statusDetail}</span>}
-        </span>
-        <span className={cn(wide, 'tabular-nums', row.seeders === 0 ? 'text-[var(--mm-risk)]' : 'text-[var(--mm-ink-2)]')}>{row.seeders ?? ''}</span>
-        <span className={cn(wide, 'tabular-nums text-[var(--mm-ink-2)]')}>{row.ratio}</span>
-        <span className={cn(wide, 'truncate text-[var(--mm-ink-2)]')} title={row.formats}>{row.formats}</span>
-        <span className={cn(wide, 'tabular-nums text-[var(--mm-ink)]')}>{row.score}</span>
-      </div>
-      {row.problems.map((problem) => (
-        <p key={problem.id} className="px-5 pb-2 md:pl-[88px] text-[var(--mm-ink-2)]">
-          <span className={problem.state === 'needs_you' ? 'text-[var(--mm-ink)]' : undefined}>{problem.summary}</span>
-          {latestStep(problem) !== problem.summary && <span> {latestStep(problem)}</span>}
-        </p>
-      ))}
-      {row.status.tone === 'risk' && row.status.detail !== '' && row.problems.length === 0 && (
-        <p className="px-5 pb-2 md:pl-[88px] text-[var(--mm-ink-2)]">{row.status.detail}</p>
-      )}
-      {selected && panel === null && (item !== null || row.importable !== null) && (
-        <div className="flex flex-wrap items-center gap-3 px-5 pb-3 md:pl-[88px]">
-          {delayed && <ActionButton disabled={grabbing} onClick={() => void grabNow()}>{grabbing ? 'Grabbing…' : 'Grab now'}</ActionButton>}
-          {row.importable !== null && <ActionButton onClick={() => onOpen('import')}>Import by hand</ActionButton>}
-          {item !== null && <ActionButton onClick={() => onOpen('remove')}>Remove from downloads</ActionButton>}
-          {grabFailed && item !== null && <span role="alert" className="text-[var(--mm-risk)]">{item.service === 'sonarr' ? 'Sonarr' : 'Radarr'} did not grab it. Try again.</span>}
+    <>
+      <RowDownload
+        title={row.label}
+        detail={detailText(row)}
+        progress={row.progress ?? undefined}
+        speed={speedText(row)}
+        eta={row.timeLeft}
+        tracker={row.tracker === '' ? undefined : row.tracker}
+        state={downloadState(row)}
+        stateLabel={stateLabel(row, now)}
+        selected={selected}
+        aria-selected={selected}
+        onClick={onSelect}
+        className={cn('transition', dimmed && 'opacity-35')}
+        actions={hasActions && (
+          <span className="flex items-center" onClick={(event) => event.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="row" iconOnly icon={<Ellipsis className="text-muted-foreground" />} aria-label={`Actions for ${row.label}`} />} />
+              <DropdownMenuContent align="end">
+                {canGrab && <DropdownMenuItem onClick={() => void grabNow()}>Grab now</DropdownMenuItem>}
+                {canImport && <DropdownMenuItem onClick={() => onOpen('import')}>Import by hand</DropdownMenuItem>}
+                {canRemove && <DropdownMenuItem onClick={() => onOpen('remove')}>Remove from downloads</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </span>
+        )}
+      />
+      {selected && panel !== 'import' && hasActions && (
+        <div className="flex h-(--row) w-full shrink-0 items-center gap-2 border-b border-border bg-selected px-4">
+          {canGrab && <Button size="row" loading={grabbing} onClick={() => void grabNow()}>Grab now</Button>}
+          {canImport && <Button size="row" variant="outline" onClick={() => onOpen('import')}>Import by hand</Button>}
+          {canRemove && <Button size="row" variant="outline" onClick={() => onOpen('remove')}>Remove from downloads</Button>}
+          {grabFailed && item !== null && <StatusInline status="failed">{serviceName(item)} did not grab it. Try again.</StatusInline>}
         </div>
       )}
-      {panel === 'remove' && item !== null && <RemovePanel row={row} item={item} onDone={onChanged} onCancel={onClose} />}
+      {selected && item !== null && <RemoveDialog open={panel === 'remove'} row={row} item={item} onDone={onChanged} onCancel={onClose} />}
       {panel === 'import' && row.importable !== null && (
-        <ImportPanel
-          service={row.importable.service}
-          downloadId={row.importable.downloadId}
-          onDone={onChanged}
-          onCancel={onClose}
-          button={({ children, ...props }) => <ActionButton {...props}>{children}</ActionButton>}
-        />
+        <div className="w-full border-b border-border bg-selected px-4 pt-1 pb-4">
+          <ImportPanel
+            service={row.importable.service}
+            downloadId={row.importable.downloadId}
+            onDone={onChanged}
+            onCancel={onClose}
+          />
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -216,81 +228,58 @@ export function DownloadsScreen({ state, reload, headingRef }: {
     void reload();
   };
   return (
-    <section aria-labelledby="downloads-heading">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 pb-3 pt-5">
-        <h1 ref={headingRef} id="downloads-heading" tabIndex={-1} className="font-ui text-[22px] font-semibold text-[var(--mm-ink)]">Downloads</h1>
-        {state.kind === 'ready' && <p className="text-[13px] text-[var(--mm-ink-2)]">{headerSummary(rows, groups)}</p>}
-        <span className="flex-1" />
-        {state.kind === 'ready' && (
-          <p className="text-[12px] text-[var(--mm-ink-3)]">
-            {state.live ? 'live from rTorrent, plus releases Sonarr and Radarr are holding back' : 'reconnecting to live updates…'}
-          </p>
-        )}
-      </div>
-      {state.kind === 'loading' && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">Reading downloads…</p>}
-      {state.kind === 'failed' && (
-        <div className="flex items-center gap-3 px-5 py-6 text-[13px]">
-          <p role="alert" className="text-[var(--mm-risk)]">Downloads could not be read.</p>
-          <ActionButton onClick={() => void reload()}>Try again</ActionButton>
+    <section aria-label="Downloads">
+      <HeaderPage
+        ref={headingRef}
+        tabIndex={-1}
+        title="Downloads"
+        summary={state.kind === 'ready' ? headerSummary(rows, groups) : undefined}
+        note={state.kind !== 'ready'
+          ? undefined
+          : state.live
+            ? 'live from rTorrent, plus releases Sonarr and Radarr are holding back'
+            : <StatusInline status="busy">reconnecting to live updates…</StatusInline>}
+      />
+      {state.kind === 'loading' && (
+        <div className="flex w-full flex-col gap-3">
+          <p className="text-label font-normal text-muted-foreground">Reading downloads…</p>
+          <div className="flex w-full flex-col">
+            {Array.from({ length: 6 }, (_, index) => <SkeletonRowTwoLine key={index} />)}
+          </div>
         </div>
       )}
-      {state.kind === 'ready' && (<>
-      <div className={cn(columns, 'h-[30px] bg-[var(--mm-row)] px-5 font-data text-[11px] font-bold tracking-[0.6px] text-[var(--mm-ink-2)]')} role="row">
-        <span>QUALITY</span><span>TITLE</span><span className={wide}>TRACKER</span><span className={medium}>PROGRESS</span><span className={wide}>TIME LEFT</span>
-        <span>STATUS</span><span className={wide}>SEEDERS</span><span className={wide}>RATIO</span>
-        <span className={cn(wide, 'text-[var(--mm-ink-3)]')}>CUSTOM FORMATS</span><span className={cn(wide, 'text-[var(--mm-ink-3)]')}>SCORE</span>
-      </div>
-      {rows.length === 0 && <p className="px-5 py-6 text-[13px] text-[var(--mm-ink-2)]">Nothing is downloading.</p>}
-      <div role="table" aria-label="Downloads">
-        {groups.map((group) => (
-          <div key={group.key} role="rowgroup">
-            <p className="border-b border-[var(--mm-seam)] bg-[var(--mm-ground)] px-5 pb-1.5 pt-3 font-data text-[11px] font-bold tracking-[0.6px] text-[var(--mm-ink-2)]">
-              {group.title} · {group.rows.length}
-            </p>
-            {group.rows.map((row, index) => (
+      {state.kind === 'failed' && (
+        <Callout look="risk" title="Downloads could not be read." action={<Button variant="outline" onClick={() => void reload()}>Try again</Button>} />
+      )}
+      {state.kind === 'ready' && rows.length === 0 && (
+        <div className="w-full pt-24">
+          <EmptyState icon={<Download />} title="Nothing is downloading" className="w-100">
+            Grabs from Sonarr, Radarr and you show up here within seconds.
+          </EmptyState>
+        </div>
+      )}
+      {state.kind === 'ready' && groups.map((group) => (
+        <div key={group.key}>
+          <LabelGroup count={group.rows.length}>{groupTitles[group.key]}</LabelGroup>
+          <Table aria-label={groupTitles[group.key]}>
+            <RowDownloadHeader />
+            {group.rows.map((row) => (
               <DownloadRow
                 key={row.key}
                 row={row}
-                index={index}
                 now={now}
                 selected={selected === row.key}
-                dimmed={open !== null && open.key !== row.key}
+                dimmed={open !== null && open.panel === 'import' && open.key !== row.key}
                 panel={open?.key === row.key ? open.panel : null}
                 onSelect={() => { if (open === null) setSelected(row.key); }}
-                onOpen={(panel) => setOpen({ key: row.key, panel })}
+                onOpen={(panel) => { setSelected(row.key); setOpen({ key: row.key, panel }); }}
                 onClose={() => setOpen(null)}
                 onChanged={changed}
               />
             ))}
-          </div>
-        ))}
-      </div>
-      </>)}
+          </Table>
+        </div>
+      ))}
     </section>
-  );
-}
-
-// The one-line bar on every screen: what is downloading, total speed, and how many things need the owner.
-export function LiveBar({ state, onOpen }: { state: DownloadsState; onOpen: () => void }) {
-  const rows = useMemo(() => (state.kind === 'ready' ? buildRows(state.snapshot) : []), [state]);
-  const downloading = rows.filter((row) => row.downloading);
-  const down = rows.reduce((total, row) => total + row.downRate, 0);
-  const up = rows.reduce((total, row) => total + row.upRate, 0);
-  const needsYou = groupRows(rows).find((group) => group.key === 'needs_you')?.rows.length ?? 0;
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="fixed inset-x-0 bottom-0 flex h-8 w-full items-center gap-4 overflow-hidden border-t border-[var(--mm-seam)] bg-[var(--mm-row)] px-5 text-left font-data text-[13px] whitespace-nowrap focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)]"
-    >
-      <span className="text-[var(--mm-ink)]">{state.kind === 'ready' ? `${downloading.length} downloading` : 'downloads'}</span>
-      <span className="text-[var(--mm-ink-2)]">{`${formatSpeed(down)} down`}<span className="hidden sm:inline">{` · ${formatSpeed(up)} up`}</span></span>
-      {needsYou > 0 && <span className="text-[var(--mm-risk)]">{needsYou} {needsYou === 1 ? 'needs' : 'need'} you</span>}
-      <span className="hidden min-w-0 truncate text-[12px] text-[var(--mm-ink-2)] md:inline">
-        {downloading.map((row) => `${row.label} ${row.progress ?? 0}%`).join(' · ')}
-      </span>
-      <span className="flex-1" />
-      <span className="text-[12px] text-[var(--mm-ink-2)]">open</span>
-    </button>
   );
 }

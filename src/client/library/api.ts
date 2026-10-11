@@ -64,18 +64,29 @@ export type EpisodeDetail = {
 
 type Profile = { id: number; name: string; cutoff: string | null } | null;
 
+/** One rating site's score as the site gives it, or null when the site has none. */
+type SiteRating = { value: number; votes: number } | null;
+
 export type SeriesDetail = {
   id: number;
   title: string;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   ended: boolean;
+  airTime: string | null;
+  firstAired: string | null;
+  lastAired: string | null;
+  nextAiring: string | null;
+  previousAiring: string | null;
   network: string | null;
   language: string | null;
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
+  /** Sonarr's one rating, out of 10; the server does not say which site it comes from. */
   rating: number | null;
+  ratingVotes: number | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -99,12 +110,18 @@ export type SeriesDetail = {
 export type MovieDetail = {
   id: number;
   title: string;
+  originalLanguage: string | null;
+  alternateTitles: string[];
   year: number | null;
   status: string | null;
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
+  /** IMDb, TMDB and Trakt score out of 10; Rotten Tomatoes and Metacritic out of 100. */
+  ratings: Record<'imdb' | 'tmdb' | 'metacritic' | 'rottenTomatoes' | 'trakt', SiteRating>;
+  keywords: string[];
+  youTubeTrailerId: string | null;
   certification: string | null;
   genres: string[];
   runtime: number | null;
@@ -124,6 +141,13 @@ export type MovieDetail = {
   releaseDates: { inCinemas: string | null; digital: string | null; physical: string | null };
   file: FileDetail | null;
 };
+
+/** Only a movie already in the library comes with credits; crew jobs use TMDB names, such as Director, Screenplay, Novel, Producer. */
+export type Credits = {
+  cast: Array<{ name: string; character: string | null; order: number | null; photoUrl: string | null; tmdbId: number | null }>;
+  crew: Array<{ name: string; job: string | null; department: string | null; photoUrl: string | null; tmdbId: number | null }>;
+};
+export type OwnedMovieDetail = MovieDetail & { credits: Credits };
 
 export type HistoryEntry = {
   at: string | null;

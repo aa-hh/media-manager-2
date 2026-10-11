@@ -27,7 +27,8 @@ export const createTrackerRoutes = (
   const listed = (host: string) => listTrackerHosts(database, env).includes(host);
 
   // A saved rule or margins that fail validation are reported on their tracker, so one bad value never hides the list.
-  const describe = (host: string) => {
+  // envRule stays true under a Settings rule, so the screen can offer to go back to the env file's rule.
+  const describe = (host: string, envRules: Map<string, unknown>) => {
     let found: ReturnType<typeof trackerRule>;
     let margins: ReturnType<typeof readMargins> | null = null;
     let problem: string | null = null;
@@ -45,7 +46,7 @@ export const createTrackerRoutes = (
     }
     const ruleSource = invalidSavedRule ? 'settings' : found?.source ?? null;
     const status = ruleSource === 'settings' ? 'configured' : ruleSource === 'env' ? 'configured_env' : 'no_rule';
-    return { host, status, rule: found?.rule ?? null, ruleSource, margins, problem };
+    return { host, status, rule: found?.rule ?? null, ruleSource, envRule: envRules.has(host), margins, problem };
   };
 
   // The account credential never leaves the server: the browser learns only whether one is saved.
@@ -55,9 +56,13 @@ export const createTrackerRoutes = (
     connection: await accounts.connection(host),
   });
 
-  routes.get('/settings/trackers', async (context) => context.json(await Promise.all(
-    listTrackerHosts(database, env).map(async (host) => ({ ...describe(host), ...await account(host) })),
-  )));
+  // An invalid TRACKER_RULES stops startup, and listTrackerHosts parses it too, so reading it here adds no new failure.
+  routes.get('/settings/trackers', async (context) => {
+    const envRules = trackerRulesFromEnvironment(env);
+    return context.json(await Promise.all(
+      listTrackerHosts(database, env).map(async (host) => ({ ...describe(host, envRules), ...await account(host) })),
+    ));
+  });
 
   routes.post('/settings/trackers', async (context) => {
     const body = await readBody(context);
