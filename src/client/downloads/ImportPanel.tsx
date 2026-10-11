@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { type Assignment, checkAssignments } from '../../server/assignments';
 import type { Service } from './model';
@@ -19,9 +20,8 @@ type Draft = Assignment & { include: boolean };
 const select = 'h-8 border border-[var(--mm-ink-3)] bg-[var(--mm-ground)] px-2 text-[var(--mm-ink)]';
 
 // Finish an import by hand: pick the movie or episodes, quality and language per file. The same check runs on the server.
-export function ImportPanel({ service, downloadId, onDone, onCancel, button }: {
+export function ImportPanel({ service, downloadId, onDone, onCancel }: {
   service: Service; downloadId: string; onDone: () => void; onCancel: () => void;
-  button: (props: { children: ReactNode; onClick: () => void; disabled?: boolean; filled?: boolean }) => ReactNode;
 }) {
   const [view, setView] = useState<ImportView | 'loading' | 'failed'>('loading');
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -147,8 +147,10 @@ export function ImportPanel({ service, downloadId, onDone, onCancel, button }: {
         </>
       )}
       <div className="flex items-center gap-3">
-        {button({ filled: true, disabled: typeof view === 'string' || reasons.length > 0 || sending, onClick: () => void submit(), children: sending ? 'Importing…' : `Import ${chosen.length} ${chosen.length === 1 ? 'file' : 'files'} with hardlinks` })}
-        {button({ onClick: onCancel, children: 'Cancel' })}
+        <Button size="row" disabled={typeof view === 'string' || reasons.length > 0 || sending} onClick={() => void submit()}>
+          {sending ? 'Importing…' : `Import ${chosen.length} ${chosen.length === 1 ? 'file' : 'files'} with hardlinks`}
+        </Button>
+        <Button size="row" variant="outline" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   );

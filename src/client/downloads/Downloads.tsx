@@ -1,7 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ImportPanel } from './ImportPanel';
-import { buildRows, formatDuration, formatSpeed, groupRows, latestStep, type Group, type QueueItem, type Row } from './model';
+import { buildRows, formatDuration, groupRows, latestStep, type Group, type QueueItem, type Row } from './model';
 import { postAction, type DownloadsState } from './useDownloads';
 
 type Release = 'keep' | 'blocklist' | 'blocklist_search';
@@ -182,7 +182,6 @@ function DownloadRow({ row, index, now, selected, dimmed, panel, onSelect, onOpe
           downloadId={row.importable.downloadId}
           onDone={onChanged}
           onCancel={onClose}
-          button={({ children, ...props }) => <ActionButton {...props}>{children}</ActionButton>}
         />
       )}
     </div>
@@ -267,30 +266,5 @@ export function DownloadsScreen({ state, reload, headingRef }: {
       </div>
       </>)}
     </section>
-  );
-}
-
-// The one-line bar on every screen: what is downloading, total speed, and how many things need the owner.
-export function LiveBar({ state, onOpen }: { state: DownloadsState; onOpen: () => void }) {
-  const rows = useMemo(() => (state.kind === 'ready' ? buildRows(state.snapshot) : []), [state]);
-  const downloading = rows.filter((row) => row.downloading);
-  const down = rows.reduce((total, row) => total + row.downRate, 0);
-  const up = rows.reduce((total, row) => total + row.upRate, 0);
-  const needsYou = groupRows(rows).find((group) => group.key === 'needs_you')?.rows.length ?? 0;
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="fixed inset-x-0 bottom-0 flex h-8 w-full items-center gap-4 overflow-hidden border-t border-[var(--mm-seam)] bg-[var(--mm-row)] px-5 text-left font-data text-[13px] whitespace-nowrap focus-visible:outline-1 focus-visible:outline-[var(--mm-ink)]"
-    >
-      <span className="text-[var(--mm-ink)]">{state.kind === 'ready' ? `${downloading.length} downloading` : 'downloads'}</span>
-      <span className="text-[var(--mm-ink-2)]">{`${formatSpeed(down)} down`}<span className="hidden sm:inline">{` · ${formatSpeed(up)} up`}</span></span>
-      {needsYou > 0 && <span className="text-[var(--mm-risk)]">{needsYou} {needsYou === 1 ? 'needs' : 'need'} you</span>}
-      <span className="hidden min-w-0 truncate text-[12px] text-[var(--mm-ink-2)] md:inline">
-        {downloading.map((row) => `${row.label} ${row.progress ?? 0}%`).join(' · ')}
-      </span>
-      <span className="flex-1" />
-      <span className="text-[12px] text-[var(--mm-ink-2)]">open</span>
-    </button>
   );
 }

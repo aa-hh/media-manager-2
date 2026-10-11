@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 export type SearchResult = {
@@ -97,52 +98,6 @@ export function useSearch(onUnauthenticated: () => void) {
   return { state, run };
 }
 
-export function SearchBox({ value, onChange, onSubmit }: {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: (value: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      event.preventDefault();
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
-
-  return (
-    <form
-      role="search"
-      className="relative w-full max-w-[26rem]"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit(value);
-      }}
-    >
-      <label htmlFor="global-search" className="sr-only">Search library, Sonarr and Radarr</label>
-      <input
-        ref={inputRef}
-        id="global-search"
-        type="search"
-        autoComplete="off"
-        spellCheck={false}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="Search library, Sonarr and Radarr"
-        className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--control)] pl-3 pr-9 text-sm text-[var(--ink)] placeholder:text-[var(--secondary-ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus)]"
-      />
-      <kbd aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-[var(--border)] px-1.5 text-xs text-[var(--secondary-ink)]">/</kbd>
-    </form>
-  );
-}
-
 export function useDebouncedSearch(query: string, run: (query: string) => void) {
   const first = useRef(true);
   useEffect(() => {
@@ -154,20 +109,6 @@ export function useDebouncedSearch(query: string, run: (query: string) => void) 
     const timeout = window.setTimeout(() => run(query), SEARCH_DELAY_MS);
     return () => window.clearTimeout(timeout);
   }, [query, run]);
-}
-
-export function Chip({ children, tone = 'neutral' }: { children: string; tone?: 'neutral' | 'filled' }) {
-  return (
-    <span className={cn(
-      'inline-flex h-5 items-center whitespace-nowrap rounded px-1.5 text-xs font-medium leading-none',
-      tone === 'filled'
-        ? 'bg-[var(--quiet-hover)] text-[var(--ink)]'
-        : 'border border-[var(--border)] text-[var(--secondary-ink)]',
-    )}
-    >
-      {children}
-    </span>
-  );
 }
 
 export function Poster({ url, className }: { url: string | null; className?: string }) {
@@ -209,10 +150,10 @@ function ResultRow({ result, onOpen, onKeyDown }: {
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold text-[var(--ink)]">{result.title}</span>
             {result.year !== null && <span className="tabular-nums text-[var(--secondary-ink)]">{result.year}</span>}
-            <Chip>{result.type === 'tv' ? 'TV' : 'Movie'}</Chip>
+            <Badge>{result.type === 'tv' ? 'TV' : 'Movie'}</Badge>
             {result.network !== null && <span className="text-sm text-[var(--secondary-ink)]">{result.network}</span>}
-            {status !== null && <Chip>{status}</Chip>}
-            {result.rating !== null && <Chip>{`${result.rating.toFixed(1)} ★`}</Chip>}
+            {status !== null && <Badge>{status}</Badge>}
+            {result.rating !== null && <Badge>{`${result.rating.toFixed(1)} ★`}</Badge>}
           </span>
           {result.overview !== null && (
             <span className="mt-1 block truncate text-sm text-[var(--secondary-ink)]">{result.overview}</span>
@@ -220,7 +161,7 @@ function ResultRow({ result, onOpen, onKeyDown }: {
         </span>
         {result.inLibrary && (
           <span className="shrink-0 self-center">
-            <Chip tone="filled">✓ In library</Chip>
+            <Badge variant="strong">✓ In library</Badge>
           </span>
         )}
       </button>

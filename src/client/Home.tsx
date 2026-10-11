@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { AppBarDesktop, AppBarNavItem } from './components/ui/app-bar';
 import { Button } from './components/ui/button';
+import { InputSearch } from './components/ui/input-search';
 import { Calendar } from './calendar/Calendar';
 import type { DownloadsState } from './downloads/useDownloads';
 import { Library } from './library/Library';
 import { navigate, replace, routeFor, useLocation } from './navigation';
-import { readSearchQuery, SearchBox, SearchResults, useDebouncedSearch, useSearch } from './Search';
+import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
 import { Overview } from './title/Overview';
 
 type HomeProps = {
@@ -21,7 +23,9 @@ type HomeProps = {
   blocklist?: ReactNode;
   health?: ReactNode;
   needsYou: number;
-  healthBadge: string | null;
+  downloading: number;
+  healthProblems: number;
+  healthRisk: boolean;
   renderBar?: (showDownloads: () => void) => ReactNode;
 };
 
@@ -45,10 +49,11 @@ const navItems = [
   { label: 'Health', path: '/health' },
 ];
 
-export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloadsState, downloads, flagged, history, blocklist, health, needsYou, healthBadge, renderBar }: HomeProps) {
+export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloadsState, downloads, flagged, history, blocklist, health, needsYou, downloading, healthProblems, healthRisk, renderBar }: HomeProps) {
   const [query, setQuery] = useState(readSearchQuery);
   const { pathname } = useLocation();
   const { state, run } = useSearch(onUnauthenticated);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const search = useCallback((value: string) => {
     writeSearchQuery(value);
@@ -63,6 +68,19 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const view = pathname === '/search' || query.trim() !== '' ? 'search'
     : pathname === '/downloads' ? 'downloads'
       : pathname === '/flagged' ? 'flagged'
@@ -73,48 +91,72 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         : /^\/(series|movie|title)\//.test(pathname) ? 'title'
           : 'library';
 
+  const counts: Record<string, { count: number; risk: boolean }> = {
+    '/downloads': { count: downloading, risk: false },
+    '/flagged': { count: needsYou, risk: true },
+    '/health': { count: healthProblems, risk: healthRisk },
+  };
+
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-[var(--border)] bg-[var(--ground)] px-4 sm:px-6">
-        <h1 ref={headingRef} tabIndex={-1} className="shrink-0 text-base font-semibold tracking-[-0.01em] text-[var(--ink)] max-sm:sr-only">
-          media-manager-2
-        </h1>
-        <SearchBox
-          value={query}
-          onChange={setQuery}
-          onSubmit={search}
-        />
-        <nav aria-label="Main" className="flex shrink-0 items-center gap-4">
-          {navItems.map((item) => {
-            const current = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);
-            return (
-              <a
-                key={item.path}
-                href={item.path}
-                aria-current={current ? 'page' : undefined}
-                onClick={(event) => {
-                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-                  event.preventDefault();
-                  setQuery('');
-                  navigate(item.path);
-                }}
-                className={current ? 'text-sm font-semibold text-[var(--ink)]' : 'text-sm text-[var(--secondary-ink)] hover:text-[var(--ink)]'}
-              >
-                {item.label}
-                {item.path === '/flagged' && needsYou > 0 && ` ${needsYou}`}
-                {item.path === '/health' && healthBadge !== null && <span className="ml-1 text-[var(--mm-risk)]">{healthBadge}</span>}
-              </a>
-            );
-          })}
-        </nav>
-        <div className="ml-auto flex shrink-0 items-center gap-3">
-          {signOutProblem}
-          <Button variant="ghost" className="min-h-9 px-3 text-sm" onClick={onSignOut} disabled={signOutDisabled}>
-            {signOutLabel}
-          </Button>
-        </div>
-      </header>
-      <main>
+      <AppBarDesktop
+        className="sticky top-0 z-10"
+        productName={<h1 ref={headingRef} tabIndex={-1}>media-manager-2</h1>}
+        search={(
+          <form
+            role="search"
+            className="flex min-w-0"
+            onSubmit={(event) => {
+              event.preventDefault();
+              search(query);
+            }}
+          >
+            <InputSearch
+              ref={inputRef}
+              type="search"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Search library, Sonarr and Radarr"
+              placeholder="Search movies and TV shows"
+              value={query}
+              onValueChange={(value) => setQuery(value)}
+              onClear={() => setQuery('')}
+              kbd="/"
+              wrapperClassName="w-160 min-w-0"
+            />
+          </form>
+        )}
+        nav={navItems.map((item) => {
+          const current = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);
+          return (
+            <AppBarNavItem
+              key={item.path}
+              href={item.path}
+              current={current}
+              count={counts[item.path]?.count}
+              countRisk={counts[item.path]?.risk}
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                event.preventDefault();
+                setQuery('');
+                navigate(item.path);
+              }}
+            >
+              {item.label}
+            </AppBarNavItem>
+          );
+        })}
+        actions={(
+          <>
+            {signOutProblem}
+            <Button variant="ghost" onClick={onSignOut} disabled={signOutDisabled}>
+              {signOutLabel}
+            </Button>
+          </>
+        )}
+      />
+      <main className="px-(--page-margin) pb-(--livebar)">
+        <div key={view} className="transition-opacity duration-(--duration-fast) ease-out starting:opacity-0">
         {view === 'search'
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'
@@ -128,6 +170,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
               : view === 'title'
                 ? <Overview downloads={downloadsState} onUnauthenticated={onUnauthenticated} />
                 : <Library downloads={downloadsState} onUnauthenticated={onUnauthenticated} />}
+        </div>
       </main>
       {renderBar?.(() => {
         setQuery('');

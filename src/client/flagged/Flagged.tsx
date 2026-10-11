@@ -128,7 +128,6 @@ function NeedsYouRow({ item, index, selected, open, dimmed, onSelect, onOpen, on
           downloadId={manual.downloadId}
           onDone={onChanged}
           onCancel={onClose}
-          button={({ children, ...props }) => <ScreenButton {...props}>{children}</ScreenButton>}
         />
       )}
     </div>

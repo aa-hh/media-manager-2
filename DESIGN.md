@@ -128,7 +128,7 @@ The source of truth is the pen.dev library `design/design-system.lib.pen`: its v
 
 These are static pen.dev components. Keyboard behaviour, focus handling, screen reader support, live updates and table sorting are implementation work; a static frame proves none of them.
 
-Token names follow shadcn/ui, so code and design use the same words. The code does not use these names yet (see "Names in the current code" below).
+Token names follow shadcn/ui, so code and design use the same words.
 
 ## Colors
 
