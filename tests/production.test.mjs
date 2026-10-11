@@ -9169,7 +9169,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   const { createTorrentPoller } = await import(torrentsModuleUrl);
   const { createTorrentFiles } = await import(torrentFilesModuleUrl);
   const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
-  const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE } = await import(titleDeleteModuleUrl);
+  const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE, OTHER_SEASONS } = await import(titleDeleteModuleUrl);
   const { createHistory } = await import(historyModuleUrl);
   const { createSearch, parseSearchQuery } = await import(searchModuleUrl);
   const { createTitleStore } = await import(titleStoreModuleUrl);
@@ -9550,6 +9550,107 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.equal(w.fake.calls.includes('d.erase'), false);
     for (const file of w.files) assert.equal(await exists(file), true);
   });
+
+  // Andor, two seasons: PACK backs S01E01-E03; FULL (a full-series pack) was imported by copy into S01E04 and S02E01.
+  const seasons = async () => {
+    const w = await world();
+    const FULL = 'E1'.repeat(20);
+    await w.addTorrent(PACK, 'downloads/Andor.S01', ['e1.mkv', 'e2.mkv', 'e3.mkv']);
+    await w.addTorrent(FULL, 'downloads/Andor.Complete', ['s01e04.mkv', 's02e01.mkv']);
+    await w.addTorrent(V1, 'downloads', ['Andor.S01E01.2160p.mkv']);
+    await w.addTorrent(V2, 'downloads', ['Andor.S02E01.2160p.mkv']);
+    const files = [];
+    for (const n of [1, 2, 3]) files.push(await w.hardlink(w.at(`downloads/Andor.S01/e${n}.mkv`), w.at(`library/tv/Andor/Season 01/Andor - S01E0${n}.mkv`)));
+    for (const [season, episode] of [[1, 4], [2, 1]]) {
+      const file = w.at(`library/tv/Andor/Season 0${season}/Andor - S0${season}E0${episode}.mkv`);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, 'a copy');
+      files.push(file);
+    }
+    const versions = [
+      await w.addVersion(V1, { episodeId: 101 }, w.at('downloads/Andor.S01E01.2160p.mkv'), w.at('versions/tv/Andor/Andor - S01E01.2160p.mkv')),
+      await w.addVersion(V2, { episodeId: 201 }, w.at('downloads/Andor.S02E01.2160p.mkv'), w.at('versions/tv/Andor/Andor - S02E01.2160p.mkv')),
+    ];
+    const sonarr = w.arrFake.sonarr.state;
+    sonarr.series.push(seriesRecord({ id: 5, title: 'Andor', seasons: [1, 2].map((seasonNumber) => ({ seasonNumber, monitored: true })) }));
+    sonarr.episodeFiles.push(...files.map((path, index) => ({ id: 21 + index, seriesId: 5, path, size: 1 })));
+    sonarr.episodes.push(...[[101, 1, 1], [102, 1, 2], [103, 1, 3], [104, 1, 4], [201, 2, 1]].map(([id, seasonNumber, episodeNumber], index) => episodeRecord({
+      id, seriesId: 5, seasonNumber, episodeNumber, hasFile: true, episodeFile: { id: 21 + index, path: files[index], size: 1 },
+    })));
+    for (const [fileId, seasonNumber, episodeNumber] of [[24, 1, 4], [25, 2, 1]]) {
+      sonarr.history.push(historyRecord({ eventType: 'downloadFolderImported', downloadId: FULL, seriesId: 5, episode: { seasonNumber, episodeNumber }, data: { fileId: String(fileId) } }));
+    }
+    await w.poller.poll();
+    // Sonarr deletes each episode file at once and answers 200, unless told otherwise.
+    for (const [index, file] of files.entries()) w.onDelete('sonarr', `/api/v3/episodefile/${21 + index}`, { removes: [file] });
+    return { ...w, FULL, files, versions };
+  };
+
+  // Offering the full-series pack (a copy, so no link check sees it), listing another season's file or second version, or dropping willUnmonitor turns this red.
+  await t.test('the season plan lists only its own files and second versions and never offers a full-series pack', async () => {
+    const w = await seasons();
+    const { status, body } = await w.plan('/series/5/season/1');
+    assert.equal(status, 200);
+    assert.deepEqual([body.title, body.seasonNumber, body.willUnmonitor], ['Andor', 1, true]);
+    assert.deepEqual(body.files.map((file) => [file.fileId, file.state]), [[21, 'linked'], [22, 'linked'], [23, 'linked'], [24, 'copied']]);
+    assert.deepEqual(body.torrents.map((torrent) => [torrent.hash, torrent.ticked, torrent.removal.allowed, torrent.removal.reason ?? null]),
+      [[PACK, false, true, null], [w.FULL, false, false, OTHER_SEASONS]]);
+    assert.deepEqual(body.secondVersions.map((row) => row.id), [w.versions[0]]);
+    const refused = await w.remove('/series/5/season/1', { removeTorrents: [w.FULL], secondVersions: [] });
+    assert.deepEqual([refused.status, refused.body.reason], [409, `${w.FULL} can no longer be removed: ${OTHER_SEASONS}`]);
+    assert.equal(w.requests('sonarr').some((request) => !request.startsWith('GET')), false);
+    assert.equal((await w.plan('/series/5/season/3')).status, 404);
+  });
+
+  // Deleting a file before unmonitoring, a bulk or show delete, or touching another season turns this red.
+  await t.test('deleting a season unmonitors it first, sends one delete per file, and keeps the show and its other seasons', async () => {
+    const w = await seasons();
+    const { status, body } = await w.remove('/series/5/season/1', { removeTorrents: [PACK], secondVersions: [{ id: w.versions[0], removeTorrent: true }] });
+    assert.equal(status, 200);
+    assert.equal(body.deleted, true);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:done', 'history:done']);
+    const sonarr = w.requests('sonarr');
+    const firstDelete = sonarr.findIndex((request) => request.startsWith('DELETE'));
+    assert.ok(sonarr.indexOf('PUT /api/v3/episode/monitor') < sonarr.indexOf('PUT /api/v3/series/5') && sonarr.indexOf('PUT /api/v3/series/5') < firstDelete);
+    assert.deepEqual(sonarr.filter((request) => request.startsWith('DELETE')), [21, 22, 23, 24].map((id) => `DELETE /api/v3/episodefile/${id}`));
+    const state = w.arrFake.sonarr.state;
+    assert.deepEqual(state.episodes.map((episode) => [episode.id, episode.monitored]), [[101, false], [102, false], [103, false], [104, false], [201, true]]);
+    assert.deepEqual(state.series[0].seasons.map((season) => [season.seasonNumber, season.monitored]), [[1, false], [2, true]]);
+    assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [w.FULL, V2]);
+    assert.deepEqual(w.versions.map(w.versionState), ['deleted', 'imported']);
+    assert.equal(await exists(w.files[4]), true);
+    const [event] = await w.deletions();
+    assert.deepEqual([event.title, event.event], ['Andor Season 1', 'Season deleted']);
+  });
+
+  // Stopping at the first refused file, removing the torrent of a file Sonarr kept, or hiding the per-file answers turns this red.
+  await t.test('a 409 on one file still tries the others, lists every answer and keeps that file\'s torrent', async () => {
+    const w = await seasons();
+    w.arrFake.sonarr.routes.unshift((method, url) => (method === 'DELETE' && url.pathname === '/api/v3/episodefile/22' ? { status: 409, body: { message: 'Root folder does not exist' } } : undefined));
+    const { body } = await w.remove('/series/5/season/1', { removeTorrents: [PACK], secondVersions: [] });
+    assert.equal(body.deleted, true);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:failed', 'wait:done', 'torrents:failed', 'secondVersions:skipped', 'history:done']);
+    assert.deepEqual(body.steps[2].files.map((file) => [file.fileId, file.deleted]), [[21, true], [22, false], [23, true], [24, true]]);
+    assert.match(body.steps[2].files[1].reason, /HTTP 409: Root folder does not exist/);
+    assert.equal(w.requests('sonarr').filter((request) => request.startsWith('DELETE')).length, 4);
+    assert.deepEqual(body.steps[4].torrents.map((torrent) => [torrent.hash, torrent.removed]), [[PACK, false]]);
+    assert.match(body.steps[4].torrents[0].reason, /Sonarr did not delete .*S01E02/);
+    assert.equal(w.fake.calls.includes('d.erase'), false);
+    assert.equal(await exists(w.files[1]), true);
+  });
+
+  // Deleting files after an unmonitor call fails turns this red.
+  await t.test('a failed unmonitor stops the season delete before any file is touched', async () => {
+    const w = await seasons();
+    w.arrFake.sonarr.routes.unshift((method, url) => (method === 'PUT' && url.pathname === '/api/v3/series/5' ? { status: 500, body: { message: 'Database is locked' } } : undefined));
+    const callsBefore = w.fake.calls.length;
+    const { body } = await w.remove('/series/5/season/1', { removeTorrents: [PACK], secondVersions: [{ id: w.versions[0], removeTorrent: true }] });
+    assert.deepEqual([body.deleted, w.steps(body)], [false, ['map:done', 'unmonitor:failed']]);
+    assert.equal(w.requests('sonarr').some((request) => request.startsWith('DELETE')), false);
+    assert.deepEqual(w.fake.calls.slice(callsBefore), []);
+    assert.deepEqual(w.versions.map(w.versionState), ['imported', 'imported']);
+    assert.deepEqual(await w.deletions(), []);
+  });
 });
 
 // Leaving the routes unmounted, or the 1 KB body limit on a long show's choices, turns this red.
@@ -9568,6 +9669,9 @@ test('the delete routes sit under the owner guard at /api/library and take a lon
   const { session } = await signIn(app);
   const planned = await app.request('/api/library/series/7/delete-plan', { headers: { Cookie: session } });
   assert.deepEqual(await planned.json(), { target: { service: 'sonarr', seriesId: 7 } });
+  // Dropping the season routes, or refusing season 0 (specials), turns this red.
+  const seasonPlan = await app.request('/api/library/series/7/season/0/delete-plan', { headers: { Cookie: session } });
+  assert.deepEqual(await seasonPlan.json(), { target: { service: 'sonarr', seriesId: 7, seasonNumber: 0 } });
   const removeTorrents = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0').repeat(20));
   const response = await app.request('/api/library/movie/3/delete', {
     method: 'POST',

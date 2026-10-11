@@ -286,6 +286,17 @@ still there. If Sonarr or Radarr has a recycle bin set, deleted files move
 there and free no space until it is emptied; the plan reports its path. Each
 delete is listed in History under Deletions.
 
+`GET /api/library/series/{id}/season/{n}/delete-plan` and `POST
+/api/library/series/{id}/season/{n}/delete` do the same for one season (0 is
+specials), with the same body as a show and the same plan and result shapes.
+The show stays in Sonarr. The plan carries `seasonNumber` and `willUnmonitor:
+true` (both `null` and `false` for a movie or show): the season's episodes and
+then the season are unmonitored first, and a failure there stops before any
+file is deleted. Each file is then deleted with its own Sonarr call; the
+`delete` step lists every file's answer in `files`, a refused file keeps the
+torrents that hold it, and the others still go. A torrent that also holds a
+file of another season (a full-series pack) is never offered for removal.
+
 Each torrent's advice here and from `GET /api/advice/<hash>` carries
 `recommendation`, `reason` and `globalRatio`, plus `host`, `requiredHours`
 (with margin), `seededHours`, `hoursLeft` and `detail` (`reason` without its
