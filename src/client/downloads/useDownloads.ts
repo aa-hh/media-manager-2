@@ -14,32 +14,43 @@ export const useDownloads = (onUnauthorized: () => void) => {
   const unauthorizedRef = useRef(onUnauthorized);
   unauthorizedRef.current = onUnauthorized;
   const versionRef = useRef(0);
+  const openRef = useRef(false);
+  const eventDuringLoadRef = useRef(false);
 
-  const load = useCallback(async () => {
+  // An event that lands while the snapshot is in flight is applied to the old state, which the snapshot then
+  // replaces, and the snapshot may predate it; so a read that saw one runs again.
+  const load = useCallback(async function read(): Promise<'stored' | 'unauthorized' | 'failed' | 'stale'> {
     const version = ++versionRef.current;
+    eventDuringLoadRef.current = false;
     try {
       const response = await fetch('/api/downloads', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (version !== versionRef.current) return;
+      if (version !== versionRef.current) return 'stale';
       if (response.status === 401) {
         unauthorizedRef.current();
-        return;
+        return 'unauthorized';
       }
       if (!response.ok) throw new Error('Downloads could not be read.');
       const snapshot = await response.json() as Snapshot;
-      if (version !== versionRef.current) return;
-      setState((current) => ({ kind: 'ready', snapshot, live: current.kind === 'ready' ? current.live : false }));
+      if (version !== versionRef.current) return 'stale';
+      // Live only once a snapshot read after the stream opened is in place.
+      setState({ kind: 'ready', snapshot, live: openRef.current });
     } catch {
-      if (version === versionRef.current) setState((current) => (current.kind === 'ready' ? current : { kind: 'failed' }));
+      if (version !== versionRef.current) return 'stale';
+      setState((current) => (current.kind === 'ready' ? current : { kind: 'failed' }));
+      return 'failed';
     }
+    return eventDuringLoadRef.current ? read() : 'stored';
   }, []);
 
   useEffect(() => {
     const source = new EventSource('/api/events', { withCredentials: true });
     const setLive = (live: boolean) => setState((current) => (current.kind === 'ready' ? { ...current, live } : current));
     source.addEventListener('open', () => {
-      void load().then(() => setLive(true));
+      openRef.current = true;
+      void load();
     });
     source.addEventListener('error', () => {
+      openRef.current = false;
       setLive(false);
       // A closed stream is usually an expired session; reading the snapshot tells the app.
       if (source.readyState === EventSource.CLOSED) void load();
@@ -52,11 +63,13 @@ export const useDownloads = (onUnauthorized: () => void) => {
         } catch {
           return;
         }
+        eventDuringLoadRef.current = true;
         setState((current) => (current.kind === 'ready' ? { ...current, snapshot: applyEvent(current.snapshot, type, data) } : current));
       });
     }
     return () => {
       source.close();
+      openRef.current = false;
       versionRef.current += 1;
     };
   }, [load]);

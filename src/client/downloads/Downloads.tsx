@@ -221,7 +221,7 @@ const headerSummary = (rows: Row[], groups: Group[]) => {
 };
 
 export function DownloadsScreen({ state, reload, headingRef }: {
-  state: DownloadsState; reload: () => Promise<void>; headingRef: RefObject<HTMLHeadingElement | null>;
+  state: DownloadsState; reload: () => Promise<unknown>; headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
   const now = useClock();
   const rows = useMemo(() => (state.kind === 'ready' ? buildRows(state.snapshot) : []), [state]);
