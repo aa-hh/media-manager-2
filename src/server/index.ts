@@ -150,6 +150,8 @@ if (database !== undefined) {
     }
   });
   const secondVersionDelete = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan });
+  const titleStore = createTitleStore(database);
+  const search = createSearch(database, arr, titleStore);
   const titleDelete = createTitleDelete({
     database,
     arr,
@@ -162,10 +164,9 @@ if (database !== undefined) {
         return account.kind === 'ok' ? account.stats : null;
       },
     }),
+    forget: search.forget,
   });
-  const titleStore = createTitleStore(database);
   const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist);
-  const search = createSearch(database, arr, titleStore);
   const add = createAdd(database, arr, titleStore);
   const app = createApp({
     clientDirectory,
