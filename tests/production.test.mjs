@@ -6408,15 +6408,20 @@ test('a hand grab is recorded before it is sent and keeps what it is for', async
   assert.equal(refused.record.failure, "Couldn't find requested release in cache, try searching again");
   assert.deepEqual(grabs.list(target).map((record) => record.state), ['failed', 'sent', 'sent', 'sent']);
 
-  // Recording a grab whose request threw as failed turns this red: Sonarr may have grabbed it, and the veto would then remove the owner's own grab.
+  // Recording every thrown grab request alike turns a row red: a timed-out grab may have reached Sonarr and the veto would remove it, while an unreachable one left sent makes a replace wait forever.
   const ownTitles = grabs.recentTitles('sonarr', 0).length;
-  grabResponse = () => { throw new TypeError('fetch failed'); };
   history = [];
-  const unanswered = await grabs.grab(target, 'g-rejected', 'replace');
-  assert.equal(unanswered.record.state, 'sent');
-  assert.equal(unanswered.record.failure, "Sonarr didn't answer the grab, so it may still have gone through.");
+  let unanswered;
+  for (const [error, state, failure] of [
+    [new TypeError('fetch failed'), 'failed', "Sonarr didn't answer the grab."],
+    [new DOMException('The operation was aborted due to timeout', 'TimeoutError'), 'sent', "Sonarr didn't answer the grab, so it may still have gone through."],
+  ]) {
+    grabResponse = () => { throw error; };
+    unanswered = await grabs.grab(target, 'g-rejected', 'replace');
+    assert.deepEqual([unanswered.kind, unanswered.record.state, unanswered.record.failure], [state, state, failure], error.name);
+    assert.equal(grabs.pending('replace').some((record) => record.id === unanswered.record.id), state === 'sent', error.name);
+  }
   assert.equal(grabs.recentTitles('sonarr', 0).length, ownTitles + 1);
-  assert.ok(grabs.pending('replace').some((record) => record.id === unanswered.record.id));
   history = grabbedHistory;
   const confirmed = await grabs.resolveDownloadId(unanswered.record);
   assert.deepEqual([confirmed.state, confirmed.downloadId, confirmed.failure], ['sent', 'ABC123HASH', null], 'history confirms the grab and clears the doubt');

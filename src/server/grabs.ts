@@ -263,7 +263,10 @@ export const createGrabs = (
       try {
         // POST /release ignores the search's rejections; /release/push would drop rejected releases.
         response = await service.request('/api/v3/release', { method: 'POST', body, timeoutMs: GRAB_TIMEOUT_MS });
-      } catch {
+      } catch (error) {
+        if (!(error instanceof Error && error.cause instanceof DOMException && error.cause.name === 'TimeoutError')) {
+          return { kind: 'failed', record: update(id, { state: 'failed', failure: `${label} didn't answer the grab.` }) } as const;
+        }
         // A timed-out grab may still have reached the indexer, so it stays sent: the veto then spares it and history settles it.
         const unanswered = update(id, { state: 'sent', failure: `${label} didn't answer the grab, so it may still have gone through.` });
         return { kind: 'sent', record: await resolveDownloadId(unanswered) } as const;
