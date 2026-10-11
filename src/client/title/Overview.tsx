@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
+import { HeaderBackdrop } from '@/components/ui/header-title';
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { buildRows } from '../downloads/model';
@@ -158,8 +159,10 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
     <div>
       {load.kind === 'loading' && (
         // The poster sits where the loaded header puts it (owned pages start higher), so nothing jumps when the page arrives.
-        <div role="status" aria-label="Loading" className={cn('flex flex-col gap-8 pb-10', route?.owned === true ? 'pt-10' : 'pt-25')}>
-          <div className="flex gap-8">
+        <div role="status" aria-label="Loading" className={cn('relative flex flex-col gap-8 pb-10', route?.owned === true ? 'pt-10' : 'pt-25')}>
+          {/* The owned header is 336 px tall: 40 above the poster, the 264 px poster, 32 below. */}
+          <HeaderBackdrop posterUrl={passedPoster} tall={route?.owned === true} className={cn('-inset-x-(--page-margin)', route?.owned === true && 'h-84')} />
+          <div className="relative flex gap-8">
             {passedPoster === undefined
               ? <Skeleton className="title-poster h-66 w-44 rounded-md" />
               : (
@@ -173,7 +176,7 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
               <Skeleton className="w-75" />
             </div>
           </div>
-          <div className="flex flex-col">
+          <div className="relative flex flex-col">
             <SkeletonRow />
             <SkeletonRow />
             <SkeletonRow />
