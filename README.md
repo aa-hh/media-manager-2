@@ -255,7 +255,7 @@ Never give a Podman container a name containing `media-manager`. The owner's old
 
 ### Restart after a crash or reboot
 
-The plain Node process runs with no container. `scripts/deploy.sh` copies `scripts/ensure-running.sh` to `~/media-manager-2/bin/`. The script exits at once when another copy holds `~/media-manager-2/ensure.lock`, and does nothing when `/auth/status` answers on `PORT`. Otherwise it stops the saved pid if that is still this server, starts a new one and logs `started pid <pid>`. The server it starts never holds the lock, and `deploy.sh` holds the same lock while it swaps servers, so cron cannot start a second copy.
+The plain Node process runs with no container. `scripts/deploy.sh` copies `scripts/ensure-running.sh` to `~/media-manager-2/bin/`. The script exits at once when another copy holds `~/media-manager-2/ensure.lock`, and does nothing when `/auth/status` answers on `PORT`. Otherwise, if the saved pid is still this server, it asks `/auth/status` twice more, 10 seconds apart, and stops the server only when all three fail. It then starts a new one and logs `started pid <pid>`. The server it starts never holds the lock, and `deploy.sh` holds the same lock while it swaps servers, so cron cannot start a second copy.
 
 Ali (on the slot): add these two lines once with `crontab -e`:
 
@@ -280,7 +280,7 @@ Local tests cannot show any of this; each step runs on the real slot. Record the
 - [ ] 4. Lock not inherited. Ali (on the slot): `ls -l /proc/$(cat server.pid)/fd | grep -c ensure.lock` prints 0.
 - [ ] 5. Deploy against cron. Ali (on the slot): run `while :; do bin/ensure-running.sh; sleep 1; done >> ensure.log 2>&1`. Ali (on the Mac): run `sh scripts/deploy.sh`. Ali (on the slot): stop the loop with Ctrl-C; the `pgrep -fc` count prints 1 and `cat DEPLOYED` shows the new commit.
 - [ ] 6. Reboot. Ali (on the slot): the slot cannot be rebooted on demand. Stop the server inside `flock -n ensure.lock sh` and `exit`, run the exact `@reboot` line from `crontab -l` by hand, and confirm the `pgrep -fc` count prints 1. After the next real Whatbox reboot, record `uptime`, `ps -o etime= -p $(cat server.pid)` and the boot-time `started pid` line in `ensure.log`.
-- [ ] 7. Hung server. Ali (on the slot): `kill -STOP $(cat server.pid)`, then `bin/ensure-running.sh`. It logs `alive but not answering, stopping it` and `started pid`, and the `pgrep -fc` count prints 1.
+- [ ] 7. Hung server. Ali (on the slot): `kill -STOP $(cat server.pid)`, then `bin/ensure-running.sh`. After about 45 seconds it logs `alive but not answering after 3 probes, stopping it` and `started pid`, and the `pgrep -fc` count prints 1.
 
 Use `npm run dev` for the Vite development server.
 Always build and test through `scripts/build.sh` and `scripts/test.sh`.

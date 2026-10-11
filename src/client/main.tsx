@@ -2,8 +2,7 @@ import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState 
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
 import { Home } from './Home';
-import { Nav } from './Nav';
-import { navigate, useRoute } from './route';
+import { navigate, useLocation } from './navigation';
 import { DownloadsScreen, LiveBar } from './downloads/Downloads';
 import { FlaggedScreen } from './flagged/Flagged';
 import { useFlagged } from './flagged/useFlagged';
@@ -242,14 +241,14 @@ function App() {
   );
 }
 
-// Search and the title view come from Home; the screen chosen by the route fills Home while the search box is empty.
-function SignedIn(props: ComponentProps<typeof Home>) {
+// Home routes by address: the Library is home, search results, title pages and the calendar come from Home, and the Downloads screen lives at /downloads.
+function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'healthBadge'>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
-  const screen = useRoute();
-  const history = useHistory(props.onUnauthenticated, screen === 'history');
-  const blocklist = useBlocklist(props.onUnauthenticated, screen === 'blocklist');
+  const { pathname } = useLocation();
+  const history = useHistory(props.onUnauthenticated, pathname === '/history');
+  const blocklist = useBlocklist(props.onUnauthenticated, pathname === '/blocklist');
   const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
-  const flagged = useFlagged(props.onUnauthenticated, screen === 'flagged');
+  const flagged = useFlagged(props.onUnauthenticated, pathname === '/flagged');
   const flaggedHeadingRef = useRef<HTMLDivElement>(null);
   const health = useHealth(props.onUnauthenticated);
   const healthHeadingRef = useRef<HTMLDivElement>(null);
@@ -266,22 +265,19 @@ function SignedIn(props: ComponentProps<typeof Home>) {
     const rows = state.kind === 'ready' ? buildRows(state.snapshot) : [];
     return groupRows(rows).find((group) => group.key === 'needs_you')?.rows.length ?? 0;
   }, [state]);
-  const content = (() => {
-    switch (screen) {
-      case 'downloads':
-        return (
+  return (
+    <div className="pb-8">
+      <Home
+        {...props}
+        downloadsState={state}
+        needsYou={needsYou}
+        healthBadge={healthBadge}
+        downloads={(
           <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
             <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
           </div>
-        );
-      case 'health':
-        return (
-          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
-            <HealthScreen state={health.state} runChecks={health.runChecks} headingRef={healthHeadingRef} />
-          </div>
-        );
-      case 'flagged':
-        return (
+        )}
+        flagged={(
           <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
             <FlaggedScreen
               state={flagged}
@@ -291,36 +287,18 @@ function SignedIn(props: ComponentProps<typeof Home>) {
               onOpenHealth={() => navigate('/health')}
             />
           </div>
-        );
-      case 'history':
-        return <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><HistoryScreen history={history} onNavigate={navigate} /></div>;
-      case 'blocklist':
-        return <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><BlocklistScreen blocklist={blocklist} /></div>;
-      default:
-        return null;
-    }
-  })();
-  return (
-    <div className="pb-8">
-      <Home
-        {...props}
-        downloads={content}
-        nav={(showDownloads) => (
-          <Nav
-            screen={screen}
-            needsYou={needsYou}
-            healthBadge={healthBadge}
-            onNavigate={(path) => {
-              showDownloads();
-              navigate(path);
-            }}
-          />
+        )}
+        history={<div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><HistoryScreen history={history} onNavigate={navigate} /></div>}
+        blocklist={<div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><BlocklistScreen blocklist={blocklist} /></div>}
+        health={(
+          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
+            <HealthScreen state={health.state} runChecks={health.runChecks} headingRef={healthHeadingRef} />
+          </div>
         )}
         renderBar={(showDownloads) => (
           <LiveBar
             state={state}
             onOpen={() => {
-              navigate('/');
               showDownloads();
               window.requestAnimationFrame(() => downloadsHeadingRef.current?.focus());
             }}

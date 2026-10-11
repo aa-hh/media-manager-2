@@ -10,6 +10,7 @@ import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
 import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
+import { createLibraryRoutes, type Library } from './library.js';
 import { createOwnedRoutes, type Owned } from './owned.js';
 import { createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
@@ -30,6 +31,7 @@ export type CreateAppOptions = {
   grabs?: Grabs;
   owned?: Owned;
   protection?: Protection;
+  library?: Library;
   api?: Hono;
   images?: Hono;
   webhooks?: {
@@ -365,6 +367,7 @@ export const createApp = (options: CreateAppOptions) => {
     app.route('/api/owned', createOwnedRoutes(options.owned, options.grabs.qualities));
   }
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
+  if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
   if (options.images !== undefined) app.route('/api/images', options.images);
   if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));
