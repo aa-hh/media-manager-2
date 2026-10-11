@@ -11,7 +11,7 @@ import { globalTimers, type Timers } from './jobs.js';
 import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
 import { createOwnedRoutes, type Owned } from './owned.js';
-import { createHookRoutes, createProtectionRoutes, type Protection } from './protection.js';
+import { createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
 import { createSearchRoutes, type Search } from './search.js';
 
@@ -175,9 +175,6 @@ export const createApp = (options: CreateAppOptions) => {
     if (context.req.path.startsWith('/api/imports/')) return importRequestLimit(context, next);
     return requestLimit(context, next);
   };
-
-  // Sonarr and Radarr call these with a shared token instead of a browser session.
-  if (options.protection !== undefined) app.route('/hooks', createHookRoutes(options.protection));
 
   app.get('/auth/status', (context) => {
     const binding = readCookie(context.req.header('Cookie'), bindingCookieName);

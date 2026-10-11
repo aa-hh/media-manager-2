@@ -1,10 +1,9 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import type { GrabRecord } from './grabs.js';
-import type { Subject } from './problems.js';
 import { getPreference, setPreference } from './preferences.js';
+import type { Subject } from './problems.js';
 import type { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 
@@ -20,7 +19,9 @@ const RADARR_TAG = 'mm2-manual';
 const RADARR_PROFILE = 'mm2 manual downloads';
 const seriesTag = (seriesId: number) => `mm2-manual-${seriesId}`;
 const seriesProfile = (seriesId: number) => `mm2 manual downloads: series ${seriesId}`;
-const WEBHOOK_NAME = 'media-manager-2 grab veto';
+const WEBHOOK_NAME = 'media-manager-2';
+// The grab veto's own webhook before it joined the live-downloads receiver; found and renamed in place.
+const LEGACY_WEBHOOK_NAME = 'media-manager-2 grab veto';
 // A grab of a protected item counts as the owner's own when media-manager-2 sent a grab
 // with the same release title this recently; the webhook fires within seconds of the grab.
 const OWN_GRAB_WINDOW_MS = 10 * 60_000;
@@ -191,20 +192,15 @@ export const createProtection = (
       .run(item.service, item.kind === 'movie' ? item.movieId : item.episodeId);
   };
 
-  const hookToken = () => {
-    const existing = getPreference(database, 'hooks.token');
-    if (existing !== undefined) return existing;
-    const token = randomBytes(32).toString('base64url');
-    setPreference(database, 'hooks.token', token);
-    return token;
-  };
-
   return {
     list: () => list(),
-    hookToken,
-    // Radarr items are always movies and Sonarr items always episodes, so service plus id identifies one.
-    isProtected: (subject: Subject) => (subject.type === 'movie' || subject.type === 'episode')
-      && database.prepare('SELECT 1 FROM protected_items WHERE service = ? AND item_id = ?').get(subject.service, Number(subject.id)) !== undefined,
+
+    // Lets the stall and missed-search fixes leave a manual download alone.
+    isProtected: (subject: Subject) => {
+      const service = subject.type === 'movie' ? 'radarr' : subject.type === 'episode' ? 'sonarr' : undefined;
+      if (service === undefined || subject.service !== service) return false;
+      return database.prepare('SELECT 1 FROM protected_items WHERE service = ? AND item_id = ?').get(service, Number(subject.id)) !== undefined;
+    },
 
     // A completed replace protects whatever it put in place.
     async protect(record: GrabRecord) {
@@ -260,30 +256,49 @@ export const createProtection = (
       for (const seriesId of seriesIds) await syncSeries(seriesId);
     },
 
-    // Points Sonarr's and Radarr's On Grab webhook at media-manager-2, when the operator has
-    // saved the address those services can reach it at.
+    // Points Sonarr's and Radarr's webhook at media-manager-2's one receiver, when the operator
+    // has saved the address those services can reach it at and the webhook secret.
     async ensureWebhook(service: Service) {
       const base = readSetting(database, 'serviceAddresses', 'mediaManager.hookUrl');
-      if (base === undefined || !services[service].configured()) return false;
-      const url = `${base.replace(/\/+$/, '')}/hooks/grab/${service}?token=${encodeURIComponent(hookToken())}`;
+      const secret = readSetting(database, 'credentials', 'webhook.secret');
+      if (base === undefined || secret === undefined || !services[service].configured()) return false;
+      const url = `${base.replace(/\/+$/, '')}/webhooks/${service}`;
       const notifications = await call(service, '/api/v3/notification');
-      const existing = Array.isArray(notifications) ? notifications.find((item) => isRecord(item) && item.name === WEBHOOK_NAME) : undefined;
+      const existing = Array.isArray(notifications) ? notifications.find((item) => isRecord(item) && (item.name === WEBHOOK_NAME || item.name === LEGACY_WEBHOOK_NAME)) : undefined;
       const wanted = {
         name: WEBHOOK_NAME,
         implementation: 'Webhook',
         configContract: 'WebhookSettings',
+        // The events the live-downloads receiver records; a service ignores flags it does not have.
         onGrab: true,
+        onDownload: true,
+        onUpgrade: true,
+        onDownloadFailure: true,
+        onImportFailure: true,
+        onManualInteractionRequired: true,
         tags: [],
-        fields: [{ name: 'url', value: url }, { name: 'method', value: 1 }],
+        fields: [
+          { name: 'url', value: url },
+          { name: 'method', value: 1 },
+          { name: 'username', value: 'media-manager-2' },
+          { name: 'password', value: secret },
+        ],
       };
+      // The services mask a saved password, so a changed secret is noticed from a fingerprint of the last one sent.
+      const secretKey = `webhook.sent.${service}`;
+      const fingerprint = createHash('sha256').update(secret).digest('base64url');
       if (!isRecord(existing)) await call(service, '/api/v3/notification', 'POST', wanted);
       else {
         const fields = Array.isArray(existing.fields) ? existing.fields : [];
         const current = fields.find((field) => isRecord(field) && field.name === 'url');
-        if (existing.onGrab !== true || !isRecord(current) || current.value !== url) {
+        if (
+          existing.name !== WEBHOOK_NAME || existing.onGrab !== true || !isRecord(current) || current.value !== url
+          || getPreference(database, secretKey) !== fingerprint
+        ) {
           await call(service, `/api/v3/notification/${existing.id}`, 'PUT', { ...existing, ...wanted });
         }
       }
+      setPreference(database, secretKey, fingerprint);
       return true;
     },
 
@@ -313,47 +328,28 @@ export const createProtection = (
 
 export type Protection = ReturnType<typeof createProtection>;
 
-const sameToken = (given: string | undefined, expected: string) => {
-  if (given === undefined) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-};
-
-// The queue entry can lag the On Grab webhook by a moment, so a veto retries briefly.
+// The queue entry can lag the Grab webhook by a moment, so a veto retries briefly.
 const VETO_ATTEMPTS = 4;
 const VETO_RETRY_MS = 5_000;
 
-export const createHookRoutes = (protection: Protection, wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))) => {
-  const routes = new Hono();
-  routes.post(
-    '/grab/:service',
-    bodyLimit({ maxSize: 512 * 1024, onError: (context) => context.json({ error: 'request_too_large' }, 413) }),
-    async (context) => {
-      const service = context.req.param('service');
-      if (service !== 'sonarr' && service !== 'radarr') return context.json({ error: 'not_found' }, 404);
-      if (!sameToken(context.req.query('token'), protection.hookToken())) return context.json({ error: 'unauthenticated' }, 401);
-      let payload: unknown;
+export const vetoInBackground = (
+  protection: Pick<Protection, 'veto'>,
+  service: Service,
+  payload: unknown,
+  wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+) => {
+  if (!isRecord(payload) || payload.eventType !== 'Grab') return Promise.resolve();
+  return (async () => {
+    for (let attempt = 0; attempt < VETO_ATTEMPTS; attempt += 1) {
       try {
-        payload = await context.req.json();
+        if (await protection.veto(service, payload) !== 'not_found') return;
       } catch {
-        return context.json({ error: 'invalid_request' }, 400);
+        // Retried below; a failure to reach the service is the same as not finding the entry yet.
       }
-      void (async () => {
-        for (let attempt = 0; attempt < VETO_ATTEMPTS; attempt += 1) {
-          try {
-            if (await protection.veto(service, payload) !== 'not_found') return;
-          } catch {
-            // Retried below; a failure to reach the service is the same as not finding the entry yet.
-          }
-          await wait(VETO_RETRY_MS);
-        }
-        console.error(`Grab veto could not find the ${service} queue entry.`);
-      })();
-      return context.body(null, 204);
-    },
-  );
-  return routes;
+      await wait(VETO_RETRY_MS);
+    }
+    console.error(`Grab veto could not find the ${service} queue entry.`);
+  })();
 };
 
 export const createProtectionRoutes = (protection: Protection) => {

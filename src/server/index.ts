@@ -13,7 +13,7 @@ import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
 import { createOwned } from './owned.js';
 import { createProblems } from './problems.js';
-import { createProtection } from './protection.js';
+import { createProtection, vetoInBackground } from './protection.js';
 import { createReleases } from './releases.js';
 import { createReplaces } from './replace.js';
 import { createSearch } from './search.js';
@@ -99,7 +99,12 @@ if (database !== undefined) {
     }),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
-      receive: torrentGrabs.receiveWebhook,
+      // One receiver for both: live downloads record every event, and a Grab of a manual download is vetoed.
+      receive: (service, payload) => {
+        const result = torrentGrabs.receiveWebhook(service, payload);
+        if (result === 'ok') void vetoInBackground(protection, service, payload);
+        return result;
+      },
     },
   });
   runner.start();
