@@ -1,10 +1,11 @@
 import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
-import { formatBytes } from '../downloads/model';
+import { formatBytes, type Snapshot } from '../downloads/model';
 import type { EpisodeDetail, SeriesDetail } from '../library/api';
 import { progressText } from '../library/grid';
-import { downloadingEpisodes, type SubjectProgress } from '../library/progress';
+import { downloadingEpisodes, seedingFacts, type SubjectProgress } from '../library/progress';
 import { PickRelease, type ReleaseTarget } from '../PickRelease';
+import { EpisodeDetails } from './EpisodeDetails';
 import { episodeMarks, episodeWord, relativeAirDate, seasonAiredState, seasonMonitoredState } from './rows';
 import { moveFocus, rangeBetween, selectionSummary, type RowRef } from './selection';
 import { ActionButton, Bookmark, sendAction } from './TitleHeader';
@@ -43,8 +44,9 @@ function Problem({ text }: { text: string | undefined }) {
   return text === undefined ? null : <span role="alert" className="font-ui text-[13px] text-[var(--mm-risk)]">{text}</span>;
 }
 
-export function EpisodeRows({ detail, protectedIds, progress, problems, onMonitor, onUnauthenticated }: {
+export function EpisodeRows({ detail, snapshot, protectedIds, progress, problems, onMonitor, onUnauthenticated }: {
   detail: SeriesDetail;
+  snapshot: Snapshot | undefined;
   protectedIds: Set<number>;
   progress: Map<string, SubjectProgress>;
   problems: Record<string, string>;
@@ -139,6 +141,11 @@ export function EpisodeRows({ detail, protectedIds, progress, problems, onMonito
       if (episode !== undefined) toggleEpisode(episode);
       return;
     }
+    if (event.key === 'Enter' && rows[index].kind === 'episode') {
+      event.preventDefault();
+      setPanel(panel?.key === key && panel.panel === 'details' ? null : { key, panel: 'details' });
+      return;
+    }
     if (event.key === 'Escape') {
       if (panel !== null) setPanel(null);
       else {
@@ -161,6 +168,8 @@ export function EpisodeRows({ detail, protectedIds, progress, problems, onMonito
     const ok = await sendAction('/api/library/search', body, onUnauthenticated);
     setSent((current) => ({ ...current, [key]: ok ? 'sent' : 'failed' }));
   };
+  const pickTarget = (episode: EpisodeDetail): ReleaseTarget => ({ service: 'sonarr', kind: 'episode', seriesId, episodeId: episode.id });
+  const pickTitle = (episode: EpisodeDetail) => `${detail.title} S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
   const dimmed = (key: string) => panel !== null && panel.key !== key;
   const sentText = (key: string) => {
     if (sent[key] === 'sent') return <span role="status" className="text-[var(--mm-ink-2)]">search sent</span>;
@@ -258,16 +267,28 @@ export function EpisodeRows({ detail, protectedIds, progress, problems, onMonito
                           <div className={cn('flex gap-2 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100', rowActive && 'opacity-100')}>
                             <ActionButton onClick={() => void search(rowKey, { service: 'sonarr', kind: 'episodes', episodeIds: [episode.id] })}>Search automatically</ActionButton>
                             <ActionButton
-                              onClick={() => openPick(
-                                rowKey,
-                                { service: 'sonarr', kind: 'episode', seriesId, episodeId: episode.id },
-                                `${detail.title} S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`,
-                              )}
+                              onClick={() => openPick(rowKey, pickTarget(episode), pickTitle(episode))}
                             >
                               Pick a release
                             </ActionButton>
+                            <ActionButton onClick={() => setPanel(panel?.key === rowKey && panel.panel === 'details' ? null : { key: rowKey, panel: 'details' })}>
+                              {panel?.key === rowKey && panel.panel === 'details' ? 'Hide details' : 'Details'}
+                            </ActionButton>
                           </div>
                         </div>
+                        {panel?.key === rowKey && panel.panel === 'details' && (
+                          <EpisodeDetails
+                            episode={episode}
+                            seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { episodeId: episode.id })}
+                            onSearch={() => void search(rowKey, { service: 'sonarr', kind: 'episodes', episodeIds: [episode.id] })}
+                            onPick={() => openPick(rowKey, pickTarget(episode), pickTitle(episode))}
+                            onClose={() => {
+                              setPanel(null);
+                              focusRow(rowKey);
+                            }}
+                            onUnauthenticated={onUnauthenticated}
+                          />
+                        )}
                         {panel?.key === rowKey && panel.panel === 'pick' && (
                           <PickPanel panel={panel} episodes={detail.episodes} onClose={() => setPanel(null)} onUnauthenticated={onUnauthenticated} />
                         )}

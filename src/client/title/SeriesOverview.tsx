@@ -3,6 +3,7 @@ import type { DownloadsState } from '../downloads/useDownloads';
 import type { SeriesDetail } from '../library/api';
 import type { SubjectProgress } from '../library/progress';
 import { EpisodeRows, type MonitorChange } from './EpisodeRows';
+import { History } from './History';
 import { sendAction, TitleHeader } from './TitleHeader';
 
 const MAX_EPISODE_IDS = 100;
@@ -29,7 +30,7 @@ const apply = (detail: SeriesDetail, change: MonitorChange, previous?: SeriesDet
   };
 };
 
-export function SeriesOverview({ detail: loaded, protectedIds, progress, onUnauthenticated }: {
+export function SeriesOverview({ detail: loaded, protectedIds, downloads, progress, onUnauthenticated }: {
   detail: SeriesDetail;
   protectedIds: Set<number>;
   downloads: DownloadsState;
@@ -66,10 +67,12 @@ export function SeriesOverview({ detail: loaded, protectedIds, progress, onUnaut
         monitored={detail.monitored ? 'all' : 'none'}
         onToggleMonitored={() => void monitor({ kind: 'series', monitored: !detail.monitored }, 'show')}
         monitorProblem={problems.show}
+        history={<History query={`service=sonarr&seriesId=${seriesId}`} service="Sonarr" onUnauthenticated={onUnauthenticated} />}
         onUnauthenticated={onUnauthenticated}
       />
       <EpisodeRows
         detail={detail}
+        snapshot={downloads.kind === 'ready' ? downloads.snapshot : undefined}
         protectedIds={protectedIds}
         progress={progress}
         problems={problems}
