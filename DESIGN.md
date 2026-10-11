@@ -1,92 +1,151 @@
 ---
 name: media-manager-2
-description: Dense release comparisons and live download status on a dark ground.
+description: Dense release comparisons and live download status on white panels over a soft grey page.
+# Light values below. Every color token also has a dark value on the pen.dev theme axis `mode` (dark | light).
 colors:
-  ground: "#0E0F12"
-  row: "#15171C"
-  row-alt: "#1B1E24"
-  row-hover: "#22262E"
-  seam: "#262A33"
-  ink: "#EEF0F2"
-  ink-2: "#9AA1AB"
-  ink-3: "#69707B"
-  best: "#B46AF5"
-  risk: "#FF534A"
-  on-cell: "#0E0F12"
+  ground: "#F5F5F5"
+  row: "#FFFFFF"
+  row-alt: "#FAFAFA"
+  row-hover: "#EDEFF2"
+  seam: "#D1D5DB"
+  ink: "#171B20"
+  ink-2: "#58616C"
+  ink-3: "#9AA1AB"
+  selected: "#171B20"
+  on-cell: "#FFFFFF"
+  accent: "#215D47"
+  accent-hover: "#194A38"
+  accent-soft: "#D6E5DB"
+  best: "#6D28D9"
+  best-soft: "#EDE9FE"
+  risk: "#B42318"
+  risk-hover: "#912018"
+  risk-soft: "#FBE3E1"
 typography:
+  page-title: {fontFamily: "Barlow", fontSize: "31px", fontWeight: 700}
+  panel-title: {fontFamily: "Barlow", fontSize: "20px", fontWeight: 700}
+  sheet-title: {fontFamily: "Barlow", fontSize: "17px", fontWeight: 700}
+  row-title: {fontFamily: "Barlow", fontSize: "14px", fontWeight: 600}
   button: {fontFamily: "Barlow", fontSize: "14px", fontWeight: 600}
   navigation: {fontFamily: "Barlow", fontSize: "13px", fontWeight: 500}
   body: {fontFamily: "Barlow Semi Condensed", fontSize: "13px", fontWeight: 400}
+  meta: {fontFamily: "Barlow", fontSize: "12px", fontWeight: 400}
+  column-header: {fontFamily: "Barlow", fontSize: "11px", fontWeight: 600, letterSpacing: "0.6px"}
   key: {fontFamily: "Barlow Semi Condensed", fontSize: "11px", fontWeight: 400}
 rounded:
   none: "0px"
+  chip: "2px"
 spacing:
   "4": "4px"
+  "6": "6px"
   "8": "8px"
   "12": "12px"
   "16": "16px"
   "20": "20px"
 components:
-  button-default: {backgroundColor: "{colors.ink}", textColor: "{colors.on-cell}", typography: "{typography.button}", rounded: "{rounded.none}", padding: "0px 12px", height: "32px"}
-  button-outline: {textColor: "{colors.ink}", typography: "{typography.button}", rounded: "{rounded.none}", padding: "0px 12px", height: "32px"}
+  button-default: {backgroundColor: "{colors.accent}", textColor: "{colors.on-cell}", typography: "{typography.button}", rounded: "{rounded.none}", padding: "0px 12px", height: "32px"}
+  button-default-hover: {backgroundColor: "{colors.accent-hover}"}
+  button-outline: {backgroundColor: "{colors.row}", textColor: "{colors.ink}", typography: "{typography.button}", rounded: "{rounded.none}", padding: "0px 12px", height: "32px"}
   button-ghost: {textColor: "{colors.ink}", typography: "{typography.button}", rounded: "{rounded.none}", padding: "0px 12px", height: "32px"}
-  input-search: {backgroundColor: "{colors.ground}", textColor: "{colors.ink}", rounded: "{rounded.none}", padding: "0px 10px", height: "32px", width: "420px"}
+  button-destructive: {backgroundColor: "{colors.risk}", textColor: "{colors.on-cell}", typography: "{typography.button}", rounded: "{rounded.none}", padding: "0px 12px", height: "32px"}
+  button-destructive-hover: {backgroundColor: "{colors.risk-hover}"}
+  input-search: {backgroundColor: "{colors.row}", textColor: "{colors.ink}", typography: "{typography.body}", rounded: "{rounded.none}", padding: "0px 10px", height: "32px", width: "420px"}
   tab-trigger: {textColor: "{colors.ink-2}", rounded: "{rounded.none}", padding: "0px 12px", height: "34px"}
+  tab-trigger-active: {textColor: "{colors.ink}"}
+  toggle-item-selected: {backgroundColor: "{colors.selected}", textColor: "{colors.on-cell}", rounded: "{rounded.none}", height: "32px"}
   keyboard-key: {textColor: "{colors.ink-2}", typography: "{typography.key}", rounded: "{rounded.none}", padding: "0px 5px"}
+  badge-secondary: {backgroundColor: "{colors.row-hover}", textColor: "{colors.ink}", rounded: "{rounded.chip}", padding: "0px 6px", height: "20px"}
+  badge-accent: {backgroundColor: "{colors.accent-soft}", textColor: "{colors.accent}", rounded: "{rounded.chip}", padding: "0px 6px", height: "20px"}
+  badge-best: {backgroundColor: "{colors.best-soft}", textColor: "{colors.best}", rounded: "{rounded.chip}", padding: "0px 6px", height: "20px"}
+  badge-destructive: {backgroundColor: "{colors.risk-soft}", textColor: "{colors.risk}", rounded: "{rounded.chip}", padding: "0px 6px", height: "20px"}
+  table-header: {backgroundColor: "{colors.row}", textColor: "{colors.ink-2}", typography: "{typography.column-header}", padding: "0px 20px", height: "30px"}
   table-row: {backgroundColor: "{colors.row}", textColor: "{colors.ink}", typography: "{typography.body}", rounded: "{rounded.none}", padding: "0px 20px", height: "34px"}
-  downloads-live-bar: {backgroundColor: "{colors.row}", textColor: "{colors.ink}", typography: "{typography.body}", rounded: "{rounded.none}", padding: "0px 20px", height: "32px"}
+  table-row-hover: {backgroundColor: "{colors.row-hover}"}
+  table-row-selected: {backgroundColor: "{colors.accent-soft}"}
+  table-row-best: {backgroundColor: "{colors.best-soft}", textColor: "{colors.best}"}
+  callout-risk: {backgroundColor: "{colors.risk-soft}", textColor: "{colors.ink}", rounded: "{rounded.none}"}
+  downloads-live-bar: {backgroundColor: "{colors.row}", textColor: "{colors.ink-2}", typography: "{typography.body}", rounded: "{rounded.none}", padding: "0px 20px", height: "32px"}
+  phone-row: {backgroundColor: "{colors.row}", textColor: "{colors.ink}", height: "44px"}
 ---
 
 # Design System: media-manager-2
 
 ## Overview
 
-The approved reference is the Formula 1 live timing tower: dense release rows, stepped graphite backgrounds and precise comparisons. The owner searches, compares and chooses a release without routine status labels competing for attention.
+White panels sit on a soft grey page. Dark ink carries the content, one green marks the primary action and the current selection, purple marks the one best release, and red marks risk. Rows stay as dense as the dark design they replace; titles got bigger (31px) with more space above headings.
 
-This records the 26 static screens in `design/mediaManager2.pen`. Shared components were rebuilt from the existing design as shadcn/ui counterparts; they were not imported from a kit. Base UI controls and TanStack Table behavior are not implemented here. Static review does not prove runtime behavior or accessibility.
+This records the static components in `design/mediaManager2.pen`. They are pen.dev components only. Keyboard behaviour, focus handling, screen reader support and table sorting are implementation work; a static frame proves none of them.
+
+The dark theme still exists: every color token has a dark value on the theme axis `mode`, and the 26 dark frames stay in the file as the record of what changed. The light journey frames are named "Light / Desktop / …" and "Light / Phone / …".
 
 ## Colors
 
-`ground`, `row`, `row-alt` and `row-hover` separate surfaces and rows. `seam` divides them. `ink` carries primary content; `ink-2` carries readable secondary text; `ink-3` serves muted borders, decoration and disabled treatment. `on-cell` supplies dark text on a filled control.
+Neutrals do the work. `ground` is the page; `row` is panels, rows, cards and the top bar; `row-alt` is alternate rows and sidebars; `row-hover` is hover. `seam` draws every hairline, border and divider.
 
-Use `best` only for the single best release that passes the quality profile in each release table. Use `risk` for problems and risks, with explanatory text. Better or not better than the owned file is a text mark. The legacy `better` and `same` Pen variables are excluded from the active palette.
+`ink` is primary text and icons. `ink-2` is secondary text and passes 4.5:1 on `ground`. `ink-3` is never text: only disabled states, placeholders, decorative strokes, and checkbox and radio edges (3:1 on white).
+
+`accent` (green) is the primary button, focus rings, links and the active bookmark; `accent-soft` tints the selected row and "In library" or "Downloading 64%" chips. `selected` (near black) fills a chosen control that is not the primary action: the active toggle item or the switched-on state. `on-cell` is text on any filled color.
+
+**One purple per table.** `best` and `best-soft` mark only the single best release that passes the quality profile.
+
+**Red means something went wrong.** `risk`, `risk-soft` and `risk-hover` are for gave up, stalled, failed, hit and run risk, tracker cooldown and 0 seeders. "Missing" is a neutral chip. Seeding time under the hit and run rule stays neutral in rows and turns red only inside a delete or remove panel.
+
+Poster placeholders use one of six muted hues (#3A2D55, #2F4A3C, #4A3A2A, #2C4650, #5A4A2E, #503A3A). These are the only raw hex values allowed on screens.
 
 ## Typography
 
-Barlow carries interface labels and navigation. Barlow Semi Condensed carries release data, counts and key hints. Preserve aligned numeric columns. The frontmatter records the shared component defaults; existing compact row and phone instances override them where needed.
+Barlow carries labels, buttons, navigation and headings. Barlow Semi Condensed carries table data, counts, key hints and file names. Page titles are 31/700 everywhere, panel titles 20/700, phone sheet titles 17/700. Column headers are 11/600 uppercase `ink-2`. Right-align sizes, seeders and counts so digits line up.
 
 ## Layout
 
-The prototype has desktop frames (1440 × 900px) and one phone frame (390 × 844px). These are examples, not implemented responsive breakpoints. Desktop top bars are 48px high; the phone top bar is 44px. Shared table rows are 34px high, with existing 32–36px variations retained by screen. Visible live-download bars are 32px high on every screen; the phone bar sits inside a 44px-high control.
+Desktop frames are 1440 × 900px; phone frames are 390 × 844px. These are examples, not tested breakpoints. Top bar 48px desktop, 44px phone. Heights: buttons, inputs, toggle items and prev/next links 32px; tab triggers 34px; one-line rows 34px; table headers 30px; second-version sub-rows 30px; season rows 40px (they hold a chevron and a bookmark); chips 20px; phone touch rows 44px.
 
-Keep release lists inline with the title. Show row actions and their keys on the selected row only. Open one inline decision panel at a time and dim the surrounding content. The phone uses a bottom sheet for the release choice.
+Release tables sit inline under the title, never in a modal. One inline panel opens at a time. The live downloads bar is one line, 32px, on every screen. The phone uses a bottom sheet for picking a release and for episode actions.
 
 ## Elevation & Depth
 
-Use stepped backgrounds, divider lines and selection outlines. The design has no shadows. Keep the surrounding content dim while a decision is open.
+No shadows. Depth comes from a `row` panel on the `ground` page and 1px `seam` hairlines. An open inline panel and the phone bottom sheet take a 1px `seam` outline on a `row` fill while everything around them dims.
 
 ## Shapes
 
-Controls and cells have square corners. Search fields, outlined buttons and key hints use thin borders. Avoid decorative cards around rows, controls or decisions.
+Buttons, inputs, cells, tabs and rows have square corners. Chips, badges, skeleton blocks and posters have 2px corners. Callouts have no left bar: soft fill, icon, title, body. No decorative cards around rows or controls.
 
 ## Components
 
-The shared library contains Button default, outline and ghost variants; Input/Search; Tabs triggers; NavigationMenu links; Kbd; Checkbox; RadioGroup; Switch; Select; Collapsible; Sheet; Badge; Progress; and Table, Row and Cell parts. Table styling follows TanStack Table's row and cell structure; table behavior remains implementation work.
+Every component is a reusable frame named `Family/Variant`, matching shadcn/ui names where one exists. Screens use instances; text children are named (`Label`, `Count`, `Value`, `Hint`) so screens override them by name.
 
-The galleries show static focus and disabled states for buttons, search, select and disclosure; unchecked, mixed and unselected choices; the switch off state; and expanded disclosure.
+- **Chrome:** AppBar/Desktop, NavigationMenu/List and /Link, Navigation/Phone, Breadcrumb, Link/prev-next, Header/page, /page-note, /page-action, /sub-page, Header/title (including "Not monitored"), Header/results, Downloads/Live bar and /phone, Bar/bottom-action, Toast/undo, Tooltip.
+- **Controls:** Button/default, /outline, /ghost, /destructive, /outline-destructive, /outline-menu, /Keyboard shortcuts; Input/Search; Tabs/Trigger/default and /active; ToggleGroup, ToggleGroup/Item and /selected; DropdownMenu/Content and /Item; Select/Trigger; Combobox/Item; Checkbox; RadioGroup/Item; Collapsible/Trigger; Kbd and Kbd/icon; Toggle/Bookmark/monitored, /not-monitored, /mixed.
+- **Badges and status:** Badge/outline, /secondary, /accent, /ghost, /best, /quality-filled, /searching, /destructive, /destructive-filled; Mark/comparison/best, /better, /same-or-worse, /yours; Mark/pending-change; Cell/profile-fit/meets, /rejected, /warning; Spinner; Skeleton; Progress; Label/section; Label/group, /group-date, /group-risk.
+- **Tables and rows:** Table, Table/Header, Table/Row, Table/Cell; Row/release, Row/second-version, Row/episode, Row/episode-details, Row/season, Row/history; Bar/selection; Line/totals.
+- **Lists and cards:** Row/search-result, Item/episode-list, Library/Poster, Calendar/Header, Calendar/DayHeader (and -today, -tomorrow), Calendar/MonthCell (and -today, -out), Calendar/Entry, Calendar/NowLine, Fact, Fact/row.
+- **Panels and selection:** Panel/inline, Scrim, Card/choice, Row/option-radio, Row/option-checkbox, Field/labelled, Block/add-controls and /movie, Empty/state, Callout/risk, Callout/info.
+- **Status composites:** Row/download (and -stalled, -import-blocked, -waiting, -selected), Row/health-problem (and -selected, -error, -warning), Row/health-summary, /health-stat, /health-disk, /health-disk-risk, Row/flagged and -selected, Row/blocklist (and -risk, -selected), Row/import-file (and -problem, -group), Strip/still-missing.
+- **Phone:** Sheet/Content/phone, Row/release-phone, Row/episode-phone, Navigation/Phone, Downloads/Live bar/phone.
 
-Default buttons use light fill and dark text. Outline buttons use a thin border; ghost buttons keep the surrounding background. Preserve each existing action's size, icon, key and state. Tabs use light text and a bottom line for the active item. Navigation uses text weight and colour for the current page.
+Retired: Badge/Status (use a Badge variant). Legacy: Switch/Monitored stays only on old screens (use Toggle/Bookmark). ToggleGroup/Torrent choice is built from the same items as ToggleGroup.
 
-Calendar grids and entries, poster composition, the one-line live-download bar and inline decision content remain product-specific. Posters and descriptions must come from Sonarr or Radarr. The sidecar contains static style samples, not working app components.
+## States
+
+One rule for every row family and control:
+
+- **Hover:** `row-hover` fill on rows; `accent-hover` or `risk-hover` on filled buttons. Never opacity.
+- **Selected:** `accent-soft` fill on rows, no bar. Chosen controls take `selected` fill with `on-cell` text.
+- **Best:** `best-soft` fill plus a 2px `best` left bar. This is the only row bar.
+- **Focus:** 2px `accent` stroke on the control itself, outside the edge; on rows, inside the edge. No wrapper frame, no gap.
+- **Dimmed:** opacity 0.65 on rows outside an open panel. Never 0.5.
+- **Disabled:** `ink-3` text and opacity 0.6. Opacity means disabled and nothing else.
+- **Loading and error:** Spinner replaces the button icon while the label stays; Badge/searching on episode rows; Skeleton blocks at text size. Inputs in error take a `risk` border and a 12px `risk` message below.
 
 ## Do's and Don'ts
 
-- Do keep normal monitored, downloaded, ready and not-aired states quiet.
-- Do show actions and key hints on the selected row only.
-- Do open one inline decision at a time and dim surrounding content.
-- Do keep the one-line live-download bar on every screen.
-- Do preserve the owner's chosen release and show tracker risks in words.
-- Don't add green or yellow comparison fills.
-- Don't hide release tables in a modal or make risk explanations hover-only.
-- Don't add shadows, rounded controls or decorative cards.
-- Don't describe static components as working keyboard controls or tested accessibility.
+- Do keep normal states quiet: monitored, meets profile, not aired, downloaded.
+- Do show row actions and key hints on the selected or hovered row only.
+- Do open one inline panel at a time and dim the rest; destructive actions take two steps.
+- Do write status as words plus a tinted chip, and every chip as a Badge instance.
+- Do use the words in CONTEXT.md: Release, Grab, Replace, Second version, Manual download, Pick a release, Search automatically.
+- Don't use green for decoration or for comparisons; "better" and "not better" are text marks.
+- Don't use purple on more than one row per table, or red for anything that has not gone wrong.
+- Don't use `ink-3` for readable text.
+- Don't add shadows, rounded controls or cards around rows.
+- Don't describe these static components as working keyboard controls or tested accessibility.
