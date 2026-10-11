@@ -27,7 +27,7 @@ PORT=<the port your proxy forwards to>
 HOST=127.0.0.1
 APP_ORIGIN=<the public https address, no trailing slash>
 PLEX_OWNER_ID=<your numeric Plex account ID>
-BACKUP_KEY=<64 hex characters, only for backups; see README.md, Backups>
+BACKUP_KEY=<64 hex characters, only if you still use BACKUP_KEY instead of a restore key made in the app; see README.md, Backups>
 
 Leave DB_PATH unset so the database stays under ~/.local/share/media-manager-2.
 EOF

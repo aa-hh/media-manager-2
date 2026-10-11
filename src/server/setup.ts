@@ -2,7 +2,7 @@ import { type Stats, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { type Context, Hono } from 'hono';
-import { backupKeyFromEnvironment, backupsAreOff, setBackupsOff } from './backup.js';
+import { backupKeyFromEnvironment, backupsAreOff, createBackupKeyPair, readBackupKeyPair, setBackupsOff } from './backup.js';
 import { readBackupDestination } from './backupDestination.js';
 import { applicationMigrations, migrateDatabase } from './database.js';
 import { getPreference, setPreference } from './preferences.js';
@@ -133,11 +133,15 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
     } catch (error) {
       problem = (error as Error).message;
     }
-    let key: 'set' | 'missing' | 'invalid';
-    try {
-      key = backupKeyFromEnvironment(env) === undefined ? 'missing' : 'set';
-    } catch {
-      key = 'invalid';
+    // A key pair made in the app replaces BACKUP_KEY, so the environment is not read once one exists.
+    const pair = readBackupKeyPair(database);
+    let key: 'pair' | 'env' | 'missing' | 'invalid' = 'pair';
+    if (pair === undefined) {
+      try {
+        key = backupKeyFromEnvironment(env) === undefined ? 'missing' : 'env';
+      } catch {
+        key = 'invalid';
+      }
     }
     const off = backupsAreOff(database);
     const choices = readChoices();
@@ -156,13 +160,14 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
       },
       requiredComplete: Object.values(required).every((status) => status === 'done'),
       plexSignInTokenAvailable: context.get('plexSignInToken') !== undefined,
-      // The access key, the secret and BACKUP_KEY's value never leave the server.
+      // The access key, the secret and BACKUP_KEY's value never leave the server, and the restore key is never returned here either.
       backup: {
         destination: destination === undefined ? null
           : destination.kind === 'folder' ? { kind: 'folder', folder: destination.folder }
             : { kind: 's3', endpoint: destination.config.endpoint, bucket: destination.config.bucket, region: destination.config.region },
         problem,
         key,
+        keyCreatedAt: pair === undefined ? null : pair.createdAt,
       },
     });
   });
@@ -312,6 +317,9 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
     setBackupsOff(database, false);
     return context.body(null, 204);
   });
+
+  // The private half is returned once, in this response, and never stored; creating another pair replaces the public half.
+  routes.post('/backup/key', (context) => context.json(createBackupKeyPair(database), 201));
 
   return routes;
 };

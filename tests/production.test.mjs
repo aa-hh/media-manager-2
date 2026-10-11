@@ -2855,9 +2855,9 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', plex: 'not_done', folders: 'not_done' });
     assert.equal(fresh.requiredComplete, false);
     assert.deepEqual(fresh.optional, { trackers: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false } });
-    assert.deepEqual(fresh.backup, { destination: null, problem: null, key: 'missing' });
+    assert.deepEqual(fresh.backup, { destination: null, problem: null, key: 'missing', keyCreatedAt: null });
     assert.equal(fresh.plexSignInTokenAvailable, true);
-    assert.equal((await (await build({ env: { BACKUP_KEY: 'ab'.repeat(32) } })).status()).backup.key, 'set');
+    assert.equal((await (await build({ env: { BACKUP_KEY: 'ab'.repeat(32) } })).status()).backup.key, 'env');
     assert.equal((await (await build({ env: { BACKUP_KEY: 'nope' } })).status()).backup.key, 'invalid');
 
     for (const [category, key] of [
@@ -2874,6 +2874,41 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     const complete = await status();
     assert.deepEqual(complete.required, { sonarr: 'done', radarr: 'done', rtorrent: 'done', plex: 'done', folders: 'done' });
     assert.equal(complete.requiredComplete, true);
+  });
+
+  // Storing the private half of the backup key pair, or returning it from the status, turns this red.
+  await t.test('a restore key is returned once and only its public half is stored', async () => {
+    const { readBackupKeyPair } = await import(backupModuleUrl);
+    const create = async (send) => {
+      const response = await send('POST', '/backup/key');
+      assert.equal(response.status, 201);
+      const made = await response.json();
+      assert.match(made.restoreKey, /^mm2-restore-[A-Za-z0-9_-]{43}$/);
+      assert.equal(typeof made.createdAt, 'number');
+      return made;
+    };
+    const { database, send, statusText } = await build();
+    const first = await create(send);
+    const second = await create(send);
+    assert.notEqual(first.restoreKey, second.restoreKey);
+    const text = await statusText();
+    assert.equal(text.includes(first.restoreKey.slice(-43)) || text.includes(second.restoreKey.slice(-43)), false);
+    assert.equal(JSON.parse(text).backup.key, 'pair');
+    assert.equal(JSON.parse(text).backup.keyCreatedAt, second.createdAt);
+
+    const withEnvironment = await build({ env: { BACKUP_KEY: 'ab'.repeat(32) } });
+    const made = await create(withEnvironment.send);
+    const { backup } = await withEnvironment.status();
+    assert.equal(backup.key, 'pair');
+    assert.equal(backup.keyCreatedAt, made.createdAt);
+
+    database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    const file = await readFile(join(root, `setup-${databases.indexOf(database)}.sqlite`));
+    for (const { restoreKey } of [first, second]) {
+      assert.equal(file.includes(restoreKey), false);
+      assert.equal(file.includes(restoreKey.slice(-43)), false);
+    }
+    assert.equal(file.includes(readBackupKeyPair(database).publicKey), true);
   });
 
   // Dropping a stored choice, leaving backups on after the owner skipped them, or turning them on from a tick alone, turns this red.
@@ -8838,12 +8873,12 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   await assert.rejects(store.get('../outside'), /outside the backup folder/);
 });
 
-// Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, or restoring a snapshot without checking its key, hash or schema version turns this red.
+// Snapshotting with a plain file copy during a write, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
 test('backups snapshot a changing database and restore it consistently', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
-  const { createBackup, listBackupRuns, restoreBackup } = await import(backupModuleUrl);
+  const { createBackup, createBackupKeyPair, listBackupRuns, restoreBackup } = await import(backupModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backup-'));
   const databasePath = join(root, 'live', 'media-manager.sqlite');
   const database = openDatabase(databasePath);
@@ -8980,6 +9015,27 @@ test('backups snapshot a changing database and restore it consistently', async (
   for (const key of [...aged.kept, pruned.objectKey, written.objectKey, 'backups/latest.json']) assert.ok(objects.has(key), key);
   for (const key of aged.dropped) assert.equal(objects.has(key), false, key);
 
+  const { restoreKey } = createBackupKeyPair(database, () => clock);
+  const sealedToPair = await backup.run({ force: true });
+  assert.deepEqual(outcome(sealedToPair), ['ok', '']);
+  assert.equal(Buffer.from(objects.get(sealedToPair.objectKey).subarray(0, 9)).toString('ascii'), 'mm2x25519');
+  assert.equal((await restoreBackup({ store, target: join(root, 'from-pair.sqlite'), restoreKey })).key, sealedToPair.objectKey);
+  const bothKeys = await restoreBackup({ store, target: join(root, 'from-env.sqlite'), objectKey: written.objectKey, key: backupKey, restoreKey });
+  assert.equal(bothKeys.key, written.objectKey);
+  await assert.rejects(
+    restoreBackup({ store, target: join(root, 'pair-with-env-key.sqlite'), objectKey: sealedToPair.objectKey, key: backupKey }),
+    { message: 'This backup needs the restore key; set BACKUP_RESTORE_KEY.' },
+  );
+  const otherRestoreKey = `mm2-restore-${generateKeyPairSync('x25519').privateKey.export({ format: 'jwk' }).d}`;
+  await assert.rejects(
+    restoreBackup({ store, target: join(root, 'pair-with-other-key.sqlite'), objectKey: sealedToPair.objectKey, restoreKey: otherRestoreKey }),
+    { message: 'Downloaded snapshot could not be decrypted with the restore key.' },
+  );
+  await assert.rejects(
+    restoreBackup({ store, target: join(root, 'env-with-restore-key.sqlite'), objectKey: written.objectKey, restoreKey }),
+    { message: 'This backup needs BACKUP_KEY.' },
+  );
+
   const refusal = (options) => restoreBackup({ store, key: backupKey, ...options }).then(() => 'restored', (error) => error.message);
   assert.equal(await refusal({ target: restoredPath }), 'Restore target already exists.');
   assert.equal(await refusal({ target: join(projectDirectory, 'restored.sqlite') }), 'Database path must be an absolute file path outside the application directory.');
@@ -9035,7 +9091,7 @@ test('backup commands upload, list and restore through a bucket or a folder from
   }
   const keyless = await cli(['backup', 'now'], withoutKey);
   assert.equal(keyless.code, 1);
-  assert.equal(keyless.stdout, 'backup: failed BACKUP_KEY is not set.\n');
+  assert.equal(keyless.stdout, 'backup: failed No backup key: create one in the app or set BACKUP_KEY.\n');
   const off = await cli(['backup', 'off'], withoutKey);
   assert.equal(off.stdout, 'backups: off\n');
   assert.equal((await cli(['backup', 'now'], withDatabase)).stdout, 'backup: skipped off\n');
@@ -9063,7 +9119,10 @@ test('backup commands upload, list and restore through a bucket or a folder from
   const { BACKUP_KEY: _, ...r2Only } = withR2;
   const unkeyed = await cli(['backup', 'restore', '--to', join(root, 'unkeyed.sqlite')], r2Only);
   assert.equal(unkeyed.code, 1);
-  assert.equal(unkeyed.stderr, 'BACKUP_KEY must be set.\n');
+  assert.equal(unkeyed.stderr, 'Set BACKUP_RESTORE_KEY or BACKUP_KEY.\n');
+  const badRestoreKey = await cli(['backup', 'restore', '--to', join(root, 'bad-restore-key.sqlite')], { ...withR2, BACKUP_RESTORE_KEY: 'nope' });
+  assert.equal(badRestoreKey.code, 1);
+  assert.equal(badRestoreKey.stderr, 'BACKUP_RESTORE_KEY must be mm2-restore- followed by 43 characters.\n');
   const again = await cli(['backup', 'restore', '--to', target, '--object', key], withR2);
   assert.equal(again.code, 1);
   assert.equal(again.stderr, 'Restore target already exists.\n');
@@ -9098,7 +9157,29 @@ test('backup commands upload, list and restore through a bucket or a folder from
   const fromFolder = await cli(['backup', 'restore', '--to', folderTarget], withFolder);
   assert.equal(fromFolder.code, 0, fromFolder.stderr);
   assert.match(fromFolder.stdout, new RegExp(`^restored ${folderKey} to `));
-  for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey));
+
+  // Sealing with BACKUP_KEY once the app has made a key pair, or restoring that backup without the restore key, turns this red.
+  const made = await runNode(`
+    const { createBackupKeyPair } = await import(${JSON.stringify(backupModuleUrl)});
+    const { openDatabase } = await import(${JSON.stringify(databaseModuleUrl)});
+    const database = openDatabase(${JSON.stringify(withoutKey.DB_PATH)});
+    process.stdout.write(createBackupKeyPair(database).restoreKey);
+    database.close();
+  `, { env: base });
+  assert.equal(made.code, 0, made.stderr);
+  const restoreKey = made.stdout;
+  const toPair = await cli(['backup', 'now'], withDatabase);
+  assert.equal(toPair.code, 0, toPair.stderr);
+  const pairKey = toPair.stdout.match(/^backup: ok (backups\/\S+\.sqlite\.gz\.enc) \d+ bytes\n$/)?.[1];
+  assert.ok(pairKey, toPair.stdout);
+  const { BACKUP_KEY: __, ...folderOnly } = withFolder;
+  const fromPair = await cli(['backup', 'restore', '--to', join(root, 'from-pair', 'media-manager.sqlite')], { ...folderOnly, BACKUP_RESTORE_KEY: restoreKey });
+  assert.equal(fromPair.code, 0, fromPair.stderr);
+  assert.match(fromPair.stdout, new RegExp(`^restored ${pairKey} to `));
+  const pairWithEnvKey = await cli(['backup', 'restore', '--to', join(root, 'pair-with-env-key.sqlite')], withFolder);
+  assert.equal(pairWithEnvKey.code, 1);
+  assert.equal(pairWithEnvKey.stderr, 'This backup needs the restore key; set BACKUP_RESTORE_KEY.\n');
+  for (const output of outputs) assert.ok(!output.includes(secret) && !output.includes(backupKey) && !output.includes(restoreKey));
 });
 
 test('the settings screen sends only changed fields and ranks each service state', async (t) => {
