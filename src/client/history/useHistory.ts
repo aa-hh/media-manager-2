@@ -63,7 +63,7 @@ const readLink = () => {
   return { service: service === 'sonarr' || service === 'radarr' ? service as Service : 'all' as const, link };
 };
 
-// While active, reads one list page by page; a page only adds items whose id is not already shown, since the server repeats newer steps.
+// While active, reads one list page by page; later pages send before, and steps at exactly that time come back again, so a page only adds ids not already shown.
 const usePaged = <T,>(onUnauthorized: () => void, active: boolean, url: string, read: (body: unknown) => { items: T[]; hasMore: boolean }, idOf: (item: T) => string, nextQuery?: (shown: T[]) => string) => {
   const [state, setState] = useState<Paged<T>>({ kind: 'loading' });
   const unauthorizedRef = useRef(onUnauthorized);
@@ -113,8 +113,13 @@ const readEvents = (body: unknown) => {
   return { items: value.events ?? [], hasMore: value.hasMore === true };
 };
 const eventId = (event: HistoryEvent) => event.id;
-// A later page asks for steps no newer than the oldest event shown, so steps between two Sonarr or Radarr pages are not skipped.
-const eventsBefore = (shown: HistoryEvent[]) => (shown.length === 0 ? '' : `&before=${Math.min(...shown.map((event) => event.at))}`);
+// A later page asks for steps no newer than the oldest step shown, since the server keeps only the newest page of steps;
+// with no step shown it falls back to the oldest event, so steps between two Sonarr or Radarr pages are not skipped.
+const eventsBefore = (shown: HistoryEvent[]) => {
+  const steps = shown.filter((event) => event.source === 'media-manager-2');
+  const from = steps.length > 0 ? steps : shown;
+  return from.length === 0 ? '' : `&before=${Math.min(...from.map((event) => event.at))}`;
+};
 
 export const useHistory = (onUnauthorized: () => void, active: boolean) => {
   const [initial] = useState(readLink);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { Button } from './components/ui/button';
 import { readSearchQuery, SearchBox, SearchResults, useDebouncedSearch, useSearch, type SearchResult } from './Search';
+import { nextSearchPath } from './searchPath';
 import { TitleView } from './Title';
 
 type HomeProps = {
@@ -15,22 +16,14 @@ type HomeProps = {
   nav?: (showDownloads: () => void) => ReactNode;
 };
 
-// Searching moves the path to /search and remembers the screen it left, so clearing the search returns to that screen.
 const writeSearchQuery = (query: string) => {
   const url = new URL(window.location.href);
   const trimmed = query.trim();
-  let state: unknown = window.history.state;
   if (trimmed === '') url.searchParams.delete('q');
   else url.searchParams.set('q', trimmed);
-  if (trimmed !== '' && url.pathname !== '/search') {
-    state = { from: url.pathname };
-    url.pathname = '/search';
-  } else if (trimmed === '' && url.pathname === '/search') {
-    const from = (state as { from?: unknown } | null)?.from;
-    url.pathname = typeof from === 'string' ? from : '/';
-    state = null;
-  }
-  if (url.href !== window.location.href) window.history.replaceState(state, '', url);
+  const next = nextSearchPath(url.pathname, window.history.state, trimmed);
+  url.pathname = next.pathname;
+  if (url.href !== window.location.href) window.history.replaceState(next.state, '', url);
 };
 
 export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem, onSignOut, onUnauthenticated, downloads, renderBar, nav }: HomeProps) {

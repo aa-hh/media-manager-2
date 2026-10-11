@@ -3881,6 +3881,23 @@ test('the downloads screen joins torrents, queue items and problems into rows', 
   });
 });
 
+test('searching moves to /search and clearing the search returns to the screen it left', async () => {
+  // The client is bundled by Vite, not compiled to dist, so this is loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/searchPath.ts', import.meta.url), 'utf8');
+  const { nextSearchPath } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  // Forgetting the left screen, returning anywhere but it when the search clears, or moving off a screen when no search was open, turns this red.
+  const rows = [
+    ['entering a search from /flagged', '/flagged', null, 'dune', { pathname: '/search', state: { from: '/flagged' } }],
+    ['typing more on /search', '/search', { from: '/flagged' }, 'dune 2', { pathname: '/search', state: { from: '/flagged' } }],
+    ['clearing on /search with a stored from', '/search', { from: '/flagged' }, '  ', { pathname: '/flagged', state: null }],
+    ['clearing with no from', '/search', null, '', { pathname: '/', state: null }],
+    ['clearing with a non-string from', '/search', { from: 7 }, '', { pathname: '/', state: null }],
+    ['clearing while not on /search', '/history', { kept: true }, '', { pathname: '/history', state: { kept: true } }],
+  ];
+  for (const [name, pathname, state, query, expected] of rows) assert.deepEqual(nextSearchPath(pathname, state, query), expected, name);
+});
+
 test('a hand grab marks its torrent grab record as by hand, whichever record arrives first', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
@@ -4317,6 +4334,23 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   assert.deepEqual([firstFixes.events.length, firstFixes.hasMore], [100, true]);
   const secondFixes = await history.list({ filter: 'fixes', service: 'all', page: 2, before: Math.min(...firstFixes.events.map((event) => event.at)) });
   assert.deepEqual([secondFixes.events.map((event) => event.detail), secondFixes.hasMore], [['Searched again 97', 'Searched again 98', 'Searched again 99'], false]);
+
+  // A full Sonarr page reaching back to 08:21 plus 150 steps from 09:30, all newer than its oldest record.
+  for (let index = 0; index < 150; index += 1) {
+    clock.value = Date.parse('2026-10-10T09:30:00Z') + index * 1_000;
+    problems.step(missed.id, 'fix', `Newer step ${index}`);
+  }
+  sonarrRecords = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
+  const newer = (events) => events.filter((event) => event.detail.startsWith('Newer step ')).map((event) => event.detail);
+  const crowded = await history.list({ filter: 'all', service: 'sonarr', page: 1 });
+  // Returning every step newer than the oldest Sonarr record on one page, instead of the newest 100, turns this red.
+  assert.deepEqual([newer(crowded.events), crowded.hasMore], [Array.from({ length: 100 }, (_, index) => `Newer step ${149 - index}`), true]);
+  sonarrRecords = [];
+  const crowdedOldestStep = Math.min(...crowded.events.filter((event) => event.source === 'media-manager-2').map((event) => event.at));
+  const afterCrowded = await history.list({ filter: 'all', service: 'sonarr', page: 2, before: crowdedOldestStep });
+  // Ignoring before on page 2, or cutting the newest steps instead of the oldest, turns this red.
+  assert.deepEqual(newer(afterCrowded.events), Array.from({ length: 51 }, (_, index) => `Newer step ${50 - index}`));
+  sonarrRecords = [grabbed, imported];
 
   const { app } = await makeApp({ api: createApiRoutes(database, { arr, refresh: async () => {}, history }) });
   const { session } = await signIn(app);
