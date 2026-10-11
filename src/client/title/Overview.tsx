@@ -9,7 +9,7 @@ import { buildRows } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
 import { getJson, type MovieDetail, type OwnedMovieDetail, type SeriesDetail } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
-import { passedPosterUrl, replace, useLocation, withViewTransition } from '../navigation';
+import { passedPosterUrl, preloadImages, replace, useLocation, withViewTransition } from '../navigation';
 import { AddControls } from './AddControls';
 import { MovieOverview } from './MovieOverview';
 import { SeriesOverview } from './SeriesOverview';
@@ -123,6 +123,11 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       return { kind: 'movie', detail, protectedIds: new Set(items.flatMap((item) => (item.kind === 'movie' ? [item.movieId] : []))) };
     };
     read()
+      // razor: waits at most 600 ms for the header's poster and backdrop, so the page usually arrives with both drawn; a slower image fades in on its own.
+      .then(async (loaded) => {
+        if ('detail' in loaded) await preloadImages([loaded.detail.posterUrl, 'backdropUrl' in loaded.detail ? loaded.detail.backdropUrl : null], 600);
+        return loaded;
+      })
       .then((loaded) => {
         if (controller.signal.aborted) return;
         // The skeleton crossfades into the page; the poster stays put because both carry title-poster.
