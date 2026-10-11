@@ -31,6 +31,8 @@ export const TEMPORARY_LIMIT_MS = 24 * 60 * 60_000;
 export const FILE_MOVE_RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000, 120 * 60_000] as const;
 // Sonarr and Radarr accept an import command before running it; this is how long the download may stay blocked afterwards.
 export const FORCED_IMPORT_SETTLE_MS = 30 * 60_000;
+// A fix that failed waits this long before it runs again, twice as long after each further failure, never more than a day.
+export const FIX_FAILED_RETRY_MS = 15 * 60_000;
 
 export const classifyImport = (messages: string[]): ImportCategory => {
   for (const [category, pattern] of patterns) if (messages.some((message) => pattern.test(message))) return category;
@@ -219,13 +221,22 @@ export const createImportFix = (options: {
         if (item.service !== service || item.downloadId === null || !blocked(item)) continue;
         groups.set(item.downloadId, [...(groups.get(item.downloadId) ?? []), item]);
       }
+      const failed = listOpenProblems(database).filter((problem) => problem.kind === 'import_fix_failed');
       for (const [downloadId, items] of groups) {
+        // Sonarr and Radarr can refuse the same request every time, so a failed fix backs off instead of resending each check.
+        const failure = failed.find((problem) => problem.subject.id === downloadId);
+        if (failure !== undefined) {
+          const failures = failure.steps.filter((step) => step.kind === 'result').length;
+          if (at - failure.updatedAt < Math.min(FIX_FAILED_RETRY_MS * 2 ** (failures - 1), TEMPORARY_LIMIT_MS)) continue;
+        }
         try {
           await handle(service, downloadId, items, at);
           closeImportProblems(downloadId, 'The import fix worked on a later try.', (item) => item.kind !== 'import_fix_failed');
         } catch (error) {
           const problem = problems.open({ kind: 'import_fix_failed', subject: { type: 'torrent', service: null, id: downloadId }, hash: downloadId, summary: items[0].title });
-          if (problem.state !== 'needs_you') problems.setState(problem.id, 'needs_you', error instanceof Error ? error.message : 'The import fix failed.');
+          const text = error instanceof Error ? error.message : 'The import fix failed.';
+          if (problem.state !== 'needs_you') problems.setState(problem.id, 'needs_you', text);
+          else problems.step(problem.id, 'result', `Tried again: ${text}`);
           // An unfinished row hands the download to the sweep below, so its problems close once it leaves the queue.
           const previous = readHandling(service, downloadId)
             ?? { service, downloadId, category: classifyImport(messagesOf(items)), firstSeenAt: at, attempts: 0, lastAttemptAt: null, done: false };

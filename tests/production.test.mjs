@@ -6160,6 +6160,27 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     run.database.close();
   });
 
+  // Sending the removal again on every check after Sonarr refuses it, instead of backing off, turns this red.
+  await t.test('a queue removal Sonarr refuses is retried after 15 minutes, then after twice as long each time', async () => {
+    const run = await setup({ message: 'Episode file already imported' });
+    run.fake.sonarr.routes.push((method, url) => (method === 'DELETE' && url.pathname.startsWith('/api/v3/queue/')
+      ? { status: 500, body: { message: 'Object reference not set to an instance of an object.' } }
+      : undefined));
+    const deletes = () => run.fake.sonarr.requests.filter((request) => request.method === 'DELETE').length;
+    const tries = [];
+    for (let elapsed = 0; elapsed <= 50; elapsed += 1) {
+      const before = deletes();
+      await run.fix.check();
+      if (deletes() > before) tries.push(elapsed);
+      run.clock.value += minute;
+    }
+    assert.deepEqual(tries, [0, 15, 45]);
+    const problem = listOpenProblems(run.database).find((item) => item.kind === 'import_fix_failed');
+    assert.equal(problem.state, 'needs_you');
+    assert.match(problem.steps.at(-1).text, /^Tried again/);
+    run.database.close();
+  });
+
   // Retrying sooner than the spacing, or never flagging, turns this red.
   await t.test('temporary blocks retry every 15 minutes for 24 hours; failed moves retry at 5, 30 and 120 minutes', async () => {
     const temporary = await setup({ message: 'File is locked by another process' });
@@ -6230,6 +6251,7 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     await run.fix.check();
     assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.kind).sort(), ['import_fix_failed', 'import_temporary']);
     run.fake.sonarr.state.down = false;
+    run.clock.value += 15 * minute;
     await run.fix.check();
     assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.kind), ['import_temporary']);
     run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Episode file already imported'] }];
