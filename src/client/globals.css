@@ -140,6 +140,10 @@
   --control-icon-row: 14px;
   --control-icon-default: 16px;
   --control-icon-large: 18px;
+  --badge-h: 20px;
+  --badge-px: 6px;
+  --badge-text: 11px;
+  --badge-icon: 12px;
 
   /* Type */
   --font-ui: "Schibsted Grotesk";

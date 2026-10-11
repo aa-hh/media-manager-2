@@ -4,11 +4,11 @@ import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
-type BadgeVariant = 'neutral' | 'strong' | 'best' | 'live' | 'risk' | 'warning' | 'outline';
+type BadgeVariant = 'neutral' | 'strong' | 'best' | 'live' | 'risk' | 'warning' | 'outline' | 'plain';
 
 type BadgeProps = ComponentProps<'span'> & {
   variant?: BadgeVariant;
-  /** A 12 px lucide icon before the label, such as BookmarkX for Not monitored. */
+  /** A lucide icon before the label (12 px, 14 px on plain), such as BookmarkX for Not monitored. */
   icon?: ReactNode;
   /** Spinner before the label; for Searching only. */
   spinner?: boolean;
@@ -25,6 +25,9 @@ const variants: Record<BadgeVariant, string> = {
   risk: 'bg-destructive-soft text-destructive',
   warning: 'bg-warning-soft text-warning',
   outline: 'border border-input bg-transparent text-muted-foreground',
+  // A standing status beside a row button, such as In library: no box, so it never reads as a button, at the
+  // button's row height and text size.
+  plain: 'h-(--control-h-row) text-(length:--control-text-row) text-muted-foreground [&>svg]:size-(--control-icon-row) [&>svg]:text-foreground',
 };
 
 /** Not interactive (the optional remove button aside), so no hover or focus. The live look carries the dot. */
@@ -32,7 +35,8 @@ function Badge({ variant = 'neutral', icon, spinner = false, onRemove, removeLab
   return (
     <span
       className={cn(
-        'inline-flex h-5 shrink-0 items-center gap-1 rounded-xs px-1.5 font-ui text-[11px] font-semibold whitespace-nowrap [&>svg]:size-3',
+        'inline-flex shrink-0 items-center gap-1 rounded-xs font-ui font-semibold whitespace-nowrap',
+        variant !== 'plain' && 'h-(--badge-h) px-(--badge-px) text-(length:--badge-text) [&>svg]:size-(--badge-icon)',
         variants[variant],
         className,
       )}

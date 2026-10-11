@@ -96,6 +96,7 @@ components:
   badge-best: {backgroundColor: "{colors.best}", textColor: "{colors.foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-destructive: {backgroundColor: "{colors.destructive-soft}", textColor: "{colors.destructive}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-warning: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.warning}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
+  badge-plain: {textColor: "{colors.muted-foreground}", padding: "0px", height: "28px"}
   table: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}"}
   table-header: {backgroundColor: "{colors.card}", textColor: "{colors.subtle-foreground}", typography: "{typography.caption}", padding: "0px 16px", height: "32px"}
   table-row: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", typography: "{typography.data}", padding: "0px 16px", height: "40px"}
@@ -197,18 +198,18 @@ Every component lives in `design/design-system.lib.pen` as `v2/Family/Variant` a
 
 ### Control sizes
 
-Three sizes, set with the `control-*` tokens. Buttons, inputs, selects and toggle groups match.
+Three sizes, set with the `control-*` tokens. Buttons, inputs, selects and toggle groups match, and so does the plain badge at row height.
 
 - **Row** 28px (`control-h-row`, padding 10, text 13, radius 6, icon 14): only inside table rows and dense lists.
 - **Default** 40px (`control-h-default`, padding 16, text 14, radius 8, icon 16): everywhere else.
 - **Large** 48px (`control-h-large`, padding 20, text 15, radius 10, icon 18): the one main action on a page or panel, such as the title header actions, the grab confirmation (Replace or Second version) and Settings Connect.
 
-Icon-only buttons are squares at the same heights. pen.dev cannot bind height or icon size to a variable, so those are typed numbers; change them together with the tokens.
+Icon-only buttons are squares at the same heights. pen.dev cannot bind height or icon size to a variable, so those are typed numbers, on badges too; change them together with the tokens.
 
 ### Buttons, badges and inputs
 
 - **v2/Button:** primary (black, shadcn `default`), outline (white, 1.5px `foreground` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron), plex. Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
-- **v2/Badge**, 20px: neutral (`muted`), strong (black, "In library"), lime (`best`, black text: best release, "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). Release tables add `v2/Mark/comparison` (best is the only lime pill), `v2/Cell/profile-fit` (fit in words) and `v2/Mark/pending-change` (old value, arrow, new value on amber while a change waits).
+- **v2/Badge**, 20px (`badge-h`, padding `badge-px` 6, text `badge-text` 11, icon `badge-icon` 12): neutral (`muted`), strong (black, "In library"), lime (`best`, black text: best release, "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). Release tables add `v2/Mark/comparison` (best is the only lime pill), `v2/Cell/profile-fit` (fit in words) and `v2/Mark/pending-change` (old value, arrow, new value on amber while a change waits). Plain is the look for a standing status beside a row button, such as In library on a search result: no fill and no padding, a 14px `foreground` check and `muted-foreground` words, built from the row tokens (`control-h-row`, `control-text-row`, `control-icon-row`) so it lines up with the button. A filled badge never takes button height, or it reads as a button.
 - **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 40px, radius 6, white with an edge. Phone: 44px, full width.
 - **Select trigger:** 40px, radius 8, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
 - **Toggle group:** up to six segments, 34px each inside a 40px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
@@ -230,7 +231,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 ### Library, search and calendar
 
 - **Poster card:** 152 by 228, radius 8, 1px inner edge. Hover darkens the poster 8%, pressed 16%; selected adds a 2px black edge and a 700 title. Downloading shows a 4px lime strip on the poster's bottom edge; just imported shows it full width plus a black chip with a lime check.
-- **Search result:** 84px row with a 40 by 60 poster, title and year, one meta line, one overview line, and either "In library" with the file count (fixed 80px column) or a 40px outline Add button.
+- **Search result:** 84px row with a 40 by 60 poster, title and year, one meta line, one overview line, and either "In library" as a plain badge (check and words, no box) with the file count (fixed 80px column) or a row-size outline Add button, both 28px.
 - **Calendar:** entries are `muted` tiles, radius 6, no edge, with a 3px marker (amber missing, red gave up) and a black progress bar while downloading. Today's date sits in a black circle. Month cells are 188 by 132 with up to three entries and "+2 more". Week view has a 2px black now line with an 8px dot. The calendar is view-only; entries open the title.
 
 ### Chrome and floating things
