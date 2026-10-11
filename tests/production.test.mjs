@@ -7850,6 +7850,12 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     '/api/v3/health': [],
     '/api/v3/diskspace': [{ path: '/data', label: 'data', freeSpace: 2_000_000_000_000, totalSpace: 4_000_000_000_000 }],
     '/api/v3/update': [],
+    // Usenet clients remove completed downloads by default and seed nothing, so theirs never counts.
+    '/api/v3/downloadclient': [
+      { name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: false, removeFailedDownloads: true },
+      { name: 'SABnzbd', enable: true, protocol: 'usenet', removeCompletedDownloads: true, removeFailedDownloads: true },
+    ],
+    '/api/v3/config/mediamanagement': { copyUsingHardlinks: true },
   };
   const accountStats = (host, fields) => ({
     host,
@@ -7937,6 +7943,20 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       name: 'late job',
       input: { jobs: [{ name: 'stall-fix', intervalMs: 60_000, lastStartedAt: now - hour, lastFinishedAt: now - hour, lastFailed: false, late: true }] },
       level: 'warning', errors: 0, warnings: 1, message: 'Background job stall-fix hasn\'t finished for 1h 0m; expected every 1m',
+    },
+    // Not reading the two Sonarr and Radarr settings that keep torrents seeding after import turns these rows red.
+    {
+      name: 'Remove Completed on and hardlinks off',
+      input: { arr: { radarr: {
+        '/api/v3/downloadclient': [{ name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: true, removeFailedDownloads: true }],
+        '/api/v3/config/mediamanagement': { copyUsingHardlinks: false },
+      } } },
+      level: 'error', errors: 1, warnings: 1,
+      message: 'Radarr\'s download client rTorrent removes each torrent once it is imported, which ends its seeding. Turn off Remove Completed in Radarr\'s Settings > Download Clients.',
+    },
+    {
+      name: 'hardlinks off', input: { arr: { sonarr: { '/api/v3/config/mediamanagement': { copyUsingHardlinks: false } } } }, level: 'warning', errors: 0, warnings: 1,
+      message: 'Sonarr copies imports instead of hardlinking them, so each import uses the disk space twice and hand imports are refused. Turn on Use Hardlinks instead of Copy in Sonarr\'s Settings > Media Management.',
     },
     { name: 'no ok backup yet', input: { backupAt: null }, level: 'notice', errors: 0, warnings: 0, message: 'Backups are not set up' },
     { name: 'backup 30 h old', input: { backupAt: now - 30 * hour }, level: 'warning', errors: 0, warnings: 1, message: 'The last backup finished 30h 0m ago' },
