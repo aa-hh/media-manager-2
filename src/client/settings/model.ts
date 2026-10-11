@@ -128,7 +128,7 @@ export const headerSummary = (
 export const chain: { caption: string; names: ServiceName[]; linked: boolean }[] = [
   { caption: 'Find and grab', names: ['sonarr', 'radarr'], linked: true },
   { caption: 'Download and seed', names: ['rtorrent'], linked: true },
-  { caption: 'Play', names: ['plex'], linked: false },
+  { caption: 'Watch', names: ['plex'], linked: false },
 ];
 
 /** A link is faint while a side has no answer either way, red when a side has nothing working, otherwise grey. */
@@ -152,7 +152,7 @@ export const stripSummary = (checks: Record<ServiceName, Check>) => {
   if (services.every((info) => checks[info.name].kind === 'ok')) return 'Every link answers. Trackers don\'t feed Sonarr or Radarr: their hit and run rules decide when a torrent can be removed.';
   if (!services.some((info) => checks[info.name].kind === 'ok')) {
     const next = services.find((info) => checks[info.name].kind !== 'ok') ?? services[0];
-    return `Nothing answers yet, so nothing can be found, grabbed or played. Start with ${next.label}.`;
+    return `Nothing answers yet, so nothing can be found, downloaded or watched. Start with ${next.label}.`;
   }
   const sentences = services.flatMap((info) => {
     const check = checks[info.name];
