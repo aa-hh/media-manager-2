@@ -87,21 +87,29 @@ export const createRelinkFix = (options: {
       used.add(match.path);
       return { file, library: match };
     });
-    if (statSync(downloadRoot).dev !== statSync(folder).dev) throw new Error('The download folder and the library are on different drives.');
+    // A missing download folder (an unmounted drive) is reported, never created by the mkdir below.
+    statSync(downloadRoot);
 
-    await rtorrent.call('d.close', [hash]);
-    problems.step(problemId, 'fix', 'Closed the torrent in rTorrent.');
-    await rtorrent.call('d.directory.set', [hash, downloadRoot]);
-    problems.step(problemId, 'fix', `Pointed it at ${downloadRoot}.`);
+    // Linked before rTorrent is touched, so a failed link leaves the torrent as it was. The link itself is the
+    // drive check: matching device numbers miss bind mounts and container volumes.
     const base = await rtorrent.call('d.is_multi_file', [hash]) === 1 ? join(downloadRoot, name) : downloadRoot;
     for (const { file, library } of pairs) {
       const destination = join(base, file.path);
       mkdirSync(dirname(destination), { recursive: true });
       if (existsSync(destination) && statSync(destination).ino === library.ino) continue;
-      linkSync(library.path, destination);
+      try {
+        linkSync(library.path, destination);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EXDEV') throw new Error('The download folder and the library are on different drives.');
+        throw error;
+      }
     }
     const n = pairs.length;
     problems.step(problemId, 'fix', `Hardlinked ${n} file${n === 1 ? '' : 's'} from the library.`);
+    await rtorrent.call('d.close', [hash]);
+    problems.step(problemId, 'fix', 'Closed the torrent in rTorrent.');
+    await rtorrent.call('d.directory.set', [hash, downloadRoot]);
+    problems.step(problemId, 'fix', `Pointed it at ${downloadRoot}.`);
     await rtorrent.call('d.open', [hash]);
     problems.step(problemId, 'fix', 'Opened it.');
     await rtorrent.call('d.check_hash', [hash]);
