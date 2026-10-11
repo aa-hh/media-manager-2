@@ -75,8 +75,9 @@ export const createBackup = ({ database, events, store, now = Date.now }: {
     let marker: string;
     try {
       const path = join(directory, 'snapshot.sqlite');
-      database.prepare('VACUUM INTO ?').run(path);
+      // Read before the snapshot: a commit landing between the two then forces one extra upload instead of being skipped.
       marker = writeMarker();
+      database.prepare('VACUUM INTO ?').run(path);
       raw = readFileSync(path);
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -210,7 +211,14 @@ export const restoreBackup = async ({ store, target, objectKey }: { store: Store
 
   mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
   writeFileSync(target, raw, { flag: 'wx', mode: 0o600 });
-  const restored = openDatabase(target);
+  let restored: DatabaseSync;
+  try {
+    restored = openDatabase(target);
+  } catch (error) {
+    // The file was created above with 'wx', so it is this run's own; leaving it would block every retry.
+    rmSync(target, { force: true });
+    throw error;
+  }
   try {
     const counts = countedTables.map((table) => ({
       table,
