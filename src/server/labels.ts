@@ -46,6 +46,11 @@ export const createLabels = (arr: ArrServices) => {
     if (grab !== undefined && grab.episodeIds.length === 1) return episode(grab.episodeIds[0]);
     if (grab !== undefined && grab.episodeIds.length > 1) return `${await episode(grab.episodeIds[0])} + ${grab.episodeIds.length - 1} more`;
     const hash = target.id.toUpperCase();
+    const versions = database.prepare('SELECT movie_id, episode_id FROM second_versions WHERE hash = ? ORDER BY id').all(hash);
+    if (versions.length > 0) {
+      const first = versions[0].movie_id === null ? await episode(Number(versions[0].episode_id)) : await movie(Number(versions[0].movie_id));
+      return `${first}${versions.length > 1 ? ` + ${versions.length - 1} more` : ''} (second version)`;
+    }
     return listTorrents(database).find((torrent) => torrent.hash.toUpperCase() === hash)?.name ?? target.id;
   };
 

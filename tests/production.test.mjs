@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import {
   chmod,
+  link,
   lstat,
   mkdir,
   mkdtemp,
@@ -41,6 +42,7 @@ const releasesModuleUrl = new URL('../dist/server/releases.js', import.meta.url)
 const releaseDetailsModuleUrl = new URL('../dist/server/releaseDetails.js', import.meta.url).href;
 const grabsModuleUrl = new URL('../dist/server/grabs.js', import.meta.url).href;
 const secondVersionsModuleUrl = new URL('../dist/server/secondVersions.js', import.meta.url).href;
+const versionImportModuleUrl = new URL('../dist/server/versionImport.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
 const libraryModuleUrl = new URL('../dist/server/library.js', import.meta.url).href;
 const protectionModuleUrl = new URL('../dist/server/protection.js', import.meta.url).href;
@@ -4993,6 +4995,211 @@ test('a second version is recorded, then sent straight to rTorrent with its fold
   assert.equal(calls.length, 6, 'a send a restart left behind is never sent again');
 });
 
+// Letting a stray character, a {edition-} tag or a Plex extras ending into a name, or missing the 1x02 form, turns this red.
+test('second version file names are cleaned and episodes read from file names', async () => {
+  const { cleanName, versionSuffix, episodeCode } = await import(versionImportModuleUrl);
+  for (const [input, expected] of [
+    ['Mission: Impossible', 'Mission - Impossible'],
+    ['AC/DC: Live? "Yes" <1> *|', 'ACDC - Live Yes 1'],
+    ['Movie {edition-Director} (2020)', 'Movie edition-Director (2020)'],
+    ['..hidden name. ', 'hidden name'],
+  ]) assert.equal(cleanName(input), expected, input);
+  for (const [quality, title, expected] of [
+    ['Bluray-2160p', 'Dune.Part.Two.2024.2160p.UHD.BluRay.x265-FraMeSToR', 'Bluray-2160p FraMeSToR'],
+    ['WEBDL-1080p', 'Show S01E02 1080p WEB-DL', 'WEBDL-1080p'],
+    ['WEBDL-1080p', 'Show.S01E02.1080p.WEB.h264-Trailer', 'WEBDL-1080p'],
+    ['Bluray-1080p', 'Movie.2020.1080p.BluRay-SAMPLE[rarbg]', 'Bluray-1080p'],
+    ['Featurette', 'Movie.2020-OTHER', ''],
+    ['{edition-x}', 'Movie.2020-GRP', 'edition-x GRP'],
+  ]) assert.equal(versionSuffix(quality, title), expected, title);
+  for (const [name, expected] of [
+    ['Andor.S01E02.2160p.mkv', { season: 1, episode: 2 }],
+    ['andor_s1e10.mkv', { season: 1, episode: 10 }],
+    ['Andor - 1x03 - Reckoning.mkv', { season: 1, episode: 3 }],
+    ['Andor.2022.1920x1080.mkv', undefined],
+    ['ShowS01E02.mkv', undefined],
+  ]) assert.deepEqual(episodeCode(name), expected, name);
+});
+
+test('a finished second version is hardlinked into the versions folder and Plex is asked to scan it', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createVersionImport, IMPORT_PROBLEM_KIND, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'media-manager-2-version-import-')));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const downloads = join(root, 'downloads');
+  const movies = join(root, 'versions', 'movies');
+  const tv = join(root, 'versions', 'tv');
+  await mkdir(movies, { recursive: true });
+  await mkdir(tv, { recursive: true });
+  setSetting(database, 'hostPaths', 'versions.radarr', movies);
+
+  const { fake, ...arr } = connectArr(database);
+  fake.radarr.state.movies = [
+    movieRecord({ id: 9, title: 'Dune: Part Two', year: 2024 }),
+    movieRecord({ id: 10, title: 'Arrival', year: 2016 }),
+    movieRecord({ id: 11, title: 'Heat', year: 1995 }),
+    movieRecord({ id: 12, title: 'Alien', year: 1979 }),
+  ];
+  fake.sonarr.state.series = [seriesRecord({ id: 5, title: 'Andor' })];
+  fake.sonarr.state.episodes = [[101, 1, 1], [102, 1, 2], [103, 1, 3], [104, 2, 1], [105, 2, 2], [106, 2, 3]]
+    .map(([id, seasonNumber, episodeNumber]) => episodeRecord({ id, seriesId: 5, seasonNumber, episodeNumber }));
+
+  const torrents = new Map();
+  const rtorrent = {
+    call: async (method, [hash]) => {
+      const torrent = torrents.get(hash);
+      if (method === 'f.multicall') return torrent.files.map((file) => [file]);
+      if (method === 'd.directory') return torrent.directory;
+      throw new Error(`Unexpected ${method}`);
+    },
+  };
+  // A torrent in rTorrent's folder, already polled into the torrents table.
+  const addTorrent = async (hash, files, { complete = 1 } = {}) => {
+    const directory = join(downloads, hash);
+    for (const file of files) {
+      await mkdir(join(directory, file, '..'), { recursive: true });
+      await writeFile(join(directory, file), `${hash} ${file}`);
+    }
+    torrents.set(hash, { directory, files });
+    database.prepare("INSERT INTO torrents VALUES (?, ?, 100, 100, 0, 0, 1, 1, 1, ?, '', 0, 0, 0, 0, NULL, 1, 1, NULL, 0)").run(hash, hash, complete);
+    return directory;
+  };
+  const addRows = (hash, subjects, { quality = 'Bluray-2160p', releaseTitle = 'Release.2160p-GRP', state = 'downloading' } = {}) => {
+    for (const subject of subjects) {
+      database.prepare(`
+        INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, size_bytes, hash, state, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'guid', 'Blutopia', ?, 100, ?, ?, 1, 1)
+      `).run(subject.movieId === undefined ? 'sonarr' : 'radarr', subject.movieId ?? null, subject.movieId === undefined ? 5 : null,
+        subject.episodeId ?? null, releaseTitle, quality, hash, state);
+    }
+  };
+  const rows = (hash) => database.prepare('SELECT state, failure, file_path FROM second_versions WHERE hash = ? ORDER BY id').all(hash).map((row) => ({ ...row }));
+  const eventCount = () => database.prepare('SELECT COUNT(*) AS n FROM version_events').get().n;
+  const problemsFor = (kind) => database.prepare("SELECT subject_id, state, summary FROM problems WHERE kind = ? AND state != 'resolved' ORDER BY id")
+    .all(kind).map((row) => ({ ...row }));
+
+  const plexRequests = [];
+  let sections = [{ key: '3', type: 'movie', Location: [{ path: join(root, 'versions') }] }];
+  const plex = {
+    request: async (path) => {
+      plexRequests.push(path);
+      return { status: 200, body: path === '/library/sections' ? { MediaContainer: { Directory: sections } } : undefined };
+    },
+  };
+  const problems = createProblems({ database, events: createEventHub() });
+  const versionImport = createVersionImport({ database, rtorrent, arr, plex, problems });
+
+  // Copying instead of linking, linking an extra or a sample, or recording the event twice on a rerun turns this red.
+  const duneHash = 'A1'.repeat(20);
+  const duneFolder = await addTorrent(duneHash, ['Dune.Part.Two.2160p-FraMeSToR.mkv', 'Sample/dune-sample.mkv', 'Dune.nfo']);
+  addRows(duneHash, [{ movieId: 9 }], { releaseTitle: 'Dune.Part.Two.2024.2160p.UHD.BluRay.x265-FraMeSToR' });
+  await versionImport.run();
+  const dunePath = join(movies, 'Dune - Part Two (2024)', 'Dune - Part Two (2024) - Bluray-2160p FraMeSToR.mkv');
+  assert.deepEqual(rows(duneHash), [{ state: 'imported', failure: null, file_path: dunePath }]);
+  const linked = await stat(dunePath);
+  assert.equal(linked.ino, (await stat(join(duneFolder, 'Dune.Part.Two.2160p-FraMeSToR.mkv'))).ino);
+  assert.equal(linked.nlink, 2);
+  assert.deepEqual(await readdir(join(movies, 'Dune - Part Two (2024)')), ['Dune - Part Two (2024) - Bluray-2160p FraMeSToR.mkv']);
+  assert.equal(eventCount(), 1);
+  assert.deepEqual(plexRequests, ['/library/sections', `/library/sections/3/refresh?path=${encodeURIComponent(join(movies, 'Dune - Part Two (2024)'))}`]);
+  await versionImport.run();
+  assert.deepEqual([rows(duneHash)[0].state, eventCount(), plexRequests.length, (await stat(dunePath)).nlink], ['imported', 1, 2, 2]);
+
+  // Linking again over an import a restart interrupted, or overwriting a different file already holding the name, turns this red.
+  const arrivalHash = 'A2'.repeat(20);
+  const arrivalFolder = await addTorrent(arrivalHash, ['Arrival.mkv']);
+  addRows(arrivalHash, [{ movieId: 10 }], { quality: 'Remux-1080p', state: 'importing' });
+  await mkdir(join(movies, 'Arrival (2016)'));
+  await link(join(arrivalFolder, 'Arrival.mkv'), join(movies, 'Arrival (2016)', 'Arrival (2016) - Remux-1080p GRP.mkv'));
+  const heatHash = 'A3'.repeat(20);
+  await addTorrent(heatHash, ['Heat.mkv']);
+  addRows(heatHash, [{ movieId: 11 }], { quality: 'Remux-1080p' });
+  await mkdir(join(movies, 'Heat (1995)'));
+  await writeFile(join(movies, 'Heat (1995)', 'Heat (1995) - Remux-1080p GRP.mkv'), 'someone else');
+  await versionImport.run();
+  assert.equal(rows(arrivalHash)[0].file_path, join(movies, 'Arrival (2016)', 'Arrival (2016) - Remux-1080p GRP.mkv'));
+  assert.equal((await stat(join(arrivalFolder, 'Arrival.mkv'))).nlink, 2);
+  assert.equal(rows(heatHash)[0].file_path, join(movies, 'Heat (1995)', 'Heat (1995) - Remux-1080p GRP (2).mkv'));
+  assert.equal(await readFile(join(movies, 'Heat (1995)', 'Heat (1995) - Remux-1080p GRP.mkv'), 'utf8'), 'someone else');
+  assert.equal(eventCount(), 3);
+
+  // Picking one of two video files for a movie instead of stopping, or importing an unfinished torrent, turns this red.
+  const twoHash = 'A4'.repeat(20);
+  await addTorrent(twoHash, ['Alien.mkv', 'Alien.Extended.mkv']);
+  addRows(twoHash, [{ movieId: 12 }]);
+  const unfinishedHash = 'A5'.repeat(20);
+  await addTorrent(unfinishedHash, ['Unfinished.mkv'], { complete: 0 });
+  addRows(unfinishedHash, [{ movieId: 12 }]);
+  await versionImport.run();
+  assert.deepEqual(rows(twoHash), [{ state: 'failed', failure: 'The torrent has 2 video files; one was expected.', file_path: null }]);
+  assert.deepEqual(problemsFor(IMPORT_PROBLEM_KIND), [
+    { subject_id: '12', state: 'needs_you', summary: 'Alien (1979) (second version): The torrent has 2 video files; one was expected.' },
+  ]);
+  assert.equal(rows(unfinishedHash)[0].state, 'downloading');
+  database.prepare('DELETE FROM second_versions WHERE hash = ?').run(unfinishedHash);
+
+  // Checking the drive after making folders, or not at all, turns this red.
+  assert.notEqual((await stat('/dev')).dev, (await stat(root)).dev, 'this check needs /dev on its own file system');
+  setSetting(database, 'hostPaths', 'versions.radarr', '/dev');
+  const otherDriveHash = 'A6'.repeat(20);
+  await addTorrent(otherDriveHash, ['Heat.mkv']);
+  addRows(otherDriveHash, [{ movieId: 11 }]);
+  await versionImport.run();
+  assert.equal(rows(otherDriveHash)[0].state, 'failed');
+  assert.match(rows(otherDriveHash)[0].failure, /different drives/);
+  assert.match(problemsFor(IMPORT_PROBLEM_KIND).at(-1).summary, /^Heat \(1995\) \(second version\): .*different drives/);
+  assert.equal(existsSync('/dev/Heat (1995)'), false);
+  setSetting(database, 'hostPaths', 'versions.radarr', movies);
+
+  // Importing TV before its versions folder is set, matching pack files by order instead of SxxEyy, or importing the extra episode turns this red.
+  const packHash = 'B1'.repeat(20);
+  await addTorrent(packHash, ['Andor.S01/Andor.S01E02.mkv', 'Andor.S01/Andor.S01E01.mkv', 'Andor.S01/andor.1x03.mkv', 'Andor.S01/Andor.S01E04.mkv']);
+  addRows(packHash, [{ episodeId: 101 }, { episodeId: 102 }, { episodeId: 103 }], { quality: 'WEBDL-2160p' });
+  await versionImport.run();
+  assert.deepEqual(rows(packHash).map((row) => row.state), ['downloading', 'downloading', 'downloading']);
+  setSetting(database, 'hostPaths', 'versions.sonarr', tv);
+  await versionImport.run();
+  const season = join(tv, 'Andor', 'Season 01');
+  assert.deepEqual(rows(packHash).map((row) => [row.state, row.file_path]), [1, 2, 3].map((episode) => ['imported', join(season, `Andor - S01E0${episode} - WEBDL-2160p GRP.mkv`)]));
+  assert.equal((await stat(join(season, 'Andor - S01E01 - WEBDL-2160p GRP.mkv'))).ino, (await stat(join(downloads, packHash, 'Andor.S01/Andor.S01E01.mkv'))).ino);
+  assert.equal((await readdir(season)).length, 3);
+  // Importing without telling the owner that no Plex TV library reads the folder turns this red.
+  assert.deepEqual(problemsFor(PLEX_PROBLEM_KIND), [{ subject_id: tv, state: 'needs_you', summary: `Add ${tv} to the Plex TV library.` }]);
+
+  // Failing the whole pack for one missing episode, or picking one of two files for an episode, turns this red.
+  const gapHash = 'B2'.repeat(20);
+  await addTorrent(gapHash, ['Andor.S02E01.mkv', 'Andor.S02E03.mkv', 'Andor.S02E03.REPACK.mkv']);
+  addRows(gapHash, [{ episodeId: 104 }, { episodeId: 105 }, { episodeId: 106 }], { quality: 'WEBDL-2160p' });
+  sections = [...sections, { key: '4', type: 'show', Location: [{ path: tv }] }];
+  await versionImport.run();
+  assert.deepEqual(rows(gapHash).map((row) => [row.state, row.failure]), [
+    ['imported', null],
+    ['failed', 'No video file in the pack is S02E02.'],
+    ['failed', '2 video files in the pack are S02E03.'],
+  ]);
+  assert.deepEqual(problemsFor(IMPORT_PROBLEM_KIND).map((problem) => problem.summary).slice(2), [
+    'Andor S02E02 (second version): No video file in the pack is S02E02.',
+    'Andor S02E03 (second version): 2 video files in the pack are S02E03.',
+  ]);
+  assert.deepEqual(problemsFor(PLEX_PROBLEM_KIND), [], 'a Plex TV library reading the folder resolves the problem');
+  assert.equal(plexRequests.at(-1), `/library/sections/4/refresh?path=${encodeURIComponent(join(tv, 'Andor', 'Season 02'))}`);
+
+  // Treating the last episode a restart left unimported in a pack as a single episode turns this red.
+  const halfHash = 'B3'.repeat(20);
+  await addTorrent(halfHash, ['Andor.S01E01.mkv', 'Andor.S01E02.mkv']);
+  addRows(halfHash, [{ episodeId: 101 }], { quality: 'HDTV-720p', state: 'imported' });
+  addRows(halfHash, [{ episodeId: 102 }], { quality: 'HDTV-720p', state: 'importing' });
+  await versionImport.run();
+  assert.deepEqual(rows(halfHash).map((row) => [row.state, row.file_path]), [['imported', null], ['imported', join(season, 'Andor - S01E02 - HDTV-720p GRP.mkv')]]);
+});
+
 // Forcing an import blocked for any reason but "Not an upgrade", using a move instead of a hardlink-or-copy import, forcing the same download twice, or calling a replace complete without an import breaks the replace guarantee.
 test('a replace is forced only past "Not an upgrade" and completes only on import', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
@@ -5468,6 +5675,16 @@ test('subject labels come from Sonarr and Radarr once and fall back to ids', asy
   assert.equal(await labels.episode(99), 'Sonarr episode 99');
   assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'ab'.repeat(20) }, database), 'Andor S02E09 + 1 more');
   assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'CD'.repeat(20) }, database), 'CD'.repeat(20));
+  const addVersion = (hash, movieId, seriesId, episodeId) => database.prepare(`
+    INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'Release', 'g', 'Blutopia', 'WEBDL-2160p', ?, 'downloading', 1, 1)
+  `).run(movieId === null ? 'sonarr' : 'radarr', movieId, seriesId, episodeId, hash);
+  addVersion('EF'.repeat(20), 7, null, null);
+  addVersion('12'.repeat(20), null, 3, 31);
+  addVersion('12'.repeat(20), null, 3, 32);
+  // Naming a second version's torrent by its raw name, or without saying it is a second version, turns this red.
+  assert.equal(await labels.subject({ type: 'torrent', service: null, id: 'ef'.repeat(20) }, database), 'Dune (2021) (second version)');
+  assert.equal(await labels.subject({ type: 'torrent', service: null, id: '12'.repeat(20) }, database), 'Andor S02E09 + 1 more (second version)');
   assert.equal(await labels.subject({ type: 'tracker', service: null, id: 'blutopia.cc' }, database), 'blutopia.cc');
 });
 
@@ -5868,6 +6085,24 @@ test('history merges Sonarr, Radarr and media-manager-2 events newest first with
   const series = await history.list({ filter: 'all', service: 'sonarr', page: 1, seriesId: 3 });
   assert.equal(series.events[0].title, 'Andor S02E09');
   assert.deepEqual(series.events.map((event) => event.id), ['sonarr:11', 'mm2:1', 'sonarr:12']);
+
+  database.prepare(`
+    INSERT INTO second_versions (id, service, series_id, episode_id, release_title, guid, indexer, quality, hash, state, created_at, updated_at)
+    VALUES (1, 'sonarr', 3, 31, 'Andor.S02E09.2160p-GRP2', 'g', 'Blutopia', 'WEBDL-2160p', ?, 'imported', 1, 1)
+  `).run('EF'.repeat(20));
+  database.prepare("INSERT INTO version_events (second_version_id, at, kind, detail) VALUES (1, ?, 'added', 'Andor - S02E09 - WEBDL-2160p GRP2.mkv')")
+    .run(Date.parse('2026-10-10T09:30:00Z'));
+  // Leaving second version events out of All or out of the title's history, or listing them as automatic fixes, turns this red.
+  const withVersion = await history.list({ filter: 'all', service: 'all', page: 1 });
+  assert.deepEqual(withVersion.events.map((event) => event.id), ['sonarr:11', 'mm2-version:1', 'mm2:1', 'sonarr:12', 'mm2:2']);
+  const added = withVersion.events[1];
+  assert.deepEqual(
+    [added.title, added.event, added.detail, added.release, added.quality, added.subject, added.source],
+    ['label 31', 'Second version added', 'Andor - S02E09 - WEBDL-2160p GRP2.mkv', 'Andor.S02E09.2160p-GRP2', 'WEBDL-2160p', { type: 'episode', service: 'sonarr', id: '31' }, 'media-manager-2'],
+  );
+  assert.deepEqual((await history.list({ filter: 'fixes', service: 'all', page: 1 })).events.map((event) => event.id), ['mm2:1', 'mm2:2']);
+  assert.deepEqual((await history.list({ filter: 'all', service: 'sonarr', page: 1, seriesId: 3 })).events.map((event) => event.id), ['sonarr:11', 'mm2-version:1', 'mm2:1', 'sonarr:12']);
+  database.exec('DELETE FROM version_events; DELETE FROM second_versions;');
 
   // A full Sonarr page of 100 grabs, one a minute from 10:00 back to 08:21, leaves the 07:00 step for a later page.
   const fullPage = Array.from({ length: 100 }, (_, index) => ({ ...grabbed, id: 100 + index, date: new Date(Date.parse('2026-10-10T10:00:00Z') - index * 60_000).toISOString() }));
@@ -6475,7 +6710,7 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
     ['credentials', 'r2.secretAccessKey', s3.secretAccessKey],
   ]) setSetting(old, category, key, value);
   // Rewound to just before the rename, so the tables later migrations create are dropped first.
-  old.exec(`DROP TABLE second_versions; PRAGMA user_version = ${applicationMigrations.findIndex((migration) => migration.includes("'r2.endpoint'"))};`);
+  old.exec(`DROP TABLE version_events; DROP TABLE second_versions; PRAGMA user_version = ${applicationMigrations.findIndex((migration) => migration.includes("'r2.endpoint'"))};`);
   old.close();
   const database = openDatabase(databasePath);
   t.after(() => database.close());
@@ -6726,7 +6961,7 @@ test('backup commands upload, list and restore through a bucket or a folder from
   assert.equal(restored.code, 0, restored.stderr);
   assert.equal(
     restored.stdout,
-    `restored ${key} to ${target}\nsettings 4\ntorrents 0\ntorrent_grabs 0\ngrabs 0\nproblems 0\nprotected_items 0\npreferences 1\nsecond_versions 0\n`,
+    `restored ${key} to ${target}\nsettings 4\ntorrents 0\ntorrent_grabs 0\ngrabs 0\nproblems 0\nprotected_items 0\npreferences 1\nsecond_versions 0\nversion_events 0\n`,
   );
 
   const { BACKUP_KEY: _, ...r2Only } = withR2;
