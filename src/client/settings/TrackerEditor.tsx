@@ -206,8 +206,8 @@ type TrackerEditorProps = {
   now: number;
   request: TrackerRequest;
   onDraft: (draft: RuleDraft | undefined) => void;
-  /** A connection check or credential save changed the row. */
-  onRow: (row: TrackerRow, checkedAt: number) => void;
+  /** A connection check or credential save changed these fields of the row. */
+  onRow: (host: string, change: Partial<TrackerRow>, checkedAt: number) => void;
   /** The rule changed on the server; the screen reads the trackers again and drops the draft. */
   onRuleSaved: () => Promise<void>;
   onRemoved: () => void;
@@ -259,7 +259,7 @@ export function TrackerEditor({ row, draft, checkedAt, now, request, onDraft, on
       const result = await response.json() as Connection;
       if (kind === 'check') {
         setFormCheck(undefined);
-        onRow({ ...row, connection: result }, Date.now());
+        onRow(row.host, { connection: result }, Date.now());
         return;
       }
       // An older UNIT3D still takes the token; it only can't share stats, so the token is kept.
@@ -275,7 +275,7 @@ export function TrackerEditor({ row, draft, checkedAt, now, request, onDraft, on
       setSecret('');
       setReplacing(false);
       setFormCheck(undefined);
-      onRow({ ...row, credentialSet: true, connection: result }, Date.now());
+      onRow(row.host, { credentialSet: true, connection: result }, Date.now());
     } catch {
       setConnectionProblem(noAnswer);
     } finally {

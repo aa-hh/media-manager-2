@@ -191,12 +191,18 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
         setProblems((current) => ({ ...current, [name]: `${info.label} answered, but the new settings could not be saved. Try again.` }));
         return;
       }
-      const next: SavedService = {
-        ...saved[name],
-        serviceAddresses: { ...saved[name].serviceAddresses, ...changed.serviceAddresses },
-        credentials: { ...saved[name].credentials, ...Object.fromEntries(Object.keys(changed.credentials ?? {}).map((key) => [key, true])) },
-      };
-      setLoad({ kind: 'ready', saved: { ...saved, [name]: next } });
+      // Built from the latest state: another service's Connect may have saved while this test ran.
+      setLoad((current) => (current.kind !== 'ready' ? current : {
+        kind: 'ready',
+        saved: {
+          ...current.saved,
+          [name]: {
+            ...current.saved[name],
+            serviceAddresses: { ...current.saved[name].serviceAddresses, ...changed.serviceAddresses },
+            credentials: { ...current.saved[name].credentials, ...Object.fromEntries(Object.keys(changed.credentials ?? {}).map((key) => [key, true])) },
+          },
+        },
+      }));
       setChecks((current) => ({ ...current, [name]: { ...result, at: Date.now(), ofSaved: true } }));
       clearForm(name);
       const ok = services.filter((other) => other.name === name || checksRef.current[other.name].kind === 'ok').length;
@@ -235,9 +241,10 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const ruleDraftOf = (row: TrackerRow) => ruleDrafts[row.host] ?? draftFromRow(row);
   const adding = selected === 'add';
 
-  const updateTracker = (next: TrackerRow, at: number) => {
-    setTrackers((current) => current.map((row) => (row.host === next.host ? next : row)));
-    setCheckedAt((current) => ({ ...current, [next.host]: at }));
+  // Merged into the latest row, so a rule saved while a connection test ran is kept.
+  const updateTracker = (host: string, change: Partial<TrackerRow>, at: number) => {
+    setTrackers((current) => current.map((row) => (row.host === host ? { ...row, ...change } : row)));
+    setCheckedAt((current) => ({ ...current, [host]: at }));
   };
   const dropRuleDraft = (host: string) => setRuleDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== host)));
   /** Reads the trackers again; a failed read keeps the rows on screen and says so. */
