@@ -135,6 +135,22 @@ if expect_rc "duplicating merge" 3; then
     && ok "a HIGH on the resolution fails the status"
 fi
 
+# Round 2 after a clean main merge reviews only the branch's own fix, not
+# what main gained since round 1. Breaks if round 2 diffs from round 1's head.
+setup
+printf '<!-- agent-review round=1 head=%s level=cheap high=1 changes=old -->\n## Review: cheap, round 1\n\n' "$(head_sha)" > "$STUB/comments"
+on_main b.txt 'b-unrelated-main-line\n' main-other
+g merge -q --no-edit origin/main
+commit_file a.txt 'one\nTWO-fix\nthree\n' own-fix
+run_review
+prompt=$(printf '%s\n' "$OUT" | sed -n 's/^cheap .* prompt=\(.*\)  save reply to=.*/\1/p')
+if expect_rc "round 2 after a main merge" 3; then
+  if ! printf '%s\n' "$OUT" | grep -q 'round 2$' || [ -z "$prompt" ]; then fail "round 2 after a main merge: wanted one cheap round 2 pass, got: $OUT"
+  elif ! grep -q 'TWO-fix' "$prompt" || grep -q 'b-unrelated-main-line' "$prompt"; then fail "round 2 after a main merge: prompt is not just the fix"
+  else ok "round 2 after a main merge reviews only the fix"
+  fi
+fi
+
 # A commit of the branch's own after round 2 still refuses.
 setup
 on_main b.txt 'b2\n' main-change
