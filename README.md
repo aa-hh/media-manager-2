@@ -89,6 +89,9 @@ on disk, through these saved settings:
 | `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
 | `hostPaths` | `library.radarr` | Absolute Radarr library root, such as `/home/<user>/Movies`; same use as above |
+| `hostPaths` | `downloads.versions` | Absolute folder rTorrent downloads second versions into |
+| `hostPaths` | `versions.radarr` | Absolute folder finished movie second versions are hardlinked into. Must be on the same drive as `downloads.versions` and inside a Plex Movies library |
+| `hostPaths` | `versions.sonarr` | Same as above for episodes, inside a Plex TV library. Episode second versions wait until it is set |
 | `serviceAddresses` | `blutopia.url` | Optional. Blutopia base URL with scheme, such as `https://blutopia.cc` |
 | `credentials` | `blutopia.apiToken` | Optional. Blutopia API token from the site's API settings |
 | `serviceAddresses` | `privatehd.url` | Optional. PrivateHD base URL with scheme |
