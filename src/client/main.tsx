@@ -7,6 +7,8 @@ import { navigate, useRoute } from './route';
 import { DownloadsScreen, LiveBar } from './downloads/Downloads';
 import { buildRows, groupRows } from './downloads/model';
 import { useDownloads } from './downloads/useDownloads';
+import { HealthScreen } from './health/Health';
+import { useHealth } from './health/useHealth';
 import './globals.css';
 
 type SessionState =
@@ -240,6 +242,17 @@ function SignedIn(props: ComponentProps<typeof Home>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
   const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
   const screen = useRoute();
+  const health = useHealth(props.onUnauthenticated);
+  const healthHeadingRef = useRef<HTMLDivElement>(null);
+  const healthBadge = (() => {
+    if (health.state.kind !== 'ready') return null;
+    const { problems } = health.state.snapshot;
+    const errors = problems.filter((problem) => problem.level === 'error').length;
+    const warnings = problems.filter((problem) => problem.level === 'warning').length;
+    if (errors > 0) return `${errors} ${errors === 1 ? 'RISK' : 'RISKS'}`;
+    if (warnings > 0) return `${warnings} ${warnings === 1 ? 'WARNING' : 'WARNINGS'}`;
+    return null;
+  })();
   const needsYou = useMemo(() => {
     const rows = state.kind === 'ready' ? buildRows(state.snapshot) : [];
     return groupRows(rows).find((group) => group.key === 'needs_you')?.rows.length ?? 0;
@@ -250,6 +263,12 @@ function SignedIn(props: ComponentProps<typeof Home>) {
         return (
           <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
             <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
+          </div>
+        );
+      case 'health':
+        return (
+          <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
+            <HealthScreen state={health.state} runChecks={health.runChecks} headingRef={healthHeadingRef} />
           </div>
         );
       default:
@@ -265,7 +284,7 @@ function SignedIn(props: ComponentProps<typeof Home>) {
           <Nav
             screen={screen}
             needsYou={needsYou}
-            healthBadge={null}
+            healthBadge={healthBadge}
             onNavigate={(path) => {
               showDownloads();
               navigate(path);
