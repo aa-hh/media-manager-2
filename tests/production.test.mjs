@@ -6207,19 +6207,23 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     }
   });
 
-  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move.
-  await t.test('a block that changes kind before clearing resolves every import problem on the download', async () => {
+  // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move;
+  // matching on anything wider than this download's import problems closes another download's or a stall's.
+  await t.test('a block that changes kind before clearing resolves every import problem on the download, and only those', async () => {
     const run = await setup({ message: 'File is locked by another process' });
+    const other = 'FF'.repeat(20);
+    run.problems.open({ kind: 'import_temporary', subject: { type: 'torrent', service: null, id: other }, hash: other, summary: 'Other.Release' });
+    run.problems.open({ kind: 'stalled', subject: { type: 'torrent', service: null, id: hash }, hash, summary: 'Release.Title' });
     await run.fix.check();
     run.queue[0].statusMessages = [{ title: 'Release.Title.mkv', messages: ['Failed to move file'] }];
     await run.grabs.reconcile();
     run.clock.value += 5 * minute;
     await run.fix.check();
-    assert.ok(listOpenProblems(run.database).length >= 1);
+    assert.ok(listOpenProblems(run.database).length >= 3);
     run.queue.length = 0;
     await run.grabs.reconcile();
     await run.fix.check();
-    assert.deepEqual(listOpenProblems(run.database), []);
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => [problem.kind, problem.subject.id]), [['import_temporary', other], ['stalled', hash]]);
     run.database.close();
   });
 
