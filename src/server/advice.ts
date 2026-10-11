@@ -16,6 +16,8 @@ export type RemovalAdvice = {
   globalRatio: string | null;
   host: string | null;
   requiredHours: number | null;
+  // The tracker's own seed-time rule, without the margin; null whenever requiredHours is.
+  ruleHours: number | null;
   seededHours: number | null;
   hoursLeft: number | null;
   detail: string;
@@ -73,13 +75,15 @@ const prefixed = (recommendation: Recommendation, prefix: string, detail: string
 
 // "Safe" is only ever proven by media-manager-2's own seeding counter (which can only undercount), by the ratio, or by
 // the tracker's exemption for a torrent stopped under its partial-download line; time since the download finished can only overcount, so it can rule removal out but never in.
+const factsOf = (torrent: Torrent) => ({
+  seedHours: torrent.seedingSeconds / 3600,
+  ratio: torrent.ratioThousandths / 1000,
+  sizeBytes: torrent.sizeBytes,
+  completedBytes: torrent.completedBytes,
+});
+
 const judge = (torrent: Torrent, rule: HitAndRunRule, host: string, margins: Margins, now: number): Verdict => {
-  const facts = {
-    seedHours: torrent.seedingSeconds / 3600,
-    ratio: torrent.ratioThousandths / 1000,
-    sizeBytes: torrent.sizeBytes,
-    completedBytes: torrent.completedBytes,
-  };
+  const facts = factsOf(torrent);
   // Rounded to whole seconds and to rTorrent's thousandths, so 0.9 + 0.05 is 0.95 and not 0.9500000000000001.
   const withMarginHours = (required: number) => Math.round(Math.max(required * margins.timeFactor, required + margins.extraHours) * 3600) / 3600;
   const withMarginRatio = (required: number) => Math.round((required + margins.ratioExtra) * 1000) / 1000;
@@ -150,7 +154,7 @@ export const adviseRemoval = async (
   const torrent = listTorrents(database).find((row) => row.hash === hash);
   const unjudged = (verdict: Verdict, seededHours: number | null): RemovalAdvice => ({
     recommendation: verdict.recommendation, reason: verdict.reason, globalRatio: null,
-    host: torrent?.trackerHost || null, requiredHours: null, seededHours, hoursLeft: null, detail: verdict.detail,
+    host: torrent?.trackerHost || null, requiredHours: null, ruleHours: null, seededHours, hoursLeft: null, detail: verdict.detail,
   });
   if (torrent === undefined || torrent.goneAt !== null) return unjudged(plain('keep', 'Seeding time unknown (torrent not in rTorrent)'), null);
   const seededHours = twoPlaces(torrent.seedingSeconds / 3600);
@@ -179,5 +183,7 @@ export const adviseRemoval = async (
       recommendation = 'keep';
     }
   }
-  return { recommendation, reason, globalRatio, host, requiredHours: twoPlaces(requiredHours), seededHours, hoursLeft, detail };
+  const asked = checkHitAndRun(rule, factsOf(torrent)).requiredHours;
+  const ruleHours = requiredHours === null || asked === null ? null : twoPlaces(asked);
+  return { recommendation, reason, globalRatio, host, requiredHours: twoPlaces(requiredHours), ruleHours, seededHours, hoursLeft, detail };
 };

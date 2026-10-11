@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react';
 import { getJson, type RemovalAdvice } from '../library/api';
 
-export type AdviceState = { kind: 'loading' } | { kind: 'ready'; advice: RemovalAdvice } | { kind: 'failed' };
+export { recommendationLabels } from './secondVersionText';
 
-export const recommendationLabels: Record<RemovalAdvice['recommendation'], string> = {
-  safe: 'Safe to remove',
-  keep: 'Keep seeding',
-  unconfirmed: "Can't confirm yet",
-};
+export type AdviceState = { kind: 'loading' } | { kind: 'ready'; advice: RemovalAdvice } | { kind: 'failed' };
 
 /** The hit and run recommendation for one torrent, read when `hash` is set; advice only, nothing is removed. */
 export const useAdvice = (hash: string | null, onUnauthenticated: () => void): AdviceState | null => {

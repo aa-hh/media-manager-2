@@ -191,6 +191,8 @@ export type RemovalAdvice = {
   host: string | null;
   /** Includes the advice's margin; null when no seed time applies. */
   requiredHours: number | null;
+  /** The tracker's own seed-time rule, without the margin; null whenever `requiredHours` is. */
+  ruleHours: number | null;
   /** Null when the torrent is not in rTorrent. */
   seededHours: number | null;
   /** 0 once the rule is met; null when no seed time applies or the torrent is incomplete. */
@@ -205,6 +207,52 @@ export type SecondVersionDeleted = {
   torrent: { removed: true } | { removed: false; reason: string };
   secondVersions: SecondVersion[];
 };
+
+/** GET /api/library/{movie|series}/:id/delete-plan; src/server/titleDelete.ts is the source of truth. */
+export type RemovalCheck = { allowed: true } | { allowed: false; reason: string };
+export type DeletePlan = {
+  service: Service;
+  id: number;
+  title: string;
+  /** Set when Sonarr or Radarr moves deleted files to a recycle bin, so no space is freed until it is emptied. */
+  recycleBin: string | null;
+  files: Array<{
+    fileId: number;
+    path: string;
+    sizeBytes: number;
+    state: 'linked' | 'copied' | 'none' | 'unknown';
+    hashes: string[];
+    /** The "Can't link this file to a torrent" line, when no torrent is proven to hold it. */
+    note: string | null;
+    reason: string | null;
+  }>;
+  torrents: Array<{
+    hash: string;
+    name: string;
+    sizeBytes: number;
+    /** Imported for this title once, but no longer holding any of its files. */
+    upgradedAway: boolean;
+    label: 'imported by copy' | null;
+    libraryPaths: string[];
+    advice: RemovalAdvice;
+    removal: RemovalCheck;
+    ticked: false;
+  }>;
+  secondVersions: Array<SecondVersion & { ticked: true; torrent: { hash: string; advice: RemovalAdvice; removal: RemovalCheck } | null }>;
+};
+export type DeletePlanTorrent = DeletePlan['torrents'][number];
+export type DeletePlanVersion = DeletePlan['secondVersions'][number];
+
+/** POST /api/library/{movie|series}/:id/delete body. `mode` is for a movie only. */
+export type DeleteChoices = { mode?: 'remove' | 'keepUnmonitored'; removeTorrents: string[]; secondVersions: Array<{ id: number; removeTorrent: boolean }> };
+
+type StepOutcome = 'done' | 'failed' | 'skipped';
+export type DeleteStep =
+  | { step: 'map' | 'unmonitor' | 'delete' | 'wait' | 'history'; outcome: StepOutcome; message: string }
+  | { step: 'torrents'; outcome: StepOutcome; message: string; torrents: Array<{ hash: string; name: string; removed: boolean; reason: string | null }> }
+  | { step: 'secondVersions'; outcome: StepOutcome; message: string; secondVersions: Array<{ id: number; deleted: boolean; torrentRemoved: boolean; reason: string | null }> };
+/** The 200 reply of the delete; `deleted` is false when Sonarr or Radarr refused and nothing else ran. */
+export type DeleteRan = { deleted: boolean; steps: DeleteStep[] };
 
 export type HistoryEntry = {
   at: string | null;
