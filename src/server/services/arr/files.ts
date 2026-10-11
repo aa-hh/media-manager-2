@@ -4,6 +4,8 @@ export type Image = { coverType: string; url: string | null; remoteUrl: string |
 
 export type FileDetail = {
   id: number | null;
+  // Absolute, as Sonarr or Radarr sees it.
+  path: string | null;
   relativePath: string | null;
   size: number;
   dateAdded: string | null;
@@ -57,6 +59,7 @@ export const parseFile = (value: unknown): FileDetail | null => {
   const info = isRecord(value.mediaInfo) ? value.mediaInfo : undefined;
   return {
     id: positiveInteger(value.id),
+    path: text(value.path),
     relativePath: text(value.relativePath),
     size: count(value.size),
     dateAdded: text(value.dateAdded),
