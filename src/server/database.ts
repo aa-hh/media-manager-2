@@ -221,6 +221,40 @@ export const applicationMigrations = [
     bytes INTEGER,
     sha256 TEXT
   ) STRICT;`,
+  `CREATE TABLE titles (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    detail TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (service, id)
+  ) STRICT;
+  CREATE TABLE episodes (
+    id INTEGER PRIMARY KEY,
+    series_id INTEGER NOT NULL,
+    season_number INTEGER NOT NULL,
+    episode_number INTEGER NOT NULL,
+    title TEXT,
+    air_date_utc TEXT,
+    overview TEXT NOT NULL,
+    has_file INTEGER NOT NULL CHECK (has_file IN (0, 1)),
+    monitored INTEGER NOT NULL CHECK (monitored IN (0, 1)),
+    fetched_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE INDEX episodes_series ON episodes (series_id);
+  CREATE TABLE title_images (
+    service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
+    id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('poster', 'fanart')),
+    source TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    etag TEXT NOT NULL,
+    file TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (service, id, kind)
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
@@ -327,6 +361,8 @@ export const migrateDatabase = (database: DatabaseSync, migrations: readonly str
   }
 };
 
+export const defaultDatabasePath = join(homedir(), '.local', 'share', 'media-manager-2', 'media-manager.sqlite');
+
 export const assertDatabasePath = (path: string): void => {
   if (!path || !isAbsolute(path) || path === ':memory:') {
     throw new DatabaseError(databasePathMessage);
@@ -345,13 +381,7 @@ export const assertDatabasePath = (path: string): void => {
 };
 
 export const openDatabase = (path?: string): DatabaseSync => {
-  const selectedPath = path ?? process.env.DB_PATH ?? join(
-    homedir(),
-    '.local',
-    'share',
-    'media-manager-2',
-    'media-manager.sqlite',
-  );
+  const selectedPath = path ?? process.env.DB_PATH ?? defaultDatabasePath;
   assertDatabasePath(selectedPath);
   prepareDatabaseFile(selectedPath);
   let database: DatabaseSync;

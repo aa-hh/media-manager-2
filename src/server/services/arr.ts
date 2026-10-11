@@ -42,6 +42,21 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
     return { status: response.status, body };
   };
 
+  const download = async (path: string): Promise<{ status: number; contentType: string; bytes: Uint8Array }> => {
+    const configuration = readConfiguration();
+    if (configuration === undefined) throw new Error(`${label} is not configured.`);
+    try {
+      const response = await requestWithTimeout(fetchImpl, configuration.url.replace(/\/+$/, '') + path, {
+        method: 'GET',
+        headers: { 'X-Api-Key': configuration.apiKey, Accept: 'image/*' },
+      }, 30_000);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return { status: response.status, contentType: response.headers.get('Content-Type') ?? '', bytes };
+    } catch {
+      throw new Error(`${label} is unreachable.`);
+    }
+  };
+
   const check = async (): Promise<ConnectionStatus> => {
     if (readConfiguration() === undefined) return { kind: 'not_configured' };
     let result: { status: number; body: unknown };
@@ -59,5 +74,5 @@ export const createArr = (service: 'sonarr' | 'radarr', database: DatabaseSync, 
     return { kind: 'ok', version };
   };
 
-  return { check, request, configured: () => readConfiguration() !== undefined };
+  return { check, request, download, configured: () => readConfiguration() !== undefined };
 };
