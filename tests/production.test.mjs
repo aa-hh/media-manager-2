@@ -9694,3 +9694,110 @@ test('second-version rows and hit and run advice word themselves from the struct
       'Seeded 168 hours of 80 hours needed with margin. Global ratio unknown');
   });
 });
+
+test('the movie, show and season delete dialog words its rows, builds its request and reads the steps back', async (t) => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const text = await load('../src/client/title/secondVersionText.ts');
+  const movie = { kind: 'movie', id: 1 };
+  const show = { kind: 'series', id: 7 };
+  const season = { kind: 'season', seriesId: 7, seasonNumber: 1 };
+  const advice = (overrides = {}) => ({ recommendation: 'keep', reason: 'Keep seeding: 38 hours left', globalRatio: null, host: 'privatehd.to',
+    requiredHours: 79.2, seededHours: 41.6, hoursLeft: 37.6, detail: '38 hours left', ...overrides });
+  const safe = advice({ recommendation: 'safe', seededHours: 1180.4, hoursLeft: 0 });
+  const torrent = (hash, overrides = {}) => ({ hash, name: `Torrent.${hash[0]}`, sizeBytes: 4e9, upgradedAway: false, label: null,
+    libraryPaths: ['/tv/Severance/Season 01/Severance.S01E05.mkv'], advice: advice(), removal: { allowed: true }, ticked: false, ...overrides });
+  const version = (id, hash, overrides = {}) => ({ id, quality: '1080p WEB-DL', releaseTitle: `Release.${id}`, sizeBytes: 1e9, episodeId: id, hitAndRun: null,
+    ticked: true, torrent: hash === null ? null : { hash, advice: advice(), removal: { allowed: true } }, ...overrides });
+  const plan = (overrides = {}) => ({ service: 'sonarr', id: 7, title: 'Severance', recycleBin: null, files: [], torrents: [], secondVersions: [], ...overrides });
+  const gb = (bytes) => `${(bytes / 1e9).toFixed(1)} GB`;
+
+  // Showing the advice's margin as the tracker's ask, or numbers for an unconfirmed torrent, turns this red.
+  await t.test('advice lines name seeded hours against the ask, or fall back to the detail', () => {
+    assert.deepEqual(text.adviceLine(advice(), 'PrivateHD', 72), { verdict: 'Keep seeding', reason: 'seeded 41 h of 72 h; 38 h left' });
+    assert.equal(text.adviceLine(safe, 'PrivateHD', 72).reason, 'seeded 1,180 h; PrivateHD asks 72 h');
+    assert.equal(text.adviceLine(safe, 'PrivateHD').reason, 'seeded 1,180 h; PrivateHD asks 80 h');
+    assert.deepEqual(text.adviceLine(advice({ recommendation: 'unconfirmed', detail: 'first seen after it finished' }), 'PrivateHD'),
+      { verdict: "Can't confirm yet", reason: 'first seen after it finished' });
+  });
+
+  // Reading episode codes from the folder instead of the file name, or dropping the season for a season delete, turns this red.
+  await t.test('torrent rows say what they hold', () => {
+    assert.equal(text.torrentHoldsText(show, torrent('A')), 'Holds S01E05');
+    assert.equal(text.torrentHoldsText(season, torrent('A')), 'Holds E05');
+    assert.equal(text.torrentHoldsText(season, torrent('A', { libraryPaths: ['/x/Show.S01E02.mkv', '/x/Show.S01E01.mkv'] })), 'Season pack · holds E01, E02');
+    assert.equal(text.torrentHoldsText(show, torrent('A', { libraryPaths: ['/x/Show.S01E02.mkv', '/x/Show.S02E01.mkv'] })), 'Holds S01E02, S02E01');
+    assert.equal(text.torrentHoldsText(movie, torrent('A', { libraryPaths: ['/m/Dune Part Two (2024).mkv'] })), 'Holds the library file');
+    assert.equal(text.torrentHoldsText(movie, torrent('A', { upgradedAway: true, libraryPaths: [] })), 'Upgraded away; backs no library file');
+  });
+
+  // Asking one pack member to remove the shared torrent but not the others, sending a removal the server forbids, or a mode for a show turns this red.
+  await t.test('the request keeps every torrent unless chosen and asks about a pack once', () => {
+    const shared = plan({ secondVersions: [version(1, 'P'), version(2, 'P'), version(3, null), version(4, 'Q', { torrent: { hash: 'Q', advice: advice(), removal: { allowed: false, reason: 'held' } } })] });
+    const groups = text.versionGroups(shared);
+    assert.deepEqual(groups.map((group) => group.rows.map((row) => row.id)), [[1, 2], [3], [4]]);
+    assert.deepEqual(text.deleteChoices(show, 'remove', new Set(), groups, new Map()),
+      { removeTorrents: [], secondVersions: [1, 2, 3, 4].map((id) => ({ id, removeTorrent: false })) });
+    const picks = new Map([['P', { ticked: true, remove: true }], ['version:3', { ticked: false, remove: false }], ['Q', { ticked: true, remove: true }]]);
+    const choices = text.deleteChoices(movie, 'keepUnmonitored', new Set(['A']), groups, picks);
+    assert.deepEqual(choices, { mode: 'keepUnmonitored', removeTorrents: ['A'], secondVersions: [
+      { id: 1, removeTorrent: true }, { id: 2, removeTorrent: true }, { id: 4, removeTorrent: false }] });
+    assert.equal(text.deleteActionText(movie, 'keepUnmonitored', choices, groups), 'Delete file and 2 torrents');
+    assert.equal(text.deleteActionText(show, 'remove', text.deleteChoices(show, 'remove', new Set(), groups, new Map()), groups), 'Delete show, keep seeding');
+    assert.equal(text.versionHoldsText(show, groups[0], (id) => `S01E0${id}`), 'Season pack · second versions of S01E01 to S01E02');
+    assert.equal(text.versionHoldsText(season, groups[1], (id) => `S01E0${id}`), 'Second version of E03');
+    assert.equal(text.versionHoldsText(movie, groups[1], () => null), 'Second version · 1080p WEB-DL');
+  });
+
+  // Counting second versions as library files, or leaving the movie mode out of the line, turns this red.
+  await t.test('the line under the title says what goes and how big it is', () => {
+    const movieOne = plan({ service: 'radarr', title: 'Dune: Part Two (2024)', files: [{ sizeBytes: 9.6e9 }], secondVersions: [version(1, 'P', { sizeBytes: 4.4e9 })] });
+    assert.equal(text.deleteSubjectText(movie, movieOne, 'remove', gb),
+      'Removes the movie from Radarr and deletes its library file, 9.6 GB, and its 1080p second version, 4.4 GB. Torrents keep seeding unless you choose otherwise.');
+    assert.equal(text.deleteSubjectText(movie, plan({ service: 'radarr' }), 'keepUnmonitored', gb),
+      'Keeps the movie in Radarr, unmonitored. Torrents keep seeding unless you choose otherwise.');
+    assert.equal(text.deleteSubjectText(season, plan({ files: [{ sizeBytes: 1e9 }, { sizeBytes: 2e9 }] }), 'remove', gb),
+      'Deletes 2 library files, 3.0 GB. Each torrent is asked about once. Torrents keep seeding unless you choose otherwise.');
+    assert.equal(text.deleteTitleText(season, plan()), 'Delete Season 1 of Severance?');
+    assert.equal(text.deleteTitleText(show, plan()), 'Delete Severance from Sonarr?');
+  });
+
+  // Dropping kept torrents, unlinked files or a pack's outcome from the results, or hiding the files still there, turns this red.
+  await t.test('the results list every step and every torrent outcome', () => {
+    const shown = plan({
+      files: [{ fileId: 1, path: '/tv/S01E09.mkv', sizeBytes: 1, state: 'none', hashes: [], note: 'unlinked', reason: null }],
+      torrents: [torrent('A'), torrent('B', { name: 'Kept.One', advice: advice({ host: 'beyond-hd.me' }) }), torrent('C', { name: 'Held', removal: { allowed: false, reason: 'Another torrent uses the same files' } })],
+      secondVersions: [version(1, 'P'), version(2, 'P'), version(3, 'R')],
+    });
+    const choices = { removeTorrents: ['A'], secondVersions: [{ id: 1, removeTorrent: true }, { id: 2, removeTorrent: true }, { id: 3, removeTorrent: false }] };
+    const ran = { deleted: true, steps: [
+      { step: 'map', outcome: 'done', message: 'Checked which torrents hold 1 file.' },
+      { step: 'delete', outcome: 'done', message: 'Removed from Sonarr with its files.' },
+      { step: 'wait', outcome: 'done', message: 'Sonarr deleted 1 library file.' },
+      { step: 'torrents', outcome: 'failed', message: '0 torrents removed, 3 kept seeding.', torrents: [{ hash: 'A', name: 'Torrent.A', removed: false, reason: "rTorrent didn't answer." }] },
+      { step: 'secondVersions', outcome: 'done', message: '3 second versions deleted, 0 kept.', secondVersions: [
+        { id: 1, deleted: true, torrentRemoved: true, reason: null }, { id: 2, deleted: true, torrentRemoved: true, reason: null }, { id: 3, deleted: true, torrentRemoved: false, reason: null }] },
+      { step: 'history', outcome: 'done', message: 'Written to History under Deletions.' },
+    ] };
+    const tracker = (host) => (host === 'beyond-hd.me' ? 'Beyond-HD' : 'PrivateHD');
+    assert.deepEqual(text.deleteResultRows(shown, choices, ran, tracker).map((row) => [row.look, row.text, row.why]), [
+      ['done', 'Removed from Sonarr with its files.', null],
+      ['done', 'Sonarr deleted 1 library file.', null],
+      ['failed', "Couldn't remove Torrent.A", "rTorrent didn't answer."],
+      ['kept', 'Kept Kept.One seeding', 'You chose to keep it. Beyond-HD needs 38 more hours.'],
+      ['kept', 'Kept Held seeding', 'Another torrent uses the same files'],
+      ['kept', 'Left the torrent for S01E09.mkv alone', "The file couldn't be linked to a torrent."],
+      ['done', '3 second versions deleted, 0 kept.', null],
+      ['done', 'Removed Release.1 and its data', 'Torrent of the 2 second versions. You chose to remove it.'],
+      ['kept', 'Kept Release.3 seeding', 'You chose to keep it. PrivateHD needs 38 more hours.'],
+      ['done', 'Written to History under Deletions.', null],
+    ]);
+    const stillThere = { deleted: true, steps: [{ step: 'wait', outcome: 'failed', message: 'Sonarr still had 1 library file after 2 minutes, so every torrent was kept. Still there: /tv/a.mkv' }] };
+    assert.deepEqual(text.deleteResultRows(shown, choices, stillThere, tracker),
+      [{ look: 'failed', text: 'Sonarr still had 1 library file after 2 minutes, so every torrent was kept.', why: 'Still there: /tv/a.mkv' }]);
+    const refused = { deleted: false, steps: [{ step: 'map', outcome: 'done', message: 'x' }, { step: 'delete', outcome: 'failed', message: 'Sonarr refused the delete.' }] };
+    assert.deepEqual(text.deleteResultRows(shown, choices, refused, tracker), [{ look: 'failed', text: 'Sonarr refused the delete.', why: null }]);
+    assert.equal(text.deleteResultTitle(season, shown, true), 'Season 1 of Severance deleted');
+    assert.equal(text.deleteResultTitle(show, shown, false), 'Severance was not deleted');
+  });
+});

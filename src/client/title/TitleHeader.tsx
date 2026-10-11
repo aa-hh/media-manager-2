@@ -1,10 +1,10 @@
-import { Ellipsis, ExternalLink, History as HistoryIcon, List, RefreshCw, Search, SlidersHorizontal, Star, Tag, X } from 'lucide-react';
+import { Ellipsis, ExternalLink, History as HistoryIcon, List, RefreshCw, Search, SlidersHorizontal, Star, Tag, Trash2, X } from 'lucide-react';
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { CardLibrary } from '@/components/ui/card-library';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Fact } from '@/components/ui/fact';
 import { FactStacked } from '@/components/ui/fact-stacked';
 import { HeaderTitle } from '@/components/ui/header-title';
@@ -13,6 +13,7 @@ import type { BookmarkState } from '@/components/ui/toggle-bookmark';
 import { postJson, type Credits, type EpisodeDetail, type MovieDetail, type SeriesDetail } from '../library/api';
 import { navigate, useLocation } from '../navigation';
 import { statusLabel } from '../Search';
+import { DeleteTitle } from './DeleteTitle';
 
 // A movie already in the library carries its credits; a not-yet-added one has none.
 export type Subject = { type: 'tv'; detail: SeriesDetail } | { type: 'movie'; detail: MovieDetail & { credits?: Credits } };
@@ -262,6 +263,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   const [search, setSearch] = useState<Sent | undefined>(undefined);
   const [refresh, setRefresh] = useState<Sent | undefined>(undefined);
   const [showHistory, setShowHistory] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const target = subject.type === 'tv'
     ? { service: 'sonarr', kind: 'series', seriesId: detail.id }
     : { service: 'radarr', kind: 'movie', movieId: detail.id };
@@ -294,6 +296,8 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
           <DropdownMenuItem icon={<HistoryIcon />} onClick={() => setShowHistory(!showHistory)}>{showHistory ? 'Hide history' : 'History'}</DropdownMenuItem>
         )}
         {onChangeMonitoring !== undefined && <DropdownMenuItem icon={<SlidersHorizontal />} onClick={onChangeMonitoring}>Change monitoring</DropdownMenuItem>}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem icon={<Trash2 />} destructive onClick={() => setDeleting(true)}>{subject.type === 'tv' ? 'Delete show' : 'Delete movie'}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -330,7 +334,18 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
       />
       {pickPanel}
       {owned && !compact && <OverviewBand subject={subject} library={libraryRows} />}
-      {/* Hand-off to AA-32 (Second versions and safe deletion): delete show/movie and delete version. */}
+      {deleting && (
+        <DeleteTitle
+          target={subject.type === 'tv' ? { kind: 'series', id: detail.id } : { kind: 'movie', id: detail.id }}
+          name={detail.title}
+          codeOf={(episodeId) => {
+            const episode = subject.type === 'tv' ? subject.detail.episodes.find((candidate) => candidate.id === episodeId) : undefined;
+            return episode === undefined ? null : episodeCode(episode);
+          }}
+          onClose={() => setDeleting(false)}
+          onUnauthenticated={onUnauthenticated}
+        />
+      )}
       {showHistory && history}
     </>
   );
