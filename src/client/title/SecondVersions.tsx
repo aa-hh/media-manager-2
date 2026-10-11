@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX } from 'lucide-react';
+import { CircleCheck, CircleX, TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -10,11 +10,8 @@ import { RadioGroup } from '@/components/ui/radio';
 import { RowSecondVersion } from '@/components/ui/row-second-version';
 import { formatBytes } from '../downloads/model';
 import type { SecondVersion, SecondVersionDeleted } from '../library/api';
-import { adviceReason, unknownHistory, useAdvice } from './advice';
-import { seedingText } from './EpisodeDetails';
-
-// The failure text src/server/stalls.ts (STALLED_REMOVED) records when it removed a stalled torrent that had downloaded nothing.
-const STALLED_REMOVED = 'Stalled with nothing downloaded; torrent removed.';
+import { useAdvice } from './advice';
+import { keepChoiceText, removeChoiceText, timeLeftText, versionSeedingText } from './secondVersionText';
 
 // "720p" from "720p WEB-DL", as the dialog names a version.
 const resolution = (quality: string | null) => (quality === null ? null : /\d{3,4}p/i.exec(quality)?.[0] ?? quality);
@@ -25,19 +22,33 @@ const tracker = (version: SecondVersion) => trackerName(version.seeding?.tracker
 
 const badge = (version: SecondVersion): { label: string; variant?: 'live' | 'risk' | 'warning'; icon?: ReactNode; spinner?: boolean } => {
   if (version.state === 'sending') return { label: 'Sending', spinner: true };
+  if (version.state === 'downloading' && version.stalled) {
+    return { label: version.percent === null ? 'Stalled' : `Stalled at ${version.percent}%`, variant: 'warning', icon: <TriangleAlert /> };
+  }
   if (version.state === 'downloading') return { label: version.percent === null ? 'Downloading' : `Downloading ${version.percent}%`, variant: 'live' };
   if (version.state === 'importing') return { label: 'Importing', spinner: true };
-  if (version.state === 'failed' && version.failure === STALLED_REMOVED) return { label: 'Stalled, removed', variant: 'warning', icon: <CircleCheck /> };
+  if (version.state === 'failed' && version.failureCode === 'stalled_removed') return { label: 'Stalled, removed', variant: 'warning', icon: <CircleCheck /> };
   if (version.state === 'failed') return { label: 'Failed', variant: 'risk', icon: <CircleX /> };
   return { label: 'Second version' };
 };
 
 const seedingCell = (version: SecondVersion): ReactNode => {
-  if (version.state === 'downloading') return version.percent === null ? '' : <Progress value={version.percent} className="w-25" aria-label="Downloaded" />;
+  if (version.state === 'downloading') {
+    const words = version.stalled ? 'no peers · flagged' : timeLeftText(version.etaSeconds);
+    if (version.percent === null) return words;
+    return (
+      <span className="flex items-center gap-2">
+        <Progress value={version.percent} className="w-16 shrink-0" aria-label="Downloaded" />
+        {words !== '' && <span className="truncate">{words}</span>}
+      </span>
+    );
+  }
   if (version.hash === null || version.seeding?.inRtorrent === false) return 'no torrent';
-  if (version.seeding === null) return '';
-  return seedingText({ ...version.seeding, trackerHost: version.seeding.trackerHost ?? '' });
+  return versionSeedingText(version);
 };
+
+// The design's words for a stalled torrent removed with nothing downloaded; other failures show the server's own reason.
+const failureText = (version: SecondVersion) => (version.failureCode === 'stalled_removed' ? 'Nothing downloaded; torrent removed' : version.failure);
 
 type Outcome = { look: 'risk' | 'warning'; title: string; body?: string; done: boolean };
 
@@ -56,7 +67,8 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
   const choices = version.hash !== null && (version.path !== null || version.seeding?.inRtorrent === true);
   const advice = useAdvice(choices ? version.hash : null, onUnauthenticated);
   const name = tracker(version);
-  const noHistory = version.seeding === null || !version.seeding.inRtorrent || (advice?.kind === 'ready' && unknownHistory(advice.advice.reason));
+  // The advice has no seeded hours when rTorrent no longer holds the torrent.
+  const noHistory = version.seeding === null || !version.seeding.inRtorrent || (advice?.kind === 'ready' && advice.advice.seededHours === null);
 
   let keep: string | undefined;
   let remove: string | undefined;
@@ -67,13 +79,8 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
     keep = 'Keeping it is the safe choice.';
     remove = 'The hit and run rule could not be checked.';
   } else if (advice?.kind === 'ready') {
-    const { recommendation, reason, globalRatio } = advice.advice;
-    const ruleMet = reason.startsWith('Hit and run rule met');
-    keep = recommendation === 'safe' ? 'The torrent keeps seeding in rTorrent' : `Recommended: ${adviceReason(reason)}`;
-    if (globalRatio !== null) keep = `${keep}. ${globalRatio}.`;
-    if (recommendation === 'safe') remove = `Recommended: ${reason.replace(': ', ', ')}`;
-    else if (recommendation === 'keep') remove = ruleMet && globalRatio !== null ? `${globalRatio}.` : `Breaks the ${name} rule`;
-    else remove = "The hit and run rule can't be confirmed.";
+    keep = keepChoiceText(advice.advice, name, version.hitAndRun?.requiredHours ?? null);
+    remove = removeChoiceText(advice.advice, name);
   } else {
     keep = 'Checking the hit and run rule.';
   }
@@ -190,8 +197,8 @@ export function SecondVersionRows({ versions, indent, subject, trackedQuality, o
             labelSpinner={look.spinner}
             quality={version.quality}
             release={version.releaseTitle}
-            detail={version.state === 'failed' && version.failure !== null
-              ? <span className={version.failure === STALLED_REMOVED ? 'text-warning' : 'text-destructive'}>{version.failure}</span>
+            detail={version.state === 'failed' && failureText(version) !== null
+              ? <span className={version.failureCode === 'stalled_removed' ? 'text-warning' : 'text-destructive'}>{failureText(version)}</span>
               : undefined}
             size={sizeText(version)}
             tracker={tracker(version)}

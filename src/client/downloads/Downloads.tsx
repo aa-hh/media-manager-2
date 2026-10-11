@@ -8,13 +8,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { EmptyState } from '@/components/ui/empty-state';
 import { HeaderPage } from '@/components/ui/header-page';
 import { LabelGroup } from '@/components/ui/label-group';
+import { trackerName } from '@/components/ui/logo';
 import { RadioGroup } from '@/components/ui/radio';
 import { type DownloadState, RowDownload, RowDownloadHeader } from '@/components/ui/row-download';
 import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
 import { StatusInline } from '@/components/ui/status-inline';
 import { Table } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { adviceReason, recommendationLabels, useAdvice } from '../title/advice';
+import { recommendationLabels, useAdvice } from '../title/advice';
+import { downloadsAdviceText } from '../title/secondVersionText';
 import { ImportPanel } from './ImportPanel';
 import { buildRows, formatDuration, formatSpeed, groupRows, latestStep, type Group, type QueueItem, type Row } from './model';
 import { postAction, type DownloadsState } from './useDownloads';
@@ -115,7 +117,7 @@ function RemoveDialog({ open, row, item, onDone, onCancel }: { open: boolean; ro
         <div className="flex flex-col gap-2">
           {advice?.kind === 'ready' && (
             <Callout look={advice.advice.recommendation === 'safe' ? 'info' : 'warning'} title={`Hit and run: ${recommendationLabels[advice.advice.recommendation]}`}>
-              {[adviceReason(advice.advice.reason), advice.advice.globalRatio].filter((part) => part !== null).join('. ')}
+              {downloadsAdviceText(advice.advice, trackerName(advice.advice.host ?? item.indexer))}
             </Callout>
           )}
           {failed && <Callout look="risk" title={`${service} did not remove it. Try again.`} />}
