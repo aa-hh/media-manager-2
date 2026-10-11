@@ -1,7 +1,7 @@
 #!/bin/sh
-# Starts media-manager-2 on the Whatbox slot unless it already answers. Cron
-# runs it at @reboot and every minute; see README.md, "Restart after a crash
-# or reboot". It runs only on the slot, which has flock; macOS does not.
+# Starts media-manager-2 on the deploy host unless it already answers. Cron
+# runs it at @reboot and every minute; see README.md, "Keep it running". It
+# runs only on the host, which has flock; macOS does not.
 set -u
 app="$HOME/media-manager-2"
 server="$app/dist/server/index.js"
@@ -22,7 +22,7 @@ probe && exit 0
 if [ -f "$app/server.pid" ]; then
     pid=$(cat "$app/server.pid")
     if [ "$(ps -o args= -p "$pid" 2>/dev/null)" = "node $server" ]; then
-        # One slow answer on the busy slot must not cost a healthy server its life.
+        # One slow answer on a busy host must not cost a healthy server its life.
         for _ in 2 3; do
             sleep 10
             probe && { log "pid $pid slow but answering, leaving it"; exit 0; }

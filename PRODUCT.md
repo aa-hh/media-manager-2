@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-TypeScript on Node.js. One Hono server runs the background jobs and serves a React single-page app built with Vite. SQLite database, continuously copied to Cloudflare R2. Live torrent status reaches the browser through server-sent events. Decided in Linear: [Choose the technology](https://linear.app/aa-hh/issue/AA-14).
+TypeScript on Node.js. One Hono server runs the background jobs and serves a React single-page app built with Vite. SQLite database, optionally backed up every few minutes to a folder or an S3-compatible bucket. Live torrent status reaches the browser through server-sent events. Decided in Linear: [Choose the technology](https://linear.app/aa-hh/issue/AA-14).
 
 Component library: shadcn/ui on Base UI, with TanStack Table ([Choose the design library](https://linear.app/aa-hh/issue/AA-15)). Add TanStack Virtual when a list needs it. The decision and supporting evidence are in `docs/design/design-library-requirements.md`.
 

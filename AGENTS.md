@@ -72,6 +72,8 @@ symbol you cannot find in source, believe the source and fix the doc.
   app's own data directory, and (c) be removable by a purge script updated in
   the same change. Unlabelled tooling dropped onto a machine runs unnoticed
   for days.
+- **Never give a Podman container on the deploy host a name containing
+  `media-manager`.** An older cron script there removes every such container.
 - **A busy shared resource is reported, not waited on.** When a lock, slot or
   device another agent holds blocks you, say who holds it, go do other work,
   and retry later. Never sit in a wait loop.

@@ -1,7 +1,7 @@
 #!/bin/sh
-# Builds this worktree and runs it on the Whatbox slot behind the fixed
-# Managed Link, replacing whatever copy was running there. One-time slot setup
-# is in README.md, "Test deploy to Whatbox".
+# Builds this worktree and runs it on the deploy host behind its fixed public
+# address, replacing whatever copy was running there. One-time host setup is in
+# README.md, "Run it on a server".
 #
 # Usage: sh scripts/deploy.sh   (DEPLOY_HOST overrides the ssh host)
 set -eu
@@ -16,14 +16,14 @@ status=0
 origin=$(ssh "$host" 'mkdir -p ~/media-manager-2 && f=~/.config/media-manager-2/env && { [ -f "$f" ] || exit 3; } && . "$f" && { [ -n "${PORT:-}" ] && [ -n "${APP_ORIGIN:-}" ] || exit 3; } && printf %s "$APP_ORIGIN"') || status=$?
 if [ "$status" = 3 ]; then
     cat >&2 <<'EOF'
-deploy: ~/.config/media-manager-2/env on the slot is missing or lacks PORT or APP_ORIGIN.
+deploy: ~/.config/media-manager-2/env on the host is missing or lacks PORT or APP_ORIGIN.
 Create it with mode 600, containing:
 
-PORT=<the Managed Link's port, 10000-32767>
+PORT=<the port your proxy forwards to>
 HOST=127.0.0.1
-APP_ORIGIN=<the Managed Link's https address, no trailing slash>
+APP_ORIGIN=<the public https address, no trailing slash>
 PLEX_OWNER_ID=<your numeric Plex account ID>
-BACKUP_KEY=<64 hex characters, see README.md, Set up R2>
+BACKUP_KEY=<64 hex characters, only for backups; see README.md, Backups>
 
 Leave DB_PATH unset so the database stays under ~/.local/share/media-manager-2.
 EOF
@@ -65,7 +65,7 @@ exec 9>ensure.lock
 flock -w 60 9 || fail "ensure script still running after 60 seconds"
 
 # Signal the saved pid only while it is still this server: a reused pid could
-# belong to rTorrent or another app on the slot.
+# belong to rTorrent or another app on the host.
 if [ -f server.pid ]; then
     pid=$(cat server.pid)
     if [ "$(ps -o args= -p "$pid" 2>/dev/null)" = "node $server" ]; then
@@ -101,7 +101,7 @@ while :; do
     [ "$i" -le 60 ] || fail "no answer on port $PORT after 30 seconds"
     sleep 0.5
 done
-echo "Slot check: the server (pid $pid) answers on port $PORT."
+echo "Host check: the server (pid $pid) answers on port $PORT."
 
 node dist/server/cli.js connections check || true
 
@@ -111,7 +111,7 @@ EOF
 
 code=$(curl -s -o /dev/null -w '%{http_code}' "$origin/auth/status") || true
 if [ "$code" != 200 ]; then
-    echo "deploy: $origin/auth/status answered ${code:-nothing}, so the Managed Link is not reaching the server" >&2
+    echo "deploy: $origin/auth/status answered ${code:-nothing}, so the proxy is not reaching the server" >&2
     exit 1
 fi
 echo "HTTPS check: $origin answers."

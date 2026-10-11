@@ -1,8 +1,8 @@
 import { createHash, createHmac } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
-import { readSetting, requestWithTimeout } from './connection.js';
+import { requestWithTimeout } from './connection.js';
 
-export type R2Config = { endpoint: string; bucket: string; accessKeyId: string; secretAccessKey: string };
+// Any S3-compatible service: Cloudflare R2 signs with region "auto", most others need their real region.
+export type S3Config = { endpoint: string; bucket: string; region: string; accessKeyId: string; secretAccessKey: string };
 
 type SignInput = {
   method: string;
@@ -53,8 +53,8 @@ export const signRequest = (input: SignInput): string => {
 const decodeXml = (text: string) => text
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 
-export const createR2Store = (
-  config: R2Config,
+export const createS3Store = (
+  config: S3Config,
   options: { fetch?: typeof globalThis.fetch; now?: () => number } = {},
 ) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
@@ -77,7 +77,7 @@ export const createR2Store = (
       payloadHash,
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
-      region: 'auto',
+      region: config.region,
       service: 's3',
       date,
     });
@@ -89,11 +89,11 @@ export const createR2Store = (
       }, 60_000);
       return { status: response.status, bytes: new Uint8Array(await response.arrayBuffer()) };
     } catch {
-      throw new Error('R2 is unreachable.');
+      throw new Error('Backup storage is unreachable.');
     }
   };
   const expectOk = ({ status }: { status: number }) => {
-    if (status < 200 || status > 299) throw new Error(`R2 answered ${status}.`);
+    if (status < 200 || status > 299) throw new Error(`Backup storage answered ${status}.`);
   };
 
   return {
@@ -122,23 +122,3 @@ export const createR2Store = (
     },
   };
 };
-
-const completeConfig = (parts: Partial<R2Config>): R2Config | undefined => (
-  parts.endpoint && parts.bucket && parts.accessKeyId && parts.secretAccessKey
-    ? { endpoint: parts.endpoint, bucket: parts.bucket, accessKeyId: parts.accessKeyId, secretAccessKey: parts.secretAccessKey }
-    : undefined
-);
-
-export const readR2Config = (database: DatabaseSync): R2Config | undefined => completeConfig({
-  endpoint: readSetting(database, 'serviceAddresses', 'r2.endpoint'),
-  bucket: readSetting(database, 'serviceAddresses', 'r2.bucket'),
-  accessKeyId: readSetting(database, 'credentials', 'r2.accessKeyId'),
-  secretAccessKey: readSetting(database, 'credentials', 'r2.secretAccessKey'),
-});
-
-export const r2ConfigFromEnvironment = (env: NodeJS.ProcessEnv = process.env): R2Config | undefined => completeConfig({
-  endpoint: env.R2_ENDPOINT,
-  bucket: env.R2_BUCKET,
-  accessKeyId: env.R2_ACCESS_KEY_ID,
-  secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-});

@@ -245,10 +245,10 @@ export const createHealth = (options: {
     let backup: HealthSnapshot['backup'];
     if (lastAt === null) {
       backup = { kind: 'not_set_up' };
-      ours('backup', 'notice', 'backup', 'Cloudflare R2 backups are not set up yet');
+      ours('backup', 'notice', 'backup', 'Backups are not set up');
     } else if (checkedAt - lastAt > BACKUP_STALE_MS) {
       backup = { kind: 'stale', lastAt };
-      ours('backup', 'warning', 'backup', `The last Cloudflare R2 backup finished ${formatDuration(checkedAt - lastAt)} ago`);
+      ours('backup', 'warning', 'backup', `The last backup finished ${formatDuration(checkedAt - lastAt)} ago`);
     } else {
       backup = { kind: 'ok', lastAt };
     }

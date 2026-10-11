@@ -8,6 +8,7 @@ import { createApiRoutes } from './api.js';
 import { createApp } from './app.js';
 import { createBlocklist } from './blocklist.js';
 import { createBackup } from './backup.js';
+import { createBackupStore, readBackupDestination } from './backupDestination.js';
 import { defaultDatabasePath, openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { createFlagged } from './flagged.js';
@@ -30,7 +31,6 @@ import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createPlex } from './services/plex.js';
-import { createR2Store, readR2Config } from './services/r2.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller } from './torrents.js';
@@ -63,8 +63,8 @@ if (database !== undefined) {
     database,
     events,
     store: () => {
-      const config = readR2Config(openedDatabase);
-      return config === undefined ? undefined : createR2Store(config);
+      const destination = readBackupDestination(openedDatabase);
+      return destination === undefined ? undefined : createBackupStore(destination);
     },
   });
   runner.register('backup', 5 * 60_000, async () => { await backup.run(); });
