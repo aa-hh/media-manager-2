@@ -1,7 +1,8 @@
-import { ChevronRight, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
+import { ChevronRight, DatabaseBackup, Folder, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
+import { CardChoice } from '@/components/ui/card-choice';
 import { BarBottomAction } from '@/components/ui/bar-bottom-action';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -11,6 +12,7 @@ import { HeaderPage } from '@/components/ui/header-page';
 import { InputSearch } from '@/components/ui/input-search';
 import { LabelGroup } from '@/components/ui/label-group';
 import { Logo } from '@/components/ui/logo';
+import { RadioGroup } from '@/components/ui/radio';
 import { RowService } from '@/components/ui/row-service';
 import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
 import { StatusServicePill } from '@/components/ui/status-service-pill';
@@ -20,12 +22,15 @@ import {
   ago, chain, changedCount, changes, type Check, type Draft, emptyDraft, failureTitle, headerSummary, isConfigured, linkTone, pillFor,
   savedAddress, type SavedService, type ServiceInfo, type ServiceName, services, stripSummary, type TestResult,
 } from './model';
+import { BackupEditor } from './BackupEditor';
+import { FoldersEditor } from './FoldersEditor';
+import { backupPill, backupWords, type SetupStatus } from './setup';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill, type TrackerRequest } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; saved: Record<ServiceName, SavedService> };
 // A service, a tracker as `tracker:<host>`, or the add-a-tracker pane.
-type Selected = ServiceName | `tracker:${string}` | 'add';
+type Selected = ServiceName | `tracker:${string}` | 'add' | 'folders' | 'backup';
 const trackerKey = (host: string): Selected => `tracker:${host}`;
 
 const writeHeaders = { 'Content-Type': 'application/json', 'X-Requested-With': 'media-manager-2', Accept: 'application/json' };
@@ -58,6 +63,8 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const [newAddress, setNewAddress] = useState('');
   const [discardOpen, setDiscardOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
+  const [setup, setSetup] = useState<SetupStatus>();
+  const [plexSignIn, setPlexSignIn] = useState<boolean>();
   const toasts = useToastManager();
   const checksRef = useRef(checks);
   checksRef.current = checks;
@@ -102,6 +109,28 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     return response;
   }, []);
 
+  const setupRequest: TrackerRequest = useCallback(async (method, path, body) => {
+    const response = await fetch(`/api/setup${path}`, {
+      method, credentials: 'same-origin', headers: writeHeaders, body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (response.status === 401) {
+      unauthorizedRef.current();
+      throw new Error('Signed out.');
+    }
+    return response;
+  }, []);
+
+  /** Reads what /api/setup reports: whether the folders are saved, the backup destination and BACKUP_KEY, and the Plex sign-in token. */
+  const readSetup = useCallback(async () => {
+    const response = await fetch('/api/setup', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    if (response.status === 401) {
+      unauthorizedRef.current();
+      throw new Error('Signed out.');
+    }
+    if (!response.ok) throw new Error('Setup status could not be read.');
+    setSetup(await response.json() as SetupStatus);
+  }, []);
+
   /** Reads every tracker row; the server checks each account connection, reusing a result up to 5 minutes old. */
   const readTrackers = useCallback(async () => {
     const response = await request('GET', '');
@@ -119,6 +148,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
       const [response] = await Promise.all([
         fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } }),
         readTrackers(),
+        readSetup(),
       ]);
       if (response.status === 401) {
         unauthorizedRef.current();
@@ -133,11 +163,11 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     } catch {
       setLoad({ kind: 'failed' });
     }
-  }, [test, readTrackers]);
+  }, [test, readTrackers, readSetup]);
 
   useEffect(() => { void read(); }, [read]);
 
-  if (load.kind !== 'ready') {
+  if (load.kind !== 'ready' || setup === undefined) {
     return (
       <div className="flex flex-col gap-6 pt-2 pb-6">
         <HeaderPage title="Settings" />
