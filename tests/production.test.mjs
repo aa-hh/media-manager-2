@@ -6925,6 +6925,20 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   await versionImport.run();
   assert.deepEqual(rows(roninHash).map((row) => [row.state, row.failure]), [['failed', 'Radarr no longer has this movie.']]);
   assert.deepEqual(folderProblems(), []);
+
+  // Leaving a row whose torrent left rTorrent as downloading, which no import ever moves on and a delete refuses, turns this red.
+  const { createSecondVersionRoutes } = await import(secondVersionsModuleUrl);
+  const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
+  const lostHash = 'B0'.repeat(20);
+  await addTorrent(lostHash, ['Lost.mkv'], { complete: 0 });
+  addRows(lostHash, [{ movieId: 10 }]);
+  database.prepare('UPDATE torrents SET gone_at = 1 WHERE hash = ?').run(lostHash);
+  await versionImport.run();
+  assert.deepEqual([rows(lostHash)[0].state, failureCode(lostHash)], ['failed', 'torrent_gone']);
+  const deletes = createSecondVersionRoutes({}, createSecondVersionDelete({ database, removeTorrent: async () => assert.fail('not asked'), scan: async () => {} }));
+  const lostId = database.prepare('SELECT id FROM second_versions WHERE hash = ?').get(lostHash).id;
+  const deleted = await deletes.request(`/${lostId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removeTorrent: false }) });
+  assert.equal(deleted.status, 200);
 });
 
 test('deleting a second version removes only its own file, and its torrent only when asked and nothing else uses it', async (t) => {
