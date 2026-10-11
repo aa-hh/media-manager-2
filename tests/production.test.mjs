@@ -9348,6 +9348,8 @@ test('the settings screen sends only changed fields and ranks each service state
     const savedBucket = { kind: 's3', endpoint: 'https://s3.example', bucket: 'media', region: 'auto' };
     assert.equal(backupEdited({ ...blank, ...savedBucket, folder: '', accessKeyId: 'new' }, savedBucket), true);
     assert.equal(backupEdited({ ...blank, ...savedBucket, folder: '' }, savedBucket), false);
+    // Comparing a blank region to the saved 'auto' without the server's 'auto' default turns this red.
+    assert.equal(backupEdited({ ...blank, ...savedBucket, folder: '', region: '' }, savedBucket), false);
   });
 
   // Keeping the sent keys in the form after a save turns this red: the same bucket would still read as unsaved edits.
