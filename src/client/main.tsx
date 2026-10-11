@@ -11,6 +11,9 @@ import { buildRows, groupRows } from './downloads/model';
 import { useDownloads } from './downloads/useDownloads';
 import { HealthScreen } from './health/Health';
 import { useHealth } from './health/useHealth';
+import { BlocklistScreen } from './history/Blocklist';
+import { HistoryScreen } from './history/History';
+import { useBlocklist, useHistory } from './history/useHistory';
 import './globals.css';
 
 type SessionState =
@@ -242,6 +245,8 @@ function App() {
 // Search and the title view come from Home; the Downloads screen fills Home while the search box is empty.
 function SignedIn(props: ComponentProps<typeof Home>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
+  const history = useHistory(props.onUnauthenticated);
+  const blocklist = useBlocklist(props.onUnauthenticated);
   const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
   const flagged = useFlagged(props.onUnauthenticated);
   const flaggedHeadingRef = useRef<HTMLDivElement>(null);
@@ -287,6 +292,10 @@ function SignedIn(props: ComponentProps<typeof Home>) {
             />
           </div>
         );
+      case 'history':
+        return <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><HistoryScreen history={history} onNavigate={navigate} /></div>;
+      case 'blocklist':
+        return <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]"><BlocklistScreen blocklist={blocklist} /></div>;
       default:
         return null;
     }
