@@ -211,6 +211,16 @@ export const applicationMigrations = [
     created_at INTEGER NOT NULL,
     PRIMARY KEY (service, item_id)
   ) STRICT;`,
+  `CREATE TABLE backup_runs (
+    id INTEGER PRIMARY KEY,
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('ok', 'failed', 'skipped')),
+    detail TEXT NOT NULL,
+    object_key TEXT,
+    bytes INTEGER,
+    sha256 TEXT
+  ) STRICT;`,
   `CREATE TABLE blocklist_marks (
     service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')),
     release_title TEXT NOT NULL,
@@ -324,6 +334,23 @@ export const migrateDatabase = (database: DatabaseSync, migrations: readonly str
   }
 };
 
+export const assertDatabasePath = (path: string): void => {
+  if (!path || !isAbsolute(path) || path === ':memory:') {
+    throw new DatabaseError(databasePathMessage);
+  }
+
+  let canonicalPath: string;
+  try {
+    canonicalPath = canonicalize(path);
+  } catch (error) {
+    if (error instanceof DatabaseError) throw error;
+    throw new DatabaseError(databasePathMessage);
+  }
+  if (isInsideApplication(canonicalPath)) {
+    throw new DatabaseError(databasePathMessage);
+  }
+};
+
 export const openDatabase = (path?: string): DatabaseSync => {
   const selectedPath = path ?? process.env.DB_PATH ?? join(
     homedir(),
@@ -332,21 +359,7 @@ export const openDatabase = (path?: string): DatabaseSync => {
     'media-manager-2',
     'media-manager.sqlite',
   );
-  if (!selectedPath || !isAbsolute(selectedPath) || selectedPath === ':memory:') {
-    throw new DatabaseError(databasePathMessage);
-  }
-
-  let canonicalPath: string;
-  try {
-    canonicalPath = canonicalize(selectedPath);
-  } catch (error) {
-    if (error instanceof DatabaseError) throw error;
-    throw new DatabaseError(databasePathMessage);
-  }
-  if (isInsideApplication(canonicalPath)) {
-    throw new DatabaseError(databasePathMessage);
-  }
-
+  assertDatabasePath(selectedPath);
   prepareDatabaseFile(selectedPath);
   let database: DatabaseSync;
   try {
