@@ -232,14 +232,15 @@ function App() {
   );
 }
 
-// Search and the title view come from Home; the Downloads screen fills Home while the search box is empty.
-function SignedIn(props: ComponentProps<typeof Home>) {
+// Home routes by address: the Library is home, search results, title pages and the calendar come from Home, and the Downloads screen lives at /downloads.
+function SignedIn(props: Omit<ComponentProps<typeof Home>, 'downloadsState'>) {
   const { state, reload } = useDownloads(props.onUnauthenticated);
   const downloadsHeadingRef = useRef<HTMLHeadingElement>(null);
   return (
     <div className="pb-8">
       <Home
         {...props}
+        downloadsState={state}
         downloads={(
           <div className="bg-[var(--mm-ground)] text-[var(--mm-ink)]">
             <DownloadsScreen state={state} reload={reload} headingRef={downloadsHeadingRef} />
