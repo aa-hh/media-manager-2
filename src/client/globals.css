@@ -264,6 +264,17 @@
   animation: content-in var(--duration-base) var(--ease-out) both;
 }
 
+/* The add dialog's count pill flashes its hover fill when the owner changes what is monitored. */
+@keyframes pill-flash {
+  from {
+    background-color: var(--inline-control-hover);
+  }
+}
+
+@utility animate-pill-flash {
+  animation: pill-flash var(--duration-base) var(--ease-out) both;
+}
+
 /* The skeleton under arriving content leaves on the matching ease-in, so the pair never dips below full cover. */
 @keyframes content-out {
   to {

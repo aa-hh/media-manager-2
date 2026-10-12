@@ -6804,7 +6804,7 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   assert.deepEqual([...failedFirst, ...calls().map(([service]) => service)], ['sonarr', 'radarr', 'sonarr']);
 });
 
-// Sending the owner's choices under the wrong fields, dropping the lookup record, keeping a `none` show monitored when new seasons are off, or losing the per-season flags breaks adding a title.
+// Sending the owner's choices under the wrong fields, dropping the lookup record, keeping a `none` show monitored when new seasons are off, losing the per-season flags, forgetting the last profile and folder after a successful add, remembering a refused one, or dropping the existing item's id from a duplicate refusal turns this red.
 test('adding a title sends the monitor decision', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createAdd, parseMovieChoices, parseSeriesChoices } = await import(addModuleUrl);
@@ -6823,17 +6823,19 @@ test('adding a title sends the monitor decision', async (t) => {
     fake[service].routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/rootfolder' ? { status: 200, body: folders } : undefined));
   }
   fake.sonarr.state.lookup = [{ title: 'Other', tvdbId: 1 }, { title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }] }];
-  fake.radarr.state.lookup = [{ title: 'Dune', tmdbId: 438631, images: [] }];
+  fake.radarr.state.lookup = [{ id: 7, title: 'Dune', tmdbId: 438631, images: [] }];
   const posts = (service) => fake[service].requests.filter((request) => request.method === 'POST').map(({ path, body }) => ({ path, body }));
-  const add = createAdd(services, createTitleStore(database));
+  const add = createAdd(services, createTitleStore(database), database);
   const series = {
     monitor: 'skip', seasons: [1], monitorNewSeasons: true, qualityProfileId: 6, rootFolderPath: '/home/owner/TV',
     seasonFolder: true, seriesType: 'standard',
   };
 
-  assert.deepEqual(await add.options('sonarr'), { kind: 'ok', qualityProfiles: profiles, rootFolders: folders });
+  assert.deepEqual(await add.options('sonarr'), { kind: 'ok', qualityProfiles: profiles, rootFolders: folders, lastChoice: null });
 
   assert.deepEqual(await add.addSeries(371980, series), { kind: 'added', libraryId: fake.sonarr.state.series.at(-1).id });
+  assert.deepEqual((await add.options('sonarr')).lastChoice, { qualityProfileId: 6, rootFolderPath: '/home/owner/TV' });
+  assert.equal((await add.options('radarr')).lastChoice, null);
   assert.deepEqual(posts('sonarr').at(-1), {
     path: '/api/v3/series',
     body: {
@@ -6862,6 +6864,7 @@ test('adding a title sends the monitor decision', async (t) => {
   assert.deepEqual(await add.addSeries(371980, { ...series, qualityProfileId: 4 }), {
     kind: 'refused', reason: 'Sonarr refused the series add with HTTP 400: This series has already been added.',
   });
+  assert.equal((await add.options('sonarr')).lastChoice.qualityProfileId, 6);
   fake.sonarr.routes.pop();
   assert.deepEqual(await add.addSeries(5, series), { kind: 'not_found' });
 
@@ -6873,6 +6876,13 @@ test('adding a title sends the monitor decision', async (t) => {
   assert.equal(body.monitored, false);
   assert.equal(body.minimumAvailability, 'inCinemas');
   assert.deepEqual(body.addOptions, { monitor: 'none', searchForMovie: false });
+  fake.radarr.routes.push((method, url) => (method === 'POST' && url.pathname === '/api/v3/movie'
+    ? { status: 400, body: [{ propertyName: 'TmdbId', errorMessage: 'This movie has already been added' }] }
+    : undefined));
+  assert.deepEqual(await add.addMovie(438631, movie), {
+    kind: 'refused', reason: 'Radarr refused the movie add with HTTP 400: This movie has already been added.', libraryId: 7,
+  });
+  fake.radarr.routes.pop();
 
   assert.equal(parseSeriesChoices({ ...series, monitor: 'everything' }), undefined);
   assert.equal(parseSeriesChoices({ ...series, monitor: 'missing' }), undefined);
@@ -6902,7 +6912,7 @@ test('search, the title page and add for one title ask Sonarr for it once', asyn
   const store = createTitleStore(database);
   const search = createSearch(database, services, store);
   const library = createLibrary(services, () => [], store);
-  const add = createAdd(services, store);
+  const add = createAdd(services, store, database);
 
   assert.deepEqual((await search.search(parseSearchQuery('Severance'))).results.map((result) => result.key), ['tvdb:371980']);
   assert.equal((await library.preview('sonarr', 371980)).value.title, 'Severance');
@@ -11841,4 +11851,30 @@ test('the movie, show and season delete dialog words its rows, builds its reques
     assert.equal(text.deleteResultTitle(season, shown, true), 'Season 1 of Severance deleted');
     assert.equal(text.deleteResultTitle(show, shown, false), 'Severance was not deleted');
   });
+});
+
+test('the added toast words the search from the sentence fact', async () => {
+  // Changing the toast wording for any search fact, or dropping the number the toast highlights, turns this red.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { addedToast } = await load('../src/client/title/addText.ts');
+  const cases = [
+    ['Sonarr', { kind: 'aired', count: 18 }, 'Sonarr is searching 18 aired episodes.', '18'],
+    ['Sonarr', { kind: 'aired', count: 1 }, 'Sonarr is searching 1 aired episode.', '1'],
+    ['Sonarr', { kind: 'nothingAired', firstAirDate: '2027-01-05' }, 'Sonarr will search once episodes air.', null],
+    ['Sonarr', { kind: 'future', nextAirDate: null }, 'Sonarr will search once episodes air.', null],
+    ['Sonarr', { kind: 'none' }, 'Nothing is monitored.', null],
+    ['Sonarr', { kind: 'unknown' }, 'Sonarr is searching for the monitored episodes that have aired.', null],
+    ['Radarr', { kind: 'now' }, 'Radarr is searching now.', null],
+    ['Radarr', { kind: 'expected', availability: 'available', date: '2027-03-26' }, "Radarr will search once it's available, expected on 26 Mar 2027.", '26 Mar 2027'],
+    ['Radarr', { kind: 'expected', availability: 'in cinemas', date: null }, "Radarr will search once it's in cinemas.", null],
+    ['Radarr', { kind: 'collection', movies: 3, allReleased: false, availability: 'available' }, 'Radarr is searching up to 3 movies.', '3'],
+    ['Radarr', { kind: 'collection', movies: null, allReleased: false, availability: 'available' }, "Radarr is searching the collection's movies.", null],
+  ];
+  assert.equal(addedToast('Sonarr', 'Dune', { kind: 'none' }).title, 'Added Dune to your library');
+  for (const [service, fact, line, number] of cases) {
+    const toast = addedToast(service, 'Dune', fact);
+    assert.equal(`${toast.before}${toast.number ?? ''}${toast.after}`, line, fact.kind);
+    assert.equal(toast.number, number, fact.kind);
+  }
 });

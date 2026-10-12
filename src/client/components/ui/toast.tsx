@@ -1,7 +1,7 @@
 // v2/Toast — design/design-system.lib.pen Dslj1
 import { Toast } from '@base-ui/react/toast';
 import { Check, X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +14,7 @@ type ToastData = {
   actionKbd?: ReactNode;
 };
 
+// ToastNumber (below ToastList) is the add dialog's number handoff from its closing sentence into the toast's second line.
 /**
  * Wraps the app so screens can call useToastManager().add({ title, description, type: 'error', actionProps, data }).
  * Toasts default to duration-toast (a screen may pass its own timeout), pause while hovered, and sit bottom left above the downloads bar.
@@ -75,7 +76,34 @@ function ToastList() {
   ));
 }
 
+/**
+ * A number in a toast's description that travels in from where it last sat on screen (`from`, a measured rect), turning
+ * from an inline-control pill into bar text. Without `from`, or with reduced motion, it simply appears in place.
+ */
+function ToastNumber({ from, children }: { from: { left: number; top: number; width: number; height: number } | undefined; children: ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element === null || from === undefined || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // The toast's own 12 px rise is in flight while this measures, so the travel can be off by up to 12 px vertically; accepted.
+    const to = element.getBoundingClientRect();
+    const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    element.animate([
+      {
+        transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.height / to.height})`,
+        transformOrigin: '0 0',
+        backgroundColor: token('--inline-control'),
+        color: token('--inline-control-foreground'),
+        padding: '0 12px',
+      },
+      { transform: 'none', transformOrigin: '0 0', backgroundColor: 'transparent', color: token('--bar-foreground'), padding: '0' },
+    ], { duration: 220, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+    // Runs once on mount: the travel starts from where the pill was when the toast appeared.
+  }, []);
+  return <b ref={ref} className="inline-block rounded-sm font-data font-semibold text-bar-foreground">{children}</b>;
+}
+
 const useToastManager = Toast.useToastManager<ToastData>;
 
-export { ToastProvider, useToastManager };
+export { ToastNumber, ToastProvider, useToastManager };
 export type { ToastData };
