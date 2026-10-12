@@ -69,6 +69,10 @@
   --primary-hover: #2e2e2c;
   --primary-pressed: #000000;
   --primary-foreground: #ffffff;
+  --action: #9ecae1;
+  --action-hover: #8bbfdb;
+  --action-pressed: #76b2d2;
+  --action-foreground: #07080b;
   --plex: #e5a00d;
   --plex-hover: #f3aa0e;
   --plex-pressed: #d19209;
@@ -92,12 +96,17 @@
   --bar-muted-foreground: #b5b5ae;
   --scrim: #1111114d;
   --shadow: #1111111f;
+  --inline-control: #f1f4f8;
+  --inline-control-hover: #e8edf4;
+  --inline-control-border: #7889a3;
+  --inline-control-border-hover: #66778f;
+  --inline-control-foreground: #334766;
 
   /* Radius */
   --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
+  --radius-sm: 12px;
+  --radius-md: 12px;
+  --radius-lg: 12px;
   --radius-full: 999px;
   --radius: 10px;
   --radius-xl: 14px;
@@ -135,8 +144,11 @@
   --control-text-default: 14px;
   --control-text-large: 15px;
   --control-radius-row: 6px;
-  --control-radius-default: 8px;
-  --control-radius-large: 10px;
+  --control-radius-row-hover: 8px;
+  --control-radius-default: 12px;
+  --control-radius-large: 12px;
+  --button-radius: 12px;
+  --button-radius-hover: 14px;
   --control-icon-row: 14px;
   --control-icon-default: 16px;
   --control-icon-large: 18px;
@@ -287,6 +299,10 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-pressed: var(--primary-pressed);
   --color-primary-foreground: var(--primary-foreground);
+  --color-action: var(--action);
+  --color-action-hover: var(--action-hover);
+  --color-action-pressed: var(--action-pressed);
+  --color-action-foreground: var(--action-foreground);
   --color-plex: var(--plex);
   --color-plex-hover: var(--plex-hover);
   --color-plex-pressed: var(--plex-pressed);
@@ -310,6 +326,11 @@
   --color-bar-muted-foreground: var(--bar-muted-foreground);
   --color-scrim: var(--scrim);
   --color-shadow: var(--shadow);
+  --color-inline-control: var(--inline-control);
+  --color-inline-control-hover: var(--inline-control-hover);
+  --color-inline-control-border: var(--inline-control-border);
+  --color-inline-control-border-hover: var(--inline-control-border-hover);
+  --color-inline-control-foreground: var(--inline-control-foreground);
 
   --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);

@@ -4,7 +4,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
-type BadgeVariant = 'neutral' | 'strong' | 'best' | 'live' | 'risk' | 'warning' | 'outline' | 'plain';
+type BadgeVariant = 'neutral' | 'strong' | 'best' | 'live' | 'risk' | 'warning' | 'outline' | 'plain' | 'inline';
 
 type BadgeProps = ComponentProps<'span'> & {
   variant?: BadgeVariant;
@@ -28,6 +28,8 @@ const variants: Record<BadgeVariant, string> = {
   // A standing status beside a row button, such as In library: no box, so it never reads as a button, at the
   // button's row height and text size.
   plain: 'h-(--control-h-row) text-(length:--control-text-row) text-muted-foreground [&>svg]:size-(--control-icon-row) [&>svg]:text-foreground',
+  /** v2/Badge/inline: a calculated value inside the add dialog's sentence; never focusable. */
+  inline: 'h-[38px] rounded-sm px-3 gap-2 font-ui text-[22px] font-medium bg-inline-control text-inline-control-foreground [&>svg]:size-5 [&>img]:size-5',
 };
 
 /** Not interactive (the optional remove button aside), so no hover or focus. The live look carries the dot. */
@@ -36,7 +38,7 @@ function Badge({ variant = 'neutral', icon, spinner = false, onRemove, removeLab
     <span
       className={cn(
         'inline-flex shrink-0 items-center gap-1 rounded-xs font-ui font-semibold whitespace-nowrap',
-        variant !== 'plain' && 'h-(--badge-h) px-(--badge-px) text-(length:--badge-text) [&>svg]:size-(--badge-icon)',
+        variant !== 'plain' && variant !== 'inline' && 'h-(--badge-h) px-(--badge-px) text-(length:--badge-text) [&>svg]:size-(--badge-icon)',
         variants[variant],
         className,
       )}

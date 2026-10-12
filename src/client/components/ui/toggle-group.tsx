@@ -17,13 +17,13 @@ const tracks: Record<ToggleGroupSize, string> = {
 
 const segments: Record<ToggleGroupSize, string> = {
   row: 'inset-y-0.5 rounded-xs',
-  default: 'inset-y-0.75 rounded-(--control-radius-row)',
+  default: 'inset-y-0.75 rounded-sm',
   large: 'inset-y-1 rounded-(--control-radius-default)',
 };
 
 const items: Record<ToggleGroupSize, string> = {
   row: 'h-6 rounded-xs px-(--control-px-row)',
-  default: 'h-8.5 rounded-(--control-radius-row) px-3.5',
+  default: 'h-8.5 rounded-sm px-3.5',
   large: 'h-10 rounded-(--control-radius-default) px-(--control-px-large)',
 };
 

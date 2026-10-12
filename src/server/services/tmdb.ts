@@ -274,6 +274,58 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
     ))) };
   };
 
+  // Aired episodes per season and the next air date, for the add dialog's sentence.
+  const tvAiring = async (id: number): Promise<Result<{ seasons: Array<{ seasonNumber: number; aired: number }>; nextAirDate: string | null }>> => {
+    const show = await cached(LIST_TTL_MS, 'the show seasons', `/tv/${id}`, {}, (body) => {
+      const record = isRecord(body) ? body : {};
+      return {
+        seasons: records(record.seasons).flatMap((season) => {
+          const seasonNumber = number(season.season_number);
+          return seasonNumber === null ? [] : [{ seasonNumber, episodeCount: number(season.episode_count) ?? 0 }];
+        }),
+        nextAirDate: isRecord(record.next_episode_to_air) ? text(record.next_episode_to_air.air_date) : null,
+      };
+    });
+    if (show.kind !== 'ok') return show;
+    const { seasons, nextAirDate } = show.value;
+    if (seasons.length === 0) return { kind: 'ok', value: { seasons: [], nextAirDate } };
+    // razor: TMDB appends at most 20 sub-requests, so only the 20 highest seasons get exact counts; the rest use episode_count.
+    const appended = seasons.map((season) => season.seasonNumber).sort((first, second) => second - first).slice(0, 20);
+    const today = new Date(now()).toISOString().slice(0, 10);
+    const episodes = await cached(
+      LIST_TTL_MS, 'the show episodes', `/tv/${id}`, { append_to_response: appended.map((season) => `season/${season}`).join(',') },
+      (body) => new Map(appended.flatMap((season) => {
+        const part = isRecord(body) ? body[`season/${season}`] : undefined;
+        if (!isRecord(part) || !Array.isArray(part.episodes)) return [];
+        const aired = records(part.episodes).filter((episode) => {
+          const date = text(episode.air_date);
+          return date !== null && date <= today;
+        }).length;
+        return [[season, aired] as const];
+      })),
+    );
+    if (episodes.kind !== 'ok') return episodes;
+    return { kind: 'ok', value: {
+      seasons: seasons
+        .map((season) => ({ seasonNumber: season.seasonNumber, aired: episodes.value.get(season.seasonNumber) ?? season.episodeCount }))
+        .sort((first, second) => first.seasonNumber - second.seasonNumber),
+      nextAirDate,
+    } };
+  };
+
+  // How many films a collection holds and whether every one has come out.
+  const collection = (id: number) => cached(LIST_TTL_MS, 'the collection', `/collection/${id}`, {}, (body) => {
+    const parts = records(isRecord(body) ? body.parts : undefined);
+    const today = new Date(now()).toISOString().slice(0, 10);
+    return {
+      films: parts.length,
+      allReleased: parts.length > 0 && parts.every((part) => {
+        const date = text(part.release_date);
+        return date !== null && date <= today;
+      }),
+    };
+  });
+
   const check = async (): Promise<ConnectionStatus> => {
     const result = await get('the connection check', '/authentication');
     if (result.kind === 'not_configured' || result.kind === 'rejected') return { kind: result.kind };
@@ -281,5 +333,5 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
     return { kind: 'ok', version: '3' };
   };
 
-  return { check, discover, trending, genres, regions, providers, details, summary, watchProviders };
+  return { check, discover, trending, genres, regions, providers, details, summary, watchProviders, tvAiring, collection };
 };

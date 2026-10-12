@@ -17,7 +17,7 @@ function LineTotals({ totals, link, className, ...props }: ComponentProps<'p'> &
         </span>
       ))}
       {link && (
-        <a href={link.href} onClick={link.onClick} className="flex items-center gap-1 rounded-sm font-semibold text-destructive hover:underline focus-ring">
+        <a href={link.href} onClick={link.onClick} className="flex items-center gap-1 rounded-xs font-semibold text-destructive hover:underline focus-ring">
           {link.label}
           <ArrowRight aria-hidden="true" className="size-3.5" />
         </a>

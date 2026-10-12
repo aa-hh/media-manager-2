@@ -141,6 +141,7 @@ export type MovieDetail = {
   runtime: number | null;
   studio: string | null;
   collection: string | null;
+  collectionTmdbId: number | null;
   path: string | null;
   tags: string[];
   links: { imdbId: string | null; tmdbId: number | null };
@@ -386,6 +387,7 @@ const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown
   runtime: record.runtime,
   studio: record.studio,
   collection: record.collection,
+  collectionTmdbId: record.collectionTmdbId,
   path: extras.owned ? record.path : null,
   tags: extras.owned ? tagNames(extras.tags, record.tags) : [],
   links: { imdbId: record.imdbId, tmdbId: record.tmdbId },

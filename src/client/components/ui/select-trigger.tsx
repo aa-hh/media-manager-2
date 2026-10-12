@@ -1,6 +1,6 @@
 // v2/Select trigger — design/design-system.lib.pen v8Swg
 import { Select as SelectPrimitive } from '@base-ui/react/select';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -12,32 +12,55 @@ const sizes: Record<SelectSize, string> = {
   large: 'h-(--control-h-large) rounded-(--control-radius-large) pr-3.5 pl-(--control-px-large) text-(length:--control-text-large) [&_svg]:size-(--control-icon-large)',
 };
 
+const base = cn(
+  'group inline-flex shrink-0 items-center gap-1.5 font-ui',
+  'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
+  'data-disabled:border-border! data-disabled:bg-muted! data-disabled:text-faint-foreground',
+);
+
+/** select-inline: a choice inside the add dialog's sentence. Empty marks a required choice not yet made. */
+const inlineTriggerClass = (empty: boolean) => cn(
+  base,
+  'h-[38px] rounded-sm px-3 text-[22px] font-bold [&_svg]:size-5',
+  empty
+    ? 'border-[1.5px] border-warning bg-warning-soft text-warning'
+    : 'border border-inline-control-border bg-inline-control text-inline-control-foreground hover:border-inline-control-border-hover hover:bg-inline-control-hover data-popup-open:border-[1.5px] data-popup-open:border-inline-control-foreground data-popup-open:bg-inline-control-hover',
+);
+
 type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: SelectSize;
+  /** Inline: the add dialog's sentence look; size and lead do not apply. */
+  variant?: 'default' | 'inline';
+  /** Inline only: a required choice not yet made, warning look with a plus instead of the chevron. */
+  empty?: boolean;
   /** Grey label before the value, such as "Sort". */
   lead?: ReactNode;
   placeholder?: ReactNode;
 };
 
 /** The trigger only; it sits inside Select, and the open list is the dropdown menu content. Open shows the pressed fill and an upward chevron. */
-function SelectTrigger({ size = 'default', lead, placeholder, className, children, ...props }: SelectTriggerProps) {
+function SelectTrigger({ size = 'default', variant = 'default', empty = false, lead, placeholder, className, children, ...props }: SelectTriggerProps) {
+  const inline = variant === 'inline';
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        'group inline-flex shrink-0 items-center gap-1.5 border border-input bg-card font-ui text-foreground',
-        'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
-        'hover:border-muted-foreground hover:bg-surface-hover data-popup-open:border-muted-foreground data-popup-open:bg-surface-pressed',
-        'data-invalid:border-destructive aria-invalid:border-destructive',
-        'data-disabled:border-border! data-disabled:bg-muted! data-disabled:text-faint-foreground',
-        sizes[size],
+        inline
+          ? inlineTriggerClass(empty)
+          : cn(
+            base,
+            'border border-input bg-card text-foreground',
+            'hover:border-muted-foreground hover:bg-surface-hover data-popup-open:border-muted-foreground data-popup-open:bg-surface-pressed',
+            'data-invalid:border-destructive aria-invalid:border-destructive',
+            sizes[size],
+          ),
         className,
       )}
       {...props}
     >
       {lead !== undefined && <span className="font-normal text-subtle-foreground group-data-disabled:text-faint-foreground">{lead}</span>}
-      <span className="min-w-0 truncate font-semibold">{children ?? <SelectPrimitive.Value placeholder={placeholder} />}</span>
-      <SelectPrimitive.Icon className="flex text-muted-foreground group-data-disabled:text-faint-foreground group-data-popup-open:rotate-180">
-        <ChevronDown aria-hidden="true" />
+      <span className={cn('min-w-0 truncate', !inline && 'font-semibold')}>{children ?? <SelectPrimitive.Value placeholder={placeholder} />}</span>
+      <SelectPrimitive.Icon className={cn('flex group-data-disabled:text-faint-foreground group-data-popup-open:rotate-180', !inline && 'text-muted-foreground')}>
+        {inline && empty ? <Plus aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -45,4 +68,4 @@ function SelectTrigger({ size = 'default', lead, placeholder, className, childre
 
 const Select = SelectPrimitive.Root;
 
-export { Select, SelectTrigger };
+export { inlineTriggerClass, Select, SelectTrigger };

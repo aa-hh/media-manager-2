@@ -171,7 +171,7 @@ if (database !== undefined) {
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
   const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf);
-  const add = createAdd(database, arr, titleStore);
+  const add = createAdd(arr, titleStore);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);
   const app = createApp({

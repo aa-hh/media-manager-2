@@ -15,7 +15,7 @@ function Breadcrumb({ links, current, className, ...props }: ComponentProps<'nav
           <a
             href={link.href}
             onClick={link.onClick}
-            className="shrink-0 rounded-sm font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-out hover:text-foreground hover:underline active:text-primary-pressed active:duration-0 focus-ring"
+            className="shrink-0 rounded-xs font-medium text-muted-foreground transition-colors duration-(--duration-fast) ease-out hover:text-foreground hover:underline active:text-primary-pressed active:duration-0 focus-ring"
           >
             {link.label}
           </a>

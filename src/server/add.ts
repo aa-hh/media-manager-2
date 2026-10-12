@@ -1,17 +1,12 @@
-import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-import { getPreference, setPreference } from './preferences.js';
 import { lookupTitle } from './search.js';
 import type { ArrServices, Result } from './services/arr.js';
 import type { TitleStore } from './titleStore.js';
 
 type Service = 'sonarr' | 'radarr';
 
-// Sonarr's and Radarr's own monitor values, in the order their add screens list them.
-export const seriesMonitorOptions = [
-  'all', 'future', 'missing', 'existing', 'recent', 'pilot', 'firstSeason', 'lastSeason',
-  'monitorSpecials', 'unmonitorSpecials', 'none',
-] as const;
+// The Sonarr v4 add-time monitor values this app offers; `skip` monitors the seasons listed in `seasons[]`.
+export const seriesMonitorOptions = ['all', 'future', 'lastSeason', 'skip', 'none'] as const;
 export const movieMonitorOptions = ['movieOnly', 'movieAndCollection', 'none'] as const;
 export const minimumAvailabilityOptions = ['announced', 'inCinemas', 'released'] as const;
 const seriesTypes = ['standard', 'daily', 'anime'] as const;
@@ -23,7 +18,7 @@ export type SeriesAddChoices = {
   rootFolderPath: string;
   seasonFolder: boolean;
   seriesType: typeof seriesTypes[number];
-  searchOnAdd: boolean;
+  seasons?: number[];
 };
 
 export type MovieAddChoices = {
@@ -31,7 +26,6 @@ export type MovieAddChoices = {
   minimumAvailability: typeof minimumAvailabilityOptions[number];
   qualityProfileId: number;
   rootFolderPath: string;
-  searchOnAdd: boolean;
 };
 
 type Failure = { kind: 'not_configured' | 'unreachable' | 'rejected' | 'not_found' } | { kind: 'refused'; reason: string };
@@ -59,37 +53,31 @@ const added = (result: Result<{ id: number }>): { kind: 'added'; libraryId: numb
 
 export const parseSeriesChoices = (value: unknown): SeriesAddChoices | undefined => {
   if (!isRecord(value)) return undefined;
-  const { monitor, monitorNewSeasons, qualityProfileId, rootFolderPath, seasonFolder, seriesType, searchOnAdd } = value;
+  const { monitor, monitorNewSeasons, qualityProfileId, rootFolderPath, seasonFolder, seriesType, seasons } = value;
   if (
     !oneOf(seriesMonitorOptions, monitor) || typeof monitorNewSeasons !== 'boolean' || !positiveInteger(qualityProfileId)
     || !nonblank(rootFolderPath) || typeof seasonFolder !== 'boolean' || !oneOf(seriesTypes, seriesType)
-    || typeof searchOnAdd !== 'boolean'
   ) return undefined;
-  return { monitor, monitorNewSeasons, qualityProfileId, rootFolderPath, seasonFolder, seriesType, searchOnAdd };
+  const choices = { monitor, monitorNewSeasons, qualityProfileId, rootFolderPath, seasonFolder, seriesType };
+  if (monitor !== 'skip') return seasons === undefined ? choices : undefined;
+  if (
+    !Array.isArray(seasons) || seasons.length < 1 || seasons.length > 200 || new Set(seasons).size !== seasons.length
+    || !seasons.every((season) => Number.isInteger(season) && season >= 0 && season <= 999)
+  ) return undefined;
+  return { ...choices, seasons: seasons as number[] };
 };
 
 export const parseMovieChoices = (value: unknown): MovieAddChoices | undefined => {
   if (!isRecord(value)) return undefined;
-  const { monitor, minimumAvailability, qualityProfileId, rootFolderPath, searchOnAdd } = value;
+  const { monitor, minimumAvailability, qualityProfileId, rootFolderPath } = value;
   if (
     !oneOf(movieMonitorOptions, monitor) || !oneOf(minimumAvailabilityOptions, minimumAvailability)
-    || !positiveInteger(qualityProfileId) || !nonblank(rootFolderPath) || typeof searchOnAdd !== 'boolean'
+    || !positiveInteger(qualityProfileId) || !nonblank(rootFolderPath)
   ) return undefined;
-  return { monitor, minimumAvailability, qualityProfileId, rootFolderPath, searchOnAdd };
+  return { monitor, minimumAvailability, qualityProfileId, rootFolderPath };
 };
 
-const readDefaults = (database: DatabaseSync, service: Service) => {
-  const stored = getPreference(database, `add.${service}`);
-  if (stored === undefined) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(stored);
-    return service === 'sonarr' ? parseSeriesChoices(parsed) : parseMovieChoices(parsed);
-  } catch {
-    return undefined;
-  }
-};
-
-export const createAdd = (database: DatabaseSync, services: ArrServices, store: TitleStore) => {
+export const createAdd = (services: ArrServices, store: TitleStore) => {
   const get = async (service: Service, path: string): Promise<{ kind: 'ok'; body: unknown } | Failure> => {
     let response: { status: number; body: unknown };
     try {
@@ -115,11 +103,7 @@ export const createAdd = (database: DatabaseSync, services: ArrServices, store: 
         ? [{ path: folder.path, freeSpace: typeof folder.freeSpace === 'number' ? folder.freeSpace : null }]
         : []
     ));
-    const saved = readDefaults(database, service);
-    const usable = saved !== undefined
-      && qualityProfiles.some((profile) => profile.id === saved.qualityProfileId)
-      && rootFolders.some((folder) => folder.path === saved.rootFolderPath);
-    return { kind: 'ok', qualityProfiles, rootFolders, defaults: usable ? saved : null } as const;
+    return { kind: 'ok', qualityProfiles, rootFolders } as const;
   };
 
   return {
@@ -128,36 +112,41 @@ export const createAdd = (database: DatabaseSync, services: ArrServices, store: 
       if (!services.sonarr.configured()) return { kind: 'not_configured' } as const;
       const record = await lookupTitle(services, store, 'sonarr', tvdbId);
       if (record.kind !== 'ok') return added(record);
-      const result = added(await services.sonarr.addSeries(record.value, {
+      // Sonarr's AddSeriesService sets Monitored=false for `none`, and `skip` keeps the per-season flags sent in `seasons`.
+      const unmonitoredNone = choices.monitor === 'none' && !choices.monitorNewSeasons;
+      const monitor = choices.monitor === 'none' && choices.monitorNewSeasons ? 'skip' : choices.monitor;
+      const picked = choices.monitor === 'skip' ? choices.seasons ?? [] : [];
+      const seasons = monitor === 'skip' && Array.isArray(record.value.seasons)
+        ? { seasons: record.value.seasons.map((season) => (
+          isRecord(season) ? { ...season, monitored: typeof season.seasonNumber === 'number' && picked.includes(season.seasonNumber) } : season
+        )) }
+        : {};
+      return added(await services.sonarr.addSeries(record.value, {
         qualityProfileId: choices.qualityProfileId,
         rootFolderPath: choices.rootFolderPath,
         seasonFolder: choices.seasonFolder,
         seriesType: choices.seriesType,
-        // Sonarr keeps the show monitored even for "none", so new seasons can still be picked up.
-        monitored: true,
+        ...seasons,
+        monitored: !unmonitoredNone,
         monitorNewItems: choices.monitorNewSeasons ? 'all' : 'none',
         addOptions: {
-          monitor: choices.monitor,
-          searchForMissingEpisodes: choices.searchOnAdd,
+          monitor,
+          searchForMissingEpisodes: choices.monitor !== 'none',
           searchForCutoffUnmetEpisodes: false,
         },
       }));
-      if (result.kind === 'added') setPreference(database, 'add.sonarr', JSON.stringify(choices));
-      return result;
     },
     async addMovie(tmdbId: number, choices: MovieAddChoices) {
       if (!services.radarr.configured()) return { kind: 'not_configured' } as const;
       const record = await lookupTitle(services, store, 'radarr', tmdbId);
       if (record.kind !== 'ok') return added(record);
-      const result = added(await services.radarr.addMovie(record.value, {
+      return added(await services.radarr.addMovie(record.value, {
         qualityProfileId: choices.qualityProfileId,
         rootFolderPath: choices.rootFolderPath,
         minimumAvailability: choices.minimumAvailability,
         monitored: choices.monitor !== 'none',
-        addOptions: { monitor: choices.monitor, searchForMovie: choices.searchOnAdd },
+        addOptions: { monitor: choices.monitor, searchForMovie: choices.monitor !== 'none' },
       }));
-      if (result.kind === 'added') setPreference(database, 'add.radarr', JSON.stringify(choices));
-      return result;
     },
   };
 };
