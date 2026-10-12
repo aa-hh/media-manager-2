@@ -9765,6 +9765,8 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
     assert.equal(extraRowsView([row(missing), row(missing)]).traktMissing, true);
     assert.equal(extraRowsView([row(missing), row({ results: [], failed: true, failure: 'unreachable' })]).traktMissing, false);
     assert.equal(extraRowsView([]).traktMissing, false);
+    // Hiding a row whose source is down, so it loses its Try again, turns this red.
+    assert.deepEqual(extraRowsView([row(missing), row({ id: 'down', results: [], failed: true, failure: 'unreachable' })]).shown.map((shown) => shown.id), ['down']);
   });
 
   // Counting a card's gap twice, or returning zero cards for a narrow strip, turns this red.

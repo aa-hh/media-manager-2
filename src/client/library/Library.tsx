@@ -1,5 +1,5 @@
 import { BookmarkX, Library as LibraryIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -36,6 +36,7 @@ type Show = 'all' | 'tv' | 'movie';
 const fieldLabels: Record<Field, string> = { year: 'Year', progress: 'Progress', size: 'Size', profile: 'Quality profile', added: 'Date added' };
 const showLabels: Array<[Show, string]> = [['all', 'All'], ['movie', 'Movies'], ['tv', 'TV']];
 const noProgress = new Map<string, SubjectProgress>();
+const noTitles: LibraryTitle[] = [];
 const SKELETON_CARDS = 8;
 
 const serviceProblem = (name: 'Sonarr' | 'Radarr', outcome: Outcome) => {
@@ -73,13 +74,13 @@ function statusBadge(title: LibraryTitle, live: SubjectProgress | undefined, dow
   return undefined;
 }
 
-function PosterCard({ title, fields, progress, downloading }: {
-  title: LibraryTitle;
-  fields: Field[];
-  progress: Map<string, SubjectProgress>;
-  downloading: number;
-}) {
-  const live = title.tv === null ? progress.get(`movie:${title.id}`) : undefined;
+type PosterCardProps = { title: LibraryTitle; fields: Field[]; live: SubjectProgress | undefined; downloading: number };
+
+// Every snapshot builds fresh progress objects, so a card compares the values it prints rather than the object.
+const sameLive = (a: SubjectProgress | undefined, b: SubjectProgress | undefined) =>
+  a === b || (a !== undefined && b !== undefined && a.word === b.word && a.tone === b.tone && a.percent === b.percent);
+
+const PosterCard = memo(function PosterCard({ title, fields, live, downloading }: PosterCardProps) {
   const meta = [
     fields.includes('year') && title.year !== null ? String(title.year) : '',
     title.tv !== null && fields.includes('progress') ? progressText(title.tv.episodeFileCount, downloading, title.tv.episodeCount) : '',
@@ -89,7 +90,7 @@ function PosterCard({ title, fields, progress, downloading }: {
   ].filter((fact) => fact !== '');
   const path = `/${title.tv === null ? 'movie' : 'series'}/${title.id}`;
   return (
-    <li>
+    <li className="[contain-intrinsic-size:auto_var(--poster-width)_auto_280px] [content-visibility:auto]">
       <LibraryPosterCard
         href={path}
         onClick={openLink(path)}
@@ -101,20 +102,22 @@ function PosterCard({ title, fields, progress, downloading }: {
       />
     </li>
   );
-}
+}, (prev, next) => prev.title === next.title && prev.fields === next.fields && prev.downloading === next.downloading && sameLive(prev.live, next.live));
 
 export function Library({ downloads, onUnauthenticated }: { downloads: DownloadsState; onUnauthenticated: () => void }) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [show, setShow] = useState<Show>('all');
   const [fields, setFields] = useState<Field[]>(readFields);
+  const [attempt, setAttempt] = useState(0);
 
-  const load = useCallback(() => {
+  useEffect(() => {
+    const controller = new AbortController();
     setState({ kind: 'loading' });
-    getJson<Loaded>('/api/library/titles', onUnauthenticated)
-      .then((data) => setState({ kind: 'ready', data }))
-      .catch(() => setState({ kind: 'failed' }));
-  }, [onUnauthenticated]);
-  useEffect(load, [load]);
+    getJson<Loaded>('/api/library/titles', onUnauthenticated, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) setState({ kind: 'ready', data }); })
+      .catch(() => { if (!controller.signal.aborted) setState({ kind: 'failed' }); });
+    return () => controller.abort();
+  }, [attempt, onUnauthenticated]);
   useScreenReady(state.kind !== 'loading');
 
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
@@ -133,14 +136,15 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
     writeFields(next);
   };
 
-  const titles = state.kind === 'ready' ? state.data.titles : [];
-  const counts: Record<Show, number> = {
+  const titles = state.kind === 'ready' ? state.data.titles : noTitles;
+  const sum = useMemo(() => totals(titles), [titles]);
+  const counts = useMemo((): Record<Show, number> => ({
     all: titles.length,
     movie: titles.filter((title) => title.type === 'movie').length,
     tv: titles.filter((title) => title.type === 'tv').length,
-  };
-  const sum = totals(titles);
-  const missing = missingCount(titles, progress, perShow);
+  }), [titles]);
+  const shown = useMemo(() => titles.filter((title) => show === 'all' || title.type === show), [titles, show]);
+  const missing = useMemo(() => missingCount(titles, progress, perShow), [titles, progress, perShow]);
 
   return (
     <div className="flex flex-col pb-6">
@@ -155,11 +159,11 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
               { value: sum.files.toLocaleString(), word: 'files' },
               { value: formatBytes(sum.sizeBytes) },
             ]}
-            link={missing > 0 ? { label: `${missing} ${missing === 1 ? 'title' : 'titles'} missing files`, href: '/flagged', onClick: openLink('/flagged') } : undefined}
+            link={missing > 0 ? { label: `${missing.toLocaleString()} ${missing === 1 ? 'title' : 'titles'} missing files`, href: '/flagged', onClick: openLink('/flagged') } : undefined}
           />
         )}
       </div>
-      <div className="flex items-center gap-2 pt-4 pb-5">
+      <div className="flex flex-wrap items-center gap-2 pt-4 pb-5">
         <ToggleGroup aria-label="Show" value={show} onValueChange={(value) => setShow(value as Show)}>
           {showLabels.map(([value, label]) => (
             <ToggleGroupItem key={value} value={value} count={state.kind === 'ready' ? counts[value] : undefined}>{label}</ToggleGroupItem>
@@ -195,17 +199,20 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
         )}
       >
         {state.kind === 'failed' && (
-          <Callout className="w-130" title="The library could not be read." action={<Button variant="outline" onClick={load}>Retry</Button>} />
+          <Callout
+            className="max-w-130"
+            title="The library could not be read."
+            action={<Button variant="outline" onClick={() => setAttempt((count) => count + 1)}>Retry</Button>}
+          />
         )}
         {state.kind === 'ready' && (() => {
           const { services } = state.data;
-          const shown = titles.filter((title) => show === 'all' || title.type === show);
           const problems = [serviceProblem('Sonarr', services.sonarr), serviceProblem('Radarr', services.radarr)].filter((line) => line !== undefined);
           return (
             <>
               {problems.length > 0 && (
                 <div className="flex flex-col gap-2 pb-6">
-                  {problems.map((line) => <Callout key={line} look="warning" title={line} className="w-130" />)}
+                  {problems.map((line) => <Callout key={line} look="warning" title={line} className="max-w-130" />)}
                 </div>
               )}
               {shown.length === 0
@@ -231,7 +238,13 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
                 : (
                   <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
                     {shown.map((title) => (
-                      <PosterCard key={`${title.service}:${title.id}`} title={title} fields={fields} progress={progress} downloading={perShow.get(title.id) ?? 0} />
+                      <PosterCard
+                        key={`${title.service}:${title.id}`}
+                        title={title}
+                        fields={fields}
+                        live={title.tv === null ? progress.get(`movie:${title.id}`) : undefined}
+                        downloading={perShow.get(title.id) ?? 0}
+                      />
                     ))}
                   </ul>
                 )}
