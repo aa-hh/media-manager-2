@@ -1,6 +1,6 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
-import { Plus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Plus, RotateCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { BlockAddControls } from '@/components/ui/block-add-controls';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -135,9 +135,12 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
   const [movie, setMovie] = useState<MovieChoices | undefined>(undefined);
   const [more, setMore] = useState(false);
   const [add, setAdd] = useState<AddState>({ kind: 'editing' });
+  const [attempt, setAttempt] = useState(0);
+  const inFlight = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    setLoad({ kind: 'loading' });
     void (async () => {
       try {
         const response = await fetch(`/api/add/options/${tv ? 'sonarr' : 'radarr'}`, {
@@ -177,13 +180,16 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
       }
     })();
     return () => controller.abort();
-  }, [tv, serviceName, onUnauthenticated]);
+  }, [tv, serviceName, onUnauthenticated, attempt]);
 
   const heading = `Add to ${serviceName}`;
   if (load.kind === 'loading') {
     return <BlockAddControls heading={heading} option={<StatusInline status="busy">Loading {serviceName}'s add options…</StatusInline>} />;
   }
-  if (load.kind === 'failed') return <BlockAddControls heading={heading} callout={<Callout title={load.message} />} />;
+  if (load.kind === 'failed') {
+    const retry = <Button variant="outline" icon={<RotateCw />} onClick={() => setAttempt((count) => count + 1)}>Try again</Button>;
+    return <BlockAddControls heading={heading} callout={<Callout title={load.message} action={retry} />} />;
+  }
 
   const { qualityProfiles, rootFolders } = load.options;
   const choices = tv ? series : movie;
@@ -195,7 +201,10 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
     else setMovie({ ...movie!, ...patch });
   };
 
+  // The server does not deduplicate adds, so a second Enter or click while one is out is dropped.
   const submit = async (search: boolean) => {
+    if (inFlight.current || add.kind === 'added') return;
+    inFlight.current = true;
     setAdd({ kind: 'adding' });
     try {
       const response = await postJson('/api/add', {
@@ -227,6 +236,8 @@ export function AddControls({ result, onAdded, onUnauthenticated }: {
       });
     } catch {
       setAdd({ kind: 'refused', message: "The add didn't reach media-manager-2's server." });
+    } finally {
+      inFlight.current = false;
     }
   };
 

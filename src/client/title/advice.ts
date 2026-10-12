@@ -16,7 +16,7 @@ export const useAdvice = (hash: string | null, onUnauthenticated: () => void): A
     const controller = new AbortController();
     setState({ kind: 'loading' });
     getJson<RemovalAdvice>(`/api/advice/${encodeURIComponent(hash)}`, onUnauthenticated, controller.signal)
-      .then((advice) => setState({ kind: 'ready', advice }))
+      .then((advice) => { if (!controller.signal.aborted) setState({ kind: 'ready', advice }); })
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: 'failed' });
       });

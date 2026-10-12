@@ -1,5 +1,5 @@
-import { BookmarkX, FileVideo, HardDrive, Trash2 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { BookmarkX, FileVideo, HardDrive, RotateCw, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout, type CalloutLook } from '@/components/ui/callout';
@@ -68,6 +68,7 @@ export function DeleteTitle({ target, name, codeOf = () => null, onClose, onUnau
   const [removeTorrents, setRemoveTorrents] = useState<ReadonlySet<string>>(new Set());
   const [picks, setPicks] = useState<ReadonlyMap<string, VersionChoice>>(new Map());
   const [sending, setSending] = useState(false);
+  const inFlight = useRef(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [done, setDone] = useState<Done | null>(null);
 
@@ -119,7 +120,25 @@ export function DeleteTitle({ target, name, codeOf = () => null, onClose, onUnau
         onOpenChange={(next) => { if (!next) onClose(); }}
         title={deleteTitleText(target, { service, title: name })}
         scrollEdges
-        footerCallout={load.kind === 'failed' ? <Callout title="Couldn't check what this delete would touch.">{load.message}</Callout> : undefined}
+        footerCallout={load.kind === 'failed' ? (
+          <Callout
+            title="Couldn't check what this delete would touch."
+            action={(
+              <Button
+                variant="outline"
+                icon={<RotateCw />}
+                onClick={() => {
+                  setLoad({ kind: 'loading' });
+                  setReload((count) => count + 1);
+                }}
+              >
+                Try again
+              </Button>
+            )}
+          >
+            {load.message}
+          </Callout>
+        ) : undefined}
         actions={(
           <>
             <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -147,11 +166,22 @@ export function DeleteTitle({ target, name, codeOf = () => null, onClose, onUnau
     setRemoveTorrents(next);
   };
 
+  // Held until the reply is fully read, so a second press cannot send another delete.
   const confirm = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSending(true);
+    try {
+      await send();
+    } finally {
+      inFlight.current = false;
+      setSending(false);
+    }
+  };
+
+  const send = async () => {
     setNotice(null);
     const response = await postJson(`${base}/delete`, choices).catch(() => null);
-    setSending(false);
     if (response === null) {
       setNotice({ look: 'risk', title: "media-manager-2 didn't answer.", body: 'Reload the page to see whether anything was deleted.' });
       return;
@@ -205,14 +235,14 @@ export function DeleteTitle({ target, name, codeOf = () => null, onClose, onUnau
   return (
     <Dialog
       open
-      onOpenChange={(next) => { if (!next) onClose(); }}
+      onOpenChange={(next) => { if (!next && !sending) onClose(); }}
       title={deleteTitleText(target, plan)}
       subject={deleteSubjectText(target, plan, mode, formatBytes)}
       scrollEdges
       footerCallout={notice === null ? undefined : <Callout look={notice.look} title={notice.title}>{notice.body}</Callout>}
       actions={(
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" disabled={sending} onClick={onClose}>Cancel</Button>
           <Button variant="destructive" size="large" loading={sending} onClick={() => void confirm()}>{deleteActionText(target, mode, choices, groups)}</Button>
         </>
       )}
