@@ -2,9 +2,11 @@ import { lstatSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { type Context, Hono } from 'hono';
 import type { RemovalAdvice } from './advice.js';
+import type { Blocklist } from './blocklist.js';
+import type { Protection } from './protection.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { listSecondVersionRows, type SecondVersionRow } from './secondVersionRows.js';
-import type { ArrServices, FileDetail, Result } from './services/arr.js';
+import type { ArrServices, FileDetail, HistoryRecord, Result } from './services/arr.js';
 import type { createTorrentFiles, LibraryFileState, RemovalCheck } from './torrentFiles.js';
 
 type Library = ReturnType<ReturnType<typeof createTorrentFiles>['readLibraryInodes']>;
@@ -13,8 +15,17 @@ type Failure = Exclude<Result<never>, { kind: 'ok' }>;
 
 // A Sonarr target with a seasonNumber deletes that season's files and keeps the show.
 export type DeleteTarget = { service: 'radarr'; movieId: number } | { service: 'sonarr'; seriesId: number; seasonNumber?: number };
-export type MovieMode = 'remove' | 'keepUnmonitored';
-export type Choices = { removeTorrents: string[]; secondVersions: { id: number; removeTorrent: boolean }[] };
+// What Sonarr or Radarr does afterwards: forget the title, keep it listed without searching, or search for another copy.
+export type Mode = 'remove' | 'keepUnmonitored' | 'searchAgain';
+// blocklistCurrent: with searchAgain, blocklist the releases the deleted files came from.
+export type Choices = { removeTorrents: string[]; secondVersions: { id: number; removeTorrent: boolean }[]; blocklistCurrent: boolean };
+
+// Removing the record is for a whole title only; a season always keeps its show.
+export const modesOf = (target: DeleteTarget): Mode[] => (
+  target.service === 'sonarr' && target.seasonNumber !== undefined ? ['keepUnmonitored', 'searchAgain'] : ['remove', 'keepUnmonitored', 'searchAgain']
+);
+// What a show or season delete did before it asked: a client that sends no mode keeps getting that.
+const defaultMode = (target: DeleteTarget): Mode => (target.service === 'sonarr' && target.seasonNumber !== undefined ? 'keepUnmonitored' : 'remove');
 
 export const UNLINKED_FILE = "Can't link this file to a torrent. Its torrent, if any, keeps seeding.";
 export const IMPORTED_BY_COPY = 'imported by copy';
@@ -49,6 +60,8 @@ export type DeletePlan = {
   seasonNumber: number | null;
   // True for a season delete: its episodes and the season are unmonitored before any file is deleted.
   willUnmonitor: boolean;
+  // What may happen afterwards, in the order the dialog offers it.
+  modes: Mode[];
   // Set when Sonarr or Radarr moves deleted files to a recycle bin, so no space is freed until it is emptied.
   recycleBin: string | null;
   files: PlanFile[];
@@ -61,7 +74,7 @@ export type FileOutcome = { fileId: number; path: string; deleted: boolean; reas
 export type TorrentOutcome = { hash: string; name: string; removed: boolean; reason: string | null };
 export type VersionOutcome = { id: number; deleted: boolean; torrentRemoved: boolean; reason: string | null };
 export type StepResult =
-  | { step: 'map' | 'unmonitor' | 'delete' | 'wait' | 'history'; outcome: Outcome; message: string }
+  | { step: 'map' | 'unmonitor' | 'monitor' | 'delete' | 'wait' | 'blocklist' | 'search' | 'history'; outcome: Outcome; message: string }
   // A season delete sends one file delete per file and lists each answer.
   | { step: 'delete'; outcome: Outcome; message: string; files: FileOutcome[] }
   | { step: 'torrents'; outcome: Outcome; message: string; torrents: TorrentOutcome[] }
@@ -91,12 +104,15 @@ export const createTitleDelete = (options: {
   torrentFiles: TorrentFiles;
   deleteVersion: SecondVersionDelete;
   advise: (hash: string) => Promise<RemovalAdvice>;
+  // A search again clears the owner's manual-download protection, which would otherwise veto the search's own grab.
+  protection: Pick<Protection, 'list' | 'unprotect'>;
+  blocklist: Pick<Blocklist, 'markFailed'>;
   // Drops search's stored lookups for a service, which would still offer a deleted title as in the library.
   forget: (service: DeleteTarget['service']) => void;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }) => {
-  const { database, arr, torrentFiles, deleteVersion, advise, forget } = options;
+  const { database, arr, torrentFiles, deleteVersion, advise, protection, blocklist, forget } = options;
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }));
   const running = new Set<string>();
@@ -107,8 +123,8 @@ export const createTitleDelete = (options: {
   const gather = async (target: DeleteTarget) => {
     let title: string;
     let details: FileDetail[];
-    // Only for a season: its episodes, and the files they use.
-    let episodeIds: number[] = [];
+    // A show's or season's episodes, and for a season the files they use.
+    let episodes: { id: number; seasonNumber: number; fileId: number | null }[] = [];
     let seasonFiles: Set<number> | null = null;
     if (target.service === 'radarr') {
       const movie = await arr.radarr.movie(target.movieId);
@@ -117,23 +133,21 @@ export const createTitleDelete = (options: {
       details = movie.value.file === null ? [] : [movie.value.file];
     } else {
       const season = target.seasonNumber;
-      const [series, episodeFiles, episodes] = await Promise.all([
+      const [series, episodeFiles, episodeList] = await Promise.all([
         arr.sonarr.series(target.seriesId),
         arr.sonarr.episodeFiles(target.seriesId),
-        season === undefined ? null : arr.sonarr.episodes(target.seriesId, { seasonNumber: season, withFiles: true }),
+        arr.sonarr.episodes(target.seriesId, season === undefined ? { withFiles: true } : { seasonNumber: season, withFiles: true }),
       ]);
       if (series.kind !== 'ok') return series;
       if (episodeFiles.kind !== 'ok') return episodeFiles;
-      if (episodes !== null && episodes.kind !== 'ok') return episodes;
+      if (episodeList.kind !== 'ok') return episodeList;
       if (season !== undefined && !series.value.seasons.some((entry) => entry.seasonNumber === season)) {
         return { kind: 'not_found' as const, message: `Sonarr has no season ${season} for ${series.value.title}.` };
       }
       title = series.value.title;
       details = episodeFiles.value;
-      if (episodes !== null) {
-        episodeIds = episodes.value.map((episode) => episode.id);
-        seasonFiles = new Set(episodes.value.flatMap((episode) => episode.file?.id ?? []));
-      }
+      episodes = episodeList.value.map((episode) => ({ id: episode.id, seasonNumber: episode.seasonNumber, fileId: episode.file?.id ?? null }));
+      if (season !== undefined) seasonFiles = new Set(episodes.flatMap((episode) => episode.fileId ?? []));
     }
     const files = details.flatMap((file) => (file.id === null || file.path === null ? [] : [{ path: file.path, fileId: file.id, sizeBytes: file.size }]));
     // A season maps every file of the show, so a torrent that also holds another season's file (a full-series pack) is known.
@@ -142,7 +156,7 @@ export const createTitleDelete = (options: {
     const mapped = mapping.files.filter((file) => inScope(file.fileId));
     const otherSeasons = new Set(mapping.files.filter((file) => !inScope(file.fileId)).flatMap((file) => file.hashes));
     const allVersions = listSecondVersionRows(database, target);
-    const episodeSet = new Set(episodeIds);
+    const episodeSet = new Set(episodes.map((episode) => episode.id));
     const secondVersions = seasonFiles === null ? allVersions : allVersions.filter((row) => row.episodeId !== null && episodeSet.has(row.episodeId));
 
     const live = new Map(database.prepare('SELECT hash, name, size_bytes FROM torrents WHERE gone_at IS NULL').all()
@@ -177,7 +191,7 @@ export const createTitleDelete = (options: {
       note: file.state === 'none' || file.state === 'unknown' ? UNLINKED_FILE : null,
       reason: file.reason,
     }));
-    return { kind: 'ok' as const, value: { title, files: planFiles, torrents, secondVersions, episodeIds, otherSeasons } };
+    return { kind: 'ok' as const, value: { title, files: planFiles, torrents, secondVersions, episodes, otherSeasons, history: history.kind === 'ok' ? history.value : [] } };
   };
 
   // A torrent that still holds another season's file is never offered, even when that file is a copy no link check would see.
@@ -202,6 +216,7 @@ export const createTitleDelete = (options: {
         title,
         seasonNumber,
         willUnmonitor: seasonNumber !== null,
+        modes: modesOf(target),
         recycleBin: recycleBin.kind === 'ok' ? recycleBin.value : null,
         files,
         torrents: await Promise.all(torrents.map(async (torrent) => ({
@@ -231,16 +246,113 @@ export const createTitleDelete = (options: {
     }
   };
 
-  // Map → delete in Sonarr or Radarr (a refusal stops everything) → wait for the files → torrents → second versions → history.
+  type Scoped = { id: number; seasonNumber: number; fileId: number | null };
+  const fail = (result: Failure | { message: string }): { kind: 'failed'; message: string } => ({ kind: 'failed', message: result.message });
+
+  // Keep, unmonitored: nothing in scope is searched for again. A whole show also stops taking seasons Sonarr adds later.
+  const unmonitor = async (target: DeleteTarget, episodeIds: number[]): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
+    if (target.service === 'radarr') {
+      const result = await arr.radarr.monitorMovie(target.movieId, false);
+      return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored in Radarr.' } : fail(result);
+    }
+    if (episodeIds.length > 0) {
+      const result = await arr.sonarr.monitorEpisodes(episodeIds, false);
+      if (result.kind !== 'ok') return fail(result);
+    }
+    if (target.seasonNumber !== undefined) {
+      const result = await arr.sonarr.monitorSeason(target.seriesId, target.seasonNumber, false);
+      return result.kind === 'ok' ? { kind: 'ok', value: `Unmonitored season ${target.seasonNumber} and its episodes in Sonarr.` } : fail(result);
+    }
+    const result = await arr.sonarr.setSeriesMonitoring(target.seriesId, { monitored: false, seasons: 'all', monitorNewItems: 'none' });
+    return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored the show, every season and episode, and new seasons in Sonarr.' } : fail(result);
+  };
+
+  // Search again: monitor what the files held, so the search that follows wants it.
+  const monitorAgain = async (target: DeleteTarget, held: Scoped[]): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
+    if (target.service === 'radarr') {
+      const result = await arr.radarr.monitorMovie(target.movieId, true);
+      if (result.kind !== 'ok') return fail(result);
+    } else if (held.length > 0) {
+      const episodesMonitored = await arr.sonarr.monitorEpisodes(held.map((episode) => episode.id), true);
+      if (episodesMonitored.kind !== 'ok') return fail(episodesMonitored);
+      const seasons = [...new Set(held.map((episode) => episode.seasonNumber))];
+      const result = await arr.sonarr.setSeriesMonitoring(target.seriesId, { monitored: true, seasons });
+      if (result.kind !== 'ok') return fail(result);
+    }
+    return { kind: 'ok', value: target.service === 'radarr' ? 'Monitored in Radarr.' : `Monitored ${plural(held.length, 'episode')} and their seasons in Sonarr.` };
+  };
+
+  // Lifted only once the files are gone, just before the search: the protection would veto the search's own grab,
+  // and lifting it earlier would leave a file that failed to delete unprotected.
+  const liftProtection = async (target: DeleteTarget, held: Scoped[]): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
+    const ids = new Set(held.map((episode) => episode.id));
+    const lifted = protection.list().filter((item) => (target.service === 'radarr'
+      ? item.kind === 'movie' && item.movieId === target.movieId
+      : item.kind === 'episode' && ids.has(item.episodeId)));
+    try {
+      for (const item of lifted) await protection.unprotect(item);
+    } catch (error) {
+      return { kind: 'failed', message: `Couldn't lift the manual-download protection: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    return { kind: 'ok', value: lifted.length === 0 ? '' : ` Lifted the manual-download protection from ${plural(lifted.length, target.service === 'radarr' ? 'movie' : 'episode')}.` };
+  };
+
+  // The grab each deleted file came from, one per download: Sonarr records a pack's grab once per episode, and failing any one fails the download.
+  const grabsOf = (history: HistoryRecord[], fileIds: Set<number>) => {
+    const downloads = new Map<string, number[]>();
+    let untraced = 0;
+    for (const fileId of fileIds) {
+      const imported = history.find((record) => record.eventType === 'downloadFolderImported' && record.data.fileId === String(fileId) && record.downloadId !== null);
+      if (imported === undefined) {
+        untraced += 1;
+        continue;
+      }
+      const downloadId = (imported.downloadId as string).toUpperCase();
+      downloads.set(downloadId, [...(downloads.get(downloadId) ?? []), fileId]);
+    }
+    const grabs: { record: HistoryRecord & { id: number; sourceTitle: string }; fileIds: number[] }[] = [];
+    for (const [downloadId, ids] of downloads) {
+      const grab = history.find((record) => record.eventType === 'grabbed' && record.downloadId?.toUpperCase() === downloadId && record.id !== null && record.sourceTitle !== null);
+      if (grab === undefined) untraced += ids.length;
+      else grabs.push({ record: grab as HistoryRecord & { id: number; sourceTitle: string }, fileIds: ids });
+    }
+    return { grabs, untraced };
+  };
+
+  // Mark-failed blocklists without touching the library file; it refuses when the download client would remove failed downloads, which ends seeding.
+  const blocklistGrabs = async (target: DeleteTarget, history: HistoryRecord[], fileIds: Set<number>, held: Scoped[]): Promise<StepResult> => {
+    const { grabs, untraced } = grabsOf(history, fileIds);
+    const label = target.service === 'radarr' ? 'Radarr' : 'Sonarr';
+    const problems: string[] = [];
+    let blocked = 0;
+    for (const { record, fileIds: grabbedFiles } of grabs) {
+      const result = await blocklist.markFailed(target.service, record.id, {
+        movieId: target.service === 'radarr' ? target.movieId : null,
+        episodeIds: held.filter((episode) => episode.fileId !== null && grabbedFiles.includes(episode.fileId)).map((episode) => episode.id),
+        releaseTitle: record.sourceTitle,
+      }, { search: false });
+      if (result.kind === 'ok') blocked += 1;
+      else if (result.kind === 'remove_failed_on') problems.push(`${record.sourceTitle}: not blocklisted, because ${label}'s download client removes failed downloads, which would end seeding.`);
+      else problems.push(`${record.sourceTitle}: ${label} ${result.kind === 'refused' ? 'refused' : "couldn't be reached"}.`);
+    }
+    if (untraced > 0) problems.push(`No grab in ${label}'s history for ${plural(untraced, 'file')}, so ${untraced === 1 ? 'its release was' : 'their releases were'} not blocklisted.`);
+    const message = [`Blocklisted ${plural(blocked, 'release')}.`, ...problems].join(' ');
+    return { step: 'blocklist', outcome: problems.length === 0 ? 'done' : 'failed', message };
+  };
+
+  // Map → (un)monitor → delete in Sonarr or Radarr (a refusal stops everything) → wait for the files → blocklist and search
+  // (search again only) → torrents → second versions → history.
   // Every choice is checked against a fresh mapping before anything is deleted, so a stale dialog changes nothing.
-  const run = async (target: DeleteTarget, choices: Choices, mode: MovieMode = 'remove'): Promise<DeleteRun> => {
+  const run = async (target: DeleteTarget, choices: Choices, mode: Mode = defaultMode(target)): Promise<DeleteRun> => {
+    // A season delete must never fall through to removing its show.
+    if (!modesOf(target).includes(mode)) return { kind: 'rejected', message: `A ${mode} delete is not offered for this target.` };
     const key = `${target.service}:${titleId(target)}`;
     if (running.has(key)) return { kind: 'in_progress' };
     running.add(key);
     try {
       const gathered = await gather(target);
       if (gathered.kind !== 'ok') return gathered;
-      const { title, files, torrents, secondVersions, episodeIds, otherSeasons } = gathered.value;
+      const { title, files, torrents, secondVersions, episodes, otherSeasons, history } = gathered.value;
       const changed = (reason: string) => ({ kind: 'plan_changed', reason }) as const;
 
       const rows = new Map(secondVersions.map((row) => [row.id, row]));
@@ -269,62 +381,72 @@ export const createTitleDelete = (options: {
       let gonePaths = files.map((file) => file.path);
       // Torrents holding a file Sonarr would not delete stay, with the reason.
       const keptFor = new Map<string, string>();
-      if (target.service === 'sonarr' && target.seasonNumber !== undefined) {
-        const season = target.seasonNumber;
-        const stop = (message: string): DeleteRun => ({ kind: 'ran', deleted: false, steps: [...steps, { step: 'unmonitor', outcome: 'failed', message }] });
-        // Unmonitored first, so Sonarr does not search for the episodes again once their files are gone.
-        if (episodeIds.length > 0) {
-          const episodes = await arr.sonarr.monitorEpisodes(episodeIds, false);
-          if (episodes.kind !== 'ok') return stop(episodes.message);
-        }
-        const unmonitored = await arr.sonarr.monitorSeason(target.seriesId, season, false);
-        if (unmonitored.kind !== 'ok') return stop(unmonitored.message);
-        steps.push({ step: 'unmonitor', outcome: 'done', message: `Unmonitored season ${season} and its episodes in Sonarr.` });
-        // One at a time, and every file is tried even after a refusal (409 when the root folder is missing).
-        const results: FileOutcome[] = [];
-        for (const file of files) {
-          const result = await arr.sonarr.deleteEpisodeFile(file.fileId);
-          results.push({ fileId: file.fileId, path: file.path, deleted: result.kind === 'ok', reason: result.kind === 'ok' ? null : result.message });
-        }
-        const failed = results.filter((result) => !result.deleted);
-        for (const result of failed) {
-          for (const hash of files.find((file) => file.fileId === result.fileId)?.hashes ?? []) keptFor.set(hash, `Kept: Sonarr did not delete ${result.path}.`);
-        }
-        gonePaths = results.filter((result) => result.deleted).map((result) => result.path);
-        if (files.length > 0 && failed.length === files.length) {
-          return { kind: 'ran', deleted: false, steps: [...steps, { step: 'delete', outcome: 'failed', message: `Sonarr deleted none of the season's ${plural(files.length, 'file')}. The season stays unmonitored.`, files: results }] };
-        }
-        summary = failed.length === 0 ? `Unmonitored season ${season} in Sonarr and deleted its files.`
-          : `Unmonitored season ${season} in Sonarr; deleted ${results.length - failed.length} of its ${plural(files.length, 'file')}.`;
-        steps.push(files.length === 0
-          ? { step: 'delete', outcome: 'skipped', message: 'Sonarr has no files for this season.', files: results }
-          : { step: 'delete', outcome: failed.length === 0 ? 'done' : 'failed', message: `Deleted ${results.length - failed.length} of ${plural(files.length, 'file')} in Sonarr.`, files: results });
-      } else if (target.service === 'sonarr') {
+      const season = target.service === 'sonarr' ? target.seasonNumber : undefined;
+      const stop = (step: 'unmonitor' | 'monitor' | 'delete', message: string): DeleteRun => ({ kind: 'ran', deleted: false, steps: [...steps, { step, outcome: 'failed', message }] });
+      // The episodes whose files this delete removes: what a search again monitors, blocklists and searches for.
+      const fileIds = new Set(files.map((file) => file.fileId));
+      const deletedEpisodes = (ids: Set<number>) => episodes.filter((episode) => episode.fileId !== null && ids.has(episode.fileId));
+      let deletedFileIds = fileIds;
+
+      if (mode === 'remove' && target.service === 'sonarr') {
         const result = await arr.sonarr.deleteSeries(target.seriesId);
-        if (result.kind !== 'ok') return { kind: 'ran', deleted: false, steps: [...steps, { step: 'delete', outcome: 'failed', message: result.message }] };
+        if (result.kind !== 'ok') return stop('delete', result.message);
         summary = 'Removed from Sonarr with its files.';
         steps.push({ step: 'delete', outcome: 'done', message: summary });
-      } else if (mode === 'remove') {
+      } else if (mode === 'remove' && target.service === 'radarr') {
         const result = await arr.radarr.deleteMovie(target.movieId);
-        if (result.kind !== 'ok') return { kind: 'ran', deleted: false, steps: [...steps, { step: 'delete', outcome: 'failed', message: result.message }] };
+        if (result.kind !== 'ok') return stop('delete', result.message);
         summary = 'Removed from Radarr with its file.';
         steps.push({ step: 'delete', outcome: 'done', message: summary });
       } else {
-        // Unmonitored first, so Radarr does not search for the movie again once its file is gone.
-        const unmonitored = await arr.radarr.monitorMovie(target.movieId, false);
-        if (unmonitored.kind !== 'ok') return { kind: 'ran', deleted: false, steps: [...steps, { step: 'unmonitor', outcome: 'failed', message: unmonitored.message }] };
-        steps.push({ step: 'unmonitor', outcome: 'done', message: 'Unmonitored in Radarr.' });
-        summary = 'Kept in Radarr, unmonitored.';
-        if (files.length === 0) {
-          steps.push({ step: 'delete', outcome: 'skipped', message: 'Radarr has no file for this movie.' });
+        // Unmonitored first, so nothing searches for the files once they are gone; or monitored first, so the search that follows wants them.
+        const keep = mode === 'keepUnmonitored';
+        if (keep) {
+          const unmonitored = await unmonitor(target, episodes.map((episode) => episode.id));
+          if (unmonitored.kind !== 'ok') return stop('unmonitor', unmonitored.message);
+          steps.push({ step: 'unmonitor', outcome: 'done', message: unmonitored.value });
         } else {
-          const results = await Promise.all(files.map((file) => arr.radarr.deleteMovieFile(file.fileId)));
-          const failed = results.find((result) => result.kind !== 'ok');
-          if (failed !== undefined) {
-            return { kind: 'ran', deleted: false, steps: [...steps, { step: 'delete', outcome: 'failed', message: `${failed.message} The movie stays unmonitored.` }] };
+          const monitored = await monitorAgain(target, deletedEpisodes(fileIds));
+          if (monitored.kind !== 'ok') return stop('monitor', monitored.message);
+          steps.push({ step: 'monitor', outcome: 'done', message: monitored.value });
+        }
+        const stays = keep ? 'unmonitored' : 'monitored';
+        if (target.service === 'radarr') {
+          summary = keep ? 'Kept in Radarr, unmonitored.' : 'Kept in Radarr, monitored.';
+          if (files.length === 0) {
+            steps.push({ step: 'delete', outcome: 'skipped', message: 'Radarr has no file for this movie.' });
+          } else {
+            const results = await Promise.all(files.map((file) => arr.radarr.deleteMovieFile(file.fileId)));
+            const failed = results.find((result) => result.kind !== 'ok');
+            if (failed !== undefined) return stop('delete', `${failed.message} The movie stays ${stays}.`);
+            summary = keep ? 'Kept in Radarr, unmonitored, with its file deleted.' : 'Kept in Radarr, monitored, with its file deleted.';
+            steps.push({ step: 'delete', outcome: 'done', message: 'Deleted the movie file in Radarr.' });
           }
-          summary = 'Kept in Radarr, unmonitored, with its file deleted.';
-          steps.push({ step: 'delete', outcome: 'done', message: 'Deleted the movie file in Radarr.' });
+        } else {
+          // One at a time, and every file is tried even after a refusal (409 when the root folder is missing).
+          const results: FileOutcome[] = [];
+          for (const file of files) {
+            const result = await arr.sonarr.deleteEpisodeFile(file.fileId);
+            results.push({ fileId: file.fileId, path: file.path, deleted: result.kind === 'ok', reason: result.kind === 'ok' ? null : result.message });
+          }
+          const failed = results.filter((result) => !result.deleted);
+          for (const result of failed) {
+            for (const hash of files.find((file) => file.fileId === result.fileId)?.hashes ?? []) keptFor.set(hash, `Kept: Sonarr did not delete ${result.path}.`);
+          }
+          gonePaths = results.filter((result) => result.deleted).map((result) => result.path);
+          deletedFileIds = new Set(results.filter((result) => result.deleted).map((result) => result.fileId));
+          const owner = season !== undefined ? "the season's" : "the show's";
+          if (files.length > 0 && failed.length === files.length) {
+            const message = `Sonarr deleted none of ${owner} ${plural(files.length, 'file')}. ${season !== undefined ? 'The season' : 'The show'} stays ${stays}.`;
+            return { kind: 'ran', deleted: false, steps: [...steps, { step: 'delete', outcome: 'failed', message, files: results }] };
+          }
+          const verb = keep ? 'Unmonitored' : 'Monitored';
+          const where = season !== undefined ? `season ${season}` : 'the show';
+          summary = failed.length === 0 ? `${verb} ${where} in Sonarr and deleted its files.`
+            : `${verb} ${where} in Sonarr; deleted ${results.length - failed.length} of its ${plural(files.length, 'file')}.`;
+          steps.push(files.length === 0
+            ? { step: 'delete', outcome: 'skipped', message: `Sonarr has no files for ${season !== undefined ? 'this season' : 'this show'}.`, files: results }
+            : { step: 'delete', outcome: failed.length === 0 ? 'done' : 'failed', message: `Deleted ${results.length - failed.length} of ${plural(files.length, 'file')} in Sonarr.`, files: results });
         }
       }
       forget(target.service);
@@ -334,6 +456,26 @@ export const createTitleDelete = (options: {
       steps.push(keepAll === null
         ? { step: 'wait', outcome: 'done', message: `${label} deleted ${plural(gonePaths.length, 'library file')}.` }
         : { step: 'wait', outcome: 'failed', message: `${keepAll} Still there: ${left.join(', ')}` });
+
+      if (mode === 'searchAgain') {
+        const held = deletedEpisodes(deletedFileIds);
+        if (keepAll !== null) {
+          steps.push({ step: 'search', outcome: 'skipped', message: `Not searched: ${label} still had files after 2 minutes, so a search could not replace them.` });
+        } else if (target.service === 'sonarr' && held.length === 0) {
+          steps.push({ step: 'search', outcome: 'skipped', message: 'Not searched: no episode file was deleted.' });
+        } else {
+          if (choices.blocklistCurrent) steps.push(await blocklistGrabs(target, history, deletedFileIds, held));
+          const words = target.service === 'radarr' ? 'the movie' : plural(held.length, 'episode');
+          const lifted = await liftProtection(target, held);
+          const searched = lifted.kind !== 'ok' ? lifted
+            : target.service === 'radarr' ? await arr.radarr.searchAutomatically({ movieIds: [target.movieId] })
+              : await arr.sonarr.searchAutomatically({ episodeIds: held.map((episode) => episode.id) });
+          steps.push(searched.kind === 'ok'
+            ? { step: 'search', outcome: 'done', message: `${label} is searching for ${words}.${lifted.kind === 'ok' ? lifted.value : ''}` }
+            : { step: 'search', outcome: 'failed', message: `${label} did not start the search for ${words}: ${searched.message}` });
+          summary = `${summary} ${searched.kind === 'ok' ? 'Searching again.' : 'The search did not start.'}`;
+        }
+      }
 
       const torrentResults: TorrentOutcome[] = [];
       for (const hash of choices.removeTorrents) {
@@ -400,9 +542,10 @@ export const createTitleDelete = (options: {
         secondVersions: [...versionResults.values()],
       });
 
-      const season = target.service === 'sonarr' ? target.seasonNumber : undefined;
-      const kind = season !== undefined ? 'season_deleted' : target.service === 'sonarr' ? 'series_deleted' : mode === 'remove' ? 'movie_deleted'
-        : files.length === 0 ? 'movie_unmonitored' : 'movie_file_deleted';
+      const kind = mode === 'searchAgain' ? `${season !== undefined ? 'season' : target.service === 'sonarr' ? 'series' : 'movie'}_search_again`
+        : season !== undefined ? 'season_deleted'
+          : target.service === 'sonarr' ? (mode === 'remove' ? 'series_deleted' : 'series_files_deleted')
+            : mode === 'remove' ? 'movie_deleted' : files.length === 0 ? 'movie_unmonitored' : 'movie_file_deleted';
       const detail = [summary, keepAll, torrentsMessage, versionsMessage].filter((part) => part !== null).join(' ');
       database.prepare('INSERT INTO title_events (service, title_id, title, at, kind, detail) VALUES (?, ?, ?, ?, ?, ?)')
         .run(target.service, titleId(target), season === undefined ? title : `${title} Season ${season}`, now(), kind, detail);
@@ -422,10 +565,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const hasKeys = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).sort().join(',') === [...keys].sort().join(',');
 const MAX_CHOICES = 1_000;
 
-const parseChoices = (body: unknown, withMode: boolean): (Choices & { mode?: MovieMode }) | undefined => {
-  if (!isRecord(body) || !hasKeys(body, withMode ? ['mode', 'removeTorrents', 'secondVersions'] : ['removeTorrents', 'secondVersions'])) return undefined;
-  const { mode, removeTorrents, secondVersions } = body;
-  if (withMode && mode !== 'remove' && mode !== 'keepUnmonitored') return undefined;
+// A movie delete has always named its mode; a show or season delete that leaves it out gets what it did before the choice existed.
+const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: Mode }) | undefined => {
+  if (!isRecord(body) || !('removeTorrents' in body) || !('secondVersions' in body)) return undefined;
+  if (Object.keys(body).some((key) => !['mode', 'blocklistCurrent', 'removeTorrents', 'secondVersions'].includes(key))) return undefined;
+  const { removeTorrents, secondVersions } = body;
+  const mode = body.mode ?? (target.service === 'radarr' ? undefined : defaultMode(target));
+  if (!modesOf(target).includes(mode as Mode)) return undefined;
+  const blocklistCurrent = body.blocklistCurrent ?? false;
+  if (typeof blocklistCurrent !== 'boolean' || (blocklistCurrent && mode !== 'searchAgain')) return undefined;
   if (!Array.isArray(removeTorrents) || removeTorrents.length > MAX_CHOICES || !Array.isArray(secondVersions) || secondVersions.length > MAX_CHOICES) return undefined;
   if (removeTorrents.some((hash) => typeof hash !== 'string' || !/^[0-9A-Fa-f]{40}$/.test(hash))) return undefined;
   const hashes = (removeTorrents as string[]).map((hash) => hash.toUpperCase());
@@ -436,7 +584,7 @@ const parseChoices = (body: unknown, withMode: boolean): (Choices & { mode?: Mov
     versions.push({ id: item.id as number, removeTorrent: item.removeTorrent });
   }
   if (new Set(versions.map((version) => version.id)).size !== versions.length) return undefined;
-  return { removeTorrents: hashes, secondVersions: versions, ...(withMode ? { mode: mode as MovieMode } : {}) };
+  return { removeTorrents: hashes, secondVersions: versions, blocklistCurrent, mode: mode as Mode };
 };
 
 // Mounted under /api/library next to the library routes.
@@ -463,9 +611,10 @@ export const createTitleDeleteRoutes = (titleDelete: TitleDelete) => {
     } catch {
       return context.json(invalid, 400);
     }
-    const choices = parseChoices(body, target?.service === 'radarr');
+    const choices = target === null ? undefined : parseChoices(body, target);
     if (target === null || choices === undefined) return context.json(invalid, 400);
-    const result = await titleDelete.run(target, choices, choices.mode);
+    const { mode, ...chosen } = choices;
+    const result = await titleDelete.run(target, chosen, mode);
     if (result.kind === 'ran') return context.json({ deleted: result.deleted, steps: result.steps });
     if (result.kind === 'plan_changed') return context.json({ error: 'plan_changed', reason: result.reason }, 409);
     if (result.kind === 'in_progress') return context.json({ error: 'in_progress' }, 409);

@@ -10509,6 +10509,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   const { createTorrentFiles } = await import(torrentFilesModuleUrl);
   const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
   const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE, OTHER_SEASONS } = await import(titleDeleteModuleUrl);
+  const { createBlocklist } = await import(new URL('../dist/server/blocklist.js', import.meta.url).href);
   const { createHistory } = await import(historyModuleUrl);
   const { createSearch, parseSearchQuery } = await import(searchModuleUrl);
   const { createTitleStore } = await import(titleStoreModuleUrl);
@@ -10558,11 +10559,25 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     const deleteVersion = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: async () => {} });
     const clock = { value: 1_800_000_000_000, sleeps: 0 };
     const search = createSearch(database, arr, createTitleStore(database, { now: () => clock.value }));
+    // The owner's manual downloads; lifting one records it, as protection.ts would before syncing Sonarr or Radarr.
+    const protection = { items: [], lifted: [] };
+    // Neither download client removes failed downloads, so marking a grab failed keeps its torrent seeding.
+    for (const service of ['radarr', 'sonarr']) {
+      arrFake[service].routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/downloadclient' ? { status: 200, body: [] } : undefined));
+    }
     const routes = createTitleDeleteRoutes(createTitleDelete({
       database,
       arr,
       torrentFiles,
       deleteVersion,
+      protection: {
+        list: () => protection.items,
+        unprotect: async (item) => {
+          protection.lifted.push(item);
+          protection.items = protection.items.filter((other) => other !== item);
+        },
+      },
+      blocklist: createBlocklist({ database, arr, isManualDownload: () => false, now: () => clock.value }),
       advise: async (hash) => ({ recommendation: 'safe', reason: `advice for ${hash.slice(0, 2)}`, globalRatio: null }),
       forget: search.forget,
       now: () => clock.value,
@@ -10621,7 +10636,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       return results.find((result) => result.service === service).inLibrary;
     };
     const savedLookups = (service) => Number(database.prepare('SELECT COUNT(*) AS n FROM search_lookups WHERE service = ?').get(service).n);
-    return { at, database, fake, arrFake, poller, clock, addTorrent, hardlink, addVersion, onDelete, plan, remove, requests, versionState, deletions, steps, inLibrary, savedLookups };
+    return { at, database, fake, arrFake, poller, clock, protection, addTorrent, hardlink, addVersion, onDelete, plan, remove, requests, versionState, deletions, steps, inLibrary, savedLookups };
   };
 
   // Dune: its file is a hardlink of CUR; OLD and SHARED were imported before an upgrade, and SHARED's data also backs another movie's file.
@@ -10650,6 +10665,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.equal(status, 200);
     assert.equal(body.title, 'Dune (2021)');
     assert.equal(body.recycleBin, '/data/recycle');
+    assert.deepEqual(body.modes, ['remove', 'keepUnmonitored', 'searchAgain']);
     assert.deepEqual(body.files.map((file) => [file.fileId, file.state, file.hashes, file.note]), [[11, 'linked', [CUR], null]]);
     assert.deepEqual(body.torrents.map((torrent) => [torrent.hash, torrent.upgradedAway, torrent.ticked, torrent.removal.allowed, torrent.advice.reason]),
       [[CUR, false, false, true, 'advice for A1'], [OLD, true, false, true, 'advice for A2'], [SHARED, true, false, false, 'advice for A3']]);
@@ -10767,13 +10783,17 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(copied.torrents.map((torrent) => [torrent.hash, torrent.label, torrent.upgradedAway, torrent.removal.allowed]), [[CUR, 'imported by copy', false, true]]);
   });
 
-  // Accepting a choice the server never offered, or a movie delete without its mode, turns this red.
-  await t.test('a delete request must name its mode for a movie only, and well-formed choices the plan still offers', async () => {
+  // Accepting a choice the server never offered, a movie delete without its mode, a season delete that would remove its show,
+  // or a blocklist without a search again turns this red.
+  await t.test('a delete request names a mode its target offers, and well-formed choices the plan still offers', async () => {
     const w = await dune();
     const bad = [
       ['/movie/1', { removeTorrents: [], secondVersions: [] }],
       ['/movie/1', { mode: 'archive', removeTorrents: [], secondVersions: [] }],
-      ['/series/1', { mode: 'remove', removeTorrents: [], secondVersions: [] }],
+      ['/series/1/season/1', { mode: 'remove', removeTorrents: [], secondVersions: [] }],
+      ['/movie/1', { mode: 'keepUnmonitored', blocklistCurrent: true, removeTorrents: [], secondVersions: [] }],
+      ['/movie/1', { mode: 'searchAgain', blocklistCurrent: 'yes', removeTorrents: [], secondVersions: [] }],
+      ['/movie/1', { mode: 'remove', removeTorrents: [], secondVersions: [], purge: true }],
       ['/movie/1', { mode: 'remove', removeTorrents: ['xyz'], secondVersions: [] }],
       ['/movie/1', { mode: 'remove', removeTorrents: [CUR, CUR.toLowerCase()], secondVersions: [] }],
       ['/movie/1', { mode: 'remove', removeTorrents: [], secondVersions: [{ id: 1 }] }],
@@ -10783,6 +10803,65 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.equal((await w.remove('/movie/1', { mode: 'remove', removeTorrents: [SHARED], secondVersions: [] })).status, 409);
     assert.equal((await w.remove('/movie/1', { mode: 'remove', removeTorrents: [], secondVersions: [{ id: 99, removeTorrent: false }] })).status, 409);
     assert.equal(w.requests('radarr').some((request) => request.startsWith('DELETE')), false);
+  });
+
+  // The grab Dune's library file came from, as Radarr's history records it.
+  const duneGrab = (w) => w.arrFake.radarr.state.history.push(
+    historyRecord({ id: 501, eventType: 'grabbed', downloadId: CUR.toLowerCase(), movieId: 1, sourceTitle: 'Dune.2021.2160p-GRP' }),
+    historyRecord({ eventType: 'downloadFolderImported', downloadId: CUR.toLowerCase(), movieId: 1, data: { fileId: '11' } }),
+  );
+
+  // Deleting the file before the movie is monitored, leaving its manual-download protection, blocklisting or searching before the file
+  // is gone, or removing the movie record turns this red.
+  await t.test('searching again monitors the movie and lifts its protection, deletes the file, blocklists its grab, then searches', async () => {
+    const w = await dune();
+    w.arrFake.radarr.state.movies[0].monitored = false;
+    w.protection.items.push({ service: 'radarr', kind: 'movie', movieId: 1 }, { service: 'radarr', kind: 'movie', movieId: 2 });
+    duneGrab(w);
+    w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
+    const { status, body } = await w.remove('/movie/1', { mode: 'searchAgain', blocklistCurrent: true, removeTorrents: [], secondVersions: [] });
+    assert.equal(status, 200);
+    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'blocklist:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    const radarr = w.requests('radarr');
+    const at = (request) => radarr.indexOf(request);
+    assert.ok(at('PUT /api/v3/movie/editor') !== -1 && at('PUT /api/v3/movie/editor') < at('DELETE /api/v3/moviefile/11'));
+    assert.ok(at('DELETE /api/v3/moviefile/11') < at('POST /api/v3/history/failed/501') && at('POST /api/v3/history/failed/501') < at('POST /api/v3/command'));
+    assert.equal(radarr.some((request) => request.startsWith('DELETE /api/v3/movie/')), false);
+    assert.equal(w.arrFake.radarr.state.movies[0].monitored, true);
+    assert.deepEqual(w.protection.lifted, [{ service: 'radarr', kind: 'movie', movieId: 1 }]);
+    assert.deepEqual(w.arrFake.radarr.state.failed, [501]);
+    assert.deepEqual(w.arrFake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [1] }]);
+    assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [CUR, OLD, SHARED, V1]);
+    assert.equal(w.versionState(w.version), 'imported');
+    assert.equal((await w.deletions())[0].event, 'Movie file deleted, searching again');
+  });
+
+  // Lifting the manual-download protection, blocklisting or searching when Radarr refused to delete the file turns this red.
+  await t.test('a refused file delete stops a search again with the movie still protected', async () => {
+    const w = await dune();
+    w.protection.items.push({ service: 'radarr', kind: 'movie', movieId: 1 });
+    duneGrab(w);
+    w.onDelete('radarr', '/api/v3/moviefile/11', { status: 500 });
+    const { body } = await w.remove('/movie/1', { mode: 'searchAgain', blocklistCurrent: true, removeTorrents: [CUR], secondVersions: [] });
+    assert.deepEqual([body.deleted, w.steps(body)], [false, ['map:done', 'monitor:done', 'delete:failed']]);
+    assert.match(body.steps[2].message, /The movie stays monitored\.$/);
+    assert.deepEqual(w.protection.lifted, []);
+    assert.deepEqual([w.arrFake.radarr.state.failed, w.arrFake.radarr.state.commands], [[], []]);
+    assert.equal(w.fake.calls.includes('d.erase'), false);
+  });
+
+  // Marking the grab failed while the download client would erase its seeding torrent, or dropping the search because the blocklist failed, turns this red.
+  await t.test('searching again does not blocklist when the download client removes failed downloads, and still searches', async () => {
+    const w = await dune();
+    w.arrFake.radarr.routes.unshift((method, url) => (method === 'GET' && url.pathname === '/api/v3/downloadclient'
+      ? { status: 200, body: [{ enable: true, removeFailedDownloads: true }] } : undefined));
+    duneGrab(w);
+    w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
+    const { body } = await w.remove('/movie/1', { mode: 'searchAgain', blocklistCurrent: true, removeTorrents: [], secondVersions: [] });
+    assert.deepEqual(w.steps(body).slice(4, 6), ['blocklist:failed', 'search:done']);
+    assert.match(body.steps[4].message, /Blocklisted 0 releases\. Dune\.2021\.2160p-GRP: not blocklisted, because Radarr's download client removes failed downloads/);
+    assert.deepEqual(w.arrFake.radarr.state.failed, []);
+    assert.deepEqual(w.arrFake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [1] }]);
   });
 
   // Andor: a season pack backs three episode files; SINGLE backs one episode and also a file of another show.
@@ -10925,12 +11004,13 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     return { ...w, FULL, files, versions };
   };
 
-  // Offering the full-series pack (a copy, so no link check sees it), listing another season's file or second version, or dropping willUnmonitor turns this red.
+  // Offering the full-series pack (a copy, so no link check sees it), listing another season's file or second version, dropping willUnmonitor,
+  // or offering to remove the show from a season delete turns this red.
   await t.test('the season plan lists only its own files and second versions and never offers a full-series pack', async () => {
     const w = await seasons();
     const { status, body } = await w.plan('/series/5/season/1');
     assert.equal(status, 200);
-    assert.deepEqual([body.title, body.seasonNumber, body.willUnmonitor], ['Andor', 1, true]);
+    assert.deepEqual([body.title, body.seasonNumber, body.willUnmonitor, body.modes], ['Andor', 1, true, ['keepUnmonitored', 'searchAgain']]);
     assert.deepEqual(body.files.map((file) => [file.fileId, file.state]), [[21, 'linked'], [22, 'linked'], [23, 'linked'], [24, 'copied']]);
     assert.deepEqual(body.torrents.map((torrent) => [torrent.hash, torrent.ticked, torrent.removal.allowed, torrent.removal.reason ?? null]),
       [[PACK, false, true, null], [w.FULL, false, false, OTHER_SEASONS]]);
@@ -10976,6 +11056,48 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.match(body.steps[4].torrents[0].reason, /Sonarr did not delete .*S01E02/);
     assert.equal(w.fake.calls.includes('d.erase'), false);
     assert.equal(await exists(w.files[1]), true);
+  });
+
+  // Deleting a file before the show, its seasons, episodes and new seasons are unmonitored, or removing the show from Sonarr, turns this red.
+  await t.test('keeping a show unmonitored stops every season, episode and new season before deleting each file, and keeps the show', async () => {
+    const w = await seasons();
+    const { status, body } = await w.remove('/series/5', { mode: 'keepUnmonitored', removeTorrents: [PACK], secondVersions: [] });
+    assert.equal(status, 200);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:skipped', 'history:done']);
+    const sonarr = w.requests('sonarr');
+    const firstDelete = sonarr.findIndex((request) => request.startsWith('DELETE'));
+    assert.ok(sonarr.indexOf('PUT /api/v3/episode/monitor') < firstDelete && sonarr.indexOf('PUT /api/v3/series/5') < firstDelete);
+    assert.deepEqual(sonarr.filter((request) => request.startsWith('DELETE')), [21, 22, 23, 24, 25].map((id) => `DELETE /api/v3/episodefile/${id}`));
+    const [series] = w.arrFake.sonarr.state.series;
+    assert.deepEqual([series.monitored, series.monitorNewItems, series.seasons.map((season) => season.monitored)], [false, 'none', [false, false]]);
+    assert.equal(w.arrFake.sonarr.state.episodes.every((episode) => episode.monitored === false), true);
+    assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [w.FULL, V1, V2]);
+    assert.equal((await w.deletions())[0].event, 'Show files deleted, unmonitored');
+  });
+
+  // Searching the whole show instead of the deleted episodes, searching before their files are gone, leaving them unmonitored,
+  // lifting another season's protection, or blocklisting when not asked turns this red.
+  await t.test('searching a season again monitors its episodes and the season, deletes each file, then searches only those episodes', async () => {
+    const w = await seasons();
+    const state = w.arrFake.sonarr.state;
+    state.series[0].seasons[0].monitored = false;
+    for (const episode of state.episodes) episode.monitored = false;
+    w.protection.items.push(
+      { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 102, seasonNumber: 1, episodeNumber: 2 },
+      { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 201, seasonNumber: 2, episodeNumber: 1 },
+    );
+    const { body } = await w.remove('/series/5/season/1', { mode: 'searchAgain', removeTorrents: [], secondVersions: [] });
+    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    const sonarr = w.requests('sonarr');
+    assert.ok(sonarr.findLastIndex((request) => request.startsWith('DELETE')) < sonarr.indexOf('POST /api/v3/command'));
+    assert.deepEqual(state.episodes.map((episode) => [episode.id, episode.monitored]), [[101, true], [102, true], [103, true], [104, true], [201, false]]);
+    assert.deepEqual(state.series[0].seasons.map((season) => [season.seasonNumber, season.monitored]), [[1, true], [2, true]]);
+    assert.deepEqual(w.protection.lifted.map((item) => item.episodeId), [102]);
+    assert.deepEqual(state.commands, [{ name: 'EpisodeSearch', episodeIds: [101, 102, 103, 104] }]);
+    assert.deepEqual(state.failed, []);
+    assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [PACK, w.FULL, V1, V2]);
+    const [event] = await w.deletions();
+    assert.deepEqual([event.title, event.event], ['Andor Season 1', 'Season files deleted, searching again']);
   });
 
   // Deleting files after an unmonitor call fails turns this red.

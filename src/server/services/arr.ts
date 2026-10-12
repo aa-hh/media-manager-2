@@ -19,6 +19,7 @@ export type SonarrTitles = {
   addSeries: (record: Record<string, unknown>, fields: Record<string, unknown>) => Promise<Result<{ id: number }>>;
   monitorSeries: (seriesId: number, monitored: boolean) => Promise<Result<void>>;
   monitorSeason: (seriesId: number, seasonNumber: number, monitored: boolean) => Promise<Result<void>>;
+  setSeriesMonitoring: (seriesId: number, change: { monitored: boolean; seasons: number[] | 'all'; monitorNewItems?: 'all' | 'none' }) => Promise<Result<void>>;
   setTag: (seriesId: number, tagId: number, tagged: boolean) => Promise<Result<void>>;
   episodes: (seriesId: number, options?: { seasonNumber?: number; withFiles?: boolean }) => Promise<Result<Episode[]>>;
   episode: (episodeId: number) => Promise<Result<Episode>>;
