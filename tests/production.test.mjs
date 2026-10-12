@@ -10346,6 +10346,8 @@ test('the settings screen sends only changed fields and ranks each service state
       [{ address: ' http://localhost:8989 ', secrets: { 'sonarr.apiKey': '  ' } }, {}],
       [{ address: 'http://localhost:8990', secrets: {} }, { serviceAddresses: { 'sonarr.url': 'http://localhost:8990' } }],
       [{ address: 'http://localhost:8989', secrets: { 'sonarr.apiKey': 'new' } }, { credentials: { 'sonarr.apiKey': 'new' } }],
+      // Sending a pasted key with its stray spaces turns this red: the service refuses it.
+      [{ address: 'http://localhost:8989', secrets: { 'sonarr.apiKey': ' new ' } }, { credentials: { 'sonarr.apiKey': 'new' } }],
     ];
     for (const [draft, expected] of cases) assert.deepEqual(changes('sonarr', saved, draft), expected);
   });
@@ -10487,7 +10489,7 @@ test('the tracker rule form sends the saved rule back unchanged and converts per
   // typed text as a blank turns this red.
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/settings/trackers.ts', import.meta.url), 'utf8');
-  const { draftFromRow, ruleBody, notANumber } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const { draftFromRow, ruleBody, notANumber, statFacts } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
   const rule = {
     seedHours: [{ upToGB: 1, hours: 72 }, { upToGB: 50, hours: 72, perGB: 2 }, { hours: -219.2023, lnGB: 100 }],
     ratio: 0.9, logic: 'or', minGlobalRatio: null, partial: { exemptBelow: 0.1, ratio: 0.9, maxHours: 1440 },
@@ -10498,6 +10500,11 @@ test('the tracker rule form sends the saved rule back unchanged and converts per
   const wider = ruleBody({ ...draft, timePercent: '20' }, draft);
   assert.deepEqual(wider.margins, { timeFactor: 1.2, extraHours: 6, ratioExtra: 0.05, globalRatioFactor: 1.25 });
   assert.deepEqual(notANumber({ ...draft, ratio: '0.9x' }), { field: 'ratio', reason: 'Enter a number, such as 0.9 or 72.' });
+  // Letting a number too large for JSON through turns this red: it goes as null and quietly clears the ratio.
+  assert.equal(notANumber({ ...draft, ratio: '1e999' })?.field, 'ratio');
+  // Scaling only positive byte counts turns this red: a negative buffer shows as raw bytes.
+  const none = { ratio: null, uploadedBytes: null, downloadedBytes: null, seeding: null, leeching: null, bonus: null, hitAndRuns: null, requiredRatio: null };
+  assert.deepEqual(statFacts({ ...none, bufferBytes: -5_120_000_000_000 }), [{ label: 'Buffer', value: '-5.12 TB' }]);
 });
 
 test('deleting a movie or a show maps its files first, keeps seeding unless chosen, and stops when Sonarr or Radarr refuses', async (t) => {

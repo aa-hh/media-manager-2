@@ -152,7 +152,7 @@ export function FoldersEditor({ request, onSaved, wizard }: {
       </div>
 
       {warned.length > 0 && (
-        <Callout look="warning" title="Saved, with a warning">
+        <Callout look="warning" title="Saved, with a warning" className="[overflow-wrap:anywhere]">
           {warned.map(({ field, label }) => `${label}: ${warnings[field]}`).join(' ')}
         </Callout>
       )}
