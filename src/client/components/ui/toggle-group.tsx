@@ -23,8 +23,8 @@ const segments: Record<ToggleGroupSize, string> = {
 
 const items: Record<ToggleGroupSize, string> = {
   row: 'h-6 rounded-xs px-(--control-px-row)',
-  default: 'h-8.5 rounded-(--control-radius-row) px-3.5',
-  large: 'h-10 rounded-(--control-radius-default) px-(--control-px-large)',
+  default: 'h-7.5 rounded-(--control-radius-row) px-3.5',
+  large: 'h-9 rounded-(--control-radius-default) px-(--control-px-large)',
 };
 
 type ToggleGroupProps = Omit<ComponentProps<typeof ToggleGroupPrimitive>, 'value' | 'defaultValue' | 'onValueChange' | 'multiple'> & {

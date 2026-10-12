@@ -131,14 +131,14 @@
 
   /* Controls */
   --control-h-row: 28px;
-  --control-h-default: 40px;
-  --control-h-large: 48px;
+  --control-h-default: 36px;
+  --control-h-large: 44px;
   --control-px-row: 10px;
   --control-px-default: 16px;
-  --control-px-large: 20px;
+  --control-px-large: 18px;
   --control-text-row: 13px;
   --control-text-default: 14px;
-  --control-text-large: 15px;
+  --control-text-large: 14px;
   --control-radius-row: 6px;
   --control-radius-default: 8px;
   --control-radius-large: 10px;
