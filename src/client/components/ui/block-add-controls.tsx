@@ -1,4 +1,4 @@
-// v2/Block/add-controls — design/design-system.lib.pen RJNba
+// v2/Block/add-controls — ~/Projects/media-manager-2-design/design-system.lib.pen RJNba
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

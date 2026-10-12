@@ -1,4 +1,4 @@
-// v2/Field/labelled — design/design-system.lib.pen N61zp
+// v2/Field/labelled — ~/Projects/media-manager-2-design/design-system.lib.pen N61zp
 import { Field } from '@base-ui/react/field';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

@@ -1,5 +1,5 @@
-// v2/Fact — design/design-system.lib.pen TeJ1Y
-// v2/Fact/row — design/design-system.lib.pen e95lV
+// v2/Fact — ~/Projects/media-manager-2-design/design-system.lib.pen TeJ1Y
+// v2/Fact/row — ~/Projects/media-manager-2-design/design-system.lib.pen e95lV
 import type { ComponentProps, ReactNode } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';

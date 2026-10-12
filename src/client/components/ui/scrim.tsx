@@ -1,4 +1,4 @@
-// v2/Scrim — design/design-system.lib.pen y7vLCb
+// v2/Scrim — ~/Projects/media-manager-2-design/design-system.lib.pen y7vLCb
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 

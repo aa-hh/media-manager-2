@@ -1,4 +1,4 @@
-// v2/Row/import-file — design/design-system.lib.pen tm5WE
+// v2/Row/import-file — ~/Projects/media-manager-2-design/design-system.lib.pen tm5WE
 import type { ReactNode } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';

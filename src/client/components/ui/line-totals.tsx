@@ -1,4 +1,4 @@
-// v2/Line/totals — design/design-system.lib.pen mBarH
+// v2/Line/totals — ~/Projects/media-manager-2-design/design-system.lib.pen mBarH
 import { ArrowRight } from 'lucide-react';
 import type { ComponentProps, MouseEvent, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

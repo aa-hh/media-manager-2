@@ -1,4 +1,4 @@
-// v2/Select trigger — design/design-system.lib.pen v8Swg
+// v2/Select trigger — ~/Projects/media-manager-2-design/design-system.lib.pen v8Swg
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';

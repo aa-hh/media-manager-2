@@ -1,4 +1,4 @@
-// v2/Downloads live bar — design/design-system.lib.pen jXjdR
+// v2/Downloads live bar — ~/Projects/media-manager-2-design/design-system.lib.pen jXjdR
 import { Collapsible } from '@base-ui/react/collapsible';
 import { ArrowDownToLine, ChevronUp } from 'lucide-react';
 import type { ReactNode } from 'react';

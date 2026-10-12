@@ -1,4 +1,4 @@
-// v2/Kbd — design/design-system.lib.pen NAj8m
+// v2/Kbd — ~/Projects/media-manager-2-design/design-system.lib.pen NAj8m
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

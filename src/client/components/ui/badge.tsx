@@ -1,4 +1,4 @@
-// v2/Badge — design/design-system.lib.pen zGBcp
+// v2/Badge — ~/Projects/media-manager-2-design/design-system.lib.pen zGBcp
 import { X } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';

@@ -1,4 +1,4 @@
-// v2/Status/rule pill — design/design-system.lib.pen ir39A
+// v2/Status/rule pill — ~/Projects/media-manager-2-design/design-system.lib.pen ir39A
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

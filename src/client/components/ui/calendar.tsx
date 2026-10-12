@@ -1,8 +1,8 @@
-// v2/Calendar/Entry — design/design-system.lib.pen zrJc8
-// v2/Calendar/DayHeader — design/design-system.lib.pen t2YxG
-// v2/Calendar/MonthCell — design/design-system.lib.pen z4pNq0
-// v2/Calendar/Now line — design/design-system.lib.pen Ey0Ju
-// v2/Calendar/Header — design/design-system.lib.pen kGPpG
+// v2/Calendar/Entry — ~/Projects/media-manager-2-design/design-system.lib.pen zrJc8
+// v2/Calendar/DayHeader — ~/Projects/media-manager-2-design/design-system.lib.pen t2YxG
+// v2/Calendar/MonthCell — ~/Projects/media-manager-2-design/design-system.lib.pen z4pNq0
+// v2/Calendar/Now line — ~/Projects/media-manager-2-design/design-system.lib.pen Ey0Ju
+// v2/Calendar/Header — ~/Projects/media-manager-2-design/design-system.lib.pen kGPpG
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';

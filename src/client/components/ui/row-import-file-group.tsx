@@ -1,4 +1,4 @@
-// v2/Row/import-file-group — design/design-system.lib.pen N2L6Em
+// v2/Row/import-file-group — ~/Projects/media-manager-2-design/design-system.lib.pen N2L6Em
 import { ChevronRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';

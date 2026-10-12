@@ -1,5 +1,5 @@
-// v2/ToggleGroup — design/design-system.lib.pen cofqY
-// v2/ToggleGroup item — design/design-system.lib.pen EBTr5
+// v2/ToggleGroup — ~/Projects/media-manager-2-design/design-system.lib.pen cofqY
+// v2/ToggleGroup item — ~/Projects/media-manager-2-design/design-system.lib.pen EBTr5
 import { Toggle } from '@base-ui/react/toggle';
 import { ToggleGroup as ToggleGroupPrimitive } from '@base-ui/react/toggle-group';
 import { createContext, use, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from 'react';
