@@ -6243,6 +6243,128 @@ test('missing movies and episodes are searched when they come out and every six 
     assert.equal(commands().length, 2);
     database.close();
   });
+
+  // Sending an EpisodeSearch for a finished season with several missing episodes, a SeasonSearch for an airing season or a single missing episode, or two SeasonSearches in a row for the same season (including by comparing against Sonarr's later lastSearchTime) turns this red.
+  await t.test('an aired season with several missing episodes gets a season search, then an episode search for what is left, then a season search again', async () => {
+    const database = openDatabase(join(root, 'season-search', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const aired = (id, seriesId, seasonNumber, day) => ({ id, seriesId, seasonNumber, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: `Show ${seriesId}`, added: '2025-01-01T00:00:00Z' } });
+    const episodes = [aired(11, 1, 1, 1), aired(12, 1, 1, 2), aired(13, 1, 1, 3), aired(21, 2, 1, 1), aired(22, 2, 1, 2), aired(31, 3, 2, 1)];
+    const { fake, ...arr } = connectArr(database);
+    fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
+      ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
+    fake.sonarr.state.episodes = [
+      ...episodes.map(({ id, seriesId, seasonNumber, airDateUtc }) => episodeRecord({ id, seriesId, seasonNumber, airDateUtc })),
+      episodeRecord({ id: 23, seriesId: 2, seasonNumber: 1, airDateUtc: new Date(clock.value + 7 * 24 * hour).toISOString() }),
+    ];
+    const commands = () => fake.sonarr.state.commands.map((c) => ['sonarr', c]);
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const problems = createProblems({ database, events, now });
+    const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: () => false });
+    const seasonLog = () => database.prepare('SELECT series_id, season_number, searched_at FROM season_search_log').all().map((row) => [row.series_id, row.season_number, row.searched_at]);
+    const season = ['sonarr', { name: 'SeasonSearch', seriesId: 1, seasonNumber: 1 }];
+    // Sonarr stamps lastSearchTime a few seconds after our own record, when it runs the command.
+    const sonarrStamps = (ids) => {
+      for (const episode of episodes) if (ids.includes(episode.id)) episode.lastSearchTime = new Date(clock.value + 5000).toISOString();
+    };
+
+    await scheduler.check();
+    const first = clock.value;
+    assert.deepEqual(commands(), [season, ['sonarr', { name: 'EpisodeSearch', episodeIds: [21, 22, 31] }]]);
+    for (const id of [11, 12, 13]) assert.equal(database.prepare('SELECT searched_at FROM search_log WHERE subject = ?').get(`sonarr:episode:${id}`)?.searched_at, first);
+    assert.deepEqual(seasonLog(), [[1, 1, first]]);
+    sonarrStamps([11, 12, 13, 21, 22, 31]);
+
+    episodes.splice(episodes.findIndex((episode) => episode.id === 13), 1);
+    clock.value += 6 * hour + minute;
+    await scheduler.check();
+    assert.deepEqual(commands().slice(2), [['sonarr', { name: 'EpisodeSearch', episodeIds: [11, 12, 21, 22, 31] }]]);
+    assert.deepEqual(seasonLog(), [[1, 1, first]]);
+    sonarrStamps([11, 12, 21, 22, 31]);
+
+    clock.value += 6 * hour + minute;
+    await scheduler.check();
+    assert.deepEqual(commands().slice(3), [season, ['sonarr', { name: 'EpisodeSearch', episodeIds: [21, 22, 31] }]]);
+    assert.deepEqual(seasonLog(), [[1, 1, clock.value]]);
+    database.close();
+  });
+
+  // Grouping a season into a SeasonSearch even though one of its missing episodes was skipped for being queued or a manual download turns this red.
+  await t.test('an aired season with a queued missing episode gets an episode search for the rest, not a season search', async () => {
+    const database = openDatabase(join(root, 'season-search-queued', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z' } });
+    const episodes = [aired(11, 1), aired(12, 2), aired(13, 3)];
+    const { fake, ...arr } = connectArr(database);
+    fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
+      ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
+    fake.sonarr.state.episodes = episodes.map(({ id, seriesId, seasonNumber, airDateUtc }) => episodeRecord({ id, seriesId, seasonNumber, airDateUtc }));
+    database.prepare(`INSERT INTO arr_queue (service, queue_id, download_id, movie_id, series_id, episode_id, title, status, tracked_status,
+      tracked_state, status_messages, error_message, indexer, protocol, quality, formats, format_score, size_bytes, size_left_bytes)
+      VALUES ('sonarr', 1, NULL, NULL, 1, 13, 'x', 'downloading', 'ok', 'downloading', '[]', '', '', 'torrent', '', '[]', 0, 0, 0)`).run();
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const problems = createProblems({ database, events, now });
+    const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: () => false });
+
+    await scheduler.check();
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [11, 12] }]);
+    assert.deepEqual(database.prepare('SELECT * FROM season_search_log').all(), []);
+    database.close();
+  });
+
+  // Treating a season as not last searched whole when none of its due episodes has a search record of ours (a season_search_log row but no search_log rows) turns this red.
+  await t.test('newly monitored episodes of a season searched whole an hour ago get an episode search, not a second season search', async () => {
+    const database = openDatabase(join(root, 'season-search-new-episodes', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const aired = (id) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: '2026-09-01T00:00:00Z', series: { title: 'Show 1', added: '2025-01-01T00:00:00Z' } });
+    const episodes = [aired(13), aired(14)];
+    const { fake, ...arr } = connectArr(database);
+    fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
+      ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
+    fake.sonarr.state.episodes = [11, 12, 13, 14].map((id) => episodeRecord({ id, seriesId: 1, seasonNumber: 1, airDateUtc: '2026-09-01T00:00:00Z' }));
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const problems = createProblems({ database, events, now });
+    const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: () => false });
+
+    await scheduler.check();
+    const first = clock.value;
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'SeasonSearch', seriesId: 1, seasonNumber: 1 }]);
+    episodes.unshift(aired(11), aired(12));
+    clock.value += hour;
+    await scheduler.check();
+    assert.deepEqual(fake.sonarr.state.commands.slice(1), [{ name: 'EpisodeSearch', episodeIds: [11, 12] }]);
+    assert.deepEqual(database.prepare('SELECT series_id, season_number, searched_at FROM season_search_log').all().map((row) => [row.series_id, row.season_number, row.searched_at]), [[1, 1, first]]);
+    database.close();
+  });
+
+  // Leaving a season with an episode skipped for being in search_backlog open to a SeasonSearch turns this red.
+  await t.test('an aired season with a missing episode in the search backlog gets an episode search for the rest, not a season search', async () => {
+    const database = openDatabase(join(root, 'season-search-backlog', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z' } });
+    const episodes = [aired(11, 1), aired(12, 2), aired(13, 3)];
+    const { fake, ...arr } = connectArr(database);
+    fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
+      ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
+    fake.sonarr.state.episodes = episodes.map(({ id, seriesId, seasonNumber, airDateUtc }) => episodeRecord({ id, seriesId, seasonNumber, airDateUtc }));
+    database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?)').run('sonarr:episode:13', 0);
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const problems = createProblems({ database, events, now });
+    const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: () => false });
+
+    await scheduler.check();
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [11, 12] }]);
+    assert.deepEqual(database.prepare('SELECT * FROM season_search_log').all(), []);
+    database.close();
+  });
 });
 
 test('blocked imports are cleared, forced, retried or flagged by reason', async (t) => {
