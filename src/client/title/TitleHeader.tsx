@@ -210,7 +210,7 @@ function OverviewBand({ subject, owned, library }: { subject: Subject; owned: bo
 
 type Sent = 'sending' | 'sent' | 'failed';
 
-export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, pickPanel, compact = false, onChangeMonitoring, add, onUnauthenticated }: {
+export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, pickPanel, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
   subject: Subject;
   owned: boolean;
   /** Status Badges under the meta line. */
@@ -229,8 +229,10 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   pickPanel?: ReactNode;
   compact?: boolean;
   onChangeMonitoring?: () => void;
-  /** The add controls for a title not yet in the library, drawn between the header and the overview band. */
+  /** Content for a title not yet in the library (the season chips), drawn between the header and the overview band. */
   add?: ReactNode;
+  /** The Add to library button for a title not yet in the library; drawn in the primary action slot. */
+  addAction?: ReactNode;
   onUnauthenticated: () => void;
 }) {
   const { detail } = subject;
@@ -297,11 +299,11 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
         status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}
         meta={metaLine(subject)}
         badges={badges}
-        primary={owned && (
+        primary={owned ? (
           <Button size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
             Search automatically
           </Button>
-        )}
+        ) : addAction}
         secondary={owned && onPick !== undefined && (
           <Button variant="outline" size="large" icon={picking ? <X /> : <List />} className={picking ? 'bg-selected' : undefined} onClick={onPick}>
             {picking ? 'Close Pick a release' : 'Pick a release'}

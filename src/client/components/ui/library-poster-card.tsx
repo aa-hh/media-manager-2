@@ -98,7 +98,7 @@ function LibraryPosterCard({
           </span>
         )}
         {dateTab !== undefined && (
-          <span className="absolute top-2 left-2 flex flex-col items-center rounded-md bg-card px-2.25 pt-1.25 pb-1.5 shadow-[0_1px_4px_var(--shadow)]">
+          <span className="absolute top-2 left-2 flex flex-col items-center rounded-xs bg-card px-2.25 pt-1.25 pb-1.5 shadow-[0_1px_4px_var(--shadow)]">
             <span className="font-ui text-[11px] font-bold tracking-[0.6px] text-muted-foreground">{dateTab.month}</span>
             <span className="font-data text-[22px] leading-none font-semibold text-foreground">{dateTab.day}</span>
           </span>

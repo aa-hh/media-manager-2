@@ -2919,7 +2919,7 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
   const clock = { value: 1_800_000_000_000 };
   let respond = () => { throw new TypeError('fetch failed'); };
   let calls = 0;
-  const tmdb = createTmdb(database, { fetch: async (url) => { calls += 1; return respond(new URL(String(url))); } });
+  const tmdb = createTmdb(database, { now: () => clock.value, fetch: async (url) => { calls += 1; return respond(new URL(String(url))); } });
   const titles = createTmdbTitles({ database, tmdb, store: createTitleStore(database, { now: () => clock.value }) });
   const routes = createTmdbTitleRoutes(titles);
   const json = (body, status = 200) => () => new Response(JSON.stringify(body), { status });
@@ -2970,6 +2970,32 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
   await t.test('a reply missing every field gives empty sections', async () => {
     respond = json({ id: 7 });
     assert.deepEqual(await page('/tmdb/tv/7'), { cast: [], keywords: [], similar: [] });
+  });
+
+  // Counting future-dated episodes as aired, appending seasons in another order, or throwing when TMDB fails turns this red.
+  await t.test('airing counts episodes aired by today per season and gives the next air date', async () => {
+    const show = { id: 9, seasons: [{ season_number: 0, episode_count: 2 }, { season_number: 1, episode_count: 3 }], next_episode_to_air: { air_date: '2027-01-05' } };
+    const appended = [];
+    respond = (url) => {
+      if (!url.searchParams.has('append_to_response')) return json(show)();
+      appended.push(url.searchParams.get('append_to_response'));
+      return json({ ...show, 'season/1': { episodes: [{ air_date: '2020-01-01' }, { air_date: '2020-01-08' }, { air_date: '2999-01-01' }] } })();
+    };
+    assert.deepEqual(await page('/tmdb/tv/9/airing'), { seasons: [{ seasonNumber: 0, aired: 2 }, { seasonNumber: 1, aired: 2 }], nextAirDate: '2027-01-05' });
+    assert.deepEqual(appended, ['season/1,season/0']);
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.deepEqual(await page('/tmdb/tv/8/airing'), { seasons: null, nextAirDate: null });
+  });
+
+  // Counting only released films, calling a collection with an undated film all released, or passing a bad id through turns this red.
+  await t.test('collection gives the film count and whether every film is out', async () => {
+    respond = json({ id: 10, parts: [{ id: 1, release_date: '2001-01-01' }, { id: 2, release_date: '2999-01-01' }, { id: 3 }] });
+    assert.deepEqual(await page('/tmdb/collection/10'), { collection: { films: 3, allReleased: false } });
+    respond = json({ id: 11, parts: [{ id: 1, release_date: '2001-01-01' }, { id: 2, release_date: '2020-01-01' }] });
+    assert.deepEqual(await page('/tmdb/collection/11'), { collection: { films: 2, allReleased: true } });
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.deepEqual(await page('/tmdb/collection/12'), { collection: null });
+    assert.equal((await routes.request('/tmdb/collection/abc')).status, 400);
   });
 
   // Answering anything but 200 with empty sections when TMDB is unset, rejects the key or is down turns this red.
@@ -6791,8 +6817,8 @@ test('one search routes to Sonarr and Radarr and reports each outcome', async (t
   assert.deepEqual([...failedFirst, ...calls().map(([service]) => service)], ['sonarr', 'radarr', 'sonarr']);
 });
 
-// Sending the owner's choices under the wrong fields, dropping the lookup record, saving defaults from a refused add, or offering defaults whose profile is gone breaks adding a title.
-test('adding a title sends the monitor decision and remembers it as the next default', async (t) => {
+// Sending the owner's choices under the wrong fields, dropping the lookup record, keeping a `none` show monitored when new seasons are off, losing the per-season flags, forgetting the last profile and folder after a successful add, remembering a refused one, or dropping the existing item's id from a duplicate refusal turns this red.
+test('adding a title sends the monitor decision', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createAdd, parseMovieChoices, parseSeriesChoices } = await import(addModuleUrl);
   const { createTitleStore } = await import(titleStoreModuleUrl);
@@ -6802,7 +6828,7 @@ test('adding a title sends the monitor decision and remembers it as the next def
     database.close();
     await rm(root, { recursive: true, force: true });
   });
-  let profiles = [{ id: 4, name: 'HD-1080p' }, { id: 6, name: 'Ultra-HD' }];
+  const profiles = [{ id: 4, name: 'HD-1080p' }, { id: 6, name: 'Ultra-HD' }];
   const folders = [{ path: '/home/owner/TV', freeSpace: 10 }];
   const { fake, ...services } = connectArr(database);
   for (const service of ['sonarr', 'radarr']) {
@@ -6810,27 +6836,40 @@ test('adding a title sends the monitor decision and remembers it as the next def
     fake[service].routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/rootfolder' ? { status: 200, body: folders } : undefined));
   }
   fake.sonarr.state.lookup = [{ title: 'Other', tvdbId: 1 }, { title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }] }];
-  fake.radarr.state.lookup = [{ title: 'Dune', tmdbId: 438631, images: [] }];
+  fake.radarr.state.lookup = [{ id: 7, title: 'Dune', tmdbId: 438631, images: [] }];
   const posts = (service) => fake[service].requests.filter((request) => request.method === 'POST').map(({ path, body }) => ({ path, body }));
-  const add = createAdd(database, services, createTitleStore(database));
+  const add = createAdd(services, createTitleStore(database), database);
   const series = {
-    monitor: 'none', monitorNewSeasons: true, qualityProfileId: 6, rootFolderPath: '/home/owner/TV',
-    seasonFolder: true, seriesType: 'standard', searchOnAdd: false,
+    monitor: 'skip', seasons: [1], monitorNewSeasons: true, qualityProfileId: 6, rootFolderPath: '/home/owner/TV',
+    seasonFolder: true, seriesType: 'standard',
   };
 
-  assert.deepEqual(await add.options('sonarr'), { kind: 'ok', qualityProfiles: profiles, rootFolders: folders, defaults: null });
+  assert.deepEqual(await add.options('sonarr'), { kind: 'ok', qualityProfiles: profiles, rootFolders: folders, lastChoice: null });
 
   assert.deepEqual(await add.addSeries(371980, series), { kind: 'added', libraryId: fake.sonarr.state.series.at(-1).id });
+  assert.deepEqual((await add.options('sonarr')).lastChoice, { qualityProfileId: 6, rootFolderPath: '/home/owner/TV' });
+  assert.equal((await add.options('radarr')).lastChoice, null);
   assert.deepEqual(posts('sonarr').at(-1), {
     path: '/api/v3/series',
     body: {
-      title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1 }],
+      title: 'Severance', tvdbId: 371980, seasons: [{ seasonNumber: 1, monitored: true }],
       qualityProfileId: 6, rootFolderPath: '/home/owner/TV', seasonFolder: true, seriesType: 'standard',
       monitored: true, monitorNewItems: 'all',
-      addOptions: { monitor: 'none', searchForMissingEpisodes: false, searchForCutoffUnmetEpisodes: false },
+      addOptions: { monitor: 'skip', searchForMissingEpisodes: true, searchForCutoffUnmetEpisodes: false },
     },
   });
-  assert.deepEqual((await add.options('sonarr')).defaults, series);
+
+  await add.addSeries(371980, { ...series, monitor: 'none', seasons: undefined });
+  const noneWithNewSeasons = posts('sonarr').at(-1).body;
+  assert.equal(noneWithNewSeasons.monitored, true);
+  assert.deepEqual(noneWithNewSeasons.seasons, [{ seasonNumber: 1, monitored: false }]);
+  assert.deepEqual(noneWithNewSeasons.addOptions, { monitor: 'skip', searchForMissingEpisodes: false, searchForCutoffUnmetEpisodes: false });
+
+  await add.addSeries(371980, { ...series, monitor: 'none', seasons: undefined, monitorNewSeasons: false });
+  const noneWithoutNewSeasons = posts('sonarr').at(-1).body;
+  assert.equal(noneWithoutNewSeasons.monitored, false);
+  assert.equal(noneWithoutNewSeasons.monitorNewItems, 'none');
+  assert.equal(noneWithoutNewSeasons.addOptions.monitor, 'none');
 
   fake.sonarr.routes.push((method, url) => (method === 'POST' && url.pathname === '/api/v3/series'
     ? { status: 400, body: [{ propertyName: 'TvdbId', errorMessage: 'This series has already been added' }] }
@@ -6838,23 +6877,31 @@ test('adding a title sends the monitor decision and remembers it as the next def
   assert.deepEqual(await add.addSeries(371980, { ...series, qualityProfileId: 4 }), {
     kind: 'refused', reason: 'Sonarr refused the series add with HTTP 400: This series has already been added.',
   });
+  assert.equal((await add.options('sonarr')).lastChoice.qualityProfileId, 6);
   fake.sonarr.routes.pop();
-  assert.deepEqual((await add.options('sonarr')).defaults, series);
   assert.deepEqual(await add.addSeries(5, series), { kind: 'not_found' });
 
-  profiles = [{ id: 4, name: 'HD-1080p' }];
-  assert.equal((await add.options('sonarr')).defaults, null);
-
-  const movie = { monitor: 'none', minimumAvailability: 'inCinemas', qualityProfileId: 4, rootFolderPath: '/home/owner/TV', searchOnAdd: true };
+  const movie = { monitor: 'none', minimumAvailability: 'inCinemas', qualityProfileId: 4, rootFolderPath: '/home/owner/TV' };
   assert.deepEqual(await add.addMovie(438631, movie), { kind: 'added', libraryId: fake.radarr.state.movies.at(-1).id });
   const { body } = posts('radarr').at(-1);
   assert.equal(posts('radarr').at(-1).path, '/api/v3/movie');
   assert.equal(body.title, 'Dune');
   assert.equal(body.monitored, false);
   assert.equal(body.minimumAvailability, 'inCinemas');
-  assert.deepEqual(body.addOptions, { monitor: 'none', searchForMovie: true });
+  assert.deepEqual(body.addOptions, { monitor: 'none', searchForMovie: false });
+  fake.radarr.routes.push((method, url) => (method === 'POST' && url.pathname === '/api/v3/movie'
+    ? { status: 400, body: [{ propertyName: 'TmdbId', errorMessage: 'This movie has already been added' }] }
+    : undefined));
+  assert.deepEqual(await add.addMovie(438631, movie), {
+    kind: 'refused', reason: 'Radarr refused the movie add with HTTP 400: This movie has already been added.', libraryId: 7,
+  });
+  fake.radarr.routes.pop();
 
   assert.equal(parseSeriesChoices({ ...series, monitor: 'everything' }), undefined);
+  assert.equal(parseSeriesChoices({ ...series, monitor: 'missing' }), undefined);
+  assert.equal(parseSeriesChoices({ ...series, seasons: undefined }), undefined);
+  assert.equal(parseSeriesChoices({ ...series, monitor: 'all', seasons: [1] }), undefined);
+  assert.equal(parseSeriesChoices({ ...series, seasons: [1, 1] }), undefined);
   assert.equal(parseSeriesChoices({ ...series, qualityProfileId: '6' }), undefined);
   assert.equal(parseMovieChoices({ ...movie, minimumAvailability: 'tba' }), undefined);
 });
@@ -6878,12 +6925,12 @@ test('search, the title page and add for one title ask Sonarr for it once', asyn
   const store = createTitleStore(database);
   const search = createSearch(database, services, store);
   const library = createLibrary(services, () => [], store);
-  const add = createAdd(database, services, store);
+  const add = createAdd(services, store, database);
 
   assert.deepEqual((await search.search(parseSearchQuery('Severance'))).results.map((result) => result.key), ['tvdb:371980']);
   assert.equal((await library.preview('sonarr', 371980)).value.title, 'Severance');
   const choices = {
-    monitor: 'all', monitorNewSeasons: true, qualityProfileId: 1, rootFolderPath: '/tv', seasonFolder: true, seriesType: 'standard', searchOnAdd: false,
+    monitor: 'all', monitorNewSeasons: true, qualityProfileId: 1, rootFolderPath: '/tv', seasonFolder: true, seriesType: 'standard',
   };
   assert.equal((await add.addSeries(371980, choices)).kind, 'added');
   assert.equal(fake.sonarr.requests.filter((request) => request.path === '/api/v3/series/lookup').length, 1);
@@ -11817,4 +11864,58 @@ test('the movie, show and season delete dialog words its rows, builds its reques
     assert.equal(text.deleteResultTitle(season, shown, true), 'Season 1 of Severance deleted');
     assert.equal(text.deleteResultTitle(show, shown, false), 'Severance was not deleted');
   });
+});
+
+test('the added toast words the search from the sentence fact', async () => {
+  // Changing the toast wording for any search fact, or dropping the number the toast highlights, turns this red.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { addedToast } = await load('../src/client/title/addText.ts');
+  const cases = [
+    ['Sonarr', { kind: 'aired', count: 18 }, 'Sonarr is searching 18 aired episodes.', '18'],
+    ['Sonarr', { kind: 'aired', count: 1 }, 'Sonarr is searching 1 aired episode.', '1'],
+    ['Sonarr', { kind: 'nothingAired', firstAirDate: '2027-01-05' }, 'Sonarr will search once episodes air.', null],
+    ['Sonarr', { kind: 'future', nextAirDate: null }, 'Sonarr will search once episodes air.', null],
+    ['Sonarr', { kind: 'none' }, 'Nothing is monitored.', null],
+    ['Sonarr', { kind: 'unknown' }, 'Sonarr is searching for the monitored episodes that have aired.', null],
+    ['Radarr', { kind: 'now' }, 'Radarr is searching now.', null],
+    ['Radarr', { kind: 'expected', availability: 'available', date: '2027-03-26' }, "Radarr will search once it's available, expected on 26 Mar 2027.", '26 Mar 2027'],
+    ['Radarr', { kind: 'expected', availability: 'in cinemas', date: null }, "Radarr will search once it's in cinemas.", null],
+    ['Radarr', { kind: 'collection', movies: 3, allReleased: false, availability: 'available' }, 'Radarr is searching up to 3 movies.', '3'],
+    ['Radarr', { kind: 'collection', movies: null, allReleased: false, availability: 'available' }, "Radarr is searching the collection's movies.", null],
+  ];
+  assert.equal(addedToast('Sonarr', 'Dune', { kind: 'none' }).title, 'Added Dune to your library');
+  for (const [service, fact, line, number] of cases) {
+    const toast = addedToast(service, 'Dune', fact);
+    assert.equal(`${toast.before}${toast.number ?? ''}${toast.after}`, line, fact.kind);
+    assert.equal(toast.number, number, fact.kind);
+  }
+});
+
+test('the add sentence picks the search fact from the choices and the title', async () => {
+  // Changing which fact searchFact returns for a monitor choice, aired count or movie status turns this red.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { searchFact } = await load('../src/client/title/addText.ts');
+  const nextAirDate = '2099-01-05';
+  const show = (seasons) => ({ tv: true, airing: { seasons, nextAirDate }, collection: undefined, movie: null });
+  const aired18 = show([{ seasonNumber: 0, aired: 2 }, { seasonNumber: 1, aired: 10 }, { seasonNumber: 2, aired: 8 }]);
+  const newSeason = show([{ seasonNumber: 1, aired: 0 }, { seasonNumber: 2, aired: 0 }]);
+  const movie = (status, digital = null) => ({ tv: false, airing: undefined, collection: { films: 3, allReleased: false }, movie: { status, releaseDates: { inCinemas: null, digital, physical: null } } });
+  const tv = (monitor, seasons = []) => ({ monitor, seasons, minimumAvailability: 'released' });
+  const film = (monitor, minimumAvailability) => ({ monitor, seasons: [], minimumAvailability });
+  const cases = [
+    [tv('all'), aired18, { kind: 'aired', count: 18 }],
+    [tv('all'), newSeason, { kind: 'nothingAired', firstAirDate: nextAirDate }],
+    [tv('lastSeason'), newSeason, { kind: 'future', nextAirDate }],
+    [tv('skip'), aired18, { kind: 'unknown' }],
+    [tv('skip', [1, 2]), aired18, { kind: 'aired', count: 18 }],
+    [tv('future'), aired18, { kind: 'future', nextAirDate }],
+    [tv('none'), aired18, { kind: 'none' }],
+    [film('movieOnly', 'released'), movie('released'), { kind: 'now' }],
+    [film('movieOnly', 'inCinemas'), movie('inCinemas'), { kind: 'now' }],
+    [film('movieOnly', 'released'), movie('announced', '2099-03-26'), { kind: 'expected', availability: 'available', date: '2099-03-26' }],
+    [film('movieAndCollection', 'released'), movie('released'), { kind: 'collection', movies: 3, allReleased: false, availability: 'available' }],
+  ];
+  for (const [choices, title, fact] of cases) assert.deepEqual(searchFact(choices, title), fact, `${choices.monitor} ${JSON.stringify(title.movie?.status ?? title.airing?.seasons)}`);
 });

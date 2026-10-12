@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 
 type KbdProps = ComponentProps<'kbd'> & {
   icon?: ReactNode;
-  /** Inside a black or red button or a tooltip: white 15% fill, no edge. */
+  /** Inside a filled button or a tooltip: a 15% fill of the text colour, no edge. */
   onFill?: boolean;
 };
 

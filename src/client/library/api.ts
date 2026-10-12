@@ -129,6 +129,7 @@ export type MovieDetail = {
   runtime: number | null;
   studio: string | null;
   collection: string | null;
+  collectionTmdbId: number | null;
   path: string | null;
   tags: string[];
   links: { imdbId: string | null; tmdbId: number | null };
