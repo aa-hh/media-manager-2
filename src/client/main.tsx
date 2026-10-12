@@ -1,7 +1,8 @@
 import { type ComponentProps, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
-import { Home, lazyScreen, preloadScreens } from './Home';
+import { Home } from './Home';
+import { lazyScreen, preloadScreens } from './lazyScreen';
 import { navigate, useLocation } from './navigation';
 import { Button } from './components/ui/button';
 import { Callout } from './components/ui/callout';

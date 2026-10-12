@@ -1,5 +1,5 @@
 import { Flag } from 'lucide-react';
-import { memo, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, Suspense, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,9 +16,12 @@ import { cn } from '@/lib/utils';
 import { ImportPanel } from '../downloads/ImportPanel';
 import { formatDuration, type Service } from '../downloads/model';
 import { postAction } from '../downloads/useDownloads';
-import { PickRelease, type OwnedEpisode, type ReleaseTarget } from '../PickRelease';
+import type { OwnedEpisode, ReleaseTarget } from '../PickRelease';
+import { lazyScreen } from '../lazyScreen';
 import { useScreenReady } from '../navigation';
 import type { FlaggedAction, FlaggedItem, FlaggedState, Wanted } from './useFlagged';
+
+const PickRelease = lazyScreen(() => import('../PickRelease').then((module) => module.PickRelease));
 
 type Tab = 'needs_you' | 'missing' | 'cutoff';
 
@@ -76,7 +79,7 @@ function PickPanel({ target, title, onClose, onUnauthenticated }: {
   if (owned.kind === 'ready') {
     // The server's labels read "Series S02E08" or "Movie (2024)"; its "Sonarr episode 12" and "Radarr movie 7" fallbacks carry no name.
     const name = target.kind === 'movie' ? (/^Radarr movie \d+$/.test(title) ? undefined : title) : /^(.+) S\d{2,}E\d{2,}$/.exec(title)?.[1];
-    return <PickRelease target={target} title={title} name={name} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} />;
+    return <Suspense fallback={null}><PickRelease target={target} title={title} name={name} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} /></Suspense>;
   }
   return (
     <PanelInline open title={`Pick a release for ${title}`} onClose={onClose}>

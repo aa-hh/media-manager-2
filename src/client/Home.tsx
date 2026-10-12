@@ -1,43 +1,16 @@
 import { Settings as SettingsIcon } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode, type RefObject } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { AppBarDesktop, AppBarNavItem } from './components/ui/app-bar';
 import { Button } from './components/ui/button';
-import { Callout } from './components/ui/callout';
 import { InputSearch } from './components/ui/input-search';
 import { Discover } from './discover/Discover';
 import type { DownloadsState } from './downloads/useDownloads';
 import { Library } from './library/Library';
 import { inScreenChange, navigate, replace, routeFor, useLocation } from './navigation';
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
+import { lazyScreen } from './lazyScreen';
 import { cn } from './lib/utils';
 import { Overview } from './title/Overview';
-
-const screenLoaders: Array<() => Promise<unknown>> = [];
-
-// A chunk that fails to load (offline, or the app was redeployed under this tab) cannot be retried in place.
-function ScreenLoadFailed() {
-  return (
-    <div className="pt-10">
-      <Callout title="This screen didn't load." action={<Button variant="outline" onClick={() => window.location.reload()}>Reload</Button>}>
-        Check your connection, then reload the page.
-      </Callout>
-    </div>
-  );
-}
-
-/** A rarely opened screen in its own chunk; render it under a Suspense boundary that holds only that screen. */
-export function lazyScreen<P extends object>(load: () => Promise<ComponentType<P>>) {
-  screenLoaders.push(load);
-  return lazy(() => load().then(
-    (component) => ({ default: component }),
-    () => ({ default: ScreenLoadFailed as ComponentType<P> }),
-  ));
-}
-
-/** Fetches every lazyScreen chunk ahead of its first use. */
-export const preloadScreens = () => {
-  for (const load of screenLoaders) void load().catch(() => undefined);
-};
 
 const Settings = lazyScreen(() => import('./settings/Settings').then((module) => module.Settings));
 const Calendar = lazyScreen(() => import('./calendar/Calendar').then((module) => module.Calendar));

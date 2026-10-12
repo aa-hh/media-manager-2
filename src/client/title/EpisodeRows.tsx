@@ -1,6 +1,6 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search } from 'lucide-react';
-import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
+import { Fragment, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { BarSelection, BarSelectionAction } from '@/components/ui/bar-selection';
 import { Button } from '@/components/ui/button';
@@ -16,11 +16,14 @@ import { formatBytes, type Snapshot } from '../downloads/model';
 import type { EpisodeDetail, SecondVersion, SeriesDetail } from '../library/api';
 import { progressText } from '../library/grid';
 import { downloadingEpisodes, seedingFacts, type SubjectProgress } from '../library/progress';
-import { PickRelease, type ReleaseTarget } from '../PickRelease';
+import type { ReleaseTarget } from '../PickRelease';
+import { lazyScreen } from '../lazyScreen';
 import { EpisodeDetails } from './EpisodeDetails';
 import { episodeMarks, episodeWord, relativeAirDate, seasonAiredState, seasonMonitoredState } from './rows';
 import { moveFocus, rangeBetween, selectionSummary, type RowRef } from './selection';
 import { sendAction } from './TitleHeader';
+
+const PickRelease = lazyScreen(() => import('../PickRelease').then((module) => module.PickRelease));
 
 // One inline panel at a time, keyed by row so live progress updates never close it.
 export type Panel = { key: string; panel: 'pick'; target: ReleaseTarget; title: string } | { key: string; panel: 'details' };
@@ -63,7 +66,7 @@ function PickBand({ panel, name, episodes, onClose, onUnauthenticated }: {
 }) {
   return (
     <div className="border-b border-border bg-background p-2">
-      <PickRelease target={panel.target} title={panel.title} name={name} episodes={episodes} movieHasFile={false} onClose={onClose} onUnauthenticated={onUnauthenticated} />
+      <Suspense fallback={null}><PickRelease target={panel.target} title={panel.title} name={name} episodes={episodes} movieHasFile={false} onClose={onClose} onUnauthenticated={onUnauthenticated} /></Suspense>
     </div>
   );
 }
