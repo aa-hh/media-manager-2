@@ -91,7 +91,8 @@ New result steps (`StepResult`), in the order they run:
 ```ts
 | { step: 'queue'; outcome; message; queue: Array<{ downloadId: string; title: string; removed: boolean; torrentRemoved: boolean; reason: string | null }> }
 | { step: 'monitor' | 'blocklist' | 'search' | 'exclusion'; outcome; message } // monitor: searchAgain monitors the deleted files' movie or episodes first
-| { step: 'monitoring'; outcome; message; monitoring:
+| { step: 'monitoring'; outcome; message; // just before 'history', for every mode but remove; outcome 'failed' names what differs, 'skipped' (monitoring: null) when the read failed
+    monitoring:
     | { kind: 'movie'; monitored: boolean }
     | { kind: 'series'; monitored: boolean; monitorNewItems: string | null;
         seasons: Array<{ seasonNumber: number; monitored: boolean; monitoredEpisodes: number; episodes: number }> } }

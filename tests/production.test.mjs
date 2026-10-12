@@ -10708,7 +10708,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     const w = await dune();
     w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
     const { body } = await w.remove('/movie/1', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [{ id: w.version, removeTorrent: true }] });
-    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:skipped', 'secondVersions:done', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:skipped', 'secondVersions:done', 'monitoring:done', 'history:done']);
     const radarr = w.requests('radarr');
     const unmonitoredAt = radarr.indexOf('PUT /api/v3/movie/editor');
     assert.ok(unmonitoredAt !== -1 && unmonitoredAt < radarr.indexOf('DELETE /api/v3/moviefile/11'));
@@ -10724,7 +10724,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     const w = await world();
     w.arrFake.radarr.state.movies.push(movieRecord({ id: 2, title: 'Arrival', year: 2016 }));
     const { body } = await w.remove('/movie/2', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [] });
-    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:skipped', 'wait:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:skipped', 'wait:done', 'torrents:skipped', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     const [event] = await w.deletions();
     assert.deepEqual([event.title, event.event], ['Arrival (2016)', 'Movie unmonitored']);
   });
@@ -10826,7 +10826,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
     const { status, body } = await w.remove('/movie/1', { mode: 'searchAgain', blocklistCurrent: true, removeTorrents: [], secondVersions: [] });
     assert.equal(status, 200);
-    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'blocklist:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'blocklist:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     const radarr = w.requests('radarr');
     const at = (request) => radarr.indexOf(request);
     assert.ok(at('PUT /api/v3/movie/editor') !== -1 && at('PUT /api/v3/movie/editor') < at('DELETE /api/v3/moviefile/11'));
@@ -10853,6 +10853,33 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(w.protection.lifted, []);
     assert.deepEqual([w.arrFake.radarr.state.failed, w.arrFake.radarr.state.commands], [[], []]);
     assert.equal(w.fake.calls.includes('d.erase'), false);
+  });
+
+  // Reporting the read-back as done when Radarr kept the movie monitored, or as done when the read failed, turns this red.
+  await t.test('the monitoring read-back fails when Radarr disagrees and is skipped when Radarr cannot be read', async () => {
+    const w = await dune();
+    w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
+    w.arrFake.radarr.routes.unshift((method, url) => (method === 'PUT' && url.pathname === '/api/v3/movie/editor' ? { status: 202, body: [] } : undefined));
+    const { body } = await w.remove('/movie/1', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [] });
+    const readBack = body.steps.find((step) => step.step === 'monitoring');
+    assert.equal(readBack.outcome, 'failed');
+    assert.match(readBack.message, /^Not as intended: The movie is monitored\. Radarr: the movie is monitored\.$/);
+    assert.deepEqual(readBack.monitoring, { kind: 'movie', monitored: true });
+    assert.equal(body.deleted, true);
+
+    const w2 = await dune();
+    let gone = false;
+    w2.arrFake.radarr.routes.unshift((method, url) => {
+      if (method === 'DELETE' && url.pathname === '/api/v3/moviefile/11') {
+        gone = true;
+        rmSync(w2.file, { force: true });
+        return { status: 200, body: {} };
+      }
+      return method === 'GET' && url.pathname === '/api/v3/movie/1' && gone ? { status: 503, body: {} } : undefined;
+    });
+    const skipped = (await w2.remove('/movie/1', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [] })).body.steps.find((step) => step.step === 'monitoring');
+    assert.deepEqual([skipped.outcome, skipped.monitoring], ['skipped', null]);
+    assert.match(skipped.message, /^Couldn't read the movie back from Radarr/);
   });
 
   // Marking the grab failed while the download client would erase its seeding torrent, or dropping the search because the blocklist failed, turns this red.
@@ -11033,7 +11060,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     const { status, body } = await w.remove('/series/5/season/1', { removeTorrents: [PACK], secondVersions: [{ id: w.versions[0], removeTorrent: true }] });
     assert.equal(status, 200);
     assert.equal(body.deleted, true);
-    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:done', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:done', 'monitoring:done', 'history:done']);
     const sonarr = w.requests('sonarr');
     const firstDelete = sonarr.findIndex((request) => request.startsWith('DELETE'));
     assert.ok(sonarr.indexOf('PUT /api/v3/episode/monitor') < sonarr.indexOf('PUT /api/v3/series/5') && sonarr.indexOf('PUT /api/v3/series/5') < firstDelete);
@@ -11054,7 +11081,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     w.arrFake.sonarr.routes.unshift((method, url) => (method === 'DELETE' && url.pathname === '/api/v3/episodefile/22' ? { status: 409, body: { message: 'Root folder does not exist' } } : undefined));
     const { body } = await w.remove('/series/5/season/1', { removeTorrents: [PACK], secondVersions: [] });
     assert.equal(body.deleted, true);
-    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:failed', 'wait:done', 'torrents:failed', 'secondVersions:skipped', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:failed', 'wait:done', 'torrents:failed', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     assert.deepEqual(body.steps[2].files.map((file) => [file.fileId, file.deleted]), [[21, true], [22, false], [23, true], [24, true]]);
     assert.match(body.steps[2].files[1].reason, /HTTP 409: Root folder does not exist/);
     assert.equal(w.requests('sonarr').filter((request) => request.startsWith('DELETE')).length, 4);
@@ -11069,13 +11096,18 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     const w = await seasons();
     const { status, body } = await w.remove('/series/5', { mode: 'keepUnmonitored', removeTorrents: [PACK], secondVersions: [] });
     assert.equal(status, 200);
-    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:skipped', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:done', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     const sonarr = w.requests('sonarr');
     const firstDelete = sonarr.findIndex((request) => request.startsWith('DELETE'));
     assert.ok(sonarr.indexOf('PUT /api/v3/episode/monitor') < firstDelete && sonarr.indexOf('PUT /api/v3/series/5') < firstDelete);
     assert.deepEqual(sonarr.filter((request) => request.startsWith('DELETE')), [21, 22, 23, 24, 25].map((id) => `DELETE /api/v3/episodefile/${id}`));
     const [series] = w.arrFake.sonarr.state.series;
     assert.deepEqual([series.monitored, series.monitorNewItems, series.seasons.map((season) => season.monitored)], [false, 'none', [false, false]]);
+    // Reporting what the delete meant instead of what Sonarr holds, or dropping a season, turns this red.
+    assert.deepEqual(body.steps.find((step) => step.step === 'monitoring').monitoring, { kind: 'series', monitored: false, monitorNewItems: 'none', seasons: [
+      { seasonNumber: 1, monitored: false, monitoredEpisodes: 0, episodes: 4 },
+      { seasonNumber: 2, monitored: false, monitoredEpisodes: 0, episodes: 1 },
+    ] });
     assert.equal(w.arrFake.sonarr.state.episodes.every((episode) => episode.monitored === false), true);
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [w.FULL, V1, V2]);
     assert.equal((await w.deletions())[0].event, 'Show files deleted, unmonitored');
@@ -11095,7 +11127,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 201, seasonNumber: 2, episodeNumber: 1 },
     );
     const { body } = await w.remove('/series/5/season/1', { mode: 'searchAgain', removeTorrents: [], secondVersions: [] });
-    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     const sonarr = w.requests('sonarr');
     assert.ok(sonarr.findLastIndex((request) => request.startsWith('DELETE')) < sonarr.indexOf('POST /api/v3/command'));
     assert.deepEqual(state.episodes.map((episode) => [episode.id, episode.monitored]), [[101, true], [102, true], [103, true], [104, true], [201, false], [105, false]]);
@@ -11118,7 +11150,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     state.history.push(historyRecord({ id: 601, eventType: 'grabbed', downloadId: w.FULL, seriesId: 5, sourceTitle: 'Andor.Complete-GRP' }));
     w.protection.items.push({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 201, seasonNumber: 2, episodeNumber: 1 });
     const { body } = await w.remove('/series/5', { mode: 'searchAgain', blocklistCurrent: true, removeTorrents: [], secondVersions: [] });
-    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'blocklist:failed', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'blocklist:failed', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     assert.match(body.steps[4].message, /^Blocklisted 1 release\. No grab in Sonarr's history for 3 files/);
     assert.deepEqual(state.failed, [601]);
     assert.deepEqual(state.series[0].seasons.map((season) => [season.seasonNumber, season.monitored]), [[1, true], [2, true], [3, false]]);
@@ -11158,7 +11190,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual([refused.status, refused.body.reason], [409, `${PACK} can no longer be removed: ${KEPT_FILES}`]);
     const { status, body } = await pick(w, { mode: 'keepUnmonitored', seasons: [], episodeIds: [102], removeTorrents: [], secondVersions: [] });
     assert.equal(status, 200);
-    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:skipped', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     const sonarr = w.requests('sonarr');
     assert.deepEqual(sonarr.filter((request) => !request.startsWith('GET')), ['PUT /api/v3/episode/monitor', 'DELETE /api/v3/episodefile/22']);
     const state = w.arrFake.sonarr.state;
