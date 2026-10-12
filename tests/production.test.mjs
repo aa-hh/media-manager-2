@@ -11817,4 +11817,96 @@ test('the movie, show and season delete dialog words its rows, builds its reques
     assert.equal(text.deleteResultTitle(season, shown, true), 'Season 1 of Severance deleted');
     assert.equal(text.deleteResultTitle(show, shown, false), 'Severance was not deleted');
   });
+
+  const selection = { kind: 'selection', seriesId: 7, seasons: [2], episodeIds: [101] };
+  const download = (downloadId, overrides = {}) => ({ downloadId, title: `Download.${downloadId}`, progress: 0.42, status: 'downloading', episodeIds: [208],
+    removable: { allowed: true }, advice: null, ...overrides });
+  const intent = (planned, overrides = {}) => ({ plan: planned, excludeFromImportLists: true, blocklistCurrent: true, keepFollowing: new Map(), queue: new Map(), ...overrides });
+
+  // Sending the new keys to a server whose plan has no modes (it rejects them), sending an exclusion or blocklist outside its mode, asking to remove
+  // a download the server locked, or dropping a selection's seasons and episodes turns this red.
+  await t.test('the request carries the intent only once the plan has modes, and never asks for what the plan forbids', () => {
+    const older = plan({ service: 'radarr' });
+    assert.deepEqual(text.deleteChoices(movie, 'remove', new Set(), [], new Map(), intent(older)), { mode: 'remove', removeTorrents: [], secondVersions: [] });
+    assert.deepEqual(text.deleteChoices(show, 'remove', new Set(), [], new Map(), intent(plan())), { removeTorrents: [], secondVersions: [] });
+
+    const current = plan({
+      modes: ['keepUnmonitored', 'searchAgain'],
+      importLists: true,
+      monitoring: { followsNewSeasons: false, airingSeasons: [2, 3], leavesShowEmpty: false },
+      queue: [download('D1'), download('D2', { removable: { allowed: false, reason: 'held' } })],
+      secondVersions: [version(1, 'P')],
+    });
+    const groups = text.versionGroups(current);
+    const answers = intent(current, { keepFollowing: new Map([[2, true]]), queue: new Map([['D1', 'removeWithTorrent'], ['D2', 'remove']]) });
+    assert.deepEqual(text.deleteChoices(selection, 'keepUnmonitored', new Set(), groups, new Map(), answers), {
+      mode: 'keepUnmonitored',
+      excludeFromImportLists: false,
+      blocklistCurrent: false,
+      keepFollowing: { 2: true },
+      queue: [{ downloadId: 'D1', action: 'removeWithTorrent' }, { downloadId: 'D2', action: 'leave' }],
+      removeTorrents: [],
+      secondVersions: [{ id: 1, removeTorrent: false }],
+      seasons: [2],
+      episodeIds: [101],
+    });
+
+    // Search again leaves downloads (one may be the replacement) and starts with second versions unticked.
+    const again = text.deleteChoices(selection, 'searchAgain', new Set(), groups, new Map(), intent(current));
+    assert.deepEqual([again.blocklistCurrent, again.excludeFromImportLists, again.queue, again.secondVersions],
+      [true, false, [{ downloadId: 'D1', action: 'leave' }, { downloadId: 'D2', action: 'leave' }], []]);
+
+    const removing = text.deleteChoices(show, 'remove', new Set(), [], new Map(), intent({ ...current, modes: ['remove', 'keepUnmonitored', 'searchAgain'] }));
+    assert.deepEqual([removing.excludeFromImportLists, removing.blocklistCurrent, removing.queue.map((row) => row.action), 'seasons' in removing], [true, false, ['remove', 'leave'], false]);
+    assert.equal(text.deleteChoices(show, 'remove', new Set(), [], new Map(), intent({ ...current, importLists: false })).excludeFromImportLists, false);
+  });
+
+  // Letting the delete through with an airing season unanswered, or holding it for a season that isn't airing, turns this red.
+  await t.test('the delete waits for an answer on every airing season', () => {
+    const airing = plan({ monitoring: { followsNewSeasons: false, airingSeasons: [2, 3], leavesShowEmpty: false } });
+    assert.equal(text.followingUnanswered(airing, new Map([[2, true]])), true);
+    assert.equal(text.followingUnanswered(airing, new Map([[2, true], [3, false]])), false);
+    assert.equal(text.followingUnanswered(plan(), new Map()), false);
+  });
+
+  // Showing an unmonitored show's seasons as followed, naming season 0 as a season, or a missing new-seasons setting as "not followed" turns this red.
+  await t.test('the monitoring block says what Sonarr or Radarr will do next', () => {
+    assert.deepEqual(text.monitoringLines({ kind: 'movie', monitored: false }), ['Movie not monitored']);
+    assert.deepEqual(text.monitoringLines({ kind: 'series', monitored: false, monitorNewItems: 'all', seasons: [{ seasonNumber: 1, monitored: true, monitoredEpisodes: 3, episodes: 8 }] }),
+      ['Show not monitored']);
+    assert.deepEqual(text.monitoringLines({ kind: 'series', monitored: true, monitorNewItems: 'none', seasons: [
+      { seasonNumber: 2, monitored: true, monitoredEpisodes: 1, episodes: 1 },
+      { seasonNumber: 0, monitored: false, monitoredEpisodes: 0, episodes: 4 },
+      { seasonNumber: 1, monitored: false, monitoredEpisodes: 0, episodes: 8 },
+    ] }), ['Specials not monitored', 'Season 1 not monitored', 'Season 2 monitored · 1 of 1 episode', 'New seasons not followed']);
+    assert.deepEqual(text.monitoringLines({ kind: 'series', monitored: true, monitorNewItems: null, seasons: [] }), []);
+  });
+
+  // Rounding progress up, repeating a pack's episodes, or listing every episode of a long pack turns this red.
+  await t.test('download rows say how far they are and what they hold', () => {
+    const codeOf = (id) => `S02E${String(id - 200).padStart(2, '0')}`;
+    assert.equal(text.downloadHoldsText(download('D1', { progress: 0.429 }), codeOf), 'Downloading 42% · for S02E08');
+    assert.equal(text.downloadHoldsText(download('D1', { episodeIds: [209, 201, 209] }), codeOf), 'Downloading 42% · for S02E01, S02E09');
+    assert.equal(text.downloadHoldsText(download('D1', { episodeIds: [201, 202, 203, 204, 205, 206, 207, 208] }), codeOf),
+      'Downloading 42% · for S02E01, S02E02, S02E03, S02E04, S02E05, S02E06 and 2 more');
+    assert.equal(text.downloadHoldsText(download('D1', { status: 'queued', progress: 0, episodeIds: [] }), () => null), 'Queued 0%');
+  });
+
+  // Dropping a download that was left, hiding why a removal failed, or saying a torrent left rTorrent when it stayed turns this red.
+  await t.test('the results list every download, removed, failed or left', () => {
+    const queued = plan({ queue: [download('D1'), download('D2'), download('D3'), download('D4', { removable: { allowed: false, reason: 'Also holds episodes this delete keeps.' } })] });
+    const ran = { deleted: true, steps: [{ step: 'queue', outcome: 'failed', message: 'x', queue: [
+      { downloadId: 'D1', title: 'Download.D1', removed: true, torrentRemoved: true, reason: null },
+      { downloadId: 'D2', title: 'Download.D2', removed: true, torrentRemoved: false, reason: null },
+    ] }, { step: 'monitoring', outcome: 'done', message: 'read back', monitoring: { kind: 'movie', monitored: false } }] };
+    assert.deepEqual(text.deleteResultRows(queued, { removeTorrents: [], secondVersions: [] }, ran, () => 'PrivateHD').map((row) => [row.look, row.text, row.why]), [
+      ['done', 'Removed Download.D1 from the queue', 'You chose to remove it with its torrent.'],
+      ['done', 'Removed Download.D2 from the queue', 'You chose to remove it. Its torrent stays in rTorrent.'],
+      ['kept', 'Left Download.D3 downloading', 'You chose to leave it.'],
+      ['kept', 'Left Download.D4 downloading', 'Also holds episodes this delete keeps.'],
+    ]);
+    const stuck = { deleted: false, steps: [{ step: 'queue', outcome: 'failed', message: 'x', queue: [{ downloadId: 'D1', title: 'Download.D1', removed: false, torrentRemoved: false, reason: 'Radarr refused.' }] }] };
+    assert.deepEqual(text.deleteResultRows(plan({ queue: [download('D1')] }), { removeTorrents: [], secondVersions: [] }, stuck, () => '')[0],
+      { look: 'failed', text: "Couldn't remove Download.D1 from the queue", why: 'Radarr refused.' });
+  });
 });
