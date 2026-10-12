@@ -33,20 +33,30 @@ const keyOf = (result: DiscoverResult) => `${result.type}:${result.tmdbId}`;
 const titles: Record<Kind, string> = { movies: 'Movies', tv: 'TV', trending: 'Trending' };
 const cleared: Filters = { genres: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
 
+// Genre and service lists barely change, so each screen visit reuses the last good reply instead of asking again.
+const optionReplies = new Map<string, unknown>();
+const getOptions = <T,>(path: string, onUnauthenticated: () => void, signal: AbortSignal): Promise<T> => {
+  if (optionReplies.has(path)) return Promise.resolve(optionReplies.get(path) as T);
+  return getJson<T>(path, onUnauthenticated, signal).then((reply) => {
+    optionReplies.set(path, reply);
+    return reply;
+  });
+};
+
 /** Genre and streaming-service names for the filter menus; a failed read leaves a menu empty. */
 export function useOptions(genres: 'movie' | 'tv' | 'both', providers: 'movie' | 'tv', onUnauthenticated: () => void) {
   const [options, setOptions] = useState<{ genres: Option[]; providers: Option[] }>({ genres: [], providers: [] });
   useEffect(() => {
     const controller = new AbortController();
     const types = genres === 'both' ? ['movie', 'tv'] : [genres];
-    Promise.all(types.map((type) => getJson<{ genres: Option[] }>(`/api/discover/genres/${type}`, onUnauthenticated, controller.signal)))
+    Promise.all(types.map((type) => getOptions<{ genres: Option[] }>(`/api/discover/genres/${type}`, onUnauthenticated, controller.signal)))
       .then((lists) => {
         if (controller.signal.aborted) return;
         const merged = lists.flatMap((list) => list.genres).filter((genre, index, all) => all.findIndex((other) => other.name === genre.name) === index);
         setOptions((current) => ({ ...current, genres: merged.sort((a, b) => a.name.localeCompare(b.name)) }));
       })
       .catch(() => { /* the Genres menu stays empty */ });
-    getJson<{ providers: Option[] }>(`/api/discover/providers/${providers}?region=US`, onUnauthenticated, controller.signal)
+    getOptions<{ providers: Option[] }>(`/api/discover/providers/${providers}?region=US`, onUnauthenticated, controller.signal)
       .then((body) => {
         if (!controller.signal.aborted) setOptions((current) => ({ ...current, providers: body.providers.map(({ id, name }) => ({ id, name })) }));
       })
@@ -212,7 +222,13 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
         >
         <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8 pt-6">
           {current?.results.map((result, index) => (
-            <li key={`${result.type}:${result.tmdbId}`} className={cn(index >= (firstCount.current ?? Infinity) && 'animate-content-in')}>
+            <li
+              key={`${result.type}:${result.tmdbId}`}
+              className={cn(
+                '[contain-intrinsic-size:auto_var(--poster-width)_auto_330px] [content-visibility:auto]',
+                index >= (firstCount.current ?? Infinity) && 'animate-content-in',
+              )}
+            >
               <Card result={result} upcoming={state.sort === 'upcoming' && kind !== 'trending'} size="default" />
             </li>
           ))}
