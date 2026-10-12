@@ -1,6 +1,6 @@
 // v2/Library poster card — design/design-system.lib.pen Z0OVp
 import { ArrowRight, Check, Clapperboard, ImageOff, Tv } from 'lucide-react';
-import { type ComponentProps, type CSSProperties, type ReactNode, useState } from 'react';
+import { type ComponentProps, type ReactNode, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { inScreenChange } from '@/navigation';
 
@@ -90,10 +90,10 @@ function LibraryPosterCard({
           className={cn('pointer-events-none absolute inset-0 rounded-md ring-inset', selected ? 'ring-2 ring-foreground' : 'ring-1 ring-foreground/10')}
         />
         {strip !== undefined && (
-          <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1 bg-bar-foreground/30">
+          <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1 overflow-hidden bg-bar-foreground/30">
             <span
-              style={{ '--poster-progress': `${strip}%` } as CSSProperties}
-              className="block h-full w-(--poster-progress) bg-live transition-[width] duration-(--duration-slow) ease-out"
+              style={{ translate: `${strip - 100}% 0` }}
+              className="block h-full w-full bg-live transition-[translate] duration-(--duration-slow) ease-out"
             />
           </span>
         )}

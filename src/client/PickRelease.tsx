@@ -584,8 +584,8 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     else void sendGrab(selected, 'replace');
   };
 
-  // The dialog's keys reach here through its portal. 1 and 2 pick; Enter grabs wherever focus sits except on Cancel,
-  // caught before the focused button (the dialog starts on Close) can act on it.
+  // The dialog's keys reach here through its portal. 1 and 2 pick; Enter grabs wherever focus sits except on Cancel or
+  // Close (both carry data-cancel), caught before the focused button can act on it.
   const onDecisionKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (panel !== 'decision') return;
     if (event.key === '1') setChoice('replace');
@@ -653,9 +653,11 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
   const lead = name === undefined ? undefined
     : target.kind === 'season' ? `${name} S${pad(target.seasonNumber)}`
       : targetEpisode === undefined ? name : `${name} S${pad(targetEpisode.seasonNumber)}E${pad(targetEpisode.episodeNumber)}`;
+  const incoming = chosen === undefined ? ''
+    : `${[chosen.quality, splitName(chosen.title).group, formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}${chosen.indexer === null ? '' : ` from ${chosen.indexer}`}`;
   const decisionSubject = target.kind === 'season'
     ? `${lead === undefined ? '' : `${lead} · `}${[chosen?.quality, chosen === undefined ? undefined : splitName(chosen.title).group, chosen === undefined ? undefined : formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}, one torrent with ${packEpisodes.length} episodes. You have files for ${packEpisodes.length - missing.length} of them; their torrents keep seeding either way.`
-    : `${owned === null ? (lead === undefined ? '' : `${lead}. `) : `${lead === undefined ? 'Your' : `${lead} · your`} ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
+    : `${incoming === '' ? '' : `Grabbing ${incoming}. `}${owned === null ? (lead === undefined ? '' : `${lead}. `) : `${lead === undefined ? 'Your' : `${lead} · your`} ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
   const second = choice === 'second' && secondAllowed;
   const confirmLabel = grabbing
     ? (second ? 'Grabbing…' : 'Replacing…')

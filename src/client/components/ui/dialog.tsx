@@ -55,7 +55,7 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
           <div className="flex w-full items-start gap-4">
             <DialogPrimitive.Title className="min-w-0 flex-1 font-ui text-lg font-bold [overflow-wrap:anywhere] text-foreground">{title}</DialogPrimitive.Title>
             <DialogPrimitive.Close
-              render={<Button variant="ghost" icon={<X />} kbd="Esc" aria-label={closeLabel} className="px-2.5 [&>svg]:text-muted-foreground" />}
+              render={<Button variant="ghost" icon={<X />} kbd="Esc" aria-label={closeLabel} data-cancel="" className="px-2.5 [&>svg]:text-muted-foreground" />}
             />
           </div>
           {scrollEdges && subject !== undefined && (
