@@ -128,19 +128,25 @@ export const createSearchScheduler = (options: {
   // Splits due Sonarr episodes into seasons to search whole and episodes to search one by one.
   // A finished season with several missing episodes gets a SeasonSearch so packs are not rejected, alternating with an EpisodeSearch for what is left.
   // A season with a missing episode skipped as queued, a manual download or in the search backlog is never searched whole, since a SeasonSearch would search that episode too.
-  const planSonarr = async (due: Candidate[], skippedSeasons: Set<string>, at: number) => {
+  // A finished season waits until all its missing episodes are due, then searches them together, so none is searched before its six-hour repeat.
+  const planSonarr = async (due: Candidate[], waiting: Candidate[], skippedSeasons: Set<string>, at: number) => {
     const groups = new Map<string, Candidate[]>();
-    for (const candidate of due) {
+    for (const candidate of [...due, ...waiting]) {
       if (candidate.seriesId === null || candidate.seasonNumber === null || candidate.seasonNumber <= 0) continue;
       const groupKey = `${candidate.seriesId}:${candidate.seasonNumber}`;
       if (skippedSeasons.has(groupKey)) continue;
       groups.set(groupKey, [...(groups.get(groupKey) ?? []), candidate]);
     }
     const seasons: { seriesId: number; seasonNumber: number; candidates: Candidate[] }[] = [];
+    const held = new Set<Candidate>();
     for (const members of groups.values()) {
-      if (members.length < 2) continue;
+      if (members.length < 2 || !members.some((member) => due.includes(member))) continue;
       const { seriesId, seasonNumber } = members[0];
       if (seriesId === null || seasonNumber === null || !await fullyAired(seriesId, seasonNumber, at)) continue;
+      if (members.some((member) => waiting.includes(member))) {
+        for (const member of members) held.add(member);
+        continue;
+      }
       // Only our own search records count here: Sonarr stamps lastSearchTime after it runs the SeasonSearch, later than our record of it.
       const known = members.map((member) => ourLastSearch(member.subject)).filter((value): value is number => value !== null);
       const logged = database.prepare('SELECT searched_at FROM season_search_log WHERE series_id = ? AND season_number = ?').get(seriesId, seasonNumber);
@@ -149,14 +155,14 @@ export const createSearchScheduler = (options: {
     }
     seasons.sort((a, b) => a.seriesId - b.seriesId || a.seasonNumber - b.seasonNumber);
     const inSeason = new Set(seasons.flatMap((season) => season.candidates));
-    return { seasons, episodes: due.filter((candidate) => !inSeason.has(candidate)) };
+    return { seasons, episodes: due.filter((candidate) => !inSeason.has(candidate) && !held.has(candidate)) };
   };
 
-  const search = async (service: Service, due: Candidate[], skippedSeasons: Set<string>, at: number) => {
+  const search = async (service: Service, due: Candidate[], waiting: Candidate[], skippedSeasons: Set<string>, at: number) => {
     if (due.length === 0) return;
     let rest = due;
     if (service === 'sonarr') {
-      const plan = await planSonarr(due, skippedSeasons, at);
+      const plan = await planSonarr(due, waiting, skippedSeasons, at);
       rest = plan.episodes;
       for (const { seriesId, seasonNumber, candidates } of plan.seasons) {
         valueOrThrow(await arr.sonarr.searchAutomatically({ seriesId, seasonNumber }));
@@ -180,6 +186,7 @@ export const createSearchScheduler = (options: {
     const queued = inQueue(service);
     const inBacklog = database.prepare('SELECT 1 FROM search_backlog WHERE subject = ?');
     const skippedSeasons = new Set<string>();
+    const waiting: Candidate[] = [];
     const due = candidates.flatMap((candidate) => {
       if (isManualDownload(candidate.subject) || queued.has(candidate.subject.id) || inBacklog.get(key(candidate.subject)) !== undefined) {
         if (candidate.seriesId !== null && candidate.seasonNumber !== null) skippedSeasons.add(`${candidate.seriesId}:${candidate.seasonNumber}`);
@@ -189,9 +196,11 @@ export const createSearchScheduler = (options: {
       const ours = ourLastSearch(candidate.subject);
       const known = [candidate.lastSearchAt, ours].filter((value): value is number => value !== null);
       const lastSearchAt = known.length === 0 ? null : Math.max(...known);
-      return at >= searchDueAt({ ...candidate, lastSearchAt }) ? [{ ...candidate, lastSearchAt }] : [];
+      if (at >= searchDueAt({ ...candidate, lastSearchAt })) return [{ ...candidate, lastSearchAt }];
+      waiting.push(candidate);
+      return [];
     });
-    await search(service, due, skippedSeasons, at);
+    await search(service, due, waiting, skippedSeasons, at);
   };
 
   // razor: backlog rows never expire; DELETE FROM search_backlog by hand to let the scheduler chase the old gaps. A UI control is the upgrade path.
