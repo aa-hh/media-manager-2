@@ -1,5 +1,5 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
-import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search, Trash2 } from 'lucide-react';
+import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { BarSelection, BarSelectionAction } from '@/components/ui/bar-selection';
@@ -17,11 +17,10 @@ import type { EpisodeDetail, SecondVersion, SeriesDetail } from '../library/api'
 import { progressText } from '../library/grid';
 import { downloadingEpisodes, seedingFacts, type SubjectProgress } from '../library/progress';
 import { PickRelease, type ReleaseTarget } from '../PickRelease';
-import { DeleteTitle } from './DeleteTitle';
 import { EpisodeDetails } from './EpisodeDetails';
 import { episodeMarks, episodeWord, relativeAirDate, seasonAiredState, seasonMonitoredState } from './rows';
 import { moveFocus, rangeBetween, selectionSummary, type RowRef } from './selection';
-import { episodeCode, sendAction } from './TitleHeader';
+import { sendAction } from './TitleHeader';
 
 // One inline panel at a time, keyed by row so live progress updates never close it.
 export type Panel = { key: string; panel: 'pick'; target: ReleaseTarget; title: string } | { key: string; panel: 'details' };
@@ -90,8 +89,6 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   const [open, setOpen] = useState<Set<number>>(() => new Set(seasons.length === 0 ? [] : [seasons[0].seasonNumber]));
   const [panel, setPanel] = useState<Panel | null>(null);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
-  // The episodes the delete dialog was opened for, kept apart from the live selection so it can't change under the plan.
-  const [deleting, setDeleting] = useState<number[] | null>(null);
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [sent, setSent] = useState<Record<string, 'sent' | 'failed'>>({});
@@ -420,23 +417,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
         <BarSelectionAction icon={<Search />} onClick={() => void search(episodeKey([...selected][0]), { service: 'sonarr', kind: 'episodes', episodeIds: [...selected] })}>
           Search automatically
         </BarSelectionAction>
-        <BarSelectionAction icon={<Trash2 />} onClick={() => setDeleting([...selected])}>Delete selected</BarSelectionAction>
       </BarSelection>
-      {deleting !== null && (
-        <DeleteTitle
-          target={{ kind: 'selection', seriesId, seasons: [], episodeIds: deleting }}
-          name={detail.title}
-          codeOf={(episodeId) => {
-            const episode = detail.episodes.find((candidate) => candidate.id === episodeId);
-            return episode === undefined ? null : episodeCode(episode);
-          }}
-          onClose={() => {
-            setDeleting(null);
-            clearSelection();
-          }}
-          onUnauthenticated={onUnauthenticated}
-        />
-      )}
     </div>
   );
 }
