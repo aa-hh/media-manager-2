@@ -123,6 +123,12 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     if (index === -1) return undefined;
     if (method === 'GET') return { status: 200, body: records()[index] };
     if (method === 'PUT') {
+      // Sonarr sets every episode of a season whose monitored flag the PUT changes to match it.
+      for (const season of resource === 'series' ? body.seasons ?? [] : []) {
+        const before = (records()[index].seasons ?? []).find((old) => old.seasonNumber === season.seasonNumber);
+        if (before === undefined || before.monitored === season.monitored) continue;
+        for (const episode of state.episodes) if (episode.seriesId === id && episode.seasonNumber === season.seasonNumber) episode.monitored = season.monitored;
+      }
       records()[index] = body;
       return { status: 202, body };
     }

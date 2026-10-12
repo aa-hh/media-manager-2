@@ -10574,6 +10574,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
         list: () => protection.items,
         unprotect: async (item) => {
           protection.lifted.push(item);
+          protection.failedBeforeLift = arrFake.radarr.state.failed.length + arrFake.sonarr.state.failed.length;
           protection.items = protection.items.filter((other) => other !== item);
         },
       },
@@ -10828,7 +10829,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.ok(at('DELETE /api/v3/moviefile/11') < at('POST /api/v3/history/failed/501') && at('POST /api/v3/history/failed/501') < at('POST /api/v3/command'));
     assert.equal(radarr.some((request) => request.startsWith('DELETE /api/v3/movie/')), false);
     assert.equal(w.arrFake.radarr.state.movies[0].monitored, true);
-    assert.deepEqual(w.protection.lifted, [{ service: 'radarr', kind: 'movie', movieId: 1 }]);
+    assert.deepEqual([w.protection.lifted, w.protection.failedBeforeLift], [[{ service: 'radarr', kind: 'movie', movieId: 1 }], 0]);
     assert.deepEqual(w.arrFake.radarr.state.failed, [501]);
     assert.deepEqual(w.arrFake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [1] }]);
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [CUR, OLD, SHARED, V1]);
@@ -11076,12 +11077,14 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   });
 
   // Searching the whole show instead of the deleted episodes, searching before their files are gone, leaving them unmonitored,
-  // lifting another season's protection, or blocklisting when not asked turns this red.
+  // monitoring an episode of the season the owner left off (Sonarr turns a season's episodes on with it), lifting another season's
+  // protection, or blocklisting when not asked turns this red.
   await t.test('searching a season again monitors its episodes and the season, deletes each file, then searches only those episodes', async () => {
     const w = await seasons();
     const state = w.arrFake.sonarr.state;
     state.series[0].seasons[0].monitored = false;
     for (const episode of state.episodes) episode.monitored = false;
+    state.episodes.push(episodeRecord({ id: 105, seriesId: 5, seasonNumber: 1, episodeNumber: 5, monitored: false }));
     w.protection.items.push(
       { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 102, seasonNumber: 1, episodeNumber: 2 },
       { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 201, seasonNumber: 2, episodeNumber: 1 },
@@ -11090,7 +11093,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
     const sonarr = w.requests('sonarr');
     assert.ok(sonarr.findLastIndex((request) => request.startsWith('DELETE')) < sonarr.indexOf('POST /api/v3/command'));
-    assert.deepEqual(state.episodes.map((episode) => [episode.id, episode.monitored]), [[101, true], [102, true], [103, true], [104, true], [201, false]]);
+    assert.deepEqual(state.episodes.map((episode) => [episode.id, episode.monitored]), [[101, true], [102, true], [103, true], [104, true], [201, false], [105, false]]);
     assert.deepEqual(state.series[0].seasons.map((season) => [season.seasonNumber, season.monitored]), [[1, true], [2, true]]);
     assert.deepEqual(w.protection.lifted.map((item) => item.episodeId), [102]);
     assert.deepEqual(state.commands, [{ name: 'EpisodeSearch', episodeIds: [101, 102, 103, 104] }]);
@@ -11098,6 +11101,28 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [PACK, w.FULL, V1, V2]);
     const [event] = await w.deletions();
     assert.deepEqual([event.title, event.event], ['Andor Season 1', 'Season files deleted, searching again']);
+  });
+
+  // Searching only one season, monitoring a season the owner left off without a deleted file, blocklisting before lifting the protection,
+  // or recording it as anything but a show search turns this red.
+  await t.test('searching a whole show again monitors each season that lost a file, blocklists the grab it can trace, and searches every deleted episode', async () => {
+    const w = await seasons();
+    const state = w.arrFake.sonarr.state;
+    state.series[0].seasons.push({ seasonNumber: 3, monitored: false });
+    state.episodes.push(episodeRecord({ id: 301, seriesId: 5, seasonNumber: 3, episodeNumber: 1, monitored: false }));
+    state.history.push(historyRecord({ id: 601, eventType: 'grabbed', downloadId: w.FULL, seriesId: 5, sourceTitle: 'Andor.Complete-GRP' }));
+    w.protection.items.push({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 201, seasonNumber: 2, episodeNumber: 1 });
+    const { body } = await w.remove('/series/5', { mode: 'searchAgain', blocklistCurrent: true, removeTorrents: [], secondVersions: [] });
+    assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'blocklist:failed', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    assert.match(body.steps[4].message, /^Blocklisted 1 release\. No grab in Sonarr's history for 3 files/);
+    assert.deepEqual(state.failed, [601]);
+    assert.deepEqual(state.series[0].seasons.map((season) => [season.seasonNumber, season.monitored]), [[1, true], [2, true], [3, false]]);
+    assert.equal(state.episodes.find((episode) => episode.id === 301).monitored, false);
+    assert.deepEqual([w.protection.lifted.map((item) => item.episodeId), w.protection.failedBeforeLift], [[201], 0]);
+    assert.deepEqual(state.commands, [{ name: 'EpisodeSearch', episodeIds: [101, 102, 103, 104, 201] }]);
+    assert.equal(w.requests('sonarr').some((request) => request.startsWith('DELETE /api/v3/series/')), false);
+    const [event] = await w.deletions();
+    assert.deepEqual([event.title, event.event], ['Andor', 'Show files deleted, searching again']);
   });
 
   // Deleting files after an unmonitor call fails turns this red.

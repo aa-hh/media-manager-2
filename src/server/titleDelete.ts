@@ -58,7 +58,7 @@ export type DeletePlan = {
   title: string;
   // Set for a season delete only; the show itself stays in Sonarr.
   seasonNumber: number | null;
-  // True for a season delete: its episodes and the season are unmonitored before any file is deleted.
+  // True for a season target, whose default mode unmonitors its episodes and the season before any file is deleted.
   willUnmonitor: boolean;
   // What may happen afterwards, in the order the dialog offers it.
   modes: Mode[];
@@ -124,7 +124,7 @@ export const createTitleDelete = (options: {
     let title: string;
     let details: FileDetail[];
     // A show's or season's episodes, and for a season the files they use.
-    let episodes: { id: number; seasonNumber: number; fileId: number | null }[] = [];
+    let episodes: { id: number; seasonNumber: number; monitored: boolean; fileId: number | null }[] = [];
     let seasonFiles: Set<number> | null = null;
     if (target.service === 'radarr') {
       const movie = await arr.radarr.movie(target.movieId);
@@ -146,7 +146,7 @@ export const createTitleDelete = (options: {
       }
       title = series.value.title;
       details = episodeFiles.value;
-      episodes = episodeList.value.map((episode) => ({ id: episode.id, seasonNumber: episode.seasonNumber, fileId: episode.file?.id ?? null }));
+      episodes = episodeList.value.map((episode) => ({ id: episode.id, seasonNumber: episode.seasonNumber, monitored: episode.monitored, fileId: episode.file?.id ?? null }));
       if (season !== undefined) seasonFiles = new Set(episodes.flatMap((episode) => episode.fileId ?? []));
     }
     const files = details.flatMap((file) => (file.id === null || file.path === null ? [] : [{ path: file.path, fileId: file.id, sizeBytes: file.size }]));
@@ -246,7 +246,7 @@ export const createTitleDelete = (options: {
     }
   };
 
-  type Scoped = { id: number; seasonNumber: number; fileId: number | null };
+  type Scoped = { id: number; seasonNumber: number; monitored: boolean; fileId: number | null };
   const fail = (result: Failure | { message: string }): { kind: 'failed'; message: string } => ({ kind: 'failed', message: result.message });
 
   // Keep, unmonitored: nothing in scope is searched for again. A whole show also stops taking seasons Sonarr adds later.
@@ -267,23 +267,30 @@ export const createTitleDelete = (options: {
     return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored the show, every season and episode, and new seasons in Sonarr.' } : fail(result);
   };
 
-  // Search again: monitor what the files held, so the search that follows wants it.
-  const monitorAgain = async (target: DeleteTarget, held: Scoped[]): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
+  // Search again: monitor what the files held, so the search that follows wants it. Sonarr monitors every episode of a season
+  // whose flag a PUT turns on, so the seasons go first, then the held episodes, then the season's other episodes go back off.
+  const monitorAgain = async (target: DeleteTarget, held: Scoped[], all: Scoped[]): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
     if (target.service === 'radarr') {
       const result = await arr.radarr.monitorMovie(target.movieId, true);
       if (result.kind !== 'ok') return fail(result);
     } else if (held.length > 0) {
-      const episodesMonitored = await arr.sonarr.monitorEpisodes(held.map((episode) => episode.id), true);
-      if (episodesMonitored.kind !== 'ok') return fail(episodesMonitored);
       const seasons = [...new Set(held.map((episode) => episode.seasonNumber))];
       const result = await arr.sonarr.setSeriesMonitoring(target.seriesId, { monitored: true, seasons });
       if (result.kind !== 'ok') return fail(result);
+      const ids = new Set(held.map((episode) => episode.id));
+      const episodesMonitored = await arr.sonarr.monitorEpisodes([...ids], true);
+      if (episodesMonitored.kind !== 'ok') return fail(episodesMonitored);
+      const leftOff = all.filter((episode) => !ids.has(episode.id) && !episode.monitored && seasons.includes(episode.seasonNumber)).map((episode) => episode.id);
+      if (leftOff.length > 0) {
+        const restored = await arr.sonarr.monitorEpisodes(leftOff, false);
+        if (restored.kind !== 'ok') return fail(restored);
+      }
     }
     return { kind: 'ok', value: target.service === 'radarr' ? 'Monitored in Radarr.' : `Monitored ${plural(held.length, 'episode')} and their seasons in Sonarr.` };
   };
 
-  // Lifted only once the files are gone, just before the search: the protection would veto the search's own grab,
-  // and lifting it earlier would leave a file that failed to delete unprotected.
+  // Lifted once the files are gone, before the blocklist: mark-failed can start the service's own search (autoRedownloadFailed),
+  // and the protection would veto that grab as well as ours. Lifting it before the delete would leave a file that failed to delete unprotected.
   const liftProtection = async (target: DeleteTarget, held: Scoped[]): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
     const ids = new Set(held.map((episode) => episode.id));
     const lifted = protection.list().filter((item) => (target.service === 'radarr'
@@ -406,7 +413,7 @@ export const createTitleDelete = (options: {
           if (unmonitored.kind !== 'ok') return stop('unmonitor', unmonitored.message);
           steps.push({ step: 'unmonitor', outcome: 'done', message: unmonitored.value });
         } else {
-          const monitored = await monitorAgain(target, deletedEpisodes(fileIds));
+          const monitored = await monitorAgain(target, deletedEpisodes(fileIds), episodes);
           if (monitored.kind !== 'ok') return stop('monitor', monitored.message);
           steps.push({ step: 'monitor', outcome: 'done', message: monitored.value });
         }
@@ -464,9 +471,9 @@ export const createTitleDelete = (options: {
         } else if (target.service === 'sonarr' && held.length === 0) {
           steps.push({ step: 'search', outcome: 'skipped', message: 'Not searched: no episode file was deleted.' });
         } else {
-          if (choices.blocklistCurrent) steps.push(await blocklistGrabs(target, history, deletedFileIds, held));
           const words = target.service === 'radarr' ? 'the movie' : plural(held.length, 'episode');
           const lifted = await liftProtection(target, held);
+          if (choices.blocklistCurrent && lifted.kind === 'ok') steps.push(await blocklistGrabs(target, history, deletedFileIds, held));
           const searched = lifted.kind !== 'ok' ? lifted
             : target.service === 'radarr' ? await arr.radarr.searchAutomatically({ movieIds: [target.movieId] })
               : await arr.sonarr.searchAutomatically({ episodeIds: held.map((episode) => episode.id) });
