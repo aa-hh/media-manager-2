@@ -572,10 +572,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const hasKeys = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).sort().join(',') === [...keys].sort().join(',');
 const MAX_CHOICES = 1_000;
 
+// Choices the dialog already sends that this server does not act on yet, with the one value it can safely accept.
+const neutral: Record<string, string> = { excludeFromImportLists: 'false', keepFollowing: '{}', queue: '[]' };
+
 // A movie delete has always named its mode; a show or season delete that leaves it out gets what it did before the choice existed.
 const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: Mode }) | undefined => {
   if (!isRecord(body) || !('removeTorrents' in body) || !('secondVersions' in body)) return undefined;
-  if (Object.keys(body).some((key) => !['mode', 'blocklistCurrent', 'removeTorrents', 'secondVersions'].includes(key))) return undefined;
+  if (Object.keys(body).some((key) => !['mode', 'blocklistCurrent', 'removeTorrents', 'secondVersions', ...Object.keys(neutral)].includes(key))) return undefined;
+  // The dialog sends these once the plan has modes; until their own changes land, only the value that asks for nothing is accepted.
+  if (Object.entries(neutral).some(([key, value]) => key in body && JSON.stringify(body[key]) !== value)) return undefined;
   const { removeTorrents, secondVersions } = body;
   const mode = body.mode ?? (target.service === 'radarr' ? undefined : defaultMode(target));
   if (!modesOf(target).includes(mode as Mode)) return undefined;
