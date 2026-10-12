@@ -50,7 +50,7 @@ export const Card = memo(function Card({ result, rank, upcoming = false, size }:
       badges={(
         <>
           {!upcoming && result.rating !== null && (
-            <Badge icon={<Star aria-hidden="true" />} className="font-data text-[13px] text-foreground">{ratingFormat.format(result.rating)}</Badge>
+            <Badge icon={<Star aria-hidden="true" />} className="font-data text-[13px] text-foreground">{result.rating.toFixed(1)}</Badge>
           )}
           {result.libraryId !== null && <Badge variant="strong" icon={<Check aria-hidden="true" />}>In library</Badge>}
           {when !== undefined && (
