@@ -1,6 +1,7 @@
 import { lazy, type ComponentType } from 'react';
 import { Button } from './components/ui/button';
 import { Callout } from './components/ui/callout';
+import { useScreenReady } from './navigation';
 
 const screenLoaders: Array<() => Promise<unknown>> = [];
 
@@ -28,3 +29,10 @@ export function lazyScreen<P extends object>(load: () => Promise<ComponentType<P
 export const preloadScreens = () => {
   for (const load of screenLoaders) void load().catch(() => undefined);
 };
+
+/** The Suspense fallback for a lazy screen: it holds the screen change, so the old screen stays up while the chunk loads. */
+export function ScreenLoading() {
+  useScreenReady(false);
+  return null;
+}
+

@@ -8,7 +8,7 @@ import type { DownloadsState } from './downloads/useDownloads';
 import { Library } from './library/Library';
 import { inScreenChange, navigate, replace, routeFor, useLocation } from './navigation';
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
-import { lazyScreen } from './lazyScreen';
+import { lazyScreen, ScreenLoading } from './lazyScreen';
 import { cn } from './lib/utils';
 import { Overview } from './title/Overview';
 
@@ -192,7 +192,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
             as typing in the search box, fades in here instead. */}
         <div key={view === 'title' ? pathname : view} className={cn(!inScreenChange() && 'transition-opacity duration-(--duration-fast) ease-out starting:opacity-0')}>
         {/* Inside the keyed view, so a screen still loading its chunk blanks only itself, never the bar or a mounted screen. */}
-        <Suspense fallback={null}>
+        <Suspense fallback={<ScreenLoading />}>
         {view === 'search'
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'
