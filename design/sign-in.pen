@@ -14739,6 +14739,9 @@
               "name": "App bar",
               "width": 1440,
               "descendants": {
+                "5:EXQNl": {
+                  "enabled": false
+                },
                 "5:zLSZ8": {
                   "type": "frame",
                   "id": "QzGO1",
@@ -14800,6 +14803,9 @@
               "name": "App bar",
               "width": 1440,
               "descendants": {
+                "5:EXQNl": {
+                  "enabled": false
+                },
                 "5:zLSZ8": {
                   "type": "frame",
                   "id": "g8EqpO",
@@ -14861,6 +14867,9 @@
               "name": "App bar",
               "width": 1440,
               "descendants": {
+                "5:EXQNl": {
+                  "enabled": false
+                },
                 "5:zLSZ8": {
                   "type": "frame",
                   "id": "HboAr",
