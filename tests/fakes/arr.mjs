@@ -80,6 +80,8 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     grabbed: [],
     removals: [],
     failed: [],
+    // Import lists as Sonarr and Radarr return them; the delete routes read whether any adds titles by itself.
+    importLists: [],
     erasedFromClient: [],
     manualImport: {},
     series: [],
@@ -236,6 +238,7 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
       state.failed.push(id);
       return { status: 200, body: {} };
     }
+    if (method === 'GET' && path === '/api/v3/importlist') return { status: 200, body: state.importLists };
     if (method === 'POST' && path === '/api/v3/command') {
       state.commands.push(body);
       return { status: 201, body: { id: state.commands.length, name: body.name } };

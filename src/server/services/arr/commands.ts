@@ -109,8 +109,20 @@ export const createCommands = <S extends Service>({ service, label, send }: { se
     return { kind: 'ok', value: typeof body.recycleBin === 'string' && body.recycleBin.trim() !== '' ? body.recycleBin.trim() : null };
   };
 
+  // Whether a list could add a removed title back by itself: Radarr's enabled lists with automatic add, Sonarr's with automatic add.
+  const importLists = async (): Promise<Result<boolean>> => {
+    const operation = 'the import list read';
+    const answer = await send(operation, '/api/v3/importlist');
+    if (answer.kind !== 'ok') return answer;
+    const { body } = answer.value;
+    if (!Array.isArray(body)) return refusal(`${label} sent no list of records for ${operation}.`);
+    const adds = (list: unknown) => isRecord(list) && (service === 'radarr' ? list.enabled === true && list.enableAuto === true : list.enableAutomaticAdd === true);
+    return { kind: 'ok', value: body.some(adds) };
+  };
+
   return {
     recycleBin,
+    importLists,
     searchAutomatically: searchAutomatically as (target: SearchTarget<S>) => Promise<Result<void>>,
     refreshTitle,
     refreshMonitoredDownloads,

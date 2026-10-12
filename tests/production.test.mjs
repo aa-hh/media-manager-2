@@ -10882,6 +10882,30 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.match(skipped.message, /^Couldn't read the movie back from Radarr/);
   });
 
+  // Offering the exclusion when no list adds titles by itself, offering it blindly when the lists cannot be read, or sending the flag when
+  // the owner did not ask turns this red.
+  await t.test('removing a movie can exclude it from import lists, offered only when a list adds titles by itself', async () => {
+    const w = await dune();
+    assert.equal((await w.plan('/movie/1')).body.importLists, false);
+    w.arrFake.radarr.state.importLists = [{ enabled: true, enableAuto: false }];
+    assert.equal((await w.plan('/movie/1')).body.importLists, false);
+    w.arrFake.radarr.state.importLists.push({ enabled: true, enableAuto: true });
+    assert.equal((await w.plan('/movie/1')).body.importLists, true);
+    w.arrFake.radarr.routes.unshift((method, url) => (url.pathname === '/api/v3/importlist' ? { status: 500, body: {} } : undefined));
+    assert.equal((await w.plan('/movie/1')).body.importLists, false);
+
+    for (const body of [
+      { mode: 'keepUnmonitored', excludeFromImportLists: true, removeTorrents: [], secondVersions: [] },
+      { mode: 'remove', excludeFromImportLists: 'yes', removeTorrents: [], secondVersions: [] },
+    ]) assert.equal((await w.remove('/movie/1', body)).status, 400, JSON.stringify(body));
+
+    w.onDelete('radarr', '/api/v3/movie/1', { removes: [w.file] });
+    const { body } = await w.remove('/movie/1', { mode: 'remove', excludeFromImportLists: true, removeTorrents: [], secondVersions: [] });
+    assert.deepEqual(w.steps(body).slice(0, 2), ['map:done', 'delete:done']);
+    assert.equal(body.steps[1].message, 'Removed from Radarr with its file, and excluded from its import lists.');
+    assert.deepEqual(w.requests('radarr').filter((request) => request.startsWith('DELETE')), ['DELETE /api/v3/movie/1?deleteFiles=true&addImportExclusion=true']);
+  });
+
   // Marking the grab failed while the download client would erase its seeding torrent, or dropping the search because the blocklist failed, turns this red.
   await t.test('searching again does not blocklist when the download client removes failed downloads, and still searches', async () => {
     const w = await dune();
@@ -11035,6 +11059,20 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     for (const [index, file] of files.entries()) w.onDelete('sonarr', `/api/v3/episodefile/${21 + index}`, { removes: [file] });
     return { ...w, FULL, files, versions };
   };
+
+  // Sending Sonarr's exclusion flag under Radarr's name, or reading import lists for a season that can never be removed, turns this red.
+  await t.test('removing a show can exclude it from import lists; a season plan never asks', async () => {
+    const w = await seasons();
+    w.arrFake.sonarr.state.importLists = [{ enableAutomaticAdd: true }];
+    assert.equal((await w.plan('/series/5')).body.importLists, true);
+    const season = await w.plan('/series/5/season/1');
+    assert.equal(season.body.importLists, false);
+    assert.equal(w.requests('sonarr').filter((request) => request === 'GET /api/v3/importlist').length, 1);
+    w.onDelete('sonarr', '/api/v3/series/5', { removes: w.files });
+    const { body } = await w.remove('/series/5', { mode: 'remove', excludeFromImportLists: true, removeTorrents: [], secondVersions: [] });
+    assert.equal(body.steps[1].message, 'Removed from Sonarr with its files, and excluded from its import lists.');
+    assert.deepEqual(w.requests('sonarr').filter((request) => request.startsWith('DELETE')), ['DELETE /api/v3/series/5?deleteFiles=true&addImportListExclusion=true']);
+  });
 
   // Offering the full-series pack (a copy, so no link check sees it), listing another season's file or second version, dropping willUnmonitor,
   // or offering to remove the show from a season delete turns this red.
