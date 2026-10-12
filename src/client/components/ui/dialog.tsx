@@ -44,7 +44,7 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
         />
         <DialogPrimitive.Popup
           className={cn(
-            'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-5rem)] w-140 -translate-1/2 flex-col rounded-lg border border-border bg-card p-6 outline-hidden',
+            'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-5rem)] w-140 max-w-[calc(100vw-2rem)] -translate-1/2 flex-col rounded-lg border border-border bg-card p-6 outline-hidden',
             'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]',
             'transition-[opacity,scale]',
             'data-starting-style:scale-(--motion-scale-dialog) data-starting-style:opacity-0',
@@ -53,13 +53,13 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
           )}
         >
           <div className="flex w-full items-start gap-4">
-            <DialogPrimitive.Title className="min-w-0 flex-1 font-ui text-lg font-bold text-foreground">{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="min-w-0 flex-1 font-ui text-lg font-bold [overflow-wrap:anywhere] text-foreground">{title}</DialogPrimitive.Title>
             <DialogPrimitive.Close
               render={<Button variant="ghost" icon={<X />} kbd="Esc" aria-label={closeLabel} className="px-2.5 [&>svg]:text-muted-foreground" />}
             />
           </div>
           {scrollEdges && subject !== undefined && (
-            <DialogPrimitive.Description className="w-full pt-2 font-ui text-sm leading-normal font-normal text-muted-foreground">{subject}</DialogPrimitive.Description>
+            <DialogPrimitive.Description className="w-full pt-2 font-ui text-sm leading-normal font-normal [overflow-wrap:anywhere] text-muted-foreground">{subject}</DialogPrimitive.Description>
           )}
           <div
             className={cn(
@@ -69,7 +69,7 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
             )}
           >
             {!scrollEdges && subject !== undefined && (
-              <DialogPrimitive.Description className="pt-2 font-ui text-sm leading-normal font-normal text-muted-foreground">{subject}</DialogPrimitive.Description>
+              <DialogPrimitive.Description className="pt-2 font-ui text-sm leading-normal font-normal [overflow-wrap:anywhere] text-muted-foreground">{subject}</DialogPrimitive.Description>
             )}
             {children !== undefined && <div className={cn('flex w-full flex-col', scrollEdges ? 'gap-5 py-4' : 'gap-2 pt-5')}>{children}</div>}
             {callout !== undefined && <div className="w-full pt-3">{callout}</div>}

@@ -39,7 +39,7 @@ function RowEpisodeDetails({ selected = true, overview, stillUrl, details, versi
       <div role="cell" className="flex flex-col gap-6 pt-4 pr-4 pb-6 pl-(--detail-indent)">
         {(overview !== undefined || stillUrl !== undefined) && (
           <section className="flex gap-4">
-            {stillUrl !== undefined && <img src={stillUrl} alt="" className="aspect-video w-60 shrink-0 rounded-md border border-border object-cover" />}
+            {stillUrl !== undefined && <img src={stillUrl} alt="" loading="lazy" decoding="async" className="aspect-video w-60 shrink-0 rounded-md border border-border object-cover" />}
             {overview !== undefined && <p className="m-0 max-w-170 text-body leading-normal text-muted-foreground">{overview}</p>}
           </section>
         )}

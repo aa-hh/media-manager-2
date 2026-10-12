@@ -38,7 +38,7 @@ function ToastList() {
       key={toast.id}
       toast={toast}
       className={cn(
-        'flex w-100 items-center gap-3 rounded-lg bg-bar py-3 pr-3 pl-3.5 text-bar-foreground',
+        'flex w-100 max-w-[calc(100vw-2*var(--page-margin))] items-center gap-3 rounded-lg bg-bar py-3 pr-3 pl-3.5 text-bar-foreground',
         'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]',
         // In: slide up 12 px and fade, duration-slow ease-out. Out: fade, duration-fast ease-in.
         'transition-[opacity,translate] duration-(--duration-slow) ease-out',
