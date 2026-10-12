@@ -435,11 +435,15 @@ const makeApp = async (input = {}) => {
   const listeningHost = input.listeningHost ?? '127.0.0.1';
   const { fetch, fixtureOptions, events, timers, webhooks, api, library, discover, titleDelete, images, setup } = input;
   const { createApp } = await import(appModuleUrl);
+  const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+  const database = input.database ?? new DatabaseSync(':memory:');
+  if (input.database === undefined) migrateDatabase(database, applicationMigrations);
   const now = () => clock.value;
   const fixture = fetch ? undefined : createPlexFixture({ now, ...fixtureOptions });
   const app = createApp({
     clientDirectory,
     listeningHost,
+    database,
     ownerPlexId,
     publicOrigin,
     now,
@@ -454,7 +458,7 @@ const makeApp = async (input = {}) => {
     images,
     setup,
   });
-  return { app, clock, fixture };
+  return { app, clock, fixture, database };
 };
 
 const startAuthentication = async (app, { cookie, origin = 'https://media.example', body = {}, headers = {} } = {}) => {
@@ -806,7 +810,8 @@ test('Plex owner authentication', async (t) => {
     }
   });
 
-  await t.test('sessions rotate, expire absolutely, do not slide, and vanish with a new factory', async () => {
+  // Turns red if sessions go back to server memory: a new app on the same database would reject the cookie.
+  await t.test('sessions rotate, expire absolutely, do not slide, and survive a restart on the same database', async () => {
     const setup = await makeApp();
     const firstStart = await startAuthentication(setup.app);
     const firstComplete = await completeAuthentication(setup.app, firstStart.binding, plexStateFromUrl(firstStart.json.url).state);
@@ -824,24 +829,27 @@ test('Plex owner authentication', async (t) => {
     assert.notEqual(replacementSession, firstSession);
     assert.equal((await setup.app.request('/api/session', { headers: { Cookie: firstSession } })).status, 401);
     const expiry = setup.clock.value + 24 * 60 * 60_000;
+    // Turns red if the Plex account token from sign-in is written to the sessions table, and so into backups.
+    assert.doesNotMatch(JSON.stringify(setup.database.prepare('SELECT * FROM sessions').all()), /plex-secret-token/);
+    const restarted = await makeApp({ clock: setup.clock, database: setup.database });
     // Omitting current server time prevents expiry scheduling independent of the browser clock.
     for (const serverNow of [expiry - 60_000, expiry - 1]) {
       setup.clock.value = serverNow;
-      const before = await setup.app.request('/api/session', { headers: { Cookie: replacementSession } });
+      const before = await restarted.app.request('/api/session', { headers: { Cookie: replacementSession } });
       assert.equal(before.status, 200);
       assert.deepEqual(await before.json(), { expiresAt: expiry, serverNow });
     }
+    assert.equal((await restarted.app.request('/api/session', { headers: { Cookie: firstSession } })).status, 401);
     setup.clock.value = expiry;
-    const expired = await setup.app.request('/api/session', { headers: { Cookie: replacementSession } });
+    const expired = await restarted.app.request('/api/session', { headers: { Cookie: replacementSession } });
     assert.equal(expired.status, 401);
     assert.deepEqual(await expired.json(), { error: 'session_expired' });
     assert.match(responseCookies(expired).join('\n'), /Max-Age=0/i);
-    const restarted = await makeApp({ clock: setup.clock });
-    assert.equal((await restarted.app.request('/api/session', { headers: { Cookie: replacementSession } })).status, 401);
+    assert.equal(setup.database.prepare('SELECT count(*) AS count FROM sessions').get().count, 0);
   });
 
   await t.test('logout revokes one browser while another owner session remains valid', async () => {
-    const { app } = await makeApp();
+    const { app, clock, database } = await makeApp();
     const sessions = [];
     for (let index = 0; index < 2; index += 1) {
       const started = await startAuthentication(app);
@@ -854,8 +862,9 @@ test('Plex owner authentication', async (t) => {
       method: 'POST', headers: { ...jsonHeaders(), Cookie: `${sessions[0].binding}; ${sessions[0].session}` }, body: '{}',
     });
     assert.equal(logout.status, 204);
-    assert.equal((await app.request('/api/session', { headers: { Cookie: sessions[0].session } })).status, 401);
-    assert.equal((await app.request('/api/session', { headers: { Cookie: sessions[1].session } })).status, 200);
+    const restarted = await makeApp({ clock, database });
+    assert.equal((await restarted.app.request('/api/session', { headers: { Cookie: sessions[0].session } })).status, 401);
+    assert.equal((await restarted.app.request('/api/session', { headers: { Cookie: sessions[1].session } })).status, 200);
     const again = await app.request('/auth/logout', { method: 'POST', headers: jsonHeaders(), body: '{}' });
     assert.equal(again.status, 204);
   });

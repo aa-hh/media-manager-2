@@ -389,6 +389,12 @@ export const applicationMigrations = [
   `ALTER TABLE grab_checkpoints ADD COLUMN outcomes_checked_at INTEGER;`,
   // Saved Discover rows, so the home screen reads results and never waits on TMDB or Trakt.
   `CREATE TABLE discover_rows (key TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL, read_at INTEGER NOT NULL) STRICT;`,
+  // Sign-in sessions, so a restart keeps the owner signed in. token_hash is the SHA-256 of the cookie value, never the value.
+  `CREATE TABLE sessions (
+    token_hash TEXT PRIMARY KEY,
+    owner_id INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
