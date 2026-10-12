@@ -1118,6 +1118,8 @@ test('the timing log records API requests, upstream calls and browser metrics wi
     const batch = [
       { name: 'LCP', value: 1234.5, route: '/discover', rating: 'good' },
       { name: 'api', value: 80, route: '/', path: '/api/discover/home' },
+      { name: 'api-failed', value: 12, route: '/discover', path: '/api/discover/home', status: 502 },
+      { name: 'api-failed', value: 3, route: '/discover', path: '/api/discover/home', status: 0 },
     ];
     assert.equal((await postMetrics(batch)).status, 204);
     assert.deepEqual(logged('web').map(({ at, kind, ...item }) => item), batch);
@@ -1125,14 +1127,16 @@ test('the timing log records API requests, upstream calls and browser metrics wi
     for (const invalid of [
       [{ ...item, name: 'FID' }], [{ ...item, value: 600_001 }], [{ ...item, value: -1 }], [{ ...item, route: 'https://elsewhere.example/' }],
       [{ ...item, route: '/search?q=x' }], [{ ...item, route: `/${'a'.repeat(200)}` }], [{ ...item, rating: 'great' }], [{ ...item, extra: 1 }],
-      [{ ...item, name: 'api' }], Array.from({ length: 51 }, () => item), item,
+      [{ ...item, name: 'api' }], [{ ...item, status: 500 }], [{ ...item, name: 'api-failed', path: '/api/x' }],
+      [{ ...item, name: 'api-failed', path: '/api/x', status: 600 }], [{ ...item, name: 'api-failed', path: '/api/x', status: 1.5 }],
+      [{ ...item, name: 'api-failed', status: 500 }], Array.from({ length: 51 }, () => item), item,
     ]) {
       const response = await postMetrics(invalid);
       assert.equal(response.status, 400, JSON.stringify(invalid).slice(0, 80));
       assert.deepEqual(await response.json(), { error: 'invalid_request' });
     }
     assert.equal((await postMetrics(batch, null)).status, 401);
-    assert.equal(logged('web').length, 2);
+    assert.equal(logged('web').length, 4);
   });
 });
 

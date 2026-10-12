@@ -1,4 +1,4 @@
-// v2/Mark/comparison — design/design-system.lib.pen poV94
+// v2/Mark/comparison — ~/Projects/media-manager-2-design/design-system.lib.pen poV94
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';

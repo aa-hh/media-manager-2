@@ -1,4 +1,4 @@
-// v2/Card/choice — design/design-system.lib.pen E7Mh6m
+// v2/Card/choice — ~/Projects/media-manager-2-design/design-system.lib.pen E7Mh6m
 import type { ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
 import { Radio } from '@/components/ui/radio';

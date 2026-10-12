@@ -1,5 +1,5 @@
-// v2/Option row — design/design-system.lib.pen qq4VX
-// v2/Option row/bordered — design/design-system.lib.pen zDrOf (the `bordered` prop)
+// v2/Option row — ~/Projects/media-manager-2-design/design-system.lib.pen qq4VX
+// v2/Option row/bordered — ~/Projects/media-manager-2-design/design-system.lib.pen zDrOf (the `bordered` prop)
 import type { ComponentProps, ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';

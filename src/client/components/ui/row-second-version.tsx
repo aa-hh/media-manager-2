@@ -1,4 +1,4 @@
-// v2/Row/second-version — design/design-system.lib.pen c49N0
+// v2/Row/second-version — ~/Projects/media-manager-2-design/design-system.lib.pen c49N0
 import type { ReactNode } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';

@@ -1,4 +1,4 @@
-// v2/Callout/info — design/design-system.lib.pen Tegv9
+// v2/Callout/info — ~/Projects/media-manager-2-design/design-system.lib.pen Tegv9
 import { Info } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

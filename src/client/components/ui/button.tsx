@@ -1,4 +1,4 @@
-// v2/Button — design/design-system.lib.pen ht3RN
+// v2/Button — ~/Projects/media-manager-2-design/design-system.lib.pen ht3RN
 import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
@@ -23,7 +23,7 @@ type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
 };
 
 const variants: Record<ButtonVariant, string> = {
-  default: 'bg-primary text-primary-foreground not-data-disabled:hover:bg-primary-hover not-data-disabled:active:bg-primary-pressed',
+  default: 'bg-action text-action-foreground not-data-disabled:hover:bg-action-hover not-data-disabled:active:bg-action-pressed',
   outline: 'border border-input bg-card text-foreground not-data-disabled:hover:bg-surface-hover not-data-disabled:active:bg-surface-pressed data-disabled:border-border',
   ghost: 'bg-transparent text-foreground not-data-disabled:hover:bg-surface-hover not-data-disabled:active:bg-surface-pressed data-disabled:bg-transparent',
   destructive: 'bg-destructive text-primary-foreground not-data-disabled:hover:bg-destructive-hover not-data-disabled:active:bg-destructive-pressed',

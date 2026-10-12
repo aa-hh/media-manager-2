@@ -1,4 +1,4 @@
-// v2/Tabs trigger — design/design-system.lib.pen Qf3qz
+// v2/Tabs trigger — ~/Projects/media-manager-2-design/design-system.lib.pen Qf3qz
 import { Tabs as TabsPrimitive } from '@base-ui/react/tabs';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

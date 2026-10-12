@@ -1,4 +1,4 @@
-// v2/Link prev-next — design/design-system.lib.pen U5XiTa
+// v2/Link prev-next — ~/Projects/media-manager-2-design/design-system.lib.pen U5XiTa
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';

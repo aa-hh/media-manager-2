@@ -1,4 +1,4 @@
-// v2/Switch — design/design-system.lib.pen gNBGP
+// v2/Switch — ~/Projects/media-manager-2-design/design-system.lib.pen gNBGP
 import { Switch as SwitchPrimitive } from '@base-ui/react/switch';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';

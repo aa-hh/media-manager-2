@@ -1,4 +1,4 @@
-// v2/Sign-in/block — matches the "Screens round 5" planet screens in design/sign-in.pen
+// v2/Sign-in/block — matches the "Screens round 5" planet screens in ~/Projects/media-manager-2-design/sign-in.pen
 import type { Ref } from 'react';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';

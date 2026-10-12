@@ -1,4 +1,4 @@
-// v2/Radio — design/design-system.lib.pen RhfKq
+// v2/Radio — ~/Projects/media-manager-2-design/design-system.lib.pen RhfKq
 import { Radio as RadioPrimitive } from '@base-ui/react/radio';
 import { RadioGroup } from '@base-ui/react/radio-group';
 import type { ComponentProps } from 'react';

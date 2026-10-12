@@ -524,7 +524,7 @@ export function TrackerEditor({ row, draft, checkedAt, now, request, onDraft, on
               const lead = singleBand ? 'Any size:' : `Above ${from || '…'} GB:`;
               if (band.kind === 'locked') {
                 return (
-                  <div key={index} className="flex h-10 items-center gap-2 font-ui text-sm text-muted-foreground">
+                  <div key={index} className="flex h-(--control-h-default) items-center gap-2 font-ui text-sm text-muted-foreground">
                     <Lock aria-hidden="true" className="size-3.5 shrink-0" />
                     {singleBand ? 'Any size' : previous === undefined ? `Up to ${band.row.upToGB} GB` : `Above ${from} GB`}: size-based curve (set in the env file)
                   </div>

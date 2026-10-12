@@ -239,18 +239,70 @@ export type DeletePlan = {
     ticked: false;
   }>;
   secondVersions: Array<SecondVersion & { ticked: true; torrent: { hash: string; advice: RemovalAdvice; removal: RemovalCheck } | null }>;
+  // The fields below arrive one server ticket at a time (AA-125 to AA-129); absent until then, so read them defensively.
+  /** What this target allows; `remove` only for a whole movie or show. Absent means the server still takes the older request. */
+  modes?: DeleteMode[];
+  /** The service has an enabled import list. */
+  importLists?: boolean;
+  /** Selection target only. */
+  selection?: { seasons: number[]; episodeIds: number[] } | null;
+  monitoring?: {
+    /** Null for a movie. */
+    followsNewSeasons: boolean | null;
+    /** Selected seasons with episodes not yet aired; the owner must answer for each. */
+    airingSeasons: number[];
+    leavesShowEmpty: boolean;
+  };
+  /** Downloads in the queue for what is being deleted. */
+  queue?: Array<{
+    downloadId: string;
+    title: string;
+    /** 0 to 1. */
+    progress: number;
+    status: string;
+    episodeIds: number[];
+    /** Null when nothing has downloaded yet. */
+    advice: RemovalAdvice | null;
+    removable: RemovalCheck;
+  }>;
 };
 export type DeletePlanTorrent = DeletePlan['torrents'][number];
 export type DeletePlanVersion = DeletePlan['secondVersions'][number];
+export type DeletePlanDownload = NonNullable<DeletePlan['queue']>[number];
+export type DeleteMode = 'remove' | 'keepUnmonitored' | 'searchAgain';
+export type QueueAction = 'leave' | 'remove' | 'removeWithTorrent';
 
-/** POST /api/library/{movie|series}/:id/delete body. `mode` is for a movie only. */
-export type DeleteChoices = { mode?: 'remove' | 'keepUnmonitored'; removeTorrents: string[]; secondVersions: Array<{ id: number; removeTorrent: boolean }> };
+/**
+ * POST .../delete body. Before the server sends `modes`, only `mode` (a movie only), `removeTorrents` and `secondVersions` are sent.
+ * Once it does, every key but the selection's is required and an unknown or missing key is a 400.
+ */
+export type DeleteChoices = {
+  mode?: DeleteMode;
+  excludeFromImportLists?: boolean;
+  blocklistCurrent?: boolean;
+  /** One entry per airing season, keyed by season number. */
+  keepFollowing?: Record<string, boolean>;
+  queue?: Array<{ downloadId: string; action: QueueAction }>;
+  removeTorrents: string[];
+  secondVersions: Array<{ id: number; removeTorrent: boolean }>;
+  /** Selection target only: the same seasons and episodes the plan was read with. */
+  seasons?: number[];
+  episodeIds?: number[];
+};
 
 type StepOutcome = 'done' | 'failed' | 'skipped';
 export type DeleteStep =
   | { step: 'map' | 'unmonitor' | 'delete' | 'wait' | 'history'; outcome: StepOutcome; message: string }
   | { step: 'torrents'; outcome: StepOutcome; message: string; torrents: Array<{ hash: string; name: string; removed: boolean; reason: string | null }> }
-  | { step: 'secondVersions'; outcome: StepOutcome; message: string; secondVersions: Array<{ id: number; deleted: boolean; torrentRemoved: boolean; reason: string | null }> };
+  | { step: 'secondVersions'; outcome: StepOutcome; message: string; secondVersions: Array<{ id: number; deleted: boolean; torrentRemoved: boolean; reason: string | null }> }
+  | { step: 'queue'; outcome: StepOutcome; message: string; queue: Array<{ downloadId: string; title: string; removed: boolean; torrentRemoved: boolean; reason: string | null }> }
+  | { step: 'blocklist' | 'search' | 'exclusion'; outcome: StepOutcome; message: string }
+  | { step: 'monitoring'; outcome: StepOutcome; message: string; monitoring: DeleteMonitoring };
+/** What Sonarr or Radarr monitors after the delete, read back from it. */
+export type DeleteMonitoring =
+  | { kind: 'movie'; monitored: boolean }
+  | { kind: 'series'; monitored: boolean; monitorNewItems: string | null;
+      seasons: Array<{ seasonNumber: number; monitored: boolean; monitoredEpisodes: number; episodes: number }> };
 /** The 200 reply of the delete; `deleted` is false when Sonarr or Radarr refused and nothing else ran. */
 export type DeleteRan = { deleted: boolean; steps: DeleteStep[] };
 

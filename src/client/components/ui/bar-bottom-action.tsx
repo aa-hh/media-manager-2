@@ -1,4 +1,4 @@
-// v2/Bar/bottom-action — design/design-system.lib.pen z2z0d
+// v2/Bar/bottom-action — ~/Projects/media-manager-2-design/design-system.lib.pen z2z0d
 import { PencilLine } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';

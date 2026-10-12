@@ -1,4 +1,4 @@
-// v2/Header/title — design/design-system.lib.pen NaDkI
+// v2/Header/title — ~/Projects/media-manager-2-design/design-system.lib.pen NaDkI
 import { type ReactNode, useState } from 'react';
 import { ToggleBookmark, type BookmarkState } from '@/components/ui/toggle-bookmark';
 import { cn } from '@/lib/utils';

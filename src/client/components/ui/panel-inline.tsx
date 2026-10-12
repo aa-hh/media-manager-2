@@ -1,4 +1,4 @@
-// v2/Panel/inline — design/design-system.lib.pen cZb0Z
+// v2/Panel/inline — ~/Projects/media-manager-2-design/design-system.lib.pen cZb0Z
 import { Collapsible } from '@base-ui/react/collapsible';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';

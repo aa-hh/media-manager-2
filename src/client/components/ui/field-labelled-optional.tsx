@@ -1,4 +1,4 @@
-// v2/Field/labelled optional — design/design-system.lib.pen r4FA5
+// v2/Field/labelled optional — ~/Projects/media-manager-2-design/design-system.lib.pen r4FA5
 import type { ComponentProps } from 'react';
 import { FieldLabelled } from '@/components/ui/field-labelled';
 

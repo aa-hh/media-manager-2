@@ -1,9 +1,9 @@
-// v2/Skeleton — design/design-system.lib.pen ZWg7X
-// v2/Skeleton/row — design/design-system.lib.pen g34znm
-// v2/Skeleton/row-two-line — design/design-system.lib.pen kJlIx
-// v2/Skeleton/poster card — design/design-system.lib.pen Om6ge
-// v2/Skeleton/search result — design/design-system.lib.pen MFkuO
-// v2/Skeleton/calendar entry — design/design-system.lib.pen jhCRH
+// v2/Skeleton — ~/Projects/media-manager-2-design/design-system.lib.pen ZWg7X
+// v2/Skeleton/row — ~/Projects/media-manager-2-design/design-system.lib.pen g34znm
+// v2/Skeleton/row-two-line — ~/Projects/media-manager-2-design/design-system.lib.pen kJlIx
+// v2/Skeleton/poster card — ~/Projects/media-manager-2-design/design-system.lib.pen Om6ge
+// v2/Skeleton/search result — ~/Projects/media-manager-2-design/design-system.lib.pen MFkuO
+// v2/Skeleton/calendar entry — ~/Projects/media-manager-2-design/design-system.lib.pen jhCRH
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 

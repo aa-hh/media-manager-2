@@ -1,4 +1,4 @@
-// v2/Fact/stacked — design/design-system.lib.pen CgPEx
+// v2/Fact/stacked — ~/Projects/media-manager-2-design/design-system.lib.pen CgPEx
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

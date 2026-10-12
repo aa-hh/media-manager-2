@@ -1,4 +1,4 @@
-// v2/Callout — design/design-system.lib.pen BXgoa
+// v2/Callout — ~/Projects/media-manager-2-design/design-system.lib.pen BXgoa
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

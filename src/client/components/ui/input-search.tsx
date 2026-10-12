@@ -1,4 +1,4 @@
-// v2/Input/Search — design/design-system.lib.pen tY5yB
+// v2/Input/Search — ~/Projects/media-manager-2-design/design-system.lib.pen tY5yB
 import { Input } from '@base-ui/react/input';
 import { Search, X } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';

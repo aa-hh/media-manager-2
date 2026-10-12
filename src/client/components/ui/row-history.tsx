@@ -1,4 +1,4 @@
-// v2/Row/history — design/design-system.lib.pen nT6fn
+// v2/Row/history — ~/Projects/media-manager-2-design/design-system.lib.pen nT6fn
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

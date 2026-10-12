@@ -1,4 +1,4 @@
-// v2/Header/page — design/design-system.lib.pen pLro9
+// v2/Header/page — ~/Projects/media-manager-2-design/design-system.lib.pen pLro9
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

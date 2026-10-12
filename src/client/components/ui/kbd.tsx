@@ -1,4 +1,4 @@
-// v2/Kbd — design/design-system.lib.pen NAj8m
+// v2/Kbd — ~/Projects/media-manager-2-design/design-system.lib.pen NAj8m
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -14,7 +14,7 @@ function Kbd({ icon, onFill = false, className, children, ...props }: KbdProps) 
       className={cn(
         'inline-flex h-4.5 shrink-0 items-center justify-center gap-0.5 rounded-xs px-1.25 font-data text-xs font-medium [&_svg]:size-3',
         onFill
-          ? 'bg-primary-foreground/15 text-primary-foreground/85'
+          ? 'bg-current/15 text-current/85'
           : 'border border-b-2 border-border bg-muted text-muted-foreground',
         className,
       )}

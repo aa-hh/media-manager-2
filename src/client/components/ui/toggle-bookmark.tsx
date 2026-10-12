@@ -1,4 +1,4 @@
-// v2/Toggle/Bookmark — design/design-system.lib.pen QSZ23
+// v2/Toggle/Bookmark — ~/Projects/media-manager-2-design/design-system.lib.pen QSZ23
 import { Bookmark, BookmarkMinus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

@@ -1,4 +1,4 @@
-// v2/Header/results — design/design-system.lib.pen RiBvU
+// v2/Header/results — ~/Projects/media-manager-2-design/design-system.lib.pen RiBvU
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

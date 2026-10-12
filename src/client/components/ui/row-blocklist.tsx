@@ -1,4 +1,4 @@
-// v2/Row/blocklist — design/design-system.lib.pen Dh5pL
+// v2/Row/blocklist — ~/Projects/media-manager-2-design/design-system.lib.pen Dh5pL
 import type { ReactNode } from 'react';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

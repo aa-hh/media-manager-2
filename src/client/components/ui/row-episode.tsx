@@ -1,4 +1,4 @@
-// v2/Row/episode — design/design-system.lib.pen rjunT
+// v2/Row/episode — ~/Projects/media-manager-2-design/design-system.lib.pen rjunT
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

@@ -1,4 +1,4 @@
-// v2/Row/search-result — design/design-system.lib.pen g073R
+// v2/Row/search-result — ~/Projects/media-manager-2-design/design-system.lib.pen g073R
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

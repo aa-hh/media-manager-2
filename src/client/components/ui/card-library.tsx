@@ -1,4 +1,4 @@
-// v2/Card/library — design/design-system.lib.pen yZ5NT
+// v2/Card/library — ~/Projects/media-manager-2-design/design-system.lib.pen yZ5NT
 import { HardDrive } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';

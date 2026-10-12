@@ -1,4 +1,4 @@
-// v2/Status/service pill — design/design-system.lib.pen hpQjk
+// v2/Status/service pill — ~/Projects/media-manager-2-design/design-system.lib.pen hpQjk
 import { PencilLine } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';
