@@ -6,11 +6,12 @@ import type { Blocklist } from './blocklist.js';
 import type { Protection } from './protection.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { listSecondVersionRows, type SecondVersionRow } from './secondVersionRows.js';
-import type { ArrServices, FileDetail, HistoryRecord, Result } from './services/arr.js';
+import type { ArrServices, FileDetail, HistoryRecord, QueueItem, Result } from './services/arr.js';
 import type { createTorrentFiles, LibraryFileState, RemovalCheck } from './torrentFiles.js';
 
 type Library = ReturnType<ReturnType<typeof createTorrentFiles>['readLibraryInodes']>;
 type TorrentFiles = Pick<ReturnType<typeof createTorrentFiles>, 'mapFiles' | 'readLibraryInodes' | 'canRemoveTorrent' | 'removeTorrent'>;
+const fraction = (item: QueueItem) => (item.sizeBytes <= 0 ? 0 : Math.min(1, Math.max(0, (item.sizeBytes - item.sizeLeftBytes) / item.sizeBytes)));
 type Failure = Exclude<Result<never>, { kind: 'ok' }>;
 
 // Whole seasons and single episodes of one show, in any mix.
@@ -30,7 +31,10 @@ export type Choices = {
   blocklistCurrent: boolean;
   excludeFromImportLists: boolean;
   keepFollowing: Record<number, boolean>;
+  // Downloads in the queue to take out before the delete; any not listed are left.
+  queue: { downloadId: string; action: QueueAction }[];
 };
+export type QueueAction = 'leave' | 'remove' | 'removeWithTorrent';
 
 // The part of a show a season or selection target covers; null for a whole title.
 const partOf = (target: DeleteTarget): Selection | null => (target.service !== 'sonarr' ? null
@@ -45,6 +49,8 @@ const defaultMode = (target: DeleteTarget): Mode => (partOf(target) !== null ? '
 export const UNLINKED_FILE = "Can't link this file to a torrent. Its torrent, if any, keeps seeding.";
 export const IMPORTED_BY_COPY = 'imported by copy';
 export const KEPT_FILES = 'This torrent also holds files of this show that this delete keeps.';
+export const KEPT_EPISODES = 'This download also holds episodes this delete keeps, so it stays.';
+export const NO_DOWNLOAD_ID = 'Sonarr or Radarr gives this item no download id, so it can only be left.';
 // Sonarr and Radarr delete a title's files in the background after they answer.
 const WAIT_CEILING_MS = 2 * 60_000;
 const WAIT_STEP_MS = 2_000;
@@ -62,6 +68,15 @@ export type PlanTorrent = {
   removal: RemovalCheck;
   // Every torrent starts unticked: deleting keeps seeding unless the owner chooses otherwise.
   ticked: false;
+};
+// One download in the queue for what is being deleted; Sonarr lists a pack once per episode, here it is one row.
+export type PlanQueueItem = {
+  downloadId: string;
+  title: string;
+  progress: number;
+  status: string;
+  episodeIds: number[];
+  removable: RemovalCheck;
 };
 export type PlanSecondVersion = SecondVersionRow & {
   ticked: true;
@@ -94,17 +109,21 @@ export type DeletePlan = {
   files: PlanFile[];
   torrents: PlanTorrent[];
   secondVersions: PlanSecondVersion[];
+  // Hit and run advice only once something has downloaded; a removal before that costs the tracker nothing.
+  queue: (PlanQueueItem & { advice: RemovalAdvice | null })[];
 };
 
 type Outcome = 'done' | 'failed' | 'skipped';
 export type FileOutcome = { fileId: number; path: string; deleted: boolean; reason: string | null };
 export type TorrentOutcome = { hash: string; name: string; removed: boolean; reason: string | null };
+export type QueueOutcome = { downloadId: string; title: string; removed: boolean; torrentRemoved: boolean; reason: string | null };
 export type VersionOutcome = { id: number; deleted: boolean; torrentRemoved: boolean; reason: string | null };
 export type StepResult =
   | { step: 'map' | 'unmonitor' | 'monitor' | 'delete' | 'wait' | 'blocklist' | 'search' | 'history'; outcome: Outcome; message: string }
   // A season delete sends one file delete per file and lists each answer.
   | { step: 'delete'; outcome: Outcome; message: string; files: FileOutcome[] }
   | { step: 'torrents'; outcome: Outcome; message: string; torrents: TorrentOutcome[] }
+  | { step: 'queue'; outcome: Outcome; message: string; queue: QueueOutcome[] }
   | { step: 'secondVersions'; outcome: Outcome; message: string; secondVersions: VersionOutcome[] }
   // Read back from Sonarr or Radarr after a delete that keeps the title; null when the read failed.
   | { step: 'monitoring'; outcome: Outcome; message: string; monitoring: Monitoring | null };
@@ -270,6 +289,24 @@ export const createTitleDelete = (options: {
       reason: file.reason,
     }));
     const scope = new Set(episodes.map((episode) => episode.id));
+    // Read live, so a download that finished importing since the plan no longer shows.
+    const queueRead = await arr[target.service].queue();
+    if (queueRead.kind !== 'ok') return queueRead;
+    const ours = (item: QueueItem) => (target.service === 'radarr' ? item.movieId === target.movieId : item.seriesId === target.seriesId);
+    const downloads = new Map<string, QueueItem[]>();
+    for (const item of queueRead.value.filter(ours)) {
+      const key = item.downloadId ?? `queue:${item.queueId}`;
+      downloads.set(key, [...(downloads.get(key) ?? []), item]);
+    }
+    const queue: PlanQueueItem[] = [...downloads.entries()].flatMap(([key, items]) => {
+      const episodeIds = items.flatMap((item) => item.episodeId ?? []);
+      // Part of a show lists only downloads for its own episodes; one that also holds others can only be left.
+      if (part !== null && !episodeIds.some((id) => scope.has(id))) return [];
+      const first = items[0];
+      const removable: RemovalCheck = first.downloadId === null ? { allowed: false, reason: NO_DOWNLOAD_ID }
+        : part !== null && episodeIds.some((id) => !scope.has(id)) ? { allowed: false, reason: KEPT_EPISODES } : { allowed: true };
+      return [{ downloadId: first.downloadId ?? key, title: first.title, progress: fraction(first), status: first.trackedState || first.status, episodeIds, removable }];
+    });
     const airingSeasons = (part?.seasons ?? []).filter((season) => allEpisodes.some((episode) => episode.seasonNumber === season && !episode.aired));
     const leavesShowEmpty = part !== null && followsNewSeasons === false
       && files.every((file) => seasonFiles?.has(file.fileId) === true)
@@ -277,7 +314,7 @@ export const createTitleDelete = (options: {
     return {
       kind: 'ok' as const,
       value: {
-        title, files: planFiles, torrents, secondVersions, episodes, allEpisodes, keptHashes, part,
+        title, files: planFiles, torrents, secondVersions, episodes, allEpisodes, keptHashes, part, queue,
         monitoring: { followsNewSeasons, airingSeasons, leavesShowEmpty },
         history: history.kind === 'ok' ? history.value : [],
       },
@@ -292,7 +329,7 @@ export const createTitleDelete = (options: {
   const plan = async (target: DeleteTarget): Promise<Result<DeletePlan>> => {
     const gathered = await gather(target);
     if (gathered.kind !== 'ok') return gathered;
-    const { title, files, torrents, secondVersions, keptHashes, part, monitoring } = gathered.value;
+    const { title, files, torrents, secondVersions, keptHashes, part, monitoring, queue } = gathered.value;
     const seasonNumber = target.service === 'sonarr' ? target.seasonNumber ?? null : null;
     // Second versions start ticked, so their files count as gone when checking whether a torrent is still needed.
     const after = [...files.map((file) => file.path), ...secondVersions.flatMap((row) => row.path ?? [])];
@@ -321,6 +358,10 @@ export const createTitleDelete = (options: {
           advice: await advise(torrent.hash),
           removal: removalOf(torrent.hash, after, library, keptHashes),
           ticked: false as const,
+        }))),
+        queue: await Promise.all(queue.map(async (item) => ({
+          ...item,
+          advice: item.removable.allowed && item.progress > 0 ? await advise(item.downloadId) : null,
         }))),
         secondVersions: await Promise.all(secondVersions.map(async (row) => {
           const hash = row.hash?.toUpperCase();
@@ -523,7 +564,7 @@ export const createTitleDelete = (options: {
     try {
       const gathered = await gather(target);
       if (gathered.kind !== 'ok') return gathered;
-      const { title, files, torrents, secondVersions, episodes, allEpisodes, keptHashes, part, monitoring, history } = gathered.value;
+      const { title, files, torrents, secondVersions, episodes, allEpisodes, keptHashes, part, monitoring, history, queue } = gathered.value;
       const changed = (reason: string) => ({ kind: 'plan_changed', reason }) as const;
       // A selection must answer for every season still airing; the season route predates the question and stops following, as it did.
       const unanswered = monitoring.airingSeasons.filter((season) => choices.keepFollowing[season] === undefined);
@@ -531,6 +572,14 @@ export const createTitleDelete = (options: {
         return { kind: 'invalid', reason: `Say whether to keep following ${seasonWords(unanswered)}, which still ${unanswered.length === 1 ? 'has' : 'have'} episodes to air.` };
       }
       const following = new Set(monitoring.airingSeasons.filter((season) => choices.keepFollowing[season] === true));
+      const queued: { action: QueueAction; item: PlanQueueItem }[] = [];
+      for (const choice of choices.queue) {
+        if (choice.action === 'leave') continue;
+        const item = queue.find((entry) => entry.downloadId === choice.downloadId);
+        if (item === undefined) return changed(`The download ${choice.downloadId} is no longer in the queue for ${title}.`);
+        if (!item.removable.allowed) return { kind: 'invalid', reason: `${item.title} can't be removed: ${item.removable.reason}` };
+        queued.push({ action: choice.action, item });
+      }
 
       const rows = new Map(secondVersions.map((row) => [row.id, row]));
       for (const choice of choices.secondVersions) if (!rows.has(choice.id)) return changed(`Second version ${choice.id} is no longer listed for ${title}.`);
@@ -553,6 +602,32 @@ export const createTitleDelete = (options: {
       }
 
       const steps: StepResult[] = [{ step: 'map', outcome: 'done', message: `Checked which torrents hold ${plural(files.length, 'file')}.` }];
+      // Downloads go first, and never with the service's own client removal, so the shared-data check guards the torrent.
+      if (queued.length > 0) {
+        const outcomes: QueueOutcome[] = [];
+        for (const { action, item } of queued) {
+          const taken = await arr[target.service].removeFromQueue({ downloadId: item.downloadId }, 'nothing');
+          if (taken.kind !== 'ok') {
+            outcomes.push({ downloadId: item.downloadId, title: item.title, removed: false, torrentRemoved: false, reason: taken.message });
+            return { kind: 'ran', deleted: false, steps: [...steps, { step: 'queue', outcome: 'failed', message: `${item.title} could not be taken out of the queue. Nothing was deleted.`, queue: outcomes }] };
+          }
+          const torrent = action === 'removeWithTorrent' ? await torrentFiles.removeTorrent(item.downloadId) : null;
+          outcomes.push({
+            downloadId: item.downloadId,
+            title: item.title,
+            removed: true,
+            torrentRemoved: torrent?.removed === true,
+            reason: torrent === null || torrent.removed ? null : torrent.reason,
+          });
+        }
+        const torrentsLeft = outcomes.filter((outcome, index) => queued[index].action === 'removeWithTorrent' && !outcome.torrentRemoved).length;
+        steps.push({
+          step: 'queue',
+          outcome: torrentsLeft === 0 ? 'done' : 'failed',
+          message: `Took ${plural(outcomes.length, 'download')} out of the queue without a new search.${torrentsLeft === 0 ? '' : ` ${plural(torrentsLeft, 'torrent')} could not be removed.`}`,
+          queue: outcomes,
+        });
+      }
       const label = target.service === 'radarr' ? 'Radarr' : 'Sonarr';
       let summary: string;
       let gonePaths = files.map((file) => file.path);
@@ -776,12 +851,24 @@ const parseKeepFollowing = (value: unknown): Record<number, boolean> | undefined
   return answers;
 };
 
+const parseQueue = (value: unknown): Choices['queue'] | undefined => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_CHOICES) return undefined;
+  const choices: Choices['queue'] = [];
+  for (const item of value) {
+    if (!isRecord(item) || !hasKeys(item, ['downloadId', 'action']) || typeof item.downloadId !== 'string' || item.downloadId === '' || item.downloadId.length > 200) return undefined;
+    if (item.action !== 'leave' && item.action !== 'remove' && item.action !== 'removeWithTorrent') return undefined;
+    choices.push({ downloadId: item.downloadId, action: item.action });
+  }
+  return new Set(choices.map((choice) => choice.downloadId)).size === choices.length ? choices : undefined;
+};
+
 // A movie delete has always named its mode; a show or season delete that leaves it out gets what it did before the choice existed.
 // A selection is new, so it names its mode and carries the seasons and episodes it was planned for.
 const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: Mode }) | undefined => {
   if (!isRecord(body) || !('removeTorrents' in body) || !('secondVersions' in body)) return undefined;
   const selected = target.service === 'sonarr' && target.selection !== undefined;
-  const allowed = ['mode', 'blocklistCurrent', 'excludeFromImportLists', 'keepFollowing', 'removeTorrents', 'secondVersions', ...(selected ? ['seasons', 'episodeIds'] : [])];
+  const allowed = ['mode', 'blocklistCurrent', 'excludeFromImportLists', 'keepFollowing', 'queue', 'removeTorrents', 'secondVersions', ...(selected ? ['seasons', 'episodeIds'] : [])];
   if (Object.keys(body).some((key) => !allowed.includes(key))) return undefined;
   const { removeTorrents, secondVersions } = body;
   const mode = body.mode ?? (target.service === 'radarr' || selected ? undefined : defaultMode(target));
@@ -792,6 +879,8 @@ const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: M
   if (typeof excludeFromImportLists !== 'boolean' || (excludeFromImportLists && mode !== 'remove')) return undefined;
   const keepFollowing = parseKeepFollowing(body.keepFollowing);
   if (keepFollowing === undefined) return undefined;
+  const queue = parseQueue(body.queue);
+  if (queue === undefined) return undefined;
   if (!Array.isArray(removeTorrents) || removeTorrents.length > MAX_CHOICES || !Array.isArray(secondVersions) || secondVersions.length > MAX_CHOICES) return undefined;
   if (removeTorrents.some((hash) => typeof hash !== 'string' || !/^[0-9A-Fa-f]{40}$/.test(hash))) return undefined;
   const hashes = (removeTorrents as string[]).map((hash) => hash.toUpperCase());
@@ -802,7 +891,7 @@ const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: M
     versions.push({ id: item.id as number, removeTorrent: item.removeTorrent });
   }
   if (new Set(versions.map((version) => version.id)).size !== versions.length) return undefined;
-  return { removeTorrents: hashes, secondVersions: versions, blocklistCurrent, excludeFromImportLists, keepFollowing, mode: mode as Mode };
+  return { removeTorrents: hashes, secondVersions: versions, blocklistCurrent, excludeFromImportLists, keepFollowing, queue, mode: mode as Mode };
 };
 
 // Mounted under /api/library next to the library routes.
