@@ -15,7 +15,7 @@ import { ToastNumber, useToastManager } from '@/components/ui/toast';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { getJson, postJson } from '../library/api';
-import { addedToast, airDate, type SearchFact } from './addText';
+import { addedToast, airDate, availabilityLabels, labelOf, searchFact, type Airing, type CollectionSize, type SearchFact } from './addText';
 import type { Subject } from './TitleHeader';
 
 type QualityProfile = { id: number; name: string };
@@ -46,8 +46,6 @@ type AddState =
   | { kind: 'refused'; title: string; body?: string; libraryId?: number }
   | { kind: 'added' };
 
-type Airing = { seasons: Array<{ seasonNumber: number; aired: number }> | null; nextAirDate: string | null };
-type CollectionSize = { films: number; allReleased: boolean } | null;
 
 const seriesMonitorLabels: Array<[string, string]> = [
   ['all', 'all episodes'],
@@ -61,15 +59,9 @@ const movieMonitorLabels: Array<[string, string]> = [
   ['movieAndCollection', 'entire collection'],
   ['none', 'nothing'],
 ];
-const availabilityLabels: Array<[string, string]> = [
-  ['announced', 'announced'],
-  ['inCinemas', 'in cinemas'],
-  ['released', 'available'],
-];
 const seriesTypeLabels: Array<[string, string]> = [['standard', 'Standard'], ['daily', 'Daily'], ['anime', 'Anime']];
 const onOffLabels: Array<[string, string]> = [['on', 'On'], ['off', 'Off']];
 
-const labelOf = (labels: Array<[string, string]>, value: string) => labels.find(([key]) => key === value)?.[1] ?? value;
 const seasonName = (seasonNumber: number) => (seasonNumber === 0 ? 'Specials' : `Season ${seasonNumber}`);
 
 const failureMessage = (service: 'Sonarr' | 'Radarr', error: unknown, fallback: string) => {
@@ -213,35 +205,7 @@ export function AddControls({ subject, onAdded, onUnauthenticated }: {
   const seasonsMissing = tv && choices?.monitor === 'skip' && choices.seasons.length === 0;
 
   // What the search covers for these choices. The sentence's third line and the toast both word it.
-  const searchFact = (current: Choices): SearchFact => {
-    if (current.monitor === 'none') return { kind: 'none' };
-    if (current.monitor === 'skip' && current.seasons.length === 0) return { kind: 'unknown' };
-    if (tv) {
-      const seasons = airing?.seasons ?? null;
-      const aired = (keep: (seasonNumber: number) => boolean) => (seasons === null ? null : seasons.filter((season) => keep(season.seasonNumber)).reduce((sum, season) => sum + season.aired, 0));
-      const newest = seasons === null ? undefined : seasons.filter((season) => season.seasonNumber > 0).sort((a, b) => b.seasonNumber - a.seasonNumber)[0];
-      const count = current.monitor === 'all' ? aired((seasonNumber) => seasonNumber > 0)
-        : current.monitor === 'lastSeason' ? (newest === undefined ? null : newest.aired)
-          : current.monitor === 'skip' ? aired((seasonNumber) => current.seasons.includes(seasonNumber))
-            : null;
-      const nextAirDate = airing?.nextAirDate ?? null;
-      if (current.monitor === 'future') return { kind: 'future', nextAirDate };
-      if (count === null) return { kind: 'unknown' };
-      return count > 0 ? { kind: 'aired', count } : { kind: 'nothingAired', firstAirDate: nextAirDate };
-    }
-    const availability = labelOf(availabilityLabels, current.minimumAvailability);
-    if (current.monitor === 'movieOnly') {
-      if (detail.status === 'released') return { kind: 'now' };
-      const dates = subject.type === 'movie' ? subject.detail.releaseDates : null;
-      const earliest = [dates?.digital ?? null, dates?.physical ?? null].filter((value): value is string => value !== null).sort()[0] ?? null;
-      const expected = current.minimumAvailability === 'inCinemas' ? dates?.inCinemas ?? null
-        : current.minimumAvailability === 'released' ? earliest
-          : null;
-      return { kind: 'expected', availability, date: expected !== null && expected.slice(0, 10) > new Date().toISOString().slice(0, 10) ? expected : null };
-    }
-    return { kind: 'collection', movies: collection?.films ?? null, allReleased: collection?.allReleased ?? false, availability };
-  };
-  const fact = choices === undefined ? undefined : searchFact(choices);
+  const fact = choices === undefined ? undefined : searchFact(choices, { tv, airing, collection, movie: subject.type === 'movie' ? subject.detail : null });
 
   const submit = async () => {
     if (choices === undefined || fact === undefined) return;

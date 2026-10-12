@@ -11878,3 +11878,31 @@ test('the added toast words the search from the sentence fact', async () => {
     assert.equal(toast.number, number, fact.kind);
   }
 });
+
+test('the add sentence picks the search fact from the choices and the title', async () => {
+  // Changing which fact searchFact returns for a monitor choice, aired count or movie status turns this red.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { searchFact } = await load('../src/client/title/addText.ts');
+  const nextAirDate = '2099-01-05';
+  const show = (seasons) => ({ tv: true, airing: { seasons, nextAirDate }, collection: undefined, movie: null });
+  const aired18 = show([{ seasonNumber: 0, aired: 2 }, { seasonNumber: 1, aired: 10 }, { seasonNumber: 2, aired: 8 }]);
+  const newSeason = show([{ seasonNumber: 1, aired: 0 }, { seasonNumber: 2, aired: 0 }]);
+  const movie = (status, digital = null) => ({ tv: false, airing: undefined, collection: { films: 3, allReleased: false }, movie: { status, releaseDates: { inCinemas: null, digital, physical: null } } });
+  const tv = (monitor, seasons = []) => ({ monitor, seasons, minimumAvailability: 'released' });
+  const film = (monitor, minimumAvailability) => ({ monitor, seasons: [], minimumAvailability });
+  const cases = [
+    [tv('all'), aired18, { kind: 'aired', count: 18 }],
+    [tv('all'), newSeason, { kind: 'nothingAired', firstAirDate: nextAirDate }],
+    [tv('lastSeason'), newSeason, { kind: 'future', nextAirDate }],
+    [tv('skip'), aired18, { kind: 'unknown' }],
+    [tv('skip', [1, 2]), aired18, { kind: 'aired', count: 18 }],
+    [tv('future'), aired18, { kind: 'future', nextAirDate }],
+    [tv('none'), aired18, { kind: 'none' }],
+    [film('movieOnly', 'released'), movie('released'), { kind: 'now' }],
+    [film('movieOnly', 'inCinemas'), movie('inCinemas'), { kind: 'now' }],
+    [film('movieOnly', 'released'), movie('announced', '2099-03-26'), { kind: 'expected', availability: 'available', date: '2099-03-26' }],
+    [film('movieAndCollection', 'released'), movie('released'), { kind: 'collection', movies: 3, allReleased: false, availability: 'available' }],
+  ];
+  for (const [choices, title, fact] of cases) assert.deepEqual(searchFact(choices, title), fact, `${choices.monitor} ${JSON.stringify(title.movie?.status ?? title.airing?.seasons)}`);
+});

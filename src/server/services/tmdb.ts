@@ -135,7 +135,7 @@ const parseDetails = (body: unknown, mediaType: TmdbMediaType): TmdbDetails | un
 export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { now?: () => number } = {}) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const now = options.now ?? Date.now;
-  // razor: an unbounded in-memory map; discover pages are the only growing keys, add eviction if memory shows it.
+  // razor: an unbounded in-memory map; discover pages, tvAiring (one key per show id) and collection (one key per collection id) are the growing keys, add eviction if memory shows it.
   const cache = new Map<string, { expiresAt: number; value: unknown }>();
 
   const apiKey = () => readSetting(database, 'credentials', 'tmdb.apiKey');

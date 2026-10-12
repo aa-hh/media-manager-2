@@ -13,6 +13,54 @@ export type SearchFact =
   | { kind: 'expected'; availability: string; date: string | null }
   | { kind: 'collection'; movies: number | null; allReleased: boolean; availability: string };
 
+export type Airing = { seasons: Array<{ seasonNumber: number; aired: number }> | null; nextAirDate: string | null };
+export type CollectionSize = { films: number; allReleased: boolean } | null;
+type MovieFields = { status: string | null; releaseDates: { inCinemas: string | null; digital: string | null; physical: string | null } };
+
+export const availabilityLabels: Array<[string, string]> = [
+  ['announced', 'announced'],
+  ['inCinemas', 'in cinemas'],
+  ['released', 'available'],
+];
+export const labelOf = (labels: Array<[string, string]>, value: string) => labels.find(([key]) => key === value)?.[1] ?? value;
+const availabilityRank: Record<string, number> = { announced: 0, inCinemas: 1, released: 2 };
+
+/** The search fact for these choices; airing and collection stay undefined until TMDB answers, movie is null for a show. */
+export const searchFact = (
+  choices: { monitor: string; seasons: number[]; minimumAvailability: string },
+  title: { tv: boolean; airing: Airing | null | undefined; collection: CollectionSize | undefined; movie: MovieFields | null },
+): SearchFact => {
+  if (choices.monitor === 'none') return { kind: 'none' };
+  if (choices.monitor === 'skip' && choices.seasons.length === 0) return { kind: 'unknown' };
+  if (title.tv) {
+    const seasons = title.airing?.seasons ?? null;
+    const aired = (keep: (seasonNumber: number) => boolean) => (seasons === null ? null : seasons.filter((season) => keep(season.seasonNumber)).reduce((sum, season) => sum + season.aired, 0));
+    const newest = seasons === null ? undefined : seasons.filter((season) => season.seasonNumber > 0).sort((a, b) => b.seasonNumber - a.seasonNumber)[0];
+    const count = choices.monitor === 'all' ? aired((seasonNumber) => seasonNumber > 0)
+      : choices.monitor === 'lastSeason' ? (newest === undefined ? null : newest.aired)
+        : choices.monitor === 'skip' ? aired((seasonNumber) => choices.seasons.includes(seasonNumber))
+          : null;
+    const nextAirDate = title.airing?.nextAirDate ?? null;
+    if (choices.monitor === 'future') return { kind: 'future', nextAirDate };
+    if (count === null) return { kind: 'unknown' };
+    if (count > 0) return { kind: 'aired', count };
+    // A picked season that has not started yet waits for its next episode; 'all' with nothing aired waits for the first.
+    return choices.monitor === 'all' ? { kind: 'nothingAired', firstAirDate: nextAirDate } : { kind: 'future', nextAirDate };
+  }
+  const availability = labelOf(availabilityLabels, choices.minimumAvailability);
+  if (choices.monitor === 'movieOnly') {
+    // Radarr searches once the movie's status reaches the minimum availability; an unknown status counts as announced.
+    if ((availabilityRank[title.movie?.status ?? ''] ?? 0) >= (availabilityRank[choices.minimumAvailability] ?? 0)) return { kind: 'now' };
+    const dates = title.movie?.releaseDates ?? null;
+    const earliest = [dates?.digital ?? null, dates?.physical ?? null].filter((value): value is string => value !== null).sort()[0] ?? null;
+    const expected = choices.minimumAvailability === 'inCinemas' ? dates?.inCinemas ?? null
+      : choices.minimumAvailability === 'released' ? earliest
+        : null;
+    return { kind: 'expected', availability, date: expected !== null && expected.slice(0, 10) > new Date().toISOString().slice(0, 10) ? expected : null };
+  }
+  return { kind: 'collection', movies: title.collection?.films ?? null, allReleased: title.collection?.allReleased ?? false, availability };
+};
+
 /** The toast's second line is before + number + after; number is the part that travels from the dialog, null when nothing does. */
 export const addedToast = (serviceName: 'Sonarr' | 'Radarr', title: string, fact: SearchFact): { title: string; before: string; number: string | null; after: string } => {
   const line = (before: string, number: string | null = null, after = '') => ({ title: `Added ${title} to your library`, before, number, after });

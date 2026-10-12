@@ -24,7 +24,7 @@ type DialogProps = {
    * at the top and bottom edge, with 16px above and below and 20px between sections. Always drawn, not only while overflowing.
    */
   scrollEdges?: boolean;
-  /** Right-aligned buttons: an outline Cancel, then the large main action. */
+  /** Right-aligned buttons: an outline or ghost Cancel, then the large main action. */
   actions: ReactNode;
   closeLabel?: string;
   /** dialog-add: 800px, 36px padding, 36px title; no key hints. */
