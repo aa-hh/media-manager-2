@@ -1,4 +1,4 @@
-// Logo/* — design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold) z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
+// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold) z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
 import type { ComponentProps } from 'react';
 import beyondHd from '@/assets/logos/beyondhd-logo.png';
 import blutopia from '@/assets/logos/blutopia-logo.svg';

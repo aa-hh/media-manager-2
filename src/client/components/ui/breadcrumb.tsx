@@ -1,4 +1,4 @@
-// v2/Breadcrumb — design/design-system.lib.pen K5LLLh
+// v2/Breadcrumb — ~/Projects/media-manager-2-design/design-system.lib.pen K5LLLh
 import { ChevronRight } from 'lucide-react';
 import { Fragment, type ComponentProps, type MouseEvent, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';

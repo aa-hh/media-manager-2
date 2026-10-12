@@ -1,6 +1,10 @@
 # Design files
 
-Light mode, desktop first. Open and edit these in pen.dev; never edit a `.pen` file by hand.
+The pen.dev design files live outside the repo, in `~/Projects/media-manager-2-design/`. There is one copy of each file, and every agent edits that copy through pen.dev, whichever worktree it runs in. They are not in git: the owner saves them in pen.dev (Cmd+S) and that folder is their only home. This folder keeps the logos and the sign-in shader page, which the code and the README use.
+
+Light mode, desktop first. Open and edit the `.pen` files in pen.dev; never edit a `.pen` file by hand.
+
+When the owner approves a design that changed the library, run `/approve-design` (`.claude/skills/approve-design/`): it brings `DESIGN.md` and `src/client/components/ui/` in line with the library before anything else happens.
 
 | File | What it holds |
 |---|---|
@@ -22,7 +26,8 @@ Phone versions of a screen go in the same file as its desktop version.
 
 ## Rules
 
+- Paths in the table are inside `~/Projects/media-manager-2-design/`.
 - Every screen file imports `design-system.lib.pen`. Change a component or token there, save, and reopen the screen files to pick it up.
-- Copying a screen from one `.pen` file and pasting it into another cuts its link to the library: components arrive as plain frames and tokens as duplicates. To start a new screen file, copy an existing screen file on disk, in this folder (the library link is a relative path), then delete the screens you don't need.
-- pen.dev writes to disk only on Cmd+S. Save before committing.
+- Copying a screen from one `.pen` file and pasting it into another cuts its link to the library: components arrive as plain frames and tokens as duplicates. To start a new screen file, copy an existing screen file on disk, in that folder (the library link is a relative path), then delete the screens you don't need.
+- pen.dev writes to disk only on Cmd+S.
 - Agents editing through pen.dev's tools can reach any file open in a pen.dev tab. A path to a file that isn't open silently edits the file in front instead.

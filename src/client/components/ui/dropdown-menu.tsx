@@ -1,5 +1,5 @@
-// v2/DropdownMenu/Content — design/design-system.lib.pen D3lFb
-// v2/DropdownMenu/Item — design/design-system.lib.pen Gtcpe
+// v2/DropdownMenu/Content — ~/Projects/media-manager-2-design/design-system.lib.pen D3lFb
+// v2/DropdownMenu/Item — ~/Projects/media-manager-2-design/design-system.lib.pen Gtcpe
 import { Menu } from '@base-ui/react/menu';
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { Check, ChevronRight } from 'lucide-react';

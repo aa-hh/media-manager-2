@@ -1,4 +1,4 @@
-// v2/Cell/profile-fit — design/design-system.lib.pen rolXw
+// v2/Cell/profile-fit — ~/Projects/media-manager-2-design/design-system.lib.pen rolXw
 import { Check, TriangleAlert, X } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';

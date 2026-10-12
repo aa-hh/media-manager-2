@@ -1,4 +1,4 @@
-// v2/Progress — design/design-system.lib.pen eCSrr
+// v2/Progress — ~/Projects/media-manager-2-design/design-system.lib.pen eCSrr
 import { Progress as ProgressPrimitive } from '@base-ui/react/progress';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';

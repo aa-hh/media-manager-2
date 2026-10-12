@@ -41,7 +41,7 @@
   font-display: swap;
 }
 
-/* Names and values come from the variables in design/design-system.lib.pen (light mode only). */
+/* Names and values come from the variables in ~/Projects/media-manager-2-design/design-system.lib.pen (light mode only). */
 :root {
   color-scheme: light;
 
@@ -69,6 +69,7 @@
   --primary-hover: #2e2e2c;
   --primary-pressed: #000000;
   --primary-foreground: #ffffff;
+  /* The main action button's fill — ~/Projects/media-manager-2-design/design-system.lib.pen $action. */
   --action: #9ecae1;
   --action-hover: #8bbfdb;
   --action-pressed: #76b2d2;
@@ -135,14 +136,14 @@
 
   /* Controls */
   --control-h-row: 28px;
-  --control-h-default: 40px;
-  --control-h-large: 48px;
+  --control-h-default: 36px;
+  --control-h-large: 44px;
   --control-px-row: 10px;
   --control-px-default: 16px;
-  --control-px-large: 20px;
+  --control-px-large: 18px;
   --control-text-row: 13px;
   --control-text-default: 14px;
-  --control-text-large: 15px;
+  --control-text-large: 14px;
   --control-radius-row: 6px;
   --control-radius-row-hover: 8px;
   --control-radius-default: 12px;
@@ -450,6 +451,8 @@
   html {
     min-width: 320px;
     background: var(--background);
+    /* Space for the scrollbar stays put, so a short page lays out at a long page's width and a screen change never shifts sideways. */
+    scrollbar-gutter: stable;
   }
 
   body {

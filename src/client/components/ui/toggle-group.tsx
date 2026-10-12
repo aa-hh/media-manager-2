@@ -1,5 +1,5 @@
-// v2/ToggleGroup — design/design-system.lib.pen cofqY
-// v2/ToggleGroup item — design/design-system.lib.pen EBTr5
+// v2/ToggleGroup — ~/Projects/media-manager-2-design/design-system.lib.pen cofqY
+// v2/ToggleGroup item — ~/Projects/media-manager-2-design/design-system.lib.pen EBTr5
 import { Toggle } from '@base-ui/react/toggle';
 import { ToggleGroup as ToggleGroupPrimitive } from '@base-ui/react/toggle-group';
 import { createContext, use, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from 'react';
@@ -23,8 +23,8 @@ const segments: Record<ToggleGroupSize, string> = {
 
 const items: Record<ToggleGroupSize, string> = {
   row: 'h-6 rounded-xs px-(--control-px-row)',
-  default: 'h-8.5 rounded-sm px-3.5',
-  large: 'h-10 rounded-(--control-radius-default) px-(--control-px-large)',
+  default: 'h-7.5 rounded-sm px-3.5',
+  large: 'h-9 rounded-(--control-radius-default) px-(--control-px-large)',
 };
 
 type ToggleGroupProps = Omit<ComponentProps<typeof ToggleGroupPrimitive>, 'value' | 'defaultValue' | 'onValueChange' | 'multiple'> & {

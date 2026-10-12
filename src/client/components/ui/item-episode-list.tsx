@@ -1,4 +1,4 @@
-// v2/Item/episode-list — design/design-system.lib.pen GeZ6k
+// v2/Item/episode-list — ~/Projects/media-manager-2-design/design-system.lib.pen GeZ6k
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

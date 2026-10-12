@@ -1,4 +1,4 @@
-// v2/Spinner — design/design-system.lib.pen SHXXo
+// v2/Spinner — ~/Projects/media-manager-2-design/design-system.lib.pen SHXXo
 import { LoaderCircle, type LucideProps } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

@@ -1,4 +1,4 @@
-// v2/Row/release — design/design-system.lib.pen NXfpc
+// v2/Row/release — ~/Projects/media-manager-2-design/design-system.lib.pen NXfpc
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';

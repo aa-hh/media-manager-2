@@ -1,7 +1,7 @@
 ---
 name: media-manager-2
 description: Paper white and black with lime. Dense release tables, glow-blue actions, lime only for the best release and live downloads.
-# Light mode only. Values come from the variables in design/design-system.lib.pen.
+# Light mode only. Values come from the variables in ~/Projects/media-manager-2-design/design-system.lib.pen.
 colors:
   background: "#FFFFFF"
   card: "#FFFFFF"
@@ -91,20 +91,20 @@ spacing:
   poster-width: "152px"
   detail-indent: "133px"
 components:
-  button-default: {backgroundColor: "{colors.action}", textColor: "{colors.action-foreground}", rounded: "{rounded.button-radius}", padding: "0px 16px", height: "40px"}
+  button-default: {backgroundColor: "{colors.action}", textColor: "{colors.action-foreground}", rounded: "{rounded.button-radius}", padding: "0px 16px", height: "36px"}
   button-default-hover: {backgroundColor: "{colors.action-hover}"}
   button-default-pressed: {backgroundColor: "{colors.action-pressed}"}
   button-row: {backgroundColor: "{colors.action}", textColor: "{colors.action-foreground}", rounded: "{rounded.control-radius-row}", padding: "0px 10px", height: "28px"}
-  button-large: {backgroundColor: "{colors.action}", textColor: "{colors.action-foreground}", rounded: "{rounded.button-radius}", padding: "0px 20px", height: "48px"}
-  button-outline: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "40px"}
-  button-ghost: {textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "40px"}
-  button-destructive: {backgroundColor: "{colors.destructive}", textColor: "{colors.destructive-foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "40px"}
+  button-large: {backgroundColor: "{colors.action}", textColor: "{colors.action-foreground}", rounded: "{rounded.button-radius}", padding: "0px 18px", height: "44px"}
+  button-outline: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "36px"}
+  button-ghost: {textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "36px"}
+  button-destructive: {backgroundColor: "{colors.destructive}", textColor: "{colors.destructive-foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "36px"}
   button-destructive-hover: {backgroundColor: "{colors.destructive-hover}"}
   input-search: {backgroundColor: "{colors.muted}", textColor: "{colors.foreground}", rounded: "{rounded.radius-lg}", padding: "0px 16px", height: "48px", width: "640px"}
-  input-field: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", padding: "0px 12px", height: "40px"}
-  select-trigger: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", height: "40px"}
-  toggle-group: {backgroundColor: "{colors.muted}", rounded: "{rounded.radius-md}", padding: "3px", height: "40px"}
-  toggle-group-item-selected: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", height: "34px"}
+  input-field: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", padding: "0px 12px", height: "36px"}
+  select-trigger: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", height: "36px"}
+  toggle-group: {backgroundColor: "{colors.muted}", rounded: "{rounded.radius-md}", padding: "3px", height: "36px"}
+  toggle-group-item-selected: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", height: "30px"}
   badge-neutral: {backgroundColor: "{colors.muted}", textColor: "{colors.muted-foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-strong: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-best: {backgroundColor: "{colors.best}", textColor: "{colors.foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
@@ -141,7 +141,7 @@ components:
   callout-info: {backgroundColor: "{colors.muted}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}"}
   status-rule-pill: {backgroundColor: "{colors.muted}", textColor: "{colors.muted-foreground}", typography: "{typography.data-small}", rounded: "{rounded.radius-sm}", padding: "0px 8px", height: "26px"}
   status-rule-pill-no-rule: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.warning}"}
-  field-number-input: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", typography: "{typography.data}", rounded: "{rounded.radius-md}", padding: "0px 12px", height: "40px", width: "72px"}
+  field-number-input: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", typography: "{typography.data}", rounded: "{rounded.radius-md}", padding: "0px 12px", height: "36px", width: "72px"}
   collapsible-content: {padding: "0px 12px 16px 36px"}
 ---
 
@@ -151,9 +151,9 @@ components:
 
 Paper white and black with lime. Black carries the content and every "on" state (checkboxes, radios, selected rows, toggles). The main action on a screen is a glow-blue button (`action`, the rim of light on the planet mascot, near-black text 11:1); hover `action-hover` with the corners easing from 12 to 14px (`button-radius` to `button-radius-hover`), pressed `action-pressed`, focus the usual 2px black ring, disabled the muted look. Secondary buttons stay white with an edge and tertiary buttons have no fill; buttons use 12px corners, row-size buttons in tables 6px. Destructive buttons stay red. Lime appears in two places only: the best release and live downloads. Red means something went wrong, amber means something is missing or waiting. Tables stay dense: 40px rows inside a 40px page margin, 8 posters per row on Library.
 
-Light mode only for now. The dark design is archived in `design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
+Light mode only for now. The dark design is archived in `~/Projects/media-manager-2-design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
 
-The source of truth is the pen.dev library `design/design-system.lib.pen`: its variables, its five component sheets and a sixth sheet for motion. The nine screen files import it. `design/mediaManager2.pen` no longer exists; see [`design/README.md`](design/README.md) for which file holds which screen.
+The source of truth is the pen.dev library `~/Projects/media-manager-2-design/design-system.lib.pen`: its variables, its five component sheets and a sixth sheet for motion. The nine screen files import it. `design/mediaManager2.pen` no longer exists; see [`design/README.md`](design/README.md) for which file holds which screen.
 
 These are static pen.dev components. Keyboard behaviour, focus handling, screen reader support, live updates and table sorting are implementation work; a static frame proves none of them.
 
@@ -214,15 +214,15 @@ Two corner sizes. Everything outside a table is 12px: buttons, inputs, selects, 
 
 ## Components
 
-Every component lives in `design/design-system.lib.pen` as `v2/Family/Variant` and shows its states as instances beside it. Each sheet note names the shadcn/ui component it maps to, or says "Custom". Screens use instances and override named children (`Label`, `Count`, `Value`, `Icon`, `Kbd`).
+Every component lives in `~/Projects/media-manager-2-design/design-system.lib.pen` as `v2/Family/Variant` and shows its states as instances beside it. Each sheet note names the shadcn/ui component it maps to, or says "Custom". Screens use instances and override named children (`Label`, `Count`, `Value`, `Icon`, `Kbd`).
 
 ### Control sizes
 
 Three sizes, set with the `control-*` tokens. Buttons, inputs, selects and toggle groups match, and so does the plain badge at row height.
 
 - **Row** 28px (`control-h-row`, padding 10, text 13, radius 6, icon 14): only inside table rows and dense lists.
-- **Default** 40px (`control-h-default`, padding 16, text 14, radius 12, icon 16): everywhere else.
-- **Large** 48px (`control-h-large`, padding 20, text 15, radius 12, icon 18): the one main action on a page or panel, such as the title header actions, the grab confirmation (Replace or Second version) and Settings Connect.
+- **Default** 36px (`control-h-default`, padding 16, text 14, radius 12, icon 16): everywhere else.
+- **Large** 44px (`control-h-large`, padding 18, text 14, radius 12, icon 18): the one main action on a page or panel, such as the title header actions, the grab confirmation (Replace or Second version) and Settings Connect.
 
 Icon-only buttons are squares at the same heights. pen.dev cannot bind height or icon size to a variable, so those are typed numbers, on badges too; change them together with the tokens.
 
@@ -230,16 +230,16 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 
 - **v2/Button:** primary (glow-blue `action`, shadcn `default`), outline (white, 1.5px `foreground` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron), plex. Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
 - **v2/Badge**, 20px (`badge-h`, padding `badge-px` 6, text `badge-text` 11, icon `badge-icon` 12): neutral (`muted`), strong (black, "In library"), lime (`best`, black text: best release, "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). Release tables add `v2/Mark/comparison` (best is the only lime pill), `v2/Cell/profile-fit` (fit in words) and `v2/Mark/pending-change` (old value, arrow, new value on amber while a change waits). Plain is the look for a standing status beside a row button, such as In library on a search result: no fill and no padding, a 14px `foreground` check and `muted-foreground` words, built from the row tokens (`control-h-row`, `control-text-row`, `control-icon-row`) so it lines up with the button. A filled badge never takes button height, or it reads as a button.
-- **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 40px, radius 12, white with an edge. Phone: 44px, full width.
-- **Select trigger:** 40px, radius 12, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
-- **Toggle group:** up to six segments, 34px each inside a 40px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
+- **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 36px, radius 12, white with an edge. Phone: 44px, full width.
+- **Select trigger:** 36px, radius 12, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
+- **Toggle group:** up to six segments, 30px each inside a 36px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
 - **Option rows:** `v2/Option row` (`option-row.tsx`) is a radio or checkbox with a title and a line of explanation, radius 12, no edge; the choice shows in the control, never as a tint. `v2/Option row/bordered` (the `bordered` prop) is the same row as a card with its own edge, for a short set of standalone choices in a grid: site software, backup destination, Plex token, the setup wizard's optional parts. Radius 12, padding 14 16, 1px `border` edge; on, the edge turns 2px `foreground`, the second pixel an inset shadow so nothing moves. `v2/Card/choice` is the larger radio card for decisions in a panel or dialog.
 
 - **Sentence form (the add dialog):** the settings are read as one sentence. `v2/Select trigger/inline` is a choice inside it: slate fill, 1px `inline-control-border` edge, bold text and a chevron; open or hover goes to the `-hover` pair, open adds a 1.5px `inline-control-foreground` edge. `v2/Badge/inline` is only the Sonarr or Radarr logo and name inside it: same fill, no edge, no chevron, 500 weight, never focusable. `v2/Badge/inline value` is a calculated value inside it (aired count, next air date, movies in a collection, expected date) in Barlow Semi Condensed 700 at 26px with tabular figures, in the same 38px pill with 12px padding. A required choice left empty is the same select in amber (`warning-soft` fill, 1.5px `warning` edge, `warning` text) with a plus in place of the chevron and a verb-first label ("Choose seasons"), plus an amber helper line under the sentence; the confirm button stays disabled. Text is 22px with chips 38px tall. The sentence sits in a rounded box (1.5px `input` edge, radius 16, padding 28 32, 14px between lines, as wide as its longest sentence up to the dialog width so the space either side of the text matches) so it reads as the one place to change the add; the amber helper line goes under the box. Wording: three short sentences, one fact each, one per line. 1 "[Sonarr] will add <title> to your library." 2 "Monitor [choice] using profile [profile]." (specific seasons: "Monitor [specific seasons]: [1, 2, 7] using profile [profile]."; no episodes or nothing: "Monitor [no episodes]." and no third line). 3 what the search covers: "[18] aired episodes will be included in the search."; nothing aired yet: "Nothing has aired yet. The first episode airs on (date)."; future episodes: "The next episode airs on (date)." when known. For a movie the monitor choices read "just the movie", "entire collection" and "nothing", and line 3 reads "Search starts once it's [available], expected on (date)." (date from the chosen availability: cinema date, or the earliest digital or physical date; dropped when unknown or past), "Search starts now." when already out, or "Search covers up to (3) movies once they're [available]." for a collection. Settings that don't read as a sentence sit under a `v2/Collapsible trigger` whose summary line lists their values, as `v2/Fact/row` rows with a select sized to its longest option (MUI Select rule: the trigger never changes width, the chevron sits at the right edge). A successful Confirm closes the dialog and shows a toast titled "Added <title> to your library" whose second line repeats line 3's fact ("Sonarr is searching 18 aired episodes.", "Sonarr will search once episodes air.", "Nothing is monitored.", "Radarr is searching now.", "Radarr will search once it's available, expected on 26 Mar 2027.", "Radarr is searching up to 3 movies."). The dialog opens with the remembered quality profile and root folder (the last successful add per service) preselected.
 
 ### Rule forms and tracker status
 
-- **v2/Field/number** (`field-number.tsx`): a 72 by 40px number box with plain words before and after it, read as one sentence ("Not a hit and run below 10 % downloaded"). The value is in `font-data`; an empty box shows a hint in `subtle-foreground`. Either word can be left out. Seed-time size bands and the More section of a tracker's rule are built from it.
+- **v2/Field/number** (`field-number.tsx`): a 72 by 36px number box with plain words before and after it, read as one sentence ("Not a hit and run below 10 % downloaded"). The value is in `font-data`; an empty box shows a hint in `subtle-foreground`. Either word can be left out. Seed-time size bands and the More section of a tracker's rule are built from it.
 - **v2/Field/labelled optional** (`field-labelled-optional.tsx`): `v2/Field/labelled` for a field that may be left blank. The word Optional sits after the label in 12px `subtle-foreground`; help, error and the trailing action work as in `v2/Field/labelled`.
 - **v2/Collapsible trigger/open**: the open state of `v2/Collapsible trigger` (`collapsible-trigger.tsx`); the chevron turns 90° to point down and the summary stays. No separate code component.
 - **v2/Collapsible/content** (`collapsible-content.tsx`): holds what the trigger reveals, directly under it. 16px between children; padding 0 12 16 36 lines the content up with the trigger's title. Opens by height at `duration-size`, closes at `duration-fast`; instant under reduced motion.
@@ -277,7 +277,7 @@ The kind of decision sets the scale of the place it opens in. Three tiers:
 - A table error is a one-line `v2/Callout` above the table. Callouts come in risk, warning and info looks, radius 12, no side bar.
 - Empty: a centred 360px block, one plain sentence and at most one next step.
 - Loading: skeleton rows shaped like the row family they replace (40px row, 56px two-line row, poster card, search result, calendar entry).
-- Unsaved edits: an amber pencil and "Unsaved edits" in the footer beside a Discard edits outline button; the main action stays the 48px button.
+- Unsaved edits: an amber pencil and "Unsaved edits" in the footer beside a Discard edits outline button; the main action stays the 44px button.
 
 ### Focus
 
@@ -293,7 +293,7 @@ The library's sixth sheet holds the motion tokens and a transition table; each s
 
 | Trigger | What changes | Duration | Easing |
 |---|---|---|---|
-| Page change (links, back, forward) | one view transition per change: the old screen holds up to 350ms while the new one loads, then the old fades out as the new fades in, both on the same timing so the page never washes out; a new screen opens at the top, back and forward return to their scroll | base | out |
+| Page change (links, back, forward) | one view transition per change: the old screen holds up to 350ms while the new one loads its data and the images in view (a poster that arrives in time shows without its own fade), then the old fades out as the new fades in, both on the same timing so the page never washes out; a new screen opens at the top, back and forward return to their scroll | base | out |
 | Open a title from a poster card | the card's poster morphs into the title page's large poster during the page change; a title page still loading shows that poster in place | slow | out |
 | Hover (rows, buttons, nav, posters, calendar entries, cards) | fill to the hover token; poster brightness to 92% | fast | out |
 | Press, focus ring | instant | 0 | — |

@@ -1,4 +1,4 @@
-// v2/Row/service — design/design-system.lib.pen okfXn
+// v2/Row/service — ~/Projects/media-manager-2-design/design-system.lib.pen okfXn
 import type { ComponentProps, ReactNode } from 'react';
 import { Logo, type LogoName } from '@/components/ui/logo';
 import { StatusServicePill, type ServiceState } from '@/components/ui/status-service-pill';

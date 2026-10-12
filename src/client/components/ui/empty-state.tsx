@@ -1,4 +1,4 @@
-// v2/Empty state — design/design-system.lib.pen t80nQS
+// v2/Empty state — ~/Projects/media-manager-2-design/design-system.lib.pen t80nQS
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

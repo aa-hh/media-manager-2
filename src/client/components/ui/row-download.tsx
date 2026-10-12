@@ -1,4 +1,4 @@
-// v2/Row/download — design/design-system.lib.pen k3Rz6
+// v2/Row/download — ~/Projects/media-manager-2-design/design-system.lib.pen k3Rz6
 import type { ReactNode } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Progress, type ProgressTone } from '@/components/ui/progress';

@@ -1,4 +1,4 @@
-// v2/Status/inline — design/design-system.lib.pen UMUhR
+// v2/Status/inline — ~/Projects/media-manager-2-design/design-system.lib.pen UMUhR
 import { AlertCircle, Check } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { Spinner } from '@/components/ui/spinner';

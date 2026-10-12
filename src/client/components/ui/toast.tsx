@@ -1,4 +1,4 @@
-// v2/Toast — design/design-system.lib.pen Dslj1
+// v2/Toast — ~/Projects/media-manager-2-design/design-system.lib.pen Dslj1
 import { Toast } from '@base-ui/react/toast';
 import { Check, X } from 'lucide-react';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';

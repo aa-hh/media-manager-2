@@ -58,6 +58,20 @@ const animate = () => typeof document.startViewTransition === 'function'
   && document.visibilityState === 'visible'
   && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const loadImagesInView = (maxWaitMs: number) => {
+  const waiting = Array.from(document.images).filter((image) => {
+    if (image.complete) return false;
+    const box = image.getBoundingClientRect();
+    return box.bottom > 0 && box.top < window.innerHeight && box.right > 0 && box.left < window.innerWidth;
+  });
+  // A lazy image would not start loading until the browser draws again, which it does not do during the hold.
+  for (const image of waiting) image.loading = 'eager';
+  return Promise.race([
+    Promise.all(waiting.map((image) => image.decode().catch(() => undefined))),
+    new Promise((resolve) => setTimeout(resolve, Math.max(0, maxWaitMs))),
+  ]);
+};
+
 const changeScreen = (update: () => void, scrollTop: number, morph?: HTMLElement) => {
   pendingScroll = scrollTop;
   const run = async () => {
@@ -70,13 +84,17 @@ const changeScreen = (update: () => void, scrollTop: number, morph?: HTMLElement
     flushSync(update);
     // A screen that loads data claimed the hold while it rendered; any other screen is ready now.
     if (!current.claimed) release();
+    const started = performance.now();
     const drawn = await Promise.race([ready, new Promise<boolean>((resolve) => setTimeout(() => resolve(false), HOLD_MS))]);
     // A newer screen change owns the hold and the scroll now.
     if (hold !== current) return;
-    hold = undefined;
     // A drawn screen with no data takes its scroll whatever its height. A screen still loading takes it now if its skeleton
     // can reach it (a new screen's top always can), else keeps it until its content is drawn (useScreenReady, Arrival).
     restoreScroll(drawn && !current.claimed);
+    // The images in view load within what is left of the hold, so the screen arrives with its posters, not empty cards.
+    if (drawn) await loadImagesInView(HOLD_MS - (performance.now() - started));
+    if (hold !== current) return;
+    hold = undefined;
   };
   if (!animate()) {
     void run();
