@@ -10508,7 +10508,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   const { createTorrentPoller } = await import(torrentsModuleUrl);
   const { createTorrentFiles } = await import(torrentFilesModuleUrl);
   const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
-  const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE, OTHER_SEASONS } = await import(titleDeleteModuleUrl);
+  const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE, KEPT_FILES } = await import(titleDeleteModuleUrl);
   const { createBlocklist } = await import(new URL('../dist/server/blocklist.js', import.meta.url).href);
   const { createHistory } = await import(historyModuleUrl);
   const { createSearch, parseSearchQuery } = await import(searchModuleUrl);
@@ -10621,6 +10621,10 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       const response = await routes.request(`${path}/delete-plan`);
       return { status: response.status, body: await response.json() };
     };
+    const routesPlan = async (path, query) => {
+      const response = await routes.request(`${path}/delete-plan?${query}`);
+      return { status: response.status, body: await response.json() };
+    };
     const remove = async (path, body) => {
       const response = await routes.request(`${path}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       return { status: response.status, body: await response.json() };
@@ -10637,7 +10641,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       return results.find((result) => result.service === service).inLibrary;
     };
     const savedLookups = (service) => Number(database.prepare('SELECT COUNT(*) AS n FROM search_lookups WHERE service = ?').get(service).n);
-    return { at, database, fake, arrFake, poller, clock, protection, addTorrent, hardlink, addVersion, onDelete, plan, remove, requests, versionState, deletions, steps, inLibrary, savedLookups };
+    return { at, database, fake, arrFake, poller, clock, protection, routesPlan, addTorrent, hardlink, addVersion, onDelete, plan, remove, requests, versionState, deletions, steps, inLibrary, savedLookups };
   };
 
   // Dune: its file is a hardlink of CUR; OLD and SHARED were imported before an upgrade, and SHARED's data also backs another movie's file.
@@ -10994,7 +10998,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     sonarr.series.push(seriesRecord({ id: 5, title: 'Andor', seasons: [1, 2].map((seasonNumber) => ({ seasonNumber, monitored: true })) }));
     sonarr.episodeFiles.push(...files.map((path, index) => ({ id: 21 + index, seriesId: 5, path, size: 1 })));
     sonarr.episodes.push(...[[101, 1, 1], [102, 1, 2], [103, 1, 3], [104, 1, 4], [201, 2, 1]].map(([id, seasonNumber, episodeNumber], index) => episodeRecord({
-      id, seriesId: 5, seasonNumber, episodeNumber, hasFile: true, episodeFile: { id: 21 + index, path: files[index], size: 1 },
+      id, seriesId: 5, seasonNumber, episodeNumber, hasFile: true, airDateUtc: '2022-09-21T01:00:00Z', episodeFile: { id: 21 + index, path: files[index], size: 1 },
     })));
     for (const [fileId, seasonNumber, episodeNumber] of [[24, 1, 4], [25, 2, 1]]) {
       sonarr.history.push(historyRecord({ eventType: 'downloadFolderImported', downloadId: FULL, seriesId: 5, episode: { seasonNumber, episodeNumber }, data: { fileId: String(fileId) } }));
@@ -11011,13 +11015,14 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     const w = await seasons();
     const { status, body } = await w.plan('/series/5/season/1');
     assert.equal(status, 200);
-    assert.deepEqual([body.title, body.seasonNumber, body.willUnmonitor, body.modes], ['Andor', 1, true, ['keepUnmonitored', 'searchAgain']]);
+    assert.deepEqual([body.title, body.seasonNumber, body.selection, body.willUnmonitor, body.modes], ['Andor', 1, null, true, ['keepUnmonitored', 'searchAgain']]);
+    assert.deepEqual(body.monitoring, { followsNewSeasons: false, airingSeasons: [], leavesShowEmpty: false });
     assert.deepEqual(body.files.map((file) => [file.fileId, file.state]), [[21, 'linked'], [22, 'linked'], [23, 'linked'], [24, 'copied']]);
     assert.deepEqual(body.torrents.map((torrent) => [torrent.hash, torrent.ticked, torrent.removal.allowed, torrent.removal.reason ?? null]),
-      [[PACK, false, true, null], [w.FULL, false, false, OTHER_SEASONS]]);
+      [[PACK, false, true, null], [w.FULL, false, false, KEPT_FILES]]);
     assert.deepEqual(body.secondVersions.map((row) => row.id), [w.versions[0]]);
     const refused = await w.remove('/series/5/season/1', { removeTorrents: [w.FULL], secondVersions: [] });
-    assert.deepEqual([refused.status, refused.body.reason], [409, `${w.FULL} can no longer be removed: ${OTHER_SEASONS}`]);
+    assert.deepEqual([refused.status, refused.body.reason], [409, `${w.FULL} can no longer be removed: ${KEPT_FILES}`]);
     assert.equal(w.requests('sonarr').some((request) => !request.startsWith('GET')), false);
     assert.equal((await w.plan('/series/5/season/3')).status, 404);
   });
@@ -11125,6 +11130,99 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual([event.title, event.event], ['Andor', 'Show files deleted, searching again']);
   });
 
+  // A chosen episode, an unaired one in season 2 (no air date counts as still to air), and the requests for them.
+  const pick = (w, body) => w.remove('/series/5/selection', body);
+  const unaired = (w) => w.arrFake.sonarr.state.episodes.push(episodeRecord({ id: 202, seriesId: 5, seasonNumber: 2, episodeNumber: 2, airDateUtc: '2099-01-01T00:00:00Z' }));
+
+  // Offering a pack that still backs kept episodes, listing another episode's file or second version, or dropping the selection turns this red.
+  await t.test('a selection plan lists only the chosen episodes and never offers a pack that backs episodes it keeps', async () => {
+    const w = await seasons();
+    const { status, body } = await w.plan('/series/5/selection');
+    assert.equal(status, 400);
+    const planned = await w.routesPlan('/series/5/selection', 'episodes=101');
+    assert.equal(planned.status, 200);
+    assert.deepEqual([planned.body.seasonNumber, planned.body.selection, planned.body.willUnmonitor, planned.body.modes],
+      [null, { seasons: [], episodeIds: [101] }, true, ['keepUnmonitored', 'searchAgain']]);
+    assert.deepEqual(planned.body.files.map((file) => file.fileId), [21]);
+    assert.deepEqual(planned.body.torrents.map((torrent) => [torrent.hash, torrent.removal.allowed, torrent.removal.reason ?? null]), [[PACK, false, KEPT_FILES]]);
+    assert.deepEqual(planned.body.secondVersions.map((row) => row.id), [w.versions[0]]);
+    assert.equal((await w.routesPlan('/series/5/selection', 'episodes=999')).status, 404);
+    assert.equal((await w.routesPlan('/series/5/selection', 'seasons=9')).status, 404);
+    assert.equal((await w.routesPlan('/series/5/selection', 'episodes=1,x')).status, 400);
+  });
+
+  // Unmonitoring the episode's season, deleting another episode's file, removing a pack that backs kept episodes, or naming it badly in History turns this red.
+  await t.test('deleting one episode unmonitors only that episode, deletes its file, and keeps its season monitored', async () => {
+    const w = await seasons();
+    const refused = await pick(w, { mode: 'keepUnmonitored', seasons: [], episodeIds: [102], removeTorrents: [PACK], secondVersions: [] });
+    assert.deepEqual([refused.status, refused.body.reason], [409, `${PACK} can no longer be removed: ${KEPT_FILES}`]);
+    const { status, body } = await pick(w, { mode: 'keepUnmonitored', seasons: [], episodeIds: [102], removeTorrents: [], secondVersions: [] });
+    assert.equal(status, 200);
+    assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:skipped', 'secondVersions:skipped', 'history:done']);
+    const sonarr = w.requests('sonarr');
+    assert.deepEqual(sonarr.filter((request) => !request.startsWith('GET')), ['PUT /api/v3/episode/monitor', 'DELETE /api/v3/episodefile/22']);
+    const state = w.arrFake.sonarr.state;
+    assert.deepEqual(state.episodes.map((episode) => [episode.id, episode.monitored]), [[101, true], [102, false], [103, true], [104, true], [201, true]]);
+    assert.deepEqual(state.series[0].seasons.map((season) => season.monitored), [true, true]);
+    assert.equal(await exists(w.files[0]), true);
+    const [event] = await w.deletions();
+    assert.deepEqual([event.title, event.event], ['Andor S01E02', 'Episodes deleted']);
+  });
+
+  // Guessing an answer for a season still airing, changing anything before refusing, unmonitoring an unaired episode the owner keeps following,
+  // or keeping a season the owner stopped following turns this red.
+  await t.test('keeping an airing season unmonitored needs an answer: keep following leaves the season and its unaired episodes on, stop turns all off', async () => {
+    const w = await seasons();
+    unaired(w);
+    const planned = await w.routesPlan('/series/5/selection', 'seasons=2');
+    assert.deepEqual(planned.body.monitoring, { followsNewSeasons: false, airingSeasons: [2], leavesShowEmpty: false });
+    const unanswered = await pick(w, { mode: 'keepUnmonitored', seasons: [2], episodeIds: [], removeTorrents: [], secondVersions: [] });
+    assert.deepEqual([unanswered.status, unanswered.body.error], [400, 'invalid_request']);
+    assert.match(unanswered.body.reason, /keep following season 2, which still has episodes to air/);
+    assert.equal(w.requests('sonarr').some((request) => !request.startsWith('GET')), false);
+
+    const kept = await pick(w, { mode: 'keepUnmonitored', keepFollowing: { 2: true }, seasons: [2], episodeIds: [], removeTorrents: [], secondVersions: [] });
+    assert.deepEqual(w.steps(kept.body).slice(0, 3), ['map:done', 'unmonitor:done', 'delete:done']);
+    assert.match(kept.body.steps[1].message, /Unmonitored 1 episode in Sonarr\. Still following season 2 for episodes still to air\./);
+    const state = w.arrFake.sonarr.state;
+    assert.deepEqual(state.episodes.filter((episode) => episode.seasonNumber === 2).map((episode) => [episode.id, episode.monitored]), [[201, false], [202, true]]);
+    assert.deepEqual(state.series[0].seasons.map((season) => season.monitored), [true, true]);
+
+    const w2 = await seasons();
+    unaired(w2);
+    await pick(w2, { mode: 'keepUnmonitored', keepFollowing: { 2: false }, seasons: [2], episodeIds: [], removeTorrents: [], secondVersions: [] });
+    const after = w2.arrFake.sonarr.state;
+    assert.deepEqual(after.episodes.filter((episode) => episode.seasonNumber === 2).map((episode) => episode.monitored), [false, false]);
+    assert.deepEqual(after.series[0].seasons.map((season) => season.monitored), [true, false]);
+    assert.equal((await w2.deletions())[0].title, 'Andor Season 2');
+  });
+
+  // Calling a show empty while it keeps files, monitored episodes or new seasons, or never calling it empty, turns this red.
+  await t.test('a selection that would leave the show with no files and nothing monitored says so, unless Sonarr follows new seasons', async () => {
+    const w = await seasons();
+    assert.equal((await w.routesPlan('/series/5/selection', 'seasons=1,2')).body.monitoring.leavesShowEmpty, true);
+    assert.equal((await w.routesPlan('/series/5/selection', 'seasons=1')).body.monitoring.leavesShowEmpty, false);
+    w.arrFake.sonarr.state.series[0].monitorNewItems = 'all';
+    assert.deepEqual((await w.routesPlan('/series/5/selection', 'seasons=1,2')).body.monitoring, { followsNewSeasons: true, airingSeasons: [], leavesShowEmpty: false });
+  });
+
+  // Accepting a selection without its mode, one that would remove the show, an empty one, or the selection keys on another route turns this red.
+  await t.test('a selection request names its mode and its seasons or episodes', async () => {
+    const w = await seasons();
+    const base = { removeTorrents: [], secondVersions: [] };
+    const bad = [
+      ['/series/5/selection', { ...base, seasons: [1], episodeIds: [] }],
+      ['/series/5/selection', { ...base, mode: 'remove', seasons: [1], episodeIds: [] }],
+      ['/series/5/selection', { ...base, mode: 'keepUnmonitored', seasons: [], episodeIds: [] }],
+      ['/series/5/selection', { ...base, mode: 'keepUnmonitored', seasons: [1, 1], episodeIds: [] }],
+      ['/series/5/selection', { ...base, mode: 'keepUnmonitored', episodeIds: [101] }],
+      ['/series/5/selection', { ...base, mode: 'keepUnmonitored', seasons: [], episodeIds: [101], keepFollowing: { 1: 'yes' } }],
+      ['/series/5/season/1', { ...base, mode: 'keepUnmonitored', seasons: [1], episodeIds: [] }],
+    ];
+    for (const [path, body] of bad) assert.equal((await w.remove(path, body)).status, 400, `${path} ${JSON.stringify(body)}`);
+    assert.equal(w.requests('sonarr').some((request) => !request.startsWith('GET')), false);
+  });
+
   // Deleting files after an unmonitor call fails turns this red.
   await t.test('a failed unmonitor stops the season delete before any file is touched', async () => {
     const w = await seasons();
@@ -11158,6 +11256,9 @@ test('the delete routes sit under the owner guard at /api/library and take a lon
   // Dropping the season routes, or refusing season 0 (specials), turns this red.
   const seasonPlan = await app.request('/api/library/series/7/season/0/delete-plan', { headers: { Cookie: session } });
   assert.deepEqual(await seasonPlan.json(), { target: { service: 'sonarr', seriesId: 7, seasonNumber: 0 } });
+  // Dropping the selection route turns this red.
+  const selectionPlan = await app.request('/api/library/series/7/selection/delete-plan?seasons=0&episodes=12', { headers: { Cookie: session } });
+  assert.deepEqual(await selectionPlan.json(), { target: { service: 'sonarr', seriesId: 7, selection: { seasons: [0], episodeIds: [12] } } });
   const removeTorrents = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0').repeat(20));
   const response = await app.request('/api/library/movie/3/delete', {
     method: 'POST',

@@ -92,6 +92,8 @@ const titleWords: Record<string, string> = {
   movie_search_again: 'Movie file deleted, searching again',
   series_search_again: 'Show files deleted, searching again',
   season_search_again: 'Season files deleted, searching again',
+  episodes_deleted: 'Episodes deleted',
+  episodes_search_again: 'Episodes deleted, searching again',
 };
 // Second version events that also show under Deletions.
 const deletionKinds: ReadonlySet<string> = new Set(['deleted', 'torrent_removed', 'torrent_kept']);

@@ -13,23 +13,36 @@ type Library = ReturnType<ReturnType<typeof createTorrentFiles>['readLibraryInod
 type TorrentFiles = Pick<ReturnType<typeof createTorrentFiles>, 'mapFiles' | 'readLibraryInodes' | 'canRemoveTorrent' | 'removeTorrent'>;
 type Failure = Exclude<Result<never>, { kind: 'ok' }>;
 
-// A Sonarr target with a seasonNumber deletes that season's files and keeps the show.
-export type DeleteTarget = { service: 'radarr'; movieId: number } | { service: 'sonarr'; seriesId: number; seasonNumber?: number };
+// Whole seasons and single episodes of one show, in any mix.
+export type Selection = { seasons: number[]; episodeIds: number[] };
+// A Sonarr target with a seasonNumber or a selection deletes those files and keeps the show.
+export type DeleteTarget =
+  | { service: 'radarr'; movieId: number }
+  | { service: 'sonarr'; seriesId: number; seasonNumber?: number; selection?: Selection };
 // What Sonarr or Radarr does afterwards: forget the title, keep it listed without searching, or search for another copy.
 export type Mode = 'remove' | 'keepUnmonitored' | 'searchAgain';
 // blocklistCurrent: with searchAgain, blocklist the releases the deleted files came from.
-export type Choices = { removeTorrents: string[]; secondVersions: { id: number; removeTorrent: boolean }[]; blocklistCurrent: boolean };
+// keepFollowing: per selected season with episodes still to air, whether Sonarr keeps grabbing them.
+export type Choices = {
+  removeTorrents: string[];
+  secondVersions: { id: number; removeTorrent: boolean }[];
+  blocklistCurrent: boolean;
+  keepFollowing: Record<number, boolean>;
+};
 
-// Removing the record is for a whole title only; a season always keeps its show.
+// The part of a show a season or selection target covers; null for a whole title.
+const partOf = (target: DeleteTarget): Selection | null => (target.service !== 'sonarr' ? null
+  : target.selection ?? (target.seasonNumber === undefined ? null : { seasons: [target.seasonNumber], episodeIds: [] }));
+// Removing the record is for a whole title only; part of a show always keeps its show.
 export const modesOf = (target: DeleteTarget): Mode[] => (
-  target.service === 'sonarr' && target.seasonNumber !== undefined ? ['keepUnmonitored', 'searchAgain'] : ['remove', 'keepUnmonitored', 'searchAgain']
+  partOf(target) !== null ? ['keepUnmonitored', 'searchAgain'] : ['remove', 'keepUnmonitored', 'searchAgain']
 );
 // What a show or season delete did before it asked: a client that sends no mode keeps getting that.
-const defaultMode = (target: DeleteTarget): Mode => (target.service === 'sonarr' && target.seasonNumber !== undefined ? 'keepUnmonitored' : 'remove');
+const defaultMode = (target: DeleteTarget): Mode => (partOf(target) !== null ? 'keepUnmonitored' : 'remove');
 
 export const UNLINKED_FILE = "Can't link this file to a torrent. Its torrent, if any, keeps seeding.";
 export const IMPORTED_BY_COPY = 'imported by copy';
-export const OTHER_SEASONS = 'This torrent also holds files of other seasons of this show, which are kept.';
+export const KEPT_FILES = 'This torrent also holds files of this show that this delete keeps.';
 // Sonarr and Radarr delete a title's files in the background after they answer.
 const WAIT_CEILING_MS = 2 * 60_000;
 const WAIT_STEP_MS = 2_000;
@@ -58,8 +71,18 @@ export type DeletePlan = {
   title: string;
   // Set for a season delete only; the show itself stays in Sonarr.
   seasonNumber: number | null;
-  // True for a season target, whose default mode unmonitors its episodes and the season before any file is deleted.
+  // Set for a selection delete only: the seasons and episodes it was read for.
+  selection: Selection | null;
+  // True for part of a show, whose default mode unmonitors what it deletes before any file goes.
   willUnmonitor: boolean;
+  monitoring: {
+    // Whether Sonarr adds and monitors seasons it learns of later; null for a movie.
+    followsNewSeasons: boolean | null;
+    // Selected seasons with episodes still to air: keeping them unmonitored needs the owner's answer on each.
+    airingSeasons: number[];
+    // Keeping this part unmonitored would leave the show with no files and nothing monitored.
+    leavesShowEmpty: boolean;
+  };
   // What may happen afterwards, in the order the dialog offers it.
   modes: Mode[];
   // Set when Sonarr or Radarr moves deleted files to a recycle bin, so no space is freed until it is emptied.
@@ -84,6 +107,8 @@ export type DeleteRun =
   | Failure
   | { kind: 'plan_changed'; reason: string }
   | { kind: 'in_progress' }
+  // A request the plan never allowed, such as a missing answer for an airing season; nothing was changed.
+  | { kind: 'invalid'; reason: string }
   | { kind: 'ran'; deleted: boolean; steps: StepResult[] };
 
 const isMissing = (error: unknown) => error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR');
@@ -97,6 +122,16 @@ const present = (path: string) => {
   }
 };
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+type Episodic = { id: number; seasonNumber: number; episodeNumber: number; monitored: boolean; aired: boolean; fileId: number | null };
+const code = (episode: Episodic) => `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
+const seasonWords = (seasons: number[]) => `${seasons.length === 1 ? 'season' : 'seasons'} ${seasons.join(', ')}`;
+// How History names a selection: its whole seasons, then its other episodes by code, or their count when there are many.
+const describe = (part: Selection, scope: Episodic[]) => {
+  const loose = scope.filter((episode) => !part.seasons.includes(episode.seasonNumber));
+  const seasons = part.seasons.length === 0 ? [] : [`${part.seasons.length === 1 ? 'Season' : 'Seasons'} ${part.seasons.join(', ')}`];
+  const episodes = loose.length === 0 ? [] : [loose.length <= 3 ? loose.map(code).join(', ') : plural(loose.length, 'episode')];
+  return [...seasons, ...episodes].join(' and ');
+};
 
 export const createTitleDelete = (options: {
   database: DatabaseSync;
@@ -123,38 +158,63 @@ export const createTitleDelete = (options: {
   const gather = async (target: DeleteTarget) => {
     let title: string;
     let details: FileDetail[];
-    // A show's or season's episodes, and for a season the files they use.
-    let episodes: { id: number; seasonNumber: number; monitored: boolean; fileId: number | null }[] = [];
+    // The episodes in scope (the whole show's, or a part's plus any sharing a file with them), all of the show's, and a part's files.
+    let episodes: Episodic[] = [];
+    let allEpisodes: Episodic[] = [];
     let seasonFiles: Set<number> | null = null;
+    let followsNewSeasons: boolean | null = null;
+    const part = partOf(target);
     if (target.service === 'radarr') {
       const movie = await arr.radarr.movie(target.movieId);
       if (movie.kind !== 'ok') return movie;
       title = movie.value.year === null ? movie.value.title : `${movie.value.title} (${movie.value.year})`;
       details = movie.value.file === null ? [] : [movie.value.file];
     } else {
-      const season = target.seasonNumber;
       const [series, episodeFiles, episodeList] = await Promise.all([
         arr.sonarr.series(target.seriesId),
         arr.sonarr.episodeFiles(target.seriesId),
-        arr.sonarr.episodes(target.seriesId, season === undefined ? { withFiles: true } : { seasonNumber: season, withFiles: true }),
+        arr.sonarr.episodes(target.seriesId, { withFiles: true }),
       ]);
       if (series.kind !== 'ok') return series;
       if (episodeFiles.kind !== 'ok') return episodeFiles;
       if (episodeList.kind !== 'ok') return episodeList;
-      if (season !== undefined && !series.value.seasons.some((entry) => entry.seasonNumber === season)) {
-        return { kind: 'not_found' as const, message: `Sonarr has no season ${season} for ${series.value.title}.` };
+      for (const season of part?.seasons ?? []) {
+        if (!series.value.seasons.some((entry) => entry.seasonNumber === season)) {
+          return { kind: 'not_found' as const, message: `Sonarr has no season ${season} for ${series.value.title}.` };
+        }
       }
       title = series.value.title;
       details = episodeFiles.value;
-      episodes = episodeList.value.map((episode) => ({ id: episode.id, seasonNumber: episode.seasonNumber, monitored: episode.monitored, fileId: episode.file?.id ?? null }));
-      if (season !== undefined) seasonFiles = new Set(episodes.flatMap((episode) => episode.fileId ?? []));
+      followsNewSeasons = series.value.monitorNewItems === 'all';
+      allEpisodes = episodeList.value.map((episode) => {
+        const airs = episode.airDateUtc === null ? Number.NaN : Date.parse(episode.airDateUtc);
+        return {
+          id: episode.id,
+          seasonNumber: episode.seasonNumber,
+          episodeNumber: episode.episodeNumber,
+          monitored: episode.monitored,
+          // No air date counts as still to air: Sonarr lists announced episodes before they are dated.
+          aired: !Number.isNaN(airs) && airs <= now(),
+          fileId: episode.file?.id ?? null,
+        };
+      });
+      const missing = (part?.episodeIds ?? []).find((id) => !allEpisodes.some((episode) => episode.id === id));
+      if (missing !== undefined) return { kind: 'not_found' as const, message: `Sonarr has no episode ${missing} in ${series.value.title}.` };
+      if (part === null) episodes = allEpisodes;
+      else {
+        const chosen = allEpisodes.filter((episode) => part.seasons.includes(episode.seasonNumber) || part.episodeIds.includes(episode.id));
+        // An episode sharing a file with a chosen one loses that file too, so it joins the scope.
+        const chosenFiles = new Set(chosen.flatMap((episode) => episode.fileId ?? []));
+        episodes = allEpisodes.filter((episode) => chosen.includes(episode) || (episode.fileId !== null && chosenFiles.has(episode.fileId)));
+        seasonFiles = new Set(episodes.flatMap((episode) => episode.fileId ?? []));
+      }
     }
     const files = details.flatMap((file) => (file.id === null || file.path === null ? [] : [{ path: file.path, fileId: file.id, sizeBytes: file.size }]));
     // A season maps every file of the show, so a torrent that also holds another season's file (a full-series pack) is known.
     const mapping = await torrentFiles.mapFiles(files.map(({ path, fileId }) => ({ path, fileId })), target.service, titleId(target));
     const inScope = (fileId: number) => seasonFiles === null || seasonFiles.has(fileId);
     const mapped = mapping.files.filter((file) => inScope(file.fileId));
-    const otherSeasons = new Set(mapping.files.filter((file) => !inScope(file.fileId)).flatMap((file) => file.hashes));
+    const keptHashes = new Set(mapping.files.filter((file) => !inScope(file.fileId)).flatMap((file) => file.hashes));
     const allVersions = listSecondVersionRows(database, target);
     const episodeSet = new Set(episodes.map((episode) => episode.id));
     const secondVersions = seasonFiles === null ? allVersions : allVersions.filter((row) => row.episodeId !== null && episodeSet.has(row.episodeId));
@@ -165,9 +225,13 @@ export const createTitleDelete = (options: {
     const versionHashes = new Set(allVersions.flatMap((row) => row.hash?.toUpperCase() ?? []));
     const history = target.service === 'radarr' ? await arr.radarr.history({ movieId: target.movieId })
       : await arr.sonarr.history(target.seasonNumber === undefined ? { seriesId: target.seriesId } : { seriesId: target.seriesId, seasonNumber: target.seasonNumber });
+    // A selection reads the whole show's history, so only imports for its own episodes count as its earlier downloads.
+    const ownImport = (record: HistoryRecord) => target.service === 'radarr' || target.selection === undefined
+      || (record.episodeId !== null && episodeSet.has(record.episodeId));
     const upgradedAway = new Set(history.kind !== 'ok' ? [] : history.value.flatMap((record) => {
       const hash = record.downloadId?.toUpperCase();
-      return record.eventType === 'downloadFolderImported' && hash !== undefined && live.has(hash) && !holding.has(hash) && !versionHashes.has(hash) ? [hash] : [];
+      return record.eventType === 'downloadFolderImported' && ownImport(record) && hash !== undefined && live.has(hash) && !holding.has(hash) && !versionHashes.has(hash)
+        ? [hash] : [];
     }));
 
     const torrents = [...holding, ...upgradedAway].map((hash) => {
@@ -191,18 +255,30 @@ export const createTitleDelete = (options: {
       note: file.state === 'none' || file.state === 'unknown' ? UNLINKED_FILE : null,
       reason: file.reason,
     }));
-    return { kind: 'ok' as const, value: { title, files: planFiles, torrents, secondVersions, episodes, otherSeasons, history: history.kind === 'ok' ? history.value : [] } };
+    const scope = new Set(episodes.map((episode) => episode.id));
+    const airingSeasons = (part?.seasons ?? []).filter((season) => allEpisodes.some((episode) => episode.seasonNumber === season && !episode.aired));
+    const leavesShowEmpty = part !== null && followsNewSeasons === false
+      && files.every((file) => seasonFiles?.has(file.fileId) === true)
+      && allEpisodes.every((episode) => scope.has(episode.id) || !episode.monitored);
+    return {
+      kind: 'ok' as const,
+      value: {
+        title, files: planFiles, torrents, secondVersions, episodes, allEpisodes, keptHashes, part,
+        monitoring: { followsNewSeasons, airingSeasons, leavesShowEmpty },
+        history: history.kind === 'ok' ? history.value : [],
+      },
+    };
   };
 
-  // A torrent that still holds another season's file is never offered, even when that file is a copy no link check would see.
-  const removalOf = (hash: string, after: string[], library: Library, otherSeasons: Set<string>): RemovalCheck => (
-    otherSeasons.has(hash.toUpperCase()) ? { allowed: false, reason: OTHER_SEASONS } : torrentFiles.canRemoveTorrent(hash, { after, library })
+  // A torrent that still holds a file this delete keeps is never offered, even when that file is a copy no link check would see.
+  const removalOf = (hash: string, after: string[], library: Library, keptHashes: Set<string>): RemovalCheck => (
+    keptHashes.has(hash.toUpperCase()) ? { allowed: false, reason: KEPT_FILES } : torrentFiles.canRemoveTorrent(hash, { after, library })
   );
 
   const plan = async (target: DeleteTarget): Promise<Result<DeletePlan>> => {
     const gathered = await gather(target);
     if (gathered.kind !== 'ok') return gathered;
-    const { title, files, torrents, secondVersions, otherSeasons } = gathered.value;
+    const { title, files, torrents, secondVersions, keptHashes, part, monitoring } = gathered.value;
     const seasonNumber = target.service === 'sonarr' ? target.seasonNumber ?? null : null;
     // Second versions start ticked, so their files count as gone when checking whether a torrent is still needed.
     const after = [...files.map((file) => file.path), ...secondVersions.flatMap((row) => row.path ?? [])];
@@ -215,14 +291,16 @@ export const createTitleDelete = (options: {
         id: titleId(target),
         title,
         seasonNumber,
-        willUnmonitor: seasonNumber !== null,
+        selection: target.service === 'sonarr' ? target.selection ?? null : null,
+        willUnmonitor: part !== null,
+        monitoring,
         modes: modesOf(target),
         recycleBin: recycleBin.kind === 'ok' ? recycleBin.value : null,
         files,
         torrents: await Promise.all(torrents.map(async (torrent) => ({
           ...torrent,
           advice: await advise(torrent.hash),
-          removal: removalOf(torrent.hash, after, library, otherSeasons),
+          removal: removalOf(torrent.hash, after, library, keptHashes),
           ticked: false as const,
         }))),
         secondVersions: await Promise.all(secondVersions.map(async (row) => {
@@ -230,7 +308,7 @@ export const createTitleDelete = (options: {
           return {
             ...row,
             ticked: true as const,
-            torrent: hash === undefined ? null : { hash, advice: await advise(hash), removal: removalOf(hash, after, library, otherSeasons) },
+            torrent: hash === undefined ? null : { hash, advice: await advise(hash), removal: removalOf(hash, after, library, keptHashes) },
           };
         })),
       },
@@ -246,25 +324,42 @@ export const createTitleDelete = (options: {
     }
   };
 
-  type Scoped = { id: number; seasonNumber: number; monitored: boolean; fileId: number | null };
+  type Scoped = Episodic;
   const fail = (result: Failure | { message: string }): { kind: 'failed'; message: string } => ({ kind: 'failed', message: result.message });
 
-  // Keep, unmonitored: nothing in scope is searched for again. A whole show also stops taking seasons Sonarr adds later.
-  const unmonitor = async (target: DeleteTarget, episodeIds: number[]): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
+  // Keep, unmonitored: nothing in scope is searched for again. A whole show also stops taking seasons Sonarr adds later. Part of a show
+  // unmonitors its episodes and its whole seasons, except a season the owner keeps following: that keeps its flag and the episodes still to air.
+  const unmonitor = async (
+    target: DeleteTarget,
+    scope: Episodic[],
+    part: Selection | null,
+    following: Set<number>,
+  ): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
     if (target.service === 'radarr') {
       const result = await arr.radarr.monitorMovie(target.movieId, false);
       return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored in Radarr.' } : fail(result);
     }
-    if (episodeIds.length > 0) {
-      const result = await arr.sonarr.monitorEpisodes(episodeIds, false);
+    const off = scope.filter((episode) => !(following.has(episode.seasonNumber) && !episode.aired)).map((episode) => episode.id);
+    if (off.length > 0) {
+      const result = await arr.sonarr.monitorEpisodes(off, false);
       if (result.kind !== 'ok') return fail(result);
     }
-    if (target.seasonNumber !== undefined) {
-      const result = await arr.sonarr.monitorSeason(target.seriesId, target.seasonNumber, false);
-      return result.kind === 'ok' ? { kind: 'ok', value: `Unmonitored season ${target.seasonNumber} and its episodes in Sonarr.` } : fail(result);
+    if (part === null) {
+      const result = await arr.sonarr.setSeriesMonitoring(target.seriesId, { monitored: false, seasons: 'all', monitorNewItems: 'none' });
+      return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored the show, every season and episode, and new seasons in Sonarr.' } : fail(result);
     }
-    const result = await arr.sonarr.setSeriesMonitoring(target.seriesId, { monitored: false, seasons: 'all', monitorNewItems: 'none' });
-    return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored the show, every season and episode, and new seasons in Sonarr.' } : fail(result);
+    const seasonsOff = part.seasons.filter((season) => !following.has(season));
+    for (const season of seasonsOff) {
+      const result = await arr.sonarr.monitorSeason(target.seriesId, season, false);
+      if (result.kind !== 'ok') return fail(result);
+    }
+    if (target.selection === undefined && seasonsOff.length === 1) return { kind: 'ok', value: `Unmonitored season ${seasonsOff[0]} and its episodes in Sonarr.` };
+    const kept = part.seasons.filter((season) => following.has(season));
+    return {
+      kind: 'ok',
+      value: `Unmonitored ${plural(off.length, 'episode')}${seasonsOff.length === 0 ? '' : ` and ${seasonWords(seasonsOff)}`} in Sonarr.`
+        + (kept.length === 0 ? '' : ` Still following ${seasonWords(kept)} for episodes still to air.`),
+    };
   };
 
   // Search again: monitor what the files held, so the search that follows wants it. Sonarr monitors every episode of a season
@@ -359,8 +454,14 @@ export const createTitleDelete = (options: {
     try {
       const gathered = await gather(target);
       if (gathered.kind !== 'ok') return gathered;
-      const { title, files, torrents, secondVersions, episodes, otherSeasons, history } = gathered.value;
+      const { title, files, torrents, secondVersions, episodes, allEpisodes, keptHashes, part, monitoring, history } = gathered.value;
       const changed = (reason: string) => ({ kind: 'plan_changed', reason }) as const;
+      // A selection must answer for every season still airing; the season route predates the question and stops following, as it did.
+      const unanswered = monitoring.airingSeasons.filter((season) => choices.keepFollowing[season] === undefined);
+      if (mode === 'keepUnmonitored' && target.service === 'sonarr' && target.selection !== undefined && unanswered.length > 0) {
+        return { kind: 'invalid', reason: `Say whether to keep following ${seasonWords(unanswered)}, which still ${unanswered.length === 1 ? 'has' : 'have'} episodes to air.` };
+      }
+      const following = new Set(monitoring.airingSeasons.filter((season) => choices.keepFollowing[season] === true));
 
       const rows = new Map(secondVersions.map((row) => [row.id, row]));
       for (const choice of choices.secondVersions) if (!rows.has(choice.id)) return changed(`Second version ${choice.id} is no longer listed for ${title}.`);
@@ -370,7 +471,7 @@ export const createTitleDelete = (options: {
       for (const hash of choices.removeTorrents) {
         const torrent = torrents.find((candidate) => candidate.hash === hash);
         if (torrent === undefined) return changed(`The torrent ${hash} is no longer listed for ${title}.`);
-        const check = removalOf(hash, after, library, otherSeasons);
+        const check = removalOf(hash, after, library, keptHashes);
         if (!check.allowed) return changed(`${torrent.name} can no longer be removed: ${check.reason}`);
       }
       for (const { choice, row } of ticked) {
@@ -378,7 +479,7 @@ export const createTitleDelete = (options: {
         if (row.hash === null) return changed(`The second version ${row.releaseTitle} has no torrent to remove.`);
         // An unticked second version still uses this torrent: the delete keeps it and says why, so the request is not stale.
         if (secondVersions.some((other) => other.hash === row.hash && !choices.secondVersions.some((picked) => picked.id === other.id))) continue;
-        const check = removalOf(row.hash, after, library, otherSeasons);
+        const check = removalOf(row.hash, after, library, keptHashes);
         if (!check.allowed) return changed(`The torrent of ${row.releaseTitle} can no longer be removed: ${check.reason}`);
       }
 
@@ -388,7 +489,8 @@ export const createTitleDelete = (options: {
       let gonePaths = files.map((file) => file.path);
       // Torrents holding a file Sonarr would not delete stay, with the reason.
       const keptFor = new Map<string, string>();
-      const season = target.service === 'sonarr' ? target.seasonNumber : undefined;
+      const season = target.service === 'sonarr' && target.selection === undefined ? target.seasonNumber : undefined;
+      const selected = target.service === 'sonarr' && target.selection !== undefined;
       const stop = (step: 'unmonitor' | 'monitor' | 'delete', message: string): DeleteRun => ({ kind: 'ran', deleted: false, steps: [...steps, { step, outcome: 'failed', message }] });
       // The episodes whose files this delete removes: what a search again monitors, blocklists and searches for.
       const fileIds = new Set(files.map((file) => file.fileId));
@@ -409,11 +511,11 @@ export const createTitleDelete = (options: {
         // Unmonitored first, so nothing searches for the files once they are gone; or monitored first, so the search that follows wants them.
         const keep = mode === 'keepUnmonitored';
         if (keep) {
-          const unmonitored = await unmonitor(target, episodes.map((episode) => episode.id));
+          const unmonitored = await unmonitor(target, episodes, part, following);
           if (unmonitored.kind !== 'ok') return stop('unmonitor', unmonitored.message);
           steps.push({ step: 'unmonitor', outcome: 'done', message: unmonitored.value });
         } else {
-          const monitored = await monitorAgain(target, deletedEpisodes(fileIds), episodes);
+          const monitored = await monitorAgain(target, deletedEpisodes(fileIds), allEpisodes);
           if (monitored.kind !== 'ok') return stop('monitor', monitored.message);
           steps.push({ step: 'monitor', outcome: 'done', message: monitored.value });
         }
@@ -442,17 +544,19 @@ export const createTitleDelete = (options: {
           }
           gonePaths = results.filter((result) => result.deleted).map((result) => result.path);
           deletedFileIds = new Set(results.filter((result) => result.deleted).map((result) => result.fileId));
-          const owner = season !== undefined ? "the season's" : "the show's";
+          const owner = season !== undefined ? "the season's" : selected ? "the chosen episodes'" : "the show's";
           if (files.length > 0 && failed.length === files.length) {
-            const message = `Sonarr deleted none of ${owner} ${plural(files.length, 'file')}. ${season !== undefined ? 'The season' : 'The show'} stays ${stays}.`;
+            const subject = season !== undefined ? 'The season' : selected ? 'The chosen episodes' : 'The show';
+            const message = `Sonarr deleted none of ${owner} ${plural(files.length, 'file')}. ${subject} ${selected ? 'stay' : 'stays'} ${stays}.`;
             return { kind: 'ran', deleted: false, steps: [...steps, { step: 'delete', outcome: 'failed', message, files: results }] };
           }
           const verb = keep ? 'Unmonitored' : 'Monitored';
-          const where = season !== undefined ? `season ${season}` : 'the show';
-          summary = failed.length === 0 ? `${verb} ${where} in Sonarr and deleted its files.`
-            : `${verb} ${where} in Sonarr; deleted ${results.length - failed.length} of its ${plural(files.length, 'file')}.`;
+          const where = season !== undefined ? `season ${season}` : selected ? 'the chosen episodes' : 'the show';
+          const its = selected ? 'their' : 'its';
+          summary = failed.length === 0 ? `${verb} ${where} in Sonarr and deleted ${its} files.`
+            : `${verb} ${where} in Sonarr; deleted ${results.length - failed.length} of ${its} ${plural(files.length, 'file')}.`;
           steps.push(files.length === 0
-            ? { step: 'delete', outcome: 'skipped', message: `Sonarr has no files for ${season !== undefined ? 'this season' : 'this show'}.`, files: results }
+            ? { step: 'delete', outcome: 'skipped', message: `Sonarr has no files for ${season !== undefined ? 'this season' : selected ? 'the chosen episodes' : 'this show'}.`, files: results }
             : { step: 'delete', outcome: failed.length === 0 ? 'done' : 'failed', message: `Deleted ${results.length - failed.length} of ${plural(files.length, 'file')} in Sonarr.`, files: results });
         }
       }
@@ -549,13 +653,14 @@ export const createTitleDelete = (options: {
         secondVersions: [...versionResults.values()],
       });
 
-      const kind = mode === 'searchAgain' ? `${season !== undefined ? 'season' : target.service === 'sonarr' ? 'series' : 'movie'}_search_again`
+      const kind = mode === 'searchAgain' ? `${season !== undefined ? 'season' : selected ? 'episodes' : target.service === 'sonarr' ? 'series' : 'movie'}_search_again`
         : season !== undefined ? 'season_deleted'
+          : selected ? 'episodes_deleted'
           : target.service === 'sonarr' ? (mode === 'remove' ? 'series_deleted' : 'series_files_deleted')
             : mode === 'remove' ? 'movie_deleted' : files.length === 0 ? 'movie_unmonitored' : 'movie_file_deleted';
       const detail = [summary, keepAll, torrentsMessage, versionsMessage].filter((part) => part !== null).join(' ');
       database.prepare('INSERT INTO title_events (service, title_id, title, at, kind, detail) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(target.service, titleId(target), season === undefined ? title : `${title} Season ${season}`, now(), kind, detail);
+        .run(target.service, titleId(target), season !== undefined ? `${title} Season ${season}` : part !== null ? `${title} ${describe(part, episodes)}` : title, now(), kind, detail);
       steps.push({ step: 'history', outcome: 'done', message: 'Written to History under Deletions.' });
       return { kind: 'ran', deleted: true, steps };
     } finally {
@@ -572,15 +677,45 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const hasKeys = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).sort().join(',') === [...keys].sort().join(',');
 const MAX_CHOICES = 1_000;
 
+const MAX_SEASONS = 100;
+const MAX_EPISODES = 5_000;
+
+// Seasons and episode ids of one selection: whole numbers, no repeats, at least one of either.
+const parseSelection = (seasons: unknown, episodeIds: unknown): Selection | undefined => {
+  if (!Array.isArray(seasons) || !Array.isArray(episodeIds) || seasons.length > MAX_SEASONS || episodeIds.length > MAX_EPISODES) return undefined;
+  if (seasons.length + episodeIds.length === 0) return undefined;
+  // Season 0 holds a show's specials.
+  if (seasons.some((season) => !Number.isSafeInteger(season) || season < 0 || season > 9_999)) return undefined;
+  if (episodeIds.some((id) => !Number.isSafeInteger(id) || id < 1)) return undefined;
+  if (new Set(seasons).size !== seasons.length || new Set(episodeIds).size !== episodeIds.length) return undefined;
+  return { seasons: [...seasons as number[]].sort((a, b) => a - b), episodeIds: episodeIds as number[] };
+};
+
+const parseKeepFollowing = (value: unknown): Record<number, boolean> | undefined => {
+  if (value === undefined) return {};
+  if (!isRecord(value) || Object.keys(value).length > MAX_SEASONS) return undefined;
+  const answers: Record<number, boolean> = {};
+  for (const [season, keep] of Object.entries(value)) {
+    if (!/^\d{1,4}$/.test(season) || typeof keep !== 'boolean') return undefined;
+    answers[Number(season)] = keep;
+  }
+  return answers;
+};
+
 // A movie delete has always named its mode; a show or season delete that leaves it out gets what it did before the choice existed.
+// A selection is new, so it names its mode and carries the seasons and episodes it was planned for.
 const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: Mode }) | undefined => {
   if (!isRecord(body) || !('removeTorrents' in body) || !('secondVersions' in body)) return undefined;
-  if (Object.keys(body).some((key) => !['mode', 'blocklistCurrent', 'removeTorrents', 'secondVersions'].includes(key))) return undefined;
+  const selected = target.service === 'sonarr' && target.selection !== undefined;
+  const allowed = ['mode', 'blocklistCurrent', 'keepFollowing', 'removeTorrents', 'secondVersions', ...(selected ? ['seasons', 'episodeIds'] : [])];
+  if (Object.keys(body).some((key) => !allowed.includes(key))) return undefined;
   const { removeTorrents, secondVersions } = body;
-  const mode = body.mode ?? (target.service === 'radarr' ? undefined : defaultMode(target));
+  const mode = body.mode ?? (target.service === 'radarr' || selected ? undefined : defaultMode(target));
   if (!modesOf(target).includes(mode as Mode)) return undefined;
   const blocklistCurrent = body.blocklistCurrent ?? false;
   if (typeof blocklistCurrent !== 'boolean' || (blocklistCurrent && mode !== 'searchAgain')) return undefined;
+  const keepFollowing = parseKeepFollowing(body.keepFollowing);
+  if (keepFollowing === undefined) return undefined;
   if (!Array.isArray(removeTorrents) || removeTorrents.length > MAX_CHOICES || !Array.isArray(secondVersions) || secondVersions.length > MAX_CHOICES) return undefined;
   if (removeTorrents.some((hash) => typeof hash !== 'string' || !/^[0-9A-Fa-f]{40}$/.test(hash))) return undefined;
   const hashes = (removeTorrents as string[]).map((hash) => hash.toUpperCase());
@@ -591,7 +726,7 @@ const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: M
     versions.push({ id: item.id as number, removeTorrent: item.removeTorrent });
   }
   if (new Set(versions.map((version) => version.id)).size !== versions.length) return undefined;
-  return { removeTorrents: hashes, secondVersions: versions, blocklistCurrent, mode: mode as Mode };
+  return { removeTorrents: hashes, secondVersions: versions, blocklistCurrent, keepFollowing, mode: mode as Mode };
 };
 
 // Mounted under /api/library next to the library routes.
@@ -610,14 +745,15 @@ export const createTitleDeleteRoutes = (titleDelete: TitleDelete) => {
     const result = await titleDelete.plan(target);
     return result.kind === 'ok' ? context.json(result.value) : failed(context, result);
   };
-  const deleteRoute = (targetOf: (context: Context) => DeleteTarget | null) => async (context: Context) => {
-    const target = targetOf(context);
+  // A selection's target is read from the request body, the others' from the path.
+  const deleteRoute = (targetOf: (context: Context, body: unknown) => DeleteTarget | null) => async (context: Context) => {
     let body: unknown;
     try {
       body = await context.req.json();
     } catch {
       return context.json(invalid, 400);
     }
+    const target = targetOf(context, body);
     const choices = target === null ? undefined : parseChoices(body, target);
     if (target === null || choices === undefined) return context.json(invalid, 400);
     const { mode, ...chosen } = choices;
@@ -625,6 +761,7 @@ export const createTitleDeleteRoutes = (titleDelete: TitleDelete) => {
     if (result.kind === 'ran') return context.json({ deleted: result.deleted, steps: result.steps });
     if (result.kind === 'plan_changed') return context.json({ error: 'plan_changed', reason: result.reason }, 409);
     if (result.kind === 'in_progress') return context.json({ error: 'in_progress' }, 409);
+    if (result.kind === 'invalid') return context.json({ ...invalid, reason: result.reason }, 400);
     return failed(context, result);
   };
 
@@ -646,5 +783,19 @@ export const createTitleDeleteRoutes = (titleDelete: TitleDelete) => {
     routes.get(`${path}/delete-plan`, planRoute(targetOf));
     routes.post(`${path}/delete`, deleteRoute(targetOf));
   }
+  // The plan reads ?seasons=1,2&episodes=101,102; the delete carries the same lists as seasons and episodeIds.
+  const list = (text: string | undefined) => (text === undefined || text === '' ? [] : text.split(',').map((item) => (/^\d{1,15}$/.test(item) ? Number(item) : Number.NaN)));
+  const selectionOf = (seriesText: string | undefined, selection: Selection | undefined): DeleteTarget | null => {
+    const id = idOf(seriesText ?? '');
+    return id === null || selection === undefined ? null : { service: 'sonarr', seriesId: id, selection };
+  };
+  routes.get('/series/:id/selection/delete-plan', planRoute((context) => selectionOf(
+    context.req.param('id'),
+    parseSelection(list(context.req.query('seasons')), list(context.req.query('episodes'))),
+  )));
+  routes.post('/series/:id/selection/delete', deleteRoute((context, body) => selectionOf(
+    context.req.param('id'),
+    isRecord(body) ? parseSelection(body.seasons, body.episodeIds) : undefined,
+  )));
   return routes;
 };
