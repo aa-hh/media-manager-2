@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // The server types in src/server/history.ts and src/server/blocklist.ts are the source of truth.
 export type Service = 'sonarr' | 'radarr';
@@ -106,7 +106,9 @@ const usePaged = <T extends { at: number },>(onUnauthorized: () => void, active:
     if (state.kind === 'ready' && state.hasMore && !state.loadingMore) void load(state.page + 1, nextQuery?.(state.items) ?? '');
   }, [state, load, nextQuery]);
 
-  return { state, loadMore, reload: useCallback(() => load(1), [load]) };
+  const reload = useCallback(() => load(1), [load]);
+  // A stable result lets the memoised screens skip the parent's re-render on every download event.
+  return useMemo(() => ({ state, loadMore, reload }), [state, loadMore, reload]);
 };
 
 const readEvents = (body: unknown) => {
@@ -150,7 +152,7 @@ export const useHistory = (onUnauthorized: () => void, active: boolean) => {
   }, [active]);
   const ids = Object.entries(link).map(([key, value]) => `&${key}=${value}`).join('');
   const paged = usePaged(onUnauthorized, active, `/api/history?filter=${filter}&service=${service}${ids}`, readEvents, eventId, eventsBefore);
-  return { ...paged, filter, setFilter, service, setService, link };
+  return useMemo(() => ({ ...paged, filter, setFilter, service, setService, link }), [paged, filter, service, link]);
 };
 
 const readEntries = (body: unknown) => {

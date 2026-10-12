@@ -1,5 +1,5 @@
 import { CalendarX } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { CalendarDayHeader, CalendarEntry as CalendarEntryTile, CalendarHeader, CalendarMonthCell, CalendarNowLine } from '@/components/ui/calendar';
 import { Callout } from '@/components/ui/callout';
@@ -22,6 +22,7 @@ type LoadState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; dat
 const views: Array<[View, string]> = [['week', 'Week'], ['month', 'Month'], ['forecast', 'Forecast']];
 const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const noProgress = new Map<string, SubjectProgress>();
+const noEntries: CalendarEntry[] = [];
 
 const serviceProblem = (name: 'Sonarr' | 'Radarr', outcome: Outcome) => {
   const missing = name === 'Sonarr' ? 'episodes are' : 'movies are';
@@ -83,15 +84,15 @@ function Entry({ group, progress, now, meta, compact = false }: {
 type GridProps = {
   window: CalendarWindow;
   entries: CalendarEntry[];
+  perDay: CalendarGroup[][];
   progress: Map<string, SubjectProgress>;
   now: number;
   loading: boolean;
 };
 
-function WeekGrid({ window, entries, progress, now, loading }: GridProps) {
+function WeekGrid({ window, perDay, progress, now, loading }: GridProps) {
   const today = new Date(now);
   const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-  const perDay = groupByDay(entries, window.days);
   return (
     <div className="flex justify-between">
       {window.days.map((day, index) => {
@@ -130,9 +131,8 @@ function WeekGrid({ window, entries, progress, now, loading }: GridProps) {
 // A month cell holds three tiles; past that, two tiles and the count of the rest.
 const MONTH_TILES = 3;
 
-function MonthGrid({ window, entries, progress, now, loading, month, onOpenDay }: GridProps & { month: number; onOpenDay: (day: Date) => void }) {
+function MonthGrid({ window, perDay, progress, now, loading, month, onOpenDay }: GridProps & { month: number; onOpenDay: (day: Date) => void }) {
   const today = new Date(now);
-  const perDay = groupByDay(entries, window.days);
   const weeks = Array.from({ length: window.days.length / 7 }, (_, week) => window.days.slice(week * 7, week * 7 + 7));
   return (
     <div className="flex flex-col gap-1">
@@ -168,9 +168,8 @@ function MonthGrid({ window, entries, progress, now, loading, month, onOpenDay }
   );
 }
 
-function Forecast({ window, entries, progress, now, loading }: GridProps) {
+function Forecast({ window, entries, perDay, progress, now, loading }: GridProps) {
   const today = new Date(now);
-  const perDay = groupByDay(entries, window.days);
   const missing = stillMissing(entries.filter((entry) => Date.parse(entry.at) < window.start.getTime()), progress, now);
   const missingDays = Array.from({ length: 7 }, (_, index) => new Date(window.lookback.getFullYear(), window.lookback.getMonth(), window.lookback.getDate() + index));
   const missingGroups = groupByDay(missing, missingDays).flat();
@@ -228,16 +227,19 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
 
   const from = (view === 'forecast' ? window.lookback : window.start).toISOString();
   const until = window.end.toISOString();
-  const load = useCallback((signal?: AbortSignal) => {
+  // Each load cancels the one before, so a Retry still in flight cannot land on a window the user has since left.
+  const requestRef = useRef<AbortController | null>(null);
+  const load = useCallback(() => {
+    requestRef.current?.abort();
+    const { signal } = requestRef.current = new AbortController();
     setState({ kind: 'loading' });
     getJson<Loaded>(`/api/library/calendar?start=${encodeURIComponent(from)}&end=${encodeURIComponent(until)}`, onUnauthenticated, signal)
-      .then((data) => setState({ kind: 'ready', data }))
-      .catch(() => { if (signal?.aborted !== true) setState({ kind: 'failed' }); });
+      .then((data) => { if (!signal.aborted) setState({ kind: 'ready', data }); })
+      .catch(() => { if (!signal.aborted) setState({ kind: 'failed' }); });
   }, [from, until, onUnauthenticated]);
   useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal);
-    return () => controller.abort();
+    load();
+    return () => requestRef.current?.abort();
   }, [load]);
 
   const go = useCallback((nextView: View, nextAnchor: Date | null) => {
@@ -272,9 +274,10 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
   // Stepping weeks or switching views crossfades; the screen's first draw is already part of the screen change.
   const shown = `${view}:${isoDay(window.start)}`;
   const [firstShown] = useState(shown);
-  const entries = state.kind === 'ready' ? state.data.entries : [];
+  const entries = state.kind === 'ready' ? state.data.entries : noEntries;
+  const perDay = useMemo(() => groupByDay(entries, window.days), [entries, window.days]);
   const missing = stillMissing(entries, progress, now).length;
-  const grid = { window, entries, progress, now, loading };
+  const grid = { window, entries, perDay, progress, now, loading };
 
   return (
     <div className={cn('flex flex-col pt-2 pb-6', view === 'week' ? 'gap-6' : view === 'month' && 'gap-4')}>
@@ -295,7 +298,7 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
         )}
       />
       {state.kind === 'failed'
-        ? <Callout title="The calendar could not be read." action={<Button variant="outline" onClick={() => load()}>Retry</Button>} className="w-130" />
+        ? <Callout title="The calendar could not be read." action={<Button variant="outline" onClick={() => load()}>Retry</Button>} className="max-w-130" />
         : (
           <div
             key={`${view}:${isoDay(window.start)}:${state.kind}`}
@@ -303,9 +306,9 @@ export function Calendar({ downloads, onUnauthenticated }: { downloads: Download
           >
             {state.kind === 'ready' && [serviceProblem('Sonarr', state.data.services.sonarr), serviceProblem('Radarr', state.data.services.radarr)]
               .filter((line) => line !== undefined)
-              .map((line) => <Callout key={line} look="warning" title={line} className="w-130" />)}
-            {view === 'week' && state.kind === 'ready' && entries.length === 0 && (
-              <EmptyState icon={<CalendarX aria-hidden="true" />} title="Nothing airs this week." />
+              .map((line) => <Callout key={line} look="warning" title={line} className="max-w-130" />)}
+            {view !== 'forecast' && state.kind === 'ready' && entries.length === 0 && (
+              <EmptyState icon={<CalendarX aria-hidden="true" />} title={view === 'week' ? 'Nothing airs this week.' : 'Nothing airs this month.'} />
             )}
             {view === 'week' && <WeekGrid {...grid} />}
             {view === 'month' && <MonthGrid {...grid} month={anchor.getMonth()} onOpenDay={(day) => go('week', day)} />}
