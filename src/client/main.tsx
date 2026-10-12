@@ -174,7 +174,7 @@ function App() {
     void checkSession(true);
   }, [checkSession]);
 
-  // The heading exists only once SetupGate has read /api/setup, so SetupGate says when to focus it.
+  // The heading exists only once SetupGate has read /api/setup and drawn the app or the wizard, so SetupGate says when to focus it.
   const focusHeadingAfterSignIn = useCallback(() => {
     if (!focusAfterSignInRef.current) return;
     focusAfterSignInRef.current = false;
@@ -258,6 +258,12 @@ function App() {
 type SignedInProps = Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'downloading' | 'healthProblems' | 'healthRisk'>;
 
 // The setup wizard blocks the app until every required part is set up; once open, it stays until the owner leaves Done.
+// Its effect runs only when everything in its Suspense boundary has drawn, so it fires after a lazy sibling has loaded.
+function WhenDrawn({ run }: { run: () => void }) {
+  useEffect(run, [run]);
+  return null;
+}
+
 function SetupGate({ onShown, ...props }: SignedInProps & { onShown: () => void }) {
   const [gate, setGate] = useState<{ kind: 'checking' | 'failed' | 'app' } | { kind: 'setup'; status: SetupStatus }>({ kind: 'checking' });
   const unauthorizedRef = useRef(props.onUnauthenticated);
@@ -281,16 +287,17 @@ function SetupGate({ onShown, ...props }: SignedInProps & { onShown: () => void 
 
   useEffect(() => { void check(); }, [check]);
 
-  const shown = gate.kind === 'app' || gate.kind === 'setup';
+  const app = gate.kind === 'app';
   useEffect(() => {
-    if (shown) onShown();
-  }, [shown, onShown]);
+    if (app) onShown();
+  }, [app, onShown]);
 
   if (gate.kind === 'app') return <SignedIn {...props} />;
   if (gate.kind === 'setup') {
     return (
       <Suspense fallback={<main className="min-h-screen bg-background" />}>
         <SetupWizard {...props} status={gate.status} onFinished={() => setGate({ kind: 'app' })} />
+        <WhenDrawn run={onShown} />
       </Suspense>
     );
   }

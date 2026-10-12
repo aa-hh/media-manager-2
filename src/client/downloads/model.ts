@@ -167,11 +167,11 @@ const problemKeysFor = (service: Service, items: QueueItem[], grab: Grab | undef
   return keys;
 };
 
-// One row per download: a torrent in rTorrent with what Sonarr or Radarr know of it, or a queue entry rTorrent doesn't have yet.
-// Each open problem joins the row it is about; problems about no download (a tracker, a dependency) get a row of their own.
 // Several screens build rows from the same snapshot on every event; the rows are read-only, so each snapshot is built once.
 const rowsBySnapshot = new WeakMap<Snapshot, Row[]>();
 
+// One row per download: a torrent in rTorrent with what Sonarr or Radarr know of it, or a queue entry rTorrent doesn't have yet.
+// Each open problem joins the row it is about; problems about no download (a tracker, a dependency) get a row of their own.
 export const buildRows = (snapshot: Snapshot): Row[] => {
   const cached = rowsBySnapshot.get(snapshot);
   if (cached !== undefined) return cached;
