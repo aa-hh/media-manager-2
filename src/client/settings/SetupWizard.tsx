@@ -20,7 +20,7 @@ import { navigate } from '../navigation';
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
 import { isConfigured, list, pillFor, savedAddress, services } from './model';
-import { Editor, PiecesStrip } from './Settings';
+import { Editor, PiecesStrip, touchInputs } from './Settings';
 import {
   backupPill, backupWords, firstStep, nextStep, type OptionalPart, previousStep, type RequiredPart, requiredParts, type RtorrentSuggestion, type SetupStatus, wantedParts, type WizardStep, wizardSummary,
 } from './setup';
@@ -423,7 +423,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
                       <Button
                         variant="outline"
                         loading={connections.pending[info.name] === 'connect'}
-                        disabled={value.trim() === '' || anyTesting}
+                        disabled={value.trim() === '' || anyTesting || savingMetadata}
                         onClick={() => void connections.connect(info.name)}
                       >
                         Check
@@ -438,7 +438,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
                       spellCheck={false}
                       placeholder={credential.placeholder}
                       value={value}
-                      readOnly={check.kind === 'testing'}
+                      readOnly={check.kind === 'testing' || connections.pending[info.name] === 'connect'}
                       aria-invalid={check.kind === 'rejected' || check.kind === 'unreachable' || undefined}
                       onValueChange={(next) => connections.setDraft(info.name, { ...draft, secrets: { ...draft.secrets, [credential.key]: next } })}
                     />
@@ -450,7 +450,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           })}
           <BarBottomAction
             summary="Check tests each key. Leave any blank to add it later in Settings."
-            secondary={<Button variant="outline" onClick={() => void skip('metadata')}>Skip posters and ratings</Button>}
+            secondary={<Button variant="outline" disabled={savingMetadata || choosing} onClick={() => void skip('metadata')}>Skip posters and ratings</Button>}
             action={(
               <Button size="large" loading={savingMetadata} disabled={(typed.length === 0 && connected.length === 0) || anyBusy} onClick={() => void saveMetadata()}>
                 Save and continue
@@ -545,7 +545,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   };
 
   return (
-    <div className="min-h-screen">
+    <div className={`min-h-screen ${touchInputs}`}>
       <AppBarDesktop
         className="sticky top-0 z-10"
         productName={<h1 ref={headingRef} tabIndex={-1}>media-manager-2</h1>}

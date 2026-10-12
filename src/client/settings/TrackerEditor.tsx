@@ -124,7 +124,7 @@ export function AddTracker({ address, onAddress, request, onCancel, cancelLabel 
     setCredentialError(undefined);
     setProblem(undefined);
     try {
-      const response = await request('POST', '', withCredential ? { host: address, software, ...(askCredential && { credential }) } : { host: address });
+      const response = await request('POST', '', withCredential ? { host: address, software, ...(askCredential && { credential: credential.trim() }) } : { host: address });
       if (response.status === 400) return setFieldError('Enter the address you open the tracker at, such as blutopia.cc.');
       if (response.status === 409) return setFieldError('This tracker is already added.');
       if (withCredential && response.status === 200) {
@@ -279,7 +279,7 @@ export function TrackerEditor({ row, draft, checkedAt, now, request, onDraft, on
     setTesting(kind);
     setConnectionProblem(undefined);
     try {
-      const response = await request('POST', path(row.host, '/test'), kind === 'connect' ? { credential: secret } : {});
+      const response = await request('POST', path(row.host, '/test'), kind === 'connect' ? { credential: secret.trim() } : {});
       if (!response.ok) throw new Error('The test did not run.');
       const result = await response.json() as Connection;
       if (kind === 'check') {
@@ -292,7 +292,7 @@ export function TrackerEditor({ row, draft, checkedAt, now, request, onDraft, on
         setFormCheck(result);
         return;
       }
-      const saved = await request('PUT', path(row.host, '/credential'), { value: secret });
+      const saved = await request('PUT', path(row.host, '/credential'), { value: secret.trim() });
       if (saved.status !== 204) {
         setConnectionProblem(`${name} answered, but the new ${credential} could not be saved. Try again.`);
         return;
@@ -637,7 +637,7 @@ export function TrackerEditor({ row, draft, checkedAt, now, request, onDraft, on
           unsavedNote={edited ? 'Unsaved edits' : undefined}
           secondary={edited
             ? <Button variant="outline" icon={<Undo2 />} disabled={saving !== undefined} onClick={() => { setRuleError(undefined); onDraft(undefined); }}>Discard edits</Button>
-            : shownEnvRule && <Button variant="ghost" icon={<FileText />} loading={saving === 'env'} onClick={() => void restoreEnvRule()}>Use env file rule</Button>}
+            : shownEnvRule && <Button variant="ghost" icon={<FileText />} loading={saving === 'env'} disabled={saving === 'save'} onClick={() => void restoreEnvRule()}>Use env file rule</Button>}
           action={(
             <Button
               size="large"

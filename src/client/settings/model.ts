@@ -89,7 +89,8 @@ export const changes = (service: ServiceName, saved: SavedService | undefined, d
   const address = draft.address.trim();
   if (hasAddress(service) && address !== savedAddress(saved)) result.serviceAddresses = { [addressKey(service)]: address };
   const secrets = Object.entries(draft.secrets).filter(([, value]) => value.trim() !== '');
-  if (secrets.length > 0) result.credentials = Object.fromEntries(secrets);
+  // A pasted key often carries a stray space, which the service then refuses; a password goes as typed, since its spaces can be real.
+  if (secrets.length > 0) result.credentials = Object.fromEntries(secrets.map(([key, value]) => [key, key.endsWith('.password') ? value : value.trim()]));
   return result;
 };
 
