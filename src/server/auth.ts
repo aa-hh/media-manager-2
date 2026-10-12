@@ -135,6 +135,9 @@ export const createAuthentication = (options: AuthenticationOptions) => {
   const configuration = readConfiguration(options.ownerPlexId, options.publicOrigin, options.listeningHost);
   const attempts = new Map<string, Attempt>();
   const { database } = options;
+  // The owner's Plex account token from sign-in, by session hash. Kept out of the database (and so out of backups);
+  // a restart drops it and setup's Plex step falls back to a pasted token.
+  const plexTokens = new Map<string, string>();
   let starts: Array<{ client: string; at: number }> = [];
   const pendingStarts: string[] = [];
   const settleStart = (client: string) => pendingStarts.splice(pendingStarts.indexOf(client), 1);
@@ -149,11 +152,8 @@ export const createAuthentication = (options: AuthenticationOptions) => {
   // Sessions live in the database so a restart keeps the owner signed in; only each token's hash is stored.
   const deleteSession = (key: string) => {
     database.prepare('DELETE FROM sessions WHERE token_hash = ?').run(key);
+    plexTokens.delete(key);
   };
-
-  const readSession = (key: string) => database
-    .prepare('SELECT owner_id, expires_at, plex_token FROM sessions WHERE token_hash = ?')
-    .get(key) as { owner_id: number; expires_at: number; plex_token: string } | undefined;
 
   const requestProvider = (url: string, init: RequestInit) => options.fetch(url, {
     ...init,
@@ -335,13 +335,15 @@ export const createAuthentication = (options: AuthenticationOptions) => {
 
     attempts.delete(bindingHash);
     if (suppliedSession !== undefined) deleteSession(hash(suppliedSession));
-    database.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(options.now());
+    for (const { token_hash } of database.prepare('DELETE FROM sessions WHERE expires_at <= ? RETURNING token_hash')
+      .all(options.now()) as Array<{ token_hash: string }>) plexTokens.delete(token_hash);
     const { count } = database.prepare('SELECT count(*) AS count FROM sessions').get() as { count: number };
     if (count >= MAX_SESSIONS) return { kind: 'unavailable' };
     const session = randomBytes(32).toString('base64url');
     const expiresAt = options.now() + SESSION_LIFETIME_MS;
-    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at, plex_token) VALUES (?, ?, ?, ?)')
-      .run(hash(session), configuration.ownerId, expiresAt, checkBody.authToken);
+    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)')
+      .run(hash(session), configuration.ownerId, expiresAt);
+    plexTokens.set(hash(session), checkBody.authToken);
     return { kind: 'success', session, expiresAt };
   };
 
@@ -365,7 +367,8 @@ export const createAuthentication = (options: AuthenticationOptions) => {
   const validateSession = (session?: string): SessionResult => {
     if (configuration === undefined || session === undefined) return { kind: 'unauthenticated' };
     const key = hash(session);
-    const stored = readSession(key);
+    const stored = database.prepare('SELECT owner_id, expires_at FROM sessions WHERE token_hash = ?')
+      .get(key) as { owner_id: number; expires_at: number } | undefined;
     if (stored === undefined || stored.owner_id !== configuration.ownerId) return { kind: 'unauthenticated' };
     if (options.now() >= stored.expires_at) {
       deleteSession(key);
@@ -374,10 +377,9 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return { kind: 'success', expiresAt: stored.expires_at };
   };
 
-  // The owner's Plex account token from sign-in, kept on the session row so setup can connect Plex without a pasted
-  // token. It sits in the same private database file as the Plex token setup saves, and never leaves the server.
+  // Lets setup connect Plex without a pasted token; never leaves the server.
   const plexToken = (session?: string): string | undefined => (
-    validateSession(session).kind === 'success' ? readSession(hash(session as string))?.plex_token : undefined
+    validateSession(session).kind === 'success' ? plexTokens.get(hash(session as string)) : undefined
   );
 
   return {

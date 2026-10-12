@@ -393,8 +393,7 @@ export const applicationMigrations = [
   `CREATE TABLE sessions (
     token_hash TEXT PRIMARY KEY,
     owner_id INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL,
-    plex_token TEXT NOT NULL
+    expires_at INTEGER NOT NULL
   ) STRICT;`,
 ] as const;
 

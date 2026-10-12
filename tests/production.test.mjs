@@ -829,6 +829,8 @@ test('Plex owner authentication', async (t) => {
     assert.notEqual(replacementSession, firstSession);
     assert.equal((await setup.app.request('/api/session', { headers: { Cookie: firstSession } })).status, 401);
     const expiry = setup.clock.value + 24 * 60 * 60_000;
+    // Turns red if the Plex account token from sign-in is written to the sessions table, and so into backups.
+    assert.doesNotMatch(JSON.stringify(setup.database.prepare('SELECT * FROM sessions').all()), /plex-secret-token/);
     const restarted = await makeApp({ clock: setup.clock, database: setup.database });
     // Omitting current server time prevents expiry scheduling independent of the browser clock.
     for (const serverNow of [expiry - 60_000, expiry - 1]) {
