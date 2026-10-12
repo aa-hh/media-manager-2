@@ -10707,7 +10707,10 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   await t.test('keeping the record unmonitors the movie before deleting its file, and deletes a ticked second version with its torrent', async () => {
     const w = await dune();
     w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
-    const { body } = await w.remove('/movie/1', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [{ id: w.version, removeTorrent: true }] });
+    // The dialog already sends excludeFromImportLists, keepFollowing and queue; refusing their neutral values breaks every delete it sends.
+    const { body } = await w.remove('/movie/1', {
+      mode: 'keepUnmonitored', excludeFromImportLists: false, keepFollowing: {}, queue: [], removeTorrents: [], secondVersions: [{ id: w.version, removeTorrent: true }],
+    });
     assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:skipped', 'secondVersions:done', 'monitoring:done', 'history:done']);
     const radarr = w.requests('radarr');
     const unmonitoredAt = radarr.indexOf('PUT /api/v3/movie/editor');
@@ -10803,6 +10806,8 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       ['/movie/1', { mode: 'remove', removeTorrents: [CUR, CUR.toLowerCase()], secondVersions: [] }],
       ['/movie/1', { mode: 'remove', removeTorrents: [], secondVersions: [{ id: 1 }] }],
       ['/movie/0', { mode: 'remove', removeTorrents: [], secondVersions: [] }],
+      // A choice the server cannot carry out yet must be refused, not silently ignored.
+      ['/movie/1', { mode: 'remove', excludeFromImportLists: false, keepFollowing: {}, queue: [{ downloadId: 'x', action: 'remove' }], removeTorrents: [], secondVersions: [] }],
     ];
     for (const [path, body] of bad) assert.equal((await w.remove(path, body)).status, 400, JSON.stringify(body));
     assert.equal((await w.remove('/movie/1', { mode: 'remove', removeTorrents: [SHARED], secondVersions: [] })).status, 409);
