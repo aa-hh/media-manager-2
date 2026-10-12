@@ -767,13 +767,18 @@ const parseKeepFollowing = (value: unknown): Record<number, boolean> | undefined
   return answers;
 };
 
+// Choices the dialog already sends that this server does not act on yet, with the one value it can safely accept.
+const neutral: Record<string, string> = { excludeFromImportLists: 'false', queue: '[]' };
+
 // A movie delete has always named its mode; a show or season delete that leaves it out gets what it did before the choice existed.
 // A selection is new, so it names its mode and carries the seasons and episodes it was planned for.
 const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: Mode }) | undefined => {
   if (!isRecord(body) || !('removeTorrents' in body) || !('secondVersions' in body)) return undefined;
   const selected = target.service === 'sonarr' && target.selection !== undefined;
-  const allowed = ['mode', 'blocklistCurrent', 'keepFollowing', 'removeTorrents', 'secondVersions', ...(selected ? ['seasons', 'episodeIds'] : [])];
+  const allowed = ['mode', 'blocklistCurrent', 'keepFollowing', 'removeTorrents', 'secondVersions', ...Object.keys(neutral), ...(selected ? ['seasons', 'episodeIds'] : [])];
   if (Object.keys(body).some((key) => !allowed.includes(key))) return undefined;
+  // The dialog sends these once the plan has modes; until their own changes land, only the value that asks for nothing is accepted.
+  if (Object.entries(neutral).some(([key, value]) => key in body && JSON.stringify(body[key]) !== value)) return undefined;
   const { removeTorrents, secondVersions } = body;
   const mode = body.mode ?? (target.service === 'radarr' || selected ? undefined : defaultMode(target));
   if (!modesOf(target).includes(mode as Mode)) return undefined;
