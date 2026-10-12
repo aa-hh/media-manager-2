@@ -13,7 +13,8 @@ import { StatusInline } from '@/components/ui/status-inline';
 import { Table } from '@/components/ui/table';
 import { useToastManager } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import { dayTitle, FilterTabs, formatWhen } from './History';
+import { FilterTabs } from './History';
+import { dayTitle, formatWhen } from './when';
 import { type BlockEntry, sendJson, type useBlocklist } from './useHistory';
 
 type View = 'all' | 'you' | 'automatic' | 'sonarr' | 'radarr';

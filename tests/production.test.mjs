@@ -9881,6 +9881,23 @@ const startFakeS3 = async (t) => {
 };
 
 // Encoding the secret's "+" wrongly, sorting query parameters by original order, hashing a body other than the one sent, signing with a region other than the configured one, or naming the endpoint or key id in an error turns this red.
+// Going back to "now minus 24 hours" turns this red: in London, half past midnight after the 23-hour spring-forward day lands 24 hours back on the day before.
+test('history calls the calendar day before today Yesterday across a daylight-saving change', async () => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/history/when.ts', import.meta.url), 'utf8');
+  const zone = process.env.TZ;
+  process.env.TZ = 'Europe/London';
+  try {
+    const { dayTitle } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+    const now = new Date(2026, 2, 30, 0, 30).getTime();
+    assert.equal(dayTitle(new Date(2026, 2, 29, 12, 0).getTime(), now), 'Yesterday');
+    assert.equal(dayTitle(new Date(2026, 2, 28, 12, 0).getTime(), now), '28 Mar');
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  }
+});
+
 test('S3 requests are signed with AWS Signature V4 and stored path-style', async (t) => {
   const { createS3Store, signRequest } = await import(s3ModuleUrl);
 
