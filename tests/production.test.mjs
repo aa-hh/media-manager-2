@@ -10707,7 +10707,10 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   await t.test('keeping the record unmonitors the movie before deleting its file, and deletes a ticked second version with its torrent', async () => {
     const w = await dune();
     w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
-    const { body } = await w.remove('/movie/1', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [{ id: w.version, removeTorrent: true }] });
+    // The dialog already sends excludeFromImportLists, keepFollowing and queue; refusing their neutral values breaks every delete it sends.
+    const { body } = await w.remove('/movie/1', {
+      mode: 'keepUnmonitored', excludeFromImportLists: false, keepFollowing: {}, queue: [], removeTorrents: [], secondVersions: [{ id: w.version, removeTorrent: true }],
+    });
     assert.deepEqual(w.steps(body), ['map:done', 'unmonitor:done', 'delete:done', 'wait:done', 'torrents:skipped', 'secondVersions:done', 'monitoring:done', 'history:done']);
     const radarr = w.requests('radarr');
     const unmonitoredAt = radarr.indexOf('PUT /api/v3/movie/editor');
