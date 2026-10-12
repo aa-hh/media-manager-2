@@ -124,20 +124,22 @@ const acceptsHtml = (header: string | undefined) => header?.split(',').some(
   },
 ) ?? false;
 
-const metricNames = ['LCP', 'INP', 'CLS', 'FCP', 'TTFB', 'api'];
+const metricNames = ['LCP', 'INP', 'CLS', 'FCP', 'TTFB', 'api', 'api-failed'];
 const metricRatings = ['good', 'needs-improvement', 'poor'];
-const metricKeys = ['name', 'value', 'route', 'path', 'rating'];
+const metricKeys = ['name', 'value', 'route', 'path', 'rating', 'status'];
 const pagePath = (value: unknown) => typeof value === 'string' && value.length <= 200 && /^\/[A-Za-z0-9/_.\-]*$/.test(value);
 
 // Only these fields reach the log, so a browser cannot write anything else into it.
 const validMetric = (item: unknown) => {
   if (typeof item !== 'object' || item === null || Array.isArray(item)) return false;
-  const { name, value, route, path, rating } = item as Record<string, unknown>;
+  const { name, value, route, path, rating, status } = item as Record<string, unknown>;
   return Object.keys(item).every((key) => metricKeys.includes(key))
     && typeof name === 'string' && metricNames.includes(name)
     && typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 600_000
     && pagePath(route)
-    && (path === undefined ? name !== 'api' : pagePath(path))
+    && (path === undefined ? name !== 'api' && name !== 'api-failed' : pagePath(path))
+    // A failed request carries its status, 0 when no response came back at all.
+    && (status === undefined ? name !== 'api-failed' : name === 'api-failed' && Number.isInteger(status) && (status as number) >= 0 && (status as number) <= 599)
     && (rating === undefined || (typeof rating === 'string' && metricRatings.includes(rating)));
 };
 
