@@ -1,17 +1,46 @@
 import { Settings as SettingsIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode, type RefObject } from 'react';
 import { AppBarDesktop, AppBarNavItem } from './components/ui/app-bar';
 import { Button } from './components/ui/button';
+import { Callout } from './components/ui/callout';
 import { InputSearch } from './components/ui/input-search';
-import { Calendar } from './calendar/Calendar';
 import { Discover } from './discover/Discover';
 import type { DownloadsState } from './downloads/useDownloads';
 import { Library } from './library/Library';
 import { inScreenChange, navigate, replace, routeFor, useLocation } from './navigation';
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
-import { Settings } from './settings/Settings';
 import { cn } from './lib/utils';
 import { Overview } from './title/Overview';
+
+const screenLoaders: Array<() => Promise<unknown>> = [];
+
+// A chunk that fails to load (offline, or the app was redeployed under this tab) cannot be retried in place.
+function ScreenLoadFailed() {
+  return (
+    <div className="pt-10">
+      <Callout title="This screen didn't load." action={<Button variant="outline" onClick={() => window.location.reload()}>Reload</Button>}>
+        Check your connection, then reload the page.
+      </Callout>
+    </div>
+  );
+}
+
+/** A rarely opened screen in its own chunk; render it under a Suspense boundary that holds only that screen. */
+export function lazyScreen<P extends object>(load: () => Promise<ComponentType<P>>) {
+  screenLoaders.push(load);
+  return lazy(() => load().then(
+    (component) => ({ default: component }),
+    () => ({ default: ScreenLoadFailed as ComponentType<P> }),
+  ));
+}
+
+/** Fetches every lazyScreen chunk ahead of its first use. */
+export const preloadScreens = () => {
+  for (const load of screenLoaders) void load().catch(() => undefined);
+};
+
+const Settings = lazyScreen(() => import('./settings/Settings').then((module) => module.Settings));
+const Calendar = lazyScreen(() => import('./calendar/Calendar').then((module) => module.Calendar));
 
 type HomeProps = {
   headingRef: RefObject<HTMLHeadingElement | null>;
@@ -32,6 +61,9 @@ type HomeProps = {
   healthRisk: boolean;
   renderBar?: (showDownloads: () => void) => ReactNode;
 };
+
+// The same limit /api/search checks; a longer query comes back invalid and would read as the server being unreachable.
+const MAX_QUERY_LENGTH = 200;
 
 const writeSearchQuery = (query: string) => {
   const url = new URL(window.location.href);
@@ -125,7 +157,15 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
               spellCheck={false}
               aria-label="Search library, Sonarr and Radarr"
               placeholder="Search movies and TV shows"
+              maxLength={MAX_QUERY_LENGTH}
               value={query}
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowDown' || view !== 'search') return;
+                const first = document.querySelector<HTMLElement>('[data-result-row]');
+                if (first === null) return;
+                event.preventDefault();
+                first.focus();
+              }}
               onValueChange={(value) => setQuery(value)}
               onClear={() => setQuery('')}
               kbd="/"
@@ -178,6 +218,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         {/* Each title page counts as its own screen. Screen changes crossfade in navigation.ts; a view swap outside one, such
             as typing in the search box, fades in here instead. */}
         <div key={view === 'title' ? pathname : view} className={cn(!inScreenChange() && 'transition-opacity duration-(--duration-fast) ease-out starting:opacity-0')}>
+        {/* Inside the keyed view, so a screen still loading its chunk blanks only itself, never the bar or a mounted screen. */}
+        <Suspense fallback={null}>
         {view === 'search'
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'
@@ -194,6 +236,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
               : view === 'title'
                 ? <Overview downloads={downloadsState} onUnauthenticated={onUnauthenticated} />
                 : <Library downloads={downloadsState} onUnauthenticated={onUnauthenticated} />}
+        </Suspense>
         </div>
       </main>
       {renderBar?.(() => {

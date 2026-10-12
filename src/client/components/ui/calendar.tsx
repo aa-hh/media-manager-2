@@ -35,6 +35,7 @@ function CalendarEntry({ state = 'normal', title, meta, progress, compact = fals
         className,
       )}
       {...props}
+      title={typeof title === 'string' ? title : undefined}
     >
       {(state === 'missing' || state === 'gave-up') && (
         <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-0.75', state === 'missing' ? 'bg-warning' : 'bg-destructive')} />

@@ -53,7 +53,7 @@ function RowDownload({ title, detail, progress, speed, eta, tracker, state, stat
   return (
     <TableRow marker={look.marker} className={cn('h-(--row-two-line)', className)} {...props}>
       <TableCell fill className="flex-col items-start justify-center gap-0.5">
-        <span className="w-full truncate font-ui font-semibold">{title}</span>
+        <span className="w-full truncate font-ui font-semibold" title={typeof title === 'string' ? title : undefined}>{title}</span>
         {detail !== undefined && <span className="w-full truncate text-[13px] text-muted-foreground">{detail}</span>}
       </TableCell>
       <TableCell className={cn(w.progress, 'gap-2.5')}>

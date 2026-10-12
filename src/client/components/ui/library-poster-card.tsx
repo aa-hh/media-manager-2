@@ -135,7 +135,7 @@ function LibraryPosterCard({
               'min-w-0 flex-1 font-ui text-foreground',
               large ? 'text-base' : 'text-sm',
               rank !== undefined && 'leading-[1.25]',
-              kind === undefined && 'truncate',
+              kind === undefined ? 'truncate' : 'line-clamp-2 [overflow-wrap:anywhere]',
               selected ? 'font-bold' : 'font-semibold',
             )}
           >

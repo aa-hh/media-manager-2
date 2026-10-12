@@ -160,7 +160,8 @@ export function Poster({ url, className }: { url: string | null; className?: str
 // merged in between the first. Rows that stay glide from their old place to the new one and arriving rows fade in
 // and rise one after another, so the reshuffle reads as the list making room instead of jumping under the pointer.
 // Under reduced motion nothing glides and arriving rows only fade.
-function useRowMotion(listRef: RefObject<HTMLElement | null>) {
+// It reads every row's layout, so it runs only when the shown results change, not on each keystroke or downloads event.
+function useRowMotion(listRef: RefObject<HTMLElement | null>, visible: SearchResult[]) {
   const placed = useRef(new Map<string, number>());
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -196,7 +197,7 @@ function useRowMotion(listRef: RefObject<HTMLElement | null>) {
         element.animate({ transform: [`translateY(${was + drawn - top}px)`, 'none'] }, { duration: milliseconds('--duration-slow'), easing });
       }
     }
-  });
+  }, [listRef, visible]);
 }
 
 export const statusLabel = (status: string | null) => (status === null ? null : statusLabels[status] ?? null);
@@ -275,10 +276,10 @@ export function SearchResults({ state, onOpen, onRetry }: {
     tv: results.filter((result) => result.type === 'tv').length,
     movie: results.filter((result) => result.type === 'movie').length,
   }), [results]);
-  const visible = filter === 'all' ? results : results.filter((result) => result.type === filter);
+  const visible = useMemo(() => (filter === 'all' ? results : results.filter((result) => result.type === filter)), [results, filter]);
   const waiting = state.kind === 'done' ? pendingService(state.response) : undefined;
   const loading = state.kind === 'searching' || waiting !== undefined;
-  useRowMotion(listRef);
+  useRowMotion(listRef, visible);
 
   const rowKeys = (result: SearchResult) => (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter') {
@@ -295,7 +296,7 @@ export function SearchResults({ state, onOpen, onRetry }: {
 
   if (state.kind === 'idle') {
     return (
-      <div className="pt-12 pl-41">
+      <div className="pt-12 sm:pl-41">
         <p className="w-220 max-w-full font-ui text-base text-muted-foreground">
           Search by name, or paste an IMDb id (tt…), tmdb:… or tvdb:…
         </p>
@@ -311,7 +312,7 @@ export function SearchResults({ state, onOpen, onRetry }: {
   const retry = <Button variant="outline" onClick={onRetry}>Try again</Button>;
 
   return (
-    <section aria-label="Search results" className="pt-2 pb-6 pl-41">
+    <section aria-label="Search results" className="pt-2 pb-6 sm:pl-41">
       <div className="flex w-220 max-w-full flex-col">
         <HeaderResults
           count={state.kind === 'searching'
