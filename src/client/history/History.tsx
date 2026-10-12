@@ -1,6 +1,6 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { CircleX, Download, FilePen, FolderInput, History as HistoryIcon, RefreshCw, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Collapsible } from '@/components/ui/collapsible-trigger';
@@ -35,12 +35,16 @@ const serviceChoices: { value: ServiceChoice; label: string }[] = [
 const serviceWords = { sonarr: 'Sonarr', radarr: 'Radarr' } as const;
 
 const dayKey = (at: number) => new Date(at).toDateString();
-const shortDate = (at: number) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-const clock = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const shortDateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+const clockFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+const shortDate = (at: number) => shortDateFormat.format(at);
+const clock = (at: number) => clockFormat.format(at);
 
 export const dayTitle = (at: number, now = Date.now()) => {
   if (dayKey(at) === dayKey(now)) return 'Today';
-  if (dayKey(at) === dayKey(now - 86_400_000)) return 'Yesterday';
+  // Calendar arithmetic, not now minus 24 hours: the day after a daylight-saving change is 23 or 25 hours long.
+  const today = new Date(now);
+  if (dayKey(at) === new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1).toDateString()) return 'Yesterday';
   return shortDate(at);
 };
 
@@ -211,7 +215,8 @@ const linkTitle = (history: ReturnType<typeof useHistory>) => {
   return link.seriesId !== undefined && link.episodeId === undefined ? first.title.replace(/ S\d+E\d+$/, '') : first.title;
 };
 
-export function HistoryScreen({ history, onNavigate }: { history: ReturnType<typeof useHistory>; onNavigate: (path: string) => void }) {
+// Memo: the parent re-renders on every download event, and this table can hold thousands of rows.
+export const HistoryScreen = memo(function HistoryScreen({ history, onNavigate }: { history: ReturnType<typeof useHistory>; onNavigate: (path: string) => void }) {
   const { state, filter, setFilter, service, setService, loadMore, reload } = history;
   const [expanded, setExpanded] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
@@ -308,4 +313,4 @@ export function HistoryScreen({ history, onNavigate }: { history: ReturnType<typ
       )}
     </section>
   );
-}
+});

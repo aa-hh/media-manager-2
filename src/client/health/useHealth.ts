@@ -38,6 +38,9 @@ export type HealthSnapshot = {
 export type HealthState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; snapshot: HealthSnapshot };
 
 const POLL_MS = 60_000;
+// A request that never answers fails after this, so the screen leaves loading or Checking and offers Try again.
+const READ_TIMEOUT_MS = 30_000;
+const CHECK_TIMEOUT_MS = 90_000;
 
 export const useHealth = (onUnauthorized: () => void) => {
   const [state, setState] = useState<HealthState>({ kind: 'loading' });
@@ -46,14 +49,15 @@ export const useHealth = (onUnauthorized: () => void) => {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch('/api/health', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const response = await fetch('/api/health', { credentials: 'same-origin', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
       if (response.status === 401) {
         unauthorizedRef.current();
         return;
       }
       if (!response.ok) throw new Error('Health could not be read.');
       const snapshot = await response.json() as HealthSnapshot;
-      setState({ kind: 'ready', snapshot });
+      // A poll started before Run all checks can answer after it; keep the newer snapshot.
+      setState((current) => (current.kind === 'ready' && current.snapshot.checkedAt > snapshot.checkedAt ? current : { kind: 'ready', snapshot }));
     } catch {
       setState((current) => (current.kind === 'ready' ? current : { kind: 'failed' }));
     }
@@ -67,7 +71,10 @@ export const useHealth = (onUnauthorized: () => void) => {
 
   const runChecks = useCallback(async () => {
     try {
-      const status = await postAction('/api/health/check');
+      const status = await Promise.race([
+        postAction('/api/health/check'),
+        new Promise<never>((_, reject) => { window.setTimeout(() => reject(new Error('Checks timed out.')), CHECK_TIMEOUT_MS); }),
+      ]);
       if (status === 401) {
         unauthorizedRef.current();
         return;

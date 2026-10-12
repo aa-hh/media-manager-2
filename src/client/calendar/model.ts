@@ -82,12 +82,17 @@ const episodeSubtitle = (episodes: EpisodeEntry[]) => {
 };
 
 // One list of groups per day, in the order of `days`. One show's episodes on the same local day collapse into one group.
-export const groupByDay = (entries: CalendarEntry[], days: Date[]): CalendarGroup[][] =>
-  days.map((day) => {
+export const groupByDay = (entries: CalendarEntry[], days: Date[]): CalendarGroup[][] => {
+  const byDay = new Map<string, CalendarEntry[]>();
+  for (const entry of entries) {
+    const key = dayKey(new Date(entry.at));
+    const list = byDay.get(key);
+    if (list === undefined) byDay.set(key, [entry]);
+    else list.push(entry);
+  }
+  return days.map((day) => {
     const key = dayKey(day);
-    const today = entries
-      .filter((entry) => dayKey(new Date(entry.at)) === key)
-      .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    const today = (byDay.get(key) ?? []).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
     const groups: CalendarGroup[] = [];
     const shows = new Map<number, EpisodeEntry[]>();
     for (const entry of today) {
@@ -119,6 +124,7 @@ export const groupByDay = (entries: CalendarEntry[], days: Date[]): CalendarGrou
     }
     return groups;
   });
+};
 
 const liveFor = (entry: CalendarEntry, progress: Map<string, SubjectProgress>) =>
   progress.get(entry.kind === 'episode' ? `episode:${entry.id}` : `movie:${entry.id}`);
