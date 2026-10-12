@@ -1,5 +1,5 @@
 import { Clock, Download, Ellipsis } from 'lucide-react';
-import { type RefObject, useEffect, useMemo, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { CardChoice } from '@/components/ui/card-choice';
@@ -55,10 +55,14 @@ const downloadState = (row: Row): DownloadState => {
   return 'waiting';
 };
 
-const stateLabel = (row: Row, now: number) => {
-  if (row.delayedUntil !== null) {
-    return <><Clock aria-hidden="true" />{`Delayed · ${row.delayedUntil > now ? `grabs in ${formatDuration(row.delayedUntil - now)}` : 'grabbing now'}`}</>;
-  }
+// Only a delayed row counts down, so only it re-renders every second.
+function DelayedLabel({ until }: { until: number }) {
+  const now = useClock();
+  return <><Clock aria-hidden="true" />{`Delayed · ${until > now ? `grabs in ${formatDuration(until - now)}` : 'grabbing now'}`}</>;
+}
+
+const stateLabel = (row: Row) => {
+  if (row.delayedUntil !== null) return <DelayedLabel until={row.delayedUntil} />;
   const word = capitalised(row.status.word);
   if (row.status.word === 'seeding' && row.ratio !== '') return `${word} · ratio ${row.ratio}`;
   if (row.seeders !== null && ['downloading', 'stalled', 'waiting for peers'].includes(row.status.word)) return `${word} · ${row.seeders} seeders`;
@@ -146,19 +150,23 @@ function RemoveDialog({ open, row, item, onDone, onCancel, onUnauthenticated }: 
 
 type Panel = 'remove' | 'import';
 
-function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged, onUnauthenticated }: {
-  row: Row; now: number; selected: boolean; dimmed: boolean; panel: Panel | null;
+function DownloadRow({ row, selected, dimmed, panel, onSelect, onOpen, onClose, onChanged, onUnauthenticated }: {
+  row: Row; selected: boolean; dimmed: boolean; panel: Panel | null;
   onSelect: () => void; onOpen: (panel: Panel) => void; onClose: () => void; onChanged: () => void; onUnauthenticated: () => void;
 }) {
   const [grabbing, setGrabbing] = useState(false);
   const [grabFailed, setGrabFailed] = useState(false);
+  // The menu item and the row button both send; a ref stops the second before the first re-renders.
+  const inFlight = useRef(false);
   const item = row.queueItem;
   const delayed = row.delayedUntil !== null;
   const grabNow = async () => {
-    if (item === null) return;
+    if (item === null || inFlight.current) return;
+    inFlight.current = true;
     setGrabbing(true);
     setGrabFailed(false);
     const status = await postAction(`/api/queue/${item.service}/${item.queueId}/grab`).catch(() => 0);
+    inFlight.current = false;
     setGrabbing(false);
     if (status === 401) onUnauthenticated();
     else if (status === 204) onChanged();
@@ -178,7 +186,7 @@ function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onCl
         eta={row.timeLeft}
         tracker={row.tracker === '' ? undefined : row.tracker}
         state={downloadState(row)}
-        stateLabel={stateLabel(row, now)}
+        stateLabel={stateLabel(row)}
         selected={selected}
         aria-selected={selected}
         onClick={onSelect}
@@ -188,7 +196,7 @@ function DownloadRow({ row, now, selected, dimmed, panel, onSelect, onOpen, onCl
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="ghost" size="row" iconOnly icon={<Ellipsis className="text-muted-foreground" />} aria-label={`Actions for ${row.label}`} />} />
               <DropdownMenuContent align="end">
-                {canGrab && <DropdownMenuItem onClick={() => void grabNow()}>Grab now</DropdownMenuItem>}
+                {canGrab && <DropdownMenuItem disabled={grabbing} onClick={() => void grabNow()}>Grab now</DropdownMenuItem>}
                 {canImport && <DropdownMenuItem onClick={() => onOpen('import')}>Import by hand</DropdownMenuItem>}
                 {canRemove && <DropdownMenuItem onClick={() => onOpen('remove')}>Remove from downloads</DropdownMenuItem>}
               </DropdownMenuContent>
@@ -228,7 +236,6 @@ const headerSummary = (rows: Row[], groups: Group[]) => {
 export function DownloadsScreen({ state, reload, headingRef, onUnauthenticated }: {
   state: DownloadsState; reload: () => Promise<unknown>; headingRef: RefObject<HTMLHeadingElement | null>; onUnauthenticated: () => void;
 }) {
-  const now = useClock();
   const rows = useMemo(() => (state.kind === 'ready' ? buildRows(state.snapshot) : []), [state]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -272,7 +279,7 @@ export function DownloadsScreen({ state, reload, headingRef, onUnauthenticated }
       )}
       {state.kind === 'ready' && rows.length === 0 && (
         <div className="w-full pt-24">
-          <EmptyState icon={<Download />} title="Nothing is downloading" className="w-100">
+          <EmptyState icon={<Download />} title="Nothing is downloading" className="w-full max-w-100">
             Grabs from Sonarr, Radarr and you show up here within seconds.
           </EmptyState>
         </div>
@@ -286,7 +293,6 @@ export function DownloadsScreen({ state, reload, headingRef, onUnauthenticated }
               <DownloadRow
                 key={row.key}
                 row={row}
-                now={now}
                 selected={selected === row.key}
                 dimmed={open !== null && open.panel === 'import' && open.key !== row.key}
                 panel={open?.key === row.key ? open.panel : null}

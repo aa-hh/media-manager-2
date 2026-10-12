@@ -169,7 +169,12 @@ const problemKeysFor = (service: Service, items: QueueItem[], grab: Grab | undef
 
 // One row per download: a torrent in rTorrent with what Sonarr or Radarr know of it, or a queue entry rTorrent doesn't have yet.
 // Each open problem joins the row it is about; problems about no download (a tracker, a dependency) get a row of their own.
+// Several screens build rows from the same snapshot on every event; the rows are read-only, so each snapshot is built once.
+const rowsBySnapshot = new WeakMap<Snapshot, Row[]>();
+
 export const buildRows = (snapshot: Snapshot): Row[] => {
+  const cached = rowsBySnapshot.get(snapshot);
+  if (cached !== undefined) return cached;
   const grabs = new Map(snapshot.grabs.map((grab) => [grab.hash, grab]));
   const queueByHash = new Map<string, QueueItem[]>();
   const queueWithoutTorrent: QueueItem[][] = [];
@@ -177,21 +182,26 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
   const looseByDownload = new Map<string, QueueItem[]>();
   for (const item of snapshot.queue) {
     if (item.downloadId !== null && torrentHashes.has(item.downloadId)) {
-      queueByHash.set(item.downloadId, [...(queueByHash.get(item.downloadId) ?? []), item]);
+      const items = queueByHash.get(item.downloadId);
+      if (items === undefined) queueByHash.set(item.downloadId, [item]);
+      else items.push(item);
     } else if (item.downloadId !== null) {
       const key = `${item.service}:${item.downloadId}`;
-      looseByDownload.set(key, [...(looseByDownload.get(key) ?? []), item]);
+      const items = looseByDownload.get(key);
+      if (items === undefined) looseByDownload.set(key, [item]);
+      else items.push(item);
     } else {
       queueWithoutTorrent.push([item]);
     }
   }
   queueWithoutTorrent.push(...looseByDownload.values());
 
-  const unclaimed = new Set(snapshot.problems.filter((problem) => problem.state !== 'resolved'));
+  const unclaimed = new Map(snapshot.problems.filter((problem) => problem.state !== 'resolved')
+    .map((problem) => [problem, `${problem.subject.type}:${problem.subject.service ?? ''}:${problem.subject.id}`]));
   const claim = (hash: string | null, keys: Set<string>) => {
     const found: Problem[] = [];
-    for (const problem of unclaimed) {
-      const subjectKey = `${problem.subject.type}:${problem.subject.service ?? ''}:${problem.subject.id}`;
+    if (unclaimed.size === 0) return found;
+    for (const [problem, subjectKey] of unclaimed) {
       if ((hash !== null && (problem.hash === hash || (problem.subject.type === 'torrent' && problem.subject.id === hash))) || keys.has(subjectKey)) {
         found.push(problem);
         unclaimed.delete(problem);
@@ -267,7 +277,7 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
       downloading: false,
     });
   }
-  for (const problem of unclaimed) {
+  for (const problem of unclaimed.keys()) {
     rows.push({
       key: `problem:${problem.id}`,
       label: problem.subject.type === 'dependency' || problem.subject.type === 'tracker'
@@ -293,13 +303,19 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
       downloading: false,
     });
   }
+  rowsBySnapshot.set(snapshot, rows);
   return rows;
 };
 
 export const groupRows = (rows: Row[]): Group[] => {
-  const needsYou = rows.filter((row) => row.problems.some((problem) => problem.state === 'needs_you'));
-  const handling = rows.filter((row) => !needsYou.includes(row) && row.problems.length > 0);
-  const rest = rows.filter((row) => row.problems.length === 0);
+  const needsYou: Row[] = [];
+  const handling: Row[] = [];
+  const rest: Row[] = [];
+  for (const row of rows) {
+    if (row.problems.length === 0) rest.push(row);
+    else if (row.problems.some((problem) => problem.state === 'needs_you')) needsYou.push(row);
+    else handling.push(row);
+  }
   return [
     { key: 'needs_you' as const, title: 'NEEDS YOU', rows: needsYou },
     { key: 'handling' as const, title: 'BEING HANDLED BY MEDIA-MANAGER-2', rows: handling },
@@ -311,9 +327,9 @@ export const groupRows = (rows: Row[]): Group[] => {
 export const latestStep = (problem: Problem) => problem.steps.at(-1)?.text ?? problem.summary;
 
 // The grabs worth keeping, as the server chooses them for /api/downloads: still downloading, or still seeding in rTorrent.
-const stillWanted = (grab: Grab, torrents: Torrent[]) => (
-  (grab.importedAt === null && grab.failedAt === null) || torrents.some((torrent) => torrent.hash === grab.hash && torrent.goneAt === null)
-);
+const stillWanted = (grab: Grab, liveHashes: Set<string>) => (grab.importedAt === null && grab.failedAt === null) || liveHashes.has(grab.hash);
+
+const liveHashesOf = (torrents: Torrent[]) => new Set(torrents.filter((torrent) => torrent.goneAt === null).map((torrent) => torrent.hash));
 
 export const applyEvent = (snapshot: Snapshot, type: string, data: unknown): Snapshot => {
   if (type === 'torrents') {
@@ -322,7 +338,8 @@ export const applyEvent = (snapshot: Snapshot, type: string, data: unknown): Sna
     for (const torrent of changed) byHash.set(torrent.hash, torrent);
     for (const hash of gone) byHash.delete(hash);
     const torrents = [...byHash.values()];
-    return { ...snapshot, torrents, grabs: snapshot.grabs.filter((grab) => stillWanted(grab, torrents)) };
+    const liveHashes = liveHashesOf(torrents);
+    return { ...snapshot, torrents, grabs: snapshot.grabs.filter((grab) => stillWanted(grab, liveHashes)) };
   }
   if (type === 'queue') {
     const { service, items } = data as { service: Service; items: QueueItem[] };
@@ -331,7 +348,7 @@ export const applyEvent = (snapshot: Snapshot, type: string, data: unknown): Sna
   if (type === 'grab') {
     const grab = data as Grab;
     const others = snapshot.grabs.filter((existing) => existing.hash !== grab.hash);
-    return { ...snapshot, grabs: stillWanted(grab, snapshot.torrents) ? [...others, grab] : others };
+    return { ...snapshot, grabs: stillWanted(grab, liveHashesOf(snapshot.torrents)) ? [...others, grab] : others };
   }
   if (type === 'problem') {
     const problem = data as Problem;

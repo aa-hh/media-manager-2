@@ -59,7 +59,7 @@ export function ImportPanel({ service, downloadId, onDone, onCancel, onUnauthent
     return () => { current = false; };
   }, [service, downloadId, onUnauthenticated]);
 
-  const chosen = drafts.filter((draft) => draft.include);
+  const chosen = useMemo(() => drafts.filter((draft) => draft.include), [drafts]);
   const reasons = useMemo(() => {
     if (typeof view === 'string') return [];
     const target = view.target.kind === 'series'
@@ -103,7 +103,7 @@ export function ImportPanel({ service, downloadId, onDone, onCancel, onUnauthent
 
   const loaded = typeof view === 'string' ? null : view;
   const allReasons = [...reasons, ...serverReasons];
-  const included = drafts.filter((draft) => draft.include).length;
+  const included = chosen.length;
   const groupChecked = included === drafts.length ? true : included === 0 ? false : 'mixed';
   const label = 'text-label font-normal text-muted-foreground';
 
