@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { extname, isAbsolute } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { deleteCookie, setCookie } from 'hono/cookie';
@@ -27,6 +28,7 @@ import { createTmdbTitleRoutes, type TmdbTitles } from './tmdbTitles.js';
 export type CreateAppOptions = {
   clientDirectory: string;
   listeningHost: string;
+  database: DatabaseSync;
   ownerPlexId?: string;
   publicOrigin?: string;
   now?: () => number;
@@ -150,6 +152,7 @@ export const createApp = (options: CreateAppOptions) => {
     listeningHost: options.listeningHost,
     ownerPlexId: options.ownerPlexId,
     publicOrigin: options.publicOrigin,
+    database: options.database,
     now,
     fetch: options.fetch ?? globalThis.fetch,
   });
