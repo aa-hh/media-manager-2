@@ -77,20 +77,20 @@ spacing:
   poster-width: "152px"
   detail-indent: "133px"
 components:
-  button-default: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "40px"}
+  button-default: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "36px"}
   button-default-hover: {backgroundColor: "{colors.primary-hover}"}
   button-default-pressed: {backgroundColor: "{colors.primary-pressed}"}
   button-row: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-sm}", padding: "0px 10px", height: "28px"}
-  button-large: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-lg}", padding: "0px 20px", height: "48px"}
-  button-outline: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "40px"}
-  button-ghost: {textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "40px"}
-  button-destructive: {backgroundColor: "{colors.destructive}", textColor: "{colors.destructive-foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "40px"}
+  button-large: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-lg}", padding: "0px 18px", height: "44px"}
+  button-outline: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "36px"}
+  button-ghost: {textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "36px"}
+  button-destructive: {backgroundColor: "{colors.destructive}", textColor: "{colors.destructive-foreground}", rounded: "{rounded.radius-md}", padding: "0px 16px", height: "36px"}
   button-destructive-hover: {backgroundColor: "{colors.destructive-hover}"}
   input-search: {backgroundColor: "{colors.muted}", textColor: "{colors.foreground}", rounded: "{rounded.radius-lg}", padding: "0px 16px", height: "48px", width: "640px"}
-  input-field: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", padding: "0px 12px", height: "40px"}
-  select-trigger: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", height: "40px"}
-  toggle-group: {backgroundColor: "{colors.muted}", rounded: "{rounded.radius-md}", padding: "3px", height: "40px"}
-  toggle-group-item-selected: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", height: "34px"}
+  input-field: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", padding: "0px 12px", height: "36px"}
+  select-trigger: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", height: "36px"}
+  toggle-group: {backgroundColor: "{colors.muted}", rounded: "{rounded.radius-md}", padding: "3px", height: "36px"}
+  toggle-group-item-selected: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", height: "30px"}
   badge-neutral: {backgroundColor: "{colors.muted}", textColor: "{colors.muted-foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-strong: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-best: {backgroundColor: "{colors.best}", textColor: "{colors.foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
@@ -122,7 +122,7 @@ components:
   callout-info: {backgroundColor: "{colors.muted}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}"}
   status-rule-pill: {backgroundColor: "{colors.muted}", textColor: "{colors.muted-foreground}", typography: "{typography.data-small}", rounded: "{rounded.radius-sm}", padding: "0px 8px", height: "26px"}
   status-rule-pill-no-rule: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.warning}"}
-  field-number-input: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", typography: "{typography.data}", rounded: "{rounded.radius-md}", padding: "0px 12px", height: "40px", width: "72px"}
+  field-number-input: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", typography: "{typography.data}", rounded: "{rounded.radius-md}", padding: "0px 12px", height: "36px", width: "72px"}
   collapsible-content: {padding: "0px 12px 16px 36px"}
 ---
 
@@ -201,8 +201,8 @@ Every component lives in `~/Projects/media-manager-2-design/design-system.lib.pe
 Three sizes, set with the `control-*` tokens. Buttons, inputs, selects and toggle groups match, and so does the plain badge at row height.
 
 - **Row** 28px (`control-h-row`, padding 10, text 13, radius 6, icon 14): only inside table rows and dense lists.
-- **Default** 40px (`control-h-default`, padding 16, text 14, radius 8, icon 16): everywhere else.
-- **Large** 48px (`control-h-large`, padding 20, text 15, radius 10, icon 18): the one main action on a page or panel, such as the title header actions, the grab confirmation (Replace or Second version) and Settings Connect.
+- **Default** 36px (`control-h-default`, padding 16, text 14, radius 8, icon 16): everywhere else.
+- **Large** 44px (`control-h-large`, padding 18, text 14, radius 10, icon 18): the one main action on a page or panel, such as the title header actions, the grab confirmation (Replace or Second version) and Settings Connect.
 
 Icon-only buttons are squares at the same heights. pen.dev cannot bind height or icon size to a variable, so those are typed numbers, on badges too; change them together with the tokens.
 
@@ -210,14 +210,14 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 
 - **v2/Button:** primary (black, shadcn `default`), outline (white, 1.5px `foreground` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron), plex. Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
 - **v2/Badge**, 20px (`badge-h`, padding `badge-px` 6, text `badge-text` 11, icon `badge-icon` 12): neutral (`muted`), strong (black, "In library"), lime (`best`, black text: best release, "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). Release tables add `v2/Mark/comparison` (best is the only lime pill), `v2/Cell/profile-fit` (fit in words) and `v2/Mark/pending-change` (old value, arrow, new value on amber while a change waits). Plain is the look for a standing status beside a row button, such as In library on a search result: no fill and no padding, a 14px `foreground` check and `muted-foreground` words, built from the row tokens (`control-h-row`, `control-text-row`, `control-icon-row`) so it lines up with the button. A filled badge never takes button height, or it reads as a button.
-- **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 40px, radius 6, white with an edge. Phone: 44px, full width.
-- **Select trigger:** 40px, radius 8, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
-- **Toggle group:** up to six segments, 34px each inside a 40px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
+- **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 36px, radius 6, white with an edge. Phone: 44px, full width.
+- **Select trigger:** 36px, radius 8, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
+- **Toggle group:** up to six segments, 30px each inside a 36px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
 - **Option rows:** `v2/Option row` (`option-row.tsx`) is a radio or checkbox with a title and a line of explanation, radius 6, no edge; the choice shows in the control, never as a tint. `v2/Option row/bordered` (the `bordered` prop) is the same row as a card with its own edge, for a short set of standalone choices in a grid: site software, backup destination, Plex token, the setup wizard's optional parts. Radius 8, padding 14 16, 1px `border` edge; on, the edge turns 2px `foreground`, the second pixel an inset shadow so nothing moves. `v2/Card/choice` is the larger radio card for decisions in a panel or dialog.
 
 ### Rule forms and tracker status
 
-- **v2/Field/number** (`field-number.tsx`): a 72 by 40px number box with plain words before and after it, read as one sentence ("Not a hit and run below 10 % downloaded"). The value is in `font-data`; an empty box shows a hint in `subtle-foreground`. Either word can be left out. Seed-time size bands and the More section of a tracker's rule are built from it.
+- **v2/Field/number** (`field-number.tsx`): a 72 by 36px number box with plain words before and after it, read as one sentence ("Not a hit and run below 10 % downloaded"). The value is in `font-data`; an empty box shows a hint in `subtle-foreground`. Either word can be left out. Seed-time size bands and the More section of a tracker's rule are built from it.
 - **v2/Field/labelled optional** (`field-labelled-optional.tsx`): `v2/Field/labelled` for a field that may be left blank. The word Optional sits after the label in 12px `subtle-foreground`; help, error and the trailing action work as in `v2/Field/labelled`.
 - **v2/Collapsible trigger/open**: the open state of `v2/Collapsible trigger` (`collapsible-trigger.tsx`); the chevron turns 90° to point down and the summary stays. No separate code component.
 - **v2/Collapsible/content** (`collapsible-content.tsx`): holds what the trigger reveals, directly under it. 16px between children; padding 0 12 16 36 lines the content up with the trigger's title. Opens by height at `duration-size`, closes at `duration-fast`; instant under reduced motion.
@@ -255,7 +255,7 @@ The kind of decision sets the scale of the place it opens in. Three tiers:
 - A table error is a one-line `v2/Callout` above the table. Callouts come in risk, warning and info looks, radius 8, no side bar.
 - Empty: a centred 360px block, one plain sentence and at most one next step.
 - Loading: skeleton rows shaped like the row family they replace (40px row, 56px two-line row, poster card, search result, calendar entry).
-- Unsaved edits: an amber pencil and "Unsaved edits" in the footer beside a Discard edits outline button; the main action stays the 48px button.
+- Unsaved edits: an amber pencil and "Unsaved edits" in the footer beside a Discard edits outline button; the main action stays the 44px button.
 
 ### Focus
 
