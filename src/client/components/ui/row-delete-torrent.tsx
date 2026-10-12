@@ -1,4 +1,4 @@
-// Torrent row in the delete movie, show and season dialogs — design/title.pen "Dialog, delete season" (DASyr), "Dialog, delete show" (g9Y8c)
+// Torrent row in the delete movie, show and season dialogs — ~/Projects/media-manager-2-design/title.pen "Dialog, delete season" (DASyr), "Dialog, delete show" (g9Y8c)
 import { CircleCheck, Clock, Lock, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
