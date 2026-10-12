@@ -6250,7 +6250,7 @@ test('missing movies and episodes are searched when they come out and every six 
     const events = createEventHub();
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
     const now = () => clock.value;
-    const aired = (id, seriesId, seasonNumber, day) => ({ id, seriesId, seasonNumber, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: `Show ${seriesId}`, added: '2025-01-01T00:00:00Z' } });
+    const aired = (id, seriesId, seasonNumber, day) => ({ id, seriesId, seasonNumber, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: `Show ${seriesId}`, added: '2025-01-01T00:00:00Z', seriesType: 'standard' } });
     const episodes = [aired(11, 1, 1, 1), aired(12, 1, 1, 2), aired(13, 1, 1, 3), aired(21, 2, 1, 1), aired(22, 2, 1, 2), aired(31, 3, 2, 1)];
     const { fake, ...arr } = connectArr(database);
     fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
@@ -6297,7 +6297,7 @@ test('missing movies and episodes are searched when they come out and every six 
     const events = createEventHub();
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
     const now = () => clock.value;
-    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z' } });
+    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z', seriesType: 'standard' } });
     const episodes = [aired(11, 1), aired(12, 2), aired(13, 3)];
     const { fake, ...arr } = connectArr(database);
     fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
@@ -6322,7 +6322,7 @@ test('missing movies and episodes are searched when they come out and every six 
     const events = createEventHub();
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
     const now = () => clock.value;
-    const aired = (id) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: '2026-09-01T00:00:00Z', series: { title: 'Show 1', added: '2025-01-01T00:00:00Z' } });
+    const aired = (id) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: '2026-09-01T00:00:00Z', series: { title: 'Show 1', added: '2025-01-01T00:00:00Z', seriesType: 'standard' } });
     const episodes = [aired(13), aired(14)];
     const { fake, ...arr } = connectArr(database);
     fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
@@ -6354,7 +6354,7 @@ test('missing movies and episodes are searched when they come out and every six 
     const events = createEventHub();
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
     const now = () => clock.value;
-    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z' } });
+    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z', seriesType: 'standard' } });
     const episodes = [aired(11, 1), aired(12, 2), aired(13, 3)];
     const { fake, ...arr } = connectArr(database);
     fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
@@ -6380,7 +6380,7 @@ test('missing movies and episodes are searched when they come out and every six 
     const events = createEventHub();
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
     const now = () => clock.value;
-    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z' } });
+    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z', seriesType: 'standard' } });
     const episodes = [aired(11, 1), aired(12, 2), aired(13, 3)];
     const { fake, ...arr } = connectArr(database);
     fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
@@ -6393,6 +6393,28 @@ test('missing movies and episodes are searched when they come out and every six 
 
     await scheduler.check();
     assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [11, 12] }]);
+    assert.deepEqual(database.prepare('SELECT * FROM season_search_log').all(), []);
+    database.close();
+  });
+
+  // Grouping missing episodes into a SeasonSearch without checking that the series type is standard turns this red.
+  await t.test('an aired anime season with three missing episodes gets one episode search, not a season search', async () => {
+    const database = openDatabase(join(root, 'season-search-anime', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const aired = (id, day) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: `2026-09-0${day}T00:00:00Z`, series: { title: 'Show 1', added: '2025-01-01T00:00:00Z', seriesType: 'anime' } });
+    const episodes = [aired(11, 1), aired(12, 2), aired(13, 3)];
+    const { fake, ...arr } = connectArr(database);
+    fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
+      ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
+    fake.sonarr.state.episodes = episodes.map(({ id, seriesId, seasonNumber, airDateUtc }) => episodeRecord({ id, seriesId, seasonNumber, airDateUtc }));
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const problems = createProblems({ database, events, now });
+    const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: () => false });
+
+    await scheduler.check();
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [11, 12, 13] }]);
     assert.deepEqual(database.prepare('SELECT * FROM season_search_log').all(), []);
     database.close();
   });

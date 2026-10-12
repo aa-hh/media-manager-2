@@ -75,8 +75,8 @@ export const createSearchScheduler = (options: {
           availableAt,
           addedAt: time(series.added) ?? 0,
           lastSearchAt: time(record.lastSearchTime),
-          seriesId: typeof record.seriesId === 'number' ? record.seriesId : null,
-          seasonNumber: typeof record.seasonNumber === 'number' ? record.seasonNumber : null,
+          seriesId: series.seriesType === 'standard' && typeof record.seriesId === 'number' ? record.seriesId : null,
+          seasonNumber: series.seriesType === 'standard' && typeof record.seasonNumber === 'number' ? record.seasonNumber : null,
           title: `${typeof series.title === 'string' ? series.title : 'Episode'} S${String(record.seasonNumber).padStart(2, '0')}E${String(record.episodeNumber).padStart(2, '0')}`,
         });
       }
@@ -125,7 +125,7 @@ export const createSearchScheduler = (options: {
     });
   };
 
-  // Splits due Sonarr episodes into seasons to search whole and episodes to search one by one.
+  // Splits due Sonarr episodes into seasons to search whole (standard series only) and episodes to search one by one.
   // A finished season with several missing episodes gets a SeasonSearch so packs are not rejected, alternating with an EpisodeSearch for what is left.
   // A season with a missing episode skipped as queued, a manual download or in the search backlog is never searched whole, since a SeasonSearch would search that episode too.
   // A finished season waits until all its missing episodes are due, then searches them together, so none is searched before its six-hour repeat.
