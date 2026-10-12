@@ -1,7 +1,7 @@
 ---
 name: media-manager-2
 description: Paper white and black with lime. Dense release tables, black actions, lime only for the best release and live downloads.
-# Light mode only. Values come from the variables in design/design-system.lib.pen.
+# Light mode only. Values come from the variables in ~/Projects/media-manager-2-design/design-system.lib.pen.
 colors:
   background: "#FFFFFF"
   card: "#FFFFFF"
@@ -132,9 +132,9 @@ components:
 
 Paper white and black with lime. Black carries the content, the actions and every "on" state. Lime appears in two places only: the best release and live downloads. Red means something went wrong, amber means something is missing or waiting. Tables stay dense: 40px rows inside a 40px page margin, 8 posters per row on Library.
 
-Light mode only for now. The dark design is archived in `design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
+Light mode only for now. The dark design is archived in `~/Projects/media-manager-2-design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
 
-The source of truth is the pen.dev library `design/design-system.lib.pen`: its variables, its five component sheets and a sixth sheet for motion. The nine screen files import it. `design/mediaManager2.pen` no longer exists; see [`design/README.md`](design/README.md) for which file holds which screen.
+The source of truth is the pen.dev library `~/Projects/media-manager-2-design/design-system.lib.pen`: its variables, its five component sheets and a sixth sheet for motion. The nine screen files import it. `design/mediaManager2.pen` no longer exists; see [`design/README.md`](design/README.md) for which file holds which screen.
 
 These are static pen.dev components. Keyboard behaviour, focus handling, screen reader support, live updates and table sorting are implementation work; a static frame proves none of them.
 
@@ -194,7 +194,7 @@ Corners run from 4 to 10px. `radius-xs` (4) for badges, Kbd, checkboxes, menu it
 
 ## Components
 
-Every component lives in `design/design-system.lib.pen` as `v2/Family/Variant` and shows its states as instances beside it. Each sheet note names the shadcn/ui component it maps to, or says "Custom". Screens use instances and override named children (`Label`, `Count`, `Value`, `Icon`, `Kbd`).
+Every component lives in `~/Projects/media-manager-2-design/design-system.lib.pen` as `v2/Family/Variant` and shows its states as instances beside it. Each sheet note names the shadcn/ui component it maps to, or says "Custom". Screens use instances and override named children (`Label`, `Count`, `Value`, `Icon`, `Kbd`).
 
 ### Control sizes
 

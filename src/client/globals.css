@@ -41,7 +41,7 @@
   font-display: swap;
 }
 
-/* Names and values come from the variables in design/design-system.lib.pen (light mode only). */
+/* Names and values come from the variables in ~/Projects/media-manager-2-design/design-system.lib.pen (light mode only). */
 :root {
   color-scheme: light;
 

@@ -1,4 +1,4 @@
-// v2/Dialog — design/design-system.lib.pen Oi69B
+// v2/Dialog — ~/Projects/media-manager-2-design/design-system.lib.pen Oi69B
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';

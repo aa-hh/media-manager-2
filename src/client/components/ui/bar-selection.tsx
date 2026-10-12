@@ -1,4 +1,4 @@
-// v2/Bar/selection — design/design-system.lib.pen TPw8z
+// v2/Bar/selection — ~/Projects/media-manager-2-design/design-system.lib.pen TPw8z
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button, type ButtonProps } from '@/components/ui/button';

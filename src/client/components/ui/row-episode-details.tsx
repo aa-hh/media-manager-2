@@ -1,4 +1,4 @@
-// v2/Row/episode-details — design/design-system.lib.pen WwDvp
+// v2/Row/episode-details — ~/Projects/media-manager-2-design/design-system.lib.pen WwDvp
 import type { ComponentProps, ReactNode } from 'react';
 import { LabelGroup } from '@/components/ui/label-group';
 import { cn } from '@/lib/utils';

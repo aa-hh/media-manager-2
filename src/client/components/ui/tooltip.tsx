@@ -1,4 +1,4 @@
-// v2/Tooltip — design/design-system.lib.pen girD3
+// v2/Tooltip — ~/Projects/media-manager-2-design/design-system.lib.pen girD3
 import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip';
 import type { ReactElement, ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';

@@ -1,4 +1,4 @@
-// v2/Row/season — design/design-system.lib.pen C5GiQ
+// v2/Row/season — ~/Projects/media-manager-2-design/design-system.lib.pen C5GiQ
 import { ChevronRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';

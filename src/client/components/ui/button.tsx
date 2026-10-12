@@ -1,4 +1,4 @@
-// v2/Button — design/design-system.lib.pen ht3RN
+// v2/Button — ~/Projects/media-manager-2-design/design-system.lib.pen ht3RN
 import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';

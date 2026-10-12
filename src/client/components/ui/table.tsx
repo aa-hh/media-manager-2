@@ -1,7 +1,7 @@
-// v2/Table — design/design-system.lib.pen gp6Kh
-// v2/Table/Header — design/design-system.lib.pen Fj6GM
-// v2/Table/Row — design/design-system.lib.pen IODuw
-// v2/Table/Cell — design/design-system.lib.pen I73rkQ
+// v2/Table — ~/Projects/media-manager-2-design/design-system.lib.pen gp6Kh
+// v2/Table/Header — ~/Projects/media-manager-2-design/design-system.lib.pen Fj6GM
+// v2/Table/Row — ~/Projects/media-manager-2-design/design-system.lib.pen IODuw
+// v2/Table/Cell — ~/Projects/media-manager-2-design/design-system.lib.pen I73rkQ
 import { ArrowDown } from 'lucide-react';
 import type { ComponentProps, CSSProperties } from 'react';
 import { Logo, trackerLogo, trackerName } from '@/components/ui/logo';

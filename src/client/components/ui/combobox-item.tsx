@@ -1,4 +1,4 @@
-// v2/Combobox item — design/design-system.lib.pen L7eQnT
+// v2/Combobox item — ~/Projects/media-manager-2-design/design-system.lib.pen L7eQnT
 import { Check } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

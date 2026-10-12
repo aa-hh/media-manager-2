@@ -1,4 +1,4 @@
-// v2/Collapsible trigger — design/design-system.lib.pen c5J2uH
+// v2/Collapsible trigger — ~/Projects/media-manager-2-design/design-system.lib.pen c5J2uH
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';

@@ -1,4 +1,4 @@
-// v2/Label/group — design/design-system.lib.pen mk4uT
+// v2/Label/group — ~/Projects/media-manager-2-design/design-system.lib.pen mk4uT
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

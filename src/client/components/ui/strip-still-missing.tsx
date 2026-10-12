@@ -1,4 +1,4 @@
-// v2/Strip/still-missing — design/design-system.lib.pen EBkBo
+// v2/Strip/still-missing — ~/Projects/media-manager-2-design/design-system.lib.pen EBkBo
 import { CircleAlert } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';

@@ -1,4 +1,4 @@
-// v2/Row/flagged — design/design-system.lib.pen NKsS2
+// v2/Row/flagged — ~/Projects/media-manager-2-design/design-system.lib.pen NKsS2
 import type { ReactNode } from 'react';
 import { TableCell, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

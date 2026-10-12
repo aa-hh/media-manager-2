@@ -1,4 +1,4 @@
-// v2/Library poster card — design/design-system.lib.pen Z0OVp
+// v2/Library poster card — ~/Projects/media-manager-2-design/design-system.lib.pen Z0OVp
 import { ArrowRight, Check, Clapperboard, ImageOff, Tv } from 'lucide-react';
 import { type ComponentProps, type CSSProperties, type ReactNode, useState } from 'react';
 import { cn } from '@/lib/utils';
