@@ -19,6 +19,7 @@ import { createOwnedRoutes, type Owned } from './owned.js';
 import { createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
 import { createSearchRoutes, type Search } from './search.js';
+import type { SearchRuns } from './searchRuns.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersionRoutes, type SecondVersions } from './secondVersions.js';
 import type { SetupEnvironment } from './setup.js';
@@ -44,6 +45,7 @@ export type CreateAppOptions = {
   owned?: Owned;
   protection?: Protection;
   library?: Library;
+  searchRuns?: SearchRuns;
   discover?: Discover;
   titleDelete?: TitleDelete;
   tmdbTitles?: TmdbTitles;
@@ -536,7 +538,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.secondVersions !== undefined) app.route('/api/second-versions', createSecondVersionRoutes(options.secondVersions, options.secondVersionDelete));
   if (options.owned !== undefined) app.route('/api/owned', createOwnedRoutes(options.owned));
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
-  if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
+  if (options.library !== undefined && options.searchRuns !== undefined) app.route('/api/library', createLibraryRoutes(options.library, options.searchRuns));
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
   if (options.tmdbTitles !== undefined) app.route('/api/library', createTmdbTitleRoutes(options.tmdbTitles));
   if (options.discover !== undefined) app.route('/api/discover', createDiscoverRoutes(options.discover));

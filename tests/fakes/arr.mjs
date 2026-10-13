@@ -52,7 +52,7 @@ export const importFile = (overrides = {}) => ({
 
 export const seriesRecord = (overrides = {}) => {
   const id = overrides.id ?? newId();
-  return { id, title: `Series ${id}`, year: 2024, monitored: true, tags: [], images: [], seasons: [], ...overrides };
+  return { id, title: `Series ${id}`, year: 2024, seriesType: 'standard', monitored: true, tags: [], images: [], seasons: [], ...overrides };
 };
 
 export const movieRecord = (overrides = {}) => {
@@ -77,6 +77,7 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     history: [],
     blocklist: [],
     commands: [],
+    commandStatuses: {},
     grabbed: [],
     removals: [],
     failed: [],
@@ -242,6 +243,11 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     if (method === 'POST' && path === '/api/v3/command') {
       state.commands.push(body);
       return { status: 201, body: { id: state.commands.length, name: body.name } };
+    }
+    // Sonarr answers the status as a camelCase word, and 404 once it has trimmed the command.
+    if (method === 'GET' && /^\/api\/v3\/command\/\d+$/.test(path)) {
+      if (id < 1 || id > state.commands.length) return { status: 404, body: {} };
+      return { status: 200, body: { id, name: state.commands[id - 1].name, status: state.commandStatuses[id] ?? 'completed' } };
     }
     if (method === 'GET' && path === '/api/v3/manualimport') {
       return { status: 200, body: state.manualImport[(params.get('downloadId') ?? '').toUpperCase()] ?? [] };

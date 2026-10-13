@@ -21,7 +21,7 @@ Routes, jobs and SQLite storage behind `services/`. Never move or delete a file 
 - `index.ts`, `app.ts`, `cli.ts`, `auth.ts`, `events.ts`, `jobs.ts` → startup, routes, sign-in, jobs.
 - `database.ts`, `settings.ts`, `preferences.ts`, `owner.ts`, `dependencies.ts`, `backup.ts`, `backupDestination.ts` → storage and backups.
 - `setup.ts`, `connections.ts`, `trackerSettings.ts` → setup and settings routes.
-- `grabs.ts`, `replace.ts`, `protection.ts`, `releases.ts`, `releaseDetails.ts`, `searches.ts` → searching, grabbing, replace, protection.
+- `grabs.ts`, `replace.ts`, `protection.ts`, `releases.ts`, `releaseDetails.ts`, `searches.ts`, `searchRuns.ts`, `seasonSearch.ts` → searching, grabbing.
 - `torrents.ts`, `torrentGrabs.ts`, `torrentFiles.ts`, `stalls.ts`, `trackers.ts`, `relink.ts` → rTorrent poll, fixes, removal.
 - `imports.ts`, `manualImport.ts`, `assignments.ts` → blocked imports, import by hand.
 - `secondVersions.ts`, `versionImport.ts`, `secondVersionRows.ts`, `secondVersionDelete.ts` → second versions.

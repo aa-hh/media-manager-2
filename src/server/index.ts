@@ -51,6 +51,7 @@ import { createTorrentPoller, LIVE_POLL_INTERVAL_MS } from './torrents.js';
 import { trackerRulesFromEnvironment } from './trackerRules.js';
 import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
+import { createSearchRuns } from './searchRuns.js';
 import { createStallFix } from './stalls.js';
 import { createTorrentFiles } from './torrentFiles.js';
 import { createTitleDelete } from './titleDelete.js';
@@ -180,6 +181,7 @@ if (database !== undefined) {
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
   const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title));
+  const searchRuns = createSearchRuns({ database, arr, isManualDownload: protection.isProtected });
   const add = createAdd(arr, titleStore, openedDatabase);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);
@@ -212,6 +214,7 @@ if (database !== undefined) {
     owned: createOwned(arr),
     protection,
     library,
+    searchRuns,
     discover,
     tmdbTitles,
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
@@ -259,6 +262,7 @@ if (database !== undefined) {
   } catch (error) {
     console.error(`rTorrent hook watch failed: ${(error as Error).message}`);
   }
+  searchRuns.resume();
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.log(`Listening on http://${host}:${info.port}`);
   }) as Server;

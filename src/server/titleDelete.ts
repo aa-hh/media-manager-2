@@ -4,6 +4,7 @@ import { type Context, Hono } from 'hono';
 import type { RemovalAdvice } from './advice.js';
 import type { Blocklist } from './blocklist.js';
 import type { Protection } from './protection.js';
+import { seasonHeldBack } from './seasonSearch.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
 import { listSecondVersionRows, type SecondVersionRow } from './secondVersionRows.js';
 import type { ArrServices, FileDetail, HistoryRecord, QueueItem, Result } from './services/arr.js';
@@ -173,7 +174,7 @@ export const createTitleDelete = (options: {
   deleteVersion: SecondVersionDelete;
   advise: (hash: string) => Promise<RemovalAdvice>;
   // A search again clears the owner's manual-download protection, which would otherwise veto the search's own grab.
-  protection: Pick<Protection, 'list' | 'unprotect'>;
+  protection: Pick<Protection, 'list' | 'unprotect' | 'isProtected'>;
   blocklist: Pick<Blocklist, 'markFailed'>;
   // Drops search's stored lookups for a service, which would still offer a deleted title as in the library.
   forget: (service: DeleteTarget['service']) => void;
@@ -196,6 +197,7 @@ export const createTitleDelete = (options: {
     let allEpisodes: Episodic[] = [];
     let seasonFiles: Set<number> | null = null;
     let followsNewSeasons: boolean | null = null;
+    let seriesType: string | null = null;
     const part = partOf(target);
     if (target.service === 'radarr') {
       const movie = await arr.radarr.movie(target.movieId);
@@ -219,6 +221,7 @@ export const createTitleDelete = (options: {
       title = series.value.title;
       details = episodeFiles.value;
       followsNewSeasons = series.value.monitorNewItems === 'all';
+      seriesType = series.value.seriesType;
       allEpisodes = episodeList.value.map((episode) => {
         const airs = episode.airDateUtc === null ? Number.NaN : Date.parse(episode.airDateUtc);
         return {
@@ -314,7 +317,7 @@ export const createTitleDelete = (options: {
     return {
       kind: 'ok' as const,
       value: {
-        title, files: planFiles, torrents, secondVersions, episodes, allEpisodes, keptHashes, part, queue,
+        title, files: planFiles, torrents, secondVersions, episodes, allEpisodes, keptHashes, part, queue, seriesType,
         monitoring: { followsNewSeasons, airingSeasons, leavesShowEmpty },
         history: history.kind === 'ok' ? history.value : [],
       },
@@ -564,7 +567,7 @@ export const createTitleDelete = (options: {
     try {
       const gathered = await gather(target);
       if (gathered.kind !== 'ok') return gathered;
-      const { title, files, torrents, secondVersions, episodes, allEpisodes, keptHashes, part, monitoring, history, queue } = gathered.value;
+      const { title, files, torrents, secondVersions, episodes, allEpisodes, keptHashes, part, monitoring, history, queue, seriesType } = gathered.value;
       const changed = (reason: string) => ({ kind: 'plan_changed', reason }) as const;
       // A selection must answer for every season still airing; the season route predates the question and stops following, as it did.
       const unanswered = monitoring.airingSeasons.filter((season) => choices.keepFollowing[season] === undefined);
@@ -636,10 +639,17 @@ export const createTitleDelete = (options: {
       const season = target.service === 'sonarr' && target.selection === undefined ? target.seasonNumber : undefined;
       const selected = target.service === 'sonarr' && target.selection !== undefined;
       const stop = (step: 'unmonitor' | 'monitor' | 'delete', message: string): DeleteRun => ({ kind: 'ran', deleted: false, steps: [...steps, { step, outcome: 'failed', message }] });
-      // The episodes whose files this delete removes: what a search again monitors, blocklists and searches for.
+      // The episodes whose files this delete removes: what a search again monitors, blocklists and searches for, as a season when every file of a season went.
       const fileIds = new Set(files.map((file) => file.fileId));
       const deletedEpisodes = (ids: Set<number>) => episodes.filter((episode) => episode.fileId !== null && ids.has(episode.fileId));
       let deletedFileIds = fileIds;
+      // Only a standard show whose every file in the season went, with no missing episode of it queued, hand-picked or backlogged,
+      // gets a SeasonSearch; anything else would search an episode the owner kept or one held back.
+      const wholeSeason = (seasonNumber: number) => deletedFileIds.size === fileIds.size && seriesType === 'standard'
+        && !seasonHeldBack({ database, isManualDownload: protection.isProtected }, allEpisodes
+          .filter((episode) => episode.seasonNumber === seasonNumber && episode.aired && episode.monitored
+            && (episode.fileId === null || deletedFileIds.has(episode.fileId)))
+          .map((episode) => episode.id));
       // What the (un)monitor step set; a removed title has nothing left to read back.
       let planned: Intent | null = null;
 
@@ -728,7 +738,10 @@ export const createTitleDelete = (options: {
           if (choices.blocklistCurrent && lifted.kind === 'ok') steps.push(await blocklistGrabs(target, history, deletedFileIds, held));
           const searched = lifted.kind !== 'ok' ? lifted
             : target.service === 'radarr' ? await arr.radarr.searchAutomatically({ movieIds: [target.movieId] })
-              : await arr.sonarr.searchAutomatically({ episodeIds: held.map((episode) => episode.id) });
+              : season !== undefined && wholeSeason(season)
+                // A season-level search lets Sonarr accept a pack, which a single-episode search rejects.
+                ? await arr.sonarr.searchAutomatically({ seriesId: target.seriesId, seasonNumber: season })
+                : await arr.sonarr.searchAutomatically({ episodeIds: held.map((episode) => episode.id) });
           steps.push(searched.kind === 'ok'
             ? { step: 'search', outcome: 'done', message: `${label} is searching for ${words}.${lifted.kind === 'ok' ? lifted.value : ''}` }
             : { step: 'search', outcome: 'failed', message: `${label} did not start the search for ${words}: ${searched.message}` });

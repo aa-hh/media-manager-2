@@ -421,6 +421,8 @@ export const applicationMigrations = [
   INSERT INTO sessions_rebuilt (token_hash, owner_id, expires_at) SELECT token_hash, CAST(owner_id AS TEXT), expires_at FROM sessions;
   DROP TABLE sessions;
   ALTER TABLE sessions_rebuilt RENAME TO sessions;`,
+  // Automatic searches the app follows to their end, so a restart resumes them and the client can show the outcome.
+  `CREATE TABLE search_runs (id INTEGER PRIMARY KEY, service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')), target TEXT NOT NULL, started_by TEXT NOT NULL CHECK (started_by IN ('search', 'monitor')), state TEXT NOT NULL CHECK (state IN ('running', 'finished', 'failed')), phase TEXT NOT NULL CHECK (phase IN ('season', 'episodes', 'movie')), command_id INTEGER NOT NULL, history_mark INTEGER NOT NULL, grabbed TEXT NOT NULL, message TEXT, started_at INTEGER NOT NULL, ended_at INTEGER) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
