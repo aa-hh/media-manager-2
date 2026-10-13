@@ -5,6 +5,8 @@ import type { Library, LibraryType } from './mediaServer.js';
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
+// A refusal Jellyfin may stop giving on its own (a restart behind a proxy, a key the owner fixes) is read as an outage.
+const outage = (status: number) => status >= 500 || status === 401 || status === 403;
 const collectionTypes: Record<LibraryType, string> = { movie: 'movies', show: 'tvshows' };
 
 export const createJellyfin = (database: DatabaseSync, options: ServiceOptions = {}) => {
@@ -80,6 +82,7 @@ export const createJellyfin = (database: DatabaseSync, options: ServiceOptions =
     const query = new URLSearchParams({ Recursive: 'true', IncludeItemTypes: type === 'movie' ? 'Movie' : 'Episode', Fields: 'Path', EnableImages: 'false', EnableUserData: 'false' });
     if (season !== undefined) query.set('ParentIndexNumber', String(season));
     const result = await request(`/Items?${query}`);
+    if (outage(result.status)) throw new Error('Jellyfin is unavailable.');
     if (result.status < 200 || result.status > 299) return false;
     const items = isRecord(result.body) && Array.isArray(result.body.Items) ? result.body.Items.filter(isRecord) : [];
     const tail = (path: string) => path.split(/[\\/]+/).filter(Boolean).slice(-2).join('/');
@@ -91,6 +94,7 @@ export const createJellyfin = (database: DatabaseSync, options: ServiceOptions =
     const version = idAt(versionPath);
     if (tracked === undefined || version === undefined || tracked === version) return false;
     const merge = await request(`/Videos/MergeVersions?ids=${encodeURIComponent(tracked)}&ids=${encodeURIComponent(version)}`, { method: 'POST' });
+    if (outage(merge.status)) throw new Error('Jellyfin is unavailable.');
     return merge.status >= 200 && merge.status <= 299;
   };
 

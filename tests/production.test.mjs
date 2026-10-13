@@ -2560,8 +2560,9 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
 });
 
 // Matching items by full path (Radarr and Jellyfin see different mounts), merging before both items exist, not narrowing
-// episodes by season, counting an outage as a try, retrying a refusal forever, retrying a merged row or past MERGE_TRIES,
-// not merging again after a rename of the tracked file, or giving Plex installs a merge step turns this red.
+// episodes by season, counting an outage or a 503 as a try, retrying a rejected request forever, retrying a merged row or
+// past MERGE_TRIES, not merging again after a rename or a same-name upgrade of the tracked file, or giving Plex installs a
+// merge step turns this red.
 test('an imported second version is merged with the tracked file in Jellyfin once both are scanned', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -2577,11 +2578,11 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   });
   const calls = [];
   let items = [];
-  let refuse = false;
+  let refuse = null;
   const fetch = async (url, init = {}) => {
     const parsed = new URL(String(url));
     calls.push({ path: parsed.pathname, query: parsed.searchParams, method: init.method ?? 'GET' });
-    if (refuse) return new Response(null, { status: 500 });
+    if (refuse !== null) return new Response(null, { status: refuse });
     if (parsed.pathname === '/Items') return new Response(JSON.stringify({ Items: items }), { status: 200 });
     return new Response(null, { status: 204 });
   };
@@ -2592,13 +2593,13 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test');
   setSetting(database, 'credentials', 'jellyfin.apiKey', 'jellyfin-key');
 
-  let dunePath = '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv';
+  let dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' };
   const arr = {
-    radarr: { movie: async (id) => ({ kind: 'ok', value: { file: { path: id === 1 ? dunePath : '/radarr/movies/Gone (2001)/Gone (2001) Bluray-1080p.mkv' } } }) },
+    radarr: { movie: async (id) => ({ kind: 'ok', value: { file: id === 1 ? dune : { id: 20, path: '/radarr/movies/Gone (2001)/Gone (2001) Bluray-1080p.mkv' } } }) },
     sonarr: {
       episodes: async (seriesId, options) => {
         assert.deepEqual([seriesId, options], [5, { withFiles: true }]);
-        return { kind: 'ok', value: [{ id: 7, seasonNumber: 1, file: { path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' } }] };
+        return { kind: 'ok', value: [{ id: 7, seasonNumber: 1, file: { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' } }] };
       },
     },
   };
@@ -2630,10 +2631,13 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   assert.equal(calls.some((call) => call.path === '/Videos/MergeVersions'), false);
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [1, 2, MERGE_TRIES]);
 
-  // A refusal spends a try instead of being retried forever.
-  refuse = true;
+  // A 503 while Jellyfin restarts spends none; a rejected request spends a try instead of being retried forever.
+  refuse = 503;
   await versionImport.run();
-  refuse = false;
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [1, 2, MERGE_TRIES]);
+  refuse = 400;
+  await versionImport.run();
+  refuse = null;
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [2, 3, MERGE_TRIES]);
 
   items = [
@@ -2656,11 +2660,19 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   assert.deepEqual(calls, []);
 
   // Radarr renames the tracked file: the merge splits in Jellyfin, so the version is merged again with the new item.
-  dunePath = '/radarr/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv';
+  dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' };
   items = [...items.filter((item) => item.Id !== 'm-old'), { Id: 'm-renamed', Path: '/data/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' }];
   await versionImport.run();
   assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['m-renamed', 'm-new']]);
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [MERGE_TRIES, MERGE_TRIES, MERGE_TRIES]);
+
+  // An upgrade that keeps the file name shows only as a new file id, and is merged again too.
+  calls.length = 0;
+  dune = { id: 11, path: dune.path };
+  items = [...items.filter((item) => item.Id !== 'm-renamed'), { Id: 'm-upgraded', Path: '/data/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' }];
+  await versionImport.run();
+  assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['m-upgraded', 'm-new']]);
+  assert.equal(tries(movieRow), MERGE_TRIES);
 });
 
 test('the TMDB client sends the key only to TMDB, parses partial replies and caches lists', async (t) => {
