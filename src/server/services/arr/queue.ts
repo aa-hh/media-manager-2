@@ -102,13 +102,14 @@ const removalQueries = {
 } as const;
 
 export const createQueue = ({ service, label, send }: { service: Service; label: string; send: Send }) => {
+  // Unknown items stay out: with no category on the download client, they are the other service's torrents and anything else in rTorrent.
   const queue = async (): Promise<Result<QueueItem[]>> => {
     const items: QueueItem[] = [];
     let count = 0;
     for (let page = 1; ; page += 1) {
       const answer = await send(
         'the queue read',
-        `/api/v3/queue?page=${page}&pageSize=${QUEUE_PAGE_SIZE}&includeUnknownSeriesItems=true&includeUnknownMovieItems=true&includeSeries=true&includeEpisode=true&includeMovie=true`,
+        `/api/v3/queue?page=${page}&pageSize=${QUEUE_PAGE_SIZE}&includeUnknownSeriesItems=false&includeUnknownMovieItems=false&includeSeries=true&includeEpisode=true&includeMovie=true`,
       );
       if (answer.kind !== 'ok') return answer;
       const { body } = answer.value;

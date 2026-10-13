@@ -3745,16 +3745,18 @@ test('Sonarr and Radarr operations answer with one result shape and never throw'
   const { sonarr, radarr, fake } = connectArr(database, { sonarr: {} });
   const { state } = fake.sonarr;
 
-  await t.test('the queue read walks every page and keeps unknown items', async () => {
-    // Stopping the page walk early, dropping the unknown-item flags, or changing the queue parser turns this red.
+  await t.test('the queue read walks every page and leaves out items matched to no title', async () => {
+    // Stopping the page walk early, asking for unknown items again (they list the other service's torrents), or changing the queue parser turns this red.
     const hash = 'ab'.repeat(20);
-    state.queue = Array.from({ length: 501 }, (_, index) => queueItem(
-      index === 0 ? { unknown: true } : index === 1 ? { downloadId: hash } : {},
+    state.queue = Array.from({ length: 502 }, (_, index) => queueItem(
+      index === 0
+        ? { unknown: true, downloadId: hash, trackedDownloadStatus: 'warning', statusMessages: [{ title: 'Show.S01', messages: ["Download wasn't grabbed by Radarr and not in a category, Skipping."] }] }
+        : index === 1 ? { downloadId: hash } : {},
     ));
     const result = await sonarr.queue();
     assert.equal(result.kind, 'ok');
     assert.equal(result.value.length, 501);
-    assert.ok(result.value.some((item) => item.queueId === state.queue[0].id));
+    assert.ok(!result.value.some((item) => item.queueId === state.queue[0].id));
     assert.equal(result.value.find((item) => item.queueId === state.queue[1].id).downloadId, hash.toUpperCase());
   });
 
