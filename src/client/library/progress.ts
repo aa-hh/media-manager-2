@@ -27,9 +27,6 @@ export const subjectProgress = (snapshot: Snapshot, rows: Row[]): Map<string, Su
   return result;
 };
 
-export const downloadingEpisodes = (progress: Map<string, SubjectProgress>, episodeIds: number[]) =>
-  episodeIds.filter((id) => progress.get(`episode:${id}`)?.percent != null).length;
-
 // Episodes downloading right now, counted per show through the series id the queue and grabs carry.
 export const downloadingByShow = (snapshot: Snapshot, progress: Map<string, SubjectProgress>) => {
   const episodes = new Map<number, Set<number>>();

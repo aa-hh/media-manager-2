@@ -15,7 +15,7 @@ import {
 } from './services/arr.js';
 import { lookupTitle } from './search.js';
 import { notConfigured } from './services/arr/result.js';
-import type { SecondVersionRow } from './secondVersionRows.js';
+import type { SecondVersionRow, TrackedHitAndRun } from './secondVersionRows.js';
 import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
 import type { TitleStore } from './titleStore.js';
 
@@ -482,6 +482,11 @@ type VersionRows = {
   (title: { service: 'sonarr'; seriesId: number }): SecondVersionRow[];
 };
 
+type TrackedRows = {
+  (title: { service: 'radarr'; movieId: number }): TrackedHitAndRun[];
+  (title: { service: 'sonarr'; seriesId: number }): TrackedHitAndRun[];
+};
+
 // The tracked version comes from Sonarr or Radarr; second versions come from this app's own records, beside it.
 export const createLibrary = (
   services: ArrServices,
@@ -490,6 +495,7 @@ export const createLibrary = (
   mdblist?: Pick<Mdblist, 'showRatings'>,
   tvdbIdOf?: (tmdbId: number) => Promise<ArrResult<number | null>>,
   backdropOf?: (type: 'tv' | 'movie', ids: { tmdbId: number | null; tvdbId: number | null }) => Promise<string | null>,
+  trackedHitAndRun: TrackedRows = () => [],
 ) => {
   // The chosen backdrop source (TMDB unless set) beats Sonarr's TVDB fanart and Radarr's older copy; fanart stays the fallback.
   const backdropUrl = async (type: 'tv' | 'movie', record: Series | Movie) => (
@@ -527,7 +533,7 @@ export const createLibrary = (
       return { titles: newestFirst([...sonarr.titles, ...radarr.titles]), services: { sonarr: sonarr.outcome, radarr: radarr.outcome } };
     },
 
-    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[] }>> {
+    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[] }>> {
       const read = services.sonarr.series(id).then(fromArr);
       const [record, episodes, profiles, tags, backdrop] = await Promise.all([
         read,
@@ -541,12 +547,17 @@ export const createLibrary = (
       const ratingsBySite = await showRatings(record.value);
       return {
         kind: 'ok',
-        value: { ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite }), backdropUrl: backdrop, secondVersions: versionRows({ service: 'sonarr', seriesId: id }) },
+        value: {
+          ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite }),
+          backdropUrl: backdrop,
+          secondVersions: versionRows({ service: 'sonarr', seriesId: id }),
+          trackedHitAndRun: trackedHitAndRun({ service: 'sonarr', seriesId: id }),
+        },
       };
     },
 
     // Credits cost one more Radarr call, so only this route asks for them; a failed read leaves them empty.
-    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[] }>> {
+    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[] }>> {
       const read = services.radarr.movie(id).then(fromArr);
       const [record, profiles, tags, credits, backdrop] = await Promise.all([
         read,
@@ -563,6 +574,7 @@ export const createLibrary = (
           backdropUrl: backdrop,
           credits: creditList(credits.kind === 'ok' ? credits.value : []),
           secondVersions: versionRows({ service: 'radarr', movieId: id }),
+          trackedHitAndRun: trackedHitAndRun({ service: 'radarr', movieId: id }),
         },
       };
     },

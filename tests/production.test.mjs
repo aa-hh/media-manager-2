@@ -9271,7 +9271,7 @@ test('second versions are served under their movie and series, and a check flags
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createLibrary, createLibraryRoutes } = await import(libraryModuleUrl);
-  const { createSecondVersionChecks, listSecondVersionRows } = await import(secondVersionRowsModuleUrl);
+  const { createSecondVersionChecks, listSecondVersionRows, listTrackedHitAndRun } = await import(secondVersionRowsModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-version-rows-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -9313,8 +9313,21 @@ test('second versions are served under their movie and series, and a check flags
   torrent.run('F'.repeat(40), 'Show S01E02', 400, 100, 0, 0, 0);
   database.prepare('INSERT INTO stall_watch (hash, replaced_at) VALUES (?, 550)').run('F'.repeat(40));
 
-  const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title)));
+  // Grabs behind the tracked files: an older and a newer import of the movie, one still downloading, one for the show.
+  const grab = database.prepare(`INSERT INTO torrent_grabs (hash, service, movie_id, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand, imported_at)
+    VALUES (?, ?, ?, ?, ?, 'release', 'Blutopia', 1, 0, ?)`);
+  torrent.run('G'.repeat(40), 'Dune old', 1000, 0, 1, 500, 360000);
+  grab.run('G'.repeat(40), 'radarr', 9, null, '[]', 50);
+  grab.run('M'.repeat(40), 'radarr', 9, null, '[]', 150);
+  grab.run('F'.repeat(40), 'sonarr', null, 5, '[102]', null);
+
+  const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title), undefined, undefined, undefined, undefined,
+    (title) => listTrackedHitAndRun(database, title)));
   const read = async (path) => (await routes.request(path)).json();
+
+  // Putting an older import first, or listing a grab that never imported, turns this red.
+  assert.deepEqual((await read('/movie/9')).trackedHitAndRun.map((row) => [row.hitAndRun.seededHours, row.hitAndRun.met]), [[2, false], [100, false]]);
+  assert.deepEqual((await read('/series/5')).trackedHitAndRun, []);
 
   // The tracked version and the second version come back in one answer; a deleted second version does not.
   const movie = await read('/movie/9');
@@ -10876,7 +10889,7 @@ test('title pages mark episodes and select ranges of episodes only', async (t) =
   // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
-  const { episodeMarks, seasonMonitoredState, movieWord } = await load('../src/client/title/rows.ts');
+  const { episodeMarks, seasonMonitoredState, seasonStatus, seasonAirDates, movieWord } = await load('../src/client/title/rows.ts');
   const { rangeBetween } = await load('../src/client/title/selection.ts');
 
   // Letting a season header or version row into a range, or depending on which end the range starts from, turns this red.
@@ -10915,6 +10928,40 @@ test('title pages mark episodes and select ranges of episodes only', async (t) =
       [episode({ unverifiedSceneNumbering: true }), ['Scene numbering unverified']],
     ];
     for (const [input, marks] of cases) assert.deepEqual(episodeMarks(input), marks, JSON.stringify(input));
+  });
+
+  // Letting a missing episode outrank a stall, counting a downloading episode as missing, or dropping the files count turns this red.
+  await t.test('a season\'s status chip shows its worst state first with a count', () => {
+    const now = Date.parse('2026-10-13T12:00:00Z');
+    const episode = (id, overrides = {}) => ({ id, airDate: '2026-10-01T00:00:00Z', monitored: true, hasFile: true, ...overrides });
+    const live = (map) => (found) => map[found.id];
+    const counts = { onDisk: 2, total: 4 };
+    const stalled = { word: 'stalled', tone: 'risk', percent: 10, downRate: 0 };
+    const downloading = { word: 'downloading', tone: 'normal', percent: 40, downRate: 9 };
+    const missing = episode(3, { hasFile: false });
+    const cases = [
+      [[episode(1), missing, episode(4, { hasFile: false })], { 4: stalled }, { label: '1 stalled · 2 of 4', look: 'risk' }],
+      [[episode(1), missing, episode(4, { hasFile: false })], { 4: downloading }, { label: '1 missing · 2 of 4', look: 'warning' }],
+      [[episode(1), episode(4, { hasFile: false })], { 4: downloading }, { label: '1 downloading · 2 of 4', look: 'live' }],
+      [[episode(1), episode(3, { hasFile: false, monitored: false })], {}, { label: 'Aired · 2 of 4', look: 'plain' }],
+      [[episode(1, { airDate: '2026-11-01T00:00:00Z', hasFile: false })], {}, { label: 'Upcoming', look: 'plain' }],
+    ];
+    for (const [episodes, map, expected] of cases) {
+      const { label, look } = seasonStatus(episodes, live(map), episodes[0].airDate.startsWith('2026-11') ? { onDisk: 0, total: 0 } : counts, now);
+      assert.deepEqual({ label, look }, expected);
+    }
+  });
+
+  // Losing the year on another year's dates, or printing a one-day season as a span, turns this red.
+  await t.test('a season\'s air dates run from its first to its last episode', () => {
+    const now = Date.parse('2026-10-13T12:00:00Z');
+    const aired = (...dates) => dates.map((airDate) => ({ airDate }));
+    assert.equal(seasonAirDates(aired('2026-10-24T01:00:00Z', null, '2026-08-22T01:00:00Z'), now), '22 Aug – 24 Oct');
+    assert.equal(seasonAirDates(aired('2025-12-30T01:00:00Z', '2026-01-06T01:00:00Z'), now), 'Dec 2025 – Jan 2026');
+    assert.equal(seasonAirDates(aired('2024-01-17T01:00:00Z', '2024-03-13T01:00:00Z'), now), 'Jan – Mar 2024');
+    assert.equal(seasonAirDates(aired('2024-01-17T01:00:00Z', '2024-01-24T01:00:00Z'), now), 'Jan 2024');
+    assert.equal(seasonAirDates(aired('2026-08-22T01:00:00Z'), now), '22 Aug');
+    assert.equal(seasonAirDates(aired(null), now), '');
   });
 
   // Reading a partly monitored season as fully monitored or not monitored turns this red.
@@ -13356,27 +13403,18 @@ test('second-version rows and hit and run advice word themselves from the struct
   // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
-  const { versionSeedingText, timeLeftText, keepChoiceText, removeChoiceText, downloadsAdviceText } = await load('../src/client/title/secondVersionText.ts');
-  const seeding = { inRtorrent: true, complete: true, ratio: 0.41, seedingSeconds: 41 * 3600, upRate: 0, trackerHost: 'privatehd.to' };
+  const { hitAndRunText, keepChoiceText, removeChoiceText, downloadsAdviceText } = await load('../src/client/title/secondVersionText.ts');
   const rule = (overrides = {}) => ({ host: 'privatehd.to', requiredHours: 72, seededHours: 41.6, ratio: 0.41, requiredRatio: 0.9, met: false, ...overrides });
   const advice = (overrides = {}) => ({ recommendation: 'keep', reason: 'Keep seeding: 39 hours of seeding left', globalRatio: null, host: 'privatehd.to',
     requiredHours: 79.2, seededHours: 41.6, hoursLeft: 37.6, detail: '39 hours of seeding left', ...overrides });
 
-  // Rounding seeded hours up, or dropping the fallback when no rule applies, turns this red.
-  await t.test('the Seeding column shows rule progress, rule met, or the plain seeding text', () => {
-    assert.equal(versionSeedingText({ seeding, hitAndRun: rule() }), 'seeding 41 h of 72 h');
-    assert.equal(versionSeedingText({ seeding, hitAndRun: rule({ seededHours: 1950.2, met: true }) }), 'seeding 1,950 h · rule met');
-    assert.equal(versionSeedingText({ seeding, hitAndRun: null }), 'seeding 41 h · ratio 0.41');
-    assert.equal(versionSeedingText({ seeding, hitAndRun: rule({ requiredHours: null }) }), 'seeding 41 h · ratio 0.41');
-    assert.equal(versionSeedingText({ seeding: null, hitAndRun: null }), '');
-  });
-
-  await t.test('time left reads in minutes, hours or days', () => {
-    assert.equal(timeLeftText(330), '6 min left');
-    assert.equal(timeLeftText(5), '1 min left');
-    assert.equal(timeLeftText(5 * 3600 + 1), '6 h left');
-    assert.equal(timeLeftText(3 * 86400), '3 days left');
-    assert.equal(timeLeftText(null), '');
+  // Rounding seeded hours up, required hours down, or dropping the ratio fallback when a rule has no hours, turns this red.
+  await t.test('the Hit and run column shows seeded hours against the rule, else the ratio', () => {
+    assert.equal(hitAndRunText(rule()), '41 h of 72 h');
+    assert.equal(hitAndRunText(rule({ seededHours: 1950.2, requiredHours: 71.2, met: true })), '1,950 h of 72 h');
+    assert.equal(hitAndRunText(rule({ requiredHours: null })), 'ratio 0.41 of 0.90');
+    assert.equal(hitAndRunText(rule({ requiredHours: null, requiredRatio: null })), '');
+    assert.equal(hitAndRunText(null), '');
   });
 
   // Matching on the reason's text instead of the fields, or showing the margin as the tracker's ask, turns this red.

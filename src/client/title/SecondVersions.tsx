@@ -1,17 +1,18 @@
-import { CircleCheck, CircleX, TriangleAlert } from 'lucide-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { CardChoice } from '@/components/ui/card-choice';
 import { Dialog } from '@/components/ui/dialog';
 import { trackerName } from '@/components/ui/logo';
-import { Progress } from '@/components/ui/progress';
 import { RadioGroup } from '@/components/ui/radio';
 import { RowSecondVersion } from '@/components/ui/row-second-version';
+import { type DownloadCircleState, StatusDownloadCircle } from '@/components/ui/status-download-circle';
+import { cn } from '@/lib/utils';
 import { formatBytes } from '../downloads/model';
 import type { SecondVersion, SecondVersionDeleted } from '../library/api';
 import { useAdvice } from './advice';
-import { keepChoiceText, removeChoiceText, timeLeftText, versionSeedingText } from './secondVersionText';
+import { hitAndRunText, keepChoiceText, removeChoiceText } from './secondVersionText';
 
 // "720p" from "720p WEB-DL", as the dialog names a version.
 const resolution = (quality: string | null) => (quality === null ? null : /\d{3,4}p/i.exec(quality)?.[0] ?? quality);
@@ -21,31 +22,37 @@ const sizeText = (version: SecondVersion) => (version.sizeBytes === null ? '' : 
 const deletable = (version: SecondVersion) => version.state === 'imported' || version.state === 'failed';
 const tracker = (version: SecondVersion) => trackerName(version.seeding?.trackerHost ?? version.indexer);
 
-const badge = (version: SecondVersion): { label: string; variant?: 'live' | 'risk' | 'warning'; icon?: ReactNode; spinner?: boolean; percent?: number } => {
+type ChipLook = { label: string; variant?: 'neutral' | 'plain' | 'risk' | 'warning'; circle?: DownloadCircleState; percent?: number; spinner?: boolean };
+
+/** One status chip in a row's Status column: live is muted with black words and the download circle, plain has no fill. */
+export function StatusChip({ look }: { look: ChipLook }) {
+  const live = look.circle === 'downloading' || look.circle === 'importing';
+  return (
+    <Badge
+      variant={look.variant === 'plain' ? 'neutral' : look.variant ?? 'neutral'}
+      spinner={look.spinner}
+      icon={look.circle === undefined ? undefined : <StatusDownloadCircle state={look.circle} percent={look.percent ?? 0} />}
+      className={cn('max-w-full transition-colors duration-(--duration-base) ease-out [&>span]:truncate', live && 'text-foreground', look.variant === 'plain' && 'bg-transparent')}
+    >
+      <span>{look.label}</span>
+    </Badge>
+  );
+}
+
+/** Seeding against the tracker's rule: muted while the rule is unmet, no fill once met. */
+export const seedingLook = (rule: SecondVersion['hitAndRun']): ChipLook => (rule?.met ? { label: 'Seeding · rule met', variant: 'plain' } : { label: 'Seeding' });
+
+const versionLook = (version: SecondVersion): ChipLook => {
   if (version.state === 'sending') return { label: 'Sending', spinner: true };
   if (version.state === 'downloading' && version.stalled) {
-    return { label: version.percent === null ? 'Stalled' : `Stalled at ${version.percent}%`, variant: 'warning', icon: <TriangleAlert /> };
+    return { label: version.percent === null ? 'Stalled' : `Stalled · ${version.percent}%`, variant: 'risk', circle: 'stalled', percent: version.percent ?? 0 };
   }
-  if (version.state === 'downloading') return { label: version.percent === null ? 'Downloading' : `Downloading ${version.percent}%`, variant: 'live', percent: version.percent ?? undefined };
-  if (version.state === 'importing') return { label: 'Importing', spinner: true };
-  if (version.state === 'failed' && version.failureCode === 'stalled_removed') return { label: 'Stalled, removed', variant: 'warning', icon: <CircleCheck /> };
-  if (version.state === 'failed') return { label: 'Failed', variant: 'risk', icon: <CircleX /> };
-  return { label: 'Second version' };
-};
-
-const seedingCell = (version: SecondVersion): ReactNode => {
-  if (version.state === 'downloading') {
-    const words = version.stalled ? 'no peers · flagged' : timeLeftText(version.etaSeconds);
-    if (version.percent === null) return words;
-    return (
-      <span className="flex items-center gap-2">
-        <Progress value={version.percent} className="w-16 shrink-0" aria-label="Downloaded" />
-        {words !== '' && <span className="truncate">{words}</span>}
-      </span>
-    );
-  }
-  if (version.hash === null || version.seeding?.inRtorrent === false) return 'no torrent';
-  return versionSeedingText(version);
+  if (version.state === 'downloading') return { label: version.percent === null ? 'Downloading' : `Downloading ${version.percent}%`, circle: 'downloading', percent: version.percent ?? 0 };
+  if (version.state === 'importing') return { label: 'Importing', circle: 'importing' };
+  if (version.state === 'failed' && version.failureCode === 'stalled_removed') return { label: 'Stalled, removed', variant: 'warning' };
+  if (version.state === 'failed') return { label: 'Failed', variant: 'risk' };
+  if (version.hash === null || version.seeding === null || !version.seeding.inRtorrent) return { label: 'No torrent', variant: 'plain' };
+  return seedingLook(version.hitAndRun);
 };
 
 // The design's words for a stalled torrent removed with nothing downloaded; other failures show the server's own reason.
@@ -186,9 +193,10 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
  * Second-version rows for one movie or episode, under its tracked version, with the delete dialog.
  * `subject` names the movie or episode in the dialog ("S02E04").
  */
-export function SecondVersionRows({ versions, indent, subject, trackedQuality, onChanged, onUnauthenticated }: {
+export function SecondVersionRows({ versions, inset, subject, trackedQuality, onChanged, onUnauthenticated }: {
   versions: SecondVersion[];
-  indent: boolean;
+  /** Under an open episode. */
+  inset: boolean;
   subject: string | null;
   trackedQuality: string | null;
   onChanged: (versions: SecondVersion[] | ((current: SecondVersion[]) => SecondVersion[])) => void;
@@ -197,30 +205,24 @@ export function SecondVersionRows({ versions, indent, subject, trackedQuality, o
   const [deleting, setDeleting] = useState<SecondVersion | null>(null);
   return (
     <>
-      {versions.map((version) => {
-        const look = badge(version);
-        return (
-          <RowSecondVersion
-            key={version.id}
-            indent={indent}
-            title={`Second version · added ${addedDay(version.addedAt)}`}
-            label={look.label}
-            labelVariant={look.variant}
-            labelIcon={look.icon}
-            labelSpinner={look.spinner}
-            labelPercent={look.percent}
-            quality={version.quality}
-            release={version.releaseTitle}
-            detail={version.state === 'failed' && failureText(version) !== null
-              ? <span className={version.failureCode === 'stalled_removed' ? 'text-warning' : 'text-destructive'}>{failureText(version)}</span>
-              : undefined}
-            size={sizeText(version)}
-            tracker={tracker(version)}
-            seeding={seedingCell(version)}
-            actions={deletable(version) && <Button size="row" variant="outline-destructive" onClick={() => setDeleting(version)}>Delete</Button>}
-          />
-        );
-      })}
+      {versions.map((version) => (
+        <RowSecondVersion
+          key={version.id}
+          inset={inset}
+          title={`Second version · added ${addedDay(version.addedAt)}`}
+          release={version.releaseTitle}
+          group={version.group}
+          detail={version.state === 'failed' && failureText(version) !== null
+            ? <span className={version.failureCode === 'stalled_removed' ? 'text-warning' : 'text-destructive'}>{failureText(version)}</span>
+            : undefined}
+          hitAndRun={hitAndRunText(version.hitAndRun)}
+          tracker={tracker(version)}
+          status={<StatusChip look={versionLook(version)} />}
+          quality={version.quality}
+          size={sizeText(version)}
+          actions={deletable(version) && <Button size="row" variant="outline-destructive" onClick={() => setDeleting(version)}>Delete</Button>}
+        />
+      ))}
       {deleting !== null && (
         <DeleteSecondVersion
           version={deleting}

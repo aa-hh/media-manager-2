@@ -31,7 +31,7 @@ import { createSearch } from './search.js';
 import { createDiscover } from './discover/index.js';
 import { createTitleStore } from './titleStore.js';
 import { createTmdbTitles } from './tmdbTitles.js';
-import { createSecondVersionChecks, listSecondVersionRows, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
+import { createSecondVersionChecks, listSecondVersionRows, listTrackedHitAndRun, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
 import { createSetupRoutes } from './setup.js';
@@ -179,7 +179,7 @@ if (database !== undefined) {
     forget: search.forget,
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
-  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }));
+  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title));
   const add = createAdd(arr, titleStore, openedDatabase);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);

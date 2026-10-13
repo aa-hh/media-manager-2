@@ -2,7 +2,6 @@
 import type {
   DeleteChoices, DeleteMode, DeleteMonitoring, DeletePlan, DeletePlanDownload, DeletePlanTorrent, DeletePlanVersion, DeleteRan, QueueAction, RemovalAdvice, SecondVersion,
 } from '../library/api';
-import type { SeedingFact } from '../library/progress';
 
 export const recommendationLabels: Record<RemovalAdvice['recommendation'], string> = {
   safe: 'Safe to remove',
@@ -15,24 +14,12 @@ const whole = (value: number) => value.toLocaleString('en-GB', { maximumFraction
 const seededText = (hours: number) => whole(Math.floor(hours));
 const neededText = (hours: number) => whole(Math.ceil(hours));
 
-export const seedingText = (fact: SeedingFact) =>
-  `${fact.complete ? 'seeding' : 'downloading'} ${Math.floor(fact.seedingSeconds / 3600)} h · ratio ${fact.ratio.toFixed(2)}`;
-
-/** The Seeding column for a second version that is not downloading: rule progress when its tracker has a rule. */
-export const versionSeedingText = (version: Pick<SecondVersion, 'seeding' | 'hitAndRun'>) => {
-  const rule = version.hitAndRun;
-  if (rule?.met) return `seeding ${seededText(rule.seededHours)} h · rule met`;
-  if (rule !== null && rule.requiredHours !== null) return `seeding ${seededText(rule.seededHours)} h of ${neededText(rule.requiredHours)} h`;
-  if (version.seeding === null) return '';
-  return seedingText({ ...version.seeding, trackerHost: version.seeding.trackerHost ?? '' });
-};
-
-/** "6 min left", from the server's estimate at the last download rate. */
-export const timeLeftText = (seconds: number | null) => {
-  if (seconds === null) return '';
-  if (seconds < 3600) return `${Math.max(1, Math.ceil(seconds / 60))} min left`;
-  if (seconds < 48 * 3600) return `${Math.ceil(seconds / 3600)} h left`;
-  return `${Math.ceil(seconds / 86400)} days left`;
+/** The Hit and run column: seeded against the tracker's rule, hours first, else ratio; empty when no rule applies. */
+export const hitAndRunText = (rule: SecondVersion['hitAndRun']) => {
+  if (rule === null) return '';
+  if (rule.requiredHours !== null) return `${seededText(rule.seededHours)} h of ${neededText(rule.requiredHours)} h`;
+  if (rule.requiredRatio !== null) return `ratio ${rule.ratio.toFixed(2)} of ${rule.requiredRatio.toFixed(2)}`;
+  return '';
 };
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

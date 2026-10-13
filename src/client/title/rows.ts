@@ -42,11 +42,57 @@ export const seasonMonitoredState = (episodes: Array<{ monitored: boolean }>): '
   return count === episodes.length ? 'all' : 'mixed';
 };
 
+const monthYear = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' });
+const month = new Intl.DateTimeFormat('en-GB', { month: 'short' });
+
+// First to last air date in the season, short enough for its 104 px column: "22 Aug – 24 Oct" this year,
+// "Jan – Mar 2024" in another year, "Dec 2025 – Jan 2026" across years.
+export const seasonAirDates = (episodes: Array<{ airDate: string | null }>, now: number): string => {
+  const times = episodes.map((episode) => (episode.airDate === null ? Number.NaN : Date.parse(episode.airDate))).filter((time) => !Number.isNaN(time));
+  if (times.length === 0) return '';
+  const first = new Date(Math.min(...times));
+  const last = new Date(Math.max(...times));
+  const span = (a: string, b: string) => (a === b ? a : `${a} – ${b}`);
+  if (first.getFullYear() !== last.getFullYear()) return span(monthYear.format(first), monthYear.format(last));
+  if (first.getFullYear() === new Date(now).getFullYear()) return span(dayMonth.format(first), dayMonth.format(last));
+  return first.getMonth() === last.getMonth() ? monthYear.format(first) : `${month.format(first)} – ${monthYear.format(last)}`;
+};
+
+// The one quality every file in the season shares, "Mixed" when they differ, empty with no files.
+export const seasonQuality = (episodes: EpisodeDetail[]): string => {
+  const qualities = new Set(episodes.flatMap((episode) => (episode.file?.quality == null ? [] : [episode.file.quality])));
+  if (qualities.size === 0) return '';
+  return qualities.size === 1 ? [...qualities][0] : 'Mixed';
+};
+
+// `live` is the download the chip's circle follows.
+export type SeasonStatus = { label: string; look: 'risk' | 'warning' | 'live' | 'plain'; live?: SubjectProgress };
+
+// One chip for the season: the worst state first with its count, then the files on disk out of the episodes.
+export const seasonStatus = (
+  episodes: EpisodeDetail[],
+  live: (episode: EpisodeDetail) => SubjectProgress | undefined,
+  counts: { onDisk: number; total: number },
+  now: number,
+): SeasonStatus => {
+  const of = counts.total === 0 ? '' : ` · ${counts.onDisk} of ${counts.total}`;
+  const lives = episodes.flatMap((episode) => { const found = live(episode); return found === undefined ? [] : [found]; });
+  const risky = lives.filter((found) => found.tone === 'risk');
+  if (risky.length > 0) return { label: `${risky.length} ${risky[0].word}${of}`, look: 'risk', live: risky[0] };
+  const missing = episodes.filter((episode) => aired(episode, now) && episode.monitored && !episode.hasFile && live(episode) === undefined).length;
+  if (missing > 0) return { label: `${missing} missing${of}`, look: 'warning' };
+  if (lives.length > 0) return { label: `${lives.length} ${lives.length === 1 ? lives[0].word : 'downloading'}${of}`, look: 'live', live: lives[0] };
+  return { label: `${airedLabels[seasonAiredState(episodes, now)]}${of}`, look: 'plain' };
+};
+
+const airedLabels = { aired: 'Aired', airing: 'Airing', upcoming: 'Upcoming' } as const;
+
 const liveWord = (live: SubjectProgress) => (live.percent === null ? live.word : `${live.word} ${live.percent}%`);
 
 // The one state an episode row prints; null when the episode is normal.
 export const episodeWord = (episode: EpisodeDetail, live: SubjectProgress | undefined, protectedIds: Set<number>, now: number): string | null => {
-  if (live !== undefined) return liveWord(live);
+  // Sentence case, as the row's status chip reads.
+  if (live !== undefined) return liveWord(live).replace(/^./, (first) => first.toUpperCase());
   if (aired(episode, now) && episode.monitored && !episode.hasFile) return 'Missing';
   if (episode.file?.qualityCutoffNotMet === true) return 'Below cutoff';
   if (protectedIds.has(episode.id)) return 'Manual download';

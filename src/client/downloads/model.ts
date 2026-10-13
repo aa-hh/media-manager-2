@@ -72,6 +72,11 @@ export type Row = {
   label: string;
   release: string;
   quality: string;
+  // The release's full name and Sonarr's or Radarr's quality name ("2160p WEB-DL"), for the band and the Quality column.
+  releaseName: string;
+  qualityName: string;
+  // Null while the release is not in rTorrent.
+  sizeBytes: number | null;
   tracker: string;
   // null when the release is not in rTorrent yet.
   progress: number | null;
@@ -225,6 +230,9 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
       label: labelFor(items, torrent.name),
       release: described.release,
       quality: described.quality,
+      releaseName: torrent.name,
+      qualityName: items[0]?.quality ?? '',
+      sizeBytes: torrent.sizeBytes,
       tracker: torrent.trackerHost ?? '',
       progress: torrent.sizeBytes > 0 ? Math.floor((torrent.completedBytes / torrent.sizeBytes) * 100) : 0,
       timeLeft: torrent.complete ? '' : torrent.downRate > 0 ? formatDuration((remaining / torrent.downRate) * 1000) : '–',
@@ -255,6 +263,9 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
       label: labelFor(items, item.title),
       release: described.release,
       quality: described.quality,
+      releaseName: item.title,
+      qualityName: item.quality,
+      sizeBytes: null,
       tracker: '',
       progress: null,
       timeLeft: '',
@@ -285,6 +296,9 @@ export const buildRows = (snapshot: Snapshot): Row[] => {
         : `${problem.subject.service === null ? '' : `${serviceName(problem.subject.service)} `}${problem.subject.type} ${problem.subject.id}`,
       release: '',
       quality: '',
+      releaseName: '',
+      qualityName: '',
+      sizeBytes: null,
       tracker: problem.subject.type === 'tracker' ? problem.subject.id : '',
       progress: null,
       timeLeft: '',
