@@ -5394,14 +5394,40 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
     const poller = createTorrentPoller({ database, rtorrent, events, now });
     const problems = createProblems({ database, events, now });
     const watch = createTrackerWatch({ database, rtorrent, problems, events, now });
+    // Every torrent here counts as a Sonarr grab unless listed in unowned; the watch ignores torrents nobody here grabbed.
+    const unowned = new Set();
     const step = async (rows, elapsed = 60_000) => {
       clock.value += elapsed;
       fake.rows = rows;
+      for (const [h] of rows) {
+        if (unowned.has(h)) continue;
+        database.prepare(`INSERT OR IGNORE INTO torrent_grabs (hash, service, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand)
+          VALUES (?, 'sonarr', 1, '[1]', 'Show.S01E01', 'Tracker', 0, 0)`).run(h);
+      }
       await poller.poll();
       await watch.check();
     };
-    return { database, clock, events, fake, watch, step, poller };
+    return { database, clock, events, fake, watch, step, poller, unowned };
   };
+
+  // Flagging a torrent that Sonarr, Radarr and media-manager-2 never grabbed (a music download, say) turns this red.
+  await t.test('torrents nobody here grabbed are never flagged, and their old flags resolve', async () => {
+    const { database, fake, watch, step, unowned } = setup();
+    const music = row(hash(1), { state: 0, active: 0, message: 'Tracker: [Failure reason "Unregistered torrent"]' });
+    const damaged = row(hash(2), { completed: 0, state: 0, active: 0, message: 'Hash check on download completion found bad chunks' });
+    unowned.add(hash(1)).add(hash(2));
+    // A flag opened before this rule existed must resolve on the next check.
+    database.prepare(`INSERT INTO torrent_issues (hash, kind, since, replace) VALUES (?, 'unregistered', 0, 1)`).run(hash(1));
+    database.prepare(`INSERT INTO problems (kind, subject_type, service, subject_id, hash, state, summary, opened_at, updated_at)
+      VALUES ('unregistered', 'torrent', '', ?, ?, 'needs_you', 'old flag', 0, 0)`).run(hash(1), hash(1));
+    await step([music, damaged]);
+    await step([music, damaged], 31 * 60_000);
+    assert.deepEqual(listOpenProblems(database), []);
+    assert.deepEqual(listIssues(database), []);
+    assert.deepEqual(watch.replacementRequests(), []);
+    assert.deepEqual(fake.calls, []);
+    database.close();
+  });
 
   // Treating a refusal as a tracker outage, or missing rTorrent's failure wrapper, turns this red.
   await t.test('messages are classified from rTorrent wording', () => {
@@ -5815,6 +5841,19 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.deepEqual(listSecondVersionRows(run.database, { service: 'radarr', movieId: 7 }).map((row) => [row.state, row.stalled]), [
       ['failed', false], ['downloading', true],
     ]);
+    run.database.close();
+  });
+
+  // Watching or flagging a torrent with no grab record and no second version row (a music download, say) turns this red.
+  await t.test('a stalled torrent nobody here grabbed is left alone, and its old stall flag resolves', async () => {
+    const other = 'CD'.repeat(20);
+    const run = await setup({ versions: [], releases: [], torrentHash: other });
+    run.database.prepare(`INSERT INTO problems (kind, subject_type, service, subject_id, hash, state, summary, opened_at, updated_at)
+      VALUES ('stalled', 'torrent', '', ?, ?, 'needs_you', 'old flag', 0, 0)`).run(other, other);
+    await run.tick(15 * 24 * 60);
+    assert.deepEqual(listOpenProblems(run.database), []);
+    assert.equal(run.database.prepare('SELECT COUNT(*) AS count FROM stall_watch').get().count, 0);
+    assert.deepEqual(run.calls, []);
     run.database.close();
   });
 

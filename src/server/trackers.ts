@@ -2,10 +2,13 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { EventHub } from './events.js';
 import type { createProblems } from './problems.js';
 import { readSetting } from './services/connection.js';
+import { isOwnedTorrent } from './torrentGrabs.js';
 import { listTorrents, type Torrent } from './torrents.js';
 
 type Problems = ReturnType<typeof createProblems>;
 type XmlRpcCall = (method: string, params: readonly string[]) => Promise<unknown>;
+
+export const NOT_WATCHED = 'Sonarr, Radarr and media-manager-2 never grabbed this torrent, so it is not watched.';
 
 export type MessageKind = 'clean' | 'refusal' | 'unregistered' | 'tracker_down' | 'damaged' | 'other';
 export type IssueKind = 'unregistered' | 'tracker_down' | 'damaged';
@@ -148,6 +151,10 @@ export const createTrackerWatch = (options: {
       const issue = issues.get(torrent.hash);
       if (torrent.goneAt !== null) {
         if (issue !== undefined) endIssue(issue, 'The torrent left rTorrent.');
+        continue;
+      }
+      if (!isOwnedTorrent(database, torrent.hash)) {
+        if (issue !== undefined) endIssue(issue, NOT_WATCHED);
         continue;
       }
       const { kind, text } = classifyMessage(torrent.message);
