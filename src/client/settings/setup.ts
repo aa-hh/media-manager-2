@@ -14,8 +14,10 @@ export type SetupStatus = {
   optional: Record<OptionalPart, { status: 'done' | 'not_done' | 'skipped'; wanted: boolean }>;
   requiredComplete: boolean;
   plexSignInTokenAvailable: boolean;
-  /** The media server the owner picked on the first-run page. */
-  mediaServer: { kind: 'plex' } | { kind: 'jellyfin'; url: string; serverName: string; ownerName: string };
+  /** The owner's current media server: picked on the first-run page, changed by a switch in Settings. */
+  mediaServer: { kind: 'plex'; ownerName: string } | { kind: 'jellyfin'; url: string; serverName: string; ownerName: string };
+  /** PLEX_OWNER_ID pins the owner, which blocks the media-server switch. */
+  ownerPinned: boolean;
   backup: { destination: BackupDestination; problem: string | null; key: 'pair' | 'env' | 'missing' | 'invalid'; keyCreatedAt: number | null };
 };
 /** What GET /api/setup/rtorrent suggests from Sonarr's (else Radarr's) rTorrent download client; never the password. */

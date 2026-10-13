@@ -20,6 +20,7 @@ import { useDownloads } from './downloads/useDownloads';
 import { useHealth } from './health/useHealth';
 import { HistoryScreen } from './history/History';
 import { useBlocklist, useHistory } from './history/useHistory';
+import { MediaServerContext } from './mediaServer';
 import type { SetupStatus } from './settings/setup';
 import './globals.css';
 
@@ -48,6 +49,7 @@ const readJson = async (response: Response): Promise<Record<string, unknown>> =>
 
 function App() {
   const [session, setSession] = useState<SessionState>({ kind: 'checking' });
+  const [mediaServer, setMediaServer] = useState<'plex' | 'jellyfin'>('plex');
   const sessionRef = useRef(session);
   const verifiedExpiryRef = useRef<number | undefined>(undefined);
   const verifiedDeadlineRef = useRef<number | undefined>(undefined);
@@ -96,6 +98,7 @@ function App() {
         }
         verifiedExpiryRef.current = body.expiresAt as number;
         verifiedDeadlineRef.current = deadline;
+        if (body.mediaServer === 'plex' || body.mediaServer === 'jellyfin') setMediaServer(body.mediaServer);
         setSession({ kind: 'signed-in', expiresAt: body.expiresAt as number });
       } else if (completedSignIn || previous.kind !== 'signed-out') {
         const hadVerifiedSession = verifiedExpiryRef.current !== undefined;
@@ -224,6 +227,12 @@ function App() {
   }, [beginRequest]);
 
   const recheckSession = useCallback(() => void checkSession(), [checkSession]);
+  const mediaServerValue = useMemo(() => ({ name: mediaServer, refresh: recheckSession }), [mediaServer, recheckSession]);
+
+  // The Plex popup of a media-server switch lands here while the owner is signed in; SignIn relays the state to the opener and closes.
+  if (window.location.pathname === '/auth/callback') {
+    return <SignIn onSignedIn={signedIn} />;
+  }
 
   if (session.kind === 'checking') {
     return (
@@ -238,30 +247,32 @@ function App() {
   }
 
   return (
-    <SetupGate
-      headingRef={headingRef}
-      signOutLabel={session.kind === 'signing-out'
-        ? 'Signing out…'
-        : session.kind === 'sign-out-failed'
-          ? 'Try sign out again'
-          : 'Sign out'}
-      signOutDisabled={session.kind === 'signing-out'}
-      signOutProblem={(
-        <>
-          {session.kind === 'sign-out-failed' && (
-            <StatusInline status="failed" role="alert">
-              Sign-out failed. Your session may still be active.
-            </StatusInline>
-          )}
-          <p className="sr-only" aria-live="polite">
-            {session.kind === 'signing-out' ? 'Signing out…' : ''}
-          </p>
-        </>
-      )}
-      onSignOut={() => void signOut(session.expiresAt)}
-      onUnauthenticated={recheckSession}
-      onShown={focusHeadingAfterSignIn}
-    />
+    <MediaServerContext value={mediaServerValue}>
+      <SetupGate
+        headingRef={headingRef}
+        signOutLabel={session.kind === 'signing-out'
+          ? 'Signing out…'
+          : session.kind === 'sign-out-failed'
+            ? 'Try sign out again'
+            : 'Sign out'}
+        signOutDisabled={session.kind === 'signing-out'}
+        signOutProblem={(
+          <>
+            {session.kind === 'sign-out-failed' && (
+              <StatusInline status="failed" role="alert">
+                Sign-out failed. Your session may still be active.
+              </StatusInline>
+            )}
+            <p className="sr-only" aria-live="polite">
+              {session.kind === 'signing-out' ? 'Signing out…' : ''}
+            </p>
+          </>
+        )}
+        onSignOut={() => void signOut(session.expiresAt)}
+        onUnauthenticated={recheckSession}
+        onShown={focusHeadingAfterSignIn}
+      />
+    </MediaServerContext>
   );
 }
 

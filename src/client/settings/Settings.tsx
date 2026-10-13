@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, ChevronRight, DatabaseBackup, Eraser, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { OptionRow } from '@/components/ui/option-row';
@@ -25,8 +25,10 @@ import {
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
 import { backupPill, backupWords, type SetupStatus } from './setup';
+import { MediaServerContext } from '../mediaServer';
 import { useScreenReady } from '../navigation';
 import { infoOf, requester, useServices, writeHeaders } from './useServices';
+import { SwitchMediaServer } from './SwitchMediaServer';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
@@ -63,6 +65,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const [setup, setSetup] = useState<SetupStatus>();
   const [clearing, setClearing] = useState(false);
   const toasts = useToastManager();
+  const mediaServerContext = use(MediaServerContext);
   const unauthorizedRef = useRef(onUnauthenticated);
   unauthorizedRef.current = onUnauthenticated;
 
@@ -97,7 +100,9 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
       throw new Error('Signed out.');
     }
     if (!response.ok) throw new Error('Setup status could not be read.');
-    setSetup(await response.json() as SetupStatus);
+    const status = await response.json() as SetupStatus;
+    setSetup(status);
+    return status;
   }, []);
 
   /** Reads every tracker row; the server checks each account connection, reusing a result up to 5 minutes old. */
@@ -111,12 +116,15 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     return rows;
   }, [request]);
 
+  /** Reads everything again; the setup status it read, or undefined when a read failed. */
   const read = useCallback(async () => {
     setLoad({ kind: 'loading' });
     try {
-      await Promise.all([readServices(), readTrackers(), readSetup()]);
+      const [, , status] = await Promise.all([readServices(), readTrackers(), readSetup()]);
+      return status;
     } catch {
       setLoad({ kind: 'failed' });
+      return undefined;
     }
   }, [setLoad, readServices, readTrackers, readSetup]);
 
@@ -157,6 +165,47 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const storage = selected === 'folders' || selected === 'backup';
   const storageConfigured = (setup.required.folders === 'done' ? 1 : 0) + (setup.backup.destination !== null ? 1 : 0);
   const backupState = backupPill(setup.backup);
+  // The media server the owner signed in with, and the other one, whose editor offers the switch.
+  const mediaServer = setup.mediaServer;
+  const owner = mediaServer.kind;
+  const otherServer = owner === 'plex' ? 'jellyfin' : 'plex';
+  const notInUse = (name: ServiceName) => name === otherServer;
+  const jellyfinOk = checks.jellyfin.kind === 'ok' ? checks.jellyfin : undefined;
+  const jellyfinVersion = jellyfinOk?.version === undefined ? '' : ` · Jellyfin ${jellyfinOk.version}`;
+  const switched = async () => {
+    const status = await read();
+    if (status === undefined) return;
+    mediaServerContext.refresh();
+    toasts.add({
+      title: `${infoOf(otherServer).label} is now the media server`,
+      description: `You’re signed in as ${status.mediaServer.ownerName}. ${infoOf(owner).label} settings stay saved in case you switch back.`,
+    });
+  };
+  const differentServer = connections.differentServers.jellyfin;
+  const editorExtras: Pick<EditorProps, 'addressHelp' | 'addressError' | 'facts' | 'afterFacts'> = {
+    ...(service === 'jellyfin' && mediaServer.kind === 'jellyfin' ? {
+      addressHelp: 'Where media-manager-2 reaches Jellyfin, with the port. It must stay the same Jellyfin server.',
+      addressError: differentServer === undefined ? undefined
+        : `That’s a different Jellyfin server (“${differentServer}”). The owner, ${mediaServer.ownerName}, belongs to “${mediaServer.serverName}”.`,
+      facts: { server: `${mediaServer.serverName}${jellyfinVersion}`, owner: `${mediaServer.ownerName}, Jellyfin administrator` },
+    } : {}),
+    ...(service === 'jellyfin' && mediaServer.kind === 'plex' ? {
+      facts: { server: jellyfinOk?.serverName === undefined ? undefined : `${jellyfinOk.serverName}${jellyfinVersion}`, usedFor: 'Nothing while Plex is the media server' },
+    } : {}),
+    ...(service === 'plex' && mediaServer.kind === 'jellyfin' ? { facts: { usedFor: 'Nothing while Jellyfin is the media server' } } : {}),
+    ...(service === otherServer ? {
+      afterFacts: (
+        <SwitchMediaServer
+          target={otherServer}
+          pinned={setup.ownerPinned}
+          ready={isConfigured(saved[otherServer]) && checks[otherServer].kind === 'ok'}
+          currentServerName={mediaServer.kind === 'jellyfin' ? mediaServer.serverName : null}
+          jellyfin={otherServer === 'jellyfin' ? { url: savedAddress(saved.jellyfin), serverName: jellyfinOk?.serverName, version: jellyfinOk?.version } : undefined}
+          onSwitched={() => void switched()}
+        />
+      ),
+    } : {}),
+  };
 
   // Merged into the latest row, so a rule saved while a connection test ran is kept.
   const updateTracker = (host: string, change: Partial<TrackerRow>, at: number) => {
@@ -197,7 +246,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   };
 
   const row = (other: ServiceInfo) => {
-    const pill = pillFor(other, checks[other.name], editedOf(other.name));
+    const pill = pillFor(other, checks[other.name], editedOf(other.name), false, notInUse(other.name));
     if (other.logo === null || other.addressPlaceholder === undefined) {
       return (
         <TrackerListRow
@@ -248,6 +297,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
         checks={checks}
         editedOf={editedOf}
         folders={setup.required.folders === 'done' ? { state: 'connected', text: 'Saved' } : { state: 'not-set-up', text: 'Not set up' }}
+        watch={owner === 'jellyfin' ? { logo: 'jellyfin', name: 'Jellyfin', ...pillFor(infoOf('jellyfin'), checks.jellyfin, editedOf('jellyfin')) } : undefined}
       />
 
       <div className="flex items-start gap-8">
@@ -383,6 +433,8 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
               onConnect={() => void (info.name === 'plex' && usingSignIn ? connections.connectPlexWithSignIn() : connections.connect(service))}
               onCheck={() => void connections.checkSaved(service)}
               onDiscard={() => setDiscardOpen(true)}
+              notInUse={notInUse(service)}
+              {...editorExtras}
             />
           )}
           {others.length > 0 && !adding && selectedTracker === undefined && !storage && (
@@ -425,7 +477,7 @@ type PiecesStripProps = {
   folders: { state: ServiceState; text: string };
   /** The setup wizard's lit pills: black with a lime dot, all lime once setup is done. */
   look?: 'plain' | 'setup' | 'done';
-  /** The setup wizard for a Jellyfin owner: this pill takes the Watch column's place of Plex. */
+  /** For a Jellyfin owner, in Settings and the setup wizard: this pill takes Plex's place in the Watch column. */
   watch?: { logo: LogoName; name: string; state: ServiceState; text: string };
 };
 
@@ -444,7 +496,9 @@ export function PiecesStrip({ checks, editedOf, folders, look = 'plain', watch }
         <div className="flex min-w-0 flex-1 gap-3">
           {chain.map((column, index) => {
             const next = chain[index + 1];
-            const tone = next === undefined ? 'idle' : linkTone(column.names.map((name) => checks[name]), next.names.map((name) => checks[name]));
+            // With watch set, Jellyfin stands in for Plex, so its check tones the link.
+            const checkOf = (name: ServiceName) => checks[watch !== undefined && name === 'plex' ? 'jellyfin' : name];
+            const tone = next === undefined ? 'idle' : linkTone(column.names.map(checkOf), next.names.map(checkOf));
             return (
               <Fragment key={column.caption}>
                 {/* A floor wide enough for "Connected · 4.0.10", so a pill changing state does not reflow the strip. */}
@@ -504,17 +558,28 @@ type EditorProps = {
   signInToken?: { on: boolean; onChange: (on: boolean) => void };
   /** The setup wizard's step: its heading and count, the step Connect moves on to, Back in place of Discard and Check now, and wording that replaces the address's label and help or a credential's placeholder and help (keyed by the credential key). */
   wizard?: { title: string; step: string; next: string; onBack: () => void; hints?: { address?: { label?: string; help?: string }; credentials?: Record<string, { placeholder?: string; help?: string }> } };
+  /** The media server the owner did not sign in with: an answering check reads "Connected · not in use". */
+  notInUse?: boolean;
+  addressHelp?: string;
+  /** Shown as the address field's error ahead of the no-answer one. */
+  addressError?: string;
+  /** Server replaces the Version row; Owner replaces Used for; usedFor replaces the service's own words. */
+  facts?: { server?: ReactNode; owner?: string; usedFor?: string };
+  /** Drawn between the facts and the bottom bar. */
+  afterFacts?: ReactNode;
 };
 
 /** The pane for the selected service. Switching services crossfades it (duration-base, ease-out). */
-export function Editor({ info, saved, draft, check, pending, problem, replacing, now, onDraft, onReplacing, onConnect, onCheck, onDiscard, signInToken, wizard }: EditorProps) {
+export function Editor({
+  info, saved, draft, check, pending, problem, replacing, now, onDraft, onReplacing, onConnect, onCheck, onDiscard, signInToken, wizard, notInUse = false, addressHelp, addressError, facts, afterFacts,
+}: EditorProps) {
   const configured = isConfigured(saved);
   const edits = changedCount(info.name, saved, draft);
   const testing = check.kind === 'testing';
   // After a passing test the save is still running and clears the form when it lands, so nothing can be typed meanwhile.
   const busy = testing || pending === 'connect';
   const formFailed = failed(check) && 'at' in check && !check.ofSaved;
-  const pill = pillFor(info, check, edits, true);
+  const pill = pillFor(info, check, edits, true, notInUse);
   const savedUrl = savedAddress(saved);
   const address = draft.address.trim();
   const typedSecret = Object.values(draft.secrets).some((value) => value.trim() !== '');
@@ -578,10 +643,10 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
       <div className="grid grid-cols-2 gap-4">
         {info.addressPlaceholder !== undefined && <FieldLabelled
           label={wizard?.hints?.address?.label ?? 'Address'}
-          error={check.kind === 'unreachable' ? 'Nothing answered at this address within 10 seconds. Check the port.' : undefined}
+          error={addressError ?? (check.kind === 'unreachable' ? 'Nothing answered at this address within 10 seconds. Check the port.' : undefined)}
           help={savedUrl !== '' && address !== savedUrl
             ? <span className="text-muted-foreground [overflow-wrap:anywhere]">Changed from {savedUrl}. Not saved yet.</span>
-            : wizard?.hints?.address?.help ?? `Where media-manager-2 reaches ${info.label} on the seedbox, with the port.`}
+            : wizard?.hints?.address?.help ?? addressHelp ?? `Where media-manager-2 reaches ${info.label} on the seedbox, with the port.`}
         >
           <InputSearch
             variant="field"
@@ -592,7 +657,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
             placeholder={info.addressPlaceholder}
             value={draft.address}
             readOnly={busy}
-            aria-invalid={check.kind === 'unreachable' || undefined}
+            aria-invalid={check.kind === 'unreachable' || addressError !== undefined || undefined}
             onValueChange={(value) => onDraft({ ...draft, address: value })}
           />
         </FieldLabelled>}
@@ -648,14 +713,20 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
       </div>
 
       <dl className="flex flex-col">
-        {check.kind === 'ok' && check.version !== undefined && <FactRow label="Version">{check.version}</FactRow>}
+        {facts?.server !== undefined
+          ? <FactRow label="Server">{facts.server}</FactRow>
+          : check.kind === 'ok' && check.version !== undefined && <FactRow label="Version">{check.version}</FactRow>}
         {'at' in check && check.ofSaved && (
           <FactRow label="Last checked" note={`${ago(check.at, now)}${edits > 0 && check.ofSaved ? `, with the saved ${fieldWords(info)}` : ''}`}>
             Today {timeOf(check.at)}
           </FactRow>
         )}
-        <FactRow label="Used for">{info.usedFor}</FactRow>
+        {facts?.owner !== undefined
+          ? <FactRow label="Owner">{facts.owner}</FactRow>
+          : <FactRow label="Used for">{facts?.usedFor ?? info.usedFor}</FactRow>}
       </dl>
+
+      {afterFacts}
 
       <BarBottomAction
         summary={wizardSummary}

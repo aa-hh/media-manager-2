@@ -6,7 +6,7 @@ import { type Context, Hono } from 'hono';
 import { backupKeyFromEnvironment, backupsAreOff, createBackupKeyPair, readBackupKeyPair, setBackupsOff } from './backup.js';
 import { readBackupDestination } from './backupDestination.js';
 import { applicationMigrations, migrateDatabase } from './database.js';
-import { effectiveOwner } from './owner.js';
+import { effectiveOwner, readEnvironmentOwner } from './owner.js';
 import { getPreference, setPreference } from './preferences.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -155,7 +155,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   const done = (set: boolean) => (set ? 'done' : 'not_done') as 'done' | 'not_done';
 
   routes.get('/', (context) => {
-    // The media server step follows the owner's first-run choice: a Jellyfin owner needs an API key, anyone else Plex.
+    // The media server step follows the current owner: a Jellyfin owner needs an API key, anyone else Plex.
     const owner = effectiveOwner(database, env.PLEX_OWNER_ID);
     const jellyfinOwner = owner?.provider === 'jellyfin';
     const required = {
@@ -209,7 +209,8 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
           serverName: owner.serverName ?? '',
           ownerName: owner.userName,
         }
-        : { kind: 'plex' },
+        : { kind: 'plex', ownerName: owner?.userName ?? '' },
+      ownerPinned: readEnvironmentOwner(env.PLEX_OWNER_ID) !== undefined,
       plexSignInTokenAvailable: context.get('plexSignInToken') !== undefined,
       // The access key, the secret and BACKUP_KEY's value never leave the server, and the restore key is never returned here either.
       backup: {
@@ -367,7 +368,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   });
 
   // Connects the Jellyfin server the owner signed in through, checked in a throwaway database first like Plex above, so a
-  // refused key saves nothing. The address is the one locked at first run; only the key comes from the request.
+  // refused key saves nothing. The address is the saved one; only the key comes from the request.
   routes.post('/jellyfin', async (context) => {
     const body = await readBody(context);
     if (!hasExactly(body, ['apiKey']) || typeof body.apiKey !== 'string' || body.apiKey === '') return context.json({ error: 'invalid_request' }, 400);

@@ -14,7 +14,7 @@ Routes, jobs and SQLite storage behind `services/`. Never move or delete a file 
 - An accepted ManualImport is only queued; resolve its problem once the download leaves the queue.
 - Only `protection.ts` writes `protected_items`. Protect a replace before marking it completed, since nothing revisits a completed one.
 - No job holds a transaction across an await; jobs share this connection, so their writes would join it.
-- `PLEX_OWNER_ID` outranks the `owner` row and hides first run; the live install depends on it.
+- `PLEX_OWNER_ID` outranks the `owner` row, hides first run, blocks media-server switching; the live install needs it.
 
 ## Map
 

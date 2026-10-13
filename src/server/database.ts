@@ -403,7 +403,7 @@ export const applicationMigrations = [
   `ALTER TABLE second_versions ADD COLUMN tracked_path TEXT;`,
   // When Radarr or Sonarr was last asked for the tracked path; NULL while a merged row owes a check after a rename or download event.
   `ALTER TABLE second_versions ADD COLUMN merge_checked_at INTEGER;`,
-  // The install's owner: one row, written by the first sign-in on the first-run page.
+  // The install's owner: one row, written by the first sign-in on the first-run page or replaced by a media-server switch.
   `CREATE TABLE owner (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     provider TEXT NOT NULL CHECK (provider IN ('plex', 'jellyfin')),
@@ -421,6 +421,8 @@ export const applicationMigrations = [
   INSERT INTO sessions_rebuilt (token_hash, owner_id, expires_at) SELECT token_hash, CAST(owner_id AS TEXT), expires_at FROM sessions;
   DROP TABLE sessions;
   ALTER TABLE sessions_rebuilt RENAME TO sessions;`,
+  // The Jellyfin server's Id from /System/Info/Public, so an address change can be held to the same server.
+  `ALTER TABLE owner ADD COLUMN server_id TEXT;`,
 ] as const;
 
 class DatabaseError extends Error {}

@@ -540,6 +540,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           key={step}
           status={jellyfin}
           connected={status.required.mediaServer === 'done'}
+          version={checks.jellyfin.kind === 'ok' ? checks.jellyfin.version : undefined}
           request={setupRequest}
           wizard={{ step: requiredStep('mediaServer'), onBack: back }}
           onSaved={() => void advance('mediaServer')}

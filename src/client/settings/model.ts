@@ -2,17 +2,28 @@
 import type { LogoName } from '../components/ui/logo';
 import type { ServiceState } from '../components/ui/status-service-pill';
 
-export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'tmdb' | 'mdblist' | 'trakt';
+export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'jellyfin' | 'tmdb' | 'mdblist' | 'trakt';
 
 // Shapes served by /api/settings; src/server/connections.ts is the source of truth.
 export type SavedService = { service: ServiceName; serviceAddresses: Record<string, string>; credentials: Record<string, boolean> };
-export type TestResult = { kind: 'ok'; version?: string } | { kind: 'not_configured' | 'rejected' | 'unreachable' };
+export type TestResult =
+  | { kind: 'ok'; version?: string; serverName?: string }
+  | { kind: 'not_configured' | 'rejected' | 'unreachable' }
+  | { kind: 'different_server'; serverName: string };
 
 /** The form for one service. A blank secret means "keep the saved one". */
 export type Draft = { address: string; secrets: Record<string, string> };
 
-/** The last test of one service; ofSaved is false when it tested values still in the form. */
-export type Check = { kind: 'idle' } | { kind: 'testing' } | (TestResult & { at: number; ofSaved: boolean });
+/** The last test of one service; ofSaved is false when it tested values still in the form. A different-server answer is never a check (see afterTest). */
+export type Check = { kind: 'idle' } | { kind: 'testing' } | (Exclude<TestResult, { kind: 'different_server' }> & { at: number; ofSaved: boolean });
+
+/**
+ * A test's answer as the service's check. A different-server answer leaves the previous check in place, since the saved server
+ * still answers, and comes back separately as the name of the server that answered, for the address field's error.
+ */
+export const afterTest = (previous: Check, result: TestResult, at: number, ofSaved: boolean): { check: Check; differentServer?: string } => (
+  result.kind === 'different_server' ? { check: previous, differentServer: result.serverName } : { check: { ...result, at, ofSaved } }
+);
 
 type Credential = { key: string; label: string; short: string; placeholder: string; help: string; secret: boolean };
 
@@ -50,6 +61,10 @@ export const services: ServiceInfo[] = [
   {
     name: 'plex', label: 'Plex', logo: 'plex', group: 'Services', addressPlaceholder: 'e.g. http://localhost:32400', usedFor: 'Health check, and library scans after a second version imports', refused: 'token',
     credentials: [{ key: 'plex.token', label: 'Plex token', short: 'token', placeholder: 'Paste the Plex token', help: 'The X-Plex-Token of your Plex server.', secret: true }],
+  },
+  {
+    name: 'jellyfin', label: 'Jellyfin', logo: 'jellyfin', group: 'Services', addressPlaceholder: 'e.g. http://localhost:8096', usedFor: 'Health check, and library scans and version merges after a second version imports', refused: 'API key',
+    credentials: [apiKey('Jellyfin', 'In Jellyfin: Dashboard > API Keys.')],
   },
   {
     name: 'tmdb', label: 'TMDB', logo: 'tmdb', group: 'Metadata', usedFor: 'Discover rows, title details and posters', refused: 'API key',
@@ -101,12 +116,16 @@ export const changedCount = (service: ServiceName, saved: SavedService | undefin
 
 const shortVersion = (version: string) => version.split('.').slice(0, 3).join('.');
 
-/** The pill for a row, the strip or the editor. A running test, then a failure, then unsaved edits win. */
-export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = false): { state: ServiceState; text: string } => {
+/**
+ * The pill for a row, the strip or the editor. A running test, then a failure, then unsaved edits win.
+ * `notInUse` marks the media server the owner did not sign in with, which answers but serves nothing.
+ */
+export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = false, notInUse = false): { state: ServiceState; text: string } => {
   if (check.kind === 'testing') return { state: 'testing', text: 'Testing' };
   if (check.kind === 'unreachable') return { state: 'failed', text: 'Failed: no answer in 10 s' };
   if (check.kind === 'rejected') return { state: 'failed', text: `Failed: ${info.refused} refused` };
   if (edited > 0) return { state: 'unsaved', text: full ? `Unsaved edits · ${edited} ${edited === 1 ? 'field' : 'fields'}` : 'Unsaved edits' };
+  if (check.kind === 'ok' && notInUse) return { state: 'connected', text: 'Connected · not in use' };
   if (check.kind === 'ok') {
     const version = check.version === undefined ? '' : ` · ${full ? check.version : shortVersion(check.version)}`;
     return { state: 'connected', text: `Connected${version}` };

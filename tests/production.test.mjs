@@ -544,12 +544,18 @@ const createJellyfinFixture = () => {
     assert.equal(init.redirect, 'error');
     assert.ok(init.signal);
     if (state.down) throw new TypeError('fixture network failure');
+    // den.test is a second Jellyfin server, so an address change to it reads as a different server.
+    const den = url.hostname === 'den.test';
     if (url.pathname === '/System/Info') {
-      return headers.get('authorization') === 'MediaBrowser Token="good-key"' ? responseJson({ Version: '10.10.0' }) : responseJson({}, 401);
+      return headers.get('authorization') === 'MediaBrowser Token="good-key"'
+        ? responseJson(den ? { Id: 'den-guid', ServerName: 'Den', Version: '10.10.0' } : { Id: 'server-guid', ServerName: 'Home', Version: '10.10.0' })
+        : responseJson({}, 401);
     }
     signInAuthorizations.push(headers.get('authorization'));
     const body = init.body === undefined ? undefined : JSON.parse(init.body);
-    if (url.pathname === '/System/Info/Public') return responseJson(state.publicBody, state.publicStatus);
+    if (url.pathname === '/System/Info/Public') {
+      return den ? responseJson({ ...publicInfo, Id: 'den-guid', ServerName: 'Den' }) : responseJson(state.publicBody, state.publicStatus);
+    }
     if (url.pathname === '/Users/AuthenticateByName') {
       const user = users[body.Username];
       return user !== undefined && body.Pw === 'pw' ? signedIn(user) : responseJson({}, 401);
@@ -608,7 +614,7 @@ test('Plex owner authentication', async (t) => {
     const privateResponse = await app.request('/api/session', { headers: { Cookie: session, Accept: 'text/html' } });
     assert.equal(privateResponse.status, 200);
     // Omitting current server time prevents expiry scheduling independent of the browser clock.
-    assert.deepEqual(await privateResponse.json(), { expiresAt: clock.value + 24 * 60 * 60_000, serverNow: clock.value });
+    assert.deepEqual(await privateResponse.json(), { expiresAt: clock.value + 24 * 60 * 60_000, serverNow: clock.value, mediaServer: 'plex' });
     for (const path of ['/api', '/api/missing']) {
       const denied = await app.request(path, { headers: { Accept: 'text/event-stream' } });
       assert.equal(denied.status, 401);
@@ -906,7 +912,7 @@ test('Plex owner authentication', async (t) => {
       setup.clock.value = serverNow;
       const before = await restarted.app.request('/api/session', { headers: { Cookie: replacementSession } });
       assert.equal(before.status, 200);
-      assert.deepEqual(await before.json(), { expiresAt: expiry, serverNow });
+      assert.deepEqual(await before.json(), { expiresAt: expiry, serverNow, mediaServer: 'plex' });
     }
     assert.equal((await restarted.app.request('/api/session', { headers: { Cookie: firstSession } })).status, 401);
     setup.clock.value = expiry;
@@ -1197,8 +1203,8 @@ test('Plex owner authentication', async (t) => {
     assert.equal(admin.status, 200);
     const session = cookieValue(admin, '__Host-mm_session');
     assert.ok(session);
-    assert.deepEqual({ ...database.prepare('SELECT provider, user_id, user_name, server_name FROM owner').get() },
-      { provider: 'jellyfin', user_id: 'admin-guid', user_name: 'admin', server_name: 'Home' });
+    assert.deepEqual({ ...database.prepare('SELECT provider, user_id, user_name, server_name, server_id FROM owner').get() },
+      { provider: 'jellyfin', user_id: 'admin-guid', user_name: 'admin', server_name: 'Home', server_id: 'server-guid' });
     assert.equal(getSetting(database, 'serviceAddresses', 'jellyfin.url'), 'http://jellyfin.test:8096');
     assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
     const stored = JSON.stringify([database.prepare('SELECT * FROM sessions').all(), database.prepare('SELECT * FROM settings').all()]);
@@ -1280,7 +1286,7 @@ test('Plex owner authentication', async (t) => {
     assert.deepEqual(await rejected.json(), { kind: 'rejected' });
     assert.equal(getSetting(owned.database, 'credentials', 'jellyfin.apiKey'), undefined);
     const accepted = await send(owned.app, session, 'POST', '/jellyfin', { apiKey: 'good-key' });
-    assert.deepEqual(await accepted.json(), { kind: 'ok', version: '10.10.0' });
+    assert.deepEqual(await accepted.json(), { kind: 'ok', version: '10.10.0', serverName: 'Home' });
     assert.equal(getSetting(owned.database, 'credentials', 'jellyfin.apiKey'), 'good-key');
     assert.equal((await status()).required.mediaServer, 'done');
 
@@ -1289,7 +1295,7 @@ test('Plex owner authentication', async (t) => {
     const plexStatus = async () => (await send(plex.app, plexSession, 'GET', '')).json();
     const plexBefore = await plexStatus();
     assert.equal(plexBefore.required.mediaServer, 'not_done');
-    assert.deepEqual(plexBefore.mediaServer, { kind: 'plex' });
+    assert.deepEqual(plexBefore.mediaServer, { kind: 'plex', ownerName: '' });
     const refused = await send(plex.app, plexSession, 'POST', '/jellyfin', { apiKey: 'good-key' });
     assert.equal(refused.status, 409);
     assert.deepEqual(await refused.json(), { error: 'not_jellyfin_owner' });
@@ -1307,14 +1313,91 @@ test('Plex owner authentication', async (t) => {
     const { createSetupRoutes } = await import(setupModuleUrl);
     const database = new DatabaseSync(':memory:');
     migrateDatabase(database, applicationMigrations);
-    saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home' });
+    saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home', serverId: 'server-guid' });
     assert.equal(createMediaServer(database)().name, 'jellyfin');
     assert.equal(createMediaServer(database, { ownerPlexId: '42' })().name, 'plex');
     const setup = createSetupRoutes({ database, arr: {}, rtorrent: {}, trackers: {}, env: { PLEX_OWNER_ID: '42' } });
     const { app } = await makeApp({ database, setup });
     const { session } = await signIn(app);
     const status = await (await app.request('/api/setup', { headers: { Cookie: session } })).json();
-    assert.deepEqual(status.mediaServer, { kind: 'plex' });
+    assert.deepEqual(status.mediaServer, { kind: 'plex', ownerName: '' });
+  });
+
+  // Replacing the owner without the current owner's session, letting a non-administrator or a pinned install switch, or leaving
+  // the old sessions valid turns this red.
+  await t.test('the owner switches media server by logging in with the other one, and nobody else can', async () => {
+    const { getSetting, setSetting } = await import(settingsModuleUrl);
+    const { createMediaServer } = await import(mediaServerModuleUrl);
+    const clock = { value: 1_800_000_000_000 };
+    const now = () => clock.value;
+    const combined = (plex, jellyfin) => (input, init) => (
+      new URL(input).hostname.endsWith('plex.tv') ? plex.fetch(input, init) : jellyfin.fetch(input, init)
+    );
+    const jellyfin = createJellyfinFixture();
+    const plex = createPlexFixture({ now, userBody: { id: 7, username: 'seven', restricted: false, anonymous: false } });
+    const { app, database } = await makeApp({ ownerPlexId: undefined, fetch: combined(plex, jellyfin), clock });
+    const post = (path, body, cookie) => app.request(path, {
+      method: 'POST', headers: { ...jsonHeaders(), ...(cookie === undefined ? {} : { Cookie: cookie }) }, body: JSON.stringify(body),
+    });
+    const ownerRow = () => ({ ...database.prepare('SELECT provider, user_id, user_name, server_name, server_id FROM owner').get() });
+    const sessionOf = (cookie) => app.request('/api/session', { headers: { Cookie: cookie } });
+
+    const first = (await signIn(app)).session;
+    setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test:8096');
+    setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test:32400');
+    setSetting(database, 'credentials', 'plex.token', 'plex-token');
+
+    const viewer = await post('/auth/jellyfin/password', { username: 'viewer', password: 'pw' }, first);
+    assert.equal(viewer.status, 403);
+    assert.equal((await viewer.json()).error, 'not_administrator');
+    assert.equal(ownerRow().provider, 'plex');
+    const noSession = await post('/auth/jellyfin/password', { username: 'admin', password: 'pw' });
+    assert.equal(noSession.status, 409);
+    assert.deepEqual(await noSession.json(), { error: 'owner_exists' });
+
+    const quick = await post('/auth/jellyfin/quick-connect', {}, first);
+    assert.equal(quick.status, 201);
+    const binding = cookieValue(quick, '__Host-mm_plex');
+    jellyfin.state.approved = true;
+    const approved = await post('/auth/jellyfin/quick-connect/complete', {}, [binding, first].join('; '));
+    assert.equal(approved.status, 200);
+    const second = cookieValue(approved, '__Host-mm_session');
+    assert.deepEqual(ownerRow(), { provider: 'jellyfin', user_id: 'admin-guid', user_name: 'admin', server_name: 'Home', server_id: 'server-guid' });
+    assert.equal((await sessionOf(first)).status, 401);
+    const onJellyfin = await sessionOf(second);
+    assert.equal(onJellyfin.status, 200);
+    assert.equal((await onJellyfin.json()).mediaServer, 'jellyfin');
+    assert.equal(createMediaServer(database)().name, 'jellyfin');
+    assert.equal(getSetting(database, 'serviceAddresses', 'jellyfin.url'), 'http://jellyfin.test:8096');
+    assert.equal(getSetting(database, 'serviceAddresses', 'plex.url'), 'http://plex.test:32400');
+    assert.equal(getSetting(database, 'credentials', 'plex.token'), 'plex-token');
+
+    const stranger = await startAuthentication(app);
+    const refused = await completeAuthentication(app, stranger.binding, plexStateFromUrl(stranger.json.url).state);
+    assert.equal(refused.status, 403);
+    assert.deepEqual(await refused.json(), { error: 'owner_only' });
+
+    const back = await startAuthentication(app, { cookie: second });
+    const switchedBack = await completeAuthentication(app, back.binding, plexStateFromUrl(back.json.url).state, { cookie: second });
+    assert.equal(switchedBack.status, 200);
+    const third = cookieValue(switchedBack, '__Host-mm_session');
+    assert.deepEqual(ownerRow(), { provider: 'plex', user_id: '7', user_name: 'seven', server_name: null, server_id: null });
+    assert.equal((await sessionOf(second)).status, 401);
+    const onPlex = await sessionOf(third);
+    assert.equal(onPlex.status, 200);
+    assert.equal((await onPlex.json()).mediaServer, 'plex');
+    assert.equal(createMediaServer(database)().name, 'plex');
+
+    // The default Plex fixture signs in as 42, the account PLEX_OWNER_ID pins.
+    const pinned = await makeApp({ fetch: combined(createPlexFixture({ now }), createJellyfinFixture()), clock });
+    const pinnedSession = (await signIn(pinned.app)).session;
+    setSetting(pinned.database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test:8096');
+    const pinnedSwitch = await pinned.app.request('/auth/jellyfin/password', {
+      method: 'POST', headers: { ...jsonHeaders(), Cookie: pinnedSession }, body: JSON.stringify({ username: 'admin', password: 'pw' }),
+    });
+    assert.equal(pinnedSwitch.status, 409);
+    assert.deepEqual(await pinnedSwitch.json(), { error: 'owner_exists' });
+    assert.equal(pinned.database.prepare('SELECT count(*) AS count FROM owner').get().count, 0);
   });
 });
 
@@ -2794,7 +2877,7 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
   setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test/');
   setSetting(database, 'credentials', 'jellyfin.apiKey', key);
   assert.equal(mediaServer().name, 'plex');
-  saveOwner(database, { provider: 'jellyfin', userId: 'jellyfin-admin', userName: 'Alec', serverName: 'Home' });
+  saveOwner(database, { provider: 'jellyfin', userId: 'jellyfin-admin', userName: 'Alec', serverName: 'Home', serverId: null });
   const jellyfin = mediaServer();
   assert.equal(jellyfin.name, 'jellyfin');
 
@@ -2862,7 +2945,7 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   setSetting(database, 'credentials', 'jellyfin.apiKey', 'jellyfin-key');
   // The media server follows the owner's provider, so Jellyfin needs a Jellyfin owner, not just its settings.
   const { saveOwner } = await import(ownerModuleUrl);
-  saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home' });
+  saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home', serverId: null });
 
   let dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' };
   let pilot = { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' };
@@ -3651,16 +3734,16 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   for (const secret of [...secrets, 'test-key']) assert.equal(text.includes(secret), false, secret);
   const { services } = JSON.parse(text);
   // Tracker accounts live with their trackers; listing the old Blutopia, PrivateHD or Beyond-HD sign-ins here turns this red.
-  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist', 'trakt']);
+  assert.deepEqual(services.map((entry) => entry.service), ['sonarr', 'radarr', 'rtorrent', 'plex', 'jellyfin', 'tmdb', 'mdblist', 'trakt']);
   assert.deepEqual(services[0], { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://127.0.0.1:65201' }, credentials: { 'sonarr.apiKey': true } });
   assert.deepEqual(services[2].credentials, { 'rtorrent.username': false, 'rtorrent.password': true });
   assert.deepEqual(services[3].credentials, { 'plex.token': false });
   // Asking for a TMDB address, which is fixed, turns this red.
-  assert.deepEqual(services[4], { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } });
+  assert.deepEqual(services[5], { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } });
   // Asking for an MDBList address, which is fixed, turns this red.
-  assert.deepEqual(services[5], { service: 'mdblist', serviceAddresses: {}, credentials: { 'mdblist.apiKey': false } });
+  assert.deepEqual(services[6], { service: 'mdblist', serviceAddresses: {}, credentials: { 'mdblist.apiKey': false } });
   // Asking for a Trakt address, which is fixed, turns this red.
-  assert.deepEqual(services[6], { service: 'trakt', serviceAddresses: {}, credentials: { 'trakt.clientId': false } });
+  assert.deepEqual(services[7], { service: 'trakt', serviceAddresses: {}, credentials: { 'trakt.clientId': false } });
 
   // Saving a blank credential over the stored one, or accepting a key no service reads, turns this red.
   const before = listSettingKeys(database);
@@ -3697,6 +3780,59 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   const mounted = await makeApp({ api: createApiRoutes(database) });
   const signedIn = await signIn(mounted.app);
   assert.equal((await mounted.app.request('/api/settings', { headers: { Cookie: signedIn.session } })).status, 200);
+});
+
+// Saving a key Jellyfin refused, or letting a Jellyfin owner point the address at another server, turns this red.
+test('the settings screen tests and saves Jellyfin, refuses a key it rejects and keeps a Jellyfin owner on the same server', async () => {
+  const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+  const { getSetting } = await import(settingsModuleUrl);
+  const { createConnectionRoutes } = await import(connectionsModuleUrl);
+  const jellyfin = createJellyfinFixture();
+  const database = new DatabaseSync(':memory:');
+  migrateDatabase(database, applicationMigrations);
+  const { app } = await makeApp({ ownerPlexId: undefined, fetch: jellyfin.fetch, database, api: createConnectionRoutes(database, { fetch: jellyfin.fetch }) });
+  const signedIn = await app.request('/auth/jellyfin/password', {
+    method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ url: 'http://jellyfin.test:8096', username: 'admin', password: 'pw' }),
+  });
+  assert.equal(signedIn.status, 200);
+  const session = cookieValue(signedIn, '__Host-mm_session');
+  const send = (method, path, body) => app.request(path, { method, headers: { ...jsonHeaders(), Cookie: session }, body: JSON.stringify(body) });
+  const check = async (body) => (await send('POST', '/api/settings/test/jellyfin', body)).json();
+
+  const { services } = await (await app.request('/api/settings', { headers: { Cookie: session } })).json();
+  assert.deepEqual(services.find((entry) => entry.service === 'jellyfin'), {
+    service: 'jellyfin', serviceAddresses: { 'jellyfin.url': 'http://jellyfin.test:8096' }, credentials: { 'jellyfin.apiKey': false },
+  });
+  assert.deepEqual(await check({ credentials: { 'jellyfin.apiKey': 'bad-key' } }), { kind: 'rejected' });
+  assert.deepEqual(await check({ credentials: { 'jellyfin.apiKey': 'good-key' } }), { kind: 'ok', version: '10.10.0', serverName: 'Home' });
+  assert.equal((await send('PUT', '/api/settings/credentials/jellyfin.apiKey', { value: 'good-key' })).status, 204);
+  assert.equal(getSetting(database, 'credentials', 'jellyfin.apiKey'), 'good-key');
+
+  assert.deepEqual(await check({ serviceAddresses: { 'jellyfin.url': 'http://den.test:8096' } }), { kind: 'different_server', serverName: 'Den' });
+  const moved = await send('PUT', '/api/settings/serviceAddresses/jellyfin.url', { value: 'http://den.test:8096' });
+  assert.equal(moved.status, 409);
+  assert.deepEqual(await moved.json(), { error: 'different_server' });
+  assert.equal(getSetting(database, 'serviceAddresses', 'jellyfin.url'), 'http://jellyfin.test:8096');
+  assert.equal((await send('PUT', '/api/settings/serviceAddresses/jellyfin.url', { value: 'http://jellyfin.test:8097' })).status, 204);
+
+  // An owner saved before the server Id was stored is held to the server at its saved address; skipping that lets any address in.
+  database.exec('UPDATE owner SET server_id = NULL');
+  const unknown = await send('PUT', '/api/settings/serviceAddresses/jellyfin.url', { value: 'http://den.test:8096' });
+  assert.equal(unknown.status, 409);
+  assert.deepEqual(await unknown.json(), { error: 'different_server' });
+  assert.equal(database.prepare('SELECT server_id FROM owner').get().server_id, 'server-guid');
+
+  const plexDatabase = new DatabaseSync(':memory:');
+  migrateDatabase(plexDatabase, applicationMigrations);
+  const plexClock = { value: 1_800_000_000_000 };
+  const plex = createPlexFixture({ now: () => plexClock.value });
+  const fetch = (input, init) => (new URL(input).hostname.endsWith('plex.tv') ? plex.fetch(input, init) : jellyfin.fetch(input, init));
+  const plexOwned = await makeApp({ ownerPlexId: undefined, fetch, clock: plexClock, database: plexDatabase, api: createConnectionRoutes(plexDatabase, { fetch }) });
+  const plexSession = (await signIn(plexOwned.app)).session;
+  const plexPut = await plexOwned.app.request('/api/settings/serviceAddresses/jellyfin.url', {
+    method: 'PUT', headers: { ...jsonHeaders(), Cookie: plexSession }, body: JSON.stringify({ value: 'http://den.test:8096' }),
+  });
+  assert.equal(plexPut.status, 204);
 });
 
 // Losing a tracker the owner added, letting TRACKER_RULES beat a saved rule, accepting a junk or duplicate host or an invalid
@@ -11692,7 +11828,7 @@ test('the settings screen sends only changed fields and ranks each service state
   // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
-  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const { afterTest, changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
   const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
 
   // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
@@ -11713,6 +11849,12 @@ test('the settings screen sends only changed fields and ranks each service state
     const tmdb = { service: 'tmdb', serviceAddresses: {}, credentials: { 'tmdb.apiKey': false } };
     assert.deepEqual(changes('tmdb', tmdb, { address: 'https://api.themoviedb.org', secrets: { 'tmdb.apiKey': 'new' } }), { credentials: { 'tmdb.apiKey': 'new' } });
     assert.deepEqual(changes('trakt', undefined, { address: '', secrets: {} }), {});
+    // Dropping Jellyfin from the list after Plex, or its address or API key field, turns this red: Settings could not connect it.
+    const names = services.map((info) => info.name);
+    assert.equal(names[names.indexOf('plex') + 1], 'jellyfin');
+    const jellyfin = services.find((info) => info.name === 'jellyfin');
+    assert.equal(jellyfin.addressPlaceholder, 'e.g. http://localhost:8096');
+    assert.deepEqual(jellyfin.credentials.map((credential) => credential.key), ['jellyfin.apiKey']);
   });
 
   // Letting unsaved edits hide a running test or a failure turns this red.
@@ -11728,6 +11870,12 @@ test('the settings screen sends only changed fields and ranks each service state
     ];
     for (const [check, edited, state] of cases) assert.equal(pillFor(sonarr, check, edited).state, state);
     assert.equal(pillFor(sonarr, connected, 0).text, 'Connected · 4.0.10');
+    // Showing the media server not in use as plainly connected turns this red.
+    const jellyfin = services.find((info) => info.name === 'jellyfin');
+    const home = { kind: 'ok', version: '10.10.0', at: 0, ofSaved: true };
+    assert.deepEqual(pillFor(jellyfin, home, 0, false, true), { state: 'connected', text: 'Connected · not in use' });
+    // Storing a different-server answer as Jellyfin's check turns this red: the pills would read failed and the saved server's Last checked would vanish.
+    assert.deepEqual(afterTest(home, { kind: 'different_server', serverName: 'Den' }, 5, false), { check: home, differentServer: 'Den' });
   });
 
   // Drawing a link red while one side has never answered, or grey while a whole side is failing, turns this red.

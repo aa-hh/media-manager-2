@@ -1,8 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { applicationMigrations, migrateDatabase } from './database.js';
+import { effectiveOwner } from './owner.js';
 import { createArr } from './services/arr.js';
 import { type ConnectionStatus, readSetting, type ServiceOptions } from './services/connection.js';
+import { createJellyfin, identify } from './services/jellyfin.js';
 import { createMdblist } from './services/mdblist.js';
 import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
@@ -19,6 +21,7 @@ const serviceKeys = {
   radarr: { serviceAddresses: ['radarr.url'], credentials: ['radarr.apiKey'] },
   rtorrent: { serviceAddresses: ['rtorrent.url'], credentials: ['rtorrent.username', 'rtorrent.password'] },
   plex: { serviceAddresses: ['plex.url'], credentials: ['plex.token'] },
+  jellyfin: { serviceAddresses: ['jellyfin.url'], credentials: ['jellyfin.apiKey'] },
   // TMDB, MDBList and Trakt each have one fixed address, so the owner enters only a key.
   tmdb: { serviceAddresses: [], credentials: ['tmdb.apiKey'] },
   mdblist: { serviceAddresses: [], credentials: ['mdblist.apiKey'] },
@@ -32,6 +35,7 @@ const checks: Record<ServiceName, (database: DatabaseSync, options: ServiceOptio
   radarr: (database, options) => createArr('radarr', database, options).check(),
   rtorrent: (database, options) => createRtorrent(database, options).check(),
   plex: (database, options) => createPlex(database, options).check(),
+  jellyfin: (database, options) => createJellyfin(database, options).check(),
   tmdb: (database, options) => createTmdb(database, options).check(),
   mdblist: (database, options) => createMdblist(database, options).check(),
   trakt: (database, options) => createTrakt(database, options).check(),
@@ -62,8 +66,27 @@ const readFormValues = (body: unknown, service: ServiceName) => {
 };
 
 // Routes for the settings screen; app.ts mounts them behind the sign-in guard, which also checks every PUT and POST's origin.
-export const createConnectionRoutes = (database: DatabaseSync, options: ServiceOptions = {}) => {
+export const createConnectionRoutes = (database: DatabaseSync, options: ServiceOptions & { ownerPlexId?: string } = {}) => {
   const routes = new Hono();
+
+  // A Jellyfin owner belongs to one server, so its address may change only to an address of that same server (same Id).
+  // An owner saved without the Id (before it was stored, or when the server did not answer) gets it from the saved address first.
+  const sameServer = async (url: string): Promise<'ok' | 'unreachable' | { different: string }> => {
+    const owner = effectiveOwner(database, options.ownerPlexId);
+    if (owner?.provider !== 'jellyfin') return 'ok';
+    const fetch = options.fetch ?? globalThis.fetch;
+    let serverId = owner.serverId;
+    if (serverId === null) {
+      const saved = getSetting(database, 'serviceAddresses', 'jellyfin.url');
+      const current = saved === undefined ? undefined : await identify(fetch, saved.replace(/\/+$/, ''));
+      if (current?.kind !== 'ok') return 'unreachable';
+      serverId = current.serverId;
+      database.prepare('UPDATE owner SET server_id = ? WHERE id = 1 AND server_id IS NULL').run(serverId);
+    }
+    const identified = await identify(fetch, url.replace(/\/+$/, ''));
+    if (identified.kind !== 'ok') return 'unreachable';
+    return identified.serverId === serverId ? 'ok' : { different: identified.serverName };
+  };
 
   // A saved credential never leaves the server, not even masked: the browser learns only whether it is set.
   routes.get('/settings', (context) => context.json({
@@ -87,6 +110,11 @@ export const createConnectionRoutes = (database: DatabaseSync, options: ServiceO
     if (!isRecord(body) || Object.keys(body).length !== 1 || typeof body.value !== 'string') {
       return context.json({ error: 'invalid_request' }, 400);
     }
+    if (category === 'serviceAddresses' && key === 'jellyfin.url') {
+      const same = await sameServer(body.value);
+      if (same === 'unreachable') return context.json({ error: 'unreachable' }, 409);
+      if (same !== 'ok') return context.json({ error: 'different_server' }, 409);
+    }
     if (!isBlankCredential(category, body.value)) setSetting(database, category, key, body.value);
     return context.body(null, 204);
   });
@@ -103,6 +131,12 @@ export const createConnectionRoutes = (database: DatabaseSync, options: ServiceO
     }
     const form = readFormValues(body, service);
     if (form === undefined) return context.json({ error: 'invalid_request' }, 400);
+    const jellyfinUrl = service === 'jellyfin' ? form.serviceAddresses?.['jellyfin.url'] : undefined;
+    if (jellyfinUrl !== undefined && jellyfinUrl !== getSetting(database, 'serviceAddresses', 'jellyfin.url')) {
+      const same = await sameServer(jellyfinUrl);
+      if (same === 'unreachable') return context.json({ kind: 'unreachable' });
+      if (same !== 'ok') return context.json({ kind: 'different_server', serverName: same.different });
+    }
     const scratch = new DatabaseSync(':memory:');
     try {
       migrateDatabase(scratch, applicationMigrations);

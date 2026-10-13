@@ -35,7 +35,7 @@ export const browserPost = (path: string, body: object, signal: AbortSignal) => 
   signal,
 });
 
-const readJson = async (response: Response): Promise<Record<string, unknown>> => {
+export const readJson = async (response: Response): Promise<Record<string, unknown>> => {
   try {
     const value: unknown = await response.json();
     return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -45,6 +45,8 @@ const readJson = async (response: Response): Promise<Record<string, unknown>> =>
     return {};
   }
 };
+
+export const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
 const isPlexHandoff = (value: unknown): value is string => {
   if (typeof value !== 'string') return false;
@@ -65,7 +67,7 @@ const isPlexHandoff = (value: unknown): value is string => {
 
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const popupHost: PopupHost = {
+export const popupHost: PopupHost = {
   open: () => window.open('about:blank', POPUP_NAME, POPUP_FEATURES),
   narrow: () => window.matchMedia('(max-width: 639px)').matches,
   assign: (url) => window.location.assign(url),

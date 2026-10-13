@@ -34,10 +34,10 @@ const TOO_MANY_TRIES = 'Too many tries. Wait a minute, then try again.';
 const ONLY_OWNER = 'Only the owner’s Jellyfin account can open this app.';
 
 /** The sentence for a failed Jellyfin login, or 'reload' when an owner now exists. */
-const loginFailure = (status: number, body: Record<string, unknown>, password: boolean): string => {
+const loginFailure = (status: number, body: Record<string, unknown>, password: boolean, stillLine: string): string => {
   if (password && status === 401) return 'Jellyfin refused that username and password.';
   if (status === 403 && body.error === 'not_administrator') {
-    return `You logged in as ${String(body.userName)}, who isn’t an administrator on “${String(body.serverName)}”. Log in with an administrator account. You’re still signed out.`;
+    return `You logged in as ${String(body.userName)}, who isn’t an administrator on “${String(body.serverName)}”. Log in with an administrator account. ${stillLine}`;
   }
   if (status === 403 && body.error === 'owner_only') return ONLY_OWNER;
   if (status === 409) return 'reload';
@@ -76,8 +76,16 @@ function PickRow({ logo, title, line, onClick }: { logo: 'plex' | 'jellyfin'; ti
   );
 }
 
-/** The Quick Connect button and the username-and-password form. With no url the server uses the owner's saved, locked address. */
-function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expiresAt: number) => void }) {
+/**
+ * A Jellyfin log-in, by Quick Connect or by username and password, shared by the dark log-in pages and the media-server switch
+ * dialog in Settings. With no url the server uses the owner's saved, locked address.
+ */
+export function useJellyfinLogin({ url, stillLine = 'You’re still signed out.', onSignedIn }: {
+  url?: string;
+  /** The sentence after a refusal that says nothing changed. */
+  stillLine?: string;
+  onSignedIn: (expiresAt: number) => void;
+}) {
   const [error, setError] = useState<string | undefined>(undefined);
   const [quickConnect, setQuickConnect] = useState<{ code: string; expiresAt: number } | undefined>(undefined);
   const [usePassword, setUsePassword] = useState(false);
@@ -95,10 +103,25 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
     return browserPost(path, payload, controller.signal);
   };
 
-  useEffect(() => () => {
+  const stop = () => {
     controllerRef.current?.abort();
     window.clearTimeout(pollRef.current);
-  }, []);
+    pollRef.current = undefined;
+  };
+
+  useEffect(() => stop, []);
+
+  /** Stops any request or Quick Connect wait and empties the form. */
+  const reset = () => {
+    stop();
+    setError(undefined);
+    setQuickConnect(undefined);
+    setQuickConnectBusy(false);
+    setPasswordBusy(false);
+    setUsePassword(false);
+    setUsername('');
+    setPassword('');
+  };
 
   const showFailure = (message: string) => {
     if (message === 'reload') {
@@ -125,7 +148,7 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
           onSignedIn(answer.expiresAt);
           return;
         }
-        showFailure(loginFailure(response.status, answer, false));
+        showFailure(loginFailure(response.status, answer, false, stillLine));
       } catch (failure) {
         if (isAbort(failure)) return;
         setQuickConnect(undefined);
@@ -153,7 +176,7 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
       if (response.status === 409 && answer.error === 'quick_connect_off') {
         setError('Quick Connect is off on this server. Log in with username and password.');
       } else {
-        showFailure(loginFailure(response.status, answer, false));
+        showFailure(loginFailure(response.status, answer, false, stillLine));
       }
     } catch (failure) {
       if (isAbort(failure)) return;
@@ -177,7 +200,7 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
         onSignedIn(answer.expiresAt);
         return;
       }
-      showFailure(loginFailure(response.status, answer, true));
+      showFailure(loginFailure(response.status, answer, true, stillLine));
     } catch (failure) {
       if (isAbort(failure)) return;
       setPasswordBusy(false);
@@ -185,6 +208,17 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
     }
   };
 
+  return {
+    error, quickConnect, usePassword, setUsePassword, username, setUsername, password, setPassword, quickConnectBusy, passwordBusy,
+    startQuickConnect, passwordLogin, stop, reset,
+  };
+}
+
+/** The Quick Connect button and the username-and-password form on the dark log-in pages. */
+function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expiresAt: number) => void }) {
+  const {
+    error, quickConnect, usePassword, setUsePassword, username, setUsername, password, setPassword, quickConnectBusy, passwordBusy, startQuickConnect, passwordLogin,
+  } = useJellyfinLogin({ url, onSignedIn });
   return (
     <>
       <div className="flex flex-col gap-3">

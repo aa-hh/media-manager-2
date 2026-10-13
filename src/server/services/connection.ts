@@ -5,7 +5,7 @@ import { getSetting } from '../settings.js';
 
 export type ConnectionStatus =
   | { kind: 'not_configured' }
-  | { kind: 'ok'; version: string }
+  | { kind: 'ok'; version: string; serverName?: string }
   | { kind: 'rejected' }
   | { kind: 'unreachable' };
 

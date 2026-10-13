@@ -194,7 +194,7 @@ export const createApiRoutes = (database: DatabaseSync, actions?: ApiActions) =>
     await actions.refresh(service);
     return context.body(null, 204);
   });
-  api.route('/', createConnectionRoutes(database));
+  api.route('/', createConnectionRoutes(database, { ownerPlexId: process.env.PLEX_OWNER_ID }));
   api.route('/', createTrackerRoutes(database, process.env, actions?.trackers));
   if (actions?.health !== undefined) api.route('/health', createHealthRoutes(actions.health));
   if (actions?.flagged !== undefined) api.route('/flagged', createFlaggedRoutes(actions.flagged));
