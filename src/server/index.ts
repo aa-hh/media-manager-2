@@ -1,3 +1,4 @@
+import { mkdirSync, watch } from 'node:fs';
 import type { Server } from 'node:http';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -244,6 +245,16 @@ if (database !== undefined) {
     console.error(`Image sweep failed: ${(error as Error).message}`);
   }
   runner.start();
+  // rTorrent event hooks (docs/operations/rtorrent-hooks.md) touch a file here when a torrent is added, finishes, stops or is removed,
+  // so the full poll runs now instead of within 30 seconds. Without hooks nothing touches it and the schedule is unchanged.
+  try {
+    const hookDirectory = join(dirname(process.env.DB_PATH ?? defaultDatabasePath), 'rtorrent-events');
+    mkdirSync(hookDirectory, { recursive: true });
+    watch(hookDirectory, () => runner.trigger('rtorrent-poll'))
+      .on('error', (error) => console.error(`rTorrent hook watch stopped: ${error.message}`));
+  } catch (error) {
+    console.error(`rTorrent hook watch failed: ${(error as Error).message}`);
+  }
   const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     console.log(`Listening on http://${host}:${info.port}`);
   }) as Server;
