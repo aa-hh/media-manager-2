@@ -6674,6 +6674,25 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     }
   });
 
+  // Sweeping only unfinished rows leaves a problem handed to the owner open forever after its download leaves the queue;
+  // closing it while the other service still lists the download hides a live block.
+  await t.test('a problem handed to the owner resolves once neither queue lists its download', async () => {
+    const run = await setup({ message: 'Something new' });
+    await run.fix.check();
+    const [handed] = listOpenProblems(run.database);
+    assert.equal(handed.state, 'needs_you');
+    run.fake.radarr.state.queue = [{ ...run.queue[0], movieId: 7 }];
+    run.queue.length = 0;
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.id), [handed.id]);
+    run.fake.radarr.state.queue = [];
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
   // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move;
   // matching on anything wider than this download's import problems closes another download's or a stall's.
   await t.test('a block that changes kind before clearing resolves every import problem on the download, and only those', async () => {
