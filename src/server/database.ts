@@ -395,6 +395,8 @@ export const applicationMigrations = [
     owner_id INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
   ) STRICT;`,
+  // When a season search was last sent for each season, so the six-hour repeats alternate season and episode searches.
+  `CREATE TABLE season_search_log (series_id INTEGER NOT NULL, season_number INTEGER NOT NULL, searched_at INTEGER NOT NULL, PRIMARY KEY (series_id, season_number)) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
