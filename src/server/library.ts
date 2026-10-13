@@ -710,9 +710,10 @@ const parseTarget = (body: unknown, extra: 'monitored' | undefined, only?: strin
 
 export const createLibraryRoutes = (library: Library, searchRuns: SearchRuns) => {
   const routes = new Hono();
-  const statusFor = (kind: string) => (kind === 'not_configured' ? 503 : kind === 'not_found' ? 404 : 502);
+  type Refused = { kind: 'refused'; reason: string };
+  const statusFor = (kind: string) => (kind === 'not_configured' ? 503 : kind === 'not_found' ? 404 : kind === 'refused' ? 409 : 502);
   const invalid = { error: 'invalid_request' };
-  const failure = (context: { json: (body: unknown, status: 400 | 404 | 502 | 503) => Response }, result: Failure) => (
+  const failure = (context: { json: (body: unknown, status: 400 | 404 | 409 | 502 | 503) => Response }, result: Failure | Refused) => (
     context.json(result.reason === undefined ? { error: result.kind } : { error: result.kind, reason: result.reason }, statusFor(result.kind))
   );
 
@@ -770,7 +771,7 @@ export const createLibraryRoutes = (library: Library, searchRuns: SearchRuns) =>
     return context.json(await library.calendar(new Date(from).toISOString(), new Date(until).toISOString()));
   });
 
-  const writeRoute = (path: string, withMonitored: boolean, only: string[] | undefined, run: (target: never) => Promise<Result<void>>) => {
+  const writeRoute = (path: string, withMonitored: boolean, only: string[] | undefined, run: (target: never) => Promise<Result<void> | Refused>) => {
     routes.post(path, async (context) => {
       let body: unknown;
       try {
@@ -794,7 +795,10 @@ export const createLibraryRoutes = (library: Library, searchRuns: SearchRuns) =>
     return result;
   });
   writeRoute('/search', false, undefined, async (request: Target) => {
-    const result = fromArr(await searchRuns.start(request, 'search'));
+    const started = await searchRuns.start(request, 'search');
+    // A search with nothing left to send is a conflict, answered with the reason so the page can show it.
+    if (started.kind === 'refused') return { kind: 'refused', reason: started.message };
+    const result = fromArr(started);
     return result.kind === 'ok' ? { kind: 'ok', value: undefined } : result;
   });
   routes.get('/searches', (context) => context.json({ runs: searchRuns.list() }));

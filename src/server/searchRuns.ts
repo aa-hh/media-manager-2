@@ -121,6 +121,36 @@ export const createSearchRuns = (options: {
     }
   };
 
+  // A read after the command ended that throws or answers an error is retried until 10 minutes pass, then throws.
+  const readAfterEnd = async <T>(read: () => Promise<Result<T>>): Promise<T> => {
+    const startedAt = now();
+    for (;;) {
+      try {
+        return valueOrThrow(await read());
+      } catch (error) {
+        if (now() - startedAt >= TIMEOUT_MS) throw error;
+      }
+      await delay(pollMs);
+    }
+  };
+
+  // Adds the grabs history shows above the run's mark, one per download, and answers the episodes they cover.
+  const recordGrabs = async (id: number, row: Row) => {
+    const history = await readAfterEnd(() => readHistory(row.target));
+    const fresh = history.filter((record) => record.eventType === 'grabbed' && record.id !== null && record.id > row.historyMark);
+    const grabbed = [...row.grabbed];
+    const downloads = new Set<string>();
+    for (const record of fresh) {
+      const download = record.downloadId ?? `id:${record.id}`;
+      if (downloads.has(download)) continue;
+      downloads.add(download);
+      grabbed.push({ title: record.sourceTitle ?? '', indexer: record.data.indexer ?? null });
+    }
+    const mark = Math.max(row.historyMark, ...history.map((record) => record.id ?? 0));
+    database.prepare('UPDATE search_runs SET grabbed = ?, history_mark = ? WHERE id = ?').run(JSON.stringify(grabbed), mark, id);
+    return new Set(fresh.flatMap((record) => (record.episodeId === null ? [] : [record.episodeId])));
+  };
+
   const follow = async (id: number) => {
     for (;;) {
       const row = readRow(id);
@@ -128,24 +158,14 @@ export const createSearchRuns = (options: {
       const { target } = row;
       const failure = await waitForEnd(target.service, row.commandId);
       if (failure !== null) {
+        // A failed or timed-out search may still have grabbed; a history read that fails here leaves the failure as it is.
+        await recordGrabs(id, row).catch(() => undefined);
         fail(id, failure);
         return;
       }
-      const history = valueOrThrow(await readHistory(target));
-      const fresh = history.filter((record) => record.eventType === 'grabbed' && record.id !== null && record.id > row.historyMark);
-      const grabbed = [...row.grabbed];
-      const downloads = new Set<string>();
-      for (const record of fresh) {
-        const download = record.downloadId ?? `id:${record.id}`;
-        if (downloads.has(download)) continue;
-        downloads.add(download);
-        grabbed.push({ title: record.sourceTitle ?? '', indexer: record.data.indexer ?? null });
-      }
-      const grabbedEpisodes = new Set(fresh.flatMap((record) => (record.episodeId === null ? [] : [record.episodeId])));
-      const mark = Math.max(row.historyMark, ...history.map((record) => record.id ?? 0));
-      database.prepare('UPDATE search_runs SET grabbed = ?, history_mark = ? WHERE id = ?').run(JSON.stringify(grabbed), mark, id);
+      const grabbedEpisodes = await recordGrabs(id, row);
       if (row.phase === 'season' && target.service === 'sonarr' && (target.kind === 'series' || target.kind === 'season')) {
-        const episodes = valueOrThrow(await readEpisodes(target));
+        const episodes = await readAfterEnd(() => readEpisodes(target));
         const at = now();
         const remaining = episodes
           .filter((episode) => wanted(episode, at) && !grabbedEpisodes.has(episode.id) && !heldBack(episode.id))

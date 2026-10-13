@@ -6601,6 +6601,38 @@ test('automatic searches are followed to their end, fall back from a season pack
     database.close();
   });
 
+  // Marking a run failed at the 10-minute ceiling without first reading the grabs from history turns this red.
+  await t.test('a run that reaches the 10-minute ceiling still records its grabs', async () => {
+    const { database, fake, arr, settled, isManualDownload } = setup();
+    let clock = Date.parse('2026-10-08T20:00:00Z');
+    const runs = createSearchRuns({ database, arr, now: () => clock, pollMs: 1, isManualDownload });
+    fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+    fake.sonarr.state.commandStatuses[1] = 'started';
+    const started = await runs.start(season, 'search');
+    for (const id of [11, 12, 13]) fake.sonarr.state.history.push(grab(id));
+    clock += 10 * 60_000;
+    const done = await settled(started.value);
+    assert.equal(done.state, 'failed');
+    assert.match(done.message, /did not finish the search in 10 minutes/);
+    assert.deepEqual(done.grabbed, [{ title: 'Show.S01.1080p-GRP', indexer: 'Blutopia' }]);
+    database.close();
+  });
+
+  // Marking a run failed on a failed command without first reading the grabs from history turns this red.
+  await t.test('a command that fails after a grab still records the grab', async () => {
+    const { database, fake, runs, settled } = setup();
+    fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+    fake.sonarr.state.commandStatuses[1] = 'started';
+    const started = await runs.start(season, 'search');
+    fake.sonarr.state.history.push(grab(11, { downloadId: 'E01', sourceTitle: 'Show.S01E01.1080p-GRP' }));
+    fake.sonarr.state.commandStatuses[1] = 'failed';
+    const done = await settled(started.value);
+    assert.equal(done.state, 'failed');
+    assert.match(done.message, /failed/);
+    assert.deepEqual(done.grabbed, [{ title: 'Show.S01E01.1080p-GRP', indexer: 'Blutopia' }]);
+    database.close();
+  });
+
   // Marking a command Sonarr no longer knows (404) as failed, instead of reading its outcome from history, turns this red.
   await t.test('a command Sonarr has forgotten ends the run through the history diff', async () => {
     const { database, fake, runs, settled } = setup();
@@ -6754,6 +6786,47 @@ test('automatic searches are followed to their end, fall back from a season pack
       assert.ok(polls >= 2);
       database.close();
     }
+  });
+
+  // Failing the run on one history read that answers an error after the command ended turns this red.
+  await t.test('a history read that fails once after the command ends is retried', async () => {
+    const { database, fake, runs, settled } = setup();
+    fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+    fake.sonarr.state.commandStatuses[1] = 'started';
+    const started = await runs.start(season, 'search');
+    for (const id of [11, 12, 13]) fake.sonarr.state.history.push(grab(id));
+    let reads = 0;
+    fake.sonarr.routes.push((method, url) => {
+      if (url.pathname !== '/api/v3/history/series') return undefined;
+      reads += 1;
+      return reads === 1 ? { status: 500, body: { message: 'Database is locked' } } : undefined;
+    });
+    fake.sonarr.state.commandStatuses[1] = 'completed';
+    const done = await settled(started.value);
+    assert.deepEqual([done.state, done.message, done.grabbed], ['finished', null, [{ title: 'Show.S01.1080p-GRP', indexer: 'Blutopia' }]]);
+    assert.ok(reads >= 2);
+    database.close();
+  });
+
+  // Failing the run on one episodes read that answers an error before the episode fallback turns this red.
+  await t.test('an episodes read that fails once before the fallback is retried', async () => {
+    const { database, fake, runs, settled } = setup();
+    fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+    fake.sonarr.state.commandStatuses[1] = 'started';
+    const started = await runs.start(season, 'search');
+    let reads = 0;
+    fake.sonarr.routes.push((method, url) => {
+      if (url.pathname !== '/api/v3/episode') return undefined;
+      reads += 1;
+      return reads === 1 ? { status: 500, body: { message: 'Database is locked' } } : undefined;
+    });
+    fake.sonarr.state.commandStatuses[1] = 'completed';
+    const done = await settled(started.value);
+    assert.deepEqual([done.state, done.phase], ['finished', 'episodes']);
+    assert.deepEqual(fake.sonarr.state.commands, [
+      { name: 'SeasonSearch', seriesId: 1, seasonNumber: 1 }, { name: 'EpisodeSearch', episodeIds: [11, 12, 13] },
+    ]);
+    database.close();
   });
 
   // Keeping run state in memory, or skipping running rows at startup, turns this red.
@@ -10356,6 +10429,19 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
       await new Promise((resolve) => setTimeout(resolve, 5)); // real-time-ok: the follow-up polls Sonarr on real timers, so this waits for it with a ceiling.
     }
     assert.deepEqual(searchRuns.list().map((run) => run.state), ['finished', 'finished', 'finished']);
+  });
+
+  // Answering a season whose every missing episode is held back as a 502 instead of a 409 carrying the refusal turns this red.
+  await t.test('a search of a season whose every missing episode is held back answers 409 with the reason', async () => {
+    fake.sonarr.state.episodes.push({ id: 33, seriesId: 3, seasonNumber: 2, episodeNumber: 1, title: 'Held', hasFile: false, monitored: true, airDateUtc: '2025-05-13T00:00:00Z' });
+    database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?)').run('sonarr:episode:33', 1);
+    const response = await post('/search', { service: 'sonarr', kind: 'season', seriesId: 3, seasonNumber: 2 });
+    fake.sonarr.state.episodes.pop();
+    database.prepare('DELETE FROM search_backlog').run();
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      error: 'refused', reason: 'Sonarr already has a download, a hand-picked release or a backlog entry for every missing episode of this season.',
+    });
   });
 
   await t.test('calendar emits one movie entry per release date in range and refuses long windows', async () => {
