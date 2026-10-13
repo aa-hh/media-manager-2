@@ -1570,7 +1570,6 @@ test('background job runner', async (t) => {
     assert.throws(() => runner.register('b', 1000, () => {}), { message: 'Register jobs before start.' });
   });
 
-  // Not recording a finished run's time or failure, or never marking a job late after three silent intervals, turns this red.
   // Dropping a trigger that lands mid-run, or running once per trigger instead of once for all of them, turns this red.
   await t.test('a trigger runs the job now, and triggers during a run add exactly one more run', async () => {
     const { runner } = setup();
@@ -1595,6 +1594,7 @@ test('background job runner', async (t) => {
     assert.equal(runs, 2);
   });
 
+  // Not recording a finished run's time or failure, or never marking a job late after three silent intervals, turns this red.
   await t.test('status reports each job\'s last run, its failure and lateness', async (t) => {
     t.mock.method(console, 'error', () => {});
     const clock = { value: 0 };
