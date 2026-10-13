@@ -292,7 +292,8 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   return (
     <>
       <HeaderTitle
-        className="-mx-(--page-margin) w-auto"
+        // Starts under the see-through app bar, so the backdrop runs up behind it.
+        className="-mx-(--page-margin) -mt-(--topbar) w-auto pt-[calc(var(--topbar)+100px)]"
         compact={compact}
         actionsRight
         title={detail.title}

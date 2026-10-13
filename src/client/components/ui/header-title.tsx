@@ -26,7 +26,7 @@ type HeaderTitleProps = {
   more?: ReactNode;
   /** Up to four Fact elements. */
   facts?: ReactNode;
-  /** Title page overview band layout: the backdrop fills the header, poster and title block sit at the bottom, and the actions sit at the right, bottom-aligned. Overview and facts are not shown. */
+  /** Title page overview band layout: the backdrop fills the header and runs past its foot, poster and title block sit at the bottom, and the actions sit at the right, bottom-aligned. Overview and facts are not shown. */
   actionsRight?: boolean;
   /** The page has scrolled: one 72 px strip with a poster thumb, breadcrumb over a 20/700 title, and the same actions. */
   compact?: boolean;
@@ -72,16 +72,19 @@ function Poster({ url, className }: { url?: string; className: string }) {
 
 /**
  * The band behind the hero. A heavily blurred copy of the poster fills it at once, from the poster the browser already
- * has, and the backdrop settles in over it, so the band never jumps from white to a photo. tall: the owned layout,
- * where the band covers the whole header; otherwise it is 220 px. The loading title page draws the same band.
+ * has, and the backdrop settles in over it, so the band never jumps from white to a photo. tall: the title page layout,
+ * where the band covers the whole header and runs 15 % of its height further down, behind what follows; otherwise it
+ * is 220 px. tall sits at -z-10, so the page's main must isolate it. The loading title page draws the same band.
  */
 function HeaderBackdrop({ posterUrl, backdropUrl, tall, className }: { posterUrl?: string; backdropUrl?: string; tall: boolean; className?: string }) {
   if (posterUrl === undefined && backdropUrl === undefined) return null;
   return (
-    <div aria-hidden="true" className={cn('absolute top-0 overflow-hidden', tall ? 'bottom-0' : 'h-55', className)}>
+    <div aria-hidden="true" className={cn('absolute top-0 overflow-hidden', tall ? '-bottom-[15%] -z-10' : 'h-55', className)}>
       {posterUrl !== undefined && <img src={posterUrl} alt="" decoding="async" className="absolute inset-0 size-full scale-125 object-cover opacity-70 blur-3xl saturate-150" />}
       {backdropUrl !== undefined && <FadeImage key={backdropUrl} src={backdropUrl} settle className="absolute inset-0 size-full" />}
-      <div className={cn('relative size-full bg-linear-to-b', tall ? 'from-background/20 via-background/70 via-45% to-background' : 'from-transparent via-background/55 via-55% to-background')} />
+      <div className={cn('relative size-full', !tall && 'bg-linear-to-b', tall
+          ? 'bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--color-background)_50%,transparent),color-mix(in_oklab,var(--color-background)_85%,transparent)_50%,color-mix(in_oklab,var(--color-background)_97%,transparent)_80%,var(--color-background))]'
+          : 'from-transparent via-background/55 via-55% to-background')} />
     </div>
   );
 }
@@ -128,11 +131,11 @@ function HeaderTitle({
   }
 
   return (
-    <header className={cn('relative flex w-full flex-col overflow-hidden bg-background px-10', actionsRight ? 'pt-10 pb-8' : 'pt-25 pb-6', className)}>
+    <header className={cn('relative flex w-full flex-col px-10 pt-25', actionsRight ? 'pb-8' : 'overflow-hidden bg-background pb-6', className)}>
       <HeaderBackdrop posterUrl={posterUrl} backdropUrl={backdropUrl} tall={actionsRight} className="inset-x-0" />
       <div className={cn('relative flex w-full gap-8', actionsRight && 'items-end')}>
         {/* title-poster: a poster card opening this page morphs into it (globals.css). */}
-        <Poster url={posterUrl} className="title-poster h-66 w-44 rounded-md" />
+        <Poster url={posterUrl} className="title-poster h-82.5 w-55 rounded-md" />
         <div className="flex min-w-0 flex-1 flex-col gap-3 pt-15">
           {breadcrumb}
           <div className="flex min-w-0 items-center gap-2.5">
