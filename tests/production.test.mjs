@@ -2561,8 +2561,9 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
 
 // Matching items by full path (Radarr and Jellyfin see different mounts), merging before both items exist, not narrowing
 // episodes by season, counting an outage or a 503 as a try, retrying a rejected request forever, retrying a merged row or
-// past MERGE_TRIES, not merging again after a rename of the tracked file, merging again after a same-path upgrade, or giving
-// Plex installs a merge step turns this red.
+// past MERGE_TRIES, not merging again after a rename of the tracked file, merging again after a same-path upgrade, asking
+// Radarr or Sonarr about merged rows more than once an hour, fetching a series' episodes once per row, or giving Plex
+// installs a merge step turns this red.
 test('an imported second version is merged with the tracked file in Jellyfin once both are scanned', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -2594,35 +2595,48 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   setSetting(database, 'credentials', 'jellyfin.apiKey', 'jellyfin-key');
 
   let dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' };
+  const arrCalls = [];
   const arr = {
-    radarr: { movie: async (id) => ({ kind: 'ok', value: { file: id === 1 ? dune : { id: 20, path: '/radarr/movies/Gone (2001)/Gone (2001) Bluray-1080p.mkv' } } }) },
+    radarr: { movie: async (id) => {
+      arrCalls.push(`radarr ${id}`);
+      return { kind: 'ok', value: { file: id === 1 ? dune : { id: 20, path: '/radarr/movies/Gone (2001)/Gone (2001) Bluray-1080p.mkv' } } };
+    } },
     sonarr: {
       episodes: async (seriesId, options) => {
         assert.deepEqual([seriesId, options], [5, { withFiles: true }]);
-        return { kind: 'ok', value: [{ id: 7, seasonNumber: 1, file: { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' } }] };
+        arrCalls.push(`sonarr ${seriesId}`);
+        return { kind: 'ok', value: [
+          { id: 7, seasonNumber: 1, file: { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' } },
+          { id: 8, seasonNumber: 1, file: { id: 31, path: '/sonarr/tv/Show/Season 01/Show - S01E02 - Bluray-1080p.mkv' } },
+        ] };
       },
     },
   };
+  let clock = 1_800_000_000_000;
+  const now = () => clock;
+  const hour = 60 * 60 * 1000;
   const insert = database.prepare(`INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, file_path, merge_tries, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'release', 'guid', 'indexer', 'Bluray-2160p', 'HASH', 'imported', ?, ?, 0, 0)`);
   const movieRow = insert.run('radarr', 1, null, null, '/media/versions/movies/Dune (2024)/Dune (2024) - Bluray-2160p GRP.mkv', 0).lastInsertRowid;
   const episodeRow = insert.run('sonarr', null, 5, 7, '/media/versions/tv/Show/Season 01/Show - S01E01 - Bluray-2160p GRP.mkv', 0).lastInsertRowid;
   const lastTryRow = insert.run('radarr', 2, null, null, '/media/versions/movies/Gone (2001)/Gone (2001) - Bluray-2160p GRP.mkv', MERGE_TRIES - 1).lastInsertRowid;
+  // A second episode of the same series, merged long ago.
+  insert.run('sonarr', null, 5, 8, '/media/versions/tv/Show/Season 01/Show - S01E02 - Bluray-2160p GRP.mkv', MERGE_TRIES);
   const tries = (id) => Number(database.prepare('SELECT merge_tries FROM second_versions WHERE id = ?').get(id).merge_tries);
   const problems = createProblems({ database, events: createEventHub() });
-  const versionImport = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer, problems });
+  const versionImport = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer, problems, now });
 
   // An outage spends no try.
   const reachable = fetch;
   let down = true;
   const outageFetch = async (url, init) => (down ? Promise.reject(new TypeError('fetch failed')) : reachable(url, init));
-  const outage = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer: createMediaServer(database, { fetch: outageFetch }), problems });
+  const outage = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer: createMediaServer(database, { fetch: outageFetch }), problems, now });
   await outage.run();
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [0, 0, MERGE_TRIES - 1]);
   down = false;
 
   // Radarr down spends no try on the movies; Sonarr answered, so the episode spends one.
-  const radarrDown = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr: { ...arr, radarr: { movie: async () => ({ kind: 'unreachable' }) } }, mediaServer, problems });
+  const radarrDown = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr: { ...arr, radarr: { movie: async () => ({ kind: 'unreachable' }) } }, mediaServer, problems, now });
   await radarrDown.run();
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [0, 1, MERGE_TRIES - 1]);
 
@@ -2655,13 +2669,20 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
     [['POST', ['m-old', 'm-new']], ['POST', ['e-old', 'e-new']]]);
   assert.deepEqual([tries(movieRow), tries(episodeRow)], [MERGE_TRIES, MERGE_TRIES]);
 
+  // Merged rows are not asked about again within the hour; an hour on, all are checked, with one episodes request per series.
   calls.length = 0;
+  arrCalls.length = 0;
+  clock += hour - 1;
   await versionImport.run();
-  assert.deepEqual(calls, []);
+  assert.deepEqual([calls, arrCalls], [[], []]);
+  clock += 1;
+  await versionImport.run();
+  assert.deepEqual([calls, arrCalls], [[], ['radarr 1', 'sonarr 5', 'radarr 2']]);
 
   // Radarr renames the tracked file: the merge splits in Jellyfin, so the version is merged again with the new item.
   dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' };
   items = [...items.filter((item) => item.Id !== 'm-old'), { Id: 'm-renamed', Path: '/data/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' }];
+  clock += hour;
   await versionImport.run();
   assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['m-renamed', 'm-new']]);
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [MERGE_TRIES, MERGE_TRIES, MERGE_TRIES]);
@@ -2669,7 +2690,10 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   // An upgrade under the same path keeps the Jellyfin item and its merge (slot test, 13 Oct 2026), so nothing is sent.
   calls.length = 0;
   dune = { id: 11, path: dune.path };
+  clock += hour;
+  arrCalls.length = 0;
   await versionImport.run();
+  assert.equal(arrCalls.includes('radarr 1'), true);
   assert.deepEqual(calls, []);
   assert.equal(tries(movieRow), MERGE_TRIES);
 });
