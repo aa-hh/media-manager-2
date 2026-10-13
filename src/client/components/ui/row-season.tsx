@@ -32,7 +32,7 @@ type RowSeasonProps = Omit<TableRowProps, 'progress'> & {
 /** Season header row that opens its episodes; the chevron turns 90 degrees as it opens. */
 function RowSeason({ open = false, bookmark, title, progress, progressTone, count, status, size, actions, monitored = true, summary, line = 'season', className, ...props }: RowSeasonProps) {
   return (
-    <TableRow aria-expanded={open} line={line} className={cn('h-12', className)} {...props}>
+    <TableRow aria-expanded={open} line={line} className={cn('h-12 bg-accent', className)} {...props}>
       <TableCell className={w.chevron}>
         <ChevronRight
           aria-hidden="true"

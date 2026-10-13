@@ -22,7 +22,7 @@ type HeaderTitleProps = {
   primary?: ReactNode;
   /** Large outline Button. */
   secondary?: ReactNode;
-  /** 48 px ghost icon Button that opens the DropdownMenu. */
+  /** 44 px ghost icon Button that opens the DropdownMenu. */
   more?: ReactNode;
   /** Up to four Fact elements. */
   facts?: ReactNode;

@@ -36,6 +36,8 @@ type RowSecondVersionProps = Omit<TableRowProps, 'progress'> & {
   labelIcon?: ReactNode;
   /** Spinner before the badge words, while sending or importing. */
   labelSpinner?: boolean;
+  /** How far the live badge's download circle is filled, 0 to 100. */
+  labelPercent?: number;
   quality: ReactNode;
   release: ReactNode;
   /** Second line under the release name, such as HDR, audio, languages and custom formats; the row grows to fit. */
@@ -48,12 +50,12 @@ type RowSecondVersionProps = Omit<TableRowProps, 'progress'> & {
   actions?: ReactNode;
 };
 
-function RowSecondVersion({ indent = true, tracked = false, label, labelVariant, labelIcon, labelSpinner, quality, release, detail, size, tracker, seeding, actions, className, ...props }: RowSecondVersionProps) {
+function RowSecondVersion({ indent = true, tracked = false, label, labelVariant, labelIcon, labelSpinner, labelPercent, quality, release, detail, size, tracker, seeding, actions, className, ...props }: RowSecondVersionProps) {
   return (
-    <TableRow className={cn(detail !== undefined && 'h-auto min-h-(--row) py-2', className)} {...props}>
+    <TableRow className={cn('after:right-0 after:left-0', detail !== undefined && 'h-auto min-h-(--row) py-2', className)} {...props}>
       {indent && <TableCell className={w.indent} />}
       <TableCell className={w.label}>
-        <Badge variant={tracked ? 'outline' : labelVariant ?? 'neutral'} icon={labelIcon} spinner={labelSpinner} className={cn(tracked && 'bg-card text-foreground')}>
+        <Badge variant={tracked ? 'outline' : labelVariant ?? 'neutral'} icon={labelIcon} spinner={labelSpinner} percent={labelPercent} className={cn(tracked && 'bg-card text-foreground')}>
           {label ?? (tracked ? 'Tracked version' : 'Second version')}
         </Badge>
       </TableCell>

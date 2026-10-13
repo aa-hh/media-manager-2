@@ -16,7 +16,7 @@ function CollapsibleContent({ className, children, ...props }: ComponentProps<ty
       )}
       {...props}
     >
-      <div className={cn('flex w-full flex-col gap-4 pt-0 pr-3 pb-4 pl-9', className)}>{children}</div>
+      <div className={cn('flex w-full flex-col gap-3 pt-0 pr-3 pb-4 pl-9', className)}>{children}</div>
     </CollapsiblePrimitive.Panel>
   );
 }

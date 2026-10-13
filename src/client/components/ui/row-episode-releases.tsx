@@ -44,7 +44,7 @@ function RowEpisodeReleases({ variant, notices, filter, header, pinned, children
       role="rowgroup"
       className={cn(
         'relative w-full bg-card after:absolute after:right-4 after:bottom-0 after:h-px after:bg-input',
-        variant === 'episode' ? '[--inset:152px] after:left-24' : '[--inset:16px] after:left-4',
+        variant === 'episode' ? '[--inset:152px] after:left-38' : '[--inset:16px] after:left-4',
         className,
       )}
     >

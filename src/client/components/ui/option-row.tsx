@@ -24,7 +24,7 @@ function OptionRow({ control, title, description, kbd, bordered = false, classNa
         'not-has-data-disabled:hover:bg-surface-hover not-has-data-disabled:active:bg-surface-pressed',
         'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring',
         '[&>[data-control]>*]:focus-visible:outline-none',
-        bordered && 'rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]',
+        bordered && 'rounded-md border border-border bg-card px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]',
         className,
       )}
       {...props}

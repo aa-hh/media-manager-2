@@ -159,7 +159,7 @@ export function SeriesOverview({ detail: loaded, protectedIds, downloads, progre
     <>
       <Badge variant="strong">In library · {statistics.episodeFileCount} of {plural(statistics.episodeCount, 'episode')}</Badge>
       {downloading.length > 0 && (
-        <Badge variant="live">
+        <Badge variant="live" percent={live?.percent ?? undefined}>
           {downloading.length === 1 ? `Downloading ${code(downloading[0])}${live?.percent == null ? '' : ` ${live.percent}%`}` : `Downloading ${plural(downloading.length, 'episode')}`}
         </Badge>
       )}

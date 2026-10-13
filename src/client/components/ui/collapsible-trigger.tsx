@@ -1,4 +1,5 @@
 // v2/Collapsible trigger — ~/Projects/media-manager-2-design/design-system.lib.pen c5J2uH
+// v2/Collapsible trigger/open — ~/Projects/media-manager-2-design/design-system.lib.pen T1mOH (the open state: chevron down, summary hidden)
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
@@ -27,7 +28,7 @@ function CollapsibleTrigger({ summary, badge, className, children, ...props }: C
         className="size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-base) ease-out group-data-panel-open:rotate-90 group-data-disabled:text-faint-foreground"
       />
       <span className="shrink-0 font-ui text-sm font-semibold text-foreground group-data-disabled:text-faint-foreground">{children}</span>
-      <span className="min-w-0 flex-1 truncate font-data text-sm text-muted-foreground group-data-disabled:text-faint-foreground">{summary}</span>
+      <span className="min-w-0 flex-1 truncate font-data text-sm text-muted-foreground group-data-disabled:text-faint-foreground group-data-panel-open:invisible">{summary}</span>
       {badge}
     </CollapsiblePrimitive.Trigger>
   );

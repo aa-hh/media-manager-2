@@ -1,4 +1,5 @@
 // v2/Row/service — ~/Projects/media-manager-2-design/design-system.lib.pen okfXn
+// v2/Row/service/subtle — ~/Projects/media-manager-2-design/design-system.lib.pen VsAvG (an address such as "No address yet" passed in subtle-foreground)
 import type { ComponentProps, ReactNode } from 'react';
 import { Logo, type LogoName } from '@/components/ui/logo';
 import { StatusServicePill, type ServiceState } from '@/components/ui/status-service-pill';
@@ -22,7 +23,7 @@ function RowService({ logo, name, address, state, stateText, selected = false, c
       type="button"
       aria-current={selected || undefined}
       className={cn(
-        'relative flex h-14 w-full items-center gap-3 rounded-(--control-radius-row) px-4 text-left',
+        'relative flex h-14 w-full items-center gap-3 rounded-sm px-4 text-left',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         selected ? 'bg-selected' : 'hover:bg-surface-hover active:bg-surface-pressed',
         className,

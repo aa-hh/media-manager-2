@@ -395,17 +395,18 @@ export function AddControls({ subject, onAdded, onUnauthenticated }: {
           {sentence(load.options, choices, fact).map((line, lineIndex) => (
             <p
               key={lineIndex === 2 ? `search-${searchChange}` : lineIndex}
-              className={cn('flex flex-wrap items-center gap-x-2 gap-y-2 font-ui text-[22px] text-foreground', lineIndex === 2 && searchChange > 0 && 'animate-content-in')}
+              className={cn('flex flex-wrap items-center gap-x-2 gap-y-2 font-ui text-[22px] leading-[1.3] text-foreground', lineIndex === 2 && searchChange > 0 && 'animate-content-in')}
             >
               {line.map((part, index) => (typeof part === 'string' ? <span key={`text-${index}`}>{part}</span> : part))}
             </p>
           ))}
         </div>
         {seasonsMissing && <p className="font-ui text-sm text-warning">Choose at least one season to add this show.</p>}
-        <Collapsible open={more} onOpenChange={setMore}>
-          <CollapsibleTrigger className="px-0">More options</CollapsibleTrigger>
+        {/* v2/Block/add-controls — ~/Projects/media-manager-2-design/design-system.lib.pen RJNba: 28 from the sentence box, a 32-high trigger, rows 48 high with 180 labels. */}
+        <Collapsible open={more} onOpenChange={setMore} className="mt-5">
+          <CollapsibleTrigger className="h-8 px-0">More options</CollapsibleTrigger>
           <CollapsiblePrimitive.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-size) ease-out data-ending-style:h-0 data-ending-style:duration-(--duration-fast) data-ending-style:ease-in data-starting-style:h-0 motion-reduce:transition-none">
-            <dl className="flex flex-col pt-2">
+            <dl className="flex flex-col pb-2 pl-6 [&_dt]:w-45 [&>div]:h-12">
               <FactRow label="Root folder">
                 <FixedWidthSelect
                   label="Root folder"

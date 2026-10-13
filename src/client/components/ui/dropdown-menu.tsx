@@ -54,7 +54,7 @@ const DropdownMenuSubmenu = Menu.SubmenuRoot;
 
 type DropdownMenuContentProps = ComponentProps<typeof Menu.Popup> & Pick<ComponentProps<typeof Menu.Positioner>, 'side' | 'align' | 'sideOffset'>;
 
-/** The floating list: 248 px, radius 10, 4 px padding, line edge and the float shadow. */
+/** The floating list: 248 px, radius 12, 4 px padding, line edge and the float shadow. */
 function DropdownMenuContent({ side = 'bottom', align = 'start', sideOffset = 4, className, ...props }: DropdownMenuContentProps) {
   return (
     <Menu.Portal>
@@ -98,9 +98,9 @@ function DropdownMenuSubmenuTrigger({ icon, kbd, className, children, ...props }
   );
 }
 
-/** Small capital heading over a group of rows; place inside DropdownMenuGroup. */
+/** Small heading over a group of rows; place inside DropdownMenuGroup. */
 function DropdownMenuGroupLabel({ className, ...props }: ComponentProps<typeof Menu.GroupLabel>) {
-  return <Menu.GroupLabel className={cn('font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase', className)} {...props} />;
+  return <Menu.GroupLabel className={cn('font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground', className)} {...props} />;
 }
 
 /** 1 px line with 4 px above and below. */
