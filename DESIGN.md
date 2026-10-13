@@ -218,9 +218,10 @@ Every component lives in `~/Projects/media-manager-2-design/design-system.lib.pe
 
 ### Control sizes
 
-Three sizes, set with the `control-*` tokens. Buttons, inputs, selects and toggle groups match, and so does the plain badge at row height.
+Four sizes, set with the `control-*` tokens. Buttons, inputs, selects and toggle groups match, and so does the plain badge at row height.
 
 - **Row** 28px (`control-h-row`, padding 10, text 13, radius 6, icon 14): only inside table rows and dense lists.
+- **Small** 30px (`control-h-sm`, otherwise the default tokens): controls in a filter bar beside a toggle group, so they line up with its 30px segments. `v2/Select trigger/sm` and `v2/Button/sm`.
 - **Default** 36px (`control-h-default`, padding 16, text 14, radius 12, icon 16): everywhere else.
 - **Large** 44px (`control-h-large`, padding 18, text 14, radius 12, icon 18): the one main action on a page or panel, such as the title header actions, the grab confirmation (Replace or Second version) and Settings Connect.
 
@@ -231,7 +232,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 - **v2/Button:** primary (glow-blue `action`, shadcn `default`), outline (white, 1.5px `foreground` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron), plex. Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
 - **v2/Badge**, 20px (`badge-h`, padding `badge-px` 6, text `badge-text` 11, icon `badge-icon` 12): neutral (`muted`), strong (black, "In library"), lime (`best`, black text: best release, "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). Release tables add `v2/Mark/comparison` (best is the only lime pill), `v2/Cell/profile-fit` (fit in words) and `v2/Mark/pending-change` (old value, arrow, new value on amber while a change waits). Plain is the look for a standing status beside a row button, such as In library on a search result: no fill and no padding, a 14px `foreground` check and `muted-foreground` words, built from the row tokens (`control-h-row`, `control-text-row`, `control-icon-row`) so it lines up with the button. A filled badge never takes button height, or it reads as a button.
 - **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 36px, radius 12, white with an edge. Phone: 44px, full width.
-- **Select trigger:** 36px, radius 12, an optional grey lead label before the value, chevron; the open list is a dropdown menu.
+- **Select trigger:** 36px, radius 12, an optional grey lead label before the value, chevron; the open list is a dropdown menu. `v2/Select trigger/sm` is the same at 30px for filter bars.
 - **Toggle group:** up to six segments, 30px each inside a 36px `muted` track with 3px padding; white selected segment with a 1px edge and black 600 label, no shadow. **Tabs:** active label black 600 with a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
 - **Option rows:** `v2/Option row` (`option-row.tsx`) is a radio or checkbox with a title and a line of explanation, radius 12, no edge; the choice shows in the control, never as a tint. `v2/Option row/bordered` (the `bordered` prop) is the same row as a card with its own edge, for a short set of standalone choices in a grid: site software, backup destination, Plex token, the setup wizard's optional parts. Radius 12, padding 14 16, 1px `border` edge; on, the edge turns 2px `foreground`, the second pixel an inset shadow so nothing moves. `v2/Card/choice` is the larger radio card for decisions in a panel or dialog.
 
