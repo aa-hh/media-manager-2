@@ -1,12 +1,20 @@
-// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold); jellyfin and jellyfin-black have no library component z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
+// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold); iZPoX (Jellyfin) QZ1XQ (Jellyfin black) sVuiW (Jellyfin white) P9MlT s3gTgb E4joG (Jellyfin solid black, white, monochrome) b1EpMi mwYig (Jellyfin wordmark light, dark) nO7lC (Plex wordmark) J4Ci8U (Plex app icon) z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
 import type { ComponentProps } from 'react';
 import beyondHd from '@/assets/logos/beyondhd-logo.png';
 import blutopia from '@/assets/logos/blutopia-logo.svg';
+import jellyfinWordmarkDark from '@/assets/logos/jellyfin-banner-dark.svg';
+import jellyfinWordmarkLight from '@/assets/logos/jellyfin-banner-light.svg';
 import jellyfinBlack from '@/assets/logos/jellyfin-icon-black.svg';
+import jellyfinSolidBlack from '@/assets/logos/jellyfin-icon-solid-black.svg';
+import jellyfinSolidMonochrome from '@/assets/logos/jellyfin-icon-solid-monochrome.svg';
+import jellyfinSolidWhite from '@/assets/logos/jellyfin-icon-solid-white.svg';
+import jellyfinWhite from '@/assets/logos/jellyfin-icon-white.svg';
 import jellyfin from '@/assets/logos/jellyfin-icon.svg';
 import mdblist from '@/assets/logos/mdblist-logo.png';
+import plexAppIcon from '@/assets/logos/plex-app-icon.png';
 import plexGold from '@/assets/logos/plex-icon-gold.svg';
 import plex from '@/assets/logos/plex-icon.svg';
+import plexWordmark from '@/assets/logos/plex-logo.svg';
 import privateHd from '@/assets/logos/privatehd-logo.png';
 import radarr from '@/assets/logos/radarr-logo.svg';
 import rtorrent from '@/assets/logos/rutorrent-logo.png';
@@ -15,7 +23,7 @@ import tmdb from '@/assets/logos/tmdb-logo.svg';
 import trakt from '@/assets/logos/trakt-logo.svg';
 import { cn } from '@/lib/utils';
 
-type LogoName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'plex-gold' | 'jellyfin' | 'jellyfin-black' | 'blutopia' | 'privatehd' | 'beyond-hd' | 'tmdb' | 'mdblist' | 'trakt';
+type LogoName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'plex-gold' | 'plex-wordmark' | 'plex-app-icon' | 'jellyfin' | 'jellyfin-black' | 'jellyfin-white' | 'jellyfin-solid-black' | 'jellyfin-solid-white' | 'jellyfin-solid-monochrome' | 'jellyfin-wordmark-light' | 'jellyfin-wordmark-dark' | 'blutopia' | 'privatehd' | 'beyond-hd' | 'tmdb' | 'mdblist' | 'trakt';
 
 const logos: Record<LogoName, { src: string; alt: string }> = {
   sonarr: { src: sonarr, alt: 'Sonarr' },
@@ -23,8 +31,16 @@ const logos: Record<LogoName, { src: string; alt: string }> = {
   rtorrent: { src: rtorrent, alt: 'rTorrent' },
   plex: { src: plex, alt: 'Plex' },
   'plex-gold': { src: plexGold, alt: 'Plex' },
+  'plex-wordmark': { src: plexWordmark, alt: 'Plex' },
+  'plex-app-icon': { src: plexAppIcon, alt: 'Plex' },
   jellyfin: { src: jellyfin, alt: 'Jellyfin' },
   'jellyfin-black': { src: jellyfinBlack, alt: 'Jellyfin' },
+  'jellyfin-white': { src: jellyfinWhite, alt: 'Jellyfin' },
+  'jellyfin-solid-black': { src: jellyfinSolidBlack, alt: 'Jellyfin' },
+  'jellyfin-solid-white': { src: jellyfinSolidWhite, alt: 'Jellyfin' },
+  'jellyfin-solid-monochrome': { src: jellyfinSolidMonochrome, alt: 'Jellyfin' },
+  'jellyfin-wordmark-light': { src: jellyfinWordmarkLight, alt: 'Jellyfin' },
+  'jellyfin-wordmark-dark': { src: jellyfinWordmarkDark, alt: 'Jellyfin' },
   blutopia: { src: blutopia, alt: 'Blutopia' },
   privatehd: { src: privateHd, alt: 'PrivateHD' },
   'beyond-hd': { src: beyondHd, alt: 'Beyond-HD' },
