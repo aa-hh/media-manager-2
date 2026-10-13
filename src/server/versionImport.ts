@@ -35,6 +35,8 @@ export const FOLDER_PROBLEM_KIND = 'second_version_folder';
 const RETRYABLE_CODES = new Set(['EACCES', 'EPERM', 'ENOENT', 'EROFS']);
 class FolderError extends Error {}
 
+// Jellyfin scans after a delay and confirms nothing, so a merge is retried on later runs (30 seconds apart) up to this many times.
+export const MERGE_TRIES = 20;
 const VIDEO_EXTENSIONS = new Set(['.mkv', '.mp4', '.avi', '.m2ts', '.ts']);
 // Plex or Jellyfin files a name ending in one of these after a separator as an extra, never as a version.
 const EXTRAS_WORDS = ['behindthescenes', 'deleted', 'featurette', 'interview', 'scene', 'short', 'trailer', 'other', 'sample', 'clip', 'extra', 'deletedscene'];
@@ -339,6 +341,40 @@ export const createVersionImport = (options: {
     hash: String(row.hash),
   }));
 
+  // Jellyfin groups versions only within one folder, so each imported version is merged with the tracked file by hand.
+  // A try counts only when every service answered, so an outage spends none; a version Jellyfin never finds stops being tried.
+  const mergeVersions = async () => {
+    const server = mediaServer();
+    if (server.mergeVersions === undefined) return;
+    const pending = database.prepare("SELECT id, service, movie_id, series_id, episode_id, file_path, merge_tries FROM second_versions WHERE state = 'imported' AND merge_tries < ? ORDER BY id")
+      .all(MERGE_TRIES);
+    for (const row of pending) {
+      let outcome: 'merged' | 'missing' | 'outage' = 'missing';
+      try {
+        let tracked: string | null | undefined;
+        let season: number | undefined;
+        if (row.service === 'radarr') {
+          const movie = await arr.radarr.movie(Number(row.movie_id));
+          if (movie.kind !== 'ok' && movie.kind !== 'not_found') outcome = 'outage';
+          tracked = movie.kind === 'ok' ? movie.value.file?.path : undefined;
+        } else {
+          const episodes = await arr.sonarr.episodes(Number(row.series_id), { withFiles: true });
+          if (episodes.kind !== 'ok' && episodes.kind !== 'not_found') outcome = 'outage';
+          const episode = episodes.kind === 'ok' ? episodes.value.find((item) => item.id === Number(row.episode_id)) : undefined;
+          tracked = episode?.file?.path;
+          season = episode?.seasonNumber;
+        }
+        if (typeof tracked === 'string' && await server.mergeVersions(row.service === 'radarr' ? 'movie' : 'show', tracked, String(row.file_path), season)) {
+          outcome = 'merged';
+        }
+      } catch {
+        outcome = 'outage';
+      }
+      if (outcome === 'outage') continue;
+      database.prepare('UPDATE second_versions SET merge_tries = ? WHERE id = ?').run(outcome === 'merged' ? MERGE_TRIES : Number(row.merge_tries) + 1, row.id);
+    }
+  };
+
   const run = async () => {
     const torrents = listTorrents(database);
     const complete = new Set(torrents.filter((torrent) => torrent.goneAt === null && torrent.complete).map((torrent) => torrent.hash));
@@ -379,6 +415,7 @@ export const createVersionImport = (options: {
         resolveOpen(FOLDER_PROBLEM_KIND, folderSubject(service), `An import run for hostPaths versions.${service} hit no folder error.`);
       }
     }
+    await mergeVersions();
   };
 
   return { run, scan };

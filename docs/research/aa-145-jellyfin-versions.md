@@ -76,7 +76,7 @@ Without `userId`, both merged items still list, each with both sources. Jellyfin
 
 ## Open points
 
-- Whether a merge survives the tracked file being renamed or replaced by Radarr or Sonarr (the item ID changes) was not tested. The app would likely need to merge again after each import or upgrade.
+- A merge does not survive the tracked file being renamed or replaced: tested 2026-10-13 for [AA-150](https://linear.app/aa-hh/issue/AA-150) (Merge imported second versions into one title in Jellyfin). After either, a rescan shows two titles again; merging the new tracked item again fixes it.
 - With metadata on, whether Jellyfin still shows two series for a show folder in both the library and versions folders was not tested. Metadata was off.
 - Which Jellyfin item IDs to pass to `MergeVersions` needs a path lookup (`GET /Items?Recursive=true&Fields=Path` filtered by path), since Jellyfin does not take paths.
 - Episode grouping by name on 12.2 was read from source, not tested; the slot runs 10.11.11. Even on 12.2 it only groups within one folder, so the versions folder still needs the merge call.

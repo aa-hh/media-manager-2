@@ -2559,6 +2559,89 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
     ['Add /media/versions/movies to the Jellyfin Movies library.']);
 });
 
+// Matching items by full path (Radarr and Jellyfin see different mounts), merging before both items exist, not narrowing
+// episodes by season, counting an outage as a try, retrying a merged row or past MERGE_TRIES, or giving Plex installs a
+// merge step turns this red.
+test('an imported second version is merged with the tracked file in Jellyfin once both are scanned', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createMediaServer } = await import(mediaServerModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createVersionImport, MERGE_TRIES } = await import(versionImportModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-jellyfin-merge-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const calls = [];
+  let items = [];
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    calls.push({ path: parsed.pathname, query: parsed.searchParams, method: init.method ?? 'GET' });
+    if (parsed.pathname === '/Items') return new Response(JSON.stringify({ Items: items }), { status: 200 });
+    return new Response(null, { status: 204 });
+  };
+  const mediaServer = createMediaServer(database, { fetch });
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  assert.equal(mediaServer().mergeVersions, undefined);
+  setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test');
+  setSetting(database, 'credentials', 'jellyfin.apiKey', 'jellyfin-key');
+
+  const arr = {
+    radarr: { movie: async () => ({ kind: 'ok', value: { file: { path: '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' } } }) },
+    sonarr: {
+      episodes: async (seriesId, options) => {
+        assert.deepEqual([seriesId, options], [5, { withFiles: true }]);
+        return { kind: 'ok', value: [{ id: 7, seasonNumber: 1, file: { path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' } }] };
+      },
+    },
+  };
+  const insert = database.prepare(`INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, file_path, merge_tries, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'release', 'guid', 'indexer', 'Bluray-2160p', 'HASH', 'imported', ?, ?, 0, 0)`);
+  const movieRow = insert.run('radarr', 1, null, null, '/media/versions/movies/Dune (2024)/Dune (2024) - Bluray-2160p GRP.mkv', 0).lastInsertRowid;
+  const episodeRow = insert.run('sonarr', null, 5, 7, '/media/versions/tv/Show/Season 01/Show - S01E01 - Bluray-2160p GRP.mkv', 0).lastInsertRowid;
+  const lastTryRow = insert.run('radarr', 2, null, null, '/media/versions/movies/Gone (2001)/Gone (2001) - Bluray-2160p GRP.mkv', MERGE_TRIES - 1).lastInsertRowid;
+  const tries = (id) => Number(database.prepare('SELECT merge_tries FROM second_versions WHERE id = ?').get(id).merge_tries);
+  const problems = createProblems({ database, events: createEventHub() });
+  const versionImport = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer, problems });
+
+  // An outage spends no try.
+  const reachable = fetch;
+  let down = true;
+  const outageFetch = async (url, init) => (down ? Promise.reject(new TypeError('fetch failed')) : reachable(url, init));
+  const outage = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer: createMediaServer(database, { fetch: outageFetch }), problems });
+  await outage.run();
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [0, 0, MERGE_TRIES - 1]);
+  down = false;
+
+  // Jellyfin has not scanned yet: nothing to merge, one try spent each.
+  await versionImport.run();
+  assert.equal(calls.some((call) => call.path === '/Videos/MergeVersions'), false);
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [1, 1, MERGE_TRIES]);
+
+  items = [
+    { Id: 'm-old', Path: '/data/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' },
+    { Id: 'm-new', Path: '/media/versions/movies/Dune (2024)/Dune (2024) - Bluray-2160p GRP.mkv' },
+    { Id: 'e-old', Path: '/data/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' },
+    { Id: 'e-new', Path: '/media/versions/tv/Show/Season 01/Show - S01E01 - Bluray-2160p GRP.mkv' },
+  ];
+  calls.length = 0;
+  await versionImport.run();
+  const lists = calls.filter((call) => call.path === '/Items');
+  assert.deepEqual(lists.map((call) => [call.query.get('IncludeItemTypes'), call.query.get('ParentIndexNumber'), call.query.get('Fields')]),
+    [['Movie', null, 'Path'], ['Episode', '1', 'Path']]);
+  assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => [call.method, call.query.getAll('ids')]),
+    [['POST', ['m-old', 'm-new']], ['POST', ['e-old', 'e-new']]]);
+  assert.deepEqual([tries(movieRow), tries(episodeRow)], [MERGE_TRIES, MERGE_TRIES]);
+
+  calls.length = 0;
+  await versionImport.run();
+  assert.deepEqual(calls, []);
+});
+
 test('the TMDB client sends the key only to TMDB, parses partial replies and caches lists', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
