@@ -73,11 +73,14 @@ type DeleteChoices = {
   mode: Mode;
   excludeFromImportLists: boolean;     // true only with mode 'remove'
   blocklistCurrent: boolean;           // true only with mode 'searchAgain'
-  keepFollowing: Record<string, boolean>; // one entry per plan.monitoring.airingSeasons, keyed by season number; {} otherwise
+  keepFollowing: Record<string, boolean>; // one entry per plan.monitoring.airingSeasons, keyed by season number; {} otherwise.
+                                          // Required for a selection kept unmonitored (400 with a reason if one is missing);
+                                          // the season route treats a missing answer as "stop following", as it always did.
   queue: Array<{ downloadId: string; action: 'leave' | 'remove' | 'removeWithTorrent' }>;
   removeTorrents: string[];            // unchanged
   secondVersions: Array<{ id: number; removeTorrent: boolean }>; // unchanged
-  // selection target only: the same seasons and episodeIds the plan was read with
+  // selection target only, and required there: the same seasons and episodeIds the plan was read with.
+  // A selection has no default mode, so it always sends mode. An episode sharing a file with a chosen one is deleted with it.
   seasons?: number[];
   episodeIds?: number[];
 };
