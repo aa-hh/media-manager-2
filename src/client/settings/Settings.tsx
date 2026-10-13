@@ -72,7 +72,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
     try {
       const response = await fetch('/api/cache/clear', { method: 'POST', credentials: 'same-origin', headers: writeHeaders, body: '{}' });
       if (response.status === 401) unauthorizedRef.current();
-      else toasts.add(response.ok ? { title: 'Cache cleared', description: 'Pages fetch details and pictures again as you open them. Posters come back within a minute.' } : failed);
+      else toasts.add(response.ok ? { title: 'Cache cleared', description: 'Pages fetch details and pictures again as you open them. Posters return within a few minutes; reload a page to see them.' } : failed);
     } catch {
       toasts.add(failed);
     } finally {
