@@ -216,17 +216,13 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
             { label: load.kind === 'preview-tv' ? 'New seasons' : 'Available when', value: 'Chosen when adding' },
             { label: 'Quality profile', value: 'Chosen when adding' },
           ]}
-          add={(
-            <div className="flex flex-col gap-4">
-              {load.kind === 'preview-tv' && <PreviewSeasons detail={load.detail} />}
-              <AddControls
-                result={load.kind === 'preview-tv'
-                  ? { type: 'tv', tvdbId: load.detail.links.tvdbId, tmdbId: load.detail.links.tmdbId }
-                  : { type: 'movie', tvdbId: null, tmdbId: load.detail.links.tmdbId }}
-                onAdded={onAdded}
-                onUnauthenticated={onUnauthenticated}
-              />
-            </div>
+          add={load.kind === 'preview-tv' ? <PreviewSeasons detail={load.detail} /> : undefined}
+          addAction={(
+            <AddControls
+              subject={load.kind === 'preview-tv' ? { type: 'tv', detail: load.detail } : { type: 'movie', detail: load.detail }}
+              onAdded={onAdded}
+              onUnauthenticated={onUnauthenticated}
+            />
           )}
           onUnauthenticated={onUnauthenticated}
         />

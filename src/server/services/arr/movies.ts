@@ -24,6 +24,7 @@ export type Movie = {
   runtime: number | null;
   studio: string | null;
   collection: string | null;
+  collectionTmdbId: number | null;
   path: string | null;
   tags: number[];
   imdbId: string | null;
@@ -91,6 +92,7 @@ export const parseMovie = (value: unknown): Movie | null => {
     runtime: finiteNumber(value.runtime),
     studio: text(value.studio),
     collection: isRecord(value.collection) ? text(value.collection.title) : null,
+    collectionTmdbId: isRecord(value.collection) ? positiveInteger(value.collection.tmdbId) : null,
     path: text(value.path),
     tags: idList(value.tags),
     imdbId: text(value.imdbId),

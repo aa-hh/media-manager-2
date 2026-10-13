@@ -10,7 +10,7 @@ const MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 const MAX_CAST = 10;
 const MAX_SIMILAR = 20;
 
-type Tmdb = Pick<ReturnType<typeof createTmdb>, 'details'>;
+type Tmdb = Pick<ReturnType<typeof createTmdb>, 'details' | 'tvAiring' | 'collection'>;
 
 export type SimilarTitle = {
   tmdbId: number;
@@ -92,6 +92,16 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
       if (found.kind !== 'ok') return found;
       return { kind: 'ok', value: typeof found.value.tvdbId === 'number' ? found.value.tvdbId : null };
     },
+
+    async airing(tmdbId: number): Promise<{ seasons: Array<{ seasonNumber: number; aired: number }> | null; nextAirDate: string | null }> {
+      const result = await tmdb.tvAiring(tmdbId);
+      return result.kind === 'ok' ? result.value : { seasons: null, nextAirDate: null };
+    },
+
+    async collectionSize(collectionTmdbId: number): Promise<{ collection: { films: number; allReleased: boolean } | null }> {
+      const result = await tmdb.collection(collectionTmdbId);
+      return { collection: result.kind === 'ok' ? result.value : null };
+    },
   };
 };
 
@@ -100,10 +110,21 @@ export type TmdbTitles = ReturnType<typeof createTmdbTitles>;
 // TMDB being unset or down leaves the sections empty with a 200, so the Sonarr or Radarr page is unaffected.
 export const createTmdbTitleRoutes = (titles: TmdbTitles) => {
   const routes = new Hono();
+  const idOf = (raw: string) => (/^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null);
+  // Registered before the generic route below, which would otherwise match these paths.
+  routes.get('/tmdb/tv/:tmdbId/airing', async (context) => {
+    const tmdbId = idOf(context.req.param('tmdbId'));
+    if (tmdbId === null) return context.json({ error: 'invalid_request' }, 400);
+    return context.json(await titles.airing(tmdbId));
+  });
+  routes.get('/tmdb/collection/:collectionTmdbId', async (context) => {
+    const collectionTmdbId = idOf(context.req.param('collectionTmdbId'));
+    if (collectionTmdbId === null) return context.json({ error: 'invalid_request' }, 400);
+    return context.json(await titles.collectionSize(collectionTmdbId));
+  });
   routes.get('/tmdb/:type/:tmdbId', async (context) => {
     const type = context.req.param('type');
-    const raw = context.req.param('tmdbId');
-    const tmdbId = /^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null;
+    const tmdbId = idOf(context.req.param('tmdbId'));
     if ((type !== 'movie' && type !== 'tv') || tmdbId === null) return context.json({ error: 'invalid_request' }, 400);
     return context.json(await titles.title(type, tmdbId));
   });

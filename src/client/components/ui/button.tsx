@@ -23,13 +23,13 @@ type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
 };
 
 const variants: Record<ButtonVariant, string> = {
-  default: 'bg-action text-action-foreground not-data-disabled:hover:bg-action-hover not-data-disabled:active:bg-action-pressed',
-  outline: 'border border-input bg-card text-foreground not-data-disabled:hover:bg-surface-hover not-data-disabled:active:bg-surface-pressed data-disabled:border-border',
-  ghost: 'bg-transparent text-foreground not-data-disabled:hover:bg-surface-hover not-data-disabled:active:bg-surface-pressed data-disabled:bg-transparent',
-  destructive: 'bg-destructive text-primary-foreground not-data-disabled:hover:bg-destructive-hover not-data-disabled:active:bg-destructive-pressed',
-  'outline-destructive': 'border border-destructive bg-card text-destructive not-data-disabled:hover:bg-destructive-soft not-data-disabled:active:bg-destructive/20 data-disabled:border-border',
-  menu: 'border border-input bg-card text-foreground not-data-disabled:hover:bg-surface-hover not-data-disabled:active:bg-surface-pressed data-disabled:border-border',
-  plex: 'bg-plex text-plex-foreground not-data-disabled:hover:bg-plex-hover not-data-disabled:active:bg-plex-pressed aria-busy:opacity-[0.78]',
+  default: 'text-action-foreground before:bg-action not-data-disabled:hover:before:bg-action-hover not-data-disabled:active:before:bg-action-pressed',
+  outline: 'text-foreground before:border before:border-input before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
+  ghost: 'text-foreground before:bg-transparent not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:bg-transparent',
+  destructive: 'text-primary-foreground before:bg-destructive not-data-disabled:hover:before:bg-destructive-hover not-data-disabled:active:before:bg-destructive-pressed',
+  'outline-destructive': 'text-destructive before:border before:border-destructive before:bg-card not-data-disabled:hover:before:bg-destructive-soft not-data-disabled:active:before:bg-destructive/20 data-disabled:before:border-border',
+  menu: 'text-foreground before:border before:border-input before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
+  plex: 'text-plex-foreground before:bg-plex not-data-disabled:hover:before:bg-plex-hover not-data-disabled:active:before:bg-plex-pressed aria-busy:opacity-[0.78]',
 };
 
 const icons: Record<ButtonSize, string> = {
@@ -39,9 +39,9 @@ const icons: Record<ButtonSize, string> = {
 };
 
 const sizes: Record<ButtonSize, string> = {
-  row: 'h-(--control-h-row) gap-1.5 rounded-(--control-radius-row) px-(--control-px-row) text-(length:--control-text-row)',
-  default: 'h-(--control-h-default) gap-2 rounded-(--control-radius-default) px-(--control-px-default) text-(length:--control-text-default)',
-  large: 'h-(--control-h-large) gap-2 rounded-(--control-radius-large) px-(--control-px-large) text-(length:--control-text-large)',
+  row: 'h-(--control-h-row) gap-1.5 rounded-(--control-radius-row) not-data-disabled:hover:before:rounded-(--control-radius-row-hover) px-(--control-px-row) text-(length:--control-text-row)',
+  default: 'h-(--control-h-default) gap-2 rounded-(--button-radius) not-data-disabled:hover:before:rounded-(--button-radius-hover) px-(--control-px-default) text-(length:--control-text-default)',
+  large: 'h-(--control-h-large) gap-2 rounded-(--button-radius) not-data-disabled:hover:before:rounded-(--button-radius-hover) px-(--control-px-large) text-(length:--control-text-large)',
 };
 
 const squares: Record<ButtonSize, string> = {
@@ -72,9 +72,13 @@ function Button({
       // A loading submit button cancels its click, which also stops Enter's implicit form submission.
       onClick={loading ? (event) => event.preventDefault() : onClick}
       className={cn(
-        'group relative inline-flex shrink-0 items-center justify-center font-ui font-semibold whitespace-nowrap',
+        'group relative isolate inline-flex shrink-0 items-center justify-center font-ui font-semibold whitespace-nowrap',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
-        'data-disabled:cursor-not-allowed data-disabled:bg-muted data-disabled:text-faint-foreground',
+        // The fill and edge live on ::before so hover can grow them 2px each side without moving neighbours.
+        'before:absolute before:inset-0 before:-z-10 before:rounded-[inherit]',
+        'before:transition-[inset,border-radius,background-color,border-color] before:duration-(--duration-fast) before:ease-out active:before:duration-0 motion-reduce:before:transition-none',
+        'not-data-disabled:hover:before:-inset-0.5 not-data-disabled:hover:focus-visible:outline-offset-4',
+        'data-disabled:cursor-not-allowed data-disabled:before:bg-muted data-disabled:text-faint-foreground',
         sizes[size],
         icons[size],
         variants[variant],

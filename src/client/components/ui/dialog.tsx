@@ -24,16 +24,18 @@ type DialogProps = {
    * at the top and bottom edge, with 16px above and below and 20px between sections. Always drawn, not only while overflowing.
    */
   scrollEdges?: boolean;
-  /** Right-aligned buttons: an outline Cancel, then the large main action. */
+  /** Right-aligned buttons: an outline or ghost Cancel, then the large main action. */
   actions: ReactNode;
   closeLabel?: string;
+  /** dialog-add: 800px, 36px padding, 36px title; no key hints. */
+  wide?: boolean;
 };
 
 /**
  * Centred confirmation over the scrim for rare, destructive or lossy actions.
  * Scrim and dialog fade in and the dialog scales from --motion-scale-dialog to 1 (duration-base, ease-out); the reverse at duration-fast, ease-in.
  */
-function Dialog({ open, onOpenChange, title, subject, children, callout, footerCallout, scrollEdges = false, actions, closeLabel = 'Close' }: DialogProps) {
+function Dialog({ open, onOpenChange, title, subject, children, callout, footerCallout, scrollEdges = false, actions, closeLabel = 'Close', wide = false }: DialogProps) {
   const motion = 'duration-(--duration-base) ease-out data-ending-style:duration-(--duration-fast) data-ending-style:ease-in';
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(next) => onOpenChange(next)}>
@@ -44,7 +46,8 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
         />
         <DialogPrimitive.Popup
           className={cn(
-            'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-5rem)] w-140 max-w-[calc(100vw-2rem)] -translate-1/2 flex-col rounded-lg border border-border bg-card p-6 outline-hidden',
+            'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-5rem)] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col rounded-lg border border-border bg-card outline-hidden',
+            wide ? 'w-200 p-9' : 'w-140 p-6',
             'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]',
             'transition-[opacity,scale]',
             'data-starting-style:scale-(--motion-scale-dialog) data-starting-style:opacity-0',
@@ -53,9 +56,13 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
           )}
         >
           <div className="flex w-full items-start gap-4">
-            <DialogPrimitive.Title className="min-w-0 flex-1 font-ui text-lg font-bold [overflow-wrap:anywhere] text-foreground">{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Title
+              className={cn('min-w-0 flex-1 font-ui [overflow-wrap:anywhere] text-foreground', wide ? 'text-4xl font-normal tracking-[-0.6px]' : 'text-lg font-bold')}
+            >
+              {title}
+            </DialogPrimitive.Title>
             <DialogPrimitive.Close
-              render={<Button variant="ghost" icon={<X />} kbd="Esc" aria-label={closeLabel} data-cancel="" className="px-2.5 [&>svg]:text-muted-foreground" />}
+              render={<Button variant="ghost" icon={<X />} kbd={wide ? undefined : 'Esc'} aria-label={closeLabel} data-cancel="" className="px-2.5 [&>svg]:text-muted-foreground" />}
             />
           </div>
           {scrollEdges && subject !== undefined && (

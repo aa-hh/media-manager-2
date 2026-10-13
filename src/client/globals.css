@@ -97,12 +97,17 @@
   --bar-muted-foreground: #b5b5ae;
   --scrim: #1111114d;
   --shadow: #1111111f;
+  --inline-control: #f1f4f8;
+  --inline-control-hover: #e8edf4;
+  --inline-control-border: #7889a3;
+  --inline-control-border-hover: #66778f;
+  --inline-control-foreground: #334766;
 
   /* Radius */
   --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
+  --radius-sm: 12px;
+  --radius-md: 12px;
+  --radius-lg: 12px;
   --radius-full: 999px;
   --radius: 10px;
   --radius-xl: 14px;
@@ -140,8 +145,11 @@
   --control-text-default: 14px;
   --control-text-large: 14px;
   --control-radius-row: 6px;
-  --control-radius-default: 8px;
-  --control-radius-large: 10px;
+  --control-radius-row-hover: 8px;
+  --control-radius-default: 12px;
+  --control-radius-large: 12px;
+  --button-radius: 12px;
+  --button-radius-hover: 14px;
   --control-icon-row: 14px;
   --control-icon-default: 16px;
   --control-icon-large: 18px;
@@ -257,6 +265,17 @@
   animation: content-in var(--duration-base) var(--ease-out) both;
 }
 
+/* The add dialog's count pill flashes its hover fill when the owner changes what is monitored. */
+@keyframes pill-flash {
+  from {
+    background-color: var(--inline-control-hover);
+  }
+}
+
+@utility animate-pill-flash {
+  animation: pill-flash var(--duration-base) var(--ease-out) both;
+}
+
 /* The skeleton under arriving content leaves on the matching ease-in, so the pair never dips below full cover. */
 @keyframes content-out {
   to {
@@ -319,6 +338,11 @@
   --color-bar-muted-foreground: var(--bar-muted-foreground);
   --color-scrim: var(--scrim);
   --color-shadow: var(--shadow);
+  --color-inline-control: var(--inline-control);
+  --color-inline-control-hover: var(--inline-control-hover);
+  --color-inline-control-border: var(--inline-control-border);
+  --color-inline-control-border-hover: var(--inline-control-border-hover);
+  --color-inline-control-foreground: var(--inline-control-foreground);
 
   --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);

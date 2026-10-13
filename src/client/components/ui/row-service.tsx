@@ -22,7 +22,7 @@ function RowService({ logo, name, address, state, stateText, selected = false, c
       type="button"
       aria-current={selected || undefined}
       className={cn(
-        'relative flex h-14 w-full items-center gap-3 rounded-sm px-4 text-left',
+        'relative flex h-14 w-full items-center gap-3 rounded-(--control-radius-row) px-4 text-left',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         selected ? 'bg-selected' : 'hover:bg-surface-hover active:bg-surface-pressed',
         className,

@@ -105,18 +105,23 @@ export const readGridState = (search: string): GridState => {
 };
 
 const STATE_KEY = 'mm2.discover.filters';
+const REMEMBERED_KEY = 'mm2.discover.lastFilters';
 const SERVICES_KEY = 'mm2.discover.services';
 
 // The saved filters are the same text the page address carries, read back through readState, so a bad value falls to a default.
+// They are kept for the tab session in sessionStorage; the last non-empty set is also kept in localStorage.
 const stateText = (state: HomeState) => {
   const params = filterParams(state, state.type);
   if (state.window === 30) params.set('window', '30');
   return params.toString();
 };
 
+const hasFilters = (filters: Filters) =>
+  filters.genres.length > 0 || filters.providers.length > 0 || filters.yearFrom !== null || filters.yearTo !== null || filters.minRating !== null;
+
 export const readStoredState = (): HomeState | undefined => {
   try {
-    const value = window.localStorage.getItem(STATE_KEY);
+    const value = window.sessionStorage.getItem(STATE_KEY);
     if (value !== null) return readState(value);
   } catch { /* storage unavailable or unreadable: start from the defaults */ }
   return undefined;
@@ -124,8 +129,33 @@ export const readStoredState = (): HomeState | undefined => {
 
 export const writeStoredState = (state: HomeState) => {
   try {
-    window.localStorage.setItem(STATE_KEY, stateText(state));
+    window.sessionStorage.setItem(STATE_KEY, stateText(state));
+    if (hasFilters(state)) window.localStorage.setItem(REMEMBERED_KEY, stateText(state));
   } catch { /* the choice just won't persist */ }
+};
+
+export const readRememberedState = (): HomeState | undefined => {
+  try {
+    const value = window.localStorage.getItem(REMEMBERED_KEY);
+    if (value !== null) {
+      const state = readState(value);
+      if (hasFilters(state)) return state;
+    }
+  } catch { /* storage unavailable or unreadable: nothing remembered */ }
+  return undefined;
+};
+
+export const clearSessionState = () => {
+  try {
+    window.sessionStorage.removeItem(STATE_KEY);
+  } catch { /* nothing to clear */ }
+};
+
+export const withoutFilters = (search: string) => {
+  const params = new URLSearchParams(search);
+  for (const key of ['type', 'genres', 'providers', 'yearFrom', 'yearTo', 'minRating', 'window']) params.delete(key);
+  const text = params.toString();
+  return text === '' ? '' : `?${text}`;
 };
 
 export const readServices = (): number[] => {
