@@ -1,5 +1,7 @@
 // v2/Option row — ~/Projects/media-manager-2-design/design-system.lib.pen qq4VX
 // v2/Option row/bordered — ~/Projects/media-manager-2-design/design-system.lib.pen zDrOf (the `bordered` prop)
+// v2/Option row/bordered/service — ~/Projects/media-manager-2-design/design-system.lib.pen UhcoW (OptionRowService)
+import { ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';
@@ -24,7 +26,7 @@ function OptionRow({ control, title, description, kbd, bordered = false, classNa
         'not-has-data-disabled:hover:bg-surface-hover not-has-data-disabled:active:bg-surface-pressed',
         'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring',
         '[&>[data-control]>*]:focus-visible:outline-none',
-        bordered && 'rounded-md border border-border px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]',
+        bordered && 'rounded-md border border-border bg-card px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]',
         className,
       )}
       {...props}
@@ -41,4 +43,33 @@ function OptionRow({ control, title, description, kbd, bordered = false, classNa
   );
 }
 
-export { OptionRow };
+type OptionRowServiceProps = ComponentProps<'button'> & {
+  /** The service's 32 px logo, such as <Logo name="plex" alt="" className="size-8" />. */
+  logo: ReactNode;
+  title: ReactNode;
+  description?: ReactNode;
+};
+
+/** Pick a media server on the dark sign-in ground: a bordered row with the service's logo and a chevron. It opens the next step; it records no choice. */
+function OptionRowService({ logo, title, description, type = 'button', className, ...props }: OptionRowServiceProps) {
+  return (
+    <button
+      type={type}
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-md border border-white/12 bg-card-on-dark px-4 py-3.5 text-left',
+        'transition-colors duration-(--duration-fast) ease-out hover:border-input-on-dark focus-ring-on-dark',
+        className,
+      )}
+      {...props}
+    >
+      <span className="flex size-8 shrink-0 items-center justify-center">{logo}</span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="font-ui text-sm font-semibold text-foreground-on-dark">{title}</span>
+        {description !== undefined && <span className="font-ui text-[13px] leading-[1.4] text-muted-foreground-on-dark">{description}</span>}
+      </span>
+      <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground-on-dark" />
+    </button>
+  );
+}
+
+export { OptionRow, OptionRowService };

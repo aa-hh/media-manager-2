@@ -26,17 +26,17 @@ type RowEpisodeDetailsProps = ComponentProps<'div'> & {
 };
 
 /**
- * The open detail band under an episode row: muted, line under, content from the Title column (detail-indent).
+ * The open detail band under an episode row: white, line under, content from the Title column (detail-indent).
  * Overview and still and Details, then the versions table full width and white, then History. A section shows only
  * when its content is given.
  */
-function RowEpisodeDetails({ selected = true, overview, stillUrl, details, versions, versionsEmpty, history, historyCount, historyEmpty, className, ...props }: RowEpisodeDetailsProps) {
+function RowEpisodeDetails({ selected = false, overview, stillUrl, details, versions, versionsEmpty, history, historyCount, historyEmpty, className, ...props }: RowEpisodeDetailsProps) {
   const half = Math.ceil((details?.length ?? 0) / 2);
   const hasDetails = details !== undefined && details.length > 0;
   const hasHistory = history !== undefined || historyEmpty !== undefined;
   return (
-    <div role="row" className={cn('relative w-full shrink-0 border-b border-border bg-muted', className)} {...props}>
-      {selected && <span aria-hidden="true" className="absolute inset-y-0 left-0 z-10 w-0.75 bg-foreground" />}
+    <div role="row" className={cn('relative w-full shrink-0 border-b border-border bg-card', className)} {...props}>
+      {selected && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.75 bg-foreground" />}
       {(overview !== undefined || stillUrl !== undefined || hasDetails) && (
         <div role="cell" className="flex flex-col gap-6 pt-4 pr-4 pb-6 pl-(--detail-indent)">
           {(overview !== undefined || stillUrl !== undefined) && (
@@ -56,10 +56,10 @@ function RowEpisodeDetails({ selected = true, overview, stillUrl, details, versi
           )}
         </div>
       )}
-      {/* Full width and white, no card: the version rows keep the episode table's column edges from x 152. */}
+      {/* Full width, no card: the version rows keep the episode table's column edges from x 152. */}
       {versions !== undefined && (
         <div role="cell">
-          <section role="table" aria-label="Versions" className="flex flex-col bg-card">
+          <section role="table" aria-label="Versions" className="flex flex-col">
             {versions}
           </section>
         </div>
@@ -70,7 +70,7 @@ function RowEpisodeDetails({ selected = true, overview, stillUrl, details, versi
           {hasHistory && (
             <section className="flex flex-col gap-2">
               <LabelGroup className="p-0" count={historyCount}>History</LabelGroup>
-              <div role="table" className={cn(panel, 'flex flex-col *:last:border-b-0')}>
+              <div role="table" className={cn(panel, 'flex flex-col *:last:border-b-0 *:last:after:hidden')}>
                 {history}
                 {historyEmpty !== undefined && <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">{historyEmpty}</p>}
               </div>

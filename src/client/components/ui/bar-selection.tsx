@@ -13,7 +13,7 @@ const onDark = cn(
 
 /** One action on the selection bar, such as Search automatically; keeps the Button's icon and kbd props. */
 function BarSelectionAction({ className, ...props }: Omit<ButtonProps, 'variant' | 'size'>) {
-  return <Button variant="default" className={cn(onDark, className)} {...props} />;
+  return <Button variant="default" className={cn(onDark, 'gap-1.5', className)} {...props} />;
 }
 
 type BarSelectionProps = {

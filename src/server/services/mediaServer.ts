@@ -16,7 +16,8 @@ export type MediaServer = {
   // Throws when the server is unreachable; neither server confirms the scan, so its answer is not read.
   refresh(library: Library, folder: string): Promise<void>;
   // Jellyfin only, since Plex merges by match: joins the tracked file and a second version into one title. False while
-  // either is not in the library yet; throws when the server is unreachable or refuses.
+  // either is not in the library yet or when the server rejects the request; throws when the server is unreachable or
+  // answers 5xx, and throws JellyfinKeyRefused when it refuses the key.
   mergeVersions?(type: LibraryType, trackedPath: string, versionPath: string, season?: number): Promise<boolean>;
 };
 

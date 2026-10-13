@@ -8,12 +8,13 @@ import { cn } from '@/lib/utils';
 const w = { hitAndRun: 'w-40', tracker: 'w-26', status: 'w-44', quality: 'w-26', size: 'w-18', actions: 'w-28' };
 
 // Under an open episode the rows, the header and their lines start at x 152; on the movie page at x 16.
-const insetRow = 'border-b-0 pl-38 after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:left-38 after:h-px after:bg-border';
+const insetRow = 'pl-38 after:left-38';
+const insetHeader = 'relative border-b-0 pl-38 after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:left-38 after:h-px after:bg-border';
 
 /** Versions header. `inset` under an open episode. */
 function RowSecondVersionHeader({ inset = false }: { inset?: boolean }) {
   return (
-    <TableHeader className={cn(inset && cn('relative', insetRow))}>
+    <TableHeader className={cn(inset && insetHeader)}>
       <TableHead fill>Release</TableHead>
       <TableHead className={w.hitAndRun}>Hit and run</TableHead>
       <TableHead className={w.tracker}>Tracker</TableHead>

@@ -1,8 +1,8 @@
 // v2/Row/download — ~/Projects/media-manager-2-design/design-system.lib.pen k3Rz6
 import type { ReactNode } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
-import { DownloadCircle, type ReleaseState } from '@/components/ui/chip-release-state';
 import { Progress, type ProgressTone } from '@/components/ui/progress';
+import { type DownloadCircleState, StatusDownloadCircle } from '@/components/ui/status-download-circle';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
@@ -28,7 +28,7 @@ function RowDownloadHeader() {
 type DownloadState = 'downloading' | 'importing' | 'stalled' | 'import-blocked' | 'waiting';
 
 // Live chips are muted with black words and the download circle; red chips are destructive-soft.
-const looks: Record<DownloadState, { badge: BadgeVariant; words?: string; circle?: ReleaseState; bar: ProgressTone; speed: string; marker?: 'risk' | 'warning' }> = {
+const looks: Record<DownloadState, { badge: BadgeVariant; words?: string; circle?: DownloadCircleState; bar: ProgressTone; speed: string; marker?: 'risk' | 'warning' }> = {
   downloading: { badge: 'neutral', words: 'text-foreground', circle: 'downloading', bar: 'downloading', speed: 'text-foreground' },
   importing: { badge: 'neutral', words: 'text-foreground', circle: 'importing', bar: 'done', speed: 'text-muted-foreground' },
   stalled: { badge: 'risk', circle: 'stalled', bar: 'stalled', speed: 'text-destructive', marker: 'risk' },
@@ -66,7 +66,7 @@ function RowDownload({ title, release, message, bandActions, progress, speed, et
   const circle = look.circle === 'stalled' && progress === undefined ? undefined : look.circle;
   return (
     <>
-      <TableRow marker={look.marker} line="season" className={className} {...props}>
+      <TableRow marker={look.marker} className={className} {...props}>
         <TableCell fill>
           <span className="truncate font-ui font-semibold" title={typeof title === 'string' ? title : undefined}>{title}</span>
         </TableCell>
@@ -85,7 +85,7 @@ function RowDownload({ title, release, message, bandActions, progress, speed, et
           <Badge
             key={state}
             variant={look.badge}
-            icon={circle === undefined ? undefined : <DownloadCircle state={circle} percent={progress ?? 0} />}
+            icon={circle === undefined ? undefined : <StatusDownloadCircle state={circle} percent={progress ?? 0} />}
             className={cn('max-w-full transition-opacity duration-(--duration-base) ease-out starting:opacity-0 [&>span]:truncate', look.words)}
           >
             <span>{stateLabel}</span>
@@ -96,7 +96,7 @@ function RowDownload({ title, release, message, bandActions, progress, speed, et
         <TableCell align="end" className={cn(w.actions, 'gap-0.5')}>{actions}</TableCell>
       </TableRow>
       {band && (
-        <div role="row" className="relative flex w-full shrink-0 items-center gap-4 bg-muted pt-2 pr-4 pb-1.75 pl-4 after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:left-4 after:h-px after:bg-border">
+        <div role="row" className="relative flex w-full shrink-0 items-center gap-4 bg-muted pt-2 pr-4 pb-1.75 pl-4 after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:left-4 after:h-px after:bg-input">
           <div role="cell" className="flex min-w-0 flex-1 flex-col gap-0.5 text-[13px]">
             {message !== undefined && <span className="font-ui text-foreground">{message}</span>}
             {release !== undefined && <span className="truncate font-data text-muted-foreground">{release}</span>}

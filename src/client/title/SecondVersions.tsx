@@ -3,11 +3,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { CardChoice } from '@/components/ui/card-choice';
-import { DownloadCircle, type ReleaseState } from '@/components/ui/chip-release-state';
 import { Dialog } from '@/components/ui/dialog';
 import { trackerName } from '@/components/ui/logo';
 import { RadioGroup } from '@/components/ui/radio';
 import { RowSecondVersion } from '@/components/ui/row-second-version';
+import { type DownloadCircleState, StatusDownloadCircle } from '@/components/ui/status-download-circle';
 import { cn } from '@/lib/utils';
 import { formatBytes } from '../downloads/model';
 import type { SecondVersion, SecondVersionDeleted } from '../library/api';
@@ -22,7 +22,7 @@ const sizeText = (version: SecondVersion) => (version.sizeBytes === null ? '' : 
 const deletable = (version: SecondVersion) => version.state === 'imported' || version.state === 'failed';
 const tracker = (version: SecondVersion) => trackerName(version.seeding?.trackerHost ?? version.indexer);
 
-type ChipLook = { label: string; variant?: 'neutral' | 'plain' | 'risk' | 'warning'; circle?: ReleaseState; percent?: number; spinner?: boolean };
+type ChipLook = { label: string; variant?: 'neutral' | 'plain' | 'risk' | 'warning'; circle?: DownloadCircleState; percent?: number; spinner?: boolean };
 
 /** One status chip in a row's Status column: live is muted with black words and the download circle, plain has no fill. */
 export function StatusChip({ look }: { look: ChipLook }) {
@@ -31,7 +31,7 @@ export function StatusChip({ look }: { look: ChipLook }) {
     <Badge
       variant={look.variant === 'plain' ? 'neutral' : look.variant ?? 'neutral'}
       spinner={look.spinner}
-      icon={look.circle === undefined ? undefined : <DownloadCircle state={look.circle} percent={look.percent ?? 0} />}
+      icon={look.circle === undefined ? undefined : <StatusDownloadCircle state={look.circle} percent={look.percent ?? 0} />}
       className={cn('max-w-full transition-colors duration-(--duration-base) ease-out [&>span]:truncate', live && 'text-foreground', look.variant === 'plain' && 'bg-transparent')}
     >
       <span>{look.label}</span>

@@ -427,11 +427,14 @@ type PiecesStripProps = {
   look?: 'plain' | 'setup' | 'done';
 };
 
+// v2/Strip/connection map — ~/Projects/media-manager-2-design/design-system.lib.pen jOF0R
+// v2/Strip/connection map/column — ~/Projects/media-manager-2-design/design-system.lib.pen tCtqz
+// v2/Strip/connection map/link — ~/Projects/media-manager-2-design/design-system.lib.pen yfHN6
 /** The "How the pieces connect" strip: each service column with the links between them. Pills in a column share the widest one's width. */
 export function PiecesStrip({ checks, editedOf, folders, look = 'plain' }: PiecesStripProps) {
   const done = look === 'done';
   const pillLook = look === 'setup' ? 'dark' : done ? 'lime' : 'plain';
-  const caption = 'font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase';
+  const caption = 'font-ui text-[11px] font-semibold tracking-[0.4px] text-subtle-foreground uppercase';
   return (
     <section aria-labelledby="pieces-title" className="flex flex-col">
       <LabelGroup id="pieces-title" className="pt-0">How the pieces connect</LabelGroup>

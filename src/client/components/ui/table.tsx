@@ -2,13 +2,14 @@
 // v2/Table/Header — ~/Projects/media-manager-2-design/design-system.lib.pen Fj6GM
 // v2/Table/Row — ~/Projects/media-manager-2-design/design-system.lib.pen IODuw
 // v2/Table/Cell — ~/Projects/media-manager-2-design/design-system.lib.pen I73rkQ
+// v2/Table/Cell/header — ~/Projects/media-manager-2-design/design-system.lib.pen r5HBwn (TableHead; the library's header rows set it to 600, the releases header keeps its 700)
 import { ArrowDown } from 'lucide-react';
 import type { ComponentProps, CSSProperties } from 'react';
 import { Logo, trackerLogo, trackerName } from '@/components/ui/logo';
 import { cn } from '@/lib/utils';
 
 /**
- * White, 1 px edge, radius 10, clips its rows. Children: a TableHeader, then rows. The rows sit in a body that
+ * White, 1 px edge, radius 12, clips its rows. Children: a TableHeader, then rows. The rows sit in a body that
  * pulls up 1 px under the clipped bottom edge, so the last row's line is hidden however the rows are wrapped.
  */
 function Table({ className, children, ...props }: ComponentProps<'div'>) {
@@ -57,14 +58,12 @@ type TableRowProps = ComponentProps<'div'> & {
   best?: boolean;
   /** Grabbed: a 3 px black line along the bottom edge at this percent; it grows from 0. */
   progress?: number;
-  /** Line inset by depth: season x 16, episode x 96, all ending 16 from the right. Without it the line runs full width. */
+  /** Line inset by depth: x 16 by default and for a season, x 96 for an episode, all ending 16 from the right. */
   line?: 'season' | 'episode';
 };
 
 const lineClass = (line: TableRowProps['line']) =>
-  line === undefined
-    ? 'border-b border-border'
-    : cn('after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:h-px after:bg-border', line === 'season' ? 'after:left-4' : 'after:left-24');
+  cn('after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:h-px after:bg-input', line === 'episode' ? 'after:left-24' : 'after:left-4');
 
 /** Column header row, 32 px, white, line under. Children are TableHead cells with the widths of the rows below. */
 function TableHeader({ className, ...props }: ComponentProps<'div'>) {

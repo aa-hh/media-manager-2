@@ -13,7 +13,7 @@ type PanelInlineProps = {
   closeLabel?: string;
   /** Full-bleed content: option rows, a release table, choice cards. */
   children: ReactNode;
-  /** The one 48 px main action (large default Button). */
+  /** The one 44 px main action (large default Button). */
   primary?: ReactNode;
   /** Outline Button, such as Cancel. */
   secondary?: ReactNode;
@@ -23,7 +23,7 @@ type PanelInlineProps = {
 };
 
 /**
- * Opens in place under a row or in the title header. In the page flow: line edge, no shadow, radius 10.
+ * Opens in place under a row or in the title header. In the page flow: line edge, no shadow, radius 12.
  * Open: height 0 to full (duration-size), fade and a 6 px rise (duration-base, ease-out). Close: the reverse at duration-fast, ease-in.
  * Under reduced motion the height change is instant and only the fade remains.
  */

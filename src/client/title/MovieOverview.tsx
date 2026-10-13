@@ -76,7 +76,7 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         badges={(
           <>
             <Badge variant="strong">{versionCount > 1 ? `In library · ${versionCount} versions` : 'In library'}</Badge>
-            {word !== null && <Badge variant={wordLook(word, live !== undefined)}>{word.charAt(0).toUpperCase() + word.slice(1)}</Badge>}
+            {word !== null && <Badge variant={wordLook(word, live !== undefined)} percent={live?.percent ?? undefined}>{word.charAt(0).toUpperCase() + word.slice(1)}</Badge>}
           </>
         )}
         facts={facts}

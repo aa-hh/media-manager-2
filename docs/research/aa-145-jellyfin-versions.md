@@ -72,11 +72,12 @@ Test Show - S01E02 - | 1 sources
 Test Show - S01E02 - Second | 1 sources
 ```
 
-Without `userId`, both merged items still list, each with both sources. Jellyfin hides the secondary item only per user.
+Without `userId`, both merged items still listed in this test. A retest on 2026-10-13 for [AA-151](https://linear.app/aa-hh/issue/AA-151) found the opposite: `GET /Items?Recursive=true&IncludeItemTypes=Movie&Fields=Path` without `userId` lists one item per merged pair (sometimes the version, not the tracked file), so the app's lookup finds both items only while the pair is split.
 
 ## Open points
 
-- A merge does not survive the tracked file being renamed or replaced: tested 2026-10-13 for [AA-150](https://linear.app/aa-hh/issue/AA-150) (Merge imported second versions into one title in Jellyfin). After either, a rescan shows two titles again; merging the new tracked item again fixes it.
+- A merge does not survive the tracked file being renamed or replaced: tested 2026-10-13 for [AA-150](https://linear.app/aa-hh/issue/AA-150) (Merge imported second versions into one title in Jellyfin). After either, a rescan shows two titles again; merging the new tracked item again fixes it. The app notices this by the tracked path Radarr or Sonarr reports changing and merges again ([AA-151](https://linear.app/aa-hh/issue/AA-151), Merge a second version again in Jellyfin after the tracked file is renamed or upgraded).
+- Retested 2026-10-13 for AA-151: a tracked file replaced under the same path keeps its item id (Jellyfin derives it from the path) and its merge, through a rescan; calling `MergeVersions` again on a merged pair returns 204 and changes nothing. If a scan runs while the tracked file is gone and the replacement then lands under the same path, the user sees only the tracked file and the version is hidden from both listings; `MergeVersions` with the two item ids fixes it, but the app cannot find the version's id by listing, so it waits for the next rename.
 - With metadata on, whether Jellyfin still shows two series for a show folder in both the library and versions folders was not tested. Metadata was off.
 - Which Jellyfin item IDs to pass to `MergeVersions` needs a path lookup (`GET /Items?Recursive=true&Fields=Path` filtered by path), since Jellyfin does not take paths.
 - Episode grouping by name on 12.2 was read from source, not tested; the slot runs 10.11.11. Even on 12.2 it only groups within one folder, so the versions folder still needs the merge call.

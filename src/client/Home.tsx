@@ -112,8 +112,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
   return (
     <div className="min-h-screen">
       <AppBarDesktop
-        // Title pages draw their backdrop up behind the bar, seen through it.
-        className={cn('sticky top-0 z-10', view === 'title' && 'bg-card/70 backdrop-blur-xl')}
+        className="sticky top-0 z-10"
         productName={<h1 ref={headingRef} tabIndex={-1}>media-manager-2</h1>}
         search={(
           <form
