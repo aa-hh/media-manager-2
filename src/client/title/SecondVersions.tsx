@@ -8,7 +8,6 @@ import { trackerName } from '@/components/ui/logo';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup } from '@/components/ui/radio';
 import { RowSecondVersion } from '@/components/ui/row-second-version';
-import type { TableRowProps } from '@/components/ui/table';
 import { formatBytes } from '../downloads/model';
 import type { SecondVersion, SecondVersionDeleted } from '../library/api';
 import { useAdvice } from './advice';
@@ -187,10 +186,9 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
  * Second-version rows for one movie or episode, under its tracked version, with the delete dialog.
  * `subject` names the movie or episode in the dialog ("S02E04").
  */
-export function SecondVersionRows({ versions, indent, line, subject, trackedQuality, onChanged, onUnauthenticated }: {
+export function SecondVersionRows({ versions, indent, subject, trackedQuality, onChanged, onUnauthenticated }: {
   versions: SecondVersion[];
   indent: boolean;
-  line?: TableRowProps['line'];
   subject: string | null;
   trackedQuality: string | null;
   onChanged: (versions: SecondVersion[] | ((current: SecondVersion[]) => SecondVersion[])) => void;
@@ -205,7 +203,6 @@ export function SecondVersionRows({ versions, indent, line, subject, trackedQual
           <RowSecondVersion
             key={version.id}
             indent={indent}
-            line={line}
             title={`Second version · added ${addedDay(version.addedAt)}`}
             label={look.label}
             labelVariant={look.variant}

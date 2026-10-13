@@ -433,9 +433,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.releases !== undefined) app.route('/api/releases', createReleaseRoutes(options.releases));
   if (options.grabs !== undefined) app.route('/api/grabs', createGrabRoutes(options.grabs));
   if (options.secondVersions !== undefined) app.route('/api/second-versions', createSecondVersionRoutes(options.secondVersions, options.secondVersionDelete));
-  if (options.owned !== undefined && options.grabs !== undefined) {
-    app.route('/api/owned', createOwnedRoutes(options.owned));
-  }
+  if (options.owned !== undefined) app.route('/api/owned', createOwnedRoutes(options.owned));
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));

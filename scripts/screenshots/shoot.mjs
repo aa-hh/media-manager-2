@@ -1,5 +1,5 @@
 // Drives headless Chrome over the DevTools protocol to save listed.png, empty.png and grabbing.png into <out dir>.
-// Run: sh scripts/build.sh && sh scripts/screenshots/start.sh <out dir> && node scripts/screenshots/shoot.mjs <out dir>; sh scripts/screenshots/stop.sh <out dir>
+// Run through scripts/screenshots/run.sh, or alone against a running start.sh: node scripts/screenshots/shoot.mjs <out dir>
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 

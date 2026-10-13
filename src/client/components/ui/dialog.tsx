@@ -29,13 +29,15 @@ type DialogProps = {
   closeLabel?: string;
   /** dialog-add: 800px, 36px padding, 36px title; no key hints. */
   wide?: boolean;
+  /** A Cancel in `actions` carries the Esc hint, so the close button shows none. */
+  escOnCancel?: boolean;
 };
 
 /**
  * Centred confirmation over the scrim for rare, destructive or lossy actions.
  * Scrim and dialog fade in and the dialog scales from --motion-scale-dialog to 1 (duration-base, ease-out); the reverse at duration-fast, ease-in.
  */
-function Dialog({ open, onOpenChange, title, subject, children, callout, footerCallout, scrollEdges = false, actions, closeLabel = 'Close', wide = false }: DialogProps) {
+function Dialog({ open, onOpenChange, title, subject, children, callout, footerCallout, scrollEdges = false, actions, closeLabel = 'Close', wide = false, escOnCancel = false }: DialogProps) {
   const motion = 'duration-(--duration-base) ease-out data-ending-style:duration-(--duration-fast) data-ending-style:ease-in';
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(next) => onOpenChange(next)}>
@@ -62,7 +64,7 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
               {title}
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
-              render={<Button variant="ghost" icon={<X />} aria-label={closeLabel} data-cancel="" className="px-2.5 [&>svg]:text-muted-foreground" />}
+              render={<Button variant="ghost" icon={<X />} kbd={wide || escOnCancel ? undefined : 'Esc'} aria-label={closeLabel} data-cancel="" className="px-2.5 [&>svg]:text-muted-foreground" />}
             />
           </div>
           {scrollEdges && subject !== undefined && (

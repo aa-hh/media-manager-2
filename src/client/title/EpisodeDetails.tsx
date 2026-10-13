@@ -3,7 +3,6 @@ import { FactRow } from '@/components/ui/fact';
 import { RowEpisodeDetails } from '@/components/ui/row-episode-details';
 import { RowHistoryHeader } from '@/components/ui/row-history';
 import { RowSecondVersion, RowSecondVersionHeader } from '@/components/ui/row-second-version';
-import type { TableRowProps } from '@/components/ui/table';
 import { SkeletonRow } from '@/components/ui/skeleton';
 import { formatBytes } from '../downloads/model';
 import type { EpisodeDetail, FileDetail, SecondVersion } from '../library/api';
@@ -34,12 +33,11 @@ const fileDetail = (file: FileDetail) => {
 };
 
 // The file Sonarr or Radarr tracks, as the tracked-version row; movies use the same row under their header.
-export function TrackedVersion({ file, seeding, indent, line }: { file: FileDetail; seeding: SeedingFact[]; indent: boolean; line?: TableRowProps['line'] }) {
+export function TrackedVersion({ file, seeding, indent }: { file: FileDetail; seeding: SeedingFact[]; indent: boolean }) {
   return (
     <RowSecondVersion
       tracked
       indent={indent}
-      line={line}
       quality={file.quality ?? ''}
       release={releaseName(file)}
       detail={fileDetail(file)}
@@ -91,12 +89,11 @@ export function EpisodeDetails({ episode, seeding, secondVersions, onSecondVersi
       versionCount={(file === null ? 0 : 1) + secondVersions.length}
       versions={file === null && secondVersions.length === 0 ? undefined : (
         <>
-          <RowSecondVersionHeader line="version" />
-          {file !== null && <TrackedVersion file={file} seeding={seeding} indent={false} line="version" />}
+          <RowSecondVersionHeader />
+          {file !== null && <TrackedVersion file={file} seeding={seeding} indent={false} />}
           <SecondVersionRows
             versions={secondVersions}
             indent={false}
-            line="version"
             subject={episodeCode(episode)}
             trackedQuality={file?.quality ?? null}
             onChanged={onSecondVersions}

@@ -103,7 +103,7 @@ type EpisodeRowProps = {
   pickBand: ReactNode;
   handlers: RowHandlers;
   onUnauthenticated: () => void;
-  /** The season's last episode takes the season line, as the row after it is the next season. */
+  /** The season's last episode ends the group, so it takes the season line. */
   last?: boolean;
 };
 
