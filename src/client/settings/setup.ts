@@ -14,7 +14,7 @@ export type SetupStatus = {
   optional: Record<OptionalPart, { status: 'done' | 'not_done' | 'skipped'; wanted: boolean }>;
   requiredComplete: boolean;
   plexSignInTokenAvailable: boolean;
-  /** The media server the owner picked on the first-run page. */
+  /** The owner's current media server: picked on the first-run page, changed by a switch in Settings. */
   mediaServer: { kind: 'plex'; ownerName: string } | { kind: 'jellyfin'; url: string; serverName: string; ownerName: string };
   /** PLEX_OWNER_ID pins the owner, which blocks the media-server switch. */
   ownerPinned: boolean;

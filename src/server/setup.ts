@@ -155,7 +155,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   const done = (set: boolean) => (set ? 'done' : 'not_done') as 'done' | 'not_done';
 
   routes.get('/', (context) => {
-    // The media server step follows the owner's first-run choice: a Jellyfin owner needs an API key, anyone else Plex.
+    // The media server step follows the current owner: a Jellyfin owner needs an API key, anyone else Plex.
     const owner = effectiveOwner(database, env.PLEX_OWNER_ID);
     const jellyfinOwner = owner?.provider === 'jellyfin';
     const required = {

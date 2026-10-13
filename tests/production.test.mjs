@@ -2877,7 +2877,7 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
   setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test/');
   setSetting(database, 'credentials', 'jellyfin.apiKey', key);
   assert.equal(mediaServer().name, 'plex');
-  saveOwner(database, { provider: 'jellyfin', userId: 'jellyfin-admin', userName: 'Alec', serverName: 'Home' });
+  saveOwner(database, { provider: 'jellyfin', userId: 'jellyfin-admin', userName: 'Alec', serverName: 'Home', serverId: null });
   const jellyfin = mediaServer();
   assert.equal(jellyfin.name, 'jellyfin');
 
@@ -2945,7 +2945,7 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   setSetting(database, 'credentials', 'jellyfin.apiKey', 'jellyfin-key');
   // The media server follows the owner's provider, so Jellyfin needs a Jellyfin owner, not just its settings.
   const { saveOwner } = await import(ownerModuleUrl);
-  saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home' });
+  saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home', serverId: null });
 
   let dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' };
   let pilot = { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' };

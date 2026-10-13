@@ -496,7 +496,9 @@ export function PiecesStrip({ checks, editedOf, folders, look = 'plain', watch }
         <div className="flex min-w-0 flex-1 gap-3">
           {chain.map((column, index) => {
             const next = chain[index + 1];
-            const tone = next === undefined ? 'idle' : linkTone(column.names.map((name) => checks[name]), next.names.map((name) => checks[name]));
+            // With watch set, Jellyfin stands in for Plex, so its check tones the link.
+            const checkOf = (name: ServiceName) => checks[watch !== undefined && name === 'plex' ? 'jellyfin' : name];
+            const tone = next === undefined ? 'idle' : linkTone(column.names.map(checkOf), next.names.map(checkOf));
             return (
               <Fragment key={column.caption}>
                 {/* A floor wide enough for "Connected · 4.0.10", so a pill changing state does not reflow the strip. */}

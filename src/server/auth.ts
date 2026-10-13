@@ -465,7 +465,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return saved === undefined ? { kind: 'unavailable' } : { kind: 'ok', url: saved.replace(/\/+$/, '') };
   };
 
-  // Shared end of both Jellyfin sign-ins: administrators only; the first one becomes the owner and locks the address.
+  // Shared end of both Jellyfin sign-ins: administrators only; the first one becomes the owner and locks the address, and a signed-in Plex owner's switch replaces the owner.
   const finishJellyfin = async (url: string, user: JellyfinUser, suppliedSession: string | undefined): Promise<JellyfinSignInResult> => {
     let owner = currentOwner();
     let serverName = owner?.serverName ?? undefined;
