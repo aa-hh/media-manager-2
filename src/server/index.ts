@@ -177,7 +177,7 @@ if (database !== undefined) {
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
   const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }));
-  const searchRuns = createSearchRuns({ database, arr });
+  const searchRuns = createSearchRuns({ database, arr, isManualDownload: protection.isProtected });
   const add = createAdd(arr, titleStore, openedDatabase);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);

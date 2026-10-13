@@ -7,6 +7,7 @@ export type Series = {
   alternateTitles: string[];
   year: number | null;
   status: string | null;
+  seriesType: string | null;
   ended: boolean;
   airTime: string | null;
   firstAired: string | null;
@@ -66,6 +67,7 @@ export const parseSeries = (value: unknown): Series | null => {
     alternateTitles: otherTitles(value.alternateTitles, title),
     year: finiteNumber(value.year),
     status: text(value.status),
+    seriesType: text(value.seriesType),
     ended: value.ended === true,
     airTime: text(value.airTime),
     firstAired: text(value.firstAired),

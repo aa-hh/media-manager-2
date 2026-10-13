@@ -36,6 +36,14 @@ export const searchDueAt = (candidate: Pick<Candidate, 'availableAt' | 'addedAt'
   return lastSearchAt + REPEAT_SEARCH_MS;
 };
 
+const key = (subject: Subject) => `${subject.service}:${subject.type}:${subject.id}`;
+
+// A missing item the scheduler leaves alone: a manual download, already queued, or in the search backlog.
+export const isHeldBack = (database: DatabaseSync, isManualDownload: (subject: Subject) => boolean, queued: Set<string>, subject: Subject): boolean => (
+  isManualDownload(subject) || queued.has(subject.id)
+  || database.prepare('SELECT 1 FROM search_backlog WHERE subject = ?').get(key(subject)) !== undefined
+);
+
 export const createSearchScheduler = (options: {
   database: DatabaseSync;
   arr: ArrServices;
@@ -45,7 +53,6 @@ export const createSearchScheduler = (options: {
 }) => {
   const { database, arr, problems, isManualDownload } = options;
   const now = options.now ?? Date.now;
-  const key = (subject: Subject) => `${subject.service}:${subject.type}:${subject.id}`;
 
   const ourLastSearch = (subject: Subject) => {
     const row = database.prepare('SELECT searched_at FROM search_log WHERE subject = ?').get(key(subject));
@@ -184,11 +191,10 @@ export const createSearchScheduler = (options: {
   const checkService = async (service: Service, at: number) => {
     const candidates = service === 'sonarr' ? await missingEpisodes() : await missingMovies(at);
     const queued = inQueue(service);
-    const inBacklog = database.prepare('SELECT 1 FROM search_backlog WHERE subject = ?');
     const skippedSeasons = new Set<string>();
     const waiting: Candidate[] = [];
     const due = candidates.flatMap((candidate) => {
-      if (isManualDownload(candidate.subject) || queued.has(candidate.subject.id) || inBacklog.get(key(candidate.subject)) !== undefined) {
+      if (isHeldBack(database, isManualDownload, queued, candidate.subject)) {
         if (candidate.seriesId !== null && candidate.seasonNumber !== null) skippedSeasons.add(`${candidate.seriesId}:${candidate.seasonNumber}`);
         return [];
       }

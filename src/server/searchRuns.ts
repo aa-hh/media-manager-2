@@ -1,8 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { setTimeout as delay } from 'node:timers/promises';
+import type { Subject } from './problems.js';
+import { seasonHeldBack } from './seasonSearch.js';
 import { type ArrServices, type Episode, type HistoryRecord, type Result, valueOrThrow } from './services/arr.js';
 import { isRecord, labels, refusal } from './services/arr/result.js';
-import { listQueue } from './torrentGrabs.js';
 
 export type SearchTarget =
   | { service: 'sonarr'; kind: 'series'; seriesId: number }
@@ -34,10 +35,18 @@ const aired = (episode: Episode, at: number) => {
 };
 const wanted = (episode: Episode, at: number) => episode.monitored && !episode.hasFile && aired(episode, at);
 
-export const createSearchRuns = (options: { database: DatabaseSync; arr: ArrServices; now?: () => number; pollMs?: number }) => {
-  const { database, arr } = options;
+export const createSearchRuns = (options: {
+  database: DatabaseSync;
+  arr: ArrServices;
+  isManualDownload: (subject: Subject) => boolean;
+  now?: () => number;
+  pollMs?: number;
+}) => {
+  const { database, arr, isManualDownload } = options;
   const now = options.now ?? Date.now;
   const pollMs = options.pollMs ?? 2000;
+  // A missing episode the scheduler leaves alone: queued, a manual download or in the search backlog.
+  const heldBack = (episodeId: number) => seasonHeldBack({ database, isManualDownload }, [episodeId]);
 
   const toRow = (row: Record<string, unknown>): Row => ({
     id: Number(row.id),
@@ -90,7 +99,7 @@ export const createSearchRuns = (options: { database: DatabaseSync; arr: ArrServ
     database.prepare("UPDATE search_runs SET state = 'failed', message = ?, ended_at = ? WHERE id = ?").run(message, now(), id);
   };
 
-  // Answers null once the command ended, or why the search failed.
+  // Answers null once the command ended, or why the search failed. A poll that throws or answers an error is retried until the ceiling.
   const waitForEnd = async (service: SearchTarget['service'], commandId: number): Promise<string | null> => {
     const label = labels[service];
     const startedAt = now();
@@ -100,12 +109,12 @@ export const createSearchRuns = (options: { database: DatabaseSync; arr: ArrServ
       let answer: { status: number; body: unknown };
       try {
         answer = await arr[service].request(`/api/v3/command/${commandId}`);
-      } catch (error) {
-        return (error as Error).message;
+      } catch {
+        continue;
       }
       // Sonarr and Radarr forget a command a day after it ended, so a 404 means it ended; its grabs are in history.
       if (answer.status === 404) return null;
-      if (answer.status < 200 || answer.status > 299) return `${label} answered HTTP ${answer.status} for the search status.`;
+      if (answer.status < 200 || answer.status > 299) continue;
       const status = isRecord(answer.body) && typeof answer.body.status === 'string' ? answer.body.status.toLowerCase() : '';
       if (status === 'completed') return null;
       if (FAILED_STATUSES.has(status)) return `${label} reported the search as ${status}.`;
@@ -138,9 +147,8 @@ export const createSearchRuns = (options: { database: DatabaseSync; arr: ArrServ
       if (row.phase === 'season' && target.service === 'sonarr' && (target.kind === 'series' || target.kind === 'season')) {
         const episodes = valueOrThrow(await readEpisodes(target));
         const at = now();
-        const queued = new Set(listQueue(database).filter((item) => item.service === 'sonarr').map((item) => item.episodeId));
         const remaining = episodes
-          .filter((episode) => wanted(episode, at) && !grabbedEpisodes.has(episode.id) && !queued.has(episode.id))
+          .filter((episode) => wanted(episode, at) && !grabbedEpisodes.has(episode.id) && !heldBack(episode.id))
           .map((episode) => episode.id);
         if (remaining.length > 0) {
           const commandId = valueOrThrow(await arr.sonarr.searchAutomatically({ episodeIds: remaining }));
@@ -170,23 +178,43 @@ export const createSearchRuns = (options: { database: DatabaseSync; arr: ArrServ
     database.prepare("DELETE FROM search_runs WHERE state <> 'running' AND ended_at < ?").run(now() - KEEP_MS);
     const history = await readHistory(target);
     if (history.kind !== 'ok') return history;
-    let episodes: Episode[] = [];
+    let phase: SearchRun['phase'] = target.kind === 'movie' ? 'movie' : target.kind === 'episodes' ? 'episodes' : 'season';
+    let wantedEpisodes: Episode[] = [];
+    // Set when an EpisodeSearch for these episodes replaces the target's own SeasonSearch or SeriesSearch.
+    let episodeSearch: number[] | null = null;
     if (target.kind === 'series' || target.kind === 'season') {
       const read = await readEpisodes(target);
       if (read.kind !== 'ok') return read;
-      episodes = read.value;
+      const series = await arr.sonarr.series(target.seriesId);
+      if (series.kind !== 'ok') return series;
+      const at = now();
+      wantedEpisodes = read.value.filter((episode) => wanted(episode, at));
+      const eligible = wantedEpisodes.filter((episode) => !heldBack(episode.id)).map((episode) => episode.id);
+      const someHeld = eligible.length < wantedEpisodes.length;
+      if (eligible.length === 0 && someHeld) {
+        const word = target.kind === 'season' ? 'season' : 'show';
+        return refusal(`Sonarr already has a download, a hand-picked release or a backlog entry for every missing episode of this ${word}.`);
+      }
+      // Sonarr searches anime and daily series episode by episode whatever the command, and a SeasonSearch or SeriesSearch
+      // would also search an episode held back, so both get one EpisodeSearch and no season-pack phase.
+      if (series.value.seriesType !== 'standard') {
+        phase = 'episodes';
+        if (eligible.length > 0) episodeSearch = eligible;
+      } else if (someHeld) {
+        phase = 'episodes';
+        episodeSearch = eligible;
+      }
     }
-    const command = await sendFirst(target);
+    const command = episodeSearch === null ? await sendFirst(target) : await arr.sonarr.searchAutomatically({ episodeIds: episodeSearch });
     if (command.kind !== 'ok') return command;
     const at = now();
     if (target.kind === 'movie') logSearch(`radarr:movie:${target.movieId}`, at);
     else if (target.kind === 'episodes') for (const episodeId of target.episodeIds) logSearch(`sonarr:episode:${episodeId}`, at);
+    else if (episodeSearch !== null) for (const episodeId of episodeSearch) logSearch(`sonarr:episode:${episodeId}`, at);
     else {
-      const searched = episodes.filter((episode) => wanted(episode, at));
-      for (const episode of searched) logSearch(`sonarr:episode:${episode.id}`, at);
-      for (const seasonNumber of new Set(searched.map((episode) => episode.seasonNumber))) logSeasonSearch(target.seriesId, seasonNumber, at);
+      for (const episode of wantedEpisodes) logSearch(`sonarr:episode:${episode.id}`, at);
+      for (const seasonNumber of new Set(wantedEpisodes.map((episode) => episode.seasonNumber))) logSeasonSearch(target.seriesId, seasonNumber, at);
     }
-    const phase = target.kind === 'movie' ? 'movie' : target.kind === 'episodes' ? 'episodes' : 'season';
     const mark = Math.max(0, ...history.value.map((record) => record.id ?? 0));
     const inserted = database.prepare(`
       INSERT INTO search_runs (service, target, started_by, state, phase, command_id, history_mark, grabbed, started_at)

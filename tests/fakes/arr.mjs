@@ -52,7 +52,7 @@ export const importFile = (overrides = {}) => ({
 
 export const seriesRecord = (overrides = {}) => {
   const id = overrides.id ?? newId();
-  return { id, title: `Series ${id}`, year: 2024, monitored: true, tags: [], images: [], seasons: [], ...overrides };
+  return { id, title: `Series ${id}`, year: 2024, seriesType: 'standard', monitored: true, tags: [], images: [], seasons: [], ...overrides };
 };
 
 export const movieRecord = (overrides = {}) => {

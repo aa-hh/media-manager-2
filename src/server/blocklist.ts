@@ -102,16 +102,18 @@ export const createBlocklist = (options: {
     if (subjects.some(isManualDownload)) return { kind: 'ok', searched: 'manual_download' };
     // The grab is already marked failed here, so a refused search still reports the mark as done.
     const searched = service === 'sonarr'
-      ? await searchEpisodes(body.episodeIds)
+      ? await searchEpisodes(body.episodeIds, body.releaseTitle)
       : await arr.radarr.searchAutomatically({ movieIds: body.movieId === null ? [] : [body.movieId] });
     return { kind: 'ok', searched: searched.kind === 'ok' ? 'media-manager-2' : 'search_failed' };
   };
 
   // Several episodes may be one pack, so the series comes from the first of them and the search tries the season first.
-  const searchEpisodes = async (episodeIds: number[]): Promise<Result<unknown>> => {
+  const searchEpisodes = async (episodeIds: number[], releaseTitle: string): Promise<Result<unknown>> => {
     if (episodeIds.length < 2) return arr.sonarr.searchAutomatically({ episodeIds });
     const first = await arr.sonarr.episode(episodeIds[0]);
-    return first.kind === 'ok' ? searchSeasonFirst(arr, first.value.seriesId, episodeIds, now) : first;
+    return first.kind === 'ok'
+      ? searchSeasonFirst({ arr, database, isManualDownload, now }, { seriesId: first.value.seriesId, episodeIds, ownDownload: { hash: null, title: releaseTitle } })
+      : first;
   };
 
   const attribute = (service: Service, release: string, message: string | null): Pick<BlockEntry, 'by' | 'reason'> => {

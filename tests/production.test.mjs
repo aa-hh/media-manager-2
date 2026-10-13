@@ -2814,7 +2814,7 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
     } });
     const routes = createLibraryRoutes(
       createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value }), mdblist, tvdbIdOf),
-      createSearchRuns({ database, arr: services, pollMs: 1 }),
+      createSearchRuns({ database, arr: services, pollMs: 1, isManualDownload: () => false }),
     );
     const page = async (path = '/series/7') => {
       const response = await routes.request(path);
@@ -2851,7 +2851,7 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
     // Answering a server with no TMDB at all with anything but 503 turns this red.
     const noTmdb = createLibraryRoutes(
       createLibrary(services, () => [], createTitleStore(database, { now: () => clock.value })),
-      createSearchRuns({ database, arr: services, pollMs: 1 }),
+      createSearchRuns({ database, arr: services, pollMs: 1, isManualDownload: () => false }),
     );
     assert.equal((await noTmdb.request('/preview/sonarr/tmdb/95396')).status, 503);
   });
@@ -6528,14 +6528,18 @@ test('automatic searches are followed to their end, fall back from a season pack
     count += 1;
     const database = openDatabase(join(root, `runs-${count}`, 'media-manager.sqlite'));
     const { fake, ...arr } = connectArr(database);
+    fake.sonarr.state.series = [seriesRecord({ id: 1 })];
     const now = () => Date.parse('2026-10-08T20:00:00Z');
-    const runs = createSearchRuns({ database, arr, now, pollMs: 1 });
+    // The owner's manual downloads, by episode id; a test adds to it to hold an episode back.
+    const manual = new Set();
+    const isManualDownload = (subject) => manual.has(subject.id);
+    const runs = createSearchRuns({ database, arr, now, pollMs: 1, isManualDownload });
     const run = (id) => runs.list().find((entry) => entry.id === id);
     const settled = async (id) => {
       await until(() => run(id).state !== 'running');
       return run(id);
     };
-    return { database, fake, arr, now, runs, run, settled };
+    return { database, fake, arr, now, runs, run, settled, manual, isManualDownload };
   };
   const aired = (id, overrides = {}) => episodeRecord({ id, seriesId: 1, seasonNumber: 1, airDateUtc: '2026-09-01T00:00:00Z', ...overrides });
   const grab = (episodeId, overrides = {}) => historyRecord({
@@ -6648,9 +6652,113 @@ test('automatic searches are followed to their end, fall back from a season pack
     database.close();
   });
 
+  const logged = (database) => [
+    database.prepare('SELECT subject FROM search_log ORDER BY subject').all().map(({ subject }) => subject),
+    database.prepare('SELECT series_id, season_number FROM season_search_log').all().map((row) => [row.series_id, row.season_number]),
+  ];
+
+  // Sending a SeasonSearch for an anime series, or falling back to a second episode search after it, turns this red.
+  await t.test('an anime season is searched episode by episode with no fallback', async () => {
+    const { database, fake, runs, run, settled } = setup();
+    fake.sonarr.state.series = [seriesRecord({ id: 1, seriesType: 'anime' })];
+    fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+    fake.sonarr.state.commandStatuses[1] = 'started';
+    const started = await runs.start(season, 'search');
+    assert.deepEqual([run(started.value).state, run(started.value).phase], ['running', 'episodes']);
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [11, 12, 13] }]);
+    fake.sonarr.state.commandStatuses[1] = 'completed';
+    const done = await settled(started.value);
+    assert.deepEqual([done.state, done.phase], ['finished', 'episodes']);
+    assert.equal(fake.sonarr.state.commands.length, 1);
+    database.close();
+  });
+
+  // Searching a season whole while one of its missing episodes is hand-picked or in the search backlog, searching that episode,
+  // logging a season search that was never sent, or falling back after the episode search turns this red.
+  await t.test('a season with a held-back episode searches its other missing episodes one by one', async () => {
+    for (const [hold, rest] of [['manual', [11, 13]], ['backlog', [11, 12]]]) {
+      const { database, fake, runs, run, settled, manual } = setup();
+      fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+      if (hold === 'manual') manual.add('12');
+      else database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?)').run('sonarr:episode:13', 1);
+      const started = await runs.start(season, 'search');
+      assert.equal(run(started.value).phase, 'episodes');
+      assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: rest }]);
+      assert.deepEqual(logged(database), [rest.map((id) => `sonarr:episode:${id}`), []]);
+      const done = await settled(started.value);
+      assert.deepEqual([done.state, done.phase], ['finished', 'episodes']);
+      assert.equal(fake.sonarr.state.commands.length, 1);
+      database.close();
+    }
+  });
+
+  // Sending any search, or recording a run, when every missing episode is held back turns this red.
+  await t.test('a season, an anime season or a show whose every missing episode is held back starts nothing', async () => {
+    const show = { service: 'sonarr', kind: 'series', seriesId: 1 };
+    for (const [target, type, word] of [[season, 'standard', 'season'], [season, 'anime', 'season'], [show, 'standard', 'show']]) {
+      const { database, fake, runs, manual } = setup();
+      fake.sonarr.state.series = [seriesRecord({ id: 1, seriesType: type })];
+      fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+      for (const id of ['11', '12']) manual.add(id);
+      database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?)').run('sonarr:episode:13', 1);
+      const started = await runs.start(target, 'search');
+      assert.notEqual(started.kind, 'ok');
+      assert.match(started.message, new RegExp(`already has .* every missing episode of this ${word}\\.`));
+      assert.deepEqual(fake.sonarr.state.commands, []);
+      assert.deepEqual(runs.list(), []);
+      database.close();
+    }
+  });
+
+  // Sending a SeriesSearch while an episode of the show is hand-picked, or searching that episode, turns this red.
+  await t.test('a show with a hand-picked episode searches its other missing episodes one by one', async () => {
+    const { database, fake, runs, run, settled, manual } = setup();
+    fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+    manual.add('12');
+    const started = await runs.start({ service: 'sonarr', kind: 'series', seriesId: 1 }, 'search');
+    assert.equal(run(started.value).phase, 'episodes');
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [11, 13] }]);
+    await settled(started.value);
+    database.close();
+  });
+
+  // Searching an episode that became a manual download during the season search turns this red.
+  await t.test('the fallback after an empty season search leaves out a held-back episode', async () => {
+    const { database, fake, runs, run, settled, manual } = setup();
+    fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+    fake.sonarr.state.commandStatuses[1] = 'started';
+    const started = await runs.start(season, 'search');
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'SeasonSearch', seriesId: 1, seasonNumber: 1 }]);
+    manual.add('12');
+    fake.sonarr.state.commandStatuses[1] = 'completed';
+    await settled(started.value);
+    assert.equal(run(started.value).phase, 'episodes');
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'SeasonSearch', seriesId: 1, seasonNumber: 1 }, { name: 'EpisodeSearch', episodeIds: [11, 13] }]);
+    database.close();
+  });
+
+  // Failing the run on one status poll that answers an error or does not answer at all turns this red.
+  await t.test('a status poll that fails once does not fail the run', async () => {
+    for (const failOnce of [() => ({ status: 500, body: { message: 'Database is locked' } }), () => { throw new Error('socket hang up'); }]) {
+      const { database, fake, runs, settled } = setup();
+      fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
+      let polls = 0;
+      fake.sonarr.routes.push(async (method, url) => {
+        if (url.pathname !== '/api/v3/command/1') return undefined;
+        polls += 1;
+        return polls === 1 ? failOnce() : undefined;
+      });
+      const started = await runs.start(season, 'search');
+      const done = await settled(started.value);
+      assert.deepEqual([done.state, done.message], ['finished', null]);
+      assert.ok(polls >= 2);
+      database.close();
+    }
+  });
+
   // Keeping run state in memory, or skipping running rows at startup, turns this red.
   await t.test('a run left running by a restart is resumed from the database', async () => {
-    const { database, fake, arr, now, settled } = setup();
+    const { database, fake, arr, now, settled, isManualDownload } = setup();
     fake.sonarr.state.episodes = [11, 12, 13].map((id) => aired(id));
     database.prepare(`
       INSERT INTO search_runs (service, target, started_by, state, phase, command_id, history_mark, grabbed, started_at)
@@ -6658,7 +6766,7 @@ test('automatic searches are followed to their end, fall back from a season pack
     `).run(JSON.stringify(season), now());
     fake.sonarr.state.commands = [{ name: 'SeasonSearch' }];
     for (const id of [11, 12, 13]) fake.sonarr.state.history.push(grab(id));
-    createSearchRuns({ database, arr, now, pollMs: 1 }).resume();
+    createSearchRuns({ database, arr, now, pollMs: 1, isManualDownload }).resume();
     const done = await settled(1);
     assert.deepEqual([done.state, done.grabbed], ['finished', [{ title: 'Show.S01.1080p-GRP', indexer: 'Blutopia' }]]);
     assert.equal(fake.sonarr.state.commands.length, 1);
@@ -8770,7 +8878,7 @@ test('second versions are served under their movie and series, and a check flags
   torrent.run('F'.repeat(40), 'Show S01E02', 400, 100, 0, 0, 0);
   database.prepare('INSERT INTO stall_watch (hash, replaced_at) VALUES (?, 550)').run('F'.repeat(40));
 
-  const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title)), createSearchRuns({ database, arr, pollMs: 1 }));
+  const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title)), createSearchRuns({ database, arr, pollMs: 1, isManualDownload: () => false }));
   const read = async (path) => (await routes.request(path)).json();
 
   // The tracked version and the second version come back in one answer; a deleted second version does not.
@@ -10039,6 +10147,7 @@ test('marking a grab failed keeps the file and the torrent, blocklists and searc
 
   // Replacing a failed whole-season grab episode by episode, or treating a partial grab as a pack, turns this red.
   const aired = '1970-01-01T00:00:00Z';
+  fake.sonarr.state.series = [seriesRecord({ id: 3 })];
   fake.sonarr.state.episodes = [
     episodeRecord({ id: 31, seriesId: 3, seasonNumber: 1, episodeNumber: 1, airDateUtc: aired }),
     episodeRecord({ id: 32, seriesId: 3, seasonNumber: 1, episodeNumber: 2, airDateUtc: aired }),
@@ -10055,6 +10164,13 @@ test('marking a grab failed keeps the file and the torrent, blocklists and searc
   assert.deepEqual(await sent([31, 32, 33]), [{ name: 'SeasonSearch', seriesId: 3, seasonNumber: 1 }]);
   assert.deepEqual(await sent([31, 32]), [{ name: 'EpisodeSearch', episodeIds: [31, 32] }]);
   assert.deepEqual(await sent([31, 32, 33, 41]), [{ name: 'SeasonSearch', seriesId: 3, seasonNumber: 1 }, { name: 'EpisodeSearch', episodeIds: [41] }]);
+  // Searching a season whole when one of its missing episodes is in the search backlog turns this red.
+  database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?)').run('sonarr:episode:33', 1);
+  assert.deepEqual(await sent([31, 32, 33]), [{ name: 'EpisodeSearch', episodeIds: [31, 32, 33] }]);
+  database.prepare('DELETE FROM search_backlog').run();
+  // Treating an anime series as a pack, which Sonarr searches episode by episode anyway, turns this red.
+  fake.sonarr.state.series = [seriesRecord({ id: 3, seriesType: 'anime' })];
+  assert.deepEqual(await sent([31, 32, 33]), [{ name: 'EpisodeSearch', episodeIds: [31, 32, 33] }]);
   assert.equal((await mark(7, { ...grab, extra: true })).status, 400);
   assert.equal((await mark(7, { ...grab, releaseTitle: '' })).status, 400);
 
@@ -10168,7 +10284,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   }
   const calls = () => ['sonarr', 'radarr'].flatMap((name) => fake[name].requests.map(({ method, path, body }) => ({ name, method, path, body })));
   const library = createLibrary(services, () => [], createTitleStore(database));
-  const searchRuns = createSearchRuns({ database, arr: services, pollMs: 1 });
+  const searchRuns = createSearchRuns({ database, arr: services, pollMs: 1, isManualDownload: () => false });
   const routes = createLibraryRoutes(library, searchRuns);
   const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -11382,6 +11498,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       deleteVersion,
       protection: {
         list: () => protection.items,
+        isProtected: (subject) => subject.type === 'episode' && protection.items.some((item) => item.episodeId === Number(subject.id)),
         unprotect: async (item) => {
           protection.lifted.push(item);
           protection.failedBeforeLift = arrFake.radarr.state.failed.length + arrFake.sonarr.state.failed.length;
@@ -12008,8 +12125,9 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
 
   // Searching the whole show instead of the deleted episodes, searching before their files are gone, leaving them unmonitored,
   // monitoring an episode of the season the owner left off (Sonarr turns a season's episodes on with it), lifting another season's
-  // protection, blocklisting when not asked, or an EpisodeSearch for a whole-season delete (a pack needs a SeasonSearch) turns this red.
-  await t.test('searching a season again monitors its episodes and the season, deletes each file, then searches only those episodes', async () => {
+  // protection, blocklisting when not asked, an EpisodeSearch for a whole-season delete (a pack needs a SeasonSearch), or a SeasonSearch
+  // when a file of the season stayed, when the show is anime, or when a missing episode of the season is a manual download turns this red.
+  await t.test('searching a season again monitors its episodes and the season, deletes each file, then searches the season whole when every file went', async () => {
     const w = await seasons();
     const state = w.arrFake.sonarr.state;
     state.series[0].seasons[0].monitored = false;
@@ -12031,6 +12149,23 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [PACK, w.FULL, V1, V2]);
     const [event] = await w.deletions();
     assert.deepEqual([event.title, event.event], ['Andor Season 1', 'Season files deleted, searching again']);
+
+    const searchedAfter = async (change) => {
+      const other = await seasons();
+      change(other);
+      await other.remove('/series/5/season/1', { mode: 'searchAgain', removeTorrents: [], secondVersions: [] });
+      return other.arrFake.sonarr.state.commands;
+    };
+    const fileKept = (other) => other.arrFake.sonarr.routes.unshift((method, url) => (
+      method === 'DELETE' && url.pathname === '/api/v3/episodefile/22' ? { status: 409, body: { message: 'Root folder does not exist' } } : undefined));
+    assert.deepEqual(await searchedAfter(fileKept), [{ name: 'EpisodeSearch', episodeIds: [101, 103, 104] }]);
+    assert.deepEqual(await searchedAfter((other) => { other.arrFake.sonarr.state.series[0].seriesType = 'anime'; }),
+      [{ name: 'EpisodeSearch', episodeIds: [101, 102, 103, 104] }]);
+    const handPicked = (other) => {
+      other.arrFake.sonarr.state.episodes.push(episodeRecord({ id: 105, seriesId: 5, seasonNumber: 1, episodeNumber: 5, airDateUtc: '2022-09-21T01:00:00Z' }));
+      other.protection.items.push({ service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 105, seasonNumber: 1, episodeNumber: 5 });
+    };
+    assert.deepEqual(await searchedAfter(handPicked), [{ name: 'EpisodeSearch', episodeIds: [101, 102, 103, 104] }]);
   });
 
   // Searching only one season, monitoring a season the owner left off without a deleted file, blocklisting before lifting the protection,

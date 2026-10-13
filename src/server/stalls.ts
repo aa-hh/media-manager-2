@@ -183,7 +183,10 @@ export const createStallFix = (options: {
     if (grab.service === 'sonarr' && grab.movieId === null && grab.episodeIds.length !== 1) {
       // razor: a multi-episode or pack grab is searched automatically, without the tracker preference; per-episode releases need their own picks.
       // A grab of a whole season is replaced by a season search, so a pack can come back.
-      valueOrThrow(await searchSeasonFirst(arr, grab.seriesId, grab.episodeIds, now));
+      valueOrThrow(await searchSeasonFirst(
+        { arr, database, isManualDownload, now },
+        { seriesId: grab.seriesId, episodeIds: grab.episodeIds, ownDownload: { hash: grab.hash, title: null } },
+      ));
       return 'Asked Sonarr to search automatically for these episodes.';
     }
     const query = grab.movieId !== null ? `movieId=${grab.movieId}` : `episodeId=${grab.episodeIds[0]}`;
