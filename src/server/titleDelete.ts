@@ -101,7 +101,17 @@ export type StepResult =
   // A season delete sends one file delete per file and lists each answer.
   | { step: 'delete'; outcome: Outcome; message: string; files: FileOutcome[] }
   | { step: 'torrents'; outcome: Outcome; message: string; torrents: TorrentOutcome[] }
-  | { step: 'secondVersions'; outcome: Outcome; message: string; secondVersions: VersionOutcome[] };
+  | { step: 'secondVersions'; outcome: Outcome; message: string; secondVersions: VersionOutcome[] }
+  // Read back from Sonarr or Radarr after a delete that keeps the title; null when the read failed.
+  | { step: 'monitoring'; outcome: Outcome; message: string; monitoring: Monitoring | null };
+
+export type Monitoring =
+  | { kind: 'movie'; monitored: boolean }
+  | { kind: 'series'; monitored: boolean; monitorNewItems: string | null; seasons: { seasonNumber: number; monitored: boolean; monitoredEpisodes: number; episodes: number }[] };
+// What a delete meant Sonarr or Radarr to hold afterwards; anything left out was not its to set.
+type Intent = { movie?: boolean; series?: boolean; newSeasons?: 'none'; allSeasons?: boolean; seasons: Map<number, boolean>; episodes: Map<number, boolean> };
+type Prepared = { kind: 'ok'; value: string; intent: Intent } | { kind: 'failed'; message: string };
+const intent = (fields: Partial<Intent> = {}): Intent => ({ seasons: new Map(), episodes: new Map(), ...fields });
 
 export type DeleteRun =
   | Failure
@@ -334,40 +344,47 @@ export const createTitleDelete = (options: {
     scope: Episodic[],
     part: Selection | null,
     following: Set<number>,
-  ): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
+  ): Promise<Prepared> => {
     if (target.service === 'radarr') {
       const result = await arr.radarr.monitorMovie(target.movieId, false);
-      return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored in Radarr.' } : fail(result);
+      return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored in Radarr.', intent: intent({ movie: false }) } : fail(result);
     }
     const off = scope.filter((episode) => !(following.has(episode.seasonNumber) && !episode.aired)).map((episode) => episode.id);
+    const episodesOff = new Map(off.map((id) => [id, false]));
     if (off.length > 0) {
       const result = await arr.sonarr.monitorEpisodes(off, false);
       if (result.kind !== 'ok') return fail(result);
     }
     if (part === null) {
       const result = await arr.sonarr.setSeriesMonitoring(target.seriesId, { monitored: false, seasons: 'all', monitorNewItems: 'none' });
-      return result.kind === 'ok' ? { kind: 'ok', value: 'Unmonitored the show, every season and episode, and new seasons in Sonarr.' } : fail(result);
+      return result.kind === 'ok'
+        ? { kind: 'ok', value: 'Unmonitored the show, every season and episode, and new seasons in Sonarr.', intent: intent({ series: false, newSeasons: 'none', allSeasons: false, episodes: episodesOff }) }
+        : fail(result);
     }
     const seasonsOff = part.seasons.filter((season) => !following.has(season));
+    const planned = intent({ seasons: new Map(seasonsOff.map((season) => [season, false])), episodes: episodesOff });
     for (const season of seasonsOff) {
       const result = await arr.sonarr.monitorSeason(target.seriesId, season, false);
       if (result.kind !== 'ok') return fail(result);
     }
-    if (target.selection === undefined && seasonsOff.length === 1) return { kind: 'ok', value: `Unmonitored season ${seasonsOff[0]} and its episodes in Sonarr.` };
+    if (target.selection === undefined && seasonsOff.length === 1) return { kind: 'ok', value: `Unmonitored season ${seasonsOff[0]} and its episodes in Sonarr.`, intent: planned };
     const kept = part.seasons.filter((season) => following.has(season));
     return {
       kind: 'ok',
       value: `Unmonitored ${plural(off.length, 'episode')}${seasonsOff.length === 0 ? '' : ` and ${seasonWords(seasonsOff)}`} in Sonarr.`
         + (kept.length === 0 ? '' : ` Still following ${seasonWords(kept)} for episodes still to air.`),
+      intent: planned,
     };
   };
 
   // Search again: monitor what the files held, so the search that follows wants it. Sonarr monitors every episode of a season
   // whose flag a PUT turns on, so the seasons go first, then the held episodes, then the season's other episodes go back off.
-  const monitorAgain = async (target: DeleteTarget, held: Scoped[], all: Scoped[]): Promise<{ kind: 'ok'; value: string } | { kind: 'failed'; message: string }> => {
+  const monitorAgain = async (target: DeleteTarget, held: Scoped[], all: Scoped[]): Promise<Prepared> => {
+    const planned = intent();
     if (target.service === 'radarr') {
       const result = await arr.radarr.monitorMovie(target.movieId, true);
       if (result.kind !== 'ok') return fail(result);
+      planned.movie = true;
     } else if (held.length > 0) {
       const seasons = [...new Set(held.map((episode) => episode.seasonNumber))];
       const result = await arr.sonarr.setSeriesMonitoring(target.seriesId, { monitored: true, seasons });
@@ -380,8 +397,12 @@ export const createTitleDelete = (options: {
         const restored = await arr.sonarr.monitorEpisodes(leftOff, false);
         if (restored.kind !== 'ok') return fail(restored);
       }
+      planned.series = true;
+      for (const season of seasons) planned.seasons.set(season, true);
+      for (const id of ids) planned.episodes.set(id, true);
+      for (const id of leftOff) planned.episodes.set(id, false);
     }
-    return { kind: 'ok', value: target.service === 'radarr' ? 'Monitored in Radarr.' : `Monitored ${plural(held.length, 'episode')} and their seasons in Sonarr.` };
+    return { kind: 'ok', value: target.service === 'radarr' ? 'Monitored in Radarr.' : `Monitored ${plural(held.length, 'episode')} and their seasons in Sonarr.`, intent: planned };
   };
 
   // Lifted once the files are gone, before the blocklist: mark-failed can start the service's own search (autoRedownloadFailed),
@@ -397,6 +418,45 @@ export const createTitleDelete = (options: {
       return { kind: 'failed', message: `Couldn't lift the manual-download protection: ${error instanceof Error ? error.message : String(error)}` };
     }
     return { kind: 'ok', value: lifted.length === 0 ? '' : ` Lifted the manual-download protection from ${plural(lifted.length, target.service === 'radarr' ? 'movie' : 'episode')}.` };
+  };
+
+  // Proof of what Sonarr or Radarr will do next: the title read back, and every way it differs from what the delete set.
+  const readBack = async (target: DeleteTarget, planned: Intent, all: Episodic[]): Promise<StepResult> => {
+    const differs: string[] = [];
+    const check = (wanted: boolean | undefined, actual: boolean, what: string) => {
+      if (wanted !== undefined && wanted !== actual) differs.push(`${what} is ${actual ? 'monitored' : 'not monitored'}`);
+    };
+    let monitoring: Monitoring;
+    let message: string;
+    if (target.service === 'radarr') {
+      const movie = await arr.radarr.movie(target.movieId);
+      if (movie.kind !== 'ok') return { step: 'monitoring', outcome: 'skipped', message: `Couldn't read the movie back from Radarr: ${movie.message}`, monitoring: null };
+      monitoring = { kind: 'movie', monitored: movie.value.monitored };
+      check(planned.movie, movie.value.monitored, 'The movie');
+      message = `Radarr: the movie is ${movie.value.monitored ? 'monitored' : 'not monitored'}.`;
+    } else {
+      const [series, episodes] = await Promise.all([arr.sonarr.series(target.seriesId), arr.sonarr.episodes(target.seriesId)]);
+      const unread = (result: Failure): StepResult => ({ step: 'monitoring', outcome: 'skipped', message: `Couldn't read the show back from Sonarr: ${result.message}`, monitoring: null });
+      if (series.kind !== 'ok') return unread(series);
+      if (episodes.kind !== 'ok') return unread(episodes);
+      const seasons = series.value.seasons.map((season) => {
+        const own = episodes.value.filter((episode) => episode.seasonNumber === season.seasonNumber);
+        return { seasonNumber: season.seasonNumber, monitored: season.monitored, monitoredEpisodes: own.filter((episode) => episode.monitored).length, episodes: own.length };
+      });
+      monitoring = { kind: 'series', monitored: series.value.monitored, monitorNewItems: series.value.monitorNewItems, seasons };
+      check(planned.series, series.value.monitored, 'The show');
+      if (planned.newSeasons !== undefined && series.value.monitorNewItems !== planned.newSeasons) differs.push(`new seasons are set to ${series.value.monitorNewItems ?? 'unknown'}`);
+      for (const season of seasons) check(planned.seasons.get(season.seasonNumber) ?? planned.allSeasons, season.monitored, `Season ${season.seasonNumber}`);
+      for (const episode of episodes.value) {
+        const known = all.find((other) => other.id === episode.id);
+        check(planned.episodes.get(episode.id), episode.monitored, known === undefined ? `Episode ${episode.id}` : code(known));
+      }
+      message = `Sonarr: ${seasons.map((season) => `season ${season.seasonNumber} ${season.monitored ? 'monitored' : 'not monitored'} `
+        + `(${season.monitoredEpisodes} of ${plural(season.episodes, 'episode')})`).join('; ')}; new seasons ${series.value.monitorNewItems === 'all' ? 'followed' : 'not followed'}.`;
+    }
+    return differs.length === 0
+      ? { step: 'monitoring', outcome: 'done', message, monitoring }
+      : { step: 'monitoring', outcome: 'failed', message: `Not as intended: ${differs.join('; ')}. ${message}`, monitoring };
   };
 
   // The grab each deleted file came from, one per download: Sonarr records a pack's grab once per episode, and failing any one fails the download.
@@ -496,6 +556,8 @@ export const createTitleDelete = (options: {
       const fileIds = new Set(files.map((file) => file.fileId));
       const deletedEpisodes = (ids: Set<number>) => episodes.filter((episode) => episode.fileId !== null && ids.has(episode.fileId));
       let deletedFileIds = fileIds;
+      // What the (un)monitor step set; a removed title has nothing left to read back.
+      let planned: Intent | null = null;
 
       if (mode === 'remove' && target.service === 'sonarr') {
         const result = await arr.sonarr.deleteSeries(target.seriesId);
@@ -514,10 +576,12 @@ export const createTitleDelete = (options: {
           const unmonitored = await unmonitor(target, episodes, part, following);
           if (unmonitored.kind !== 'ok') return stop('unmonitor', unmonitored.message);
           steps.push({ step: 'unmonitor', outcome: 'done', message: unmonitored.value });
+          planned = unmonitored.intent;
         } else {
           const monitored = await monitorAgain(target, deletedEpisodes(fileIds), allEpisodes);
           if (monitored.kind !== 'ok') return stop('monitor', monitored.message);
           steps.push({ step: 'monitor', outcome: 'done', message: monitored.value });
+          planned = monitored.intent;
         }
         const stays = keep ? 'unmonitored' : 'monitored';
         if (target.service === 'radarr') {
@@ -661,6 +725,7 @@ export const createTitleDelete = (options: {
       const detail = [summary, keepAll, torrentsMessage, versionsMessage].filter((part) => part !== null).join(' ');
       database.prepare('INSERT INTO title_events (service, title_id, title, at, kind, detail) VALUES (?, ?, ?, ?, ?, ?)')
         .run(target.service, titleId(target), season !== undefined ? `${title} Season ${season}` : part !== null ? `${title} ${describe(part, episodes)}` : title, now(), kind, detail);
+      if (planned !== null) steps.push(await readBack(target, planned, allEpisodes));
       steps.push({ step: 'history', outcome: 'done', message: 'Written to History under Deletions.' });
       return { kind: 'ran', deleted: true, steps };
     } finally {
