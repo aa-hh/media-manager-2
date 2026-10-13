@@ -155,6 +155,7 @@ if (database !== undefined) {
   const secondVersionDelete = createSecondVersionDelete({ database, removeTorrent: torrentFiles.removeTorrent, scan: versionImport.scan });
   const titleStore = createTitleStore(database);
   const search = createSearch(database, arr, titleStore);
+  const blocklist = createBlocklist({ database, arr, isManualDownload: protection.isProtected });
   const titleDelete = createTitleDelete({
     database,
     arr,
@@ -167,6 +168,8 @@ if (database !== undefined) {
         return account.kind === 'ok' ? account.stats : null;
       },
     }),
+    protection,
+    blocklist,
     forget: search.forget,
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
@@ -214,7 +217,7 @@ if (database !== undefined) {
       health,
       flagged: createFlagged({ database, arr, labels, isManualDownload: protection.isProtected }),
       history: createHistory({ database, arr, labels }),
-      blocklist: createBlocklist({ database, arr, isManualDownload: protection.isProtected }),
+      blocklist,
     }),
     images: createImageRoutes(titles, tmdbImages),
     webhooks: {

@@ -20,7 +20,7 @@ export type MarkFailedResult =
   | { kind: 'remove_failed_on' }
   | { kind: 'refused' }
   | { kind: 'unavailable' }
-  | { kind: 'ok'; searched: 'service' | 'media-manager-2' | 'manual_download' | 'search_failed' };
+  | { kind: 'ok'; searched: 'service' | 'media-manager-2' | 'manual_download' | 'search_failed' | 'skipped' };
 
 const PAGE_SIZE = 100;
 const serviceWords = { sonarr: 'Sonarr', radarr: 'Radarr' } as const;
@@ -75,6 +75,8 @@ export const createBlocklist = (options: {
     service: Service,
     historyId: number,
     body: { movieId: number | null; episodeIds: number[]; releaseTitle: string },
+    // A delete that searches again runs its own search once its files are gone.
+    { search = true }: { search?: boolean } = {},
   ): Promise<MarkFailedResult> => {
     let clients: unknown;
     try {
@@ -90,6 +92,7 @@ export const createBlocklist = (options: {
     const marked = outcome(await arr[service].markFailed(historyId));
     if (marked !== 'ok') return { kind: marked };
     recordBlocklistMark(database, service, body.releaseTitle, 'history', now());
+    if (!search) return { kind: 'ok', searched: 'skipped' };
 
     if (record(await read(service, '/api/v3/config/downloadclient'))?.autoRedownloadFailed === true) return { kind: 'ok', searched: 'service' };
     const subjects: Subject[] = service === 'radarr'

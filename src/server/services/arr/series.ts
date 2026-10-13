@@ -182,6 +182,25 @@ export const createSeries = ({ label, send }: { label: string; send: Send }) => 
     return done(await send(operation, `/api/v3/series/${seriesId}`, { method: 'PUT', body: updated }));
   };
 
+  // One PUT of the whole record: the show, the named seasons (or all of them) and, when given, what Sonarr does with seasons added later.
+  const setSeriesMonitoring = async (
+    seriesId: number,
+    change: { monitored: boolean; seasons: number[] | 'all'; monitorNewItems?: 'all' | 'none' },
+  ): Promise<Result<void>> => {
+    const operation = 'the show monitor change';
+    const record = await raw(operation, seriesId);
+    if (record.kind !== 'ok') return record;
+    const seasons = Array.isArray(record.value.seasons) ? record.value.seasons : [];
+    const named = (season: unknown) => isRecord(season) && (change.seasons === 'all' || change.seasons.includes(season.seasonNumber as number));
+    const updated = {
+      ...record.value,
+      monitored: change.monitored,
+      seasons: seasons.map((season) => (named(season) ? { ...(season as Record<string, unknown>), monitored: change.monitored } : season)),
+      ...(change.monitorNewItems === undefined ? {} : { monitorNewItems: change.monitorNewItems }),
+    };
+    return done(await send(operation, `/api/v3/series/${seriesId}`, { method: 'PUT', body: updated }));
+  };
+
   const setTag = async (seriesId: number, tagId: number, tagged: boolean): Promise<Result<void>> => {
     const operation = 'the tag change';
     const record = await raw(operation, seriesId);
@@ -197,5 +216,5 @@ export const createSeries = ({ label, send }: { label: string; send: Send }) => 
     await send('the series delete', `/api/v3/series/${seriesId}?deleteFiles=true&addImportListExclusion=false`, { method: 'DELETE' }),
   );
 
-  return { listSeries, series, lookupSeries, addSeries, monitorSeries, monitorSeason, setTag, deleteSeries };
+  return { listSeries, series, lookupSeries, addSeries, monitorSeries, monitorSeason, setSeriesMonitoring, setTag, deleteSeries };
 };

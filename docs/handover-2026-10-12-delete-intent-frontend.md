@@ -66,7 +66,7 @@ type DeletePlan = /* existing fields */ & {
 };
 ```
 
-The delete request (`DeleteChoices`). Every key is required; the server rejects unknown or missing keys with 400.
+The delete request (`DeleteChoices`). Send every key. The server rejects unknown keys with 400, so a key arrives only with its server ticket. While the server lands, a key added by a ticket may be left out: a show or season delete without `mode` gets what it did before (`remove` for a show, `keepUnmonitored` for a season), and a missing flag counts as false.
 
 ```ts
 type DeleteChoices = {
@@ -87,12 +87,14 @@ New result steps (`StepResult`), in the order they run:
 
 ```ts
 | { step: 'queue'; outcome; message; queue: Array<{ downloadId: string; title: string; removed: boolean; torrentRemoved: boolean; reason: string | null }> }
-| { step: 'blocklist' | 'search' | 'exclusion'; outcome; message }
+| { step: 'monitor' | 'blocklist' | 'search' | 'exclusion'; outcome; message } // monitor: searchAgain monitors the deleted files' movie or episodes first
 | { step: 'monitoring'; outcome; message; monitoring:
     | { kind: 'movie'; monitored: boolean }
     | { kind: 'series'; monitored: boolean; monitorNewItems: string | null;
         seasons: Array<{ seasonNumber: number; monitored: boolean; monitoredEpisodes: number; episodes: number }> } }
 ```
+
+`deleted` is true for every mode once the delete ran, including Keep, unmonitored and Search again. Today the dialog goes home on `deleted`; for those two modes the title is still in the library, so stay on its page.
 
 Errors: unchanged (`plan_changed` and `in_progress` as 409). A 400 now also means a choice the target does not allow (for example `remove` on a selection, or a missing `keepFollowing`). The client should never send one; treat it as a bug and show the server's reason.
 
