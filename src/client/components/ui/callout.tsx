@@ -20,7 +20,7 @@ type CalloutProps = Omit<ComponentProps<'div'>, 'title'> & {
   action?: ReactNode;
 };
 
-/** A message inside the page: what went wrong and what to do. Flat, radius 8, no side bar. */
+/** A message inside the page: what went wrong and what to do. Flat, radius 12, no side bar. */
 function Callout({ look = 'risk', title, action, className, children, ...props }: CalloutProps) {
   return (
     <div

@@ -68,7 +68,7 @@ function RowDownload({ title, detail, progress, speed, eta, tracker, state, stat
       <TableCell align="end" className={cn(w.eta, 'text-muted-foreground')}>{eta}</TableCell>
       <TableCell className={w.tracker}>{tracker !== undefined && <TableCellTracker name={tracker} />}</TableCell>
       <TableCell className={w.state}>
-        <Badge key={state} variant={look.badge} className="transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
+        <Badge key={state} variant={look.badge} percent={progress} className="transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
           {stateLabel}
         </Badge>
       </TableCell>

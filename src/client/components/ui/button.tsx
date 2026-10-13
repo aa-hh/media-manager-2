@@ -1,5 +1,7 @@
 // v2/Button — ~/Projects/media-manager-2-design/design-system.lib.pen ht3RN
 // v2/Button/sm — ~/Projects/media-manager-2-design/design-system.lib.pen FU0kO (size="sm")
+// v2/Button/plex — ~/Projects/media-manager-2-design/design-system.lib.pen yb2vM (variant="plex" size="large")
+// v2/Button/jellyfin — ~/Projects/media-manager-2-design/design-system.lib.pen hi4Y1 (variant="jellyfin" size="large")
 import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
@@ -25,11 +27,11 @@ type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
 
 const variants: Record<ButtonVariant, string> = {
   default: 'text-action-foreground before:bg-action not-data-disabled:hover:before:bg-action-hover not-data-disabled:active:before:bg-action-pressed',
-  outline: 'text-foreground before:border before:border-input before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
+  outline: 'text-foreground before:border-[1.5px] before:border-foreground before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
   ghost: 'text-foreground before:bg-transparent not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:bg-transparent',
   destructive: 'text-primary-foreground before:bg-destructive not-data-disabled:hover:before:bg-destructive-hover not-data-disabled:active:before:bg-destructive-pressed',
   'outline-destructive': 'text-destructive before:border before:border-destructive before:bg-card not-data-disabled:hover:before:bg-destructive-soft not-data-disabled:active:before:bg-destructive/20 data-disabled:before:border-border',
-  menu: 'text-foreground before:border before:border-input before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
+  menu: 'text-foreground before:border-[1.5px] before:border-foreground before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
   plex: 'text-plex-foreground before:bg-plex not-data-disabled:hover:before:bg-plex-hover not-data-disabled:active:before:bg-plex-pressed aria-busy:opacity-[0.78]',
   jellyfin: 'text-jellyfin-foreground before:bg-jellyfin not-data-disabled:hover:before:bg-jellyfin-hover not-data-disabled:active:before:bg-jellyfin-pressed aria-busy:opacity-[0.78]',
 };
@@ -87,6 +89,8 @@ function Button({
         sizes[size],
         icons[size],
         variants[variant],
+        // Inside table rows the outline edge is the thin row line colour.
+        size === 'row' && (variant === 'outline' || variant === 'menu') && 'before:border before:border-border',
         iconOnly && squares[size],
         className,
       )}

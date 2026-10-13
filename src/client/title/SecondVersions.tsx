@@ -21,12 +21,12 @@ const sizeText = (version: SecondVersion) => (version.sizeBytes === null ? '' : 
 const deletable = (version: SecondVersion) => version.state === 'imported' || version.state === 'failed';
 const tracker = (version: SecondVersion) => trackerName(version.seeding?.trackerHost ?? version.indexer);
 
-const badge = (version: SecondVersion): { label: string; variant?: 'live' | 'risk' | 'warning'; icon?: ReactNode; spinner?: boolean } => {
+const badge = (version: SecondVersion): { label: string; variant?: 'live' | 'risk' | 'warning'; icon?: ReactNode; spinner?: boolean; percent?: number } => {
   if (version.state === 'sending') return { label: 'Sending', spinner: true };
   if (version.state === 'downloading' && version.stalled) {
     return { label: version.percent === null ? 'Stalled' : `Stalled at ${version.percent}%`, variant: 'warning', icon: <TriangleAlert /> };
   }
-  if (version.state === 'downloading') return { label: version.percent === null ? 'Downloading' : `Downloading ${version.percent}%`, variant: 'live' };
+  if (version.state === 'downloading') return { label: version.percent === null ? 'Downloading' : `Downloading ${version.percent}%`, variant: 'live', percent: version.percent ?? undefined };
   if (version.state === 'importing') return { label: 'Importing', spinner: true };
   if (version.state === 'failed' && version.failureCode === 'stalled_removed') return { label: 'Stalled, removed', variant: 'warning', icon: <CircleCheck /> };
   if (version.state === 'failed') return { label: 'Failed', variant: 'risk', icon: <CircleX /> };
@@ -208,6 +208,7 @@ export function SecondVersionRows({ versions, indent, subject, trackedQuality, o
             labelVariant={look.variant}
             labelIcon={look.icon}
             labelSpinner={look.spinner}
+            labelPercent={look.percent}
             quality={version.quality}
             release={version.releaseTitle}
             detail={version.state === 'failed' && failureText(version) !== null

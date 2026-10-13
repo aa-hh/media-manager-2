@@ -397,6 +397,12 @@ export const applicationMigrations = [
   ) STRICT;`,
   // When a season search was last sent for each season, so the six-hour repeats alternate season and episode searches.
   `CREATE TABLE season_search_log (series_id INTEGER NOT NULL, season_number INTEGER NOT NULL, searched_at INTEGER NOT NULL, PRIMARY KEY (series_id, season_number)) STRICT;`,
+  // How many times an imported second version was offered to Jellyfin to merge with the tracked file; a merge sets the cap.
+  `ALTER TABLE second_versions ADD COLUMN merge_tries INTEGER NOT NULL DEFAULT 0;`,
+  // The tracked file's path as Radarr or Sonarr last reported it; a change means a rename or upgrade, which splits a Jellyfin merge.
+  `ALTER TABLE second_versions ADD COLUMN tracked_path TEXT;`,
+  // When Radarr or Sonarr was last asked for the tracked path, so merged rows are checked for a rename once an hour.
+  `ALTER TABLE second_versions ADD COLUMN merge_checked_at INTEGER;`,
   // The install's owner: one row, written by the first sign-in on the first-run page.
   `CREATE TABLE owner (
     id INTEGER PRIMARY KEY CHECK (id = 1),

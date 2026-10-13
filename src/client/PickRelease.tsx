@@ -495,7 +495,7 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
           )
           : undefined}
       >
-        {list.kind === 'loading' && Array.from({ length: 4 }, (_, index) => <RowReleaseSkeleton key={index} />)}
+        {list.kind === 'loading' && Array.from({ length: 4 }, (_, index) => <RowReleaseSkeleton key={index} index={index} />)}
         {list.kind === 'ready' && visible.map((release) => {
           const isBest = release.guid === best;
           const cooling = release.hitAndRun?.cooldown === true;

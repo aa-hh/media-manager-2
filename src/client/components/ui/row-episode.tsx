@@ -48,7 +48,7 @@ function RowEpisode({ bookmark, number, title, aired, file, state, actions, moni
       line={line}
       className={cn(
         // The open tint paints above the row's own fill, so it steps aside for the selected tint.
-        open && !selected && 'isolate before:absolute before:inset-y-0 before:right-0 before:left-24 before:-z-10 before:bg-accent hover:before:bg-surface-pressed',
+        open && !selected && 'isolate before:absolute before:inset-y-0 before:right-4 before:left-24 before:-z-10 before:bg-accent hover:before:bg-surface-pressed',
         className,
       )}
       {...props}

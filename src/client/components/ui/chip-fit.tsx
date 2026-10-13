@@ -30,7 +30,7 @@ function ChipFit({ kind, tooltip, children }: { kind: ChipFitKind; tooltip?: str
       aria-label={label}
       // Focusable when it has a tooltip, so the tooltip opens from the keyboard too.
       tabIndex={tooltip === undefined ? undefined : 0}
-      className={cn('inline-flex h-5 w-9 shrink-0 items-center justify-center rounded-xs font-data text-[13px] font-medium whitespace-nowrap', looks[kind])}
+      className={cn('inline-flex h-5 w-9 shrink-0 items-center justify-center rounded-xs px-(--badge-px) font-data text-[13px] font-medium whitespace-nowrap', looks[kind])}
     >
       {kind === 'best-star' ? <Star aria-hidden="true" className="size-3" />
         : kind === 'rejected' ? <MonitorX aria-hidden="true" className="size-4" />

@@ -82,6 +82,11 @@
   --jellyfin-hover: #1ab3e8;
   --jellyfin-pressed: #0093c6;
   --jellyfin-foreground: #07080b;
+  --foreground-on-dark: #ece9e1;
+  --muted-foreground-on-dark: #b8b9b6;
+  --destructive-on-dark: #f2a097;
+  --card-on-dark: #ffffff0d;
+  --input-on-dark: #ffffff3d;
   --best: #c6f135;
   --best-soft: #f3fcd6;
   --best-foreground: #3d5600;
@@ -106,6 +111,11 @@
   --inline-control-border: #7889a3;
   --inline-control-border-hover: #66778f;
   --inline-control-foreground: #334766;
+  --status-queued: #e06a10;
+  --status-downloading: #2f8a1f;
+  --status-importing: #7a3fd1;
+  --status-stalled: #e5534b;
+  --status-blocked: #a3150f;
 
   /* Radius */
   --radius-xs: 4px;
@@ -113,7 +123,7 @@
   --radius-md: 12px;
   --radius-lg: 12px;
   --radius-full: 999px;
-  --radius: 10px;
+  --radius: 12px;
   --radius-xl: 14px;
 
   /* Sizes and spacing */
@@ -328,6 +338,11 @@
   --color-jellyfin-hover: var(--jellyfin-hover);
   --color-jellyfin-pressed: var(--jellyfin-pressed);
   --color-jellyfin-foreground: var(--jellyfin-foreground);
+  --color-foreground-on-dark: var(--foreground-on-dark);
+  --color-muted-foreground-on-dark: var(--muted-foreground-on-dark);
+  --color-destructive-on-dark: var(--destructive-on-dark);
+  --color-card-on-dark: var(--card-on-dark);
+  --color-input-on-dark: var(--input-on-dark);
   --color-best: var(--best);
   --color-best-soft: var(--best-soft);
   --color-best-foreground: var(--best-foreground);
@@ -352,6 +367,11 @@
   --color-inline-control-border: var(--inline-control-border);
   --color-inline-control-border-hover: var(--inline-control-border-hover);
   --color-inline-control-foreground: var(--inline-control-foreground);
+  --color-status-queued: var(--status-queued);
+  --color-status-downloading: var(--status-downloading);
+  --color-status-importing: var(--status-importing);
+  --color-status-stalled: var(--status-stalled);
+  --color-status-blocked: var(--status-blocked);
 
   --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
@@ -439,6 +459,7 @@
   font-feature-settings: "tnum";
 }
 
+/* v2/Focus ring — ~/Projects/media-manager-2-design/design-system.lib.pen v1tSkC */
 /* 2px ring with a 2px gap (DESIGN.md "Focus"). The Kbd and bars use the white ring. */
 @utility focus-ring {
   &:focus-visible {

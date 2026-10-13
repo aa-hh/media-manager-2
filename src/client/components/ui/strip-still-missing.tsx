@@ -26,7 +26,7 @@ function StripStillMissing({ lead, action, className, children, ...props }: Stri
           kbd={action.kbd}
           disabled={action.disabled}
           onClick={action.onClick}
-          className="not-data-disabled:hover:bg-card/60"
+          className="gap-1.5 not-data-disabled:hover:bg-card/60"
         >
           {action.label}
         </Button>

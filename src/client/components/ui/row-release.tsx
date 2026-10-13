@@ -7,6 +7,19 @@
 // v2/Row/release/movie — ~/Projects/media-manager-2-design/design-system.lib.pen qTBZf
 // v2/Table/Header/releases — ~/Projects/media-manager-2-design/design-system.lib.pen wQU07
 // v2/Table/Header/releases/movie — ~/Projects/media-manager-2-design/design-system.lib.pen tQZov
+// v2/Cell/release-name — ~/Projects/media-manager-2-design/design-system.lib.pen M8bEk (a cell of RowRelease)
+// v2/Cell/audio-hdr — ~/Projects/media-manager-2-design/design-system.lib.pen pdjRt (a cell of RowRelease)
+// v2/Cell/seeders — ~/Projects/media-manager-2-design/design-system.lib.pen SfCL1 (a cell of RowRelease)
+// v2/Cell/seeders/low — ~/Projects/media-manager-2-design/design-system.lib.pen UITl8 (a cell of RowRelease)
+// v2/Cell/seeders/none — ~/Projects/media-manager-2-design/design-system.lib.pen gexgG (a cell of RowRelease)
+// v2/Cell/seeders/unknown — ~/Projects/media-manager-2-design/design-system.lib.pen xZr3s (a cell of RowRelease)
+// v2/Cell/tracker — ~/Projects/media-manager-2-design/design-system.lib.pen XMo1g (a cell of RowRelease)
+// v2/Cell/fit — ~/Projects/media-manager-2-design/design-system.lib.pen lz4zk (a cell of RowRelease)
+// v2/Cell/quality — ~/Projects/media-manager-2-design/design-system.lib.pen Rka34 (a cell of RowRelease)
+// v2/Cell/size — ~/Projects/media-manager-2-design/design-system.lib.pen WcaA7 (a cell of RowRelease)
+// v2/Cell/release-action — ~/Projects/media-manager-2-design/design-system.lib.pen p1fiB7 (a cell of RowRelease)
+// v2/Cell/release-action/outline — ~/Projects/media-manager-2-design/design-system.lib.pen lXOk9 (a cell of RowRelease)
+// v2/Cell/release-action/state — ~/Projects/media-manager-2-design/design-system.lib.pen oSFS4 (a cell of RowRelease)
 import type { ReactNode } from 'react';
 import { MarkFreeleech } from '@/components/ui/mark-freeleech';
 import { MarkHistory } from '@/components/ui/mark-history';
@@ -25,7 +38,7 @@ const w = { audio: 'w-36', seeders: 'w-16', tracker: 'w-26', fit: 'w-24', qualit
 /** Header for the releases inset. The inset block supplies the left offset, so it has no side padding. */
 function RowReleaseHeader() {
   return (
-    <TableHeader className="px-0">
+    <TableHeader className="px-0 [&>*]:font-bold">
       <TableHead fill className="pl-2.5">Release</TableHead>
       <TableHead className={w.audio}>Audio · HDR</TableHead>
       <TableHead align="end" className={w.seeders}>Seeders</TableHead>
@@ -81,11 +94,15 @@ function RowRelease({
 }: RowReleaseProps) {
   const dim = rejected && 'text-subtle-foreground';
   const seedersText = seeders === undefined ? '' : seeders === null ? '?' : String(seeders);
+  // "4.2 GB": the number in foreground, the unit in subtle-foreground.
+  const unitAt = size.lastIndexOf(' ');
+  const sizeNumber = unitAt === -1 ? size : size.slice(0, unitAt);
+  const sizeUnit = unitAt === -1 ? '' : size.slice(unitAt);
   return (
     <TableRow
       aria-label={yours ? 'Your current file' : undefined}
       className={cn(
-        'border-input px-0',
+        'px-0 after:right-0 after:left-0',
         cooldown && 'before:absolute before:inset-y-0 before:left-[calc(var(--inset)*-1)] before:w-0.75 before:bg-destructive',
         className,
       )}
@@ -95,9 +112,9 @@ function RowRelease({
         <span className="flex min-w-0 items-center">
           <span className={cn('shrink-0 whitespace-pre text-muted-foreground', dim)}>{name.head}</span>
           <span className={cn('min-w-0 truncate whitespace-pre text-muted-foreground', dim)}>{name.middle}</span>
-          {name.group !== undefined && <span className={cn('shrink-0 font-bold text-foreground', dim)}>{name.group}</span>}
+          {name.group !== undefined && <span className={cn('shrink-0 text-foreground', rejected ? 'font-medium' : 'font-bold', dim)}>{name.group}</span>}
         </span>
-        {history !== undefined && <span className="ml-auto flex shrink-0"><MarkHistory kind={history.kind} tooltip={history.tooltip} /></span>}
+        {history !== undefined && <span className="ml-auto flex shrink-0 pl-0.5"><MarkHistory kind={history.kind} tooltip={history.tooltip} /></span>}
       </TableCell>
       <TableCell className={cn(w.audio, 'overflow-hidden whitespace-nowrap')}>
         {formats.map((format, index) => <TagFormat key={`${index}:${format}`} className={cn(dim)}>{format}</TagFormat>)}
@@ -105,34 +122,40 @@ function RowRelease({
       <TableCell align="end" className={cn(w.seeders, seedersLook(seeders), dim)}>
         {typeof leechers === 'number' ? <Tooltip text={`${leechers} leechers`}><span>{seedersText}</span></Tooltip> : seedersText}
       </TableCell>
-      <TableCell className={w.tracker}>
+      <TableCell className={cn(w.tracker, 'gap-1.5')}>
         <TableCellTracker name={tracker} className={cn(dim)} />
         {freeleech !== undefined && <MarkFreeleech tooltip={freeleech} />}
       </TableCell>
       <TableCell className={w.fit}>{fit}</TableCell>
       <TableCell className={w.quality}>
-        <span className={cn('shrink-0 font-medium text-foreground', dim)}>{quality.resolution}</span>
+        <span className={cn('shrink-0 text-foreground', rejected ? 'font-normal' : 'font-medium', dim)}>{quality.resolution}</span>
         {quality.source !== undefined && <span className={cn('min-w-0 truncate text-muted-foreground', dim)}>{quality.source}</span>}
         {proper !== undefined && <MarkProper tooltip={proper} />}
       </TableCell>
-      <TableCell align="end" className={cn(w.size, 'text-muted-foreground', dim)}>{size}</TableCell>
+      <TableCell align="end" className={cn(w.size, 'gap-0 whitespace-pre text-foreground', dim)}>
+        {sizeNumber}
+        {sizeUnit !== '' && <span className={cn('text-subtle-foreground', dim)}>{sizeUnit}</span>}
+      </TableCell>
       <TableCell align="end" className={w.action}>{action}</TableCell>
     </TableRow>
   );
 }
 
+// Placeholder widths vary by row as the library draws them, so four rows don't read as one repeated block.
+const nameWidths = ['w-75', 'w-81', 'w-67.5', 'w-78'];
+
 /** Loading row for the releases inset: one grey block per column at the column widths. */
-function RowReleaseSkeleton() {
+function RowReleaseSkeleton({ index = 0 }: { index?: number }) {
   return (
     <div role="status" aria-label="Loading" className="flex h-(--row) w-full shrink-0 items-center gap-4 border-b border-input px-0">
-      <div className="flex min-w-0 flex-1 pl-2.5"><Skeleton className="w-75 max-w-full" /></div>
-      <div className={cn('flex shrink-0 gap-1', w.audio)}><Skeleton className="h-4 w-11" /><Skeleton className="h-4 w-5" /></div>
+      <div className="flex min-w-0 flex-1 pl-2.5"><Skeleton className={cn(nameWidths[index % nameWidths.length], 'max-w-full')} /></div>
+      <div className={cn('flex shrink-0 gap-1', w.audio)}><Skeleton className="h-4 w-11.5" />{index % 2 === 1 && <Skeleton className="h-4 w-5" />}</div>
       <div className={cn('flex shrink-0 justify-end', w.seeders)}><Skeleton className="w-6" /></div>
       <div className={cn('flex shrink-0 gap-1.5', w.tracker)}><Skeleton className="size-4" /><Skeleton className="w-15" /></div>
       <div className={cn('flex shrink-0', w.fit)}><Skeleton className="h-5 w-9" /></div>
       <div className={cn('flex shrink-0', w.quality)}><Skeleton className="w-19" /></div>
       <div className={cn('flex shrink-0 justify-end', w.size)}><Skeleton className="w-10" /></div>
-      <div className={cn('flex shrink-0 justify-end', w.action)}><Skeleton className="h-7 w-18" /></div>
+      <div className={cn('flex shrink-0 justify-end', w.action)}><Skeleton className="h-7 w-18 rounded-(--control-radius-row)" /></div>
     </div>
   );
 }

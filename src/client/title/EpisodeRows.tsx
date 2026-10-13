@@ -153,7 +153,7 @@ const EpisodeRow = memo(function EpisodeRow({
         state={(
           <>
             {word !== null
-              ? <Badge variant={stateLook(word, live)}>{word}</Badge>
+              ? <Badge variant={stateLook(word, live)} percent={live?.percent ?? undefined}>{word}</Badge>
               : upcoming && <Badge variant="outline">Not out yet</Badge>}
             {versionCount > 1 && <Badge>{`${versionCount} versions`}</Badge>}
             {statusLine(problem, sent)}

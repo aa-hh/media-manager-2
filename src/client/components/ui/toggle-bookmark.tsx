@@ -20,7 +20,7 @@ function ToggleBookmark({ state, onToggle, className }: { state: BookmarkState; 
       disabled={onToggle === undefined}
       onClick={(event) => { event.stopPropagation(); onToggle?.(); }}
       className={cn(
-        'inline-flex size-7 shrink-0 items-center justify-center rounded-(--control-radius-row)',
+        'inline-flex size-7 shrink-0 items-center justify-center rounded-sm',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         'enabled:hover:bg-surface-hover enabled:active:bg-surface-pressed disabled:text-faint-foreground',
         state === 'all' && 'text-foreground',

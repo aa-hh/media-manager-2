@@ -1,4 +1,4 @@
-// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold) z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
+// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold); jellyfin and jellyfin-black have no library component z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
 import type { ComponentProps } from 'react';
 import beyondHd from '@/assets/logos/beyondhd-logo.png';
 import blutopia from '@/assets/logos/blutopia-logo.svg';
@@ -33,7 +33,7 @@ const logos: Record<LogoName, { src: string; alt: string }> = {
   trakt: { src: trakt, alt: 'Trakt' },
 };
 
-/** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on the black button; the Jellyfin black mark goes only on the blue button. */
+/** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on the black button; Jellyfin black only on the Jellyfin button. */
 function Logo({ name, alt, className, ...props }: Omit<ComponentProps<'img'>, 'src'> & { name: LogoName }) {
   const logo = logos[name];
   return <img src={logo.src} alt={alt ?? logo.alt} width={20} height={20} className={cn('size-5 shrink-0 object-contain', className)} {...props} />;

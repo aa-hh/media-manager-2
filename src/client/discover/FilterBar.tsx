@@ -1,7 +1,7 @@
 import { Popover } from '@base-ui/react/popover';
 import { ChevronDown, Clapperboard, LayoutGrid, Tv } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { Badge } from '@/components/ui/badge';
+import { ChipFilter } from '@/components/ui/chip-filter';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -195,9 +195,9 @@ export function FilterBar<S extends BarState>({ state, onChange, genres, provide
       {(tags.length > 0 || note !== undefined) && (
         <div className="flex flex-wrap items-center gap-2 pt-3">
           {tags.map((tag) => (
-            <Badge key={tag.label} className="text-foreground" onRemove={() => onChange({ ...state, ...tag.remove })} removeLabel={`Remove ${tag.label}`}>
+            <ChipFilter key={tag.label} onRemove={() => onChange({ ...state, ...tag.remove })} removeLabel={`Remove ${tag.label}`}>
               {tag.label}
-            </Badge>
+            </ChipFilter>
           ))}
           {tags.length > 0 && <Button variant="ghost" size="row" onClick={() => onChange({ ...state, ...cleared })}>Clear filters</Button>}
           {note !== undefined && <span className="font-ui text-[13px] text-muted-foreground">{note}</span>}
