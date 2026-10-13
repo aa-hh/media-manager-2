@@ -65,7 +65,7 @@ const isPlexHandoff = (value: unknown): value is string => {
 
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const popupHost: PopupHost = {
+export const popupHost: PopupHost = {
   open: () => window.open('about:blank', POPUP_NAME, POPUP_FEATURES),
   narrow: () => window.matchMedia('(max-width: 639px)').matches,
   assign: (url) => window.location.assign(url),

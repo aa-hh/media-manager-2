@@ -2,11 +2,14 @@
 import type { LogoName } from '../components/ui/logo';
 import type { ServiceState } from '../components/ui/status-service-pill';
 
-export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'tmdb' | 'mdblist' | 'trakt';
+export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'jellyfin' | 'tmdb' | 'mdblist' | 'trakt';
 
 // Shapes served by /api/settings; src/server/connections.ts is the source of truth.
 export type SavedService = { service: ServiceName; serviceAddresses: Record<string, string>; credentials: Record<string, boolean> };
-export type TestResult = { kind: 'ok'; version?: string } | { kind: 'not_configured' | 'rejected' | 'unreachable' };
+export type TestResult =
+  | { kind: 'ok'; version?: string; serverName?: string }
+  | { kind: 'not_configured' | 'rejected' | 'unreachable' }
+  | { kind: 'different_server'; serverName: string };
 
 /** The form for one service. A blank secret means "keep the saved one". */
 export type Draft = { address: string; secrets: Record<string, string> };
@@ -50,6 +53,10 @@ export const services: ServiceInfo[] = [
   {
     name: 'plex', label: 'Plex', logo: 'plex', group: 'Services', addressPlaceholder: 'e.g. http://localhost:32400', usedFor: 'Health check, and library scans after a second version imports', refused: 'token',
     credentials: [{ key: 'plex.token', label: 'Plex token', short: 'token', placeholder: 'Paste the Plex token', help: 'The X-Plex-Token of your Plex server.', secret: true }],
+  },
+  {
+    name: 'jellyfin', label: 'Jellyfin', logo: 'jellyfin', group: 'Services', addressPlaceholder: 'e.g. http://localhost:8096', usedFor: 'Health check, and library scans and version merges after a second version imports', refused: 'API key',
+    credentials: [apiKey('Jellyfin', 'In Jellyfin: Dashboard > API Keys.')],
   },
   {
     name: 'tmdb', label: 'TMDB', logo: 'tmdb', group: 'Metadata', usedFor: 'Discover rows, title details and posters', refused: 'API key',
@@ -101,12 +108,17 @@ export const changedCount = (service: ServiceName, saved: SavedService | undefin
 
 const shortVersion = (version: string) => version.split('.').slice(0, 3).join('.');
 
-/** The pill for a row, the strip or the editor. A running test, then a failure, then unsaved edits win. */
-export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = false): { state: ServiceState; text: string } => {
+/**
+ * The pill for a row, the strip or the editor. A running test, then a failure, then unsaved edits win.
+ * `notInUse` marks the media server the owner did not sign in with, which answers but serves nothing.
+ */
+export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = false, notInUse = false): { state: ServiceState; text: string } => {
   if (check.kind === 'testing') return { state: 'testing', text: 'Testing' };
   if (check.kind === 'unreachable') return { state: 'failed', text: 'Failed: no answer in 10 s' };
   if (check.kind === 'rejected') return { state: 'failed', text: `Failed: ${info.refused} refused` };
+  if (check.kind === 'different_server') return { state: 'failed', text: 'Failed: different server' };
   if (edited > 0) return { state: 'unsaved', text: full ? `Unsaved edits · ${edited} ${edited === 1 ? 'field' : 'fields'}` : 'Unsaved edits' };
+  if (check.kind === 'ok' && notInUse) return { state: 'connected', text: 'Connected · not in use' };
   if (check.kind === 'ok') {
     const version = check.version === undefined ? '' : ` · ${full ? check.version : shortVersion(check.version)}`;
     return { state: 'connected', text: `Connected${version}` };
@@ -114,7 +126,7 @@ export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = 
   return { state: 'not-set-up', text: 'Not set up' };
 };
 
-const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected';
+const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected' || check.kind === 'different_server';
 
 export const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
@@ -166,6 +178,7 @@ export const linkTone = (left: Check[], right: Check[]): 'idle' | 'risk' | 'ok' 
 export const failureTitle = (info: ServiceInfo, check: Check, address: string) => {
   if (check.kind === 'unreachable') return address === '' ? `${info.label} did not answer within 10 seconds` : `${info.label} did not answer at ${address}`;
   if (check.kind === 'rejected') return `${info.label} refused the ${info.refused}`;
+  if (check.kind === 'different_server') return `${info.label} at ${address} is a different server`;
   return `${info.label} needs its ${fieldWords(info)} first`;
 };
 

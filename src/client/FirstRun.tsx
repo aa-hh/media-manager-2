@@ -34,10 +34,10 @@ const TOO_MANY_TRIES = 'Too many tries. Wait a minute, then try again.';
 const ONLY_OWNER = 'Only the owner’s Jellyfin account can open this app.';
 
 /** The sentence for a failed Jellyfin login, or 'reload' when an owner now exists. */
-const loginFailure = (status: number, body: Record<string, unknown>, password: boolean): string => {
+const loginFailure = (status: number, body: Record<string, unknown>, password: boolean, stillLine: string): string => {
   if (password && status === 401) return 'Jellyfin refused that username and password.';
   if (status === 403 && body.error === 'not_administrator') {
-    return `You logged in as ${String(body.userName)}, who isn’t an administrator on “${String(body.serverName)}”. Log in with an administrator account. You’re still signed out.`;
+    return `You logged in as ${String(body.userName)}, who isn’t an administrator on “${String(body.serverName)}”. Log in with an administrator account. ${stillLine}`;
   }
   if (status === 403 && body.error === 'owner_only') return ONLY_OWNER;
   if (status === 409) return 'reload';
@@ -46,11 +46,26 @@ const loginFailure = (status: number, body: Record<string, unknown>, password: b
 };
 
 const heading = 'font-ui text-2xl leading-[1.2] font-extrabold tracking-[-0.3px] text-[#ece9e1]';
-const body = 'font-ui text-[15px] leading-[22px] text-[#b8b9b6]';
-const errorText = 'font-ui text-sm leading-[21px] text-[#f2a097]';
-const input = 'h-10 w-full rounded-xl border border-[#3a3b40] bg-[#121317] px-3 font-ui text-[15px] text-[#ece9e1] placeholder:text-[#6f716e] focus-ring-on-dark';
-const label = 'flex flex-col gap-1.5 font-ui text-sm font-semibold text-[#ece9e1]';
-const link = 'self-start font-ui text-sm font-semibold text-[#ece9e1] underline underline-offset-2 focus-ring-on-dark';
+// Dark for the sign-in page; light for the media-server switch dialog in Settings.
+const looks = {
+  dark: {
+    body: 'font-ui text-[15px] leading-[22px] text-[#b8b9b6]',
+    errorText: 'font-ui text-sm leading-[21px] text-[#f2a097]',
+    input: 'h-10 w-full rounded-xl border border-[#3a3b40] bg-[#121317] px-3 font-ui text-[15px] text-[#ece9e1] placeholder:text-[#6f716e] focus-ring-on-dark',
+    label: 'flex flex-col gap-1.5 font-ui text-sm font-semibold text-[#ece9e1]',
+    link: 'self-start font-ui text-sm font-semibold text-[#ece9e1] underline underline-offset-2 focus-ring-on-dark',
+    strong: 'text-[#ece9e1]',
+  },
+  light: {
+    body: 'font-ui text-sm text-muted-foreground',
+    errorText: 'font-ui text-sm text-destructive',
+    input: 'h-10 w-full rounded-xl border border-input bg-background px-3 font-ui text-[15px] text-foreground focus-ring',
+    label: 'flex flex-col gap-1.5 font-ui text-sm font-semibold text-foreground',
+    link: 'self-start font-ui text-sm font-semibold text-foreground underline underline-offset-2 focus-ring',
+    strong: 'text-foreground',
+  },
+};
+const { body, errorText, input, label, link } = looks.dark;
 
 function DoneRow({ children, onChange }: { children: ReactNode; onChange: () => void }) {
   return (
@@ -77,7 +92,14 @@ function PickRow({ logo, title, line, onClick }: { logo: 'plex' | 'jellyfin'; ti
 }
 
 /** The Quick Connect button and the username-and-password form. With no url the server uses the owner's saved, locked address. */
-function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expiresAt: number) => void }) {
+export function JellyfinLogin({ url, look = 'dark', stillLine = 'You’re still signed out.', onSignedIn }: {
+  url?: string;
+  look?: 'dark' | 'light';
+  /** The sentence after a refusal that says nothing changed. */
+  stillLine?: string;
+  onSignedIn: (expiresAt: number) => void;
+}) {
+  const classes = looks[look];
   const [error, setError] = useState<string | undefined>(undefined);
   const [quickConnect, setQuickConnect] = useState<{ code: string; expiresAt: number } | undefined>(undefined);
   const [usePassword, setUsePassword] = useState(false);
@@ -125,7 +147,7 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
           onSignedIn(answer.expiresAt);
           return;
         }
-        showFailure(loginFailure(response.status, answer, false));
+        showFailure(loginFailure(response.status, answer, false, stillLine));
       } catch (failure) {
         if (isAbort(failure)) return;
         setQuickConnect(undefined);
@@ -153,7 +175,7 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
       if (response.status === 409 && answer.error === 'quick_connect_off') {
         setError('Quick Connect is off on this server. Log in with username and password.');
       } else {
-        showFailure(loginFailure(response.status, answer, false));
+        showFailure(loginFailure(response.status, answer, false, stillLine));
       }
     } catch (failure) {
       if (isAbort(failure)) return;
@@ -177,7 +199,7 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
         onSignedIn(answer.expiresAt);
         return;
       }
-      showFailure(loginFailure(response.status, answer, true));
+      showFailure(loginFailure(response.status, answer, true, stillLine));
     } catch (failure) {
       if (isAbort(failure)) return;
       setPasswordBusy(false);
@@ -195,25 +217,25 @@ function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expires
           </span>
         </Button>
         {quickConnect !== undefined && (
-          <p className={body}>Enter code <strong className="font-semibold text-[#ece9e1]">{quickConnect.code}</strong> in Jellyfin, under your user menu &gt; Quick Connect.</p>
+          <p className={classes.body}>Enter code <strong className={cn('font-semibold', classes.strong)}>{quickConnect.code}</strong> in Jellyfin, under your user menu &gt; Quick Connect.</p>
         )}
       </div>
       {usePassword ? (
         <form className="flex flex-col gap-4" onSubmit={(event) => void passwordLogin(event)}>
-          <label className={label}>
+          <label className={classes.label}>
             Username
-            <input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} className={input} />
+            <input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} className={classes.input} />
           </label>
-          <label className={label}>
+          <label className={classes.label}>
             Password
-            <input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={input} />
+            <input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={classes.input} />
           </label>
           <Button type="submit" variant="jellyfin" size="large" loading={passwordBusy} className="self-start">Log in</Button>
         </form>
       ) : (
-        <button type="button" onClick={() => setUsePassword(true)} className={link}>Log in with username and password</button>
+        <button type="button" onClick={() => setUsePassword(true)} className={classes.link}>Log in with username and password</button>
       )}
-      {error !== undefined && <p className={errorText}>{error}</p>}
+      {error !== undefined && <p className={classes.errorText}>{error}</p>}
     </>
   );
 }

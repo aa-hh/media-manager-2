@@ -1,5 +1,5 @@
 import { Download, RefreshCw, SearchX } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { use, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
 import { Callout } from './components/ui/callout';
@@ -19,6 +19,7 @@ import { Spinner } from './components/ui/spinner';
 import { useToastManager } from './components/ui/toast';
 import { ToggleGroup, ToggleGroupItem } from './components/ui/toggle-group';
 import type { SubjectProgress } from './library/progress';
+import { MediaServerContext } from './mediaServer';
 import { fitKindOf, formatSize, formatsOf, historyOf, qualityParts, releaseStateOf, scoresExist, seasonName, splitReleaseName, visibleReleases } from './releaseView';
 import { cn } from '@/lib/utils';
 
@@ -154,6 +155,7 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
   onClose: () => void;
   onUnauthenticated: () => void;
 }) {
+  const serverLabel = use(MediaServerContext).name === 'jellyfin' ? 'Jellyfin' : 'Plex';
   const [list, setList] = useState<ListState>({ kind: 'loading' });
   // The release whose grab is being decided or sent.
   const [picked, setPicked] = useState<string | undefined>(undefined);
@@ -587,7 +589,7 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
               kbd={secondAllowed ? '2' : undefined}
               disabled={!secondAllowed}
               title={target.kind === 'season' ? 'Keep as second versions' : 'Keep as second version'}
-              description={`${target.kind === 'season' ? 'Adds a second version to each episode below, side by side in Plex.' : 'Keeps both files side by side in Plex.'}${secondAllowed ? '' : ' Not available while this release is overridden.'}`}
+              description={`${target.kind === 'season' ? `Adds a second version to each episode below, side by side in ${serverLabel}.` : `Keeps both files side by side in ${serverLabel}.`}${secondAllowed ? '' : ' Not available while this release is overridden.'}`}
             />
           </RadioGroup>
         )}
