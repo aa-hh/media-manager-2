@@ -6,7 +6,6 @@ import { Callout } from '@/components/ui/callout';
 import { HeaderBackdrop } from '@/components/ui/header-title';
 import { Arrival } from '../Arrival';
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
 import { buildRows } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
 import { getJson, type MovieDetail, type OwnedMovieDetail, type SeriesDetail } from '../library/api';
@@ -157,19 +156,19 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
     <Arrival
       ready={load.kind !== 'loading'}
       skeleton={(
-        // The poster sits where the loaded header puts it (owned pages start higher), so nothing jumps when the page arrives.
-        <div role="status" aria-label="Loading" className={cn('relative flex flex-col gap-8 pb-10', route?.owned === true ? 'pt-10' : 'pt-25')}>
-          {/* The owned header is 336 px tall: 40 above the poster, the 264 px poster, 32 below. */}
-          <HeaderBackdrop posterUrl={passedPoster} tall={route?.owned === true} className={cn('-inset-x-(--page-margin)', route?.owned === true && 'h-84')} />
+        // The poster sits where the loaded header puts it, under the app bar, so nothing jumps when the page arrives.
+        <div role="status" aria-label="Loading" className="relative -mt-(--topbar) flex flex-col gap-8 pt-[calc(var(--topbar)+100px)] pb-10">
+          {/* The header is the app bar plus 462 px: 100 above the poster, the 330 px poster, 32 below; the band runs 15 % past it. */}
+          <HeaderBackdrop posterUrl={passedPoster} tall className="-inset-x-(--page-margin) h-[calc((var(--topbar)+462px)*1.15)]" />
           <div className="relative flex gap-8">
             {passedPoster === undefined
-              ? <Skeleton className="title-poster h-66 w-44 rounded-md" />
+              ? <Skeleton className="title-poster h-82.5 w-55 rounded-md" />
               : (
-                <div className="title-poster relative h-66 w-44 shrink-0 overflow-hidden rounded-md bg-muted">
+                <div className="title-poster relative h-82.5 w-55 shrink-0 overflow-hidden rounded-md bg-muted">
                   <img src={passedPoster} alt="" className="size-full object-cover" />
                 </div>
               )}
-            <div className="flex flex-col gap-3.5 pt-24">
+            <div className="flex flex-col gap-3.5 pt-40">
               <Skeleton className="h-9 w-90" />
               <Skeleton className="w-130" />
               <Skeleton className="w-75" />

@@ -112,7 +112,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
   return (
     <div className="min-h-screen">
       <AppBarDesktop
-        className="sticky top-0 z-10"
+        // Title pages draw their backdrop up behind the bar, seen through it.
+        className={cn('sticky top-0 z-10', view === 'title' && 'bg-card/70 backdrop-blur-xl')}
         productName={<h1 ref={headingRef} tabIndex={-1}>media-manager-2</h1>}
         search={(
           <form
@@ -187,7 +188,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
           </>
         )}
       />
-      <main className="px-(--page-margin) pb-(--livebar)">
+      <main className="isolate px-(--page-margin) pb-(--livebar)">
         {/* Each title page counts as its own screen. Screen changes crossfade in navigation.ts; a view swap outside one, such
             as typing in the search box, fades in here instead. */}
         <div key={view === 'title' ? pathname : view} className={cn(!inScreenChange() && 'transition-opacity duration-(--duration-fast) ease-out starting:opacity-0')}>
