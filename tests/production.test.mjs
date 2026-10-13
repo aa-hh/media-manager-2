@@ -39,6 +39,7 @@ const connectionModuleUrl = new URL('../dist/server/services/connection.js', imp
 const logModuleUrl = new URL('../dist/server/log.js', import.meta.url).href;
 const traktModuleUrl = new URL('../dist/server/services/trakt.js', import.meta.url).href;
 const fanartModuleUrl = new URL('../dist/server/services/fanart.js', import.meta.url).href;
+const clearCacheModuleUrl = new URL('../dist/server/clearCache.js', import.meta.url).href;
 const backdropsModuleUrl = new URL('../dist/server/backdrops.js', import.meta.url).href;
 const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
@@ -6877,6 +6878,7 @@ test('operator command stores settings from stdin and checks connections without
   assert.equal(unknownSource.code, 1);
   assert.match(unknownSource.stderr, /must be one of: tmdb, trakt, fanart/);
   assert.equal((await cli(['backdrop', 'source'])).stdout, 'backdrop source: trakt\n');
+  assert.equal((await cli(['cache', 'clear'])).stdout, 'cache cleared\n');
 
   const unconfigured = await cli(['connections', 'check']);
   assert.equal(unconfigured.code, 1, unconfigured.stderr);
@@ -7220,6 +7222,40 @@ test('search, the title page and add for one title ask Sonarr for it once', asyn
   assert.equal((await add.addSeries(371980, choices)).kind, 'added');
   assert.equal(fake.sonarr.requests.filter((request) => request.path === '/api/v3/series/lookup').length, 1);
   assert.deepEqual(fake.sonarr.requests.find((request) => request.method === 'POST').body.seasons, [{ seasonNumber: 1 }]);
+});
+
+// Deleting the Sonarr and Radarr image rows (posters would then never download again), leaving a copied file behind,
+// or clearing anything beyond the fetched-again data (the library, settings, preferences) turns this red.
+test('clearing the cache drops saved details, Discover rows and image copies, and keeps everything else', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { setPreference } = await import(preferencesModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { clearCache } = await import(clearCacheModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-clear-cache-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const images = join(root, 'images');
+  await mkdir(images);
+  for (const file of ['sonarr-7-poster.jpg', 'tmdb-w342-abc.jpg', 'unrelated.txt']) await writeFile(join(images, file), 'x');
+  database.prepare('INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('sonarr', 7, 'Severance', 2022, '{}', 'f', 1);
+  database.prepare('INSERT INTO title_images (service, id, kind, source, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run('sonarr', 7, 'poster', '/poster.jpg', 'image/jpeg', 'e', 'sonarr-7-poster.jpg', 1);
+  database.prepare('INSERT INTO tmdb_images (size, path, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?)').run('w342', 'abc.jpg', 'image/jpeg', 'e', 'tmdb-w342-abc.jpg', 1);
+  database.prepare('INSERT INTO discover_rows (key, json, fetched_at, read_at) VALUES (?, ?, ?, ?)').run('row', '{}', 1, 1);
+  createTitleStore(database).put({ type: 'movie', tmdbId: 129 }, 'traktBackdrop', { url: 'https://media.trakt.tv/x.webp' });
+  setSetting(database, 'credentials', 'tmdb.apiKey', 'key');
+  setPreference(database, 'backdrop.source', 'trakt');
+
+  clearCache(database, images);
+
+  const count = (table) => Number(database.prepare(`SELECT count(*) AS n FROM ${table}`).get().n);
+  assert.deepEqual(['title_store_parts', 'title_store', 'discover_rows', 'tmdb_images'].map(count), [0, 0, 0, 0]);
+  assert.deepEqual(['titles', 'title_images', 'settings', 'preferences'].map((table) => count(table) > 0), [true, true, true, true]);
+  assert.deepEqual(await readdir(images), ['unrelated.txt']);
 });
 
 // Dropping the fanart fallback when the chosen source has no picture, ignoring the backdrop.source preference, asking fanart.tv for a show by anything
