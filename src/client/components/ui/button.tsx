@@ -1,4 +1,5 @@
 // v2/Button — ~/Projects/media-manager-2-design/design-system.lib.pen ht3RN
+// v2/Button/sm — ~/Projects/media-manager-2-design/design-system.lib.pen FU0kO (size="sm")
 import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
@@ -7,7 +8,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
 type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive' | 'outline-destructive' | 'menu' | 'plex';
-type ButtonSize = 'row' | 'default' | 'large';
+type ButtonSize = 'row' | 'sm' | 'default' | 'large';
 
 type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
   variant?: ButtonVariant;
@@ -34,18 +35,21 @@ const variants: Record<ButtonVariant, string> = {
 
 const icons: Record<ButtonSize, string> = {
   row: '[&>svg]:size-(--control-icon-row)',
+  sm: '[&>svg]:size-(--control-icon-default)',
   default: '[&>svg]:size-(--control-icon-default)',
   large: '[&>svg]:size-(--control-icon-large)',
 };
 
 const sizes: Record<ButtonSize, string> = {
   row: 'h-(--control-h-row) gap-1.5 rounded-(--control-radius-row) not-data-disabled:hover:before:rounded-(--control-radius-row-hover) px-(--control-px-row) text-(length:--control-text-row)',
+  sm: 'h-(--control-h-sm) gap-2 rounded-(--button-radius) not-data-disabled:hover:before:rounded-(--button-radius-hover) px-(--control-px-default) text-(length:--control-text-default)',
   default: 'h-(--control-h-default) gap-2 rounded-(--button-radius) not-data-disabled:hover:before:rounded-(--button-radius-hover) px-(--control-px-default) text-(length:--control-text-default)',
   large: 'h-(--control-h-large) gap-2 rounded-(--button-radius) not-data-disabled:hover:before:rounded-(--button-radius-hover) px-(--control-px-large) text-(length:--control-text-large)',
 };
 
 const squares: Record<ButtonSize, string> = {
   row: 'w-(--control-h-row) px-0',
+  sm: 'w-(--control-h-sm) px-0',
   default: 'w-(--control-h-default) px-0',
   large: 'w-(--control-h-large) px-0',
 };
