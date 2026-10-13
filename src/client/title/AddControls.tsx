@@ -389,12 +389,9 @@ export function AddControls({ subject, onAdded, onUnauthenticated }: {
       );
     }
     const { rootFolders } = load.options;
-    const summary = tv
-      ? `${choices.rootFolderPath} · ${labelOf(seriesTypeLabels, choices.seriesType)} series · ${choices.seasonFolder ? 'Season folders' : 'No season folders'} · ${choices.monitorNewSeasons ? 'New seasons monitored' : 'New seasons not monitored'}`
-      : choices.rootFolderPath;
     return (
       <>
-        <div className="flex w-fit max-w-full flex-col gap-3.5 rounded-2xl border-[1.5px] border-input px-8 py-7">
+        <div className="flex w-full flex-col gap-3.5 rounded-2xl border-[1.5px] border-input px-8 py-7">
           {sentence(load.options, choices, fact).map((line, lineIndex) => (
             <p
               key={lineIndex === 2 ? `search-${searchChange}` : lineIndex}
@@ -406,7 +403,7 @@ export function AddControls({ subject, onAdded, onUnauthenticated }: {
         </div>
         {seasonsMissing && <p className="font-ui text-sm text-warning">Choose at least one season to add this show.</p>}
         <Collapsible open={more} onOpenChange={setMore}>
-          <CollapsibleTrigger className="px-0" summary={summary}>More options</CollapsibleTrigger>
+          <CollapsibleTrigger className="px-0">More options</CollapsibleTrigger>
           <CollapsiblePrimitive.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-size) ease-out data-ending-style:h-0 data-ending-style:duration-(--duration-fast) data-ending-style:ease-in data-starting-style:h-0 motion-reduce:transition-none">
             <dl className="flex flex-col pt-2">
               <FactRow label="Root folder">
