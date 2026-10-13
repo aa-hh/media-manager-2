@@ -4306,8 +4306,8 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     second.database.close();
   });
 
-  // Publishing unchanged rows, adding a torrent the full poll has not stored, moving lastSeenAt, or crediting seeding time
-  // from the one-second refresh turns this red.
+  // Publishing unchanged rows, adding a torrent the full poll has not stored, moving lastSeenAt, crediting seeding time
+  // from the one-second refresh, or calling rTorrent while it is marked down turns this red.
   await t.test('the one-second refresh updates and publishes only changed live values and leaves the seeding counter to the full poll', async () => {
     const { database, clock, published, fake, poller } = setup();
     // Live field order: the full row without name, size and directory.
@@ -4339,6 +4339,13 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     fake.rows = [row(hashA, { up: 70 }), row(hashB, { complete: 0, completed: 400, down: 99 })];
     await poller.poll();
     assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).seedingSeconds, 30);
+
+    // While the full poll has rTorrent marked down, the refresh does not call it.
+    fake.fail = 'unreachable';
+    await poller.poll();
+    const calls = fake.calls.length;
+    await poller.pollLive();
+    assert.equal(fake.calls.length, calls);
     database.close();
   });
 

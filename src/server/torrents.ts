@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { writeDependency } from './dependencies.js';
+import { readDependency, writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 
 type XmlRpcCall = (method: string, params: readonly string[]) => Promise<unknown>;
@@ -278,6 +278,8 @@ export const createTorrentPoller = (options: {
   // It never adds, marks gone or touches lastSeenAt and seedingSeconds, so the seeding credit stays with the full poll's gaps;
   // a failed read is left for the full poll to report.
   const pollLive = async () => {
+    // While the full poll has rTorrent marked down, a hanging client would hold every run for the request time limit.
+    if (readDependency(database, 'rtorrent')?.state === 'down') return;
     let observed: Live[];
     try {
       observed = parseRows<Live>(await rtorrent.call('d.multicall2', ['', 'main', ...liveFields.map(([, command]) => command)]), liveFields);
