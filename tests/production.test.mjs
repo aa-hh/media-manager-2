@@ -2561,8 +2561,8 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
 
 // Matching items by full path (Radarr and Jellyfin see different mounts), merging before both items exist, not narrowing
 // episodes by season, counting an outage or a 503 as a try, retrying a rejected request forever, retrying a merged row or
-// past MERGE_TRIES, not merging again after a rename or a same-name upgrade of the tracked file, or giving Plex installs a
-// merge step turns this red.
+// past MERGE_TRIES, not merging again after a rename of the tracked file, merging again after a same-path upgrade, or giving
+// Plex installs a merge step turns this red.
 test('an imported second version is merged with the tracked file in Jellyfin once both are scanned', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -2666,12 +2666,11 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['m-renamed', 'm-new']]);
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [MERGE_TRIES, MERGE_TRIES, MERGE_TRIES]);
 
-  // An upgrade that keeps the file name shows only as a new file id, and is merged again too.
+  // An upgrade under the same path keeps the Jellyfin item and its merge (slot test, 13 Oct 2026), so nothing is sent.
   calls.length = 0;
   dune = { id: 11, path: dune.path };
-  items = [...items.filter((item) => item.Id !== 'm-renamed'), { Id: 'm-upgraded', Path: '/data/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' }];
   await versionImport.run();
-  assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['m-upgraded', 'm-new']]);
+  assert.deepEqual(calls, []);
   assert.equal(tries(movieRow), MERGE_TRIES);
 });
 
