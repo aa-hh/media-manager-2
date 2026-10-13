@@ -3,7 +3,7 @@ import { basename, dirname, extname, isAbsolute, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { findOpenProblem, type createProblems, type Subject } from './problems.js';
 import type { FailureCode } from './secondVersions.js';
-import type { ArrServices, FileDetail } from './services/arr.js';
+import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import type { Library, MediaServer } from './services/mediaServer.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
@@ -344,41 +344,41 @@ export const createVersionImport = (options: {
   // Jellyfin groups versions only within one folder, so each imported version is merged with the tracked file by hand.
   // A try counts only when Radarr or Sonarr and Jellyfin answered, so an outage spends none; a rejected request or a version
   // Jellyfin never finds spends one, and stops being tried after MERGE_TRIES. A rename or upgrade of the tracked file splits
-  // the merge, so a tracked file id or path that differs from the one stored on the row resets the tries and the version is
-  // merged again. The id catches an upgrade that keeps the file name; the path catches a rename, which keeps the id.
+  // the merge, so a tracked path that differs from the one stored on the row resets the tries and the version is merged
+  // again. A file replaced under the same path keeps its Jellyfin item and its merge, so the path alone is enough.
+  // razor: a scan that runs while the tracked file is gone, before its replacement lands under the same path, hides the
+  // version until the next rename; looking the version up by its stored Jellyfin item id is the upgrade if that shows up.
   // razor: asks Radarr or Sonarr about every imported version on every run; checking merged rows less often is the upgrade if that gets slow.
   const mergeVersions = async () => {
     const server = mediaServer();
     if (server.mergeVersions === undefined) return;
-    const imported = database.prepare("SELECT id, service, movie_id, series_id, episode_id, file_path, merge_tries, tracked_file FROM second_versions WHERE state = 'imported' ORDER BY id").all();
+    const imported = database.prepare("SELECT id, service, movie_id, series_id, episode_id, file_path, merge_tries, tracked_path FROM second_versions WHERE state = 'imported' ORDER BY id").all();
     for (const row of imported) {
       let tries = Number(row.merge_tries);
       try {
-        let file: FileDetail | null | undefined;
+        let tracked: string | null | undefined;
         let season: number | undefined;
         if (row.service === 'radarr') {
           const movie = await arr.radarr.movie(Number(row.movie_id));
           if (movie.kind !== 'ok' && movie.kind !== 'not_found') continue;
-          file = movie.kind === 'ok' ? movie.value.file : undefined;
+          tracked = movie.kind === 'ok' ? movie.value.file?.path : undefined;
         } else {
           const episodes = await arr.sonarr.episodes(Number(row.series_id), { withFiles: true });
           if (episodes.kind !== 'ok' && episodes.kind !== 'not_found') continue;
           const episode = episodes.kind === 'ok' ? episodes.value.find((item) => item.id === Number(row.episode_id)) : undefined;
-          file = episode?.file;
+          tracked = episode?.file?.path;
           season = episode?.seasonNumber;
         }
-        const tracked = file?.path;
-        const key = typeof tracked === 'string' ? `${file?.id} ${tracked}` : undefined;
-        if (key !== undefined && key !== row.tracked_file) {
-          // The first file seen is only recorded, so rows imported before this column existed are not merged again.
-          if (row.tracked_file !== null) tries = 0;
-          database.prepare('UPDATE second_versions SET tracked_file = ?, merge_tries = ? WHERE id = ?').run(key, tries, row.id);
+        if (typeof tracked === 'string' && tracked !== row.tracked_path) {
+          // The first path seen is only recorded, so rows imported before this column existed are not merged again.
+          if (row.tracked_path !== null) tries = 0;
+          database.prepare('UPDATE second_versions SET tracked_path = ?, merge_tries = ? WHERE id = ?').run(tracked, tries, row.id);
         }
         if (tries >= MERGE_TRIES) continue;
         const merged = typeof tracked === 'string' && await server.mergeVersions(row.service === 'radarr' ? 'movie' : 'show', tracked, String(row.file_path), season);
         database.prepare('UPDATE second_versions SET merge_tries = ? WHERE id = ?').run(merged ? MERGE_TRIES : tries + 1, row.id);
       } catch {
-        // Jellyfin or Radarr/Sonarr unreachable: no try spent.
+        // Jellyfin or Radarr/Sonarr unreachable, Jellyfin answering 5xx or refusing the key: no try spent.
       }
     }
   };
