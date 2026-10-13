@@ -8,7 +8,7 @@ export type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'jellyfin'
 export type SavedService = { service: ServiceName; serviceAddresses: Record<string, string>; credentials: Record<string, boolean> };
 export type TestResult =
   | { kind: 'ok'; version?: string; serverName?: string }
-  | { kind: 'not_configured' | 'rejected' | 'unreachable' }
+  | { kind: 'not_configured' | 'rejected' | 'unreachable' | 'not_jellyfin' }
   | { kind: 'different_server'; serverName: string };
 
 /** The form for one service. A blank secret means "keep the saved one". */
@@ -124,6 +124,7 @@ export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = 
   if (check.kind === 'testing') return { state: 'testing', text: 'Testing' };
   if (check.kind === 'unreachable') return { state: 'failed', text: 'Failed: no answer in 10 s' };
   if (check.kind === 'rejected') return { state: 'failed', text: `Failed: ${info.refused} refused` };
+  if (check.kind === 'not_jellyfin') return { state: 'failed', text: 'Not Jellyfin' };
   if (edited > 0) return { state: 'unsaved', text: full ? `Unsaved edits · ${edited} ${edited === 1 ? 'field' : 'fields'}` : 'Unsaved edits' };
   if (check.kind === 'ok' && notInUse) return { state: 'connected', text: 'Connected · not in use' };
   if (check.kind === 'ok') {
@@ -133,7 +134,7 @@ export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = 
   return { state: 'not-set-up', text: 'Not set up' };
 };
 
-const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected';
+const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected' || check.kind === 'not_jellyfin';
 
 export const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 

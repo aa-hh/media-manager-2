@@ -643,7 +643,9 @@ export function Editor({
       <div className="grid grid-cols-2 gap-4">
         {info.addressPlaceholder !== undefined && <FieldLabelled
           label={wizard?.hints?.address?.label ?? 'Address'}
-          error={addressError ?? (check.kind === 'unreachable' ? 'Nothing answered at this address within 10 seconds. Check the port.' : undefined)}
+          error={addressError ?? (check.kind === 'not_jellyfin'
+            ? 'This answers, but it isn’t Jellyfin. Jellyfin uses port 8096 unless you changed it.'
+            : check.kind === 'unreachable' ? 'Nothing answered at this address within 10 seconds. Check the port.' : undefined)}
           help={savedUrl !== '' && address !== savedUrl
             ? <span className="text-muted-foreground [overflow-wrap:anywhere]">Changed from {savedUrl}. Not saved yet.</span>
             : wizard?.hints?.address?.help ?? addressHelp ?? `Where media-manager-2 reaches ${info.label} on the seedbox, with the port.`}
@@ -657,7 +659,7 @@ export function Editor({
             placeholder={info.addressPlaceholder}
             value={draft.address}
             readOnly={busy}
-            aria-invalid={check.kind === 'unreachable' || addressError !== undefined || undefined}
+            aria-invalid={check.kind === 'unreachable' || check.kind === 'not_jellyfin' || addressError !== undefined || undefined}
             onValueChange={(value) => onDraft({ ...draft, address: value })}
           />
         </FieldLabelled>}

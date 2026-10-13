@@ -1,6 +1,6 @@
 // v2/Toast — ~/Projects/media-manager-2-design/design-system.lib.pen Dslj1
 import { Toast } from '@base-ui/react/toast';
-import { Check, X } from 'lucide-react';
+import { Check, Info, X } from 'lucide-react';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,7 @@ type ToastData = {
 
 // ToastNumber (below ToastList) is the add dialog's number handoff from its closing sentence into the toast's second line.
 /**
- * Wraps the app so screens can call useToastManager().add({ title, description, type: 'error', actionProps, data }).
+ * Wraps the app so screens can call useToastManager().add({ title, description, type: 'error' | 'info', actionProps, data }).
  * Toasts default to duration-toast (a screen may pass its own timeout), pause while hovered, and sit bottom left above the downloads bar.
  */
 function ToastProvider({ children }: { children: ReactNode }) {
@@ -51,7 +51,7 @@ function ToastList() {
         aria-hidden="true"
         className={cn('flex size-5.5 shrink-0 items-center justify-center rounded-full [&>svg]:size-4', toast.type === 'error' && 'bg-destructive')}
       >
-        {toast.type === 'error' ? <X /> : <Check />}
+        {toast.type === 'error' ? <X /> : toast.type === 'info' ? <Info /> : <Check />}
       </span>
       <Toast.Content className="flex min-w-0 flex-1 flex-col gap-0.5">
         <Toast.Title className="font-ui text-sm font-semibold text-bar-foreground" />

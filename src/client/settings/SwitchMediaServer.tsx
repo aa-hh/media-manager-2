@@ -6,6 +6,7 @@ import { FieldLabelled } from '@/components/ui/field-labelled';
 import { InputSearch } from '@/components/ui/input-search';
 import { Logo } from '@/components/ui/logo';
 import { StatusInline } from '@/components/ui/status-inline';
+import { useToastManager } from '@/components/ui/toast';
 import { useJellyfinLogin } from '../FirstRun';
 import { handoffState, isPopupMessage, openPopup, sendToPlex } from '../plexPopup';
 import { browserPost, isAbort, popupHost, readJson } from '../SignIn';
@@ -35,6 +36,7 @@ const minutesSeconds = (ms: number) => {
 
 /** The row under the not-in-use media server's facts: what switching does, and the button that opens the log-in dialog. */
 export function SwitchMediaServer({ target, pinned, ready, currentServerName, jellyfin, onSwitched }: SwitchMediaServerProps) {
+  const toasts = useToastManager();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<string | undefined>(undefined);
@@ -75,10 +77,19 @@ export function SwitchMediaServer({ target, pinned, ready, currentServerName, je
   const closeJellyfin = () => {
     login.stop();
     setOpen(false);
+    if (login.quickConnect !== undefined) cancelled();
   };
 
   const plex = target === 'plex';
   const label = plex ? 'Plex' : 'Jellyfin';
+  const cancelled = () =>
+    toasts.add({
+      type: 'info',
+      title: `Switch to ${label} cancelled`,
+      description: plex
+        ? 'Plex sign-in closed before it finished. Jellyfin is still in use.'
+        : 'Quick Connect was cancelled before the code was approved. Plex is still in use.',
+    });
   const title = plex ? 'Jellyfin is the media server' : 'Plex is the media server';
   const body = pinned
     ? 'PLEX_OWNER_ID in the server’s settings pins the owner to one Plex account, so the media server can’t be switched here. Remove it and restart media-manager-2 to switch.'
@@ -161,7 +172,12 @@ export function SwitchMediaServer({ target, pinned, ready, currentServerName, je
         onTick: () => void complete(state),
         onClosed: () => {
           stopTicker = undefined;
-          fail('Plex sign-in was interrupted. Jellyfin is still the media server.');
+          if (runRef.current !== run) return;
+          endRun(false);
+          setBusy(false);
+          setLine(undefined);
+          setOpen(false);
+          cancelled();
         },
       });
     } catch (error) {
@@ -170,11 +186,13 @@ export function SwitchMediaServer({ target, pinned, ready, currentServerName, je
   };
 
   const cancel = () => {
-    if (runRef.current !== undefined) void browserPost('/auth/cancel', {}, new AbortController().signal).catch(() => undefined);
+    const running = runRef.current !== undefined;
+    if (running) void browserPost('/auth/cancel', {}, new AbortController().signal).catch(() => undefined);
     endRun(true);
     setBusy(false);
     setLine(undefined);
     setOpen(false);
+    if (running) cancelled();
   };
 
   const serverWords = jellyfin?.serverName === undefined ? jellyfin?.url : `“${jellyfin.serverName}” (${jellyfin.url})`;
