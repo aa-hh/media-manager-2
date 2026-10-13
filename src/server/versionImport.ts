@@ -38,13 +38,18 @@ class FolderError extends Error {}
 
 // Jellyfin scans after a delay and confirms nothing, so a merge is retried on later runs (30 seconds apart) up to this many times.
 export const MERGE_TRIES = 20;
-// How often a merged row, or one past MERGE_TRIES, is checked for a rename of the tracked file.
-const MERGED_CHECK_MS = 60 * 60 * 1000;
 const VIDEO_EXTENSIONS = new Set(['.mkv', '.mp4', '.avi', '.m2ts', '.ts']);
 // Plex or Jellyfin files a name ending in one of these after a separator as an extra, never as a version.
 const EXTRAS_WORDS = ['behindthescenes', 'deleted', 'featurette', 'interview', 'scene', 'short', 'trailer', 'other', 'sample', 'clip', 'extra', 'deletedscene'];
 const EXTRAS_ENDING = new RegExp(`(?:^|[-_. ]+)(?:${EXTRAS_WORDS.join('|')})$`, 'i');
 const serviceWords: Record<Service, string> = { sonarr: 'Sonarr', radarr: 'Radarr' };
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+const positiveInteger = (value: unknown) => (
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
+);
+const idOf = (value: unknown) => (isRecord(value) ? positiveInteger(value.id) : null);
 
 // Removes what file systems or Plex would misread: path and wildcard characters, and braces, so no {edition-…} tag appears.
 export const cleanName = (text: string) => text
@@ -351,19 +356,24 @@ export const createVersionImport = (options: {
   // again. A file replaced under the same path keeps its Jellyfin item and its merge, so the path alone is enough.
   // razor: a scan that runs while the tracked file is gone, before its replacement lands under the same path, hides the
   // version until the next rename; looking the version up by its stored Jellyfin item id is the upgrade if that shows up.
-  // Rows past MERGE_TRIES are only watched for a rename, so they are checked once an hour, and a series' episodes are
-  // fetched once per run.
-  // razor: still one Radarr or Sonarr request per merged row per hour; reacting to their rename and upgrade events
-  // instead of asking is the upgrade if that gets slow.
+  // Rows at MERGE_TRIES are checked again only once a Radarr or Sonarr rename or download event clears merge_checked_at
+  // (trackedFileChanged), and a series' episodes are fetched once per run. merge_checked_at holds when a capped row was
+  // last checked, or NULL while a check is owed.
+  // razor: an event sent while this app is down is not replayed, so that rename stays split until the next event for the
+  // title; a daily check of capped rows is the upgrade if that shows up.
+  // Counts trackedFileChanged calls, so a run that awaited Radarr or Sonarr while an event arrived does not record a check
+  // whose answer may predate the rename.
+  let changes = 0;
   const mergeVersions = async () => {
     const server = mediaServer();
     if (server.mergeVersions === undefined) return;
     const at = now();
+    const changesAtStart = changes;
     const imported = database.prepare("SELECT id, service, movie_id, series_id, episode_id, file_path, merge_tries, tracked_path, merge_checked_at FROM second_versions WHERE state = 'imported' ORDER BY id").all();
     const episodesBySeries = new Map<number, ReturnType<typeof arr.sonarr.episodes>>();
     for (const row of imported) {
       let tries = Number(row.merge_tries);
-      if (tries >= MERGE_TRIES && row.merge_checked_at !== null && at - Number(row.merge_checked_at) < MERGED_CHECK_MS) continue;
+      if (tries >= MERGE_TRIES && row.merge_checked_at !== null) continue;
       try {
         let tracked: string | null | undefined;
         let season: number | undefined;
@@ -380,7 +390,7 @@ export const createVersionImport = (options: {
           tracked = episode?.file?.path;
           season = episode?.seasonNumber;
         }
-        database.prepare('UPDATE second_versions SET merge_checked_at = ? WHERE id = ?').run(at, row.id);
+        if (changes === changesAtStart) database.prepare('UPDATE second_versions SET merge_checked_at = ? WHERE id = ?').run(at, row.id);
         if (typeof tracked === 'string' && tracked !== row.tracked_path) {
           // The first path seen is only recorded, so rows imported before this column existed are not merged again.
           if (row.tracked_path !== null) tries = 0;
@@ -440,5 +450,32 @@ export const createVersionImport = (options: {
     await mergeVersions();
   };
 
-  return { run, scan };
+  // A Radarr or Sonarr rename or download (a download over an existing file is an upgrade) may move the tracked file, so
+  // the title's imported rows are checked on the next run. Sonarr's Rename lists file ids, not episode ids, so it marks
+  // every row of the series. The payload comes from outside: anything malformed marks nothing, and nothing is thrown.
+  const trackedFileChanged = (service: Service, payload: unknown) => {
+    if (!isRecord(payload) || (payload.eventType !== 'Rename' && payload.eventType !== 'Download')) return;
+    changes += 1;
+    try {
+      if (service === 'radarr') {
+        const movieId = idOf(payload.movie);
+        if (movieId !== null) database.prepare("UPDATE second_versions SET merge_checked_at = NULL WHERE state = 'imported' AND service = 'radarr' AND movie_id = ?").run(movieId);
+        return;
+      }
+      const seriesId = idOf(payload.series);
+      if (seriesId === null) return;
+      const update = "UPDATE second_versions SET merge_checked_at = NULL WHERE state = 'imported' AND service = 'sonarr' AND series_id = ?";
+      if (payload.episodes === undefined) {
+        database.prepare(update).run(seriesId);
+        return;
+      }
+      if (!Array.isArray(payload.episodes)) return;
+      const episodeIds = payload.episodes.map(idOf).filter((id) => id !== null);
+      if (episodeIds.length > 0) database.prepare(`${update} AND episode_id IN (${episodeIds.map(() => '?').join(', ')})`).run(seriesId, ...episodeIds);
+    } catch (error) {
+      console.error(`Marking second versions for a merge check failed: ${(error as Error).message}`);
+    }
+  };
+
+  return { run, scan, trackedFileChanged };
 };

@@ -2561,9 +2561,10 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
 
 // Matching items by full path (Radarr and Jellyfin see different mounts), merging before both items exist, not narrowing
 // episodes by season, counting an outage or a 503 as a try, retrying a rejected request forever, spending a try on a refused
-// key or asking again for the next row after it, retrying a merged row or past MERGE_TRIES, not merging again after a rename
-// of the tracked file, merging again after a same-path upgrade, asking Radarr or Sonarr about merged rows more than once an
-// hour, fetching a series' episodes once per row, or giving Plex installs a merge step turns this red.
+// key or asking again for the next row after it, retrying a merged row or past MERGE_TRIES, not merging again after a Radarr
+// or Sonarr rename or upgrade event for the tracked file, merging again after a same-path upgrade, asking Radarr or Sonarr
+// about merged rows with no event, letting an event for another title, another event type or a malformed payload mark a
+// row, fetching a series' episodes once per row, or giving Plex installs a merge step turns this red.
 test('an imported second version is merged with the tracked file in Jellyfin once both are scanned', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -2595,10 +2596,14 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   setSetting(database, 'credentials', 'jellyfin.apiKey', 'jellyfin-key');
 
   let dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' };
+  let pilot = { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' };
   const arrCalls = [];
+  let duringRadarr = null;
   const arr = {
     radarr: { movie: async (id) => {
       arrCalls.push(`radarr ${id}`);
+      duringRadarr?.();
+      duringRadarr = null;
       return { kind: 'ok', value: { file: id === 1 ? dune : { id: 20, path: '/radarr/movies/Gone (2001)/Gone (2001) Bluray-1080p.mkv' } } };
     } },
     sonarr: {
@@ -2606,7 +2611,7 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
         assert.deepEqual([seriesId, options], [5, { withFiles: true }]);
         arrCalls.push(`sonarr ${seriesId}`);
         return { kind: 'ok', value: [
-          { id: 7, seasonNumber: 1, file: { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' } },
+          { id: 7, seasonNumber: 1, file: pilot },
           { id: 8, seasonNumber: 1, file: { id: 31, path: '/sonarr/tv/Show/Season 01/Show - S01E02 - Bluray-1080p.mkv' } },
         ] };
       },
@@ -2675,33 +2680,74 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
     [['POST', ['m-old', 'm-new']], ['POST', ['e-old', 'e-new']]]);
   assert.deepEqual([tries(movieRow), tries(episodeRow)], [MERGE_TRIES, MERGE_TRIES]);
 
-  // Merged rows are not asked about again within the hour; an hour on, all are checked, with one episodes request per series.
+  // Merged rows are not asked about again without an event, however long passes.
   calls.length = 0;
   arrCalls.length = 0;
-  clock += hour - 1;
+  clock += 24 * hour;
   await versionImport.run();
   assert.deepEqual([calls, arrCalls], [[], []]);
-  clock += 1;
+
+  // An event for another movie, an event that moves no file, and malformed payloads mark nothing.
+  for (const [service, payload] of [
+    ['radarr', { eventType: 'Rename', movie: { id: 3 } }],
+    ['radarr', { eventType: 'Grab', movie: { id: 1 } }],
+    ['sonarr', { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 7 }] }],
+    ['radarr', { eventType: 'Rename', movie: { id: '1' } }],
+    ['radarr', { eventType: 'Rename', series: { id: 1 } }],
+    ['sonarr', { eventType: 'Download', series: { id: 5 }, episodes: 'all' }],
+    ['sonarr', { eventType: 'Download', series: { id: 5 }, episodes: [{ id: -7 }] }],
+    ['sonarr', 'Download'],
+    ['radarr', null],
+  ]) versionImport.trackedFileChanged(service, payload);
   await versionImport.run();
-  assert.deepEqual([calls, arrCalls], [[], ['radarr 1', 'sonarr 5', 'radarr 2']]);
+  assert.deepEqual([calls, arrCalls], [[], []]);
 
   // Radarr renames the tracked file: the merge splits in Jellyfin, so the version is merged again with the new item.
   dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' };
   items = [...items.filter((item) => item.Id !== 'm-old'), { Id: 'm-renamed', Path: '/data/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' }];
-  clock += hour;
+  versionImport.trackedFileChanged('radarr', { eventType: 'Rename', movie: { id: 1 }, renamedMovieFiles: [{ id: 10 }] });
   await versionImport.run();
+  assert.deepEqual(arrCalls, ['radarr 1']);
   assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['m-renamed', 'm-new']]);
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [MERGE_TRIES, MERGE_TRIES, MERGE_TRIES]);
 
+  // Sonarr upgrades the episode to a new path: only the named episode is checked and merged again.
+  calls.length = 0;
+  arrCalls.length = 0;
+  pilot = { id: 32, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Remux-2160p.mkv' };
+  items = [...items.filter((item) => item.Id !== 'e-old'), { Id: 'e-upgraded', Path: '/data/tv/Show/Season 01/Show - S01E01 - Pilot Remux-2160p.mkv' }];
+  versionImport.trackedFileChanged('sonarr', { eventType: 'Download', isUpgrade: true, series: { id: 5 }, episodes: [{ id: 7 }], episodeFile: { id: 32 } });
+  assert.deepEqual(database.prepare('SELECT id FROM second_versions WHERE merge_checked_at IS NULL').all().map((row) => Number(row.id)), [Number(episodeRow)]);
+  await versionImport.run();
+  assert.deepEqual(arrCalls, ['sonarr 5']);
+  assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['e-upgraded', 'e-new']]);
+  assert.equal(tries(episodeRow), MERGE_TRIES);
+
   // An upgrade under the same path keeps the Jellyfin item and its merge (slot test, 13 Oct 2026), so nothing is sent.
   calls.length = 0;
-  dune = { id: 11, path: dune.path };
-  clock += hour;
   arrCalls.length = 0;
+  dune = { id: 11, path: dune.path };
+  versionImport.trackedFileChanged('radarr', { eventType: 'Download', isUpgrade: true, movie: { id: 1 }, movieFile: { id: 11 } });
   await versionImport.run();
-  assert.equal(arrCalls.includes('radarr 1'), true);
+  assert.deepEqual(arrCalls, ['radarr 1']);
   assert.deepEqual(calls, []);
   assert.equal(tries(movieRow), MERGE_TRIES);
+
+  // An event that lands while a run waits on Radarr may postdate its answer, so the next run checks again.
+  arrCalls.length = 0;
+  versionImport.trackedFileChanged('radarr', { eventType: 'Rename', movie: { id: 1 } });
+  duringRadarr = () => versionImport.trackedFileChanged('radarr', { eventType: 'Rename', movie: { id: 1 } });
+  await versionImport.run();
+  await versionImport.run();
+  await versionImport.run();
+  assert.deepEqual(arrCalls, ['radarr 1', 'radarr 1']);
+
+  // A Sonarr rename lists no episodes, so every row of the series is checked.
+  arrCalls.length = 0;
+  versionImport.trackedFileChanged('sonarr', { eventType: 'Rename', series: { id: 5 }, renamedEpisodeFiles: [{ id: 32 }] });
+  await versionImport.run();
+  assert.deepEqual([calls, arrCalls], [[], ['sonarr 5']]);
+  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM second_versions WHERE merge_checked_at IS NULL').get().n, 0);
 });
 
 test('the TMDB client sends the key only to TMDB, parses partial replies and caches lists', async (t) => {

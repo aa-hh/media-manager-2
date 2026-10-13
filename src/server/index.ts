@@ -230,8 +230,10 @@ if (database !== undefined) {
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
       // One receiver for both: live downloads record every event, a Grab of a manual download is vetoed,
-      // and the title cache refreshes or drops the title an event names.
+      // the title cache refreshes or drops the title an event names, and a rename or download of a tracked file
+      // gets its second versions merged again in Jellyfin.
       receive: (service, payload) => {
+        versionImport.trackedFileChanged(service, payload);
         const grabs = torrentGrabs.receiveWebhook(service, payload);
         const title = titles.receiveWebhook(service, payload);
         if (grabs === 'ok') void vetoInBackground(protection, service, payload);
