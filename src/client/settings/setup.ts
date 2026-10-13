@@ -7,13 +7,15 @@ export type FolderValues = Record<FolderField, string>;
 export type FoldersRead = { saved: Record<FolderField, string | null>; suggested: Record<FolderField, string | null> };
 
 export type BackupDestination = { kind: 'folder'; folder: string } | { kind: 's3'; endpoint: string; bucket: string; region: string } | null;
-export type RequiredPart = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'folders';
+export type RequiredPart = 'sonarr' | 'radarr' | 'rtorrent' | 'mediaServer' | 'folders';
 export type OptionalPart = 'trackers' | 'metadata' | 'backup';
 export type SetupStatus = {
   required: Record<RequiredPart, 'done' | 'not_done'>;
   optional: Record<OptionalPart, { status: 'done' | 'not_done' | 'skipped'; wanted: boolean }>;
   requiredComplete: boolean;
   plexSignInTokenAvailable: boolean;
+  /** The media server the owner picked on the first-run page. */
+  mediaServer: { kind: 'plex' } | { kind: 'jellyfin'; url: string; serverName: string; ownerName: string };
   backup: { destination: BackupDestination; problem: string | null; key: 'pair' | 'env' | 'missing' | 'invalid'; keyCreatedAt: number | null };
 };
 /** What GET /api/setup/rtorrent suggests from Sonarr's (else Radarr's) rTorrent download client; never the password. */
@@ -21,7 +23,7 @@ export type RtorrentSuggestion = { address: string | null; username: string | nu
 
 /** The wizard's steps in order: the choices, the five required parts, the three optional parts, then Done. */
 export type WizardStep = 'what' | RequiredPart | OptionalPart | 'done';
-export const requiredParts: RequiredPart[] = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
+export const requiredParts: RequiredPart[] = ['sonarr', 'radarr', 'rtorrent', 'mediaServer', 'folders'];
 const optionalParts: OptionalPart[] = ['trackers', 'metadata', 'backup'];
 const order: WizardStep[] = ['what', ...requiredParts, ...optionalParts, 'done'];
 

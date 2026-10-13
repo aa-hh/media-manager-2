@@ -29,7 +29,7 @@ HTTP clients for every outside service. Plex sign-in (`auth.ts`), .torrent downl
 - `arr/files.ts` → file details.
 - `connection.ts` → timeout helper, settings.
 - `rtorrent.ts` → rTorrent client.
-- `mediaServer.ts` → picks Plex (`plex.ts`) or Jellyfin (`jellyfin.ts`).
+- `mediaServer.ts` → owner's provider picks `plex.ts` or `jellyfin.ts`.
 - `tmdb.ts` → TMDB client.
 - `mdblist.ts`, `fanart.ts` → MDBList and fanart.tv clients.
 - `trackerAccounts.ts` → tracker accounts.

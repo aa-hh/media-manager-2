@@ -11,7 +11,7 @@ import { FieldLabelled } from '@/components/ui/field-labelled';
 import { HeaderPage } from '@/components/ui/header-page';
 import { InputSearch } from '@/components/ui/input-search';
 import { LabelGroup } from '@/components/ui/label-group';
-import { Logo } from '@/components/ui/logo';
+import { Logo, type LogoName } from '@/components/ui/logo';
 import { Radio, RadioGroup } from '@/components/ui/radio';
 import { RowService } from '@/components/ui/row-service';
 import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
@@ -425,10 +425,12 @@ type PiecesStripProps = {
   folders: { state: ServiceState; text: string };
   /** The setup wizard's lit pills: black with a lime dot, all lime once setup is done. */
   look?: 'plain' | 'setup' | 'done';
+  /** The setup wizard for a Jellyfin owner: this pill takes the Watch column's place of Plex. */
+  watch?: { logo: LogoName; name: string; state: ServiceState; text: string };
 };
 
 /** The "How the pieces connect" strip: each service column with the links between them. Pills in a column share the widest one's width. */
-export function PiecesStrip({ checks, editedOf, folders, look = 'plain' }: PiecesStripProps) {
+export function PiecesStrip({ checks, editedOf, folders, look = 'plain', watch }: PiecesStripProps) {
   const done = look === 'done';
   const pillLook = look === 'setup' ? 'dark' : done ? 'lime' : 'plain';
   const caption = 'font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase';
@@ -447,6 +449,9 @@ export function PiecesStrip({ checks, editedOf, folders, look = 'plain' }: Piece
                   <h3 className={caption}>{column.caption}</h3>
                   <div className="flex h-23.5 flex-col items-stretch justify-center gap-2">
                     {column.names.map((name) => {
+                      if (watch !== undefined && name === 'plex') {
+                        return <StatusServicePill key={name} look={pillLook} logo={<Logo name={watch.logo} alt="" />} name={watch.name} state={watch.state}>{watch.text}</StatusServicePill>;
+                      }
                       const member = infoOf(name);
                       const pill = pillFor(member, checks[name], editedOf(name));
                       return <StatusServicePill key={name} look={pillLook} logo={member.logo === null ? null : <Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;

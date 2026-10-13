@@ -30,6 +30,10 @@ colors:
   plex-hover: "#F3AA0E"
   plex-pressed: "#D19209"
   plex-foreground: "#111111"
+  jellyfin: "#00A4DC"
+  jellyfin-hover: "#1AB3E8"
+  jellyfin-pressed: "#0093C6"
+  jellyfin-foreground: "#07080B"
   best: "#C6F135"
   best-soft: "#F3FCD6"
   best-foreground: "#3D5600"
@@ -174,6 +178,7 @@ Neutrals do most of the work. One meaning per colour.
 - **Lime:** `best` marks the single best release; `best-soft` tints its row. `live` marks downloads in progress. Lime is 1.3:1 on white, so it is only ever a fill behind black text (14.4:1) or a fill on the black downloads bar or on a poster. Setup wizard exception: a connected part's pill in the "How the pieces connect" strip is black with a lime dot (connected and answering), and the finished strip's pills are lime with black text. Never lime text, lime icons or thin lime lines on white.
 - **Slate:** only inside the add dialog's sentence. `inline-control` fills the chips and pills, `inline-control-foreground` is their text (8.5:1 on the fill), `inline-control-border` edges the chips you can click (3.2:1), and the `-hover` pair is hover and open. Slate means "a value in this sentence"; it never marks status, selection or an action.
 - **Plex orange:** `plex`, `plex-hover`, `plex-pressed` and `plex-foreground` are only for the "Log in with Plex" button.
+- **Jellyfin blue:** `jellyfin`, `jellyfin-hover`, `jellyfin-pressed` and `jellyfin-foreground` are only for the "Log in with Jellyfin" button.
 - **Red:** `destructive`, `destructive-soft` and their hover and pressed steps are for problems and risk: stalled, failed, gave up, hit and run risk, tracker cooldown, a failed service.
 - **Amber:** `warning` and `warning-soft` are for missing, below cutoff, import blocked, unsaved edits and changes waiting for Sonarr or Radarr.
 - **Focus:** `ring` (black) on white; `focus-on-dark` (white) on the black bars.
@@ -233,7 +238,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 
 ### Buttons, badges and inputs
 
-- **v2/Button:** primary (glow-blue `action`, shadcn `default`), outline (white, 1.5px `foreground` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron), plex. Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
+- **v2/Button:** primary (glow-blue `action`, shadcn `default`), outline (white, 1.5px `foreground` edge), ghost, destructive (red), outline-destructive, menu (outline with a chevron), plex, jellyfin. Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
 - **v2/Badge**, 20px (`badge-h`, padding `badge-px` 6, text `badge-text` 11, icon `badge-icon` 12): neutral (`muted`), strong (black, "In library"), lime (`best`, black text: best release, "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). `v2/Mark/pending-change` shows the old value, an arrow and the new value on amber while a change waits; the release table's chips and marks are listed under Releases. Plain is the look for a standing status beside a row button, such as In library on a search result: no fill and no padding, a 14px `foreground` check and `muted-foreground` words, built from the row tokens (`control-h-row`, `control-text-row`, `control-icon-row`) so it lines up with the button. A filled badge never takes button height, or it reads as a button; the one exception is `v2/Chip/release-state` (`chip-release-state.tsx`), 28 high because it stands where the row's Grab button was.
 - **v2/Input/Search:** `muted` fill and no edge at rest, white with an `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 36px, radius 12, white with an edge. Phone: 44px, full width.
 - **Select trigger:** 36px, radius 12, an optional grey lead label before the value, chevron; the open list is a dropdown menu. `v2/Select trigger/sm` is the same at 30px for filter bars.
@@ -297,7 +302,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 - **App bar:** 64px, white, line under, 40px side padding. Nav items are 40px, radius 12, with a count pill (red on `destructive-soft` for problems); the active item gets the `selected` fill and a black 600 label. Service status lives behind Health, whose count turns red when a service fails.
 - **Downloads bar:** black with white text; lime is allowed there for the arrow and progress fills because it sits on black. Idle reads "Nothing downloading". A stalled item shows a red dot and words.
 - **Floating:** menus (248px, 32px items), tooltips (`bar`, after 400ms), toasts (`bar`, 400px, bottom left above the downloads bar, Undo with the Z key), dialogs and the selection bar (`bar`, 56px, 16px above the downloads bar) take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
-- **Sign-in:** a dark `#07080b` ground with the planet drawn behind and no app bar, a 400px block fixed 120px from the left and bottom edges on desktop (24px sides and 83px from the bottom on a phone) holding the product name and the Plex-orange `#E5A00D` "Log in with Plex" button with Plex's black chevron, and one line under the button only after a failed attempt, an expired session, or when sign-in is not configured.
+- **Sign-in:** a dark `#07080b` ground with the planet drawn behind and no app bar, a 400px block fixed 120px from the left and bottom edges on desktop (24px sides and 83px from the bottom on a phone) holding the product name and the Plex-orange `#E5A00D` "Log in with Plex" button with Plex's black chevron, and one line under the button only after a failed attempt, an expired session, or when sign-in is not configured. The first-run page (no owner yet) uses the same ground, planet and column, with the Plex-orange and Jellyfin-blue buttons and `#F2A097` error lines.
 
 ### Where a decision opens
 

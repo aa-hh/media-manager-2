@@ -51,7 +51,7 @@ compiled React app; Vite's preview server is not used.
 | `PORT` | no | Listening port, default `3000`; `0` picks a free port |
 | `DB_PATH` | no | SQLite database location, default `~/.local/share/media-manager-2/media-manager.sqlite` |
 | `APP_ORIGIN` | yes | The public origin people open, such as `https://media.example.com` |
-| `PLEX_OWNER_ID` | yes | Your numeric Plex account ID; only this account can sign in |
+| `PLEX_OWNER_ID` | no | Pins the owner to this Plex account ID and skips the first-run page; leave it unset and the first person to log in becomes the owner |
 | `BACKUP_KEY` | no | The older way to encrypt backups, 64 hex characters; a restore key made in the app takes over; see [Backups](#backups-optional) |
 | `TRACKER_RULES` | no | Hit-and-run rules as JSON keyed by tracker hostname; see [Tracker hit-and-run rules](#tracker-hit-and-run-rules) |
 
@@ -62,9 +62,10 @@ saved credential; only the server and the command-line tool below read it.
 
 ## Sign in
 
-Sign-in goes through Plex. Set both `PLEX_OWNER_ID` and `APP_ORIGIN`; without
-them nobody can sign in. The first person to sign in never becomes the owner:
-only the Plex account whose ID matches `PLEX_OWNER_ID` gets in.
+Set `APP_ORIGIN`; without it nobody can sign in. With no owner yet, the app
+opens on a first-run page where the first person to log in, with Plex or with a
+Jellyfin administrator account, becomes the owner. With `PLEX_OWNER_ID` set
+there is no first-run page: only the Plex account whose ID matches it gets in.
 
 `APP_ORIGIN` must use HTTPS, except for local development over HTTP on a
 loopback origin with a loopback `HOST` such as `127.0.0.1` or `::1`. It cannot
@@ -571,6 +572,10 @@ project's rules and vocabulary, and `docs/adr/` records its decisions.
 - `POST /auth/complete` verifies the returned Plex account and creates an application session.
 - `POST /auth/cancel` cancels that browser's pending attempt.
 - `POST /auth/logout` revokes that browser's session and pending attempt.
+- `POST /auth/jellyfin/check` checks that a typed address answers as a Jellyfin server; first run only.
+- `POST /auth/jellyfin/password` signs in a Jellyfin administrator with username and password.
+- `POST /auth/jellyfin/quick-connect` starts a Jellyfin Quick Connect sign-in and returns its code.
+- `POST /auth/jellyfin/quick-connect/complete` checks whether the code was approved and creates an application session.
 - `GET /api/session` verifies the current owner session.
 - `GET /api/events` streams server events to the signed-in owner's browser.
 - `GET /api/images/{sonarr|radarr}/{id}/{poster|fanart}` serves cached

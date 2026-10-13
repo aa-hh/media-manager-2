@@ -6,9 +6,11 @@ import { type Context, Hono } from 'hono';
 import { backupKeyFromEnvironment, backupsAreOff, createBackupKeyPair, readBackupKeyPair, setBackupsOff } from './backup.js';
 import { readBackupDestination } from './backupDestination.js';
 import { applicationMigrations, migrateDatabase } from './database.js';
+import { readOwner } from './owner.js';
 import { getPreference, setPreference } from './preferences.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { createJellyfin } from './services/jellyfin.js';
 import { createPlex } from './services/plex.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import { isSoftware, saveTrackerCredential, saveTrackerSoftware, type TrackerAccounts } from './services/trackerAccounts.js';
@@ -153,11 +155,14 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   const done = (set: boolean) => (set ? 'done' : 'not_done') as 'done' | 'not_done';
 
   routes.get('/', (context) => {
+    // The media server step follows the owner's first-run choice: a Jellyfin owner needs an API key, anyone else Plex.
+    const owner = readOwner(database);
+    const jellyfinOwner = owner?.provider === 'jellyfin';
     const required = {
       sonarr: done(requiredKeys.sonarr.every(([category, key]) => isSet(category, key))),
       radarr: done(requiredKeys.radarr.every(([category, key]) => isSet(category, key))),
       rtorrent: done(requiredKeys.rtorrent.every(([category, key]) => isSet(category, key))),
-      plex: done(requiredKeys.plex.every(([category, key]) => isSet(category, key))),
+      mediaServer: done(jellyfinOwner ? isSet('credentials', 'jellyfin.apiKey') : requiredKeys.plex.every(([category, key]) => isSet(category, key))),
       folders: done(folderKeys.every((key) => isSet('hostPaths', key))),
     };
     let destination: ReturnType<typeof readBackupDestination>;
@@ -197,6 +202,14 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
         },
       },
       requiredComplete: Object.values(required).every((status) => status === 'done'),
+      mediaServer: owner !== undefined && jellyfinOwner
+        ? {
+          kind: 'jellyfin',
+          url: readSetting(database, 'serviceAddresses', 'jellyfin.url') ?? '',
+          serverName: owner.serverName ?? '',
+          ownerName: owner.userName,
+        }
+        : { kind: 'plex' },
       plexSignInTokenAvailable: context.get('plexSignInToken') !== undefined,
       // The access key, the secret and BACKUP_KEY's value never leave the server, and the restore key is never returned here either.
       backup: {
@@ -347,6 +360,26 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
         setSetting(database, 'serviceAddresses', 'plex.url', body.url);
         setSetting(database, 'credentials', 'plex.token', token);
       }
+      return context.json(status);
+    } finally {
+      scratch.close();
+    }
+  });
+
+  // Connects the Jellyfin server the owner signed in through, checked in a throwaway database first like Plex above, so a
+  // refused key saves nothing. The address is the one locked at first run; only the key comes from the request.
+  routes.post('/jellyfin', async (context) => {
+    const body = await readBody(context);
+    if (!hasExactly(body, ['apiKey']) || typeof body.apiKey !== 'string' || body.apiKey === '') return context.json({ error: 'invalid_request' }, 400);
+    if (readOwner(database)?.provider !== 'jellyfin') return context.json({ error: 'not_jellyfin_owner' }, 409);
+    const scratch = new DatabaseSync(':memory:');
+    try {
+      migrateDatabase(scratch, applicationMigrations);
+      const url = readSetting(database, 'serviceAddresses', 'jellyfin.url');
+      if (url !== undefined) setSetting(scratch, 'serviceAddresses', 'jellyfin.url', url);
+      setSetting(scratch, 'credentials', 'jellyfin.apiKey', body.apiKey);
+      const status = await createJellyfin(scratch, { fetch }).check();
+      if (status.kind === 'ok') setSetting(database, 'credentials', 'jellyfin.apiKey', body.apiKey);
       return context.json(status);
     } finally {
       scratch.close();

@@ -397,6 +397,21 @@ export const applicationMigrations = [
   ) STRICT;`,
   // When a season search was last sent for each season, so the six-hour repeats alternate season and episode searches.
   `CREATE TABLE season_search_log (series_id INTEGER NOT NULL, season_number INTEGER NOT NULL, searched_at INTEGER NOT NULL, PRIMARY KEY (series_id, season_number)) STRICT;`,
+  // The install's owner: one row, written by the first sign-in on the first-run page.
+  `CREATE TABLE owner (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    provider TEXT NOT NULL CHECK (provider IN ('plex', 'jellyfin')),
+    user_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    server_name TEXT
+  ) STRICT;`,
+  // owner_id is text because a Jellyfin user ID is a GUID. Existing sessions are dropped once, so an upgrade signs the owner out.
+  `DROP TABLE sessions;
+  CREATE TABLE sessions (
+    token_hash TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

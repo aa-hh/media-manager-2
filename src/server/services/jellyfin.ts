@@ -75,3 +75,102 @@ export const createJellyfin = (database: DatabaseSync, options: ServiceOptions =
 
   return { name: 'jellyfin' as const, label: 'Jellyfin', check, findLibraryFor, refresh };
 };
+
+// Sign-in on the first-run page, against a server address given explicitly rather than saved. Jellyfin binds a Quick Connect
+// code to the DeviceId that started it, so every call sends the same one.
+const SIGN_IN_AUTHORIZATION = 'MediaBrowser Client="media-manager-2", Device="media-manager-2", DeviceId="media-manager-2", Version="1"';
+
+type Answer = { status: number; body: unknown };
+
+// Throws when nothing answered; a body that is not JSON reads as undefined.
+const signInRequest = async (fetchImpl: typeof globalThis.fetch, url: string, path: string, init: { method?: string; body?: unknown } = {}): Promise<Answer> => {
+  const headers: Record<string, string> = { Authorization: SIGN_IN_AUTHORIZATION, Accept: 'application/json' };
+  if (init.body !== undefined) headers['Content-Type'] = 'application/json';
+  const response = await requestWithTimeout(fetchImpl, url + path, {
+    method: init.method,
+    headers,
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = undefined;
+  }
+  return { status: response.status, body };
+};
+
+const nonEmpty = (value: unknown): value is string => typeof value === 'string' && value !== '';
+
+export type IdentifyResult = { kind: 'ok'; serverName: string } | { kind: 'no_answer' | 'not_jellyfin' };
+
+export const identify = async (fetchImpl: typeof globalThis.fetch, url: string): Promise<IdentifyResult> => {
+  let answer: Answer;
+  try {
+    answer = await signInRequest(fetchImpl, url, '/System/Info/Public');
+  } catch {
+    return { kind: 'no_answer' };
+  }
+  const { status, body } = answer;
+  if (status < 200 || status > 299 || !isRecord(body) || !nonEmpty(body.Id) || !nonEmpty(body.Version)) return { kind: 'not_jellyfin' };
+  if (typeof body.ProductName !== 'string' || !body.ProductName.toLowerCase().includes('jellyfin')) return { kind: 'not_jellyfin' };
+  return { kind: 'ok', serverName: nonEmpty(body.ServerName) ? body.ServerName : new URL(url).host };
+};
+
+export type JellyfinUser = { userId: string; userName: string; isAdministrator: boolean };
+export type AuthenticateResult = { kind: 'ok'; user: JellyfinUser } | { kind: 'refused' | 'unavailable' };
+
+// The AccessToken in the answer is never read: the app keeps no Jellyfin session of its own.
+const readAuthentication = (answer: Answer, refused: number[]): AuthenticateResult => {
+  if (refused.includes(answer.status)) return { kind: 'refused' };
+  if (answer.status !== 200 || !isRecord(answer.body) || !isRecord(answer.body.User)) return { kind: 'unavailable' };
+  const { Id, Name, Policy } = answer.body.User;
+  if (!nonEmpty(Id) || typeof Name !== 'string' || !isRecord(Policy) || typeof Policy.IsAdministrator !== 'boolean') return { kind: 'unavailable' };
+  return { kind: 'ok', user: { userId: Id, userName: Name, isAdministrator: Policy.IsAdministrator } };
+};
+
+export const authenticateByName = async (fetchImpl: typeof globalThis.fetch, url: string, username: string, password: string): Promise<AuthenticateResult> => {
+  try {
+    return readAuthentication(await signInRequest(fetchImpl, url, '/Users/AuthenticateByName', { method: 'POST', body: { Username: username, Pw: password } }), [401]);
+  } catch {
+    return { kind: 'unavailable' };
+  }
+};
+
+export const authenticateWithQuickConnect = async (fetchImpl: typeof globalThis.fetch, url: string, secret: string): Promise<AuthenticateResult> => {
+  try {
+    return readAuthentication(await signInRequest(fetchImpl, url, '/Users/AuthenticateWithQuickConnect', { method: 'POST', body: { Secret: secret } }), [400, 401]);
+  } catch {
+    return { kind: 'unavailable' };
+  }
+};
+
+export type QuickConnectInitiateResult = { kind: 'ok'; code: string; secret: string } | { kind: 'off' | 'unavailable' };
+
+export const quickConnectInitiate = async (fetchImpl: typeof globalThis.fetch, url: string): Promise<QuickConnectInitiateResult> => {
+  let answer: Answer;
+  try {
+    answer = await signInRequest(fetchImpl, url, '/QuickConnect/Initiate', { method: 'POST' });
+  } catch {
+    return { kind: 'unavailable' };
+  }
+  if (answer.status === 401) return { kind: 'off' };
+  if (answer.status !== 200 || !isRecord(answer.body) || typeof answer.body.Code !== 'string' || typeof answer.body.Secret !== 'string') {
+    return { kind: 'unavailable' };
+  }
+  return { kind: 'ok', code: answer.body.Code, secret: answer.body.Secret };
+};
+
+export type QuickConnectState = 'pending' | 'approved' | 'expired' | 'unavailable';
+
+export const quickConnectState = async (fetchImpl: typeof globalThis.fetch, url: string, secret: string): Promise<QuickConnectState> => {
+  let answer: Answer;
+  try {
+    answer = await signInRequest(fetchImpl, url, `/QuickConnect/Connect?secret=${encodeURIComponent(secret)}`);
+  } catch {
+    return 'unavailable';
+  }
+  if (answer.status === 404) return 'expired';
+  if (answer.status !== 200) return 'unavailable';
+  return isRecord(answer.body) && answer.body.Authenticated === true ? 'approved' : 'pending';
+};
