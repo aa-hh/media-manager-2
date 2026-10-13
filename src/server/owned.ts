@@ -39,7 +39,7 @@ export const createOwned = (services: ArrServices) => ({
 
 export type Owned = ReturnType<typeof createOwned>;
 
-export const createOwnedRoutes = (owned: Owned, qualities: (service: 'sonarr' | 'radarr') => Promise<unknown[] | undefined>) => {
+export const createOwnedRoutes = (owned: Owned) => {
   const routes = new Hono();
   const statusFor = (kind: string) => (kind === 'not_configured' ? 503 : kind === 'not_found' ? 404 : 502);
   routes.get('/series/:id/episodes', async (context) => {
@@ -53,12 +53,6 @@ export const createOwnedRoutes = (owned: Owned, qualities: (service: 'sonarr' | 
     if (!Number.isInteger(id) || id <= 0) return context.json({ error: 'invalid_request' }, 400);
     const result = await owned.movie(id);
     return result.kind === 'ok' ? context.json(result.value) : context.json({ error: result.kind }, statusFor(result.kind));
-  });
-  routes.get('/qualities/:service', async (context) => {
-    const service = context.req.param('service');
-    if (service !== 'sonarr' && service !== 'radarr') return context.json({ error: 'not_found' }, 404);
-    const list = await qualities(service);
-    return list === undefined ? context.json({ error: 'unreachable' }, 502) : context.json(list);
   });
   return routes;
 };

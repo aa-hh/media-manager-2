@@ -19,7 +19,7 @@ type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
   iconOnly?: boolean;
   /** Key hint after the label, such as "/" or "Esc". */
   kbd?: ReactNode;
-  /** Swaps the icon for a spinner and keeps the width. */
+  /** Swaps the icon for a spinner, keeps the width and the fill, and takes no clicks. */
   loading?: boolean;
 };
 
@@ -82,7 +82,7 @@ function Button({
         'before:absolute before:inset-0 before:-z-10 before:rounded-[inherit]',
         'before:transition-[inset,border-radius,background-color,border-color] before:duration-(--duration-fast) before:ease-out active:before:duration-0 motion-reduce:before:transition-none',
         'not-data-disabled:hover:before:-inset-0.5 not-data-disabled:hover:focus-visible:outline-offset-4',
-        'data-disabled:cursor-not-allowed data-disabled:before:bg-muted data-disabled:text-faint-foreground',
+        'data-disabled:cursor-not-allowed data-disabled:before:bg-muted data-disabled:text-faint-foreground aria-busy:pointer-events-none',
         sizes[size],
         icons[size],
         variants[variant],
@@ -94,7 +94,7 @@ function Button({
       {loading && icon ? spinner : icon}
       {children !== undefined && <span className={cn(hideContent && 'invisible')}>{children}</span>}
       {kbd !== undefined && (
-        <Kbd onFill={variant === 'default' || variant === 'destructive'} className={cn('group-data-disabled:hidden', hideContent && 'invisible')}>
+        <Kbd onFill={variant === 'default' || variant === 'destructive'} className={cn('group-data-disabled:hidden group-aria-busy:hidden', hideContent && 'invisible')}>
           {kbd}
         </Kbd>
       )}

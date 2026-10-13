@@ -106,6 +106,8 @@ type EpisodeRowProps = {
   pickBand: ReactNode;
   handlers: RowHandlers;
   onUnauthenticated: () => void;
+  /** The season's last episode ends the group, so it takes the season line. */
+  last?: boolean;
 };
 
 // The progress map is rebuilt on every stream event, so its entries are compared by what the row prints.
@@ -119,7 +121,7 @@ const noVersions: SecondVersion[] = [];
 const noEpisodes: EpisodeDetail[] = [];
 
 const EpisodeRow = memo(function EpisodeRow({
-  episode, live, protectedIds, now, selected, detailsOpen, pickOpen, tabIndex, problem, sent, secondVersions, snapshot, profile, seriesPath, pickBand, handlers, onUnauthenticated,
+  episode, live, protectedIds, now, selected, detailsOpen, pickOpen, tabIndex, problem, sent, secondVersions, snapshot, profile, seriesPath, pickBand, handlers, onUnauthenticated, last = false,
 }: EpisodeRowProps) {
   const rowKey = episodeKey(episode.id);
   const word = episodeWord(episode, live, protectedIds, now);
@@ -136,6 +138,7 @@ const EpisodeRow = memo(function EpisodeRow({
         className="pl-13 select-none"
         selected={selected || detailsOpen}
         open={pickOpen}
+        line={last ? 'season' : 'episode'}
         marker={live?.tone === 'risk' ? 'risk' : word === 'Missing' ? 'warning' : undefined}
         bookmark={<ToggleBookmark state={episode.monitored ? 'all' : 'none'} onToggle={() => handlers.toggle(episode)} />}
         number={`E${String(episode.episodeNumber).padStart(2, '0')}`}
@@ -520,7 +523,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
               </Collapsible>
               <Collapsible open={isOpen}>
                 <CollapsiblePrimitive.Panel aria-label={label} className={openPanel}>
-                  {episodes.map((episode) => {
+                  {episodes.map((episode, index) => {
                     const rowKey = episodeKey(episode.id);
                     const detailsOpen = panel?.key === rowKey && panel.panel === 'details';
                     return (
@@ -543,6 +546,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                         pickBand={pickBand(rowKey)}
                         handlers={handlers}
                         onUnauthenticated={onUnauthenticated}
+                        last={index === episodes.length - 1}
                       />
                     );
                   })}
