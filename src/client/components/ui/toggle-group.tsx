@@ -5,24 +5,27 @@ import { ToggleGroup as ToggleGroupPrimitive } from '@base-ui/react/toggle-group
 import { createContext, use, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-type ToggleGroupSize = 'row' | 'default' | 'large';
+type ToggleGroupSize = 'row' | 'inset' | 'default' | 'large';
 
 const SizeContext = createContext<ToggleGroupSize>('default');
 
 const tracks: Record<ToggleGroupSize, string> = {
   row: 'h-(--control-h-row) rounded-(--control-radius-row) p-0.5',
+  inset: 'h-8 rounded-(--control-radius-default) p-0.5',
   default: 'h-(--control-h-default) rounded-(--control-radius-default) p-0.75',
   large: 'h-(--control-h-large) rounded-(--control-radius-large) p-1',
 };
 
 const segments: Record<ToggleGroupSize, string> = {
   row: 'inset-y-0.5 rounded-xs',
+  inset: 'inset-y-0.5 rounded-(--control-radius-row)',
   default: 'inset-y-0.75 rounded-sm',
   large: 'inset-y-1 rounded-(--control-radius-default)',
 };
 
 const items: Record<ToggleGroupSize, string> = {
   row: 'h-6 rounded-xs px-(--control-px-row)',
+  inset: 'h-7 rounded-(--control-radius-row) px-3.5',
   default: 'h-7.5 rounded-sm px-3.5',
   large: 'h-9 rounded-(--control-radius-default) px-(--control-px-large)',
 };

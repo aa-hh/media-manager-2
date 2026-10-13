@@ -36,6 +36,10 @@ export type Release = {
   episodeIds?: number[];
   // Sonarr's and Radarr's own rank for the release within the quality profile; searches stored before it was kept lack it.
   qualityWeight?: number | null;
+  // Whether Sonarr or Radarr matched the release to what was searched, after mapping it to their own episodes or movie.
+  // Absent when the service left it out and in searches stored before it was kept, so the client can tell unknown from false.
+  episodeRequested?: boolean;
+  movieRequested?: boolean;
 };
 
 export type StoredSearch = { fetchedAt: number; releases: Release[] };
@@ -139,6 +143,8 @@ const toRelease = (value: unknown): Release | undefined => {
       ? value.mappedEpisodeInfo.flatMap((episode) => (isRecord(episode) && positiveInteger(episode.id) ? [episode.id] : []))
       : [],
     qualityWeight: typeof value.qualityWeight === 'number' && Number.isFinite(value.qualityWeight) ? value.qualityWeight : null,
+    ...(typeof value.episodeRequested === 'boolean' ? { episodeRequested: value.episodeRequested } : {}),
+    ...(typeof value.movieRequested === 'boolean' ? { movieRequested: value.movieRequested } : {}),
   };
 };
 
