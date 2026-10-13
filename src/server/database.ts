@@ -403,6 +403,24 @@ export const applicationMigrations = [
   `ALTER TABLE second_versions ADD COLUMN tracked_path TEXT;`,
   // When Radarr or Sonarr was last asked for the tracked path, so merged rows are checked for a rename once an hour.
   `ALTER TABLE second_versions ADD COLUMN merge_checked_at INTEGER;`,
+  // The install's owner: one row, written by the first sign-in on the first-run page.
+  `CREATE TABLE owner (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    provider TEXT NOT NULL CHECK (provider IN ('plex', 'jellyfin')),
+    user_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    server_name TEXT
+  ) STRICT;`,
+  // owner_id is text because a Jellyfin user ID is a GUID. Existing rows are copied with their Plex ID as text, which
+  // matches String(PLEX_OWNER_ID), so an upgrade keeps the owner signed in.
+  `CREATE TABLE sessions_rebuilt (
+    token_hash TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  ) STRICT;
+  INSERT INTO sessions_rebuilt (token_hash, owner_id, expires_at) SELECT token_hash, CAST(owner_id AS TEXT), expires_at FROM sessions;
+  DROP TABLE sessions;
+  ALTER TABLE sessions_rebuilt RENAME TO sessions;`,
 ] as const;
 
 class DatabaseError extends Error {}

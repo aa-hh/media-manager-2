@@ -91,7 +91,7 @@ if (database !== undefined) {
   const releases = createReleases(database, arr);
   const secondVersions = createSecondVersions({ database, releases, rtorrent });
   const problems = createProblems({ database, events });
-  const mediaServer = createMediaServer(database);
+  const mediaServer = createMediaServer(database, { ownerPlexId: process.env.PLEX_OWNER_ID });
   const versionImport = createVersionImport({ database, rtorrent, arr, mediaServer, problems });
   // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them,
   // and finished ones are imported after it.

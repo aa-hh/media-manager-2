@@ -19,7 +19,8 @@ import { useToastManager } from '@/components/ui/toast';
 import { navigate } from '../navigation';
 import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
-import { isConfigured, list, pillFor, savedAddress, services } from './model';
+import { JellyfinEditor } from './JellyfinEditor';
+import { isConfigured, list, pillFor, savedAddress, type ServiceName, services } from './model';
 import { Editor, PiecesStrip, touchInputs } from './Settings';
 import {
   backupPill, backupWords, firstStep, nextStep, type OptionalPart, previousStep, type RequiredPart, requiredParts, type RtorrentSuggestion, type SetupStatus, wantedParts, type WizardStep, wizardSummary,
@@ -31,15 +32,16 @@ import { infoOf, requester, useServices } from './useServices';
 // The pill's own logo and name are off here: its first two children are hidden, the dot stays.
 const pillOnly = '[&>span:nth-child(-n+2)]:hidden';
 const pill = (state: ServiceState, text: string) => <StatusServicePill logo={null} name={null} state={state} className={pillOnly}>{text}</StatusServicePill>;
-type ServiceStep = Exclude<RequiredPart, 'folders'>;
+type ServiceStep = Exclude<RequiredPart, 'folders' | 'mediaServer'>;
 const serviceSteps: { name: ServiceStep; about: string; needs: string }[] = [
   { name: 'sonarr', about: 'TV shows', needs: 'Address and API key, from Sonarr\'s Settings > General' },
   { name: 'radarr', about: 'Movies', needs: 'Address and API key, from Radarr\'s Settings > General' },
   { name: 'rtorrent', about: 'Downloads', needs: 'Password. The address and username come from Sonarr' },
-  { name: 'plex', about: 'Media server', needs: 'Address. The token comes from your Plex sign-in' },
 ];
-const stepNames: Record<WizardStep, string> = {
-  what: 'What to set up', sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex', folders: 'Folders', trackers: 'trackers', metadata: 'posters and ratings', backup: 'backup', done: 'the end of setup',
+// The media-server step follows the owner's pick on the first-run page.
+const mediaNeeds = { plex: 'Address. The token comes from your Plex sign-in', jellyfin: 'API key, from Jellyfin\'s Dashboard > API Keys' };
+const stepNames: Record<Exclude<WizardStep, 'mediaServer'>, string> = {
+  what: 'What to set up', sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', folders: 'Folders', trackers: 'trackers', metadata: 'posters and ratings', backup: 'backup', done: 'the end of setup',
 };
 
 type Props = {
@@ -210,10 +212,36 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
   const metadataPill = connected.length > 0 ? pill('connected', `${connected.length} connected`)
     : status.optional.metadata.status === 'skipped' ? pill('not-set-up', 'Skipped') : pill('not-set-up', 'Not set up');
 
-  const connectStep = async (name: ServiceStep) => {
-    const signIn = name === 'plex' && connections.usingSignIn(status.plexSignInTokenAvailable);
-    if (isConfigured(saved?.[name]) && editedOf(name) === 0 && !signIn) return advance(name);
-    if (await (signIn ? connections.connectPlexWithSignIn() : connections.connect(name))) await advance(name);
+  const jellyfin = status.mediaServer.kind === 'jellyfin' ? status.mediaServer : undefined;
+  const mediaLabel = jellyfin === undefined ? 'Plex' : 'Jellyfin';
+  const nameOf = (part: WizardStep) => (part === 'mediaServer' ? mediaLabel : stepNames[part]);
+  // The media-server step is the Plex service unless the owner picked Jellyfin, which has no entry in the services list.
+  const serviceOf = (part: ServiceStep | 'mediaServer'): ServiceName => (part === 'mediaServer' ? 'plex' : part);
+  const jellyfinPill = status.required.mediaServer === 'done' ? { state: 'connected' as const, text: 'Connected' } : { state: 'not-set-up' as const, text: 'Needs API key' };
+
+  const connectStep = async (name: ServiceStep | 'mediaServer') => {
+    const service = serviceOf(name);
+    const signIn = service === 'plex' && connections.usingSignIn(status.plexSignInTokenAvailable);
+    if (isConfigured(saved?.[service]) && editedOf(service) === 0 && !signIn) return advance(name);
+    if (await (signIn ? connections.connectPlexWithSignIn() : connections.connect(service))) await advance(name);
+  };
+
+  const serviceRow = (name: ServiceName, about: string, target: WizardStep) => {
+    const member = infoOf(name);
+    const state = pillFor(member, checks[name], editedOf(name));
+    const address = savedAddress(saved?.[name]);
+    return (
+      <RowService
+        key={target}
+        logo={member.logo!}
+        name={member.label}
+        address={address === '' ? about : address}
+        state={state.state}
+        stateText={state.text}
+        selected={step === target}
+        onClick={() => setStep(target)}
+      />
+    );
   };
 
   const pane = () => {
@@ -229,6 +257,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
             <h3 className="font-ui text-sm font-semibold text-foreground">Required before the library opens. Have these ready:</h3>
             <dl className="flex flex-col">
               {serviceSteps.map((service) => <FactRow key={service.name} label={infoOf(service.name).label}>{service.needs}</FactRow>)}
+              <FactRow label={mediaLabel}>{mediaNeeds[jellyfin === undefined ? 'plex' : 'jellyfin']}</FactRow>
               <FactRow label="Folders">Nothing to type: read from Sonarr, Radarr and rTorrent for you to confirm</FactRow>
             </dl>
           </div>
@@ -259,7 +288,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
             summary="Unticked parts are skipped. Settings has them later."
             action={(
               <Button size="large" icon={<ArrowRight />} loading={choosing} onClick={() => void saveChoices(wanted).then(async (ok) => { if (ok) await advance('what'); })}>
-                {first === 'done' ? 'Continue' : `Start with ${stepNames[first]}`}
+                {first === 'done' ? 'Continue' : `Start with ${nameOf(first)}`}
               </Button>
             )}
           />
@@ -366,7 +395,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           <BarBottomAction
             summary="Rules can wait: set them here or later in Settings."
             secondary={<Button variant="outline" icon={<ArrowLeft />} onClick={back}>Back</Button>}
-            action={<Button size="large" icon={<ArrowRight />} onClick={() => void advance('trackers')}>{next === 'done' ? 'Finish setup' : `Continue to ${stepNames[next]}`}</Button>}
+            action={<Button size="large" icon={<ArrowRight />} onClick={() => void advance('trackers')}>{next === 'done' ? 'Finish setup' : `Continue to ${nameOf(next)}`}</Button>}
           />
         </section>
       );
@@ -505,29 +534,42 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
     }
     // Folders renders outside this function so it can stay mounted.
     if (step === 'folders' || saved === undefined) return null;
-    const info = infoOf(step);
+    if (jellyfin !== undefined && step === 'mediaServer') {
+      return (
+        <JellyfinEditor
+          key={step}
+          status={jellyfin}
+          connected={status.required.mediaServer === 'done'}
+          request={setupRequest}
+          wizard={{ step: requiredStep('mediaServer'), onBack: back }}
+          onSaved={() => void advance('mediaServer')}
+        />
+      );
+    }
+    const service = serviceOf(step);
+    const info = infoOf(service);
     const signIn = connections.usingSignIn(status.plexSignInTokenAvailable);
     return (
       <Editor
         key={step}
         info={info}
-        saved={saved[step]}
-        draft={draftOf(step)}
-        check={checks[step]}
-        pending={connections.pending[step]}
-        problem={connections.problems[step]}
+        saved={saved[service]}
+        draft={draftOf(service)}
+        check={checks[service]}
+        pending={connections.pending[service]}
+        problem={connections.problems[service]}
         replacing={connections.replacing}
         now={Date.now()}
-        onDraft={(draft) => connections.setDraft(step, draft)}
-        onReplacing={(key, value) => connections.setReplacingKey(step, key, value)}
-        signInToken={step === 'plex' && status.plexSignInTokenAvailable ? { on: signIn, onChange: connections.choosePlexSignIn } : undefined}
+        onDraft={(draft) => connections.setDraft(service, draft)}
+        onReplacing={(key, value) => connections.setReplacingKey(service, key, value)}
+        signInToken={service === 'plex' && status.plexSignInTokenAvailable ? { on: signIn, onChange: connections.choosePlexSignIn } : undefined}
         onConnect={() => void connectStep(step)}
-        onCheck={() => void connections.checkSaved(step)}
-        onDiscard={() => connections.discard(step)}
+        onCheck={() => void connections.checkSaved(service)}
+        onDiscard={() => connections.discard(service)}
         wizard={{
           title: `Connect ${info.label}`,
           step: requiredStep(step),
-          next: stepNames[nextStep(step, status, wanted)],
+          next: nameOf(nextStep(step, status, wanted)),
           onBack: back,
           // Each prefill hint stays only while its field still holds the suggested value.
           hints: step === 'rtorrent' && rtorrentSuggestion !== undefined ? {
@@ -564,7 +606,13 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
           </Callout>
         ) : (
           <>
-            <PiecesStrip checks={checks} editedOf={editedOf} folders={folders} look={step === 'done' ? 'done' : 'setup'} />
+            <PiecesStrip
+              checks={checks}
+              editedOf={editedOf}
+              folders={folders}
+              look={step === 'done' ? 'done' : 'setup'}
+              watch={jellyfin === undefined ? undefined : { logo: 'jellyfin', name: 'Jellyfin', ...jellyfinPill }}
+            />
             <div className="flex items-start gap-8">
               <nav aria-label="Setup steps" className="flex w-80 shrink-0 flex-col">
                 <TrackerListRow
@@ -577,23 +625,18 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
                   onClick={() => setStep('what')}
                 />
                 <LabelGroup count={`${doneCount} of 5`}>Required</LabelGroup>
-                {serviceSteps.map(({ name, about }) => {
-                  const member = infoOf(name);
-                  const state = pillFor(member, checks[name], editedOf(name));
-                  const address = savedAddress(saved?.[name]);
-                  return (
-                    <RowService
-                      key={name}
-                      logo={member.logo!}
-                      name={member.label}
-                      address={address === '' ? about : address}
-                      state={state.state}
-                      stateText={state.text}
-                      selected={step === name}
-                      onClick={() => setStep(name)}
-                    />
-                  );
-                })}
+                {serviceSteps.map(({ name, about }) => serviceRow(name, about, name))}
+                {jellyfin === undefined ? serviceRow('plex', 'Media server', 'mediaServer') : (
+                  <RowService
+                    logo="jellyfin"
+                    name="Jellyfin"
+                    address="Media server"
+                    state={jellyfinPill.state}
+                    stateText={jellyfinPill.text}
+                    selected={step === 'mediaServer'}
+                    onClick={() => setStep('mediaServer')}
+                  />
+                )}
                 <TrackerListRow
                   host=""
                   icon={<Folder />}

@@ -8,6 +8,17 @@ import {
 } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { DatabaseSync } from 'node:sqlite';
+import { effectiveOwner, readEnvironmentOwner, saveOwner } from './owner.js';
+import { readSetting } from './services/connection.js';
+import {
+  authenticateByName,
+  authenticateWithQuickConnect,
+  identify,
+  type JellyfinUser,
+  quickConnectInitiate,
+  quickConnectState,
+} from './services/jellyfin.js';
+import { setSetting } from './settings.js';
 
 const PRODUCT = 'media-manager-2';
 const PIN_ENDPOINT = 'https://clients.plex.tv/api/v2/pins';
@@ -34,8 +45,15 @@ type Attempt = {
   checking: boolean;
 };
 
+type QuickConnectAttempt = {
+  client: string;
+  url: string;
+  secret: string;
+  expiresAt: number;
+  checking: boolean;
+};
+
 type Configuration = {
-  ownerId: number;
   origin: string;
   secure: boolean;
 };
@@ -64,6 +82,27 @@ export type CompleteResult =
   | { kind: 'owner_only' }
   | { kind: 'unavailable' };
 
+type RateLimited = { kind: 'rate_limited'; retryAfter: number };
+
+export type JellyfinCheckResult =
+  | { kind: 'ok'; url: string; serverName: string }
+  | { kind: 'no_answer' }
+  | { kind: 'not_jellyfin' }
+  | { kind: 'invalid_url' | 'owner_exists' | 'not_configured' }
+  | RateLimited;
+
+export type JellyfinSignInResult =
+  | { kind: 'success'; session: string; expiresAt: number }
+  | { kind: 'not_administrator'; userName: string; serverName: string }
+  | { kind: 'refused' | 'unavailable' | 'owner_only' | 'owner_exists' | 'invalid_url' | 'not_configured' }
+  | { kind: 'pending' | 'invalid_flow' | 'flow_expired' | 'in_progress' }
+  | RateLimited;
+
+export type JellyfinQuickConnectStartResult =
+  | { kind: 'success'; binding: string; code: string; expiresAt: number }
+  | { kind: 'off' | 'unavailable' | 'owner_exists' | 'invalid_url' | 'not_configured' }
+  | RateLimited;
+
 export type SessionResult =
   | { kind: 'success'; expiresAt: number }
   | { kind: 'unauthenticated' | 'expired' };
@@ -77,14 +116,7 @@ export const isLoopback = (host: string) => {
     || (isIP(normalized) === 4 && normalized.startsWith('127.'));
 };
 
-const readConfiguration = (
-  ownerPlexId: string | undefined,
-  publicOrigin: string | undefined,
-  listeningHost: string,
-): Configuration | undefined => {
-  if (ownerPlexId === undefined || !/^[1-9]\d*$/.test(ownerPlexId)) return undefined;
-  const ownerId = Number(ownerPlexId);
-  if (!Number.isSafeInteger(ownerId) || ownerId <= 0 || String(ownerId) !== ownerPlexId) return undefined;
+const readConfiguration = (publicOrigin: string | undefined, listeningHost: string): Configuration | undefined => {
   if (publicOrigin === undefined) return undefined;
   let parsed: URL;
   try {
@@ -101,7 +133,21 @@ const readConfiguration = (
     || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
   ) return undefined;
   if (parsed.protocol === 'http:' && (!isLoopback(parsed.hostname) || !isLoopback(listeningHost))) return undefined;
-  return { ownerId, origin: parsed.origin, secure: parsed.protocol === 'https:' };
+  return { origin: parsed.origin, secure: parsed.protocol === 'https:' };
+};
+
+// A Jellyfin address typed on the first-run page: http or https, nothing but host, port and path.
+const normalizeServerUrl = (value: string): string | undefined => {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    return undefined;
+  }
+  return parsed.origin + parsed.pathname.replace(/\/+$/, '');
 };
 
 const providerExpiry = (value: unknown) => {
@@ -132,9 +178,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 );
 
 export const createAuthentication = (options: AuthenticationOptions) => {
-  const configuration = readConfiguration(options.ownerPlexId, options.publicOrigin, options.listeningHost);
+  const environmentOwner = readEnvironmentOwner(options.ownerPlexId);
+  // A set but malformed PLEX_OWNER_ID turns sign-in off instead of opening first run to anyone.
+  const invalidOwnerId = (options.ownerPlexId ?? '') !== '' && environmentOwner === undefined;
+  const configuration = invalidOwnerId ? undefined : readConfiguration(options.publicOrigin, options.listeningHost);
   const attempts = new Map<string, Attempt>();
+  const quickConnects = new Map<string, QuickConnectAttempt>();
   const { database } = options;
+  const currentOwner = () => effectiveOwner(database, options.ownerPlexId);
   // The owner's Plex account token from sign-in, by session hash. Kept out of the database (and so out of backups);
   // a restart drops it and setup's Plex step falls back to a pasted token.
   const plexTokens = new Map<string, string>();
@@ -147,6 +198,9 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     for (const [key, attempt] of attempts) {
       if (currentTime >= attempt.expiresAt) attempts.delete(key);
     }
+    for (const [key, attempt] of quickConnects) {
+      if (currentTime >= attempt.expiresAt) quickConnects.delete(key);
+    }
   };
 
   // Sessions live in the database so a restart keeps the owner signed in; only each token's hash is stored.
@@ -155,22 +209,46 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     plexTokens.delete(key);
   };
 
+  const createSession = (ownerUserId: string, suppliedSession: string | undefined) => {
+    if (suppliedSession !== undefined) deleteSession(hash(suppliedSession));
+    for (const { token_hash } of database.prepare('DELETE FROM sessions WHERE expires_at <= ? RETURNING token_hash')
+      .all(options.now()) as Array<{ token_hash: string }>) plexTokens.delete(token_hash);
+    const { count } = database.prepare('SELECT count(*) AS count FROM sessions').get() as { count: number };
+    if (count >= MAX_SESSIONS) return { kind: 'unavailable' as const };
+    const session = randomBytes(32).toString('base64url');
+    const expiresAt = options.now() + SESSION_LIFETIME_MS;
+    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)')
+      .run(hash(session), ownerUserId, expiresAt);
+    return { kind: 'success' as const, session, expiresAt };
+  };
+
   const requestProvider = (url: string, init: RequestInit) => options.fetch(url, {
     ...init,
     redirect: 'error',
     signal: AbortSignal.timeout(10_000),
   });
 
-  const start = async (existingBinding: string | undefined, client: string): Promise<StartResult> => {
-    if (configuration === undefined) return { kind: 'not_configured' };
-    removeExpiredAttempts();
+  // Plex starts and the Jellyfin requests that reach a server share one window per client.
+  const rateLimited = (client: string): RateLimited | undefined => {
     const currentTime = options.now();
     starts = starts.filter((started) => currentTime - started.at < RATE_WINDOW_MS);
     const own = starts.filter((started) => started.client === client);
     const limiting = own.length >= MAX_STARTS_PER_WINDOW ? own : starts.length >= MAX_STARTS_PER_WINDOW * ALL_CLIENTS ? starts : undefined;
-    if (limiting !== undefined) {
-      return { kind: 'rate_limited', retryAfter: Math.max(1, Math.ceil((limiting[0].at + RATE_WINDOW_MS - currentTime) / 1000)) };
-    }
+    if (limiting === undefined) return undefined;
+    return { kind: 'rate_limited', retryAfter: Math.max(1, Math.ceil((limiting[0].at + RATE_WINDOW_MS - currentTime) / 1000)) };
+  };
+  const admit = (client: string) => {
+    const limited = rateLimited(client);
+    if (limited === undefined) starts.push({ client, at: options.now() });
+    return limited;
+  };
+
+  const start = async (existingBinding: string | undefined, client: string): Promise<StartResult> => {
+    if (configuration === undefined) return { kind: 'not_configured' };
+    removeExpiredAttempts();
+    const currentTime = options.now();
+    const limited = rateLimited(client);
+    if (limited !== undefined) return limited;
     if (existingBinding !== undefined) attempts.delete(hash(existingBinding));
     const held = [...attempts.values()].filter((attempt) => attempt.client === client).length
       + pendingStarts.filter((pending) => pending === client).length;
@@ -328,35 +406,180 @@ export const createAuthentication = (options: AuthenticationOptions) => {
       typeof user.id !== 'number'
       || !Number.isSafeInteger(user.id)
       || user.id <= 0
-      || user.id !== configuration.ownerId
       || user.restricted === true
       || user.anonymous === true
     ) return terminal('owner_only');
+    const userId = String(user.id);
+    // First run: this account becomes the owner. A failed insert means another sign-in got there first.
+    if (currentOwner() === undefined) {
+      try {
+        saveOwner(database, {
+          provider: 'plex',
+          userId,
+          userName: typeof user.username === 'string' && user.username !== '' ? user.username : userId,
+          serverName: null,
+        });
+      } catch { /* the owner check below reads the winner */ }
+    }
+    const owner = currentOwner();
+    if (owner?.provider !== 'plex' || owner.userId !== userId) return terminal('owner_only');
 
     attempts.delete(bindingHash);
-    if (suppliedSession !== undefined) deleteSession(hash(suppliedSession));
-    for (const { token_hash } of database.prepare('DELETE FROM sessions WHERE expires_at <= ? RETURNING token_hash')
-      .all(options.now()) as Array<{ token_hash: string }>) plexTokens.delete(token_hash);
-    const { count } = database.prepare('SELECT count(*) AS count FROM sessions').get() as { count: number };
-    if (count >= MAX_SESSIONS) return { kind: 'unavailable' };
-    const session = randomBytes(32).toString('base64url');
-    const expiresAt = options.now() + SESSION_LIFETIME_MS;
-    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)')
-      .run(hash(session), configuration.ownerId, expiresAt);
-    plexTokens.set(hash(session), checkBody.authToken);
-    return { kind: 'success', session, expiresAt };
+    const created = createSession(owner.userId, suppliedSession);
+    if (created.kind === 'success') plexTokens.set(hash(created.session), checkBody.authToken);
+    return created;
+  };
+
+  // The Jellyfin server to sign in against: the typed address during first run, the saved one once a Jellyfin owner
+  // exists, so after first run nobody can point sign-in at a server of their own.
+  const signInServer = (url: string | undefined): { kind: 'ok'; url: string } | { kind: 'invalid_url' | 'owner_exists' | 'unavailable' } => {
+    const owner = currentOwner();
+    if (owner === undefined) {
+      const normalized = url === undefined ? undefined : normalizeServerUrl(url);
+      return normalized === undefined ? { kind: 'invalid_url' } : { kind: 'ok', url: normalized };
+    }
+    if (owner.provider !== 'jellyfin' || url !== undefined) return { kind: 'owner_exists' };
+    const saved = readSetting(database, 'serviceAddresses', 'jellyfin.url');
+    return saved === undefined ? { kind: 'unavailable' } : { kind: 'ok', url: saved.replace(/\/+$/, '') };
+  };
+
+  // Shared end of both Jellyfin sign-ins: administrators only; the first one becomes the owner and locks the address.
+  const finishJellyfin = async (url: string, user: JellyfinUser, suppliedSession: string | undefined): Promise<JellyfinSignInResult> => {
+    let owner = currentOwner();
+    let serverName = owner?.serverName ?? undefined;
+    if (serverName === undefined) {
+      const identified = owner === undefined ? await identify(options.fetch, url) : undefined;
+      serverName = identified?.kind === 'ok' ? identified.serverName : new URL(url).host;
+    }
+    if (!user.isAdministrator) return { kind: 'not_administrator', userName: user.userName, serverName };
+    if (currentOwner() === undefined) {
+      // Owner and locked address land together, or neither does.
+      database.exec('BEGIN IMMEDIATE;');
+      try {
+        saveOwner(database, { provider: 'jellyfin', userId: user.userId, userName: user.userName, serverName });
+        setSetting(database, 'serviceAddresses', 'jellyfin.url', url);
+        database.exec('COMMIT;');
+      } catch {
+        database.exec('ROLLBACK;'); // the owner check below reads the winner
+      }
+    }
+    owner = currentOwner();
+    const savedUrl = readSetting(database, 'serviceAddresses', 'jellyfin.url')?.replace(/\/+$/, '');
+    if (owner?.provider !== 'jellyfin' || owner.userId !== user.userId || savedUrl !== url) return { kind: 'owner_only' };
+    return createSession(owner.userId, suppliedSession);
+  };
+
+  const jellyfinCheck = async (url: string, client: string): Promise<JellyfinCheckResult> => {
+    if (configuration === undefined) return { kind: 'not_configured' };
+    if (currentOwner() !== undefined) return { kind: 'owner_exists' };
+    const normalized = normalizeServerUrl(url);
+    if (normalized === undefined) return { kind: 'invalid_url' };
+    const limited = admit(client);
+    if (limited !== undefined) return limited;
+    const identified = await identify(options.fetch, normalized);
+    return identified.kind === 'ok' ? { kind: 'ok', url: normalized, serverName: identified.serverName } : identified;
+  };
+
+  const jellyfinPassword = async (
+    url: string | undefined,
+    username: string,
+    password: string,
+    client: string,
+    suppliedSession?: string,
+  ): Promise<JellyfinSignInResult> => {
+    if (configuration === undefined) return { kind: 'not_configured' };
+    const server = signInServer(url);
+    if (server.kind !== 'ok') return server;
+    const limited = admit(client);
+    if (limited !== undefined) return limited;
+    const result = await authenticateByName(options.fetch, server.url, username, password);
+    if (result.kind !== 'ok') return result;
+    return finishJellyfin(server.url, result.user, suppliedSession);
+  };
+
+  const jellyfinQuickConnectStart = async (
+    url: string | undefined,
+    existingBinding: string | undefined,
+    client: string,
+  ): Promise<JellyfinQuickConnectStartResult> => {
+    if (configuration === undefined) return { kind: 'not_configured' };
+    const server = signInServer(url);
+    if (server.kind !== 'ok') return server;
+    removeExpiredAttempts();
+    const limited = admit(client);
+    if (limited !== undefined) return limited;
+    if (existingBinding !== undefined) {
+      attempts.delete(hash(existingBinding));
+      quickConnects.delete(hash(existingBinding));
+    }
+    const initiated = await quickConnectInitiate(options.fetch, server.url);
+    if (initiated.kind !== 'ok') return initiated;
+    const binding = randomBytes(32).toString('base64url');
+    const expiresAt = options.now() + ATTEMPT_LIFETIME_MS;
+    quickConnects.set(hash(binding), { client, url: server.url, secret: initiated.secret, expiresAt, checking: false });
+    return { kind: 'success', binding, code: initiated.code, expiresAt };
+  };
+
+  const jellyfinQuickConnectComplete = async (binding: string | undefined, suppliedSession?: string): Promise<JellyfinSignInResult> => {
+    if (configuration === undefined || binding === undefined) return { kind: 'invalid_flow' };
+    const key = hash(binding);
+    const attempt = quickConnects.get(key);
+    if (attempt === undefined) return { kind: 'invalid_flow' };
+    if (options.now() >= attempt.expiresAt) {
+      quickConnects.delete(key);
+      return { kind: 'flow_expired' };
+    }
+    if (attempt.checking) return { kind: 'in_progress' };
+    attempt.checking = true;
+    // Cancel, logout or a newer start may replace the attempt while Jellyfin answers; a late answer then creates nothing.
+    const stillUsable = (): JellyfinSignInResult | undefined => {
+      if (quickConnects.get(key) !== attempt) return { kind: 'invalid_flow' };
+      if (options.now() >= attempt.expiresAt) {
+        quickConnects.delete(key);
+        return { kind: 'flow_expired' };
+      }
+      return undefined;
+    };
+    const terminal = (result: JellyfinSignInResult) => {
+      if (quickConnects.get(key) === attempt) quickConnects.delete(key);
+      return result;
+    };
+
+    const state = await quickConnectState(options.fetch, attempt.url, attempt.secret);
+    const afterState = stillUsable();
+    if (afterState !== undefined) return afterState;
+    if (state === 'pending') {
+      attempt.checking = false;
+      return { kind: 'pending' };
+    }
+    if (state === 'expired') return terminal({ kind: 'flow_expired' });
+    if (state === 'unavailable') return terminal({ kind: 'unavailable' });
+    const result = await authenticateWithQuickConnect(options.fetch, attempt.url, attempt.secret);
+    const afterAuthentication = stillUsable();
+    if (afterAuthentication !== undefined) return afterAuthentication;
+    // Jellyfin said the code was approved, so a refusal here is Jellyfin misbehaving, not the person.
+    if (result.kind !== 'ok') return terminal({ kind: 'unavailable' });
+    quickConnects.delete(key);
+    return finishJellyfin(attempt.url, result.user, suppliedSession);
   };
 
   const status = (binding?: string) => {
-    if (configuration === undefined || binding === undefined) return { configured: configuration !== undefined, pending: false };
-    const key = hash(binding);
-    const attempt = attempts.get(key);
-    if (attempt !== undefined && options.now() >= attempt.expiresAt) attempts.delete(key);
-    return { configured: true, pending: attempts.has(key) };
+    if (configuration === undefined) return { configured: false, pending: false, firstRun: false, provider: null };
+    const owner = currentOwner();
+    let pending = false;
+    if (binding !== undefined) {
+      const key = hash(binding);
+      const attempt = attempts.get(key);
+      if (attempt !== undefined && options.now() >= attempt.expiresAt) attempts.delete(key);
+      pending = attempts.has(key);
+    }
+    return { configured: true, pending, firstRun: owner === undefined, provider: owner?.provider ?? null };
   };
 
   const cancel = (binding?: string) => {
-    if (binding !== undefined) attempts.delete(hash(binding));
+    if (binding === undefined) return;
+    attempts.delete(hash(binding));
+    quickConnects.delete(hash(binding));
   };
 
   const logout = (binding?: string, session?: string) => {
@@ -366,10 +589,11 @@ export const createAuthentication = (options: AuthenticationOptions) => {
 
   const validateSession = (session?: string): SessionResult => {
     if (configuration === undefined || session === undefined) return { kind: 'unauthenticated' };
+    const owner = currentOwner();
     const key = hash(session);
     const stored = database.prepare('SELECT owner_id, expires_at FROM sessions WHERE token_hash = ?')
-      .get(key) as { owner_id: number; expires_at: number } | undefined;
-    if (stored === undefined || stored.owner_id !== configuration.ownerId) return { kind: 'unauthenticated' };
+      .get(key) as { owner_id: string; expires_at: number } | undefined;
+    if (stored === undefined || owner === undefined || stored.owner_id !== owner.userId) return { kind: 'unauthenticated' };
     if (options.now() >= stored.expires_at) {
       deleteSession(key);
       return { kind: 'expired' };
@@ -388,6 +612,10 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     origin: configuration?.origin,
     start,
     complete,
+    jellyfinCheck,
+    jellyfinPassword,
+    jellyfinQuickConnectStart,
+    jellyfinQuickConnectComplete,
     status,
     cancel,
     logout,
