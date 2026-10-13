@@ -135,7 +135,7 @@ function HeaderTitle({
       <HeaderBackdrop posterUrl={posterUrl} backdropUrl={backdropUrl} tall={actionsRight} className="inset-x-0" />
       <div className={cn('relative flex w-full gap-8', actionsRight && 'items-end')}>
         {/* title-poster: a poster card opening this page morphs into it (globals.css). */}
-        <Poster url={posterUrl} className="title-poster h-82.5 w-55 rounded-md" />
+        <Poster url={posterUrl} className="title-poster h-78.75 w-52.5 rounded-md" />
         <div className="flex min-w-0 flex-1 flex-col gap-3 pt-15">
           {breadcrumb}
           <div className="flex min-w-0 items-center gap-2.5">

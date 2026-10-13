@@ -158,13 +158,13 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       skeleton={(
         // The poster sits where the loaded header puts it, under the app bar, so nothing jumps when the page arrives.
         <div role="status" aria-label="Loading" className="relative -mt-(--topbar) flex flex-col gap-8 pt-[calc(var(--topbar)+100px)] pb-10">
-          {/* The header is the app bar plus 462 px: 100 above the poster, the 330 px poster, 32 below; the band runs 15 % past it. */}
-          <HeaderBackdrop posterUrl={passedPoster} tall className="-inset-x-(--page-margin) h-[calc((var(--topbar)+462px)*1.15)]" />
+          {/* The header is the app bar plus 447 px: 100 above the poster, the 315 px poster, 32 below; the band runs 15 % past it. */}
+          <HeaderBackdrop posterUrl={passedPoster} tall className="-inset-x-(--page-margin) h-[calc((var(--topbar)+447px)*1.15)]" />
           <div className="relative flex gap-8">
             {passedPoster === undefined
-              ? <Skeleton className="title-poster h-82.5 w-55 rounded-md" />
+              ? <Skeleton className="title-poster h-78.75 w-52.5 rounded-md" />
               : (
-                <div className="title-poster relative h-82.5 w-55 shrink-0 overflow-hidden rounded-md bg-muted">
+                <div className="title-poster relative h-78.75 w-52.5 shrink-0 overflow-hidden rounded-md bg-muted">
                   <img src={passedPoster} alt="" className="size-full object-cover" />
                 </div>
               )}

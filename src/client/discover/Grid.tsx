@@ -215,21 +215,21 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
         <Arrival
           ready={firstPage}
           skeleton={(
-            <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8 pt-6">
+            <ul className="grid grid-cols-[repeat(auto-fill,var(--poster-width))] justify-between gap-x-(--poster-gutter) gap-y-8 pt-6">
               {Array.from({ length: SKELETONS }, (_, index) => <li key={index}><SkeletonPosterCard /></li>)}
             </ul>
           )}
         >
-        <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8 pt-6">
+        <ul className="grid grid-cols-[repeat(auto-fill,var(--poster-width))] justify-between gap-x-(--poster-gutter) gap-y-8 pt-6">
           {current?.results.map((result, index) => (
             <li
               key={`${result.type}:${result.tmdbId}`}
               className={cn(
-                '[contain-intrinsic-size:auto_var(--poster-width)_auto_330px] [content-visibility:auto]',
+                '[contain-intrinsic-size:auto_var(--poster-width)_auto_420px] [content-visibility:auto]',
                 index >= (firstCount.current ?? Infinity) && 'animate-content-in',
               )}
             >
-              <Card result={result} upcoming={state.sort === 'upcoming' && kind !== 'trending'} size="default" />
+              <Card result={result} upcoming={state.sort === 'upcoming' && kind !== 'trending'} />
             </li>
           ))}
           {loading && Array.from({ length: SKELETONS }, (_, index) => (

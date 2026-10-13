@@ -223,7 +223,7 @@ export const extraRowsView = (rows: HomeReply['extraRows']) => ({
 });
 
 /** How many whole cards fit in a strip of this width. */
-export const visibleCards = (stripWidth: number, cardWidth = 220, gap = 32): number =>
+export const visibleCards = (stripWidth: number, cardWidth = 210, gap = 32): number =>
   Math.max(1, Math.floor((stripWidth + gap) / (cardWidth + gap)));
 
 /** One removable tag per active filter, in a fixed order; `remove` is the filters with that one cleared. */
