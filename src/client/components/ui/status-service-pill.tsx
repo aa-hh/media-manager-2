@@ -1,4 +1,5 @@
 // v2/Status/service pill — ~/Projects/media-manager-2-design/design-system.lib.pen hpQjk
+// v2/Status/service pill/failed — ~/Projects/media-manager-2-design/design-system.lib.pen LK8zL (state "failed": destructive dot and words on destructive-soft)
 import { PencilLine } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';

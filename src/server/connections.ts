@@ -120,6 +120,7 @@ export const createConnectionRoutes = (database: DatabaseSync, options: ServiceO
   });
 
   // The form's values are laid over the saved ones in a throwaway in-memory database, so the service's own check runs unchanged and nothing is saved.
+  // Jellyfin is identified first, so an address that answers but is not Jellyfin reads as not_jellyfin rather than unreachable, and one that does not answer is waited on only once.
   routes.post('/settings/test/:service', async (context) => {
     const service = context.req.param('service');
     if (!isServiceName(service)) return context.json({ error: 'not_found' }, 404);
@@ -131,6 +132,12 @@ export const createConnectionRoutes = (database: DatabaseSync, options: ServiceO
     }
     const form = readFormValues(body, service);
     if (form === undefined) return context.json({ error: 'invalid_request' }, 400);
+    if (service === 'jellyfin') {
+      const url = form.serviceAddresses?.['jellyfin.url'] ?? getSetting(database, 'serviceAddresses', 'jellyfin.url');
+      const identified = url ? (await identify(options.fetch ?? globalThis.fetch, url.replace(/\/+$/, ''))).kind : undefined;
+      if (identified === 'not_jellyfin') return context.json({ kind: 'not_jellyfin' });
+      if (identified === 'no_answer') return context.json({ kind: 'unreachable' });
+    }
     const jellyfinUrl = service === 'jellyfin' ? form.serviceAddresses?.['jellyfin.url'] : undefined;
     if (jellyfinUrl !== undefined && jellyfinUrl !== getSetting(database, 'serviceAddresses', 'jellyfin.url')) {
       const same = await sameServer(jellyfinUrl);

@@ -1,5 +1,6 @@
 // v2/Row/service — ~/Projects/media-manager-2-design/design-system.lib.pen okfXn
 // v2/Row/service/subtle — ~/Projects/media-manager-2-design/design-system.lib.pen VsAvG (an address such as "No address yet" passed in subtle-foreground)
+// v2/Row/service/failed — ~/Projects/media-manager-2-design/design-system.lib.pen KIzpn (state "failed" passed to the pill; default words "Failed")
 import type { ComponentProps, ReactNode } from 'react';
 import { Logo, type LogoName } from '@/components/ui/logo';
 import { StatusServicePill, type ServiceState } from '@/components/ui/status-service-pill';

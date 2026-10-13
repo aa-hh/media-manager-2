@@ -3782,7 +3782,7 @@ test('the settings screen shows addresses, hides credentials, saves known keys a
   assert.equal((await mounted.app.request('/api/settings', { headers: { Cookie: signedIn.session } })).status, 200);
 });
 
-// Saving a key Jellyfin refused, or letting a Jellyfin owner point the address at another server, turns this red.
+// Saving a key Jellyfin refused, letting a Jellyfin owner point the address at another server, or reporting an address that answers but is not Jellyfin as unreachable, turns this red.
 test('the settings screen tests and saves Jellyfin, refuses a key it rejects and keeps a Jellyfin owner on the same server', async () => {
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const { getSetting } = await import(settingsModuleUrl);
@@ -3790,7 +3790,9 @@ test('the settings screen tests and saves Jellyfin, refuses a key it rejects and
   const jellyfin = createJellyfinFixture();
   const database = new DatabaseSync(':memory:');
   migrateDatabase(database, applicationMigrations);
-  const { app } = await makeApp({ ownerPlexId: undefined, fetch: jellyfin.fetch, database, api: createConnectionRoutes(database, { fetch: jellyfin.fetch }) });
+  const routeFetch = { calls: 0 };
+  const countedFetch = (input, init) => { routeFetch.calls += 1; return jellyfin.fetch(input, init); };
+  const { app } = await makeApp({ ownerPlexId: undefined, fetch: jellyfin.fetch, database, api: createConnectionRoutes(database, { fetch: countedFetch }) });
   const signedIn = await app.request('/auth/jellyfin/password', {
     method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ url: 'http://jellyfin.test:8096', username: 'admin', password: 'pw' }),
   });
@@ -3805,6 +3807,14 @@ test('the settings screen tests and saves Jellyfin, refuses a key it rejects and
   });
   assert.deepEqual(await check({ credentials: { 'jellyfin.apiKey': 'bad-key' } }), { kind: 'rejected' });
   assert.deepEqual(await check({ credentials: { 'jellyfin.apiKey': 'good-key' } }), { kind: 'ok', version: '10.10.0', serverName: 'Home' });
+  jellyfin.state.publicStatus = 404;
+  assert.deepEqual(await check({ credentials: { 'jellyfin.apiKey': 'good-key' } }), { kind: 'not_jellyfin' });
+  jellyfin.state.publicStatus = 200;
+  // Letting a no_answer from identify fall through to a second request, so a silent address is waited on twice, turns this red.
+  jellyfin.state.down = true;
+  routeFetch.calls = 0;
+  assert.deepEqual([await check({ credentials: { 'jellyfin.apiKey': 'good-key' } }), routeFetch.calls], [{ kind: 'unreachable' }, 1]);
+  jellyfin.state.down = false;
   assert.equal((await send('PUT', '/api/settings/credentials/jellyfin.apiKey', { value: 'good-key' })).status, 204);
   assert.equal(getSetting(database, 'credentials', 'jellyfin.apiKey'), 'good-key');
 
@@ -3833,6 +3843,13 @@ test('the settings screen tests and saves Jellyfin, refuses a key it rejects and
     method: 'PUT', headers: { ...jsonHeaders(), Cookie: plexSession }, body: JSON.stringify({ value: 'http://den.test:8096' }),
   });
   assert.equal(plexPut.status, 204);
+  jellyfin.state.publicStatus = 404;
+  const plexTest = await plexOwned.app.request('/api/settings/test/jellyfin', {
+    method: 'POST', headers: { ...jsonHeaders(), Cookie: plexSession },
+    body: JSON.stringify({ serviceAddresses: { 'jellyfin.url': 'http://jellyfin.test:8096' }, credentials: { 'jellyfin.apiKey': 'good-key' } }),
+  });
+  assert.deepEqual(await plexTest.json(), { kind: 'not_jellyfin' });
+  jellyfin.state.publicStatus = 200;
 });
 
 // Losing a tracker the owner added, letting TRACKER_RULES beat a saved rule, accepting a junk or duplicate host or an invalid
@@ -11864,6 +11881,8 @@ test('the settings screen sends only changed fields and ranks each service state
     const cases = [
       [{ kind: 'testing' }, 2, 'testing'],
       [{ kind: 'rejected', at: 0, ofSaved: false }, 2, 'failed'],
+      // Showing a non-Jellyfin answer as plainly unreachable, or outranking it with unsaved edits, turns this red.
+      [{ kind: 'not_jellyfin', at: 0, ofSaved: false }, 2, 'failed'],
       [connected, 1, 'unsaved'],
       [connected, 0, 'connected'],
       [{ kind: 'idle' }, 0, 'not-set-up'],
@@ -11874,6 +11893,7 @@ test('the settings screen sends only changed fields and ranks each service state
     const jellyfin = services.find((info) => info.name === 'jellyfin');
     const home = { kind: 'ok', version: '10.10.0', at: 0, ofSaved: true };
     assert.deepEqual(pillFor(jellyfin, home, 0, false, true), { state: 'connected', text: 'Connected · not in use' });
+    assert.equal(pillFor(jellyfin, { kind: 'not_jellyfin', at: 0, ofSaved: false }, 0).text, 'Not Jellyfin');
     // Storing a different-server answer as Jellyfin's check turns this red: the pills would read failed and the saved server's Last checked would vanish.
     assert.deepEqual(afterTest(home, { kind: 'different_server', serverName: 'Den' }, 5, false), { check: home, differentServer: 'Den' });
   });
