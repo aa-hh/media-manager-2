@@ -1,15 +1,16 @@
 #!/bin/sh
 # Fresh database, settings and session, then the stand-in Sonarr, the server and headless Chrome. Prints their pids. macOS only (Chrome path; override with CHROME).
 # Run: sh scripts/build.sh && sh scripts/screenshots/run.sh <out dir> (run.sh stops them again; start.sh alone leaves them up for stop.sh)
+# Refuses while any run holds the ports, from this out dir or another.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 SHOTS=$(mkdir -p "${1:?usage: sh scripts/screenshots/start.sh <out dir>}" && cd "$1" && pwd)
 CHROME=${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
+# A run from any out dir or worktree holds these ports; report it and leave it running, never kill it.
+held=$(lsof -nP -i tcp:3999 -i tcp:9333 -i tcp:65301 -sTCP:LISTEN 2>/dev/null || true)
+[ -z "$held" ] || { printf 'another run holds the ports, left running; stop it from its own out dir: sh scripts/screenshots/stop.sh <that out dir>\n%s\n' "$held" >&2; exit 1; }
 [ -f "$REPO/dist/server/index.js" ] || { echo "no build: run sh scripts/build.sh first" >&2; exit 1; }
-for pidfile in "$SHOTS"/run/*.pid; do
-  [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null && { echo "still running from an earlier start: sh scripts/screenshots/stop.sh $SHOTS" >&2; exit 1; }
-done
 rm -rf "$SHOTS/run/db" "$SHOTS/run/chrome"
 mkdir -p "$SHOTS/run/db" && chmod 700 "$SHOTS/run/db"
 DB=$SHOTS/run/db/media-manager.sqlite
