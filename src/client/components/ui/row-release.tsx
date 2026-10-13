@@ -1,95 +1,140 @@
 // v2/Row/release — ~/Projects/media-manager-2-design/design-system.lib.pen NXfpc
+// v2/Row/release/best — ~/Projects/media-manager-2-design/design-system.lib.pen qfXmm
+// v2/Row/release/rejected — ~/Projects/media-manager-2-design/design-system.lib.pen B5OQ0G
+// v2/Row/release/cooldown — ~/Projects/media-manager-2-design/design-system.lib.pen So9dQ
+// v2/Row/release/yours — ~/Projects/media-manager-2-design/design-system.lib.pen R2TgoO
+// v2/Row/release/grabbed — ~/Projects/media-manager-2-design/design-system.lib.pen TzXh1
+// v2/Row/release/movie — ~/Projects/media-manager-2-design/design-system.lib.pen qTBZf
+// v2/Table/Header/releases — ~/Projects/media-manager-2-design/design-system.lib.pen wQU07
+// v2/Table/Header/releases/movie — ~/Projects/media-manager-2-design/design-system.lib.pen tQZov
 import type { ReactNode } from 'react';
-import { Badge } from '@/components/ui/badge';
+import { MarkFreeleech } from '@/components/ui/mark-freeleech';
+import { MarkHistory } from '@/components/ui/mark-history';
+import { MarkProper } from '@/components/ui/mark-proper';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
+import { TagFormat } from '@/components/ui/tag-format';
+import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
-// Fixed widths, the same on every release table: Quality 104, Release fill, Compared 72, Fit 112, Size 72,
-// Age 64, Seeders 64, Tracker 112, Hit and run 128, Audio and HDR 140, Action 88.
-const w = { quality: 'w-26', comparison: 'w-18', fit: 'w-28', size: 'w-18', age: 'w-16', seeders: 'w-16', tracker: 'w-28', hitAndRun: 'w-32', audio: 'w-35', action: 'w-22' };
+// Release takes the rest of the row (384 under an episode and 520 on the movie page at 1360); Audio · HDR 144, Seeders 64,
+// Tracker 104, Fit 96, Quality 104, Size 72, last column 112. Anchored from the right, Quality, Size and the last column keep
+// the shared edges at any width, as the episode rows above do.
+const w = { audio: 'w-36', seeders: 'w-16', tracker: 'w-26', fit: 'w-24', quality: 'w-26', size: 'w-18', action: 'w-28' };
 
-type OptionalColumns = { comparison?: boolean; age?: boolean; hitAndRun?: boolean; audio?: boolean };
-
-/** Header for release tables. Turn on the optional columns the rows below fill. */
-function RowReleaseHeader({ comparison = false, age = false, hitAndRun = false, audio = false }: OptionalColumns) {
+/** Header for the releases inset. The inset block supplies the left offset, so it has no side padding. */
+function RowReleaseHeader() {
   return (
-    <TableHeader>
-      <TableHead className={w.quality}>Quality</TableHead>
-      <TableHead fill>Release</TableHead>
-      {comparison && <TableHead className={w.comparison}>Compared</TableHead>}
-      <TableHead className={w.fit}>Fit</TableHead>
-      <TableHead align="end" className={w.size}>Size</TableHead>
-      {age && <TableHead align="end" className={w.age}>Age</TableHead>}
+    <TableHeader className="px-0">
+      <TableHead fill className="pl-2.5">Release</TableHead>
+      <TableHead className={w.audio}>Audio · HDR</TableHead>
       <TableHead align="end" className={w.seeders}>Seeders</TableHead>
       <TableHead className={w.tracker}>Tracker</TableHead>
-      {hitAndRun && <TableHead className={w.hitAndRun}>Hit and run</TableHead>}
-      {audio && <TableHead className={w.audio}>Audio · HDR</TableHead>}
+      <TableHead className={w.fit}>Fit</TableHead>
+      <TableHead className={w.quality}>Quality</TableHead>
+      <TableHead align="end" className={w.size}>Size</TableHead>
       <TableHead className={w.action} />
     </TableHeader>
   );
 }
 
-type RowReleaseProps = Omit<TableRowProps, 'progress'> & {
-  quality: ReactNode;
-  /** Dotted release name up to the group, in muted text. */
-  name: ReactNode;
-  /** Release group, black 700. */
-  group?: ReactNode;
-  /** A MarkComparison; the column shows only when given. */
-  comparison?: ReactNode;
-  /** A CellProfileFit. */
-  fit: ReactNode;
-  size: ReactNode;
-  /** Age such as "3 d"; the column shows only when given. */
-  age?: ReactNode;
-  seeders: ReactNode;
+type RowReleaseProps = Omit<TableRowProps, 'progress' | 'selected'> & {
+  /** The release name in three parts: the start up to SxxExx (or the movie's year), the rest, and the group with its dash in 700 foreground. Only the middle is cut. */
+  name: { head: string; middle: string; group?: string };
+  /** The worst earlier event, at the release cell's right edge. */
+  history?: { kind: 'failed' | 'blocklisted' | 'grabbed'; tooltip: string };
+  /** One TagFormat each, audio first. */
+  formats: string[];
+  /** Undefined leaves the cell blank (the Yours row); null reads "?". */
+  seeders?: number | null;
+  /** Shown in the seeders tooltip. */
+  leechers?: number | null;
   tracker: string;
-  hitAndRun?: ReactNode;
-  audio?: ReactNode;
-  /** The Grab button (row size). */
-  actions?: ReactNode;
-  /** Grabbed percent: swaps the actions for a lime badge and draws the progress line. */
-  grabbed?: number;
+  /** The freeleech kind, such as "Freeleech 75%": draws the mark with it as the tooltip. */
+  freeleech?: string;
+  /** A ChipFit. */
+  fit?: ReactNode;
+  quality: { resolution: string; source?: string };
+  /** "Proper" or "Repack": draws the mark with it as the tooltip. */
+  proper?: string;
+  size: string;
+  /** The row-size Grab Button, or a ChipReleaseState. */
+  action?: ReactNode;
   /** Fails the profile: every value dims. */
   rejected?: boolean;
-  /** The owned file pinned under the header: muted fill, white quality badge. */
+  /** The tracker is cooling down: the red bar at the table's left edge, reached through the inset's --inset. */
+  cooldown?: boolean;
+  /** The owned file pinned under the header. */
   yours?: boolean;
 };
 
-function RowRelease({ quality, name, group, comparison, fit, size, age, seeders, tracker, hitAndRun, audio, actions, grabbed, rejected = false, yours = false, className, ...props }: RowReleaseProps) {
+const seedersLook = (seeders: number | null | undefined) => {
+  if (seeders === 0) return 'font-semibold text-destructive';
+  if (typeof seeders === 'number' && seeders < 10) return 'font-semibold text-warning';
+  return 'text-muted-foreground';
+};
+
+/** One release in the releases inset, 40 high with an input-grey line. Best tints best-soft; cooldown draws the red bar. */
+function RowRelease({
+  name, history, formats, seeders, leechers, tracker, freeleech, fit, quality, proper, size, action,
+  rejected = false, cooldown = false, yours = false, className, ...props
+}: RowReleaseProps) {
   const dim = rejected && 'text-subtle-foreground';
+  const seedersText = seeders === undefined ? '' : seeders === null ? '?' : String(seeders);
   return (
-    <TableRow progress={grabbed} className={cn(yours && 'bg-muted', className)} {...props}>
-      <TableCell className={w.quality}>
-        <Badge className={cn(yours && 'bg-card')}>{quality}</Badge>
-      </TableCell>
-      <TableCell fill>
-        <span className="truncate">
-          <span className={cn('text-muted-foreground', dim)}>{name}</span>
-          {group !== undefined && <span className={cn('font-bold text-foreground', rejected && 'font-medium text-subtle-foreground')}>{group}</span>}
+    <TableRow
+      aria-label={yours ? 'Your current file' : undefined}
+      className={cn(
+        'border-input px-0',
+        cooldown && 'before:absolute before:inset-y-0 before:left-[calc(var(--inset)*-1)] before:w-0.75 before:bg-destructive',
+        className,
+      )}
+      {...props}
+    >
+      <TableCell fill className="pl-2.5">
+        <span className="flex min-w-0 items-center">
+          <span className={cn('shrink-0 whitespace-pre text-muted-foreground', dim)}>{name.head}</span>
+          <span className={cn('min-w-0 truncate whitespace-pre text-muted-foreground', dim)}>{name.middle}</span>
+          {name.group !== undefined && <span className={cn('shrink-0 font-bold text-foreground', dim)}>{name.group}</span>}
         </span>
+        {history !== undefined && <span className="ml-auto flex shrink-0"><MarkHistory kind={history.kind} tooltip={history.tooltip} /></span>}
       </TableCell>
-      {comparison !== undefined && <TableCell className={w.comparison}>{comparison}</TableCell>}
-      <TableCell className={cn(w.fit, 'min-w-0')}>{fit}</TableCell>
-      <TableCell align="end" className={cn(w.size, dim)}>{size}</TableCell>
-      {age !== undefined && <TableCell align="end" className={cn(w.age, dim)}>{age}</TableCell>}
-      <TableCell align="end" className={cn(w.seeders, 'font-bold', rejected && 'font-medium text-subtle-foreground')}>{seeders}</TableCell>
+      <TableCell className={cn(w.audio, 'overflow-hidden whitespace-nowrap')}>
+        {formats.map((format, index) => <TagFormat key={`${index}:${format}`} className={cn(dim)}>{format}</TagFormat>)}
+      </TableCell>
+      <TableCell align="end" className={cn(w.seeders, seedersLook(seeders), dim)}>
+        {typeof leechers === 'number' ? <Tooltip text={`${leechers} leechers`}><span>{seedersText}</span></Tooltip> : seedersText}
+      </TableCell>
       <TableCell className={w.tracker}>
         <TableCellTracker name={tracker} className={cn(dim)} />
+        {freeleech !== undefined && <MarkFreeleech tooltip={freeleech} />}
       </TableCell>
-      {hitAndRun !== undefined && <TableCell className={cn(w.hitAndRun, 'text-muted-foreground', dim)}><span className="truncate">{hitAndRun}</span></TableCell>}
-      {audio !== undefined && <TableCell className={cn(w.audio, 'text-muted-foreground', dim)}><span className="truncate">{audio}</span></TableCell>}
-      <TableCell align="end" className={w.action}>
-        {grabbed === undefined
-          ? actions
-          : (
-            <Badge variant="live" className="bg-best transition-opacity duration-(--duration-base) ease-out starting:opacity-0">
-              {grabbed}%
-            </Badge>
-          )}
+      <TableCell className={w.fit}>{fit}</TableCell>
+      <TableCell className={w.quality}>
+        <span className={cn('shrink-0 font-medium text-foreground', dim)}>{quality.resolution}</span>
+        {quality.source !== undefined && <span className={cn('min-w-0 truncate text-muted-foreground', dim)}>{quality.source}</span>}
+        {proper !== undefined && <MarkProper tooltip={proper} />}
       </TableCell>
+      <TableCell align="end" className={cn(w.size, 'text-muted-foreground', dim)}>{size}</TableCell>
+      <TableCell align="end" className={w.action}>{action}</TableCell>
     </TableRow>
   );
 }
 
-export { RowRelease, RowReleaseHeader };
+/** Loading row for the releases inset: one grey block per column at the column widths. */
+function RowReleaseSkeleton() {
+  return (
+    <div role="status" aria-label="Loading" className="flex h-(--row) w-full shrink-0 items-center gap-4 border-b border-input px-0">
+      <div className="flex min-w-0 flex-1 pl-2.5"><Skeleton className="w-75 max-w-full" /></div>
+      <div className={cn('flex shrink-0 gap-1', w.audio)}><Skeleton className="h-4 w-11" /><Skeleton className="h-4 w-5" /></div>
+      <div className={cn('flex shrink-0 justify-end', w.seeders)}><Skeleton className="w-6" /></div>
+      <div className={cn('flex shrink-0 gap-1.5', w.tracker)}><Skeleton className="size-4" /><Skeleton className="w-15" /></div>
+      <div className={cn('flex shrink-0', w.fit)}><Skeleton className="h-5 w-9" /></div>
+      <div className={cn('flex shrink-0', w.quality)}><Skeleton className="w-19" /></div>
+      <div className={cn('flex shrink-0 justify-end', w.size)}><Skeleton className="w-10" /></div>
+      <div className={cn('flex shrink-0 justify-end', w.action)}><Skeleton className="h-7 w-18" /></div>
+    </div>
+  );
+}
+
+export { RowRelease, RowReleaseHeader, RowReleaseSkeleton };

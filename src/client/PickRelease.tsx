@@ -1,28 +1,25 @@
-import { ArrowDown, ArrowUp, RefreshCw, SearchX, SlidersHorizontal } from 'lucide-react';
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Download, RefreshCw, SearchX } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
-import { CardChoice } from './components/ui/card-choice';
-import { CellProfileFit, type ProfileFit } from './components/ui/cell-profile-fit';
-import { Checkbox } from './components/ui/checkbox';
 import { Callout } from './components/ui/callout';
+import { CardChoice } from './components/ui/card-choice';
+import { ChipFit } from './components/ui/chip-fit';
+import { ChipReleaseState } from './components/ui/chip-release-state';
 import { Dialog } from './components/ui/dialog';
+import { DialogCountsAs } from './components/ui/dialog-counts-as';
 import { SelectContent, SelectItem } from './components/ui/dropdown-menu';
 import { EmptyState } from './components/ui/empty-state';
-import { FieldLabelled } from './components/ui/field-labelled';
-import { Kbd } from './components/ui/kbd';
-import { MarkComparison, type Comparison } from './components/ui/mark-comparison';
-import { OptionRow } from './components/ui/option-row';
-import { PanelInline } from './components/ui/panel-inline';
+import { LineInsetNotice } from './components/ui/line-inset-notice';
 import { RadioGroup } from './components/ui/radio';
-import { RowRelease, RowReleaseHeader } from './components/ui/row-release';
+import { RowEpisodeReleases } from './components/ui/row-episode-releases';
+import { RowRelease, RowReleaseHeader, RowReleaseSkeleton } from './components/ui/row-release';
 import { Select, SelectTrigger } from './components/ui/select-trigger';
-import { SkeletonRow } from './components/ui/skeleton';
 import { Spinner } from './components/ui/spinner';
-import { StatusInline } from './components/ui/status-inline';
 import { useToastManager } from './components/ui/toast';
 import { ToggleGroup, ToggleGroupItem } from './components/ui/toggle-group';
-import { Tooltip } from './components/ui/tooltip';
+import type { SubjectProgress } from './library/progress';
+import { fitKindOf, formatSize, formatsOf, historyOf, qualityParts, releaseStateOf, scoresExist, seasonName, splitReleaseName, visibleReleases } from './releaseView';
 import { cn } from '@/lib/utils';
 
 export type ReleaseTarget =
@@ -40,6 +37,9 @@ export type OwnedEpisode = {
   hasFile: boolean;
   /** The title page passes the episode's file, so the season pack choice can name each owned quality. */
   file?: { quality: string | null } | null;
+  /** The numbers trackers use, when they differ from Sonarr's; the title page passes them. */
+  sceneSeasonNumber?: number | null;
+  sceneEpisodeNumber?: number | null;
 };
 
 type PastEvent = { kind: 'grabbed' | 'failed' | 'blocklisted'; at: string | null };
@@ -56,12 +56,14 @@ type Release = {
   approved: boolean;
   rejections: string[];
   customFormatScore: number;
+  customFormats: string[];
   flags: string[];
   past: PastEvent[];
   // The episodes Sonarr maps the release to; a season pack lists every one it covers.
   episodeIds?: number[];
-  // Worked out by the server on every read; absent from replies of servers that predate them.
-  compared?: Comparison | null;
+  // Whether Sonarr or Radarr matched the release to what was searched; searches stored before they were kept lack them.
+  episodeRequested?: boolean;
+  movieRequested?: boolean;
   audio?: string | null;
   hdr?: string | null;
   hitAndRun?: (Rule & { cooldown: boolean; cooldownSince: number | null }) | null;
@@ -88,15 +90,13 @@ type ListState =
   | { kind: 'ready'; stored: Stored; refreshing: boolean; problem?: string }
   | { kind: 'failed'; problem: string };
 
-type Quality = { id: number; name: string };
-
-type Overrides = { episodeIds?: number[]; qualityId?: number };
-
 type GrabOutcome = { guid: string; message: string; outOfDate: boolean };
 
 type Choice = 'replace' | 'second';
 
 const ALL = 'all';
+
+const noReleases: Release[] = [];
 
 const serviceLabel = (target: ReleaseTarget) => (target.service === 'sonarr' ? 'Sonarr' : 'Radarr');
 
@@ -128,280 +128,52 @@ const readBody = async (response: Response): Promise<Record<string, unknown>> =>
   }
 };
 
-const formatSize = (bytes: number | null) => {
-  if (bytes === null) return '';
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
-  return `${Math.round(bytes / 1e6)} MB`;
+const pad = (number: number) => String(number).padStart(2, '0');
+
+// The table leaves out Age, so the age rides in the hover text after the flags.
+const ageText = (hours: number) => (hours < 24 ? `${Math.max(0, Math.floor(hours))} h old` : `${Math.floor(hours / 24)} d old`);
+
+// The name cell cuts the middle, so the hover text leads with the full release name.
+const hoverOf = (release: Release) => {
+  const notes = [...release.flags, ...(release.ageHours === null ? [] : [ageText(release.ageHours)])];
+  return [release.title, notes.join(' · ')].filter((part) => part !== '').join('\n');
 };
 
-const formatAge = (hours: number | null) => {
-  if (hours === null) return '–';
-  return hours < 24 ? `${Math.max(0, Math.floor(hours))} h` : `${Math.floor(hours / 24)} d`;
-};
+const otherWords = { episode: ['another episode', 'other episodes'], season: ['another season', 'other seasons'], movie: ['another movie', 'other movies'] } as const;
 
-const formatSince = (fetchedAt: number, now: number) => {
-  const minutes = Math.floor((now - fetchedAt) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  return hours < 48 ? `${hours} h ago` : `${Math.floor(hours / 24)} days ago`;
-};
-
-const pastText = (event: PastEvent) => {
-  const when = event.at === null ? '' : ` on ${new Date(event.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
-  return event.kind === 'grabbed' ? `Grabbed before${when}` : event.kind === 'failed' ? `Failed before${when}` : `Blocklisted${when}`;
-};
-
-// Risks are what could make this grab go wrong, always spelled out rather than coloured alone: the first in the
-// fit cell, the rest behind a "+N" that opens on hover or keyboard focus.
-const risksOf = (release: Release) => [
-  ...release.rejections,
-  ...(release.seeders === 0 ? ['0 seeders'] : []),
-  ...(release.flags.includes('Nuked') ? ['Nuked'] : []),
-  ...release.past.filter((event) => event.kind !== 'grabbed').map(pastText),
-];
-
-// How the release fits the profile, in words: the first risk, or the custom format score.
-const fitOf = (release: Release, risks: string[]): { fit: ProfileFit; text: string } => {
-  if (!release.approved) return { fit: 'rejected', text: risks[0] ?? 'Rejected' };
-  if (risks.length > 0) return { fit: 'warning', text: risks[0] };
-  return { fit: 'meets', text: `${release.customFormatScore > 0 ? '+' : ''}${release.customFormatScore}` };
-};
-
-// Ratios keep a decimal place, so "1.0" reads as a ratio, without rounding away a finer one such as 0.95.
-const formatRatio = (ratio: number) => (Number.isInteger(ratio * 10) ? ratio.toFixed(1) : String(ratio));
-
-// The tracker's rule in words, such as "120 h or ratio 1.0"; Blutopia's has hours only.
-const ruleText = (rule: Rule) => [
-  rule.hours === null ? undefined : `${rule.hours} h`,
-  rule.ratio === null ? undefined : `ratio ${formatRatio(rule.ratio)}`,
-].filter((part) => part !== undefined).join(rule.logic === 'and' ? ' and ' : ' or ') || '–';
-
-// The owned file's progress against its tracker's rule, such as "seeded 31 h of 120 h".
-const seededText = (rule: NonNullable<Owned['hitAndRun']>) => {
-  if (rule.hours !== null) return `seeded ${rule.seededHours} h of ${rule.hours} h`;
-  if (rule.ratio !== null) return `ratio ${formatRatio(rule.currentRatio)} of ${formatRatio(rule.ratio)}`;
-  return '–';
-};
-
-// No HDR shows the audio alone.
-const audioHdrText = (item: { audio?: string | null; hdr?: string | null }) => (
-  [item.audio, item.hdr].filter((part) => part != null && part !== '').join(' · ') || '–'
-);
-
-const seasonName = (number: number) => (number === 0 ? 'Specials' : `Season ${number}`);
-
-// The release group is the part after the last dash; the rest is the dotted name.
-const splitName = (title: string) => {
-  const dash = title.lastIndexOf('-');
-  return dash <= 0 || dash === title.length - 1 ? { name: title, group: undefined } : { name: title.slice(0, dash + 1), group: title.slice(dash + 1) };
-};
-
-function OverridePanel({ target, episodes, qualities, value, onApply, onCancel }: {
+export function PickRelease({ target, name, episodes, movieHasFile, variant, live, onClose, onUnauthenticated }: {
   target: ReleaseTarget;
-  episodes: OwnedEpisode[];
-  qualities: Quality[] | undefined;
-  value: Overrides;
-  onApply: (overrides: Overrides) => void;
-  onCancel: () => void;
-}) {
-  const [episodeIds, setEpisodeIds] = useState<number[]>(value.episodeIds ?? (target.kind === 'episode' ? [target.episodeId] : []));
-  const [qualityId, setQualityId] = useState<number | undefined>(value.qualityId);
-  const seasonNumber = target.kind === 'episode'
-    ? episodes.find((episode) => episode.id === target.episodeId)?.seasonNumber
-    : target.kind === 'season' ? target.seasonNumber : undefined;
-  const [season, setSeason] = useState<number | undefined>(seasonNumber);
-  const seasons = [...new Set(episodes.map((episode) => episode.seasonNumber))];
-  const seasonName = (number: number | undefined) => (number === undefined ? 'Season' : number === 0 ? 'Specials' : `Season ${number}`);
-  const pickEpisodes = target.service === 'sonarr' && episodes.length > 0;
-  return (
-    <PanelInline
-      open
-      title="What this release counts as"
-      onClose={onCancel}
-      closeLabel="Cancel"
-      primary={(
-        <Button
-          disabled={pickEpisodes && episodeIds.length === 0}
-          onClick={() => onApply({
-            ...(pickEpisodes ? { episodeIds } : {}),
-            ...(qualityId === undefined ? {} : { qualityId }),
-          })}
-        >
-          Use this
-        </Button>
-      )}
-      secondary={<Button variant="outline" onClick={onCancel}>Cancel</Button>}
-    >
-      <div className="flex gap-8 px-5">
-        {pickEpisodes && (
-          <FieldLabelled label="Episodes" className="w-70">
-            <div className="flex flex-col gap-2">
-              <Select value={season === undefined ? '' : String(season)} onValueChange={(next) => setSeason(Number(next))}>
-                <SelectTrigger aria-label="Season" className="w-40">{seasonName(season)}</SelectTrigger>
-                <SelectContent>
-                  {seasons.map((number) => <SelectItem key={number} value={String(number)}>{seasonName(number)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <div className="flex max-h-48 flex-col overflow-y-auto">
-                {episodes.filter((episode) => episode.seasonNumber === season).map((episode) => (
-                  <OptionRow
-                    key={episode.id}
-                    control={(
-                      <Checkbox
-                        checked={episodeIds.includes(episode.id)}
-                        onCheckedChange={(checked) => setEpisodeIds(checked
-                          ? [...episodeIds, episode.id]
-                          : episodeIds.filter((id) => id !== episode.id))}
-                      />
-                    )}
-                    title={`${String(episode.episodeNumber).padStart(2, '0')}  ${episode.title ?? ''}`}
-                  />
-                ))}
-              </div>
-            </div>
-          </FieldLabelled>
-        )}
-        <FieldLabelled label="Quality" className="w-48">
-          <Select
-            value={qualityId === undefined ? '' : String(qualityId)}
-            onValueChange={(next) => setQualityId(next === '' ? undefined : Number(next))}
-            disabled={qualities === undefined}
-          >
-            <SelectTrigger className="w-48">{qualities?.find((quality) => quality.id === qualityId)?.name ?? 'As released'}</SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">As released</SelectItem>
-              {(qualities ?? []).map((quality) => <SelectItem key={quality.id} value={String(quality.id)}>{quality.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </FieldLabelled>
-      </div>
-    </PanelInline>
-  );
-}
-
-// Everything a release row shows that depends only on the release, worked out once per result set.
-type ReleaseView = { release: Release; risks: string[]; fit: ProfileFit; text: string; name: string; group: string | undefined; hover: string };
-
-const viewOf = (release: Release): ReleaseView => {
-  const risks = risksOf(release);
-  const notes = [
-    ...risks,
-    ...release.flags.filter((flag) => flag !== 'Nuked'),
-    ...release.past.filter((event) => event.kind === 'grabbed').map(pastText),
-    // The table follows the design's columns, which leave out Age, so the age moves to the hover text.
-    ...(release.ageHours === null ? [] : [`${formatAge(release.ageHours)} old`]),
-  ];
-  // The name cell truncates, so the hover text leads with the full release name.
-  return { release, risks, ...fitOf(release, risks), ...splitName(release.title), hover: [release.title, notes.join(' · ')].filter((part) => part !== '').join('\n') };
-};
-
-// Memoised so moving the selection with the arrow keys re-renders two rows, not every release.
-const ReleaseRow = memo(function ReleaseRow({ view, selected, tabbable, best, grabbed, grabbing, showOverride, onSelect, onGrab, onOverride }: {
-  view: ReleaseView; selected: boolean; tabbable: boolean; best: boolean; grabbed: boolean; grabbing: boolean; showOverride: boolean;
-  onSelect: (guid: string) => void; onGrab: (guid: string) => void; onOverride: () => void;
-}) {
-  const { release, risks, fit, text, name, group } = view;
-  const actions = grabbed
-    ? <Badge variant="live" className="bg-best transition-opacity duration-(--duration-base) ease-out starting:opacity-0">Grabbed</Badge>
-    : (
-      <>
-        {showOverride && (
-          <Tooltip text="Override what this counts as">
-            <Button
-              variant="ghost"
-              size="row"
-              iconOnly
-              icon={<SlidersHorizontal className="text-muted-foreground" />}
-              aria-label="Override"
-              onClick={(event) => { event.stopPropagation(); onOverride(); }}
-            />
-          </Tooltip>
-        )}
-        <Button size="row" disabled={grabbing || release.hitAndRun?.cooldown === true} onClick={(event) => { event.stopPropagation(); onGrab(release.guid); }}>
-          {grabbing && selected ? 'Grabbing…' : 'Grab'}
-        </Button>
-      </>
-    );
-  return (
-    <RowRelease
-      data-guid={release.guid}
-      aria-selected={selected}
-      tabIndex={tabbable ? 0 : -1}
-      title={view.hover}
-      onClick={() => onSelect(release.guid)}
-      selected={selected}
-      best={best}
-      rejected={!release.approved}
-      quality={release.quality ?? '–'}
-      name={name}
-      group={group}
-      comparison={best ? <MarkComparison kind="best" />
-        : release.compared == null ? '' : <MarkComparison kind={release.compared} />}
-      fit={(
-        <span className="flex min-w-0 items-center gap-1.5">
-          <CellProfileFit fit={fit}>{text}</CellProfileFit>
-          {risks.length > 1 && (
-            <Tooltip text={risks.slice(1).join(' · ')}>
-              <button
-                type="button"
-                tabIndex={tabbable ? 0 : -1}
-                aria-label={`${risks.length - 1} more: ${risks.slice(1).join(', ')}`}
-                className="shrink-0 rounded-xs font-data text-sm text-muted-foreground focus-ring"
-              >
-                +{risks.length - 1}
-              </button>
-            </Tooltip>
-          )}
-        </span>
-      )}
-      size={formatSize(release.size)}
-      seeders={release.seeders ?? '?'}
-      tracker={release.indexer ?? ''}
-      hitAndRun={release.hitAndRun == null ? '–'
-        : release.hitAndRun.cooldown ? <span className="text-destructive">cooldown</span>
-          : ruleText(release.hitAndRun)}
-      audio={audioHdrText(release)}
-      actions={actions}
-    />
-  );
-});
-
-export function PickRelease({ target, title, name, episodes, movieHasFile, onClose, onUnauthenticated }: {
-  target: ReleaseTarget;
-  title: string;
   /** The series or movie name, which leads the grab dialog's description when given. */
   name?: string;
   episodes: OwnedEpisode[];
   movieHasFile: boolean;
+  /** Episode: the inset starts at the title column; movie: at 16, for the movie page, a season and Flagged. */
+  variant: 'episode' | 'movie';
+  /** The subject's live download, which a grabbed release's chip follows. */
+  live?: SubjectProgress;
   onClose: () => void;
   onUnauthenticated: () => void;
 }) {
   const [list, setList] = useState<ListState>({ kind: 'loading' });
-  const [selected, setSelected] = useState<string | undefined>(undefined);
-  const [panel, setPanel] = useState<'decision' | 'override' | undefined>(undefined);
+  // The release whose grab is being decided or sent.
+  const [picked, setPicked] = useState<string | undefined>(undefined);
+  const [panel, setPanel] = useState<'decision' | undefined>(undefined);
   const [choice, setChoice] = useState<Choice>('replace');
-  // Overrides belong to the release they were set on; any other release is sent as released.
-  const [override, setOverride] = useState<{ guid: string; value: Overrides } | undefined>(undefined);
+  // Which episode the release is grabbed as; it starts at the searched one each time the dialog opens.
+  const [countsAs, setCountsAs] = useState<{ open: boolean; episodeId: number | undefined }>({ open: false, episodeId: undefined });
   const [qualityFilter, setQualityFilter] = useState<string>(ALL);
-  const [qualities, setQualities] = useState<Quality[] | undefined>(undefined);
   const [grabbing, setGrabbing] = useState(false);
   // State lags a render behind, so two fast sends could both read grabbing as false; the ref is set before the first await.
   const inFlight = useRef(false);
   const [grabbed, setGrabbed] = useState<Set<string>>(() => new Set());
   const [outcome, setOutcome] = useState<GrabOutcome | undefined>(undefined);
-  const [now, setNow] = useState(Date.now);
-  const listRef = useRef<HTMLDivElement>(null);
+  // Goes up when a search answers in place of the placeholders, so the rows fade in once.
+  const [arrival, setArrival] = useState(0);
   const toasts = useToastManager();
   const targetQuery = query(target);
   // Callers may build a new target object on every render; searching again needs a different service or target.
   const searchedTarget = useMemo(() => target, [target.service, targetQuery]);
   const service = serviceLabel(target);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   const load = useCallback(async (refresh: boolean) => {
     setList((current) => (current.kind === 'ready' ? { ...current, refreshing: true, problem: undefined } : { kind: 'loading' }));
@@ -415,7 +187,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
         return;
       }
       const body = await readBody(response);
-      setNow(Date.now());
+      if (!refresh) setArrival((count) => count + 1);
       if (response.ok) {
         setList({ kind: 'ready', stored: body as unknown as Stored, refreshing: false });
         return;
@@ -434,38 +206,28 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     void load(false);
   }, [load]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const response = await fetch(`/api/owned/qualities/${target.service}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-        if (!response.ok) return;
-        const body: unknown = await response.json();
-        if (Array.isArray(body)) setQualities(body as Quality[]);
-      } catch {
-        setQualities(undefined);
-      }
-    })();
-  }, [target.service]);
-
-  const releases = list.kind === 'ready' ? list.stored.releases : [];
+  const releases = list.kind === 'ready' ? list.stored.releases : noReleases;
   const owned = list.kind === 'ready' ? list.stored.owned ?? null : null;
-  // Sonarr and Radarr return releases in their own preference order, so the first one that
+  const { shown, hidden } = visibleReleases(searchedTarget, releases, episodes);
+  // Sonarr and Radarr return releases in their own preference order, so the first listed one that
   // passes the profile is the one they would grab themselves.
-  const best = releases.find((release) => release.approved)?.guid;
-  const qualityCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const release of releases) if (release.quality !== null) counts.set(release.quality, (counts.get(release.quality) ?? 0) + 1);
-    return counts;
-  }, [releases]);
-  const views = useMemo(() => releases.map(viewOf), [releases]);
-  const visible = qualityFilter === ALL ? views : views.filter((view) => view.release.quality === qualityFilter);
-  // The selected row takes Tab; when the quality filter hides it, the first shown row does, so the list stays reachable.
-  const tabbableGuid = visible.some((view) => view.release.guid === selected) ? selected : visible[0]?.release.guid;
+  const best = shown.find((release) => release.approved)?.guid;
+  const scores = scoresExist(shown);
+  // The filter groups by resolution; a release with no quality counts only under All.
+  const resolutionOf = (release: Release) => (release.quality === null ? undefined : qualityParts(release.quality).resolution);
+  const qualityCounts = new Map<string, number>();
+  for (const release of shown) {
+    const resolution = resolutionOf(release);
+    if (resolution !== undefined) qualityCounts.set(resolution, (qualityCounts.get(resolution) ?? 0) + 1);
+  }
+  // Highest resolution first; a key with no number (sort is stable) keeps its first-seen place after them.
+  const resolutionNumber = (key: string) => Number(/\d+/.exec(key)?.[0] ?? -1);
+  const qualityChips = [...qualityCounts].sort(([a], [b]) => resolutionNumber(b) - resolutionNumber(a));
+  // A quality a refresh no longer returns falls back to All, so the list never shows a header with no rows.
+  const filterInForce = qualityCounts.has(qualityFilter) ? qualityFilter : ALL;
+  const visible = filterInForce === ALL ? shown : shown.filter((release) => resolutionOf(release) === filterInForce);
 
-  const overridesFor = (guid: string | undefined): Overrides => (override !== undefined && override.guid === guid ? override.value : {});
-  const overrides = overridesFor(selected);
-
-  const grabTargetHasFile = (given: Overrides) => (target.kind === 'movie'
+  const grabTargetHasFile = (given: { episodeIds?: number[] }) => (target.kind === 'movie'
     ? movieHasFile
     : given.episodeIds !== undefined
       ? episodes.some((episode) => given.episodeIds!.includes(episode.id) && episode.hasFile)
@@ -473,22 +235,18 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
         ? episodes.some((episode) => episode.id === target.episodeId && episode.hasFile)
         : episodes.some((episode) => episode.seasonNumber === target.seasonNumber && episode.hasFile));
 
-  const sendGrab = async (guid: string, intent: 'grab' | 'replace') => {
+  // episodeIds only when Counts as names another episode; never a quality.
+  const sendGrab = async (guid: string, intent: 'grab' | 'replace', episodeIds?: number[]) => {
     if (inFlight.current) return;
     inFlight.current = true;
     setGrabbing(true);
     setOutcome(undefined);
-    const overrides = overridesFor(guid);
-    const overrideBody = Object.keys(overrides).length === 0 ? undefined : {
-      ...(overrides.episodeIds === undefined || target.service !== 'sonarr' ? {} : { seriesId: target.seriesId, episodeIds: overrides.episodeIds }),
-      ...(overrides.qualityId === undefined ? {} : { qualityId: overrides.qualityId }),
-    };
     try {
       const response = await postJson('/api/grabs', {
         target: targetBody(target),
         guid,
         intent,
-        ...(overrideBody === undefined ? {} : { overrides: overrideBody }),
+        ...(episodeIds === undefined || target.service !== 'sonarr' ? {} : { overrides: { seriesId: target.seriesId, episodeIds } }),
       });
       if (response.status === 401) {
         onUnauthenticated();
@@ -562,101 +320,81 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     }
   };
 
-  // A tracker cooldown refuses every grab from it, so Grab stays off until it ends.
-  const onCooldown = (release: Release | undefined) => release?.hitAndRun?.cooldown === true;
-
-  // Enter on a row reaches here while a grab is in flight or done, and the server records and sends every grab it gets.
+  // Reached while a grab is in flight or done, and the server records and sends every grab it gets. A tracker cooldown
+  // refuses every grab from it, so its rows have no Grab at all.
   const onGrab = (guid: string) => {
     if (grabbing || inFlight.current || grabbed.has(guid)) return;
-    if (onCooldown(releases.find((release) => release.guid === guid))) return;
-    setSelected(guid);
-    if (grabTargetHasFile(overridesFor(guid))) {
+    if (releases.find((release) => release.guid === guid)?.hitAndRun?.cooldown === true) return;
+    setPicked(guid);
+    if (grabTargetHasFile({})) {
       setChoice('replace');
+      setCountsAs({ open: false, episodeId: target.kind === 'episode' ? target.episodeId : undefined });
       setPanel('decision');
     } else void sendGrab(guid, 'grab');
   };
 
-  const overridden = overrides.episodeIds !== undefined || overrides.qualityId !== undefined;
+  const overridden = target.kind === 'episode' && countsAs.episodeId !== undefined && countsAs.episodeId !== target.episodeId;
   const confirm = () => {
-    if (selected === undefined || grabbing || inFlight.current) return;
+    if (picked === undefined || grabbing || inFlight.current) return;
     // The second-version route takes no overrides, so an overridden release can only replace.
-    if (choice === 'second' && !overridden) void sendSecondVersion(selected);
-    else void sendGrab(selected, 'replace');
+    if (choice === 'second' && !overridden) {
+      void sendSecondVersion(picked);
+      return;
+    }
+    const chosenIds = target.kind === 'episode' && countsAs.episodeId !== undefined ? [countsAs.episodeId] : undefined;
+    void sendGrab(picked, grabTargetHasFile({ episodeIds: chosenIds }) ? 'replace' : 'grab', overridden ? chosenIds : undefined);
   };
 
-  // The dialog's keys reach here through its portal. 1 and 2 pick; Enter grabs wherever focus sits except on Cancel or
-  // Close (both carry data-cancel), caught before the focused button can act on it.
+  // The dialog's keys reach here through its portal. 1 and 2 pick, except while the grab is in flight; Enter grabs wherever
+  // focus sits except on Cancel or Close (both carry data-cancel) and inside Counts as or its episode list, where Enter
+  // opens it or picks an episode. It is caught before the focused element can act on it.
   const onDecisionKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (panel !== 'decision') return;
-    if (event.key === '1') setChoice('replace');
-    if (event.key === '2' && !overridden) setChoice('second');
-    if (event.key === 'Enter' && (event.target as HTMLElement).closest('[data-cancel]') === null) {
+    if (event.key === '1' && !grabbing) setChoice('replace');
+    if (event.key === '2' && !overridden && !grabbing) setChoice('second');
+    if (event.key === 'Enter' && (event.target as HTMLElement).closest('[data-cancel], [data-counts-as], [role="listbox"]') === null) {
       event.preventDefault();
       event.stopPropagation();
       confirm();
     }
   };
 
-  const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (panel !== undefined) return;
-    if (event.key === 'R' && event.shiftKey) {
-      event.preventDefault();
-      // Same as the Refresh button: off until a search has answered, and once while it runs.
-      if (list.kind === 'ready' && !list.refreshing) void load(true);
-      return;
-    }
-    if (event.key === 'Escape') {
-      onClose();
-      return;
-    }
-    if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && visible.length > 0) {
-      event.preventDefault();
-      const index = visible.findIndex((view) => view.release.guid === selected);
-      const next = visible[Math.min(visible.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)))].release;
-      setSelected(next.guid);
-      listRef.current?.querySelector<HTMLElement>(`[data-guid="${CSS.escape(next.guid)}"]`)?.focus();
-    }
-    // Enter grabs the focused row, which is the selected one except after the quality filter hid the selection.
-    const focusedGuid = (event.target as HTMLElement).dataset.guid;
-    if (event.key === 'Enter' && focusedGuid !== undefined) {
-      event.preventDefault();
-      onGrab(focusedGuid);
-    }
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (panel === undefined && event.key === 'Escape') onClose();
   };
 
   const refreshing = list.kind === 'ready' && list.refreshing;
-
-  // Rows are memoised, so the handlers they get keep one identity and read the latest state through this ref.
-  const latest = useRef({ onGrab, panel });
-  latest.current = { onGrab, panel };
-  const selectRow = useCallback((guid: string) => { if (latest.current.panel === undefined) setSelected(guid); }, []);
-  const grabRow = useCallback((guid: string) => latest.current.onGrab(guid), []);
-  const openOverride = useCallback(() => setPanel('override'), []);
+  const refreshButton = (
+    <Button variant="outline" size="row" icon={<RefreshCw />} loading={list.kind === 'loading' || refreshing} disabled={list.kind !== 'ready'} onClick={() => void load(true)}>
+      Refresh
+    </Button>
+  );
 
   // What the grab decision describes: the owned file for one episode or movie, the pack and its episodes for a season.
-  const chosen = releases.find((release) => release.guid === selected);
+  const chosen = releases.find((release) => release.guid === picked);
+  // The subject line names the group as a word, without the dash the name cell keeps.
+  const chosenGroup = chosen === undefined ? undefined : splitReleaseName(chosen.title, target.kind).group?.slice(1);
   const secondAllowed = !overridden;
   const packEpisodes = target.kind !== 'season' ? [] : episodes
     .filter((episode) => (chosen?.episodeIds !== undefined && chosen.episodeIds.length > 0
       ? chosen.episodeIds.includes(episode.id)
       : episode.seasonNumber === target.seasonNumber))
     .sort((a, b) => a.episodeNumber - b.episodeNumber);
-  const missing = packEpisodes.filter((episode) => !episode.hasFile).map((episode) => `E${String(episode.episodeNumber).padStart(2, '0')}`);
+  const missing = packEpisodes.filter((episode) => !episode.hasFile).map((episode) => `E${pad(episode.episodeNumber)}`);
   const packNote = [
     `All ${packEpisodes.length} share one torrent, which stays while any of these second versions remains.`,
     missing.length === 0 ? undefined : missing.length === 1
       ? `${missing[0]} has no file yet: it gets a second version only, and Sonarr still lists it as missing.`
       : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]} have no file yet: they get a second version only, and Sonarr still lists them as missing.`,
   ].filter((part) => part !== undefined).join(' ');
-  const pad = (number: number) => String(number).padStart(2, '0');
   const targetEpisode = target.kind === 'episode' ? episodes.find((episode) => episode.id === target.episodeId) : undefined;
   const lead = name === undefined ? undefined
     : target.kind === 'season' ? `${name} S${pad(target.seasonNumber)}`
       : targetEpisode === undefined ? name : `${name} S${pad(targetEpisode.seasonNumber)}E${pad(targetEpisode.episodeNumber)}`;
   const incoming = chosen === undefined ? ''
-    : `${[chosen.quality, splitName(chosen.title).group, formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}${chosen.indexer === null ? '' : ` from ${chosen.indexer}`}`;
+    : `${[chosen.quality, chosenGroup, formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}${chosen.indexer === null ? '' : ` from ${chosen.indexer}`}`;
   const decisionSubject = target.kind === 'season'
-    ? `${lead === undefined ? '' : `${lead} · `}${[chosen?.quality, chosen === undefined ? undefined : splitName(chosen.title).group, chosen === undefined ? undefined : formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}, one torrent with ${packEpisodes.length} episodes. You have files for ${packEpisodes.length - missing.length} of them; their torrents keep seeding either way.`
+    ? `${lead === undefined ? '' : `${lead} · `}${[chosen?.quality, chosenGroup, chosen === undefined ? undefined : formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}, one torrent with ${packEpisodes.length} episodes. You have files for ${packEpisodes.length - missing.length} of them; their torrents keep seeding either way.`
     : `${incoming === '' ? '' : `Grabbing ${incoming}. `}${owned === null ? (lead === undefined ? '' : `${lead}. `) : `${lead === undefined ? 'Your' : `${lead} · your`} ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
   const second = choice === 'second' && secondAllowed;
   const confirmLabel = grabbing
@@ -664,171 +402,150 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     : second
       ? (target.kind === 'season' ? `Grab ${packEpisodes.length} second versions` : 'Grab as second version')
       : (target.kind === 'season' ? 'Grab and replace the current files' : 'Grab and replace the current file');
-  const showRows = list.kind === 'ready' && releases.length > 0;
 
-  return (
-    <div onKeyDown={onListKeyDown} onKeyDownCapture={onDecisionKeyDown}>
-      <PanelInline
-        open
-        title={`Pick a release for ${title}`}
-        onClose={onClose}
-        hint={showRows
-          ? (
-            <span className="inline-flex items-center gap-1">
-              <Kbd icon={<ArrowUp aria-hidden="true" />} />
-              <Kbd icon={<ArrowDown aria-hidden="true" />} />
-              <span className="mr-4">choose a release</span>
-              <Kbd>↵</Kbd>
-              <span>grab the chosen release</span>
-            </span>
-          )
-          : undefined}
-      >
-        <div className="flex w-full items-center gap-3 px-5 pb-4">
-          {list.kind === 'loading' && (
-            <span className="flex items-center gap-2 text-body text-foreground" aria-live="polite">
-              <Spinner />
-              Searching every indexer. This takes about 20 seconds…
-            </span>
-          )}
-          {showRows && qualityCounts.size > 0 && (
-            <ToggleGroup aria-label="Quality" value={qualityFilter} onValueChange={setQualityFilter} className={cn(refreshing && 'opacity-40')}>
-              <ToggleGroupItem value={ALL} count={releases.length}>All</ToggleGroupItem>
-              {[...qualityCounts].map(([quality, count]) => (
+  // Trackers that number this episode differently from Sonarr search under their own numbers.
+  const sceneCode = targetEpisode?.sceneSeasonNumber != null && targetEpisode.sceneEpisodeNumber != null
+    && (targetEpisode.sceneSeasonNumber !== targetEpisode.seasonNumber || targetEpisode.sceneEpisodeNumber !== targetEpisode.episodeNumber)
+    ? `S${pad(targetEpisode.sceneSeasonNumber)}E${pad(targetEpisode.sceneEpisodeNumber)}`
+    : undefined;
+  const notices = list.kind === 'failed'
+    ? (
+      <LineInsetNotice role="alert" action={<Button variant="outline" size="row" icon={<RefreshCw />} onClick={() => void load(false)}>Try again</Button>}>
+        {list.problem}
+      </LineInsetNotice>
+    )
+    : (
+      <>
+        {sceneCode !== undefined && <LineInsetNotice>{`Trackers number this episode ${sceneCode}.`}</LineInsetNotice>}
+        {list.kind === 'ready' && list.problem !== undefined && (
+          <LineInsetNotice role="alert" action={refreshButton}>{`${list.problem} These are the earlier results.`}</LineInsetNotice>
+        )}
+        {outcome?.outOfDate === true && <LineInsetNotice role="alert" action={refreshButton}>{outcome.message}</LineInsetNotice>}
+        {/* A grab sent straight from a row has no dialog to show a refusal in. */}
+        {outcome !== undefined && !outcome.outOfDate && panel !== 'decision' && <LineInsetNotice role="alert">{outcome.message}</LineInsetNotice>}
+      </>
+    );
+
+  const empty = list.kind === 'ready' && shown.length === 0;
+  const filter = list.kind === 'loading'
+    ? (
+      <>
+        {refreshButton}
+        <span aria-live="polite" className="font-ui text-[13px] text-muted-foreground">Searching every indexer. This takes about 20 seconds.</span>
+      </>
+    )
+    : list.kind === 'ready' && !empty
+      ? (
+        <>
+          {qualityCounts.size > 0 && (
+            <ToggleGroup size="inset" aria-label="Quality" value={filterInForce} onValueChange={setQualityFilter} className={cn(refreshing && 'opacity-40')}>
+              <ToggleGroupItem value={ALL} count={shown.length}>All</ToggleGroupItem>
+              {qualityChips.map(([quality, count]) => (
                 <ToggleGroupItem key={quality} value={quality} count={count}>{quality}</ToggleGroupItem>
               ))}
             </ToggleGroup>
           )}
-          {overridden && (
-            <span className="flex items-center gap-2 text-body text-foreground">
-              Counting as {overrides.episodeIds !== undefined ? `${overrides.episodeIds.length} episode${overrides.episodeIds.length === 1 ? '' : 's'}` : 'released episodes'}
-              {overrides.qualityId !== undefined && `, ${qualities?.find((quality) => quality.id === overrides.qualityId)?.name ?? 'chosen quality'}`}
-              <Button variant="ghost" size="row" onClick={() => setOverride(undefined)}>Reset</Button>
-            </span>
-          )}
-          <span aria-hidden="true" className="flex-1" />
-          {list.kind === 'ready' && (
-            <span aria-live="polite" className={cn('text-body', refreshing ? 'text-foreground' : 'text-muted-foreground')}>
-              {refreshing ? 'Searching again…' : `Results from ${formatSince(list.stored.fetchedAt, now)}`}
-            </span>
-          )}
-          <Button
-            variant="outline"
-            icon={<RefreshCw />}
-            kbd={refreshing ? undefined : 'Shift R'}
-            loading={refreshing}
-            disabled={list.kind !== 'ready'}
-            onClick={() => void load(true)}
-          >
-            Refresh
-          </Button>
-        </div>
+          {refreshButton}
+        </>
+      )
+      : undefined;
 
-        {list.kind === 'failed' && (
-          <div className="px-5 pb-5">
-            <Callout title={list.problem} action={<Button variant="outline" icon={<RefreshCw />} onClick={() => void load(false)}>Try again</Button>} />
-          </div>
-        )}
-        {list.kind === 'ready' && list.problem !== undefined && (
-          <div className="px-5 pb-4">
-            <Callout look="warning" title={`${list.problem} These are the earlier results.`} />
-          </div>
-        )}
-        {outcome?.outOfDate === true && (
-          <div className="px-5 pb-4">
-            <Callout look="warning" title={outcome.message} />
-          </div>
-        )}
+  const others = otherWords[target.kind];
+  const ownedFit = owned === null || !scores || owned.customFormatScore === null
+    ? undefined
+    : fitKindOf({ approved: true, customFormatScore: owned.customFormatScore }, false, true);
 
-        {list.kind === 'loading' && (
-          <>
-            <RowReleaseHeader comparison hitAndRun audio />
-            {Array.from({ length: 6 }, (_, index) => <SkeletonRow key={index} className="border-b border-border" />)}
-          </>
+  const countsAsEpisode = episodes.find((episode) => episode.id === countsAs.episodeId);
+  const episodeLabel = (episode: OwnedEpisode) => `E${pad(episode.episodeNumber)} ${episode.title ?? ''}`.trim();
+
+  return (
+    <div role="table" aria-label="Releases" onKeyDown={onKeyDown} onKeyDownCapture={onDecisionKeyDown}>
+      <RowEpisodeReleases
+        variant={variant}
+        notices={notices}
+        filter={filter}
+        header={list.kind === 'failed' ? undefined : <RowReleaseHeader />}
+        pinned={owned === null ? undefined : (
+          <RowRelease
+            yours
+            name={splitReleaseName((owned.releaseTitle ?? '').replace(/\.(mkv|mp4|m4v|avi|ts)$/i, ''), target.kind)}
+            formats={formatsOf(owned.audio, owned.hdr)}
+            tracker={owned.hitAndRun?.host ?? ''}
+            fit={ownedFit === undefined ? undefined : <ChipFit kind={ownedFit.kind}>{ownedFit.text}</ChipFit>}
+            quality={qualityParts(owned.quality)}
+            size={formatSize(owned.size)}
+            action={<ChipReleaseState state="yours" />}
+          />
         )}
-        {list.kind === 'ready' && releases.length === 0 && (
-          <div className="flex justify-center border-t border-border pt-10 pb-12">
+        searching={list.kind === 'loading'}
+        arrivalKey={arrival}
+        empty={empty
+          ? (
             <EmptyState
               icon={<SearchX />}
-              title="No indexer has a release for this"
+              title={`No release for this ${target.kind}`}
               action={<Button variant="outline" icon={<RefreshCw />} loading={refreshing} onClick={() => void load(true)}>Search again</Button>}
+            >
+              {hidden.length === 0 ? undefined
+                : hidden.length === 1 ? `1 result was for ${others[0]}` : `${hidden.length} results were for ${others[1]}`}
+            </EmptyState>
+          )
+          : undefined}
+      >
+        {list.kind === 'loading' && Array.from({ length: 4 }, (_, index) => <RowReleaseSkeleton key={index} />)}
+        {list.kind === 'ready' && visible.map((release) => {
+          const isBest = release.guid === best;
+          const cooling = release.hitAndRun?.cooldown === true;
+          const fit = fitKindOf(release, isBest, scores);
+          const proper = /\b(proper|repack)\b/i.exec(release.title)?.[1];
+          return (
+            <RowRelease
+              key={release.guid}
+              title={hoverOf(release)}
+              best={isBest}
+              rejected={!release.approved}
+              cooldown={cooling}
+              name={splitReleaseName(release.title, target.kind)}
+              history={historyOf(release.past)}
+              formats={formatsOf(release.audio, release.hdr)}
+              seeders={release.seeders}
+              leechers={release.leechers}
+              tracker={release.indexer ?? ''}
+              freeleech={release.flags.find((flag) => flag.startsWith('Freeleech'))}
+              fit={fit === undefined ? undefined : (
+                <ChipFit kind={fit.kind} tooltip={fit.kind === 'rejected' && release.rejections.length > 0 ? release.rejections.join(' · ') : undefined}>
+                  {fit.text}
+                </ChipFit>
+              )}
+              quality={qualityParts(release.quality)}
+              proper={proper === undefined ? undefined : proper.toLowerCase() === 'proper' ? 'Proper' : 'Repack'}
+              size={formatSize(release.size)}
+              action={cooling ? <ChipReleaseState state="cooldown" />
+                : grabbed.has(release.guid) ? <ChipReleaseState {...releaseStateOf(live)} />
+                  : (
+                    <Button
+                      size="row"
+                      variant={release.approved ? 'default' : 'outline'}
+                      icon={<Download />}
+                      loading={grabbing && picked === release.guid}
+                      onClick={() => onGrab(release.guid)}
+                    >
+                      Grab
+                    </Button>
+                  )}
             />
-          </div>
-        )}
-        {showRows && (
-          <div ref={listRef} role="table" aria-label="Releases" className="flex flex-col border-t border-border">
-            <RowReleaseHeader comparison hitAndRun audio />
-            {owned !== null && (() => {
-              // The owned file stays pinned under the header whatever the quality filter shows.
-              const { name, group } = splitName((owned.releaseTitle ?? '').replace(/\.(mkv|mp4|m4v|avi|ts)$/i, ''));
-              return (
-                <RowRelease
-                  yours
-                  aria-label="Your current file"
-                  quality={owned.quality ?? '–'}
-                  name={name}
-                  group={group ?? owned.releaseGroup ?? undefined}
-                  comparison={<MarkComparison kind="yours" />}
-                  fit={owned.qualityCutoffNotMet
-                    ? <CellProfileFit fit="warning">below cutoff</CellProfileFit>
-                    : <CellProfileFit fit="meets">cutoff met</CellProfileFit>}
-                  size={formatSize(owned.size)}
-                  seeders=""
-                  tracker={owned.hitAndRun?.host ?? ''}
-                  hitAndRun={owned.hitAndRun === null ? '–' : seededText(owned.hitAndRun)}
-                  audio={audioHdrText(owned)}
-                />
-              );
-            })()}
-            {visible.map((view) => {
-              const { release } = view;
-              const isSelected = release.guid === selected;
-              return (
-                <Fragment key={release.guid}>
-                  <ReleaseRow
-                    view={view}
-                    selected={isSelected}
-                    tabbable={release.guid === tabbableGuid}
-                    best={release.guid === best}
-                    grabbed={grabbed.has(release.guid)}
-                    grabbing={grabbing}
-                    showOverride={isSelected && panel === undefined}
-                    onSelect={selectRow}
-                    onGrab={grabRow}
-                    onOverride={openOverride}
-                  />
-                  {outcome?.guid === release.guid && !outcome.outOfDate && (
-                    <div className="flex min-h-8 items-center border-b border-border bg-muted px-4 py-1">
-                      <StatusInline status="failed">{outcome.message}</StatusInline>
-                    </div>
-                  )}
-                  {isSelected && panel === 'override' && (
-                    <div className="border-b border-border bg-muted p-2">
-                      <OverridePanel
-                        target={target}
-                        episodes={episodes}
-                        qualities={qualities}
-                        value={overrides}
-                        onApply={(value) => { setOverride({ guid: release.guid, value }); setPanel(undefined); }}
-                        onCancel={() => setPanel(undefined)}
-                      />
-                    </div>
-                  )}
-                </Fragment>
-              );
-            })}
-          </div>
-        )}
-      </PanelInline>
+          );
+        })}
+      </RowEpisodeReleases>
 
       <Dialog
-        open={panel === 'decision' && grabTargetHasFile(overrides)}
+        open={panel === 'decision'}
         onOpenChange={(open) => { if (!open) setPanel(undefined); }}
         title={target.kind === 'season'
           ? `${seasonName(target.seasonNumber)} ${target.seasonNumber === 0 ? 'are' : 'is'} already in your library`
           : 'This is already in your library'}
         subject={decisionSubject}
-        footerCallout={outcome === undefined || outcome.guid !== selected ? undefined : <Callout look={outcome.outOfDate ? 'warning' : 'risk'} title={outcome.message} />}
+        footerCallout={outcome === undefined || outcome.guid !== picked ? undefined : <Callout look={outcome.outOfDate ? 'warning' : 'risk'} title={outcome.message} />}
         actions={(
           <>
             <Button variant="outline" kbd="Esc" data-cancel="" disabled={grabbing} onClick={() => setPanel(undefined)}>Cancel</Button>
@@ -836,7 +553,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
               size="large"
               kbd="↵"
               icon={grabbing ? <Spinner className="text-current" /> : undefined}
-              disabled={grabbing || selected === undefined}
+              disabled={grabbing || picked === undefined}
               onClick={confirm}
             >
               {confirmLabel}
@@ -847,6 +564,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
         <RadioGroup
           value={secondAllowed ? choice : 'replace'}
           onValueChange={(value) => setChoice(value as Choice)}
+          disabled={grabbing}
           aria-label="Replace or keep as a second version"
           className="flex flex-col gap-2"
         >
@@ -866,6 +584,26 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
             description={`${target.kind === 'season' ? 'Adds a second version to each episode below, side by side in Plex.' : 'Keeps both files side by side in Plex.'}${secondAllowed ? '' : ' Not available while this release is overridden.'}`}
           />
         </RadioGroup>
+        {target.service === 'sonarr' && target.kind === 'episode' && episodes.length > 0 && targetEpisode !== undefined && countsAsEpisode !== undefined && (
+          <DialogCountsAs
+            open={countsAs.open}
+            onOpenChange={(open) => setCountsAs((current) => ({ ...current, open }))}
+            summary={`${seasonName(countsAsEpisode.seasonNumber)} · ${episodeLabel(countsAsEpisode)}`}
+            season={seasonName(targetEpisode.seasonNumber)}
+            select={(
+              <Select value={String(countsAsEpisode.id)} onValueChange={(next) => setCountsAs((current) => ({ ...current, episodeId: Number(next) }))}>
+                <SelectTrigger variant="inline" size="sm" aria-label="Episode">{episodeLabel(countsAsEpisode)}</SelectTrigger>
+                <SelectContent>
+                  {episodes
+                    .filter((episode) => episode.seasonNumber === targetEpisode.seasonNumber)
+                    .sort((a, b) => a.episodeNumber - b.episodeNumber)
+                    .map((episode) => <SelectItem key={episode.id} value={String(episode.id)}>{episodeLabel(episode)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            help="The season comes from the release name. Pick the episode Sonarr files it as."
+          />
+        )}
         {target.kind === 'season' && packEpisodes.length > 0 && (
           <div className="flex flex-col gap-2 pt-3">
             <span className="flex items-center gap-1.5 font-ui text-sm font-semibold text-foreground">
@@ -875,7 +613,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
             <div className="flex flex-col rounded-md border border-border">
               {packEpisodes.map((episode) => (
                 <div key={episode.id} className="flex h-7 items-center gap-2 border-b border-border px-3 last:border-b-0">
-                  <span className="w-6 shrink-0 font-data text-[13px] font-medium text-muted-foreground">E{String(episode.episodeNumber).padStart(2, '0')}</span>
+                  <span className="w-6 shrink-0 font-data text-[13px] font-medium text-muted-foreground">E{pad(episode.episodeNumber)}</span>
                   <span className="min-w-0 flex-1 truncate font-ui text-[13px] text-foreground">{episode.title ?? ''}</span>
                   {episode.hasFile
                     ? <Badge>{episode.file?.quality == null ? 'yours' : `yours: ${episode.file.quality}`}</Badge>

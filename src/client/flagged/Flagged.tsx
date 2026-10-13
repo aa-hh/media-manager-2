@@ -79,7 +79,13 @@ function PickPanel({ target, title, onClose, onUnauthenticated }: {
   if (owned.kind === 'ready') {
     // The server's labels read "Series S02E08" or "Movie (2024)"; its "Sonarr episode 12" and "Radarr movie 7" fallbacks carry no name.
     const name = target.kind === 'movie' ? (/^Radarr movie \d+$/.test(title) ? undefined : title) : /^(.+) S\d{2,}E\d{2,}$/.exec(title)?.[1];
-    return <Suspense fallback={null}><PickRelease target={target} title={title} name={name} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} /></Suspense>;
+    return (
+      <PanelInline open title={`Pick a release for ${title}`} onClose={onClose}>
+        <Suspense fallback={null}>
+          <PickRelease target={target} name={name} episodes={owned.episodes} movieHasFile={owned.movieHasFile} variant="movie" onClose={onClose} onUnauthenticated={onUnauthenticated} />
+        </Suspense>
+      </PanelInline>
+    );
   }
   return (
     <PanelInline open title={`Pick a release for ${title}`} onClose={onClose}>

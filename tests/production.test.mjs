@@ -6985,7 +6985,7 @@ test('the title store refetches a part only once it is older than that part\'s m
   assert.deepEqual(reopened.get(movie, 'radarr-lookup'), { value: 'Dune', fetchedAt: clock.value });
 });
 
-// Searching again when results are stored, losing stored results on a failed refresh, dropping rejected releases, misreading either service's indexer flags, running two searches for one target at once, or sending a release's download link (it holds the indexer API key) to the browser breaks Pick a release.
+// Searching again when results are stored, losing stored results on a failed refresh, dropping rejected releases, dropping Sonarr's episodeRequested or Radarr's movieRequested, misreading either service's indexer flags, running two searches for one target at once, or sending a release's download link (it holds the indexer API key) to the browser breaks Pick a release.
 test('interactive searches are kept with their age and refreshed only on request', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -7008,15 +7008,32 @@ test('interactive searches are kept with their age and refreshed only on request
       size: 2_000_000_000, ageHours: 5.5, seeders: 40, leechers: 2, approved: true, rejections: [], customFormatScore: 1200,
       customFormats: [{ name: 'HQ' }], indexerFlags: 1 | 32, protocol: 'torrent', qualityWeight: 304,
       downloadUrl: 'https://indexer.test/download/1?apikey=indexer-secret', mappedEpisodeInfo: [{ id: 50 }, { id: 51 }],
+      episodeRequested: true,
     },
     {
       guid: 'g2', indexerId: 3, title: 'Show.S01E02.720p.HDTV', quality: { quality: { name: 'HDTV-720p' } }, approved: false,
-      rejections: [{ reason: 'Not an upgrade for existing episode file(s)' }], indexerFlags: 0, seeders: 0,
+      rejections: [{ reason: 'Not an upgrade for existing episode file(s)' }], indexerFlags: 0, seeders: 0, episodeRequested: true,
     },
     { guid: '', indexerId: 3, title: 'broken' },
     {
       guid: 'g3', indexerId: 4, indexer: 'PrivateHD', title: 'Show.S01E02.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10', size: 4_250_000_000,
       approved: true, rejections: [], indexerFlags: 0,
+    },
+    {
+      guid: 'pack', indexerId: 3, title: 'Show.S01.1080p.WEB-DL', approved: true, rejections: [],
+      episodeRequested: true, mappedEpisodeInfo: [{ id: 50 }, { id: 51 }, { id: 52 }],
+    },
+    {
+      guid: 'multi', indexerId: 3, title: 'Show.S01E02E03.1080p.WEB-DL', approved: true, rejections: [],
+      episodeRequested: true, mappedEpisodeInfo: [{ id: 50 }, { id: 51 }],
+    },
+    {
+      guid: 'boxset', indexerId: 3, title: 'Show.S01E07.DVD.1080p', approved: true, rejections: [],
+      episodeRequested: false, mappedEpisodeInfo: [{ id: 57 }],
+    },
+    {
+      guid: 'unmatched', indexerId: 3, title: 'Unknown.Thing.S01E02', approved: false,
+      rejections: [{ reason: 'Unable to identify correct episode(s) using release name' }], episodeRequested: false, mappedEpisodeInfo: [],
     },
   ];
   database.prepare('INSERT INTO tracker_cooldowns VALUES (?, ?, ?, ?, ?)').run('blutopia.cc', 900, 'refused', 1, 'AB'.repeat(20));
@@ -7030,7 +7047,10 @@ test('interactive searches are kept with their age and refreshed only on request
     if (parsed.pathname === '/api/v3/release') {
       releaseCalls += 1;
       if (parsed.port === '65032') {
-        return new Response(JSON.stringify([{ guid: 'm1', indexerId: 7, title: 'Movie.2021.2160p', approved: true, rejections: [], indexerFlags: ['G_Freeleech75', 'Nuked'] }]), { status: 200 });
+        return new Response(JSON.stringify([
+          { guid: 'm1', indexerId: 7, title: 'Movie.2021.2160p', approved: true, rejections: [], indexerFlags: ['G_Freeleech75', 'Nuked'], movieRequested: true },
+          { guid: 'm2', indexerId: 7, title: 'Other.Movie.2019.1080p', approved: true, rejections: [], indexerFlags: 0, movieRequested: false },
+        ]), { status: 200 });
       }
       await release;
       return sonarr();
@@ -7058,15 +7078,28 @@ test('interactive searches are kept with their age and refreshed only on request
     ['g1', true, ['Freeleech', 'Internal'], []],
     ['g2', false, [], ['Not an upgrade for existing episode file(s)']],
     ['g3', true, [], []],
+    ['pack', true, [], []],
+    ['multi', true, [], []],
+    ['boxset', true, [], []],
+    ['unmatched', false, [], ['Unable to identify correct episode(s) using release name']],
   ]);
+  // A release that never sent the flag (g3) stays unknown, so the client falls back to its episode ids instead of hiding it.
+  assert.deepEqual(first.search.releases.map((item) => [item.guid, item.episodeRequested]), [
+    ['g1', true], ['g2', true], ['g3', undefined], ['pack', true], ['multi', true], ['boxset', false], ['unmatched', false],
+  ]);
+  const storedJson = database.prepare('SELECT releases FROM release_searches WHERE target = ?').get('sonarr:episode:5:50').releases;
+  assert.match(storedJson, /"episodeRequested":false/);
+  assert.doesNotMatch(/\{[^{}]*"guid":"g3"[^{}]*\}/.exec(storedJson)[0], /"episodeRequested"/);
   // Reading PrivateHD's hours without the size, giving Blutopia a ratio side, or missing an active cooldown turns these red.
   assert.deepEqual(first.search.releases.map((item) => [item.guid, item.hitAndRun]), [
     ['g1', { host: 'blutopia.cc', hours: 168, ratio: null, logic: null, cooldown: true, cooldownSince: 900 }],
     ['g2', null],
     ['g3', { host: 'privatehd.to', hours: 81, ratio: 0.9, logic: 'or', cooldown: false, cooldownSince: null }],
+    ['pack', null], ['multi', null], ['boxset', null], ['unmatched', null],
   ]);
   assert.deepEqual(first.search.releases.map((item) => [item.qualityWeight, item.compared, item.audio, item.hdr]), [
     [304, null, null, null], [null, null, null, null], [null, null, 'Atmos 5.1', 'DV HDR10'],
+    [null, null, null, null], [null, null, null, null], [null, null, null, null], [null, null, null, null],
   ]);
   // Sonarr answers nothing for the series here, so there is no owned file to compare with.
   assert.equal(first.search.owned, null);
@@ -7093,17 +7126,18 @@ test('interactive searches are kept with their age and refreshed only on request
   assert.equal(releaseCalls, 2);
   assert.equal(refreshedA, refreshedB);
   assert.equal(refreshedA.search.fetchedAt, 5_000);
-  assert.deepEqual(refreshedA.search.releases.map((item) => item.guid), ['g1', 'g3']);
+  assert.deepEqual(refreshedA.search.releases.map((item) => item.guid), ['g1', 'g3', 'pack', 'multi', 'boxset', 'unmatched']);
   release = undefined;
 
   sonarr = () => new Response('', { status: 503 });
   const failed = await releases.refresh(episode);
   assert.equal(failed.kind, 'unreachable');
   assert.equal(failed.stored.fetchedAt, 5_000);
-  assert.deepEqual((await releases.get(episode)).search.releases.map((item) => item.guid), ['g1', 'g3']);
+  assert.deepEqual((await releases.get(episode)).search.releases.map((item) => item.guid), ['g1', 'g3', 'pack', 'multi', 'boxset', 'unmatched']);
 
   const movie = await releases.get({ service: 'radarr', kind: 'movie', movieId: 9 });
   assert.deepEqual(movie.search.releases[0].flags, ['Freeleech 75%', 'Nuked']);
+  assert.deepEqual(movie.search.releases.map((item) => item.movieRequested), [true, false]);
   assert.equal(releases.find({ service: 'radarr', kind: 'movie', movieId: 9 }, 'm1').title, 'Movie.2021.2160p');
 
   assert.equal(releases.find(episode, 'g1').downloadUrl, 'https://indexer.test/download/1?apikey=indexer-secret');
@@ -7118,6 +7152,119 @@ test('interactive searches are kept with their age and refreshed only on request
     assert.match(text, /"guid":"g1"/);
     assert.equal(text.includes('indexer-secret'), false);
   }
+});
+
+test('pick a release hides releases Sonarr matched to another episode and reads each row from the release', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { visibleReleases, splitReleaseName, qualityParts, fitKindOf, historyOf, releaseStateOf } = await load('../src/client/releaseView.ts');
+  const listed = ({ shown, hidden }) => [shown.map((release) => release.guid), hidden.map((release) => release.guid)];
+  const episode = { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 50 };
+
+  // Listing a release Sonarr matched to another episode, or hiding a single episode, multi-episode file, season pack or
+  // scene-numbered release Sonarr matched to this one, turns this red.
+  await t.test('an episode search lists only what Sonarr matched to the episode', () => {
+    assert.deepEqual(listed(visibleReleases(episode, [
+      { guid: 'single', title: 'Show.S01E02.1080p', episodeRequested: true, episodeIds: [50] },
+      { guid: 'multi', title: 'Show.S01E02E03.1080p', episodeRequested: true, episodeIds: [50, 51] },
+      { guid: 'pack', title: 'Show.S01.1080p', episodeRequested: true, episodeIds: [50, 51, 52] },
+      { guid: 'scene', title: 'Show.S01E03.1080p', episodeRequested: true, episodeIds: [50] },
+      { guid: 'boxset', title: 'Show.S01E07.DVD.1080p', episodeRequested: false, episodeIds: [57] },
+      { guid: 'unmatched', title: 'Unknown.Thing.S01E02', episodeRequested: false, episodeIds: [] },
+    ], [])), [['single', 'multi', 'pack', 'scene'], ['boxset', 'unmatched']]);
+  });
+
+  // Listing a release mapped only to another season, or hiding a single-episode release of the searched season, turns this red.
+  await t.test('a season search lists releases of that season', () => {
+    const season = { service: 'sonarr', kind: 'season', seriesId: 5, seasonNumber: 1 };
+    const episodes = [{ id: 50, seasonNumber: 1 }, { id: 51, seasonNumber: 1 }, { id: 60, seasonNumber: 2 }];
+    assert.deepEqual(listed(visibleReleases(season, [
+      { guid: 'pack', episodeRequested: true, episodeIds: [50, 51] },
+      { guid: 'single', episodeRequested: true, episodeIds: [51] },
+      { guid: 'other season', episodeRequested: false, episodeIds: [60] },
+      { guid: 'stored single', episodeIds: [51] },
+      { guid: 'stored other season', episodeIds: [60] },
+    ], episodes)), [['pack', 'single', 'stored single'], ['other season', 'stored other season']]);
+  });
+
+  // Listing a release Radarr matched to another movie turns this red.
+  await t.test('a movie search hides releases Radarr matched to another movie', () => {
+    const movie = { service: 'radarr', kind: 'movie', movieId: 9 };
+    assert.deepEqual(listed(visibleReleases(movie, [{ guid: 'm1', movieRequested: true }, { guid: 'm2', movieRequested: false }, { guid: 'stored' }], [])),
+      [['m1', 'stored'], ['m2']]);
+  });
+
+  // Hiding a release from a search stored before the flag was kept when its episodes cannot rule it out, or listing one
+  // Sonarr mapped to another episode, turns this red.
+  await t.test('a search stored before the flag was kept falls back to the mapped episodes', () => {
+    assert.deepEqual(listed(visibleReleases(episode, [
+      { guid: 'searched', episodeIds: [50] },
+      { guid: 'elsewhere', episodeIds: [57] },
+      { guid: 'unmapped', episodeIds: [] },
+    ], [])), [['searched', 'unmapped'], ['elsewhere']]);
+  });
+
+  // Moving the group, its dash or the episode number into the cut middle, or dropping characters between the parts, turns this red.
+  await t.test('a release name splits into its start, its middle and its group', () => {
+    for (const [title, kind, parts] of [
+      ['Severance.S02E08.1080p.ATVP.WEB-DL.DDP5.1.H.264-FLOS', 'episode', { head: 'Severance.S02E08', middle: '.1080p.ATVP.WEB-DL.DDP5.1.H.264', group: '-FLOS' }],
+      ['Show.S01.1080p.WEB-DL.DDP5.1-GRP', 'season', { head: 'Show.S01', middle: '.1080p.WEB-DL.DDP5.1', group: '-GRP' }],
+      ['Dune.Part.Two.2024.2160p.UHD.BluRay-FraMeSToR', 'movie', { head: 'Dune.Part.Two.2024', middle: '.2160p.UHD.BluRay', group: '-FraMeSToR' }],
+      ['Some.Concert.Film.1080p-GRP', 'movie', { head: '', middle: 'Some.Concert.Film.1080p', group: '-GRP' }],
+      ['Show.S01E02.720p.HDTV', 'episode', { head: 'Show.S01E02', middle: '.720p.HDTV', group: undefined }],
+    ]) assert.deepEqual(splitReleaseName(title, kind), parts, title);
+  });
+
+  // Losing the source, keeping the joining dash, or leaving WEBDL unspelled turns this red.
+  await t.test('a quality name splits into resolution and source', () => {
+    for (const [name, parts] of [
+      ['WEBDL-1080p', { resolution: '1080p', source: 'WEB-DL' }],
+      ['Bluray-1080p Remux', { resolution: '1080p', source: 'Bluray Remux' }],
+      ['HDTV-720p', { resolution: '720p', source: 'HDTV' }],
+      ['SDTV', { resolution: 'SDTV' }],
+      [null, { resolution: '–' }],
+    ]) assert.deepEqual(qualityParts(name), parts, String(name));
+  });
+
+  // Showing a score when no scores exist, losing the best star, or writing a negative score with a hyphen turns this red.
+  await t.test('the fit chip follows the profile and the scores', () => {
+    for (const [approved, score, best, scores, chip] of [
+      [false, 40, true, true, { kind: 'rejected' }],
+      [true, 120, true, true, { kind: 'best', text: '+120' }],
+      [true, 0, true, false, { kind: 'best-star' }],
+      [true, 40, false, true, { kind: 'score', text: '+40' }],
+      [true, 0, false, true, { kind: 'score', text: '0' }],
+      [true, -50, false, true, { kind: 'negative', text: '−50' }],
+      [true, 0, false, false, undefined],
+    ]) assert.deepEqual(fitKindOf({ approved, customFormatScore: score }, best, scores), chip, JSON.stringify([approved, score, best, scores]));
+  });
+
+  // Showing grabbed before over a blocklisting or a failure turns this red.
+  await t.test('the history mark shows the worst earlier event', () => {
+    const event = (kind) => ({ kind, at: null });
+    for (const [past, mark] of [
+      [[], undefined],
+      [[event('grabbed')], { kind: 'grabbed', tooltip: 'Grabbed before' }],
+      [[event('grabbed'), event('failed')], { kind: 'failed', tooltip: 'Failed before' }],
+      [[event('failed'), event('blocklisted'), event('grabbed')], { kind: 'blocklisted', tooltip: 'Blocklisted' }],
+    ]) assert.deepEqual(historyOf(past), mark, JSON.stringify(past));
+  });
+
+  // Showing a stalled or blocked download as progress, or a finished one as still downloading, turns this red.
+  await t.test('a grabbed release follows the live download', () => {
+    const live = (word, percent = null) => ({ word, tone: 'normal', percent, downRate: 0 });
+    for (const [progress, chip] of [
+      [undefined, { state: 'grabbed' }],
+      [live('queued'), { state: 'grabbed' }],
+      [live('downloading', 18), { state: 'downloading', percent: 18 }],
+      [live('stalled', 40), { state: 'stalled', percent: 40 }],
+      [live('error'), { state: 'stalled', percent: 0 }],
+      [live('import blocked', 100), { state: 'import-blocked' }],
+      [live('waiting to import', 100), { state: 'importing' }],
+      [live('seeding', 100), { state: 'importing' }],
+    ]) assert.deepEqual(releaseStateOf(progress), chip, progress?.word ?? 'no download');
+  });
 });
 
 // Reading the wrong codec, keeping the codec name beside Atmos, losing the channels, listing HDR beside HDR10, or ranking

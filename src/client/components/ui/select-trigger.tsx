@@ -31,7 +31,7 @@ const inlineTriggerClass = (empty: boolean) => cn(
 
 type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: SelectSize;
-  /** Inline: the add dialog's sentence look; size and lead do not apply. */
+  /** Inline: the add dialog's sentence look; lead does not apply, and of the sizes only sm does (32 high, 14 px). */
   variant?: 'default' | 'inline';
   /** Inline only: a required choice not yet made, warning look with a plus instead of the chevron. */
   empty?: boolean;
@@ -47,7 +47,7 @@ function SelectTrigger({ size = 'default', variant = 'default', empty = false, l
     <SelectPrimitive.Trigger
       className={cn(
         inline
-          ? inlineTriggerClass(empty)
+          ? cn(inlineTriggerClass(empty), size === 'sm' && 'h-8 rounded-sm gap-1.5 px-2.5 text-sm font-semibold [&_svg]:size-3.5')
           : cn(
             base,
             'border border-input bg-card text-foreground',

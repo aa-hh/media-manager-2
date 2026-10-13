@@ -214,7 +214,7 @@ function OverviewBand({ subject, owned, library }: { subject: Subject; owned: bo
 
 type Sent = 'sending' | 'sent' | 'failed';
 
-export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, pickPanel, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
+export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
   subject: Subject;
   owned: boolean;
   /** Status Badges under the meta line. */
@@ -229,8 +229,6 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   /** Pick a release: opens or closes the panel. */
   onPick?: () => void;
   picking?: boolean;
-  /** The open Pick a release panel, drawn between the header and the overview band. */
-  pickPanel?: ReactNode;
   compact?: boolean;
   onChangeMonitoring?: () => void;
   /** Content for a title not yet in the library (the season chips), drawn between the header and the overview band. */
@@ -316,7 +314,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
         more={owned && <>{menu}{status}</>}
       />
       {add !== undefined && !compact && <div className="pb-2">{add}</div>}
-      {pickPanel}
+
       {!compact && <OverviewBand subject={subject} owned={owned} library={libraryRows} />}
       {deleting && (
         <DeleteTitle

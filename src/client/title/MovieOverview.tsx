@@ -1,5 +1,7 @@
 import { Suspense, useState, type SetStateAction } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { CollapsibleContent } from '@/components/ui/collapsible-content';
+import { Collapsible } from '@/components/ui/collapsible-trigger';
 import { LabelGroup } from '@/components/ui/label-group';
 import { Table } from '@/components/ui/table';
 import { formatBytes } from '../downloads/model';
@@ -79,11 +81,6 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         facts={facts}
         onPick={() => setPicking(!picking)}
         picking={picking}
-        pickPanel={picking && (
-          <div className="pt-2">
-            <Suspense fallback={null}><PickRelease target={{ service: 'radarr', kind: 'movie', movieId: detail.id }} title={detail.title} name={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} /></Suspense>
-          </div>
-        )}
         monitored={detail.monitored ? 'all' : 'none'}
         onToggleMonitored={() => void toggleMonitored()}
         monitorProblem={problem}
@@ -92,9 +89,24 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
       <div className="flex flex-col pt-2 pb-10">
         <LabelGroup count={(detail.file === null ? 0 : 1) + detail.secondVersions.length}>Versions</LabelGroup>
         <Table>
-          {detail.file === null
-            ? detail.secondVersions.length === 0 && <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">No file yet.</p>
-            : <TrackedVersion file={detail.file} seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { movieId: detail.id })} indent />}
+          {detail.file !== null && <TrackedVersion file={detail.file} seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { movieId: detail.id })} indent />}
+          <Collapsible open={picking}>
+            <CollapsibleContent className="gap-0 p-0">
+              <Suspense fallback={null}>
+                <PickRelease
+                  target={{ service: 'radarr', kind: 'movie', movieId: detail.id }}
+                  name={detail.title}
+                  episodes={[]}
+                  movieHasFile={detail.hasFile}
+                  variant="movie"
+                  live={live}
+                  onClose={() => setPicking(false)}
+                  onUnauthenticated={onUnauthenticated}
+                />
+              </Suspense>
+            </CollapsibleContent>
+          </Collapsible>
+          {detail.file === null && detail.secondVersions.length === 0 && <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">No file yet.</p>}
           <SecondVersionRows
             versions={detail.secondVersions}
             indent

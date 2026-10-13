@@ -36,12 +36,22 @@ type RowEpisodeProps = Omit<TableRowProps, 'progress' | 'title'> & {
   monitored?: boolean;
   /** Not aired yet: the date reads in black. */
   upcoming?: boolean;
+  /** The releases inset is open under it: accent tint from the number column, no bar. */
+  open?: boolean;
 };
 
 /** Episode row inside a season. Use marker "warning" for missing and "risk" for stalled. */
-function RowEpisode({ bookmark, number, title, aired, file, state, actions, monitored = true, upcoming = false, ...props }: RowEpisodeProps) {
+function RowEpisode({ bookmark, number, title, aired, file, state, actions, monitored = true, upcoming = false, open = false, selected, className, ...props }: RowEpisodeProps) {
   return (
-    <TableRow {...props}>
+    <TableRow
+      selected={selected}
+      className={cn(
+        // The open tint paints above the row's own fill, so it steps aside for the selected tint.
+        open && !selected && 'isolate before:absolute before:inset-y-0 before:right-0 before:left-24 before:-z-10 before:bg-accent hover:before:bg-surface-pressed',
+        className,
+      )}
+      {...props}
+    >
       <TableCell className={w.bookmark}>{bookmark}</TableCell>
       <TableCell className={cn(w.number, 'font-medium text-muted-foreground')}>{number}</TableCell>
       <TableCell fill className={cn('font-ui font-medium', !monitored && 'text-muted-foreground')}>
