@@ -113,6 +113,7 @@ node dist/server/cli.js settings set <category> <key>   (value read from stdin)
 node dist/server/cli.js settings delete <category> <key>
 node dist/server/cli.js settings list
 node dist/server/cli.js connections check
+node dist/server/cli.js backdrop source [tmdb | trakt | fanart]   (shows or switches where title page backdrops come from)
 node dist/server/cli.js backup now
 node dist/server/cli.js backup off | on
 node dist/server/cli.js backup list

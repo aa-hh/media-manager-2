@@ -10,12 +10,15 @@ import { createPlex } from './services/plex.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { deleteSetting, listSettingKeys, setSetting } from './settings.js';
+import { getPreference, setPreference } from './preferences.js';
+import { BACKDROP_SOURCE_KEY, BACKDROP_SOURCES } from './backdrops.js';
 
 const usage = [
   'usage: node dist/server/cli.js settings set <category> <key>   (value read from stdin)',
   '       node dist/server/cli.js settings delete <category> <key>',
   '       node dist/server/cli.js settings list',
   '       node dist/server/cli.js connections check',
+  '       node dist/server/cli.js backdrop source [tmdb | trakt | fanart]   (shows the source, or switches it)',
   '       node dist/server/cli.js backup now   (a key made in the app, or BACKUP_KEY)',
   '       node dist/server/cli.js backup off | on',
   '       node dist/server/cli.js backup list   (BACKUP_FOLDER or BACKUP_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY)',
@@ -114,6 +117,7 @@ const command = group === 'settings' && action === 'set' && args.length === 4 ? 
   : group === 'settings' && action === 'delete' && args.length === 4 ? 'delete'
     : group === 'settings' && action === 'list' && args.length === 2 ? 'list'
       : group === 'connections' && action === 'check' && args.length === 2 ? 'check'
+        : group === 'backdrop' && action === 'source' && args.length <= 3 ? 'backdrop'
         : group === 'backup' && action === 'now' && args.length === 2 ? 'backup-now'
           : group === 'backup' && action === 'list' && args.length === 2 ? 'backup-list'
             : group === 'backup' && (action === 'off' || action === 'on') && args.length === 2 ? 'backup-switch'
@@ -139,6 +143,12 @@ if (command === undefined) {
         setSetting(database, category, key, await readStdin());
       } else if (command === 'delete') {
         deleteSetting(database, category, key);
+      } else if (command === 'backdrop') {
+        if (category !== undefined) {
+          if (!(BACKDROP_SOURCES as readonly string[]).includes(category)) throw new Error(`The backdrop source must be one of: ${BACKDROP_SOURCES.join(', ')}.`);
+          setPreference(database, BACKDROP_SOURCE_KEY, category);
+        }
+        console.log(`backdrop source: ${getPreference(database, BACKDROP_SOURCE_KEY) ?? 'tmdb'}`);
       } else if (command === 'list') {
         for (const row of listSettingKeys(database)) console.log(`${row.category} ${row.key}`);
       } else if (command === 'backup-switch') {
