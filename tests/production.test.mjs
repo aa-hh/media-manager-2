@@ -9754,8 +9754,17 @@ test('title pages mark episodes and select ranges of episodes only', async (t) =
 test('discover helpers turn dates, filters and rows into what the screen shows', async (t) => {
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
-  const { countdown, dateTab, homeQuery, gridPath, readState, readGridState, titlePath, extraRowsView, visibleCards, filterTags } = await load('../src/client/discover/model.ts');
+  const { countdown, dateTab, homeQuery, gridPath, readState, readGridState, titlePath, extraRowsView, visibleCards, filterTags,
+    readStoredState, writeStoredState, readRememberedState, clearSessionState, withoutFilters, readServices, writeServices } = await load('../src/client/discover/model.ts');
   const empty = { genres: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
+  const fakeStorage = () => {
+    const map = new Map();
+    return { getItem: (key) => map.get(key) ?? null, setItem: (key, value) => { map.set(key, String(value)); }, removeItem: (key) => { map.delete(key); }, clear: () => map.clear() };
+  };
+  const sessionStorage = fakeStorage();
+  const localStorage = fakeStorage();
+  globalThis.window = { sessionStorage, localStorage };
+  t.after(() => { delete globalThis.window; });
 
   // Counting calendar days with local time, or moving a boundary (14 days, 84 days) by one, turns this red.
   await t.test('a countdown says today, tomorrow, days, weeks or months', () => {
@@ -9834,6 +9843,45 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
     assert.deepEqual(tags[2].remove, { ...filters, yearFrom: null, yearTo: null });
     assert.equal(filterTags({ ...empty, yearFrom: 2006 }, [], [])[0].label, 'From 2006');
     assert.equal(filterTags({ ...empty, yearTo: 2024 }, [], [])[0].label, 'Up to 2024');
+  });
+
+  const filtered = { type: 'tv', window: 30, genres: [18, 10765], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
+
+  // Writing the filters to localStorage again, or reading the remembered set back as the current state, turns this red.
+  await t.test('filters are saved for the tab session only and the last non-empty set is remembered', () => {
+    writeStoredState(filtered);
+    assert.deepEqual(readStoredState(), filtered);
+    assert.equal(localStorage.getItem('mm2.discover.filters'), null);
+    assert.deepEqual(readRememberedState(), filtered);
+    sessionStorage.clear();
+    assert.equal(readStoredState(), undefined);
+    assert.deepEqual(readRememberedState(), filtered);
+  });
+
+  // Remembering a state with no filters, or treating a type-only state as a filter set, turns this red.
+  await t.test('an empty filter set does not overwrite the remembered set, and nothing remembered reads as undefined', () => {
+    localStorage.clear();
+    assert.equal(readRememberedState(), undefined);
+    writeStoredState(filtered);
+    const typeOnly = { ...empty, type: 'tv', window: 30 };
+    writeStoredState(typeOnly);
+    assert.deepEqual(readStoredState(), typeOnly);
+    assert.deepEqual(readRememberedState(), filtered);
+  });
+
+  // Clearing the remembered set on sign-out, or leaving a filter key, the media type or the Upcoming window in the address, turns this red.
+  await t.test('sign-out clears the session filters but not the remembered set or the services, and strips filters from an address', () => {
+    writeStoredState(filtered);
+    writeServices([8]);
+    clearSessionState();
+    assert.equal(readStoredState(), undefined);
+    assert.deepEqual(readRememberedState(), filtered);
+    assert.deepEqual(readServices(), [8]);
+    assert.equal(withoutFilters('?type=tv&genres=36&providers=8&yearFrom=2000&yearTo=2010&minRating=7&window=30'), '');
+    assert.equal(withoutFilters('?sort=rating&genres=36'), '?sort=rating');
+    assert.equal(withoutFilters('?type=movie&window=90&sort=rating'), '?sort=rating');
+    assert.equal(withoutFilters('?genres=36'), '');
+    assert.equal(withoutFilters(''), '');
   });
 });
 
