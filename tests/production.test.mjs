@@ -2920,7 +2920,8 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
   let respond = () => { throw new TypeError('fetch failed'); };
   let calls = 0;
   const tmdb = createTmdb(database, { now: () => clock.value, fetch: async (url) => { calls += 1; return respond(new URL(String(url))); } });
-  const titles = createTmdbTitles({ database, tmdb, store: createTitleStore(database, { now: () => clock.value }) });
+  const store = createTitleStore(database, { now: () => clock.value });
+  const titles = createTmdbTitles({ database, tmdb, store });
   const routes = createTmdbTitleRoutes(titles);
   const json = (body, status = 200) => () => new Response(JSON.stringify(body), { status });
   const page = async (path) => {
@@ -2964,6 +2965,24 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     assert.deepEqual(await titles.tvdbIdOf(50), { kind: 'ok', value: null });
     respond = () => { throw new TypeError('fetch failed'); };
     assert.equal((await titles.tvdbIdOf(51)).kind, 'unreachable');
+  });
+
+  // Waiting for TMDB when no details are saved, skipping the save for the next visit, or folding a TMDB failure into anything but null turns this red.
+  await t.test('backdropPath answers from the saved details and loads missing ones in the background', async () => {
+    let release;
+    respond = () => new Promise((resolve) => { release = resolve; });
+    assert.equal(await titles.backdropPath('tv', 424242), null);
+    await settle(() => release !== undefined);
+    assert.notEqual(release, undefined);
+    release(json({ id: 424242, name: 'Held show', external_ids: { tvdb_id: 515151 }, backdrop_path: '/held.jpg' })());
+    await settle(() => store.get({ type: 'tv', tmdbId: 424242 }, 'tmdbDetails') !== undefined);
+    assert.equal(await titles.backdropPath('tv', 424242), '/held.jpg');
+
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.equal(await titles.backdropPath('movie', 88888), null);
+    await settle(() => store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails') !== undefined);
+    assert.equal(store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails'), undefined);
+    assert.equal(await titles.backdropPath('movie', 88888), null);
   });
 
   // Throwing or dropping a section when TMDB omits keywords, credits or recommendations turns this red.
