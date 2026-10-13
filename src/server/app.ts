@@ -50,6 +50,7 @@ export type CreateAppOptions = {
   setup?: Hono<SetupEnvironment>;
   api?: Hono;
   images?: Hono;
+  cache?: Hono;
   webhooks?: {
     secret(): string | undefined;
     receive(service: 'sonarr' | 'radarr', payload: unknown): 'ok' | 'ignored' | 'invalid';
@@ -442,6 +443,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.tmdbTitles !== undefined) app.route('/api/library', createTmdbTitleRoutes(options.tmdbTitles));
   if (options.discover !== undefined) app.route('/api/discover', createDiscoverRoutes(options.discover));
   if (options.images !== undefined) app.route('/api/images', options.images);
+  if (options.cache !== undefined) app.route('/api/cache', options.cache);
   if (options.setup !== undefined) app.route('/api/setup', options.setup);
   if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));

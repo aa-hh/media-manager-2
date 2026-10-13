@@ -34,11 +34,14 @@ const settingsModuleUrl = new URL('../dist/server/settings.js', import.meta.url)
 const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).href;
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
+const jellyfinModuleUrl = new URL('../dist/server/services/jellyfin.js', import.meta.url).href;
+const mediaServerModuleUrl = new URL('../dist/server/services/mediaServer.js', import.meta.url).href;
 const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
 const connectionModuleUrl = new URL('../dist/server/services/connection.js', import.meta.url).href;
 const logModuleUrl = new URL('../dist/server/log.js', import.meta.url).href;
 const traktModuleUrl = new URL('../dist/server/services/trakt.js', import.meta.url).href;
 const fanartModuleUrl = new URL('../dist/server/services/fanart.js', import.meta.url).href;
+const clearCacheModuleUrl = new URL('../dist/server/clearCache.js', import.meta.url).href;
 const backdropsModuleUrl = new URL('../dist/server/backdrops.js', import.meta.url).href;
 const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
@@ -1570,6 +1573,30 @@ test('background job runner', async (t) => {
     assert.throws(() => runner.register('b', 1000, () => {}), { message: 'Register jobs before start.' });
   });
 
+  // Dropping a trigger that lands mid-run, or running once per trigger instead of once for all of them, turns this red.
+  await t.test('a trigger runs the job now, and triggers during a run add exactly one more run', async () => {
+    const { runner } = setup();
+    const blocked = gate();
+    let runs = 0;
+    runner.register('a', 60_000, async () => {
+      runs += 1;
+      if (runs === 1) await blocked.wait;
+    });
+    runner.trigger('a');
+    assert.equal(runs, 0);
+    runner.start();
+    runner.trigger('missing');
+    runner.trigger('a');
+    assert.equal(runs, 1);
+    runner.trigger('a');
+    runner.trigger('a');
+    blocked.open();
+    await drain();
+    assert.equal(runs, 2);
+    await drain();
+    assert.equal(runs, 2);
+  });
+
   // Not recording a finished run's time or failure, or never marking a job late after three silent intervals, turns this red.
   await t.test('status reports each job\'s last run, its failure and lateness', async (t) => {
     t.mock.method(console, 'error', () => {});
@@ -2320,6 +2347,7 @@ test('service connections read saved settings and classify each outcome', async 
   const { createArr } = await import(arrModuleUrl);
   const { createRtorrent } = await import(rtorrentModuleUrl);
   const { createPlex } = await import(plexModuleUrl);
+  const { createJellyfin } = await import(jellyfinModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-connections-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -2379,6 +2407,21 @@ test('service connections read saved settings and classify each outcome', async 
       malformedBody: '{}',
       usePrimitive: (service) => service.request('/'),
       primitiveResult: { status: 200, body: { MediaContainer: { version: '1.41.0.8994' } } },
+    },
+    {
+      name: 'jellyfin',
+      create: (fetch) => createJellyfin(database, { fetch }),
+      url: 'http://127.0.0.1:65005',
+      credentials: { 'jellyfin.apiKey': `jellyfin-key-${pid}-distinctive` },
+      method: 'GET',
+      // The public /System/Info/Public answers without a key, so probing it would pass a wrong key.
+      probeUrl: 'http://127.0.0.1:65005/System/Info',
+      headers: { authorization: `MediaBrowser Token="jellyfin-key-${pid}-distinctive"`, accept: 'application/json' },
+      okBody: JSON.stringify({ Version: '10.11.0' }),
+      version: '10.11.0',
+      malformedBody: '{}',
+      usePrimitive: (service) => service.findLibraryFor('/media', 'movie'),
+      primitiveResult: undefined,
     },
   ];
 
@@ -2454,6 +2497,66 @@ test('service connections read saved settings and classify each outcome', async 
       assert.equal(errorText.includes(value), false, `${service.name} error mentions ${value}`);
     }
   }
+});
+
+// Matching a library of the wrong type or by a name prefix, reading a refused library list as "no library", sending the scan
+// anywhere but /Library/Media/Updated, keeping Plex once Jellyfin is set up, or naming Plex in a Jellyfin install's problem turns this red.
+test('the Jellyfin version finds the library holding a folder, asks it to scan, and is used once Jellyfin is set up', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createMediaServer } = await import(mediaServerModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createVersionImport, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-jellyfin-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const key = `jellyfin-key-${process.pid}`;
+  const calls = [];
+  let libraries = [];
+  let listStatus = 200;
+  const fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method ?? 'GET', headers: new Headers(init.headers), body: init.body });
+    if (String(url).endsWith('/Library/VirtualFolders')) return new Response(JSON.stringify(libraries), { status: listStatus });
+    return new Response(null, { status: 204 });
+  };
+  const mediaServer = createMediaServer(database, { fetch });
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  assert.equal(mediaServer().name, 'plex');
+  setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test/');
+  setSetting(database, 'credentials', 'jellyfin.apiKey', key);
+  const jellyfin = mediaServer();
+  assert.equal(jellyfin.name, 'jellyfin');
+
+  libraries = [
+    { Name: 'Shows', ItemId: 'tv1', CollectionType: 'tvshows', Locations: ['/media/versions'] },
+    { Name: 'Films', ItemId: 'mv1', CollectionType: 'movies', Locations: ['/media/films', '/media/versions'] },
+  ];
+  assert.deepEqual(await jellyfin.findLibraryFor('/media/versions/movies', 'movie'), { id: 'mv1' });
+  assert.deepEqual(await jellyfin.findLibraryFor('/media/versions/tv', 'show'), { id: 'tv1' });
+  assert.equal(await jellyfin.findLibraryFor('/media/versions-old', 'movie'), undefined);
+  assert.equal(calls[0].url, 'http://jellyfin.test/Library/VirtualFolders');
+  assert.equal(calls[0].headers.get('authorization'), `MediaBrowser Token="${key}"`);
+  listStatus = 401;
+  await assert.rejects(jellyfin.findLibraryFor('/media/versions/movies', 'movie'));
+  listStatus = 200;
+
+  const folder = '/media/versions/movies/Dune - Part Two (2024)';
+  await jellyfin.refresh({ id: 'mv1' }, folder);
+  const scan = calls.at(-1);
+  assert.deepEqual([scan.method, scan.url, scan.headers.get('content-type')], ['POST', 'http://jellyfin.test/Library/Media/Updated', 'application/json']);
+  assert.deepEqual(JSON.parse(scan.body), { Updates: [{ Path: folder, UpdateType: 'Created' }] });
+
+  const problems = createProblems({ database, events: createEventHub() });
+  const versionImport = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr: {}, mediaServer, problems });
+  libraries = [];
+  await versionImport.scan('radarr', '/media/versions/movies', new Set([folder]));
+  assert.deepEqual(database.prepare("SELECT summary FROM problems WHERE kind = ? AND state != 'resolved'").all(PLEX_PROBLEM_KIND).map((row) => row.summary),
+    ['Add /media/versions/movies to the Jellyfin Movies library.']);
 });
 
 test('the TMDB client sends the key only to TMDB, parses partial replies and caches lists', async (t) => {
@@ -4306,6 +4409,49 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     second.database.close();
   });
 
+  // Publishing unchanged rows, adding a torrent the full poll has not stored, moving lastSeenAt, crediting seeding time
+  // from the one-second refresh, or calling rTorrent while it is marked down turns this red.
+  await t.test('the one-second refresh updates and publishes only changed live values and leaves the seeding counter to the full poll', async () => {
+    const { database, clock, published, fake, poller } = setup();
+    // Live field order: the full row without name, size and directory.
+    const live = (hash, overrides) => row(hash, overrides).filter((_cell, index) => index !== 1 && index !== 2 && index !== 15);
+    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 0 })];
+    await poller.poll();
+    const startedAt = clock.value;
+    const before = published.length;
+    fake.rows = [live(hashA), live(hashB, { complete: 0, completed: 0 })];
+    clock.value += 1_000;
+    await poller.pollLive();
+    assert.equal(published.length, before);
+
+    fake.rows = [live(hashA, { up: 70 }), live(hashB, { complete: 0, completed: 400, down: 99 }), live(hashC)];
+    for (let second = 0; second < 29; second += 1) {
+      clock.value += 1_000;
+      await poller.pollLive();
+    }
+    const liveEvents = published.slice(before);
+    assert.equal(liveEvents.length, 1);
+    assert.equal(liveEvents[0].data.live, true);
+    assert.deepEqual(liveEvents[0].data.changed.map((torrent) => [torrent.hash, torrent.completedBytes, torrent.upRate]),
+      [[hashA.toUpperCase(), 1000, 70], [hashB, 400, 50]]);
+    const stored = listTorrents(database);
+    assert.equal(stored.length, 2);
+    assert.equal(stored.find((torrent) => torrent.hash === hashB).downRate, 99);
+    assert.equal(stored.every((torrent) => torrent.lastSeenAt === startedAt && torrent.seedingSeconds === 0), true);
+
+    fake.rows = [row(hashA, { up: 70 }), row(hashB, { complete: 0, completed: 400, down: 99 })];
+    await poller.poll();
+    assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).seedingSeconds, 30);
+
+    // While the full poll has rTorrent marked down, the refresh does not call it.
+    fake.fail = 'unreachable';
+    await poller.poll();
+    const calls = fake.calls.length;
+    await poller.pollLive();
+    assert.equal(fake.calls.length, calls);
+    database.close();
+  });
+
   // Re-reading a stored file list, reading more than 20 per poll, or keeping the list of a gone torrent turns this red.
   await t.test('file lists are read once, 20 per poll, and dropped when the torrent is gone', async () => {
     const { database, fake, poller } = setup();
@@ -4398,7 +4544,8 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
   };
 
   // Skipping the read for a new torrent that already has the app's own grab record turns this red: a season grabbed
-  // in the app has no episodes until Sonarr is read, so its episode rows wait for the five-minute check.
+  // in the app has no episodes until Sonarr is read, so its episode rows wait for the five-minute check. Reading on the
+  // one-second refresh's events turns it red too: that would read Sonarr every second for a new torrent's first 30 seconds.
   await t.test('a new torrent from a season grabbed in the app gets its episodes from Sonarr on the next rTorrent poll', async () => {
     const { database, clock, events, fake, tracker } = setup();
     tracker.readOnNewTorrents();
@@ -4410,6 +4557,9 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
       downloadId: packHash.toUpperCase(), seriesId: 4, episodeId, sourceTitle: 'Show.S02.1080p', date: '2026-10-08T11:59:59Z',
     }));
     clock.value += 30_000;
+    events.publish('torrents', { changed: [{ hash: packHash.toUpperCase(), firstSeenAt: clock.value, lastSeenAt: clock.value }], gone: [], live: true });
+    for (let turn = 0; turn < 20; turn += 1) await drain();
+    assert.equal(fake.sonarr.requests.some((request) => request.path === '/api/v3/queue'), false);
     events.publish('torrents', { changed: [{ hash: packHash.toUpperCase(), firstSeenAt: clock.value, lastSeenAt: clock.value }], gone: [] });
     for (let turn = 0; turn < 100 && findGrab(database, packHash).episodeIds.length === 0; turn += 1) await drain();
     assert.deepEqual(findGrab(database, packHash).episodeIds, [41, 42, 43]);
@@ -6877,6 +7027,7 @@ test('operator command stores settings from stdin and checks connections without
   assert.equal(unknownSource.code, 1);
   assert.match(unknownSource.stderr, /must be one of: tmdb, trakt, fanart/);
   assert.equal((await cli(['backdrop', 'source'])).stdout, 'backdrop source: trakt\n');
+  assert.equal((await cli(['cache', 'clear'])).stdout, 'cache cleared\n');
 
   const unconfigured = await cli(['connections', 'check']);
   assert.equal(unconfigured.code, 1, unconfigured.stderr);
@@ -7220,6 +7371,40 @@ test('search, the title page and add for one title ask Sonarr for it once', asyn
   assert.equal((await add.addSeries(371980, choices)).kind, 'added');
   assert.equal(fake.sonarr.requests.filter((request) => request.path === '/api/v3/series/lookup').length, 1);
   assert.deepEqual(fake.sonarr.requests.find((request) => request.method === 'POST').body.seasons, [{ seasonNumber: 1 }]);
+});
+
+// Deleting the Sonarr and Radarr image rows (posters would then never download again), leaving a copied file behind,
+// or clearing anything beyond the fetched-again data (the library, settings, preferences) turns this red.
+test('clearing the cache drops saved details, Discover rows and image copies, and keeps everything else', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { setPreference } = await import(preferencesModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { clearCache } = await import(clearCacheModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-clear-cache-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const images = join(root, 'images');
+  await mkdir(images);
+  for (const file of ['sonarr-7-poster.jpg', 'tmdb-w342-abc.jpg', 'unrelated.txt']) await writeFile(join(images, file), 'x');
+  database.prepare('INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('sonarr', 7, 'Severance', 2022, '{}', 'f', 1);
+  database.prepare('INSERT INTO title_images (service, id, kind, source, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run('sonarr', 7, 'poster', '/poster.jpg', 'image/jpeg', 'e', 'sonarr-7-poster.jpg', 1);
+  database.prepare('INSERT INTO tmdb_images (size, path, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?)').run('w342', 'abc.jpg', 'image/jpeg', 'e', 'tmdb-w342-abc.jpg', 1);
+  database.prepare('INSERT INTO discover_rows (key, json, fetched_at, read_at) VALUES (?, ?, ?, ?)').run('row', '{}', 1, 1);
+  createTitleStore(database).put({ type: 'movie', tmdbId: 129 }, 'traktBackdrop', { url: 'https://media.trakt.tv/x.webp' });
+  setSetting(database, 'credentials', 'tmdb.apiKey', 'key');
+  setPreference(database, 'backdrop.source', 'trakt');
+
+  clearCache(database, images);
+
+  const count = (table) => Number(database.prepare(`SELECT count(*) AS n FROM ${table}`).get().n);
+  assert.deepEqual(['title_store_parts', 'title_store', 'discover_rows', 'tmdb_images'].map(count), [0, 0, 0, 0]);
+  assert.deepEqual(['titles', 'title_images', 'settings', 'preferences'].map((table) => count(table) > 0), [true, true, true, true]);
+  assert.deepEqual(await readdir(images), ['unrelated.txt']);
 });
 
 // Dropping the fanart fallback when the chosen source has no picture, ignoring the backdrop.source preference, asking fanart.tv for a show by anything
@@ -8120,6 +8305,9 @@ test('second version file names are cleaned and episodes read from file names', 
     ['Bluray-1080p', 'Movie.2020.1080p.BluRay-SAMPLE[rarbg]', 'Bluray-1080p'],
     ['Featurette', 'Movie.2020-OTHER', ''],
     ['{edition-x}', 'Movie.2020-GRP', 'edition-x GRP'],
+    ['Bluray-1080p', 'Movie.2020.1080p.BluRay-CLIP', 'Bluray-1080p'],
+    ['WEBDL-1080p', 'Movie.2020.1080p.WEB-DL-Extra', 'WEBDL-1080p'],
+    ['Bluray-2160p', 'Movie.2020.2160p.BluRay-DeletedScene', 'Bluray-2160p'],
   ]) assert.equal(versionSuffix(quality, title), expected, title);
   for (const [name, season, episodes] of [
     ['Andor.S01E02.2160p.mkv', 1, [2]],
@@ -8139,6 +8327,7 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems } = await import(problemsModuleUrl);
   const { createVersionImport, FOLDER_PROBLEM_KIND, IMPORT_PROBLEM_KIND, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
+  const { createPlex } = await import(plexModuleUrl);
   const root = await realpath(await mkdtemp(join(tmpdir(), 'media-manager-2-version-import-')));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -8200,14 +8389,17 @@ test('a finished second version is hardlinked into the versions folder and Plex 
 
   const plexRequests = [];
   let sections = [{ key: '3', type: 'movie', Location: [{ path: join(root, 'versions') }] }];
-  const plex = {
-    request: async (path) => {
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  const plex = createPlex(database, {
+    fetch: async (url) => {
+      const path = String(url).slice('http://plex.test'.length);
       plexRequests.push(path);
-      return { status: 200, body: path === '/library/sections' ? { MediaContainer: { Directory: sections } } : undefined };
+      return new Response(path === '/library/sections' ? JSON.stringify({ MediaContainer: { Directory: sections } }) : '', { status: 200 });
     },
-  };
+  });
   const problems = createProblems({ database, events: createEventHub() });
-  const versionImport = createVersionImport({ database, rtorrent, arr, plex, problems });
+  const versionImport = createVersionImport({ database, rtorrent, arr, mediaServer: () => plex, problems });
 
   // Copying instead of linking, linking an extra or a sample, or recording the event twice on a rerun turns this red.
   const duneHash = 'A1'.repeat(20);
@@ -9344,7 +9536,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       database,
       arr: { sonarr: fake('sonarr'), radarr: fake('radarr') },
       rtorrent: { check: async () => ok },
-      plex: { check: async () => ok },
+      mediaServer: () => ({ name: 'plex', check: async () => ok }),
       tmdb: { check: async () => input.statuses?.tmdb ?? ok },
       mdblist: { check: async () => input.statuses?.mdblist ?? ok },
       jobs: { status: () => input.jobs ?? [] },

@@ -1,6 +1,6 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="design/app-logo/logo-dark-256.png">
+    <source media="(prefers-color-scheme: dark)" srcset="design/app-logo/image-1791912348518.gif">
     <img src="design/app-logo/logo-white-256.png" alt="" width="128" height="128">
   </picture>
 </p>
@@ -114,6 +114,7 @@ node dist/server/cli.js settings delete <category> <key>
 node dist/server/cli.js settings list
 node dist/server/cli.js connections check
 node dist/server/cli.js backdrop source [tmdb | trakt | fanart]   (shows or switches where title page backdrops come from)
+node dist/server/cli.js cache clear   (throws away saved title details, backdrops, Discover rows and copied images; each is fetched again when needed)
 node dist/server/cli.js backup now
 node dist/server/cli.js backup off | on
 node dist/server/cli.js backup list
