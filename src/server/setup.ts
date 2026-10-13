@@ -6,7 +6,7 @@ import { type Context, Hono } from 'hono';
 import { backupKeyFromEnvironment, backupsAreOff, createBackupKeyPair, readBackupKeyPair, setBackupsOff } from './backup.js';
 import { readBackupDestination } from './backupDestination.js';
 import { applicationMigrations, migrateDatabase } from './database.js';
-import { effectiveOwner } from './owner.js';
+import { effectiveOwner, readEnvironmentOwner } from './owner.js';
 import { getPreference, setPreference } from './preferences.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -209,7 +209,8 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
           serverName: owner.serverName ?? '',
           ownerName: owner.userName,
         }
-        : { kind: 'plex' },
+        : { kind: 'plex', ownerName: owner?.userName ?? '' },
+      ownerPinned: readEnvironmentOwner(env.PLEX_OWNER_ID) !== undefined,
       plexSignInTokenAvailable: context.get('plexSignInToken') !== undefined,
       // The access key, the secret and BACKUP_KEY's value never leave the server, and the restore key is never returned here either.
       backup: {

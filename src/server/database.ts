@@ -421,6 +421,8 @@ export const applicationMigrations = [
   INSERT INTO sessions_rebuilt (token_hash, owner_id, expires_at) SELECT token_hash, CAST(owner_id AS TEXT), expires_at FROM sessions;
   DROP TABLE sessions;
   ALTER TABLE sessions_rebuilt RENAME TO sessions;`,
+  // The Jellyfin server's Id from /System/Info/Public, so an address change can be held to the same server.
+  `ALTER TABLE owner ADD COLUMN server_id TEXT;`,
 ] as const;
 
 class DatabaseError extends Error {}

@@ -66,6 +66,9 @@ Set `APP_ORIGIN`; without it nobody can sign in. With no owner yet, the app
 opens on a first-run page where the first person to log in, with Plex or with a
 Jellyfin administrator account, becomes the owner. With `PLEX_OWNER_ID` set
 there is no first-run page: only the Plex account whose ID matches it gets in.
+The owner can switch media server in Settings: connect the other server there,
+then log in with it; that account becomes the owner and the earlier one can no
+longer sign in. With `PLEX_OWNER_ID` set, switching is off.
 
 `APP_ORIGIN` must use HTTPS, except for local development over HTTP on a
 loopback origin with a loopback `HOST` such as `127.0.0.1` or `::1`. It cannot

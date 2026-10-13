@@ -16,6 +16,7 @@ import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
 import { createLibraryRoutes, type Library } from './library.js';
 import { createOwnedRoutes, type Owned } from './owned.js';
+import { effectiveOwner } from './owner.js';
 import { createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
 import { createSearchRoutes, type Search } from './search.js';
@@ -403,10 +404,16 @@ export const createApp = (options: CreateAppOptions) => {
       clearBindingCookie(context);
       return context.json({ error: 'invalid_request' }, 400);
     }
+    const session = readCookie(context.req.header('Cookie'), sessionCookieName);
+    if (session.kind === 'duplicate' || session.kind === 'invalid') {
+      clearSessionCookie(context);
+      return context.json({ error: 'invalid_request' }, 400);
+    }
     const result = await authentication.jellyfinQuickConnectStart(
       body.url as string | undefined,
       binding.kind === 'value' ? binding.value : undefined,
       clientOf(context),
+      session.kind === 'value' ? session.value : undefined,
     );
     if (result.kind !== 'success') return jellyfinRefusal(context, result);
     setCookie(context, bindingCookieName, result.binding, {
@@ -494,7 +501,11 @@ export const createApp = (options: CreateAppOptions) => {
     for (const item of batch) logEvent('web', item);
     return context.body(null, 204);
   });
-  app.get('/api/session', (context) => context.json({ expiresAt: context.get('sessionExpiresAt'), serverNow: now() }));
+  app.get('/api/session', (context) => context.json({
+    expiresAt: context.get('sessionExpiresAt'),
+    serverNow: now(),
+    mediaServer: effectiveOwner(options.database, options.ownerPlexId)?.provider ?? 'plex',
+  }));
   let openStreams = 0;
   app.get('/api/events', (context) => {
     if (context.req.method !== 'GET') return context.json({ error: 'method_not_allowed' }, 405);

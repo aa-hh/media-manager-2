@@ -8,7 +8,7 @@ import {
 } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { DatabaseSync } from 'node:sqlite';
-import { effectiveOwner, readEnvironmentOwner, saveOwner } from './owner.js';
+import { effectiveOwner, readEnvironmentOwner, replaceOwner, saveOwner } from './owner.js';
 import { readSetting } from './services/connection.js';
 import {
   authenticateByName,
@@ -222,6 +222,26 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return { kind: 'success' as const, session, expiresAt };
   };
 
+  // The media-server switch: the current owner, signed in, logs in with the other server. Off while PLEX_OWNER_ID pins the owner.
+  const switching = (suppliedSession: string | undefined) => environmentOwner === undefined
+    && currentOwner() !== undefined
+    && suppliedSession !== undefined
+    && validateSession(suppliedSession).kind === 'success';
+
+  // Swaps the owner and ends every session in one write; the caller then creates the new owner's session.
+  const switchOwner = (owner: Parameters<typeof replaceOwner>[1]) => {
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      replaceOwner(database, owner);
+      database.exec('DELETE FROM sessions;');
+      database.exec('COMMIT;');
+    } catch {
+      database.exec('ROLLBACK;'); // the owner check after the switch refuses
+      return;
+    }
+    plexTokens.clear();
+  };
+
   const requestProvider = (url: string, init: RequestInit) => options.fetch(url, {
     ...init,
     redirect: 'error',
@@ -410,16 +430,15 @@ export const createAuthentication = (options: AuthenticationOptions) => {
       || user.anonymous === true
     ) return terminal('owner_only');
     const userId = String(user.id);
+    const userName = typeof user.username === 'string' && user.username !== '' ? user.username : userId;
     // First run: this account becomes the owner. A failed insert means another sign-in got there first.
     if (currentOwner() === undefined) {
       try {
-        saveOwner(database, {
-          provider: 'plex',
-          userId,
-          userName: typeof user.username === 'string' && user.username !== '' ? user.username : userId,
-          serverName: null,
-        });
+        saveOwner(database, { provider: 'plex', userId, userName, serverName: null, serverId: null });
       } catch { /* the owner check below reads the winner */ }
+    }
+    if (currentOwner()?.provider === 'jellyfin' && switching(suppliedSession)) {
+      switchOwner({ provider: 'plex', userId, userName, serverName: null, serverId: null });
     }
     const owner = currentOwner();
     if (owner?.provider !== 'plex' || owner.userId !== userId) return terminal('owner_only');
@@ -431,14 +450,17 @@ export const createAuthentication = (options: AuthenticationOptions) => {
   };
 
   // The Jellyfin server to sign in against: the typed address during first run, the saved one once a Jellyfin owner
-  // exists, so after first run nobody can point sign-in at a server of their own.
-  const signInServer = (url: string | undefined): { kind: 'ok'; url: string } | { kind: 'invalid_url' | 'owner_exists' | 'unavailable' } => {
+  // exists or a Plex owner switches, so after first run nobody can point sign-in at a server of their own.
+  const signInServer = (
+    url: string | undefined,
+    suppliedSession: string | undefined,
+  ): { kind: 'ok'; url: string } | { kind: 'invalid_url' | 'owner_exists' | 'unavailable' } => {
     const owner = currentOwner();
     if (owner === undefined) {
       const normalized = url === undefined ? undefined : normalizeServerUrl(url);
       return normalized === undefined ? { kind: 'invalid_url' } : { kind: 'ok', url: normalized };
     }
-    if (owner.provider !== 'jellyfin' || url !== undefined) return { kind: 'owner_exists' };
+    if ((owner.provider !== 'jellyfin' && !switching(suppliedSession)) || url !== undefined) return { kind: 'owner_exists' };
     const saved = readSetting(database, 'serviceAddresses', 'jellyfin.url');
     return saved === undefined ? { kind: 'unavailable' } : { kind: 'ok', url: saved.replace(/\/+$/, '') };
   };
@@ -447,21 +469,28 @@ export const createAuthentication = (options: AuthenticationOptions) => {
   const finishJellyfin = async (url: string, user: JellyfinUser, suppliedSession: string | undefined): Promise<JellyfinSignInResult> => {
     let owner = currentOwner();
     let serverName = owner?.serverName ?? undefined;
+    let serverId: string | null = null;
     if (serverName === undefined) {
-      const identified = owner === undefined ? await identify(options.fetch, url) : undefined;
+      // First run, or a Plex owner switching to Jellyfin.
+      const identified = owner === undefined || owner.provider === 'plex' ? await identify(options.fetch, url) : undefined;
       serverName = identified?.kind === 'ok' ? identified.serverName : new URL(url).host;
+      serverId = identified?.kind === 'ok' ? identified.serverId : null;
     }
     if (!user.isAdministrator) return { kind: 'not_administrator', userName: user.userName, serverName };
     if (currentOwner() === undefined) {
       // Owner and locked address land together, or neither does.
       database.exec('BEGIN IMMEDIATE;');
       try {
-        saveOwner(database, { provider: 'jellyfin', userId: user.userId, userName: user.userName, serverName });
+        saveOwner(database, { provider: 'jellyfin', userId: user.userId, userName: user.userName, serverName, serverId });
         setSetting(database, 'serviceAddresses', 'jellyfin.url', url);
         database.exec('COMMIT;');
       } catch {
         database.exec('ROLLBACK;'); // the owner check below reads the winner
       }
+    }
+    // Settings already saved jellyfin.url, so the switch leaves it as it is.
+    if (currentOwner()?.provider === 'plex' && switching(suppliedSession)) {
+      switchOwner({ provider: 'jellyfin', userId: user.userId, userName: user.userName, serverName, serverId });
     }
     owner = currentOwner();
     const savedUrl = readSetting(database, 'serviceAddresses', 'jellyfin.url')?.replace(/\/+$/, '');
@@ -488,7 +517,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     suppliedSession?: string,
   ): Promise<JellyfinSignInResult> => {
     if (configuration === undefined) return { kind: 'not_configured' };
-    const server = signInServer(url);
+    const server = signInServer(url, suppliedSession);
     if (server.kind !== 'ok') return server;
     const limited = admit(client);
     if (limited !== undefined) return limited;
@@ -501,9 +530,10 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     url: string | undefined,
     existingBinding: string | undefined,
     client: string,
+    suppliedSession?: string,
   ): Promise<JellyfinQuickConnectStartResult> => {
     if (configuration === undefined) return { kind: 'not_configured' };
-    const server = signInServer(url);
+    const server = signInServer(url, suppliedSession);
     if (server.kind !== 'ok') return server;
     removeExpiredAttempts();
     const limited = admit(client);

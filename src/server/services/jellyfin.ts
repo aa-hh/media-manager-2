@@ -60,7 +60,8 @@ export const createJellyfin = (database: DatabaseSync, options: ServiceOptions =
     if (result.status < 200 || result.status > 299) return { kind: 'unreachable' };
     const version = isRecord(result.body) ? result.body.Version : undefined;
     if (typeof version !== 'string' || version === '') return { kind: 'unreachable' };
-    return { kind: 'ok', version };
+    const serverName = isRecord(result.body) ? result.body.ServerName : undefined;
+    return typeof serverName === 'string' && serverName !== '' ? { kind: 'ok', version, serverName } : { kind: 'ok', version };
   };
 
   const findLibraryFor = async (folder: string, type: LibraryType): Promise<Library | undefined> => {
@@ -131,7 +132,7 @@ const signInRequest = async (fetchImpl: typeof globalThis.fetch, url: string, pa
 
 const nonEmpty = (value: unknown): value is string => typeof value === 'string' && value !== '';
 
-export type IdentifyResult = { kind: 'ok'; serverName: string } | { kind: 'no_answer' | 'not_jellyfin' };
+export type IdentifyResult = { kind: 'ok'; serverName: string; serverId: string } | { kind: 'no_answer' | 'not_jellyfin' };
 
 export const identify = async (fetchImpl: typeof globalThis.fetch, url: string): Promise<IdentifyResult> => {
   let answer: Answer;
@@ -143,7 +144,7 @@ export const identify = async (fetchImpl: typeof globalThis.fetch, url: string):
   const { status, body } = answer;
   if (status < 200 || status > 299 || !isRecord(body) || !nonEmpty(body.Id) || !nonEmpty(body.Version)) return { kind: 'not_jellyfin' };
   if (typeof body.ProductName !== 'string' || !body.ProductName.toLowerCase().includes('jellyfin')) return { kind: 'not_jellyfin' };
-  return { kind: 'ok', serverName: nonEmpty(body.ServerName) ? body.ServerName : new URL(url).host };
+  return { kind: 'ok', serverName: nonEmpty(body.ServerName) ? body.ServerName : new URL(url).host, serverId: body.Id };
 };
 
 export type JellyfinUser = { userId: string; userName: string; isAdministrator: boolean };
