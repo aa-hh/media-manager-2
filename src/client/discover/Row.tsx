@@ -14,7 +14,6 @@ type RowProps = {
   control?: ReactNode;
   /** Undefined while loading. */
   row: RowData | undefined;
-  size: 'large';
   seeAll?: { label: string; path: string };
   /** Numbers the cards, for Trending. */
   ranked?: boolean;
@@ -40,7 +39,7 @@ const writeScroll = (key: string, left: number) => {
 };
 
 /** One Discover row: heading, arrows, and a strip that scrolls sideways to a See all card. */
-export function Row({ heading, intro, control, row, size, seeAll, ranked = false, upcoming = false, onRetry }: RowProps) {
+export function Row({ heading, intro, control, row, seeAll, ranked = false, upcoming = false, onRetry }: RowProps) {
   const strip = useRef<HTMLUListElement>(null);
   const [ends, setEnds] = useState({ start: true, end: true });
   const restored = useRef(false);
@@ -120,7 +119,7 @@ export function Row({ heading, intro, control, row, size, seeAll, ranked = false
             <ul aria-label={`Loading ${heading}`} className={stripClass}>
               {Array.from({ length: SKELETONS }, (_, index) => (
                 <li key={index} className="shrink-0">
-                  <SkeletonPosterCard className="w-55 [&>:first-child]:h-82.5 [&>:first-child]:w-55" />
+                  <SkeletonPosterCard />
                 </li>
               ))}
             </ul>
@@ -130,7 +129,7 @@ export function Row({ heading, intro, control, row, size, seeAll, ranked = false
           <ul ref={strip} onScroll={measure} className={stripClass}>
             {results.map((result, index) => (
               <li key={`${result.type}:${result.tmdbId}`} className="shrink-0">
-                <Card result={result} rank={ranked ? index + 1 : undefined} upcoming={upcoming} size={size} />
+                <Card result={result} rank={ranked ? index + 1 : undefined} upcoming={upcoming} />
               </li>
             ))}
             {seeAll !== undefined && (

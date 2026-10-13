@@ -90,7 +90,7 @@ const PosterCard = memo(function PosterCard({ title, fields, live, downloading }
   ].filter((fact) => fact !== '');
   const path = `/${title.tv === null ? 'movie' : 'series'}/${title.id}`;
   return (
-    <li className="[contain-intrinsic-size:auto_var(--poster-width)_auto_280px] [content-visibility:auto]">
+    <li className="[contain-intrinsic-size:auto_var(--poster-width)_auto_384px] [content-visibility:auto]">
       <LibraryPosterCard
         href={path}
         onClick={openLink(path)}

@@ -225,11 +225,11 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
             <li
               key={`${result.type}:${result.tmdbId}`}
               className={cn(
-                '[contain-intrinsic-size:auto_var(--poster-width)_auto_330px] [content-visibility:auto]',
+                '[contain-intrinsic-size:auto_var(--poster-width)_auto_436px] [content-visibility:auto]',
                 index >= (firstCount.current ?? Infinity) && 'animate-content-in',
               )}
             >
-              <Card result={result} upcoming={state.sort === 'upcoming' && kind !== 'trending'} size="default" />
+              <Card result={result} upcoming={state.sort === 'upcoming' && kind !== 'trending'} />
             </li>
           ))}
           {loading && Array.from({ length: SKELETONS }, (_, index) => (
