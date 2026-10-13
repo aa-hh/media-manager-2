@@ -7,10 +7,11 @@ import { FieldLabelled } from '@/components/ui/field-labelled';
 import { InputSearch } from '@/components/ui/input-search';
 import { Logo } from '@/components/ui/logo';
 import { StatusServicePill } from '@/components/ui/status-service-pill';
+import { PRODUCT_NAME } from '@/productName';
 import type { SetupStatus } from './setup';
 import type { TrackerRequest } from './TrackerEditor';
 
-const noAnswer = 'media-manager-2 did not answer. Try again.';
+const noAnswer = `${PRODUCT_NAME} did not answer. Try again.`;
 // The service pill's own logo and name are off here: its first two children are hidden, the dot stays.
 const pillOnly = '[&>span:nth-child(-n+2)]:hidden';
 
@@ -70,7 +71,7 @@ export function JellyfinEditor({ status, connected, request, wizard, onSaved }: 
       <FieldLabelled
         label="API key"
         error={error}
-        help="Create one in Jellyfin under Dashboard > API Keys. media-manager-2 uses it to check the server and scan new folders."
+        help={`Create one in Jellyfin under Dashboard > API Keys. ${PRODUCT_NAME} uses it to check the server and scan new folders.`}
       >
         <InputSearch
           variant="field"

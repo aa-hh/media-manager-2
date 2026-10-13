@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SignInBlock } from './components/ui/sign-in-block';
-import { FirstRun } from './FirstRun';
+import { FirstRun, JellyfinSignIn } from './FirstRun';
 import {
   POLL_INTERVAL_MS,
   POPUP_FEATURES,
@@ -78,6 +78,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
   const [plexInWindow, setPlexInWindow] = useState(false);
   const [succeeded, setSucceeded] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
+  const [jellyfinOwner, setJellyfinOwner] = useState(false);
   const successTimerRef = useRef<number | undefined>(undefined);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const planetRef = useRef<ReturnType<typeof createPlanet>>(undefined);
@@ -253,6 +254,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
       const body = await readJson(response);
       if (!isCurrent(request.version)) return;
       setFirstRun(body.firstRun === true);
+      setJellyfinOwner(body.provider === 'jellyfin');
       if (response.status !== 200) {
         setAnnouncement('Plex sign-in is unavailable. Try again.');
         setView('unavailable');
@@ -381,6 +383,12 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
           plexBusy={busy}
           plexLine={line}
           onPlexSignIn={() => void startSignIn()}
+          onSignedIn={succeed}
+          className="fixed right-6 bottom-[83px] left-6 sm:right-auto sm:bottom-[120px] sm:left-[120px] sm:w-100"
+        />
+      ) : jellyfinOwner ? (
+        <JellyfinSignIn
+          headingRef={headingRef}
           onSignedIn={succeed}
           className="fixed right-6 bottom-[83px] left-6 sm:right-auto sm:bottom-[120px] sm:left-[120px] sm:w-100"
         />

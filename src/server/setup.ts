@@ -6,7 +6,7 @@ import { type Context, Hono } from 'hono';
 import { backupKeyFromEnvironment, backupsAreOff, createBackupKeyPair, readBackupKeyPair, setBackupsOff } from './backup.js';
 import { readBackupDestination } from './backupDestination.js';
 import { applicationMigrations, migrateDatabase } from './database.js';
-import { readOwner } from './owner.js';
+import { effectiveOwner } from './owner.js';
 import { getPreference, setPreference } from './preferences.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
@@ -156,7 +156,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
 
   routes.get('/', (context) => {
     // The media server step follows the owner's first-run choice: a Jellyfin owner needs an API key, anyone else Plex.
-    const owner = readOwner(database);
+    const owner = effectiveOwner(database, env.PLEX_OWNER_ID);
     const jellyfinOwner = owner?.provider === 'jellyfin';
     const required = {
       sonarr: done(requiredKeys.sonarr.every(([category, key]) => isSet(category, key))),
@@ -371,7 +371,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   routes.post('/jellyfin', async (context) => {
     const body = await readBody(context);
     if (!hasExactly(body, ['apiKey']) || typeof body.apiKey !== 'string' || body.apiKey === '') return context.json({ error: 'invalid_request' }, 400);
-    if (readOwner(database)?.provider !== 'jellyfin') return context.json({ error: 'not_jellyfin_owner' }, 409);
+    if (effectiveOwner(database, env.PLEX_OWNER_ID)?.provider !== 'jellyfin') return context.json({ error: 'not_jellyfin_owner' }, 409);
     const scratch = new DatabaseSync(':memory:');
     try {
       migrateDatabase(scratch, applicationMigrations);

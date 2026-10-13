@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { readOwner } from '../owner.js';
+import { effectiveOwner } from '../owner.js';
 import type { ConnectionStatus, ServiceOptions } from './connection.js';
 import { createJellyfin } from './jellyfin.js';
 import { createPlex } from './plex.js';
@@ -19,9 +19,9 @@ export type MediaServer = {
 };
 
 // One media server per install: Jellyfin when the owner signed in with Jellyfin, else Plex. Picked on every call, so the
-// first-run sign-in needs no restart.
-export const createMediaServer = (database: DatabaseSync, options: ServiceOptions = {}) => {
+// first-run sign-in needs no restart. ownerPlexId is PLEX_OWNER_ID, which outranks the owner row.
+export const createMediaServer = (database: DatabaseSync, { ownerPlexId, ...options }: ServiceOptions & { ownerPlexId?: string } = {}) => {
   const plex = createPlex(database, options);
   const jellyfin = createJellyfin(database, options);
-  return (): MediaServer => (readOwner(database)?.provider === 'jellyfin' ? jellyfin : plex);
+  return (): MediaServer => (effectiveOwner(database, ownerPlexId)?.provider === 'jellyfin' ? jellyfin : plex);
 };

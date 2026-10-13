@@ -8,7 +8,7 @@ import {
 } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { DatabaseSync } from 'node:sqlite';
-import { type Owner, readOwner, saveOwner } from './owner.js';
+import { effectiveOwner, readEnvironmentOwner, saveOwner } from './owner.js';
 import { readSetting } from './services/connection.js';
 import {
   authenticateByName,
@@ -116,14 +116,6 @@ export const isLoopback = (host: string) => {
     || (isIP(normalized) === 4 && normalized.startsWith('127.'));
 };
 
-// PLEX_OWNER_ID, when valid, pins the owner and outranks the owner row.
-const readEnvironmentOwner = (ownerPlexId: string | undefined): Owner | undefined => {
-  if (ownerPlexId === undefined || !/^[1-9]\d*$/.test(ownerPlexId)) return undefined;
-  const ownerId = Number(ownerPlexId);
-  if (!Number.isSafeInteger(ownerId) || ownerId <= 0 || String(ownerId) !== ownerPlexId) return undefined;
-  return { provider: 'plex', userId: String(ownerId), userName: '', serverName: null };
-};
-
 const readConfiguration = (publicOrigin: string | undefined, listeningHost: string): Configuration | undefined => {
   if (publicOrigin === undefined) return undefined;
   let parsed: URL;
@@ -193,8 +185,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
   const attempts = new Map<string, Attempt>();
   const quickConnects = new Map<string, QuickConnectAttempt>();
   const { database } = options;
-  // Read on every call, so the first sign-in's owner row takes effect at once.
-  const currentOwner = () => environmentOwner ?? readOwner(database);
+  const currentOwner = () => effectiveOwner(database, options.ownerPlexId);
   // The owner's Plex account token from sign-in, by session hash. Kept out of the database (and so out of backups);
   // a restart drops it and setup's Plex step falls back to a pasted token.
   const plexTokens = new Map<string, string>();

@@ -34,7 +34,7 @@ const readStdin = async () => {
 };
 
 const checkConnections = async (database: DatabaseSync) => {
-  const mediaServer = createMediaServer(database)();
+  const mediaServer = createMediaServer(database, { ownerPlexId: process.env.PLEX_OWNER_ID })();
   const services = [
     ['sonarr', createArr('sonarr', database)],
     ['radarr', createArr('radarr', database)],

@@ -1233,6 +1233,22 @@ test('Plex owner authentication', async (t) => {
     assert.deepEqual([...new Set(jellyfin.signInAuthorizations)], [JELLYFIN_SIGN_IN]);
   });
 
+  // Dropping the admit call from the Jellyfin password sign-in, so a client can try passwords without limit, turns this red.
+  await t.test('the Jellyfin password sign-in admits ten tries per client a minute', async () => {
+    const jellyfin = createJellyfinFixture();
+    const { app, clock } = await makeApp({ ownerPlexId: undefined, fetch: jellyfin.fetch });
+    const attempt = () => app.request('/auth/jellyfin/password', {
+      method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ url: 'http://jellyfin.test:8096', username: 'admin', password: 'wrong' }),
+    });
+    for (let index = 0; index < 10; index += 1) assert.equal((await attempt()).status, 401);
+    const limited = await attempt();
+    assert.equal(limited.status, 429);
+    assert.deepEqual(await limited.json(), { error: 'rate_limited' });
+    assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+    clock.value += 60_000;
+    assert.equal((await attempt()).status, 401);
+  });
+
   // Counting a Jellyfin owner's media server done before its key is saved, saving a key Jellyfin refused, or giving a Plex owner
   // the Jellyfin step turns this red.
   await t.test('the setup wizard\'s media server step follows the owner\'s provider', async () => {
@@ -1280,6 +1296,25 @@ test('Plex owner authentication', async (t) => {
     setSetting(plex.database, 'serviceAddresses', 'plex.url', 'http://plex.test:32400');
     setSetting(plex.database, 'credentials', 'plex.token', 'token');
     assert.equal((await plexStatus()).required.mediaServer, 'done');
+  });
+
+  // Reading the owner row instead of letting a valid PLEX_OWNER_ID outrank it, in the media server pick or the setup wizard,
+  // turns this red.
+  await t.test('PLEX_OWNER_ID outranks a Jellyfin owner row for the media server and the setup wizard', async () => {
+    const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+    const { saveOwner } = await import(ownerModuleUrl);
+    const { createMediaServer } = await import(mediaServerModuleUrl);
+    const { createSetupRoutes } = await import(setupModuleUrl);
+    const database = new DatabaseSync(':memory:');
+    migrateDatabase(database, applicationMigrations);
+    saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home' });
+    assert.equal(createMediaServer(database)().name, 'jellyfin');
+    assert.equal(createMediaServer(database, { ownerPlexId: '42' })().name, 'plex');
+    const setup = createSetupRoutes({ database, arr: {}, rtorrent: {}, trackers: {}, env: { PLEX_OWNER_ID: '42' } });
+    const { app } = await makeApp({ database, setup });
+    const { session } = await signIn(app);
+    const status = await (await app.request('/api/setup', { headers: { Cookie: session } })).json();
+    assert.deepEqual(status.mediaServer, { kind: 'plex' });
   });
 });
 
@@ -4066,8 +4101,9 @@ test('the Blutopia token moves to the blutopia.cc tracker and the Beyond-HD and 
   assert.deepEqual(migrate([['credentials', 'blutopia.apiToken', '']]), []);
 });
 
-// Rebuilding sessions without dropping the old rows, or keeping owner_id an integer column that refuses a Jellyfin GUID, turns this red.
-test('the sessions rebuild drops old sessions once and takes a text owner ID', async () => {
+// Dropping the old rows in the sessions rebuild instead of copying them with a text owner ID, or keeping owner_id an integer
+// column that refuses a Jellyfin GUID, turns this red.
+test('the sessions rebuild keeps old sessions with a text owner ID and takes a Jellyfin GUID', async () => {
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const rebuild = applicationMigrations.findIndex((migration) => migration.includes('DROP TABLE sessions'));
   assert.ok(rebuild > 0);
@@ -4075,7 +4111,7 @@ test('the sessions rebuild drops old sessions once and takes a text owner ID', a
   migrateDatabase(database, applicationMigrations.slice(0, rebuild));
   database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('old', 42, 1);
   migrateDatabase(database, applicationMigrations);
-  assert.equal(database.prepare('SELECT count(*) AS count FROM sessions').get().count, 0);
+  assert.deepEqual({ ...database.prepare('SELECT token_hash, owner_id, expires_at FROM sessions').get() }, { token_hash: 'old', owner_id: '42', expires_at: 1 });
   database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('new', 'b5a4e0c2-guid', 1);
   database.close();
 });

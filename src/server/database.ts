@@ -405,13 +405,16 @@ export const applicationMigrations = [
     user_name TEXT NOT NULL,
     server_name TEXT
   ) STRICT;`,
-  // owner_id is text because a Jellyfin user ID is a GUID. Existing sessions are dropped once, so an upgrade signs the owner out.
-  `DROP TABLE sessions;
-  CREATE TABLE sessions (
+  // owner_id is text because a Jellyfin user ID is a GUID. Existing rows are copied with their Plex ID as text, which
+  // matches String(PLEX_OWNER_ID), so an upgrade keeps the owner signed in.
+  `CREATE TABLE sessions_rebuilt (
     token_hash TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL,
     expires_at INTEGER NOT NULL
-  ) STRICT;`,
+  ) STRICT;
+  INSERT INTO sessions_rebuilt (token_hash, owner_id, expires_at) SELECT token_hash, CAST(owner_id AS TEXT), expires_at FROM sessions;
+  DROP TABLE sessions;
+  ALTER TABLE sessions_rebuilt RENAME TO sessions;`,
 ] as const;
 
 class DatabaseError extends Error {}

@@ -31,6 +31,7 @@ const isAbort = (error: unknown) => error instanceof DOMException && error.name 
 
 const JELLYFIN_NO_ANSWER = 'Jellyfin didn’t answer. Try again.';
 const TOO_MANY_TRIES = 'Too many tries. Wait a minute, then try again.';
+const ONLY_OWNER = 'Only the owner’s Jellyfin account can open this app.';
 
 /** The sentence for a failed Jellyfin login, or 'reload' when an owner now exists. */
 const loginFailure = (status: number, body: Record<string, unknown>, password: boolean): string => {
@@ -38,6 +39,7 @@ const loginFailure = (status: number, body: Record<string, unknown>, password: b
   if (status === 403 && body.error === 'not_administrator') {
     return `You logged in as ${String(body.userName)}, who isn’t an administrator on “${String(body.serverName)}”. Log in with an administrator account. You’re still signed out.`;
   }
+  if (status === 403 && body.error === 'owner_only') return ONLY_OWNER;
   if (status === 409) return 'reload';
   if (status === 429) return TOO_MANY_TRIES;
   return JELLYFIN_NO_ANSWER;
@@ -74,31 +76,17 @@ function PickRow({ logo, title, line, onClick }: { logo: 'plex' | 'jellyfin'; ti
   );
 }
 
-/** The page shown while the install has no owner: pick Plex or Jellyfin, then log in. */
-export function FirstRun({ headingRef, plexBusy, plexLine, onPlexSignIn, onSignedIn, className }: FirstRunProps) {
-  const [step, setStep] = useState<Step>('pick');
-  const [address, setAddress] = useState('');
-  const [checked, setChecked] = useState<{ url: string; serverName: string } | undefined>(undefined);
+/** The Quick Connect button and the username-and-password form. With no url the server uses the owner's saved, locked address. */
+function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expiresAt: number) => void }) {
   const [error, setError] = useState<string | undefined>(undefined);
   const [quickConnect, setQuickConnect] = useState<{ code: string; expiresAt: number } | undefined>(undefined);
   const [usePassword, setUsePassword] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [checking, setChecking] = useState(false);
   const [quickConnectBusy, setQuickConnectBusy] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const controllerRef = useRef<AbortController | undefined>(undefined);
   const pollRef = useRef<number | undefined>(undefined);
-
-  const stopWork = () => {
-    controllerRef.current?.abort();
-    controllerRef.current = undefined;
-    window.clearTimeout(pollRef.current);
-    pollRef.current = undefined;
-    setChecking(false);
-    setQuickConnectBusy(false);
-    setPasswordBusy(false);
-  };
 
   const post = (path: string, payload: object) => {
     controllerRef.current?.abort();
@@ -120,15 +108,148 @@ export function FirstRun({ headingRef, plexBusy, plexLine, onPlexSignIn, onSigne
     setError(message);
   };
 
+  // The server's flow_expired answer ends polling; a browser clock can drift from the server's.
+  const pollQuickConnect = () => {
+    pollRef.current = window.setTimeout(async () => {
+      pollRef.current = undefined;
+      try {
+        const response = await post('/auth/jellyfin/quick-connect/complete', {});
+        const answer = await readBody(response);
+        if (response.status === 202 || (response.status === 409 && answer.error === 'in_progress')) {
+          pollQuickConnect();
+          return;
+        }
+        setQuickConnect(undefined);
+        setQuickConnectBusy(false);
+        if (response.status === 200 && typeof answer.expiresAt === 'number') {
+          onSignedIn(answer.expiresAt);
+          return;
+        }
+        showFailure(loginFailure(response.status, answer, false));
+      } catch (failure) {
+        if (isAbort(failure)) return;
+        setQuickConnect(undefined);
+        setQuickConnectBusy(false);
+        setError(JELLYFIN_NO_ANSWER);
+      }
+    }, POLL_INTERVAL_MS);
+  };
+
+  const startQuickConnect = async () => {
+    window.clearTimeout(pollRef.current);
+    setError(undefined);
+    setQuickConnect(undefined);
+    setQuickConnectBusy(true);
+    setPasswordBusy(false);
+    try {
+      const response = await post('/auth/jellyfin/quick-connect', url === undefined ? {} : { url });
+      const answer = await readBody(response);
+      if (response.status === 201 && typeof answer.code === 'string' && typeof answer.expiresAt === 'number') {
+        setQuickConnect({ code: answer.code, expiresAt: answer.expiresAt });
+        pollQuickConnect();
+        return;
+      }
+      setQuickConnectBusy(false);
+      if (response.status === 409 && answer.error === 'quick_connect_off') {
+        setError('Quick Connect is off on this server. Log in with username and password.');
+      } else {
+        showFailure(loginFailure(response.status, answer, false));
+      }
+    } catch (failure) {
+      if (isAbort(failure)) return;
+      setQuickConnectBusy(false);
+      setError(JELLYFIN_NO_ANSWER);
+    }
+  };
+
+  const passwordLogin = async (event: FormEvent) => {
+    event.preventDefault();
+    window.clearTimeout(pollRef.current);
+    setQuickConnect(undefined);
+    setQuickConnectBusy(false);
+    setError(undefined);
+    setPasswordBusy(true);
+    try {
+      const response = await post('/auth/jellyfin/password', url === undefined ? { username, password } : { url, username, password });
+      const answer = await readBody(response);
+      setPasswordBusy(false);
+      if (response.status === 200 && typeof answer.expiresAt === 'number') {
+        onSignedIn(answer.expiresAt);
+        return;
+      }
+      showFailure(loginFailure(response.status, answer, true));
+    } catch (failure) {
+      if (isAbort(failure)) return;
+      setPasswordBusy(false);
+      setError(JELLYFIN_NO_ANSWER);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex flex-col gap-3">
+        <Button variant="jellyfin" size="large" loading={quickConnectBusy} onClick={() => void startQuickConnect()} className="self-start">
+          <span className="inline-flex items-center gap-2">
+            <Logo name="jellyfin-black" alt="" className="size-4" />
+            Log in with Jellyfin
+          </span>
+        </Button>
+        {quickConnect !== undefined && (
+          <p className={body}>Enter code <strong className="font-semibold text-[#ece9e1]">{quickConnect.code}</strong> in Jellyfin, under your user menu &gt; Quick Connect.</p>
+        )}
+      </div>
+      {usePassword ? (
+        <form className="flex flex-col gap-4" onSubmit={(event) => void passwordLogin(event)}>
+          <label className={label}>
+            Username
+            <input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} className={input} />
+          </label>
+          <label className={label}>
+            Password
+            <input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={input} />
+          </label>
+          <Button type="submit" variant="jellyfin" size="large" loading={passwordBusy} className="self-start">Log in</Button>
+        </form>
+      ) : (
+        <button type="button" onClick={() => setUsePassword(true)} className={link}>Log in with username and password</button>
+      )}
+      {error !== undefined && <p className={errorText}>{error}</p>}
+    </>
+  );
+}
+
+/** The sign-in page once a Jellyfin owner exists: the owner logs in again against the saved server. */
+export function JellyfinSignIn({ headingRef, onSignedIn, className }: { headingRef?: Ref<HTMLHeadingElement>; onSignedIn: (expiresAt: number) => void; className?: string }) {
+  return (
+    <div className={cn('flex flex-col gap-6', className)}>
+      <h1 ref={headingRef} tabIndex={-1} className="outline-none font-ui text-4xl leading-[1.15] font-extrabold tracking-[-0.5px] text-[#ece9e1]">{PRODUCT_NAME}</h1>
+      <div className="flex flex-col gap-2">
+        <p className={body}>{ONLY_OWNER}</p>
+        <p className={body}>You’ll approve the sign-in from a Jellyfin app where you’re already signed in.</p>
+      </div>
+      <JellyfinLogin onSignedIn={onSignedIn} />
+    </div>
+  );
+}
+
+/** The page shown while the install has no owner: pick Plex or Jellyfin, then log in. */
+export function FirstRun({ headingRef, plexBusy, plexLine, onPlexSignIn, onSignedIn, className }: FirstRunProps) {
+  const [step, setStep] = useState<Step>('pick');
+  const [address, setAddress] = useState('');
+  const [checked, setChecked] = useState<{ url: string; serverName: string } | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [checking, setChecking] = useState(false);
+  const controllerRef = useRef<AbortController | undefined>(undefined);
+
+  useEffect(() => () => controllerRef.current?.abort(), []);
+
   const backTo = (target: Step) => {
-    stopWork();
+    controllerRef.current?.abort();
+    controllerRef.current = undefined;
+    setChecking(false);
     setStep(target);
     setChecked(undefined);
     setError(undefined);
-    setQuickConnect(undefined);
-    setUsePassword(false);
-    setUsername('');
-    setPassword('');
     if (target === 'pick') setAddress('');
   };
 
@@ -137,7 +258,10 @@ export function FirstRun({ headingRef, plexBusy, plexLine, onPlexSignIn, onSigne
     setError(undefined);
     setChecking(true);
     try {
-      const response = await post('/auth/jellyfin/check', { url: address.trim() });
+      controllerRef.current?.abort();
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      const response = await browserPost('/auth/jellyfin/check', { url: address.trim() }, controller.signal);
       const answer = await readBody(response);
       setChecking(false);
       if (response.status === 200 && answer.kind === 'ok' && typeof answer.url === 'string' && typeof answer.serverName === 'string') {
@@ -158,89 +282,6 @@ export function FirstRun({ headingRef, plexBusy, plexLine, onPlexSignIn, onSigne
       if (isAbort(failure)) return;
       setChecking(false);
       setError(`${PRODUCT_NAME} didn’t answer. Try again.`);
-    }
-  };
-
-  const pollQuickConnect = (expiresAt: number) => {
-    pollRef.current = window.setTimeout(async () => {
-      pollRef.current = undefined;
-      if (Date.now() >= expiresAt) {
-        setQuickConnect(undefined);
-        setQuickConnectBusy(false);
-        setError(JELLYFIN_NO_ANSWER);
-        return;
-      }
-      try {
-        const response = await post('/auth/jellyfin/quick-connect/complete', {});
-        const answer = await readBody(response);
-        if (response.status === 202 || (response.status === 409 && answer.error === 'in_progress')) {
-          pollQuickConnect(expiresAt);
-          return;
-        }
-        setQuickConnect(undefined);
-        setQuickConnectBusy(false);
-        if (response.status === 200 && typeof answer.expiresAt === 'number') {
-          onSignedIn(answer.expiresAt);
-          return;
-        }
-        showFailure(loginFailure(response.status, answer, false));
-      } catch (failure) {
-        if (isAbort(failure)) return;
-        setQuickConnect(undefined);
-        setQuickConnectBusy(false);
-        setError(JELLYFIN_NO_ANSWER);
-      }
-    }, POLL_INTERVAL_MS);
-  };
-
-  const startQuickConnect = async () => {
-    if (checked === undefined) return;
-    window.clearTimeout(pollRef.current);
-    setError(undefined);
-    setQuickConnect(undefined);
-    setQuickConnectBusy(true);
-    try {
-      const response = await post('/auth/jellyfin/quick-connect', { url: checked.url });
-      const answer = await readBody(response);
-      if (response.status === 201 && typeof answer.code === 'string' && typeof answer.expiresAt === 'number') {
-        setQuickConnect({ code: answer.code, expiresAt: answer.expiresAt });
-        pollQuickConnect(answer.expiresAt);
-        return;
-      }
-      setQuickConnectBusy(false);
-      if (response.status === 409 && answer.error === 'quick_connect_off') {
-        setError('Quick Connect is off on this server. Log in with username and password.');
-      } else {
-        showFailure(loginFailure(response.status, answer, false));
-      }
-    } catch (failure) {
-      if (isAbort(failure)) return;
-      setQuickConnectBusy(false);
-      setError(JELLYFIN_NO_ANSWER);
-    }
-  };
-
-  const passwordLogin = async (event: FormEvent) => {
-    event.preventDefault();
-    if (checked === undefined) return;
-    window.clearTimeout(pollRef.current);
-    setQuickConnect(undefined);
-    setQuickConnectBusy(false);
-    setError(undefined);
-    setPasswordBusy(true);
-    try {
-      const response = await post('/auth/jellyfin/password', { url: checked.url, username, password });
-      const answer = await readBody(response);
-      setPasswordBusy(false);
-      if (response.status === 200 && typeof answer.expiresAt === 'number') {
-        onSignedIn(answer.expiresAt);
-        return;
-      }
-      showFailure(loginFailure(response.status, answer, true));
-    } catch (failure) {
-      if (isAbort(failure)) return;
-      setPasswordBusy(false);
-      setError(JELLYFIN_NO_ANSWER);
     }
   };
 
@@ -323,33 +364,7 @@ export function FirstRun({ headingRef, plexBusy, plexLine, onPlexSignIn, onSigne
             <p className={body}>Use a Jellyfin administrator account. The first administrator to log in becomes this app’s owner.</p>
             <p className={body}>Then the server address locks: only the owner can change it.</p>
           </div>
-          <div className="flex flex-col gap-3">
-            <Button variant="jellyfin" size="large" loading={quickConnectBusy} onClick={() => void startQuickConnect()} className="self-start">
-              <span className="inline-flex items-center gap-2">
-                <Logo name="jellyfin-black" alt="" className="size-4" />
-                Log in with Jellyfin
-              </span>
-            </Button>
-            {quickConnect !== undefined && (
-              <p className={body}>Enter code <strong className="font-semibold text-[#ece9e1]">{quickConnect.code}</strong> in Jellyfin, under your user menu &gt; Quick Connect.</p>
-            )}
-          </div>
-          {usePassword ? (
-            <form className="flex flex-col gap-4" onSubmit={(event) => void passwordLogin(event)}>
-              <label className={label}>
-                Username
-                <input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} className={input} />
-              </label>
-              <label className={label}>
-                Password
-                <input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={input} />
-              </label>
-              <Button type="submit" variant="jellyfin" size="large" loading={passwordBusy} className="self-start">Log in</Button>
-            </form>
-          ) : (
-            <button type="button" onClick={() => setUsePassword(true)} className={link}>Log in with username and password</button>
-          )}
-          {error !== undefined && <p className={errorText}>{error}</p>}
+          <JellyfinLogin url={checked.url} onSignedIn={onSignedIn} />
         </div>
       )}
     </div>
