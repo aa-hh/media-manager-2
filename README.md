@@ -1,6 +1,6 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="design/app-logo/logo-dark-256.png">
+    <source media="(prefers-color-scheme: dark)" srcset="design/app-logo/image-1791912348518.gif">
     <img src="design/app-logo/logo-white-256.png" alt="" width="128" height="128">
   </picture>
 </p>
