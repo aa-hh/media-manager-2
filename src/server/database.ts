@@ -401,6 +401,8 @@ export const applicationMigrations = [
   `ALTER TABLE second_versions ADD COLUMN merge_tries INTEGER NOT NULL DEFAULT 0;`,
   // The tracked file's path as Radarr or Sonarr last reported it; a change means a rename or upgrade, which splits a Jellyfin merge.
   `ALTER TABLE second_versions ADD COLUMN tracked_path TEXT;`,
+  // When Radarr or Sonarr was last asked for the tracked path, so merged rows are checked for a rename once an hour.
+  `ALTER TABLE second_versions ADD COLUMN merge_checked_at INTEGER;`,
 ] as const;
 
 class DatabaseError extends Error {}

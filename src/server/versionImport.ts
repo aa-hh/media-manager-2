@@ -5,6 +5,7 @@ import { findOpenProblem, type createProblems, type Subject } from './problems.j
 import type { FailureCode } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { JellyfinKeyRefused } from './services/jellyfin.js';
 import type { Library, MediaServer } from './services/mediaServer.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import { listTorrents } from './torrents.js';
@@ -37,6 +38,8 @@ class FolderError extends Error {}
 
 // Jellyfin scans after a delay and confirms nothing, so a merge is retried on later runs (30 seconds apart) up to this many times.
 export const MERGE_TRIES = 20;
+// How often a merged row, or one past MERGE_TRIES, is checked for a rename of the tracked file.
+const MERGED_CHECK_MS = 60 * 60 * 1000;
 const VIDEO_EXTENSIONS = new Set(['.mkv', '.mp4', '.avi', '.m2ts', '.ts']);
 // Plex or Jellyfin files a name ending in one of these after a separator as an extra, never as a version.
 const EXTRAS_WORDS = ['behindthescenes', 'deleted', 'featurette', 'interview', 'scene', 'short', 'trailer', 'other', 'sample', 'clip', 'extra', 'deletedscene'];
@@ -348,13 +351,19 @@ export const createVersionImport = (options: {
   // again. A file replaced under the same path keeps its Jellyfin item and its merge, so the path alone is enough.
   // razor: a scan that runs while the tracked file is gone, before its replacement lands under the same path, hides the
   // version until the next rename; looking the version up by its stored Jellyfin item id is the upgrade if that shows up.
-  // razor: asks Radarr or Sonarr about every imported version on every run; checking merged rows less often is the upgrade if that gets slow.
+  // Rows past MERGE_TRIES are only watched for a rename, so they are checked once an hour, and a series' episodes are
+  // fetched once per run.
+  // razor: still one Radarr or Sonarr request per merged row per hour; reacting to their rename and upgrade events
+  // instead of asking is the upgrade if that gets slow.
   const mergeVersions = async () => {
     const server = mediaServer();
     if (server.mergeVersions === undefined) return;
-    const imported = database.prepare("SELECT id, service, movie_id, series_id, episode_id, file_path, merge_tries, tracked_path FROM second_versions WHERE state = 'imported' ORDER BY id").all();
+    const at = now();
+    const imported = database.prepare("SELECT id, service, movie_id, series_id, episode_id, file_path, merge_tries, tracked_path, merge_checked_at FROM second_versions WHERE state = 'imported' ORDER BY id").all();
+    const episodesBySeries = new Map<number, ReturnType<typeof arr.sonarr.episodes>>();
     for (const row of imported) {
       let tries = Number(row.merge_tries);
+      if (tries >= MERGE_TRIES && row.merge_checked_at !== null && at - Number(row.merge_checked_at) < MERGED_CHECK_MS) continue;
       try {
         let tracked: string | null | undefined;
         let season: number | undefined;
@@ -363,12 +372,15 @@ export const createVersionImport = (options: {
           if (movie.kind !== 'ok' && movie.kind !== 'not_found') continue;
           tracked = movie.kind === 'ok' ? movie.value.file?.path : undefined;
         } else {
-          const episodes = await arr.sonarr.episodes(Number(row.series_id), { withFiles: true });
+          const seriesId = Number(row.series_id);
+          if (!episodesBySeries.has(seriesId)) episodesBySeries.set(seriesId, arr.sonarr.episodes(seriesId, { withFiles: true }));
+          const episodes = await episodesBySeries.get(seriesId)!;
           if (episodes.kind !== 'ok' && episodes.kind !== 'not_found') continue;
           const episode = episodes.kind === 'ok' ? episodes.value.find((item) => item.id === Number(row.episode_id)) : undefined;
           tracked = episode?.file?.path;
           season = episode?.seasonNumber;
         }
+        database.prepare('UPDATE second_versions SET merge_checked_at = ? WHERE id = ?').run(at, row.id);
         if (typeof tracked === 'string' && tracked !== row.tracked_path) {
           // The first path seen is only recorded, so rows imported before this column existed are not merged again.
           if (row.tracked_path !== null) tries = 0;
@@ -377,8 +389,10 @@ export const createVersionImport = (options: {
         if (tries >= MERGE_TRIES) continue;
         const merged = typeof tracked === 'string' && await server.mergeVersions(row.service === 'radarr' ? 'movie' : 'show', tracked, String(row.file_path), season);
         database.prepare('UPDATE second_versions SET merge_tries = ? WHERE id = ?').run(merged ? MERGE_TRIES : tries + 1, row.id);
-      } catch {
-        // Jellyfin or Radarr/Sonarr unreachable, Jellyfin answering 5xx or refusing the key: no try spent.
+      } catch (error) {
+        // A refused key refuses every row, so the rest wait for the next run; the health check reports the key.
+        if (error instanceof JellyfinKeyRefused) return;
+        // Jellyfin or Radarr/Sonarr unreachable, or Jellyfin answering 5xx: no try spent.
       }
     }
   };
