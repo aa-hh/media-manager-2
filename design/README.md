@@ -4,7 +4,7 @@ The pen.dev design files live outside the repo, in `~/Projects/media-manager-2-d
 
 Light mode, desktop first. Open and edit the `.pen` files in pen.dev; never edit a `.pen` file by hand.
 
-When the owner approves a design that changed the library, run `/approve-design` (`.claude/skills/approve-design/`): it brings `DESIGN.md` and `src/client/components/ui/` in line with the library before anything else happens.
+Before building a design that changed the library, run `/approve-design` (`.claude/skills/approve-design/`): it brings `DESIGN.md` and `src/client/components/ui/` in line with the library before anything else happens.
 
 | File | What it holds |
 |---|---|

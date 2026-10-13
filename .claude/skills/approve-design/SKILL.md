@@ -1,17 +1,15 @@
 ---
 name: approve-design
-description: Bring DESIGN.md and the code component library in line with the pen.dev library once the owner approves a design. Use when the owner says a design is approved, signed off or final, or types /approve-design. Never on an agent's own judgement that a design is done.
+description: Bring DESIGN.md and the code component library in line with the pen.dev library before a design is built. Use when a design is about to be implemented, or when the owner types /approve-design.
 ---
 
 # Approve design
 
-The owner has approved a design. Changes to `~/Projects/media-manager-2-design/design-system.lib.pen` (components or variables added, changed or deleted) now go into the code, as the very next job, without stopping in between. The session the owner approved in runs this, whether the design was drawn by that session or by one of its subagents.
-
-Iterating on a design is not approval. Only the owner's words start this.
+A design is about to be built. Changes to `~/Projects/media-manager-2-design/design-system.lib.pen` (components or variables added, changed or deleted) now go into the code, as the very next job, without stopping in between. The session about to build the design runs this, whether the design was drawn by that session or by one of its subagents.
 
 ## Steps
 
-1. **Library first.** If the approved design added or changed components, they go into the library before anything else: copy them from the approved exploration into `design-system.lib.pen` under the same name, run `~/.claude/scripts/pen-refresh <screen.pen>`, swap the screen's local copies for library instances, and check that `~/.claude/scripts/pen-library-changes <screen.pen> --dry-run` lists no row for the approved screen. Then ask the owner to confirm they pressed Cmd+S in the library tab; pen.dev writes to disk only then.
+1. **Library first.** If the design added or changed components, they go into the library before anything else: copy them from the approved exploration into `design-system.lib.pen` under the same name, run `~/.claude/scripts/pen-refresh <screen.pen>`, swap the screen's local copies for library instances, and check that `~/.claude/scripts/pen-library-changes <screen.pen> --dry-run` lists no row for that screen. Then ask the owner to confirm they pressed Cmd+S in the library tab; pen.dev writes to disk only then.
 2. **Worktree.** Work in a worktree branched from `origin/main`, as `CLAUDE.md` describes. Never in the main checkout.
 3. **Read the library** through pen.dev's tools (`mcp__pencil__*`; check `get_app_state` shows the library open first): every `v2/Family/Variant` component with its id, and every variable.
 4. **Compare it with the code and the docs:**
