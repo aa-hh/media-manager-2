@@ -7205,12 +7205,14 @@ test('pick a release hides releases Sonarr matched to another episode and reads 
     ], [])), [['searched', 'unmapped'], ['elsewhere']]);
   });
 
-  // Moving the group, its dash or the episode number into the cut middle, or dropping characters between the parts, turns this red.
+  // Moving the group, its dash, the episode number or a movie's last year into the cut middle, or dropping characters
+  // between the parts, turns this red.
   await t.test('a release name splits into its start, its middle and its group', () => {
     for (const [title, kind, parts] of [
       ['Severance.S02E08.1080p.ATVP.WEB-DL.DDP5.1.H.264-FLOS', 'episode', { head: 'Severance.S02E08', middle: '.1080p.ATVP.WEB-DL.DDP5.1.H.264', group: '-FLOS' }],
       ['Show.S01.1080p.WEB-DL.DDP5.1-GRP', 'season', { head: 'Show.S01', middle: '.1080p.WEB-DL.DDP5.1', group: '-GRP' }],
       ['Dune.Part.Two.2024.2160p.UHD.BluRay-FraMeSToR', 'movie', { head: 'Dune.Part.Two.2024', middle: '.2160p.UHD.BluRay', group: '-FraMeSToR' }],
+      ['Blade.Runner.2049.2017.1080p.WEB-DL-GRP', 'movie', { head: 'Blade.Runner.2049.2017', middle: '.1080p.WEB-DL', group: '-GRP' }],
       ['Some.Concert.Film.1080p-GRP', 'movie', { head: '', middle: 'Some.Concert.Film.1080p', group: '-GRP' }],
       ['Show.S01E02.720p.HDTV', 'episode', { head: 'Show.S01E02', middle: '.720p.HDTV', group: undefined }],
     ]) assert.deepEqual(splitReleaseName(title, kind), parts, title);

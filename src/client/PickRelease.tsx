@@ -334,15 +334,17 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
   };
 
   const overridden = target.kind === 'episode' && countsAs.episodeId !== undefined && countsAs.episodeId !== target.episodeId;
+  const chosenIds = target.kind === 'episode' && countsAs.episodeId !== undefined ? [countsAs.episodeId] : undefined;
+  // Counts as can name an episode with no file, and then there is nothing to replace or keep a second version beside.
+  const replacing = grabTargetHasFile({ episodeIds: chosenIds });
   const confirm = () => {
     if (picked === undefined || grabbing || inFlight.current) return;
     // The second-version route takes no overrides, so an overridden release can only replace.
-    if (choice === 'second' && !overridden) {
+    if (replacing && choice === 'second' && !overridden) {
       void sendSecondVersion(picked);
       return;
     }
-    const chosenIds = target.kind === 'episode' && countsAs.episodeId !== undefined ? [countsAs.episodeId] : undefined;
-    void sendGrab(picked, grabTargetHasFile({ episodeIds: chosenIds }) ? 'replace' : 'grab', overridden ? chosenIds : undefined);
+    void sendGrab(picked, replacing ? 'replace' : 'grab', overridden ? chosenIds : undefined);
   };
 
   // The dialog's keys reach here through its portal. 1 and 2 pick, except while the grab is in flight; Enter grabs wherever
@@ -350,8 +352,8 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
   // opens it or picks an episode. It is caught before the focused element can act on it.
   const onDecisionKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (panel !== 'decision') return;
-    if (event.key === '1' && !grabbing) setChoice('replace');
-    if (event.key === '2' && !overridden && !grabbing) setChoice('second');
+    if (event.key === '1' && replacing && !grabbing) setChoice('replace');
+    if (event.key === '2' && replacing && !overridden && !grabbing) setChoice('second');
     if (event.key === 'Enter' && (event.target as HTMLElement).closest('[data-cancel], [data-counts-as], [role="listbox"]') === null) {
       event.preventDefault();
       event.stopPropagation();
@@ -396,12 +398,13 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
   const decisionSubject = target.kind === 'season'
     ? `${lead === undefined ? '' : `${lead} · `}${[chosen?.quality, chosenGroup, chosen === undefined ? undefined : formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}, one torrent with ${packEpisodes.length} episodes. You have files for ${packEpisodes.length - missing.length} of them; their torrents keep seeding either way.`
     : `${incoming === '' ? '' : `Grabbing ${incoming}. `}${owned === null ? (lead === undefined ? '' : `${lead}. `) : `${lead === undefined ? 'Your' : `${lead} · your`} ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
-  const second = choice === 'second' && secondAllowed;
+  const second = replacing && choice === 'second' && secondAllowed;
   const confirmLabel = grabbing
-    ? (second ? 'Grabbing…' : 'Replacing…')
-    : second
-      ? (target.kind === 'season' ? `Grab ${packEpisodes.length} second versions` : 'Grab as second version')
-      : (target.kind === 'season' ? 'Grab and replace the current files' : 'Grab and replace the current file');
+    ? (second || !replacing ? 'Grabbing…' : 'Replacing…')
+    : !replacing ? 'Grab'
+      : second
+        ? (target.kind === 'season' ? `Grab ${packEpisodes.length} second versions` : 'Grab as second version')
+        : (target.kind === 'season' ? 'Grab and replace the current files' : 'Grab and replace the current file');
 
   // Trackers that number this episode differently from Sonarr search under their own numbers.
   const sceneCode = targetEpisode?.sceneSeasonNumber != null && targetEpisode.sceneEpisodeNumber != null
@@ -561,29 +564,31 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
           </>
         )}
       >
-        <RadioGroup
-          value={secondAllowed ? choice : 'replace'}
-          onValueChange={(value) => setChoice(value as Choice)}
-          disabled={grabbing}
-          aria-label="Replace or keep as a second version"
-          className="flex flex-col gap-2"
-        >
-          <CardChoice
-            value="replace"
-            kbd="1"
-            title={target.kind === 'season' ? 'Replace tracked versions' : 'Replace tracked version'}
-            description={target.kind === 'season'
-              ? `The pack becomes the tracked file for all ${packEpisodes.length} episodes, even at lower quality, and is kept from automatic upgrades.`
-              : 'The new release becomes the tracked file, even at lower quality, and is kept from automatic upgrades.'}
-          />
-          <CardChoice
-            value="second"
-            kbd={secondAllowed ? '2' : undefined}
-            disabled={!secondAllowed}
-            title={target.kind === 'season' ? 'Keep as second versions' : 'Keep as second version'}
-            description={`${target.kind === 'season' ? 'Adds a second version to each episode below, side by side in Plex.' : 'Keeps both files side by side in Plex.'}${secondAllowed ? '' : ' Not available while this release is overridden.'}`}
-          />
-        </RadioGroup>
+        {replacing && (
+          <RadioGroup
+            value={secondAllowed ? choice : 'replace'}
+            onValueChange={(value) => setChoice(value as Choice)}
+            disabled={grabbing}
+            aria-label="Replace or keep as a second version"
+            className="flex flex-col gap-2"
+          >
+            <CardChoice
+              value="replace"
+              kbd="1"
+              title={target.kind === 'season' ? 'Replace tracked versions' : 'Replace tracked version'}
+              description={target.kind === 'season'
+                ? `The pack becomes the tracked file for all ${packEpisodes.length} episodes, even at lower quality, and is kept from automatic upgrades.`
+                : 'The new release becomes the tracked file, even at lower quality, and is kept from automatic upgrades.'}
+            />
+            <CardChoice
+              value="second"
+              kbd={secondAllowed ? '2' : undefined}
+              disabled={!secondAllowed}
+              title={target.kind === 'season' ? 'Keep as second versions' : 'Keep as second version'}
+              description={`${target.kind === 'season' ? 'Adds a second version to each episode below, side by side in Plex.' : 'Keeps both files side by side in Plex.'}${secondAllowed ? '' : ' Not available while this release is overridden.'}`}
+            />
+          </RadioGroup>
+        )}
         {target.service === 'sonarr' && target.kind === 'episode' && episodes.length > 0 && targetEpisode !== undefined && countsAsEpisode !== undefined && (
           <DialogCountsAs
             open={countsAs.open}

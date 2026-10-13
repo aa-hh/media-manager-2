@@ -191,7 +191,10 @@ const EpisodeRow = memo(function EpisodeRow({
           />
         </CollapsiblePrimitive.Panel>
       </Collapsible>
-      {pickBand}
+      {/* Mounted closed on every row and bound to pickOpen, so the inset animates open and closed. */}
+      <Collapsible open={pickOpen}>
+        <CollapsiblePrimitive.Panel className={openPanel}>{pickBand}</CollapsiblePrimitive.Panel>
+      </Collapsible>
     </>
   );
 }, sameRow);
@@ -223,6 +226,9 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   }, [detail.secondVersions]);
   const [open, setOpen] = useState<Set<number>>(() => new Set(seasons.length === 0 ? [] : [seasons[0].seasonNumber]));
   const [panel, setPanel] = useState<Panel | null>(null);
+  // The pick panel opened last. Its row keeps the inset's content while it animates closed; every other row gets none,
+  // so a closed row's props stay equal and its memo holds.
+  const [lastPick, setLastPick] = useState<Extract<Panel, { panel: 'pick' }> | null>(null);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -239,7 +245,9 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
     if (pickRequest === 0 || seasons.length === 0) return;
     const first = seasons[0].seasonNumber;
     setOpen((current) => new Set(current).add(first));
-    setPanel({ key: seasonKey(first), panel: 'pick', target: seasonTarget(first) });
+    const next = { key: seasonKey(first), panel: 'pick' as const, target: seasonTarget(first) };
+    setPanel(next);
+    setLastPick(next);
     // Only a new press opens it; the seasons list itself changes on every live update.
   }, [pickRequest]);
 
@@ -349,7 +357,13 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   };
 
   const openPick = (key: string, target: ReleaseTarget) => {
-    setPanel(panel?.key === key && panel.panel === 'pick' ? null : { key, panel: 'pick', target });
+    if (panel?.key === key && panel.panel === 'pick') {
+      setPanel(null);
+      return;
+    }
+    const next = { key, panel: 'pick' as const, target };
+    setPanel(next);
+    setLastPick(next);
   };
   const search = async (key: string, body: unknown) => {
     const ok = await sendAction('/api/library/search', body, onUnauthenticated);
@@ -364,24 +378,21 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   // The show was read once when the page opened; an import since then shows only as a grab marked imported in the
   // live snapshot. Pick a release needs the current hasFile to offer replace or second version.
   const imported = useMemo(() => new Set((snapshot?.grabs ?? []).filter((grab) => grab.importedAt !== null).flatMap((grab) => grab.episodeIds)), [snapshot]);
-  const pickBand = (key: string) => (panel !== null && panel.key === key && panel.panel === 'pick'
+  // The panel mounts PickRelease only while open; the content is given only to the open or last-closed row.
+  const pickBand = (key: string) => (lastPick !== null && lastPick.key === key
     ? (
-      <Collapsible open>
-        <CollapsiblePrimitive.Panel className={openPanel}>
-          <Suspense fallback={null}>
-            <PickRelease
-              target={panel.target}
-              name={detail.title}
-              episodes={detail.episodes.map((episode) => (!episode.hasFile && imported.has(episode.id) ? { ...episode, hasFile: true } : episode))}
-              movieHasFile={false}
-              variant={panel.target.kind === 'episode' ? 'episode' : 'movie'}
-              live={progress.get(key)}
-              onClose={() => setPanel(null)}
-              onUnauthenticated={onUnauthenticated}
-            />
-          </Suspense>
-        </CollapsiblePrimitive.Panel>
-      </Collapsible>
+      <Suspense fallback={null}>
+        <PickRelease
+          target={lastPick.target}
+          name={detail.title}
+          episodes={detail.episodes.map((episode) => (!episode.hasFile && imported.has(episode.id) ? { ...episode, hasFile: true } : episode))}
+          movieHasFile={false}
+          variant={lastPick.target.kind === 'episode' ? 'episode' : 'movie'}
+          live={progress.get(key)}
+          onClose={() => setPanel(null)}
+          onUnauthenticated={onUnauthenticated}
+        />
+      </Suspense>
     )
     : null);
 
@@ -501,7 +512,9 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                   </>
                 )}
               />
-              {pickBand(key)}
+              <Collapsible open={pickOpen(key)}>
+                <CollapsiblePrimitive.Panel className={openPanel}>{pickBand(key)}</CollapsiblePrimitive.Panel>
+              </Collapsible>
               <Collapsible open={isOpen}>
                 <CollapsiblePrimitive.Panel aria-label={label} className={openPanel}>
                   {episodes.map((episode) => {

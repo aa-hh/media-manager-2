@@ -24,13 +24,13 @@ When the test fails, Sonarr and Radarr say why in `rejections`. The wording, ide
 
 Filter on the field, never on the wording. The wording compares the release's own numbers with the numbers Sonarr searched for, so a release Sonarr mapped to the right episode can still carry `Wrong season`, for example a TVDB-numbered release of an episode whose scene numbering differs ([ParsingService.cs:734-749](https://github.com/Sonarr/Sonarr/blob/v5.0.0.2569/src/NzbDrone.Core/Parser/ParsingService.cs#L734-L749) maps it by TVDB number after the scene lookup misses). The wording is still the right text to show on a hidden release. All of these checks run at Sonarr's first priority level, so the wording is always present when the mapping fails ([SpecificationPriority.cs](https://github.com/Sonarr/Sonarr/blob/v5.0.0.2569/src/NzbDrone.Core/DecisionEngine/SpecificationPriority.cs), [DownloadDecisionMaker.cs:190-200](https://github.com/Sonarr/Sonarr/blob/v5.0.0.2569/src/NzbDrone.Core/DecisionEngine/DownloadDecisionMaker.cs#L190-L200)).
 
-What our server has today:
+What our server had before this change:
 
-- Sonarr already sends every field above in the reply to `GET /api/v3/release` that `src/server/releases.ts:185-199` makes. No new request is needed.
-- `toRelease` keeps only the ids from `mappedEpisodeInfo`, as `episodeIds` (`src/server/releases.ts:138-140`), and drops `episodeRequested`, `fullSeason`, `mappedSeasonNumber`, `seasonNumber`, `episodeNumbers`, `absoluteEpisodeNumbers`, `airDate`, `isDaily`, `isAbsoluteNumbering`, `special` and `sceneMapping` (`src/server/releases.ts:109-143`). For Radarr it drops `mappedMovieId` and `movieRequested`.
+- Sonarr already sends every field above in the reply to `GET /api/v3/release` that `src/server/releases.ts` makes. No new request is needed.
+- `toRelease` (`src/server/releases.ts`) kept only the ids from `mappedEpisodeInfo`, as `episodeIds`, and dropped `episodeRequested`, `fullSeason`, `mappedSeasonNumber`, `seasonNumber`, `episodeNumbers`, `absoluteEpisodeNumbers`, `airDate`, `isDaily`, `isAbsoluteNumbering`, `special` and `sceneMapping`. For Radarr it dropped `mappedMovieId` and `movieRequested`.
 - `episodeIds` already reaches the browser (`src/client/PickRelease.tsx:61-62`), so the TV half of the rule can run with no server change. The movie half needs `toRelease` to keep `movieRequested`.
-- Searches stored before `episodeIds` was kept have no mapping data (`src/server/releases.ts:35-36`, stored rows read at `:167-176`). A release with no mapping data must be shown, not hidden.
-- Today the panel shows every release in Sonarr's order, dims rejected ones and shows the first rejection as the row's verdict (`src/client/PickRelease.tsx:157-169, 365-367, 712`). Only the quality filter hides rows (`:367, 581-586`).
+- Searches stored before `episodeIds` was kept have no mapping data (`src/server/releases.ts`). A release with no mapping data must be shown, not hidden.
+- Today the panel shows every release in Sonarr's order, dims rejected ones and shows the first rejection as the row's verdict (`src/client/PickRelease.tsx:157-169, 365-367, 712`). Only the quality filter hid rows (`:367, 581-586`).
 
 Do not parse SxxExx in media-manager-2. Sonarr's parser has about 90 title patterns: `1x05`, `S01E05E06`, `S01E05-06`, split episodes (`S01E05a`), absolute numbers, air dates, `Part 1` mini-series, `103` naming and more ([Parser.cs:23-465](https://github.com/Sonarr/Sonarr/blob/v5.0.0.2569/src/NzbDrone.Core/Parser/Parser.cs#L23-L465)). A text filter on SxxExx would wrongly hide every case in the table below except multi-episode files.
 

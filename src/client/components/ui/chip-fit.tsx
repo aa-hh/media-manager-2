@@ -22,11 +22,14 @@ const looks: Record<ChipFitKind, string> = {
 const labels: Partial<Record<ChipFitKind, string>> = { 'best-star': 'Best', rejected: 'Rejected' };
 
 /** How a release fits the profile, 36 by 20 at the fit cell's left edge: its score, the best star, or rejected with the reasons in the tooltip. */
-function ChipFit({ kind, tooltip, children }: { kind: ChipFitKind; tooltip?: ReactNode; children?: ReactNode }) {
+function ChipFit({ kind, tooltip, children }: { kind: ChipFitKind; tooltip?: string; children?: ReactNode }) {
+  const label = kind === 'rejected' && tooltip !== undefined ? `Rejected: ${tooltip}` : labels[kind];
   const chip = (
     <span
-      role={labels[kind] === undefined ? undefined : 'img'}
-      aria-label={labels[kind]}
+      role={label === undefined ? undefined : 'img'}
+      aria-label={label}
+      // Focusable when it has a tooltip, so the tooltip opens from the keyboard too.
+      tabIndex={tooltip === undefined ? undefined : 0}
       className={cn('inline-flex h-5 w-9 shrink-0 items-center justify-center rounded-xs font-data text-[13px] font-medium whitespace-nowrap', looks[kind])}
     >
       {kind === 'best-star' ? <Star aria-hidden="true" className="size-3" />

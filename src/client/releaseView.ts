@@ -36,7 +36,8 @@ export const splitReleaseName = (title: string, kind: ReleaseTarget['kind']): { 
   const dash = title.lastIndexOf('-');
   const grouped = dash > 0 && dash < title.length - 1;
   const name = grouped ? title.slice(0, dash) : title;
-  const head = (kind === 'movie' ? /^.*?\(?(?:19|20)\d{2}\)?/ : /^.*?S\d{1,2}(?:E\d{1,3})*/i).exec(name)?.[0] ?? '';
+  // A movie's head runs to the last year, so a year in the title (Blade.Runner.2049.2017) stays in it.
+  const head = (kind === 'movie' ? /^.*\(?(?:19|20)\d{2}\)?/ : /^.*?S\d{1,2}(?:E\d{1,3})*/i).exec(name)?.[0] ?? '';
   return { head, middle: name.slice(head.length), group: grouped ? title.slice(dash) : undefined };
 };
 
