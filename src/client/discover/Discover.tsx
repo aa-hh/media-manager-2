@@ -160,7 +160,6 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
             heading="Trending"
             intro={trendingIntro(state.type)}
             row={settle(reply?.trending[state.type])}
-            size="large"
             ranked
             seeAll={{ label: 'Trending', path: gridPath('trending', state, { type: state.type }) }}
             onRetry={retry}
@@ -170,7 +169,6 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
               heading="Popular movies"
               intro="The movies drawing the most attention on TMDB right now."
               row={settle(reply?.popularMovies)}
-              size="large"
               seeAll={{ label: 'Popular movies', path: gridPath('movies', state, { sort: 'popular' }) }}
               onRetry={retry}
             />
@@ -180,7 +178,6 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
               heading="Popular TV"
               intro="The shows drawing the most attention on TMDB right now."
               row={settle(reply?.popularTv)}
-              size="large"
               seeAll={{ label: 'Popular TV', path: gridPath('tv', state, { sort: 'popular' }) }}
               onRetry={retry}
             />
@@ -196,7 +193,6 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
                 </ToggleGroup>
               )}
               row={settle(upcomingMoviesRow)}
-              size="large"
               upcoming
               seeAll={{ label: 'Upcoming movies', path: gridPath('movies', state, { sort: 'upcoming' }) }}
               onRetry={retry}
@@ -207,7 +203,6 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
               heading="Upcoming TV"
               intro="Premieres in date order. Shows without a date wait at the end."
               row={settle(reply?.upcomingTv)}
-              size="large"
               upcoming
               seeAll={{ label: 'Upcoming TV', path: gridPath('tv', state, { sort: 'upcoming' }) }}
               onRetry={retry}
@@ -221,13 +216,12 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
                 heading={name}
                 intro={`Streaming on ${name} in the United States.`}
                 row={settle('row' in service ? service.row : service)}
-                size="large"
                 seeAll={{ label: name, path: gridPath(state.type !== 'tv' ? 'movies' : 'tv', { ...state, providers: [service.providerId] }, {}) }}
                 onRetry={retry}
               />
             );
           })}
-          {extras?.shown.map((row) => <Row key={`extra:${row.id}`} heading={row.label} row={settle(row)} size="large" onRetry={retry} />)}
+          {extras?.shown.map((row) => <Row key={`extra:${row.id}`} heading={row.label} row={settle(row)} onRetry={retry} />)}
           {extras?.traktMissing === true && (
             <StatusInline status="failed" role="status" className="text-muted-foreground">
               More lists appear once Trakt is added under{' '}

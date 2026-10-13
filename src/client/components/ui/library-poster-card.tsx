@@ -17,8 +17,6 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
   imported?: boolean;
   importedLabel?: ReactNode;
   selected?: boolean;
-  /** Large is the Discover size: 220 wide, poster 330 tall. */
-  size?: 'default' | 'large';
   /** Position in a ranked list such as Trending, shown before the title. */
   rank?: number;
   /** Shows a type line (icon, word, year) in place of `meta`. */
@@ -35,7 +33,7 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
 };
 
 /**
- * Library grid card, 152 by 228 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
+ * Poster card for Library and Discover, 210 by 315 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
  * pressed 84 %; focus rings the poster; selected adds a 2 px black edge and a 700 title.
  * Its poster block keeps the skeleton shimmer until the image has loaded, then the image fades in, unless it was cached or
  * arrived during a screen change, whose crossfade already brings it in (the screen around the card decides whether the card
@@ -43,20 +41,18 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
  */
 function LibraryPosterCard({
   poster, title, meta, status, progress, imported = false, importedLabel = 'Imported', selected = false,
-  size = 'default', rank, kind, year, genres, badges, dateTab, overview, className, ...props
+  rank, kind, year, genres, badges, dateTab, overview, className, ...props
 }: LibraryPosterCardProps) {
-  const large = size === 'large';
   const strip = imported ? 100 : progress;
   const [image, setImage] = useState<'loading' | 'loaded' | 'shown' | 'failed'>('loading');
   const showPoster = poster !== undefined && image !== 'failed';
   return (
-    <a className={cn('group flex flex-col gap-2 outline-none', large ? 'w-55' : 'w-(--poster-width)', className)} {...props}>
+    <a className={cn('group flex w-(--poster-width) flex-col gap-2 outline-none', className)} {...props}>
       <span
         data-poster
         className={cn(
-          'relative block w-full overflow-hidden rounded-md bg-muted',
+          'relative block h-78.75 w-full overflow-hidden rounded-md bg-muted',
           showPoster && image === 'loading' && 'skeleton-shimmer motion-reduce:bg-none',
-          large ? 'h-82.5' : 'h-57',
           'group-focus-visible:outline-2 group-focus-visible:outline-offset-0 group-focus-visible:outline-ring',
         )}
       >
@@ -128,12 +124,11 @@ function LibraryPosterCard({
       <span className="flex flex-col gap-0.5">
         <span className="flex gap-2">
           {rank !== undefined && (
-            <span className={cn('font-data leading-[1.25] font-semibold text-subtle-foreground', large ? 'text-base' : 'text-sm')}>{rank}</span>
+            <span className="font-data text-base font-semibold text-subtle-foreground">{rank}</span>
           )}
           <span
             className={cn(
-              'min-w-0 flex-1 font-ui text-foreground',
-              large ? 'text-base' : 'text-sm',
+              'min-w-0 flex-1 font-ui text-base text-foreground',
               rank !== undefined && 'leading-[1.25]',
               kind === undefined ? 'truncate' : 'line-clamp-2 [overflow-wrap:anywhere]',
               selected ? 'font-bold' : 'font-semibold',

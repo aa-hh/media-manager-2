@@ -25,10 +25,10 @@ const localToday = () => {
 
 const ratingFormat = new Intl.NumberFormat(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-type CardProps = { result: DiscoverResult; rank?: number; upcoming?: boolean; size: 'default' | 'large' };
+type CardProps = { result: DiscoverResult; rank?: number; upcoming?: boolean };
 
 /** A Discover title as a poster card that opens its title page. */
-export const Card = memo(function Card({ result, rank, upcoming = false, size }: CardProps) {
+export const Card = memo(function Card({ result, rank, upcoming = false }: CardProps) {
   const path = titlePath(result);
   const when = upcoming ? countdown(result.date, localToday()) : undefined;
   return (
@@ -38,7 +38,6 @@ export const Card = memo(function Card({ result, rank, upcoming = false, size }:
       // Pointing at a card starts its backdrop downloading, so the title page has it by the time it opens.
       onPointerEnter={() => prefetch(result.backdropUrl)}
       onFocus={() => prefetch(result.backdropUrl)}
-      size={size}
       poster={result.posterUrl ?? undefined}
       title={result.title}
       rank={rank}
