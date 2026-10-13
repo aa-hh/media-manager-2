@@ -489,7 +489,13 @@ export const createLibrary = (
   store: TitleStore,
   mdblist?: Pick<Mdblist, 'showRatings'>,
   tvdbIdOf?: (tmdbId: number) => Promise<ArrResult<number | null>>,
+  backdropPathOf?: (type: 'tv' | 'movie', tmdbId: number) => Promise<string | null>,
 ) => {
+  // TMDB's main backdrop differs from Sonarr's TVDB fanart and is often newer than Radarr's copy; fanart stays the fallback.
+  const backdropUrl = async (type: 'tv' | 'movie', record: Series | Movie) => {
+    const path = record.tmdbId === null || backdropPathOf === undefined ? null : await backdropPathOf(type, record.tmdbId);
+    return path === null ? imageUrl(record.images, 'fanart') : `/api/images/tmdb/w1920_and_h800_multi_faces/${path.replace(/^\//, '')}`;
+  };
   const showRatings = (record: Series) => (
     mdblist === undefined ? Promise.resolve(noRatings) : mdblist.showRatings(store, { tvdbId: record.tvdbId, tmdbId: record.tmdbId })
   );
@@ -522,34 +528,39 @@ export const createLibrary = (
     },
 
     async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[] }>> {
-      const [record, episodes, profiles, tags] = await Promise.all([
-        services.sonarr.series(id).then(fromArr),
+      const read = services.sonarr.series(id).then(fromArr);
+      const [record, episodes, profiles, tags, backdrop] = await Promise.all([
+        read,
         services.sonarr.episodes(id, { withFiles: true }).then(fromArr),
         optional('sonarr', '/api/v3/qualityprofile'),
         optional('sonarr', '/api/v3/tag'),
+        read.then((found) => (found.kind === 'ok' ? backdropUrl('tv', found.value) : null)),
       ]);
       if (record.kind !== 'ok') return record;
       if (episodes.kind !== 'ok') return episodes;
       const ratingsBySite = await showRatings(record.value);
       return {
         kind: 'ok',
-        value: { ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite }), secondVersions: versionRows({ service: 'sonarr', seriesId: id }) },
+        value: { ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite }), backdropUrl: backdrop, secondVersions: versionRows({ service: 'sonarr', seriesId: id }) },
       };
     },
 
     // Credits cost one more Radarr call, so only this route asks for them; a failed read leaves them empty.
     async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[] }>> {
-      const [record, profiles, tags, credits] = await Promise.all([
-        services.radarr.movie(id).then(fromArr),
+      const read = services.radarr.movie(id).then(fromArr);
+      const [record, profiles, tags, credits, backdrop] = await Promise.all([
+        read,
         optional('radarr', '/api/v3/qualityprofile'),
         optional('radarr', '/api/v3/tag'),
         services.radarr.credits(id),
+        read.then((found) => (found.kind === 'ok' ? backdropUrl('movie', found.value) : null)),
       ]);
       if (record.kind !== 'ok') return record;
       return {
         kind: 'ok',
         value: {
           ...movieDetail(record.value, { profiles, tags, owned: true }),
+          backdropUrl: backdrop,
           credits: creditList(credits.kind === 'ok' ? credits.value : []),
           secondVersions: versionRows({ service: 'radarr', movieId: id }),
         },
@@ -562,8 +573,11 @@ export const createLibrary = (
       if (found.kind !== 'ok') return found;
       const show = service === 'sonarr' ? parseSeries(found.value) : null;
       const movie = service === 'radarr' ? parseMovie(found.value) : null;
-      if (show !== null) return { kind: 'ok', value: seriesDetail(show, { owned: false, ratingsBySite: await showRatings(show) }) };
-      return movie === null ? { kind: 'not_found' } : { kind: 'ok', value: movieDetail(movie, { owned: false }) };
+      if (show !== null) {
+        const [ratingsBySite, backdrop] = await Promise.all([showRatings(show), backdropUrl('tv', show)]);
+        return { kind: 'ok', value: { ...seriesDetail(show, { owned: false, ratingsBySite }), backdropUrl: backdrop } };
+      }
+      return movie === null ? { kind: 'not_found' } : { kind: 'ok', value: { ...movieDetail(movie, { owned: false }), backdropUrl: await backdropUrl('movie', movie) } };
     },
 
     // Discover cards know a show only by its TMDB id; Sonarr looks shows up by TVDB id.
