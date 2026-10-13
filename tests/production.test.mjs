@@ -8120,6 +8120,9 @@ test('second version file names are cleaned and episodes read from file names', 
     ['Bluray-1080p', 'Movie.2020.1080p.BluRay-SAMPLE[rarbg]', 'Bluray-1080p'],
     ['Featurette', 'Movie.2020-OTHER', ''],
     ['{edition-x}', 'Movie.2020-GRP', 'edition-x GRP'],
+    ['Bluray-1080p', 'Movie.2020.1080p.BluRay-CLIP', 'Bluray-1080p'],
+    ['WEBDL-1080p', 'Movie.2020.1080p.WEB-DL-Extra', 'WEBDL-1080p'],
+    ['Bluray-2160p', 'Movie.2020.2160p.BluRay-DeletedScene', 'Bluray-2160p'],
   ]) assert.equal(versionSuffix(quality, title), expected, title);
   for (const [name, season, episodes] of [
     ['Andor.S01E02.2160p.mkv', 1, [2]],
