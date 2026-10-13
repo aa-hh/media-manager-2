@@ -1,6 +1,6 @@
 # Service logos
 
-Each file is the service's own published logo, unchanged, fetched 11 Oct 2026. rTorrent has no logo, so its slot uses ruTorrent's icon. The `.png` twins of the `.svg` files, where a PNG exists, are rasters for the design files, and `plex-icon-gold.svg` is `plex-icon.svg` refilled `#E5A00D` for the black Plex button.
+Each file is the service's own published logo, unchanged, fetched 11 Oct 2026. rTorrent has no logo, so its slot uses ruTorrent's icon. The `.png` twins of the `.svg` files, where a PNG exists, are rasters for the design files, and `plex-icon-gold.svg` is `plex-icon.svg` refilled `#E5A00D` for the black Plex button. `jellyfin-icon-black.svg` is Jellyfin's white mark (`icon-transparent-white.svg`, SHA-256 `ac3ae1839fe6f496449efa3071def6b7d622fc939eb01873cc0375a8e8b9db0a`) refilled `#07080B` for the blue Jellyfin button; `jellyfin-icon.svg`, the full-colour mark, stays the logo everywhere else.
 
 | File | Service | Source | SHA-256 |
 | --- | --- | --- | --- |
