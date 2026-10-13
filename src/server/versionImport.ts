@@ -5,6 +5,7 @@ import { findOpenProblem, type createProblems, type Subject } from './problems.j
 import type { FailureCode } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { JellyfinKeyRefused } from './services/jellyfin.js';
 import type { Library, MediaServer } from './services/mediaServer.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import { listTorrents } from './torrents.js';
@@ -377,8 +378,10 @@ export const createVersionImport = (options: {
         if (tries >= MERGE_TRIES) continue;
         const merged = typeof tracked === 'string' && await server.mergeVersions(row.service === 'radarr' ? 'movie' : 'show', tracked, String(row.file_path), season);
         database.prepare('UPDATE second_versions SET merge_tries = ? WHERE id = ?').run(merged ? MERGE_TRIES : tries + 1, row.id);
-      } catch {
-        // Jellyfin or Radarr/Sonarr unreachable, Jellyfin answering 5xx or refusing the key: no try spent.
+      } catch (error) {
+        // A refused key refuses every row, so the rest wait for the next run; the health check reports the key.
+        if (error instanceof JellyfinKeyRefused) return;
+        // Jellyfin or Radarr/Sonarr unreachable, or Jellyfin answering 5xx: no try spent.
       }
     }
   };
