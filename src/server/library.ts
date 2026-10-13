@@ -15,6 +15,7 @@ import {
 } from './services/arr.js';
 import { lookupTitle } from './search.js';
 import { notConfigured } from './services/arr/result.js';
+import type { SearchRuns, SearchTarget } from './searchRuns.js';
 import type { SecondVersionRow } from './secondVersionRows.js';
 import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
 import type { TitleStore } from './titleStore.js';
@@ -206,11 +207,7 @@ export type HistorySubject =
   | { service: 'sonarr'; seriesId: number }
   | { service: 'radarr'; movieId: number };
 
-type Target =
-  | { service: 'sonarr'; kind: 'series'; seriesId: number }
-  | { service: 'sonarr'; kind: 'season'; seriesId: number; seasonNumber: number }
-  | { service: 'sonarr'; kind: 'episodes'; episodeIds: number[] }
-  | { service: 'radarr'; kind: 'movie'; movieId: number };
+type Target = SearchTarget;
 export type MonitorChange = Target & { monitored: boolean };
 export type RefreshRequest = Extract<Target, { kind: 'series' | 'movie' }>;
 
@@ -606,15 +603,6 @@ export const createLibrary = (
       return fromArr(await services.sonarr.monitorSeason(change.seriesId, change.seasonNumber, monitored));
     },
 
-    async search(request: Target): Promise<Result<void>> {
-      if (request.kind === 'series') return fromArr(await services.sonarr.searchAutomatically({ seriesId: request.seriesId }));
-      if (request.kind === 'season') {
-        return fromArr(await services.sonarr.searchAutomatically({ seriesId: request.seriesId, seasonNumber: request.seasonNumber }));
-      }
-      if (request.kind === 'episodes') return fromArr(await services.sonarr.searchAutomatically({ episodeIds: request.episodeIds }));
-      return fromArr(await services.radarr.searchAutomatically({ movieIds: [request.movieId] }));
-    },
-
     async refresh(request: RefreshRequest): Promise<Result<void>> {
       if (request.kind === 'series') return fromArr(await services.sonarr.refreshTitle(request.seriesId));
       return fromArr(await services.radarr.refreshTitle(request.movieId));
@@ -720,7 +708,7 @@ const parseTarget = (body: unknown, extra: 'monitored' | undefined, only?: strin
   return body as Target & { monitored?: boolean };
 };
 
-export const createLibraryRoutes = (library: Library) => {
+export const createLibraryRoutes = (library: Library, searchRuns: SearchRuns) => {
   const routes = new Hono();
   const statusFor = (kind: string) => (kind === 'not_configured' ? 503 : kind === 'not_found' ? 404 : 502);
   const invalid = { error: 'invalid_request' };
@@ -796,8 +784,20 @@ export const createLibraryRoutes = (library: Library) => {
       return result.kind === 'ok' ? context.body(null, 204) : failure(context, result);
     });
   };
-  writeRoute('/monitor', true, undefined, (change) => library.monitor(change));
-  writeRoute('/search', false, undefined, (request) => library.search(request));
+  writeRoute('/monitor', true, undefined, async (change: MonitorChange) => {
+    const result = await library.monitor(change);
+    // A season-level search lets Sonarr accept a pack, which a single-episode search rejects.
+    if (result.kind === 'ok' && change.monitored && (change.kind === 'series' || change.kind === 'season')) {
+      const { monitored: _monitored, ...target } = change;
+      await searchRuns.start(target, 'monitor');
+    }
+    return result;
+  });
+  writeRoute('/search', false, undefined, async (request: Target) => {
+    const result = fromArr(await searchRuns.start(request, 'search'));
+    return result.kind === 'ok' ? { kind: 'ok', value: undefined } : result;
+  });
+  routes.get('/searches', (context) => context.json({ runs: searchRuns.list() }));
   writeRoute('/refresh', false, ['sonarr/series', 'radarr/movie'], (request) => library.refresh(request));
   return routes;
 };

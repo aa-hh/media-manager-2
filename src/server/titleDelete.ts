@@ -728,7 +728,10 @@ export const createTitleDelete = (options: {
           if (choices.blocklistCurrent && lifted.kind === 'ok') steps.push(await blocklistGrabs(target, history, deletedFileIds, held));
           const searched = lifted.kind !== 'ok' ? lifted
             : target.service === 'radarr' ? await arr.radarr.searchAutomatically({ movieIds: [target.movieId] })
-              : await arr.sonarr.searchAutomatically({ episodeIds: held.map((episode) => episode.id) });
+              : target.seasonNumber !== undefined && target.selection === undefined
+                // A season-level search lets Sonarr accept a pack, which a single-episode search rejects.
+                ? await arr.sonarr.searchAutomatically({ seriesId: target.seriesId, seasonNumber: target.seasonNumber })
+                : await arr.sonarr.searchAutomatically({ episodeIds: held.map((episode) => episode.id) });
           steps.push(searched.kind === 'ok'
             ? { step: 'search', outcome: 'done', message: `${label} is searching for ${words}.${lifted.kind === 'ok' ? lifted.value : ''}` }
             : { step: 'search', outcome: 'failed', message: `${label} did not start the search for ${words}: ${searched.message}` });

@@ -4,6 +4,7 @@ import type { createLabels } from './labels.js';
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
 import { findOpenProblem, RELEASE_LIMIT } from './problems.js';
+import { searchSeasonFirst } from './seasonSearch.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import type { Removal } from './torrentFiles.js';
 import { listTorrents, type Torrent } from './torrents.js';
@@ -181,7 +182,8 @@ export const createStallFix = (options: {
     const client = arr[grab.service];
     if (grab.service === 'sonarr' && grab.movieId === null && grab.episodeIds.length !== 1) {
       // razor: a multi-episode or pack grab is searched automatically, without the tracker preference; per-episode releases need their own picks.
-      valueOrThrow(await arr.sonarr.searchAutomatically({ episodeIds: grab.episodeIds }));
+      // A grab of a whole season is replaced by a season search, so a pack can come back.
+      valueOrThrow(await searchSeasonFirst(arr, grab.seriesId, grab.episodeIds, now));
       return 'Asked Sonarr to search automatically for these episodes.';
     }
     const query = grab.movieId !== null ? `movieId=${grab.movieId}` : `episodeId=${grab.episodeIds[0]}`;

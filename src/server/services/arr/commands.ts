@@ -1,3 +1,4 @@
+import { positiveInteger } from './files.js';
 import { isRecord, refusal, type Result, type Send, type Service } from './result.js';
 
 export type SonarrSearchTarget = { episodeIds: number[] } | { seriesId: number; seasonNumber?: number };
@@ -16,14 +17,18 @@ const done = (answer: Result<unknown>): Result<void> => (answer.kind === 'ok' ? 
 export const createCommands = <S extends Service>({ service, label, send }: { service: S; label: string; send: Send }) => {
   const command = (operation: string, body: Record<string, unknown>) => send(operation, '/api/v3/command', { method: 'POST', body });
 
-  const searchAutomatically = async (target: SonarrSearchTarget | RadarrSearchTarget): Promise<Result<void>> => {
+  const searchAutomatically = async (target: SonarrSearchTarget | RadarrSearchTarget): Promise<Result<number>> => {
     const operation = 'the automatic search';
-    if ('movieIds' in target) return done(await command(operation, { name: 'MoviesSearch', movieIds: target.movieIds }));
-    if ('episodeIds' in target) return done(await command(operation, { name: 'EpisodeSearch', episodeIds: target.episodeIds }));
-    if (target.seasonNumber !== undefined) {
-      return done(await command(operation, { name: 'SeasonSearch', seriesId: target.seriesId, seasonNumber: target.seasonNumber }));
-    }
-    return done(await command(operation, { name: 'SeriesSearch', seriesId: target.seriesId }));
+    const answer = await command(operation, 'movieIds' in target
+      ? { name: 'MoviesSearch', movieIds: target.movieIds }
+      : 'episodeIds' in target
+        ? { name: 'EpisodeSearch', episodeIds: target.episodeIds }
+        : target.seasonNumber !== undefined
+          ? { name: 'SeasonSearch', seriesId: target.seriesId, seasonNumber: target.seasonNumber }
+          : { name: 'SeriesSearch', seriesId: target.seriesId });
+    if (answer.kind !== 'ok') return answer;
+    const id = isRecord(answer.value.body) ? positiveInteger(answer.value.body.id) : null;
+    return id === null ? refusal(`${label} sent no id for ${operation}.`) : { kind: 'ok', value: id };
   };
 
   const refreshTitle = async (id: number): Promise<Result<void>> => done(await command(
@@ -123,7 +128,7 @@ export const createCommands = <S extends Service>({ service, label, send }: { se
   return {
     recycleBin,
     importLists,
-    searchAutomatically: searchAutomatically as (target: SearchTarget<S>) => Promise<Result<void>>,
+    searchAutomatically: searchAutomatically as (target: SearchTarget<S>) => Promise<Result<number>>,
     refreshTitle,
     refreshMonitoredDownloads,
     forceImport: forceImport as ForceImport,

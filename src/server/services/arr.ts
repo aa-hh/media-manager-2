@@ -58,7 +58,7 @@ export type Arr<S extends Service> = {
   grabFromQueue: (queueId: number) => Promise<Result<void>>;
   history: HistoryRead<S>;
   markFailed: (historyId: number) => Promise<Result<void>>;
-  searchAutomatically: (target: SearchTarget<S>) => Promise<Result<void>>;
+  searchAutomatically: (target: SearchTarget<S>) => Promise<Result<number>>;
   refreshTitle: (id: number) => Promise<Result<void>>;
   refreshMonitoredDownloads: () => Promise<Result<void>>;
   forceImport: ForceImport;

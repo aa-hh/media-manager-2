@@ -397,6 +397,8 @@ export const applicationMigrations = [
   ) STRICT;`,
   // When a season search was last sent for each season, so the six-hour repeats alternate season and episode searches.
   `CREATE TABLE season_search_log (series_id INTEGER NOT NULL, season_number INTEGER NOT NULL, searched_at INTEGER NOT NULL, PRIMARY KEY (series_id, season_number)) STRICT;`,
+  // Automatic searches the app follows to their end, so a restart resumes them and the client can show the outcome.
+  `CREATE TABLE search_runs (id INTEGER PRIMARY KEY, service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')), target TEXT NOT NULL, started_by TEXT NOT NULL CHECK (started_by IN ('search', 'monitor')), state TEXT NOT NULL CHECK (state IN ('running', 'finished', 'failed')), phase TEXT NOT NULL CHECK (phase IN ('season', 'episodes', 'movie')), command_id INTEGER NOT NULL, history_mark INTEGER NOT NULL, grabbed TEXT NOT NULL, message TEXT, started_at INTEGER NOT NULL, ended_at INTEGER) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
