@@ -4,8 +4,9 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const out = process.argv[2];
+const server = `http://127.0.0.1:${process.env.SHOTS_SERVER_PORT ?? 3999}`;
 const log = (line) => console.log(`[${new Date().toISOString().slice(11, 23)}] ${line}`);
-const pages = await (await fetch('http://127.0.0.1:9333/json')).json();
+const pages = await (await fetch(`http://127.0.0.1:${process.env.SHOTS_CHROME_PORT ?? 9333}/json`)).json();
 const page = pages.find((entry) => entry.type === 'page');
 const socket = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
@@ -51,9 +52,9 @@ const releaseRows = `document.querySelectorAll('[aria-label="Releases"] [role="r
 await send('Network.enable');
 await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-await send('Network.setCookie', { name: 'mm_session', value: 'shotsxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', url: 'http://127.0.0.1:3999/' });
+await send('Network.setCookie', { name: 'mm_session', value: 'shotsxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', url: `${server}/` });
 log('navigate');
-await send('Page.navigate', { url: 'http://127.0.0.1:3999/series/5' });
+await send('Page.navigate', { url: `${server}/series/5` });
 
 log('wait for episode 208');
 await until('the Pick a release button on episode 208', `${pickButton(208)} !== null`);

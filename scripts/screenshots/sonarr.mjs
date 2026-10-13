@@ -1,5 +1,5 @@
 // Stand-in Sonarr for the Pick a release screenshots: the repo's arr fake behind a real HTTP port.
-// Not run by hand: start.sh launches it on port 65301 and stop.sh stops it.
+// Not run by hand: start.sh launches it on SHOTS_SONARR_PORT (default 65301) and stop.sh stops it.
 import { createServer } from 'node:http';
 import { createArrFake, historyRecord } from '../../tests/fakes/arr.mjs';
 
@@ -72,10 +72,10 @@ createServer(async (req, res) => {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   const body = chunks.length === 0 ? undefined : Buffer.concat(chunks).toString('utf8');
-  const url = new URL(req.url, 'http://127.0.0.1:65301');
+  const url = new URL(req.url, 'http://127.0.0.1');
   const headers = Object.fromEntries(Object.entries(req.headers).filter(([, value]) => typeof value === 'string'));
   const response = await fake.fetch(url, { method: req.method, headers, body });
   console.log(`${req.method} ${url.pathname}${url.search} -> ${response.status}`);
   res.writeHead(response.status, { 'Content-Type': 'application/json' });
   res.end(await response.text());
-}).listen(65301, '127.0.0.1', () => console.log('stand-in Sonarr on 127.0.0.1:65301'));
+}).listen(Number(process.env.SHOTS_SONARR_PORT ?? 65301), '127.0.0.1', function () { console.log(`stand-in Sonarr on 127.0.0.1:${this.address().port}`); });
