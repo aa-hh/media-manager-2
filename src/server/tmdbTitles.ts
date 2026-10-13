@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
+import type { TmdbChips } from './library.js';
 import type { Result } from './services/arr/result.js';
 import type { createTmdb, TmdbDetails, TmdbMediaType } from './services/tmdb.js';
 import type { Title, TitleStore } from './titleStore.js';
@@ -9,6 +10,8 @@ const PART = 'tmdbDetails';
 const MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 const MAX_CAST = 10;
 const MAX_SIMILAR = 20;
+// The title page waits this long for TMDB's genre and keyword ids before showing its chips as plain labels.
+const CHIPS_WAIT_MS = 1500;
 
 type Tmdb = Pick<ReturnType<typeof createTmdb>, 'details' | 'tvAiring' | 'collection'>;
 
@@ -84,6 +87,17 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
         keywords: (found?.keywords ?? []).map((keyword) => keyword.name),
         similar,
       };
+    },
+
+    // A saved copy answers at once; a first load past the wait still finishes and is saved for the next visit.
+    async chips(type: TmdbMediaType, tmdbId: number): Promise<TmdbChips> {
+      let timer: NodeJS.Timeout | undefined;
+      const wait = new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), CHIPS_WAIT_MS);
+      });
+      const result = await Promise.race([details(type, tmdbId).catch(() => undefined), wait]);
+      clearTimeout(timer);
+      return result?.kind === 'ok' ? { genres: result.value.genres ?? [], keywords: result.value.keywords ?? [] } : null;
     },
 
     // A TMDB failure is passed on so it is not mistaken for a show TMDB has no TVDB id for.

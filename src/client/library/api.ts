@@ -89,6 +89,8 @@ export type SeriesDetail = {
   ratingVotes: number | null;
   certification: string | null;
   genres: string[];
+  /** TMDB's genres and keywords with ids; null when TMDB is not set up or failed. Same as `TmdbChips` in src/server/library.ts. */
+  tmdbChips: { genres: Array<{ id: number; name: string }>; keywords: Array<{ id: number; name: string }> } | null;
   runtime: number | null;
   path: string | null;
   tags: string[];
@@ -128,6 +130,8 @@ export type MovieDetail = {
   youTubeTrailerId: string | null;
   certification: string | null;
   genres: string[];
+  /** TMDB's genres and keywords with ids; null when TMDB is not set up or failed. Same as `TmdbChips` in src/server/library.ts. */
+  tmdbChips: { genres: Array<{ id: number; name: string }>; keywords: Array<{ id: number; name: string }> } | null;
   runtime: number | null;
   studio: string | null;
   collection: string | null;

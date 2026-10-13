@@ -38,11 +38,13 @@ export type GridReply = { page: number; totalPages: number; results: DiscoverRes
 
 export type MediaType = 'all' | 'movie' | 'tv';
 export type Sort = 'popular' | 'rating' | 'newest' | 'upcoming';
-export type Filters = { genres: number[]; providers: number[]; yearFrom: number | null; yearTo: number | null; minRating: number | null };
+export type Filters = { genres: number[]; keywords: number[]; providers: number[]; yearFrom: number | null; yearTo: number | null; minRating: number | null };
 export type HomeState = Filters & { type: MediaType; window: 30 | 90 };
 export type GridState = Filters & { type: MediaType; sort: Sort };
 
 const sorts: Sort[] = ['popular', 'rating', 'newest', 'upcoming'];
+
+export const clearedFilters: Filters = { genres: [], keywords: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
 
 const idList = (value: string | null): number[] => (value ?? '').split(',').filter((part) => /^\d{1,9}$/.test(part)).map(Number);
 // The server refuses years outside 1870–2200, so the page never sends one.
@@ -55,6 +57,7 @@ const readFilters = (params: URLSearchParams): Filters => {
   const reversed = yearFrom !== null && yearTo !== null && yearFrom > yearTo;
   return {
     genres: idList(params.get('genres')),
+    keywords: idList(params.get('keywords')),
     providers: idList(params.get('providers')),
     yearFrom: reversed ? null : yearFrom,
     yearTo: reversed ? null : yearTo,
@@ -71,6 +74,7 @@ const filterParams = (filters: Filters, type: MediaType | undefined) => {
   const params = new URLSearchParams();
   if (type !== undefined && type !== 'all') params.set('type', type);
   if (filters.genres.length > 0) params.set('genres', filters.genres.join(','));
+  if (filters.keywords.length > 0) params.set('keywords', filters.keywords.join(','));
   if (filters.providers.length > 0) params.set('providers', filters.providers.join(','));
   if (filters.yearFrom !== null) params.set('yearFrom', String(filters.yearFrom));
   if (filters.yearTo !== null) params.set('yearTo', String(filters.yearTo));
@@ -117,7 +121,21 @@ const stateText = (state: HomeState) => {
 };
 
 const hasFilters = (filters: Filters) =>
-  filters.genres.length > 0 || filters.providers.length > 0 || filters.yearFrom !== null || filters.yearTo !== null || filters.minRating !== null;
+  filters.genres.length > 0 || filters.keywords.length > 0 || filters.providers.length > 0 || filters.yearFrom !== null || filters.yearTo !== null || filters.minRating !== null;
+
+/** The Discover home's address for this state; `window` lives only in the address, the server never sees it. */
+export const homePath = (state: HomeState) => {
+  const text = stateText(state);
+  return text === '' ? '/discover' : `/discover?${text}`;
+};
+
+/**
+ * The Discover home showing one media type and one genre or keyword, every other filter cleared.
+ * Genre ids differ between TMDB's movie and TV lists, so the type is always set.
+ */
+export const chipState = (type: 'movie' | 'tv', filter: { genres: number[] } | { keywords: number[] }): HomeState => (
+  { ...clearedFilters, ...filter, type, window: 90 }
+);
 
 export const readStoredState = (): HomeState | undefined => {
   try {
@@ -153,7 +171,7 @@ export const clearSessionState = () => {
 
 export const withoutFilters = (search: string) => {
   const params = new URLSearchParams(search);
-  for (const key of ['type', 'genres', 'providers', 'yearFrom', 'yearTo', 'minRating', 'window']) params.delete(key);
+  for (const key of ['type', 'genres', 'keywords', 'providers', 'yearFrom', 'yearTo', 'minRating', 'window']) params.delete(key);
   const text = params.toString();
   return text === '' ? '' : `?${text}`;
 };
@@ -231,12 +249,17 @@ export const filterTags = (
   filters: Filters,
   genres: Array<{ id: number; name: string }>,
   providers: Array<{ id: number; name: string }>,
+  keywords: Array<{ id: number; name: string }> = [],
 ): Array<{ label: string; remove: Filters }> => {
   const tags: Array<{ label: string; remove: Filters }> = [];
   // An id whose name has not loaded yet gets no tag until the list arrives.
   for (const id of filters.genres) {
     const name = genres.find((genre) => genre.id === id)?.name;
     if (name !== undefined) tags.push({ label: name, remove: { ...filters, genres: filters.genres.filter((other) => other !== id) } });
+  }
+  for (const id of filters.keywords) {
+    const name = keywords.find((keyword) => keyword.id === id)?.name;
+    if (name !== undefined) tags.push({ label: name, remove: { ...filters, keywords: filters.keywords.filter((other) => other !== id) } });
   }
   for (const id of filters.providers) {
     const name = providers.find((provider) => provider.id === id)?.name;

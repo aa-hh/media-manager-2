@@ -30,6 +30,7 @@ export type Sort = keyof typeof sorts;
 
 export type Filters = {
   genres: number[];
+  keywords: number[];
   providers: number[];
   region: string;
   yearFrom: number | null;
@@ -66,8 +67,17 @@ const canonical = (value: unknown): unknown => {
   }
   return value;
 };
-export const rowKey = (spec: RowSpec) => JSON.stringify(canonical(spec));
-export const parseKey = (key: string) => JSON.parse(key) as RowSpec;
+// An empty keyword list is left out of the key, so rows saved before the keyword filter existed keep their keys.
+export const rowKey = (spec: RowSpec) => {
+  if (!('filters' in spec) || spec.filters.keywords.length > 0) return JSON.stringify(canonical(spec));
+  const { keywords: _, ...filters } = spec.filters;
+  return JSON.stringify(canonical({ ...spec, filters }));
+};
+export const parseKey = (key: string) => {
+  const spec = JSON.parse(key) as RowSpec;
+  if ('filters' in spec) spec.filters.keywords ??= [];
+  return spec;
+};
 
 export const createRows = (database: DatabaseSync, now: () => number = Date.now) => ({
   // Reading a row marks it read, so the refresh job keeps only rows someone still opens.

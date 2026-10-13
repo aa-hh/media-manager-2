@@ -16,7 +16,7 @@ import { FieldNumber } from '@/components/ui/field-number';
 import { Select, SelectTrigger } from '@/components/ui/select-trigger';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
-import { filterTags, hiddenRowsNote, type Filters, type MediaType, type Sort } from './model';
+import { clearedFilters, filterTags, hiddenRowsNote, type Filters, type MediaType, type Sort } from './model';
 
 type Option = { id: number; name: string };
 type BarState = Filters & { type: MediaType; sort?: Sort };
@@ -25,6 +25,8 @@ type FilterBarProps<S extends BarState> = {
   state: S;
   onChange: (next: S) => void;
   genres: Option[];
+  /** Names for the keyword filter's tags; the bar has no keyword menu, only the title page's chips set one. */
+  keywords?: Option[];
   providers: Option[];
   /** The media type toggle inside the bar (the home); grids put theirs in the page header. */
   type?: { value: MediaType; options: MediaType[] };
@@ -145,10 +147,9 @@ function YearsPopover({ from, to, onChange }: { from: number | null; to: number 
 }
 
 /** The Discover filters: sticky under the app bar, with a row of removable tags below once any filter is set. */
-export function FilterBar<S extends BarState>({ state, onChange, genres, providers, type, sort = false, window: home = false, trending = false }: FilterBarProps<S>) {
-  const tags = filterTags(state, genres, providers);
+export function FilterBar<S extends BarState>({ state, onChange, genres, keywords = [], providers, type, sort = false, window: home = false, trending = false }: FilterBarProps<S>) {
+  const tags = filterTags(state, genres, providers, keywords);
   const note = home ? hiddenRowsNote(state.type) : undefined;
-  const cleared: Filters = { genres: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
   const rating = state.minRating === null ? 'any' : String(state.minRating);
   return (
     <>
@@ -199,7 +200,7 @@ export function FilterBar<S extends BarState>({ state, onChange, genres, provide
               {tag.label}
             </ChipFilter>
           ))}
-          {tags.length > 0 && <Button variant="ghost" size="row" onClick={() => onChange({ ...state, ...cleared })}>Clear filters</Button>}
+          {tags.length > 0 && <Button variant="ghost" size="row" onClick={() => onChange({ ...state, ...clearedFilters })}>Clear filters</Button>}
           {note !== undefined && <span className="font-ui text-[13px] text-muted-foreground">{note}</span>}
         </div>
       )}
