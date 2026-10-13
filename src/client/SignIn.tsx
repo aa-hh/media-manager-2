@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SignInBlock } from './components/ui/sign-in-block';
+import { FirstRun, JellyfinSignIn } from './FirstRun';
 import {
   POLL_INTERVAL_MS,
   POPUP_FEATURES,
@@ -23,7 +24,7 @@ type SignInProps = {
 
 type ErrorBody = { error?: unknown };
 
-const browserPost = (path: string, body: object, signal: AbortSignal) => fetch(path, {
+export const browserPost = (path: string, body: object, signal: AbortSignal) => fetch(path, {
   method: 'POST',
   credentials: 'same-origin',
   headers: {
@@ -76,6 +77,8 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
   const [view, setView] = useState<SignInView>('status');
   const [plexInWindow, setPlexInWindow] = useState(false);
   const [succeeded, setSucceeded] = useState(false);
+  const [firstRun, setFirstRun] = useState(false);
+  const [jellyfinOwner, setJellyfinOwner] = useState(false);
   const successTimerRef = useRef<number | undefined>(undefined);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const planetRef = useRef<ReturnType<typeof createPlanet>>(undefined);
@@ -117,6 +120,13 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
 
   const isCurrent = useCallback((version: number) => requestVersionRef.current === version, []);
 
+  const succeed = useCallback((expiresAt: number) => {
+    callbackStateRef.current = undefined;
+    setSucceeded(true);
+    setAnnouncement('Signed in.');
+    successTimerRef.current = holdSuccess(window, REDUCED_MOTION, () => onSignedIn(expiresAt));
+  }, [onSignedIn]);
+
   const completeSignIn = useCallback(async (state: string, quiet = false, retriesLeft = RECHECK_TRIES): Promise<void> => {
     const request = beginRequest();
     if (!quiet) {
@@ -129,12 +139,8 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
       if (!isCurrent(request.version)) return;
       if (response.status === 200 && typeof body.expiresAt === 'number' && Number.isFinite(body.expiresAt)) {
         closePopup();
-        callbackStateRef.current = undefined;
         window.history.replaceState(window.history.state, '', '/');
-        const expiresAt = body.expiresAt;
-        setSucceeded(true);
-        setAnnouncement('Signed in.');
-        successTimerRef.current = holdSuccess(window, REDUCED_MOTION, () => onSignedIn(expiresAt));
+        succeed(body.expiresAt);
         return;
       }
       if (response.status === 202 && body.status === 'pending') {
@@ -178,7 +184,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
       setAnnouncement('Plex sign-in is unavailable. Try again.');
       setView('unavailable');
     }
-  }, [beginRequest, isCurrent, onSignedIn]);
+  }, [beginRequest, isCurrent, succeed]);
 
   const startSignIn = useCallback(async () => {
     closePopup();
@@ -247,12 +253,17 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
       });
       const body = await readJson(response);
       if (!isCurrent(request.version)) return;
+      setFirstRun(body.firstRun === true);
+      setJellyfinOwner(body.provider === 'jellyfin');
       if (response.status !== 200) {
         setAnnouncement('Plex sign-in is unavailable. Try again.');
         setView('unavailable');
       } else if (body.configured !== true) {
         setAnnouncement('Sign-in isn’t configured.');
         setView('not-configured');
+      } else if (body.firstRun === true) {
+        setAnnouncement('');
+        setView('initial');
       } else if (body.pending === true) {
         setAnnouncement('Plex sign-in was interrupted.');
         setView('interrupted');
@@ -366,13 +377,30 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
     <main className="relative min-h-screen overflow-hidden bg-[#07080b]" aria-busy={view === 'status' || view === 'preparing' || view === 'checking'}>
       <canvas ref={canvasRef} aria-hidden="true" className="fixed inset-0 size-full" />
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgb(7_8_11/0)_45%,#07080b_100%)] sm:bg-[linear-gradient(90deg,#07080b_0%,rgb(7_8_11/0)_55%)]" />
-      <SignInBlock
-        busy={busy}
-        line={line}
-        onSignIn={() => void startSignIn()}
-        headingRef={headingRef}
-        className="fixed right-6 bottom-[83px] left-6 sm:right-auto sm:bottom-[120px] sm:left-[120px] sm:w-100"
-      />
+      {firstRun ? (
+        <FirstRun
+          headingRef={headingRef}
+          plexBusy={busy}
+          plexLine={line}
+          onPlexSignIn={() => void startSignIn()}
+          onSignedIn={succeed}
+          className="fixed right-6 bottom-[83px] left-6 sm:right-auto sm:bottom-[120px] sm:left-[120px] sm:w-100"
+        />
+      ) : jellyfinOwner ? (
+        <JellyfinSignIn
+          headingRef={headingRef}
+          onSignedIn={succeed}
+          className="fixed right-6 bottom-[83px] left-6 sm:right-auto sm:bottom-[120px] sm:left-[120px] sm:w-100"
+        />
+      ) : (
+        <SignInBlock
+          busy={busy}
+          line={line}
+          onSignIn={() => void startSignIn()}
+          headingRef={headingRef}
+          className="fixed right-6 bottom-[83px] left-6 sm:right-auto sm:bottom-[120px] sm:left-[120px] sm:w-100"
+        />
+      )}
       <p className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
     </main>
   );

@@ -83,6 +83,7 @@ const s3ModuleUrl = new URL('../dist/server/services/s3.js', import.meta.url).hr
 const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js', import.meta.url).href;
 const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).href;
 const setupModuleUrl = new URL('../dist/server/setup.js', import.meta.url).href;
+const ownerModuleUrl = new URL('../dist/server/owner.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
 const preferencesModuleUrl = new URL('../dist/server/preferences.js', import.meta.url).href;
 const titleStoreModuleUrl = new URL('../dist/server/titleStore.js', import.meta.url).href;
@@ -525,12 +526,54 @@ const openStream = async (app, session) => {
 
 const drain = () => new Promise((resolve) => setImmediate(resolve));
 
+// A Jellyfin server for the first-run sign-in: two administrators, one ordinary user, Quick Connect and a keyed /System/Info.
+const JELLYFIN_SIGN_IN = 'MediaBrowser Client="media-manager-2", Device="media-manager-2", DeviceId="media-manager-2", Version="1"';
+const createJellyfinFixture = () => {
+  const publicInfo = { Id: 'server-guid', Version: '10.10.0', ProductName: 'Jellyfin Server', ServerName: 'Home', StartupWizardCompleted: true };
+  const state = { down: false, publicStatus: 200, publicBody: publicInfo, quickConnect: true, approved: false };
+  const users = {
+    admin: { Id: 'admin-guid', Name: 'admin', Policy: { IsAdministrator: true, IsDisabled: false } },
+    other: { Id: 'other-guid', Name: 'other', Policy: { IsAdministrator: true, IsDisabled: false } },
+    viewer: { Id: 'viewer-guid', Name: 'viewer', Policy: { IsAdministrator: false, IsDisabled: false } },
+  };
+  const signedIn = (user) => responseJson({ AccessToken: 'jellyfin-access-token', ServerId: 'server-guid', SessionInfo: {}, User: user });
+  const signInAuthorizations = [];
+  const fetch = async (input, init = {}) => {
+    const url = new URL(input);
+    const headers = new Headers(init.headers);
+    assert.equal(init.redirect, 'error');
+    assert.ok(init.signal);
+    if (state.down) throw new TypeError('fixture network failure');
+    if (url.pathname === '/System/Info') {
+      return headers.get('authorization') === 'MediaBrowser Token="good-key"' ? responseJson({ Version: '10.10.0' }) : responseJson({}, 401);
+    }
+    signInAuthorizations.push(headers.get('authorization'));
+    const body = init.body === undefined ? undefined : JSON.parse(init.body);
+    if (url.pathname === '/System/Info/Public') return responseJson(state.publicBody, state.publicStatus);
+    if (url.pathname === '/Users/AuthenticateByName') {
+      const user = users[body.Username];
+      return user !== undefined && body.Pw === 'pw' ? signedIn(user) : responseJson({}, 401);
+    }
+    if (url.pathname === '/QuickConnect/Initiate') {
+      return state.quickConnect ? responseJson({ Code: '123456', Secret: 'qc-secret', Authenticated: false }) : responseJson({}, 401);
+    }
+    if (url.pathname === '/QuickConnect/Connect') {
+      return url.searchParams.get('secret') === 'qc-secret' ? responseJson({ Code: '123456', Authenticated: state.approved }) : responseJson({}, 404);
+    }
+    if (url.pathname === '/Users/AuthenticateWithQuickConnect') {
+      return body.Secret === 'qc-secret' && state.approved ? signedIn(users.admin) : responseJson({}, 400);
+    }
+    throw new Error(`Unexpected Jellyfin request: ${url.href}`);
+  };
+  return { state, publicInfo, signInAuthorizations, fetch };
+};
+
 // Weakening provider verification, cookie binding, expiry, or private-prefix routing must turn at least one case red.
 test('Plex owner authentication', async (t) => {
   await t.test('owner success uses signed Plex requests and protects the private prefix', async () => {
     const { app, clock, fixture } = await makeApp();
     const status = await app.request('/auth/status');
-    assert.deepEqual(await status.json(), { configured: true, pending: false });
+    assert.deepEqual(await status.json(), { configured: true, pending: false, firstRun: false, provider: 'plex' });
     const started = await startAuthentication(app);
     assert.equal(started.response.status, 201);
     assert.match(started.binding, /^__Host-mm_plex=/);
@@ -544,7 +587,7 @@ test('Plex owner authentication', async (t) => {
     assert.equal(parameters.get('context[device][product]'), 'media-manager-2');
     assert.ok(state);
     const pendingStatus = await app.request('/auth/status', { headers: { Cookie: started.binding } });
-    assert.deepEqual(await pendingStatus.json(), { configured: true, pending: true });
+    assert.deepEqual(await pendingStatus.json(), { configured: true, pending: true, firstRun: false, provider: 'plex' });
     const callback = await app.request(`/auth/callback?state=${encodeURIComponent(state)}`);
     assert.equal(callback.status, 200);
     assert.match(callback.headers.get('content-type'), /text\/html/);
@@ -596,11 +639,31 @@ test('Plex owner authentication', async (t) => {
   });
 
   await t.test('invalid configuration keeps the public document available', async () => {
+    // Ignoring a set but malformed PLEX_OWNER_ID, so first run opens to anyone instead of sign-in being off, turns this red.
+    for (const ownerPlexId of [undefined, '']) {
+      const { app } = await makeApp({ ownerPlexId });
+      const status = await app.request('/auth/status');
+      assert.deepEqual(await status.json(), { configured: true, pending: false, firstRun: true, provider: null }, String(ownerPlexId));
+    }
+    for (const ownerPlexId of ['0', '01', 'abc', ' ', String(Number.MAX_SAFE_INTEGER + 1)]) {
+      const { app, database } = await makeApp({ ownerPlexId });
+      const status = await app.request('/auth/status');
+      assert.deepEqual(await status.json(), { configured: false, pending: false, firstRun: false, provider: null }, ownerPlexId);
+      const start = await startAuthentication(app);
+      assert.equal(start.response.status, 503, ownerPlexId);
+      assert.deepEqual(start.json, { error: 'not_configured' });
+      for (const [path, body] of [
+        ['/auth/jellyfin/check', { url: 'http://jellyfin.test:8096' }],
+        ['/auth/jellyfin/password', { url: 'http://jellyfin.test:8096', username: 'admin', password: 'pw' }],
+        ['/auth/jellyfin/quick-connect', { url: 'http://jellyfin.test:8096' }],
+      ]) {
+        const response = await app.request(path, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body) });
+        assert.equal(response.status, 503, `${ownerPlexId} ${path}`);
+        assert.deepEqual(await response.json(), { error: 'not_configured' });
+      }
+      assert.equal(database.prepare('SELECT count(*) AS count FROM owner').get().count, 0, ownerPlexId);
+    }
     for (const options of [
-      { ownerPlexId: undefined },
-      { ownerPlexId: '0' },
-      { ownerPlexId: '01' },
-      { ownerPlexId: String(Number.MAX_SAFE_INTEGER + 1) },
       { publicOrigin: undefined },
       { publicOrigin: 'http://media.example' },
       { publicOrigin: 'https://user:pass@media.example' },
@@ -611,7 +674,7 @@ test('Plex owner authentication', async (t) => {
     ]) {
       const { app } = await makeApp(options);
       const status = await app.request('/auth/status');
-      assert.deepEqual(await status.json(), { configured: false, pending: false }, JSON.stringify(options));
+      assert.deepEqual(await status.json(), { configured: false, pending: false, firstRun: false, provider: null }, JSON.stringify(options));
       const start = await startAuthentication(app, { origin: options.publicOrigin?.startsWith('http') ? new URL(options.publicOrigin).origin : undefined });
       assert.equal(start.response.status, 503, JSON.stringify(options));
       assert.deepEqual(start.json, { error: 'not_configured' });
@@ -717,7 +780,7 @@ test('Plex owner authentication', async (t) => {
     assert.equal(pending.status, 202);
     assert.deepEqual(await pending.json(), { status: 'pending' });
     const status = await app.request('/auth/status', { headers: { Cookie: started.binding } });
-    assert.deepEqual(await status.json(), { configured: true, pending: true });
+    assert.deepEqual(await status.json(), { configured: true, pending: true, firstRun: false, provider: 'plex' });
   });
 
   await t.test('cancel, restart, and logout prevent late provider results from creating sessions', async () => {
@@ -904,13 +967,13 @@ test('Plex owner authentication', async (t) => {
             assert.deepEqual(responseCookies(rejected), []);
             assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
             const status = await app.request('/auth/status', { headers: { Cookie: pending.binding } });
-            assert.deepEqual(await status.json(), { configured: true, pending: true });
+            assert.deepEqual(await status.json(), { configured: true, pending: true, firstRun: false, provider: 'plex' });
             const retried = await app.request(path, {
               method: 'POST', headers: { ...jsonHeaders(origin), Cookie: cookies.join('; ') }, body: '{}',
             });
             assert.equal(retried.status, 204);
             const after = await app.request('/auth/status', { headers: { Cookie: pending.binding } });
-            assert.deepEqual(await after.json(), { configured: true, pending: false });
+            assert.deepEqual(await after.json(), { configured: true, pending: false, firstRun: false, provider: 'plex' });
             assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, path === '/auth/logout' ? 401 : 200);
           }
         }
@@ -1053,6 +1116,205 @@ test('Plex owner authentication', async (t) => {
       assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
       assert.equal(response.headers.get('x-frame-options'), 'DENY');
     }
+  });
+  // Saving no owner on the first sign-in, letting a second account in once an owner exists, or letting the owner row outrank
+  // PLEX_OWNER_ID turns this red.
+  await t.test('first run makes the first Plex sign-in the owner, and PLEX_OWNER_ID outranks the owner row', async () => {
+    const first = await makeApp({ ownerPlexId: undefined, fixtureOptions: { userBody: { id: 7, username: 'seven', restricted: false, anonymous: false } } });
+    const status = async (app) => (await app.request('/auth/status')).json();
+    assert.deepEqual(await status(first.app), { configured: true, pending: false, firstRun: true, provider: null });
+    const { session } = await signIn(first.app);
+    assert.deepEqual({ ...first.database.prepare('SELECT provider, user_id, user_name, server_name FROM owner').get() },
+      { provider: 'plex', user_id: '7', user_name: 'seven', server_name: null });
+    assert.equal((await first.app.request('/api/session', { headers: { Cookie: session } })).status, 200);
+    assert.deepEqual(await status(first.app), { configured: true, pending: false, firstRun: false, provider: 'plex' });
+
+    const second = await makeApp({
+      ownerPlexId: undefined, clock: first.clock, database: first.database, fixtureOptions: { userBody: { id: 8, restricted: false, anonymous: false } },
+    });
+    const started = await startAuthentication(second.app);
+    const refused = await completeAuthentication(second.app, started.binding, plexStateFromUrl(started.json.url).state);
+    assert.equal(refused.status, 403);
+    assert.deepEqual(await refused.json(), { error: 'owner_only' });
+
+    const pinned = await makeApp({ clock: first.clock, database: first.database });
+    assert.deepEqual(await status(pinned.app), { configured: true, pending: false, firstRun: false, provider: 'plex' });
+    assert.equal((await pinned.app.request('/api/session', { headers: { Cookie: session } })).status, 401);
+    const owner = await signIn(pinned.app);
+    assert.equal((await pinned.app.request('/api/session', { headers: { Cookie: owner.session } })).status, 200);
+  });
+
+  // Opening the first-run page or a Jellyfin sign-in on an install whose owner PLEX_OWNER_ID pins turns this red.
+  await t.test('PLEX_OWNER_ID hides the first-run page and refuses the Jellyfin routes', async () => {
+    const { app, database } = await makeApp();
+    assert.deepEqual(await (await app.request('/auth/status')).json(), { configured: true, pending: false, firstRun: false, provider: 'plex' });
+    for (const [path, body] of [
+      ['/auth/jellyfin/check', { url: 'http://jellyfin.test:8096' }],
+      ['/auth/jellyfin/password', { url: 'http://jellyfin.test:8096', username: 'admin', password: 'pw' }],
+      ['/auth/jellyfin/quick-connect', { url: 'http://jellyfin.test:8096' }],
+    ]) {
+      const response = await app.request(path, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body) });
+      assert.equal(response.status, 409, path);
+      assert.deepEqual(await response.json(), { error: 'owner_exists' });
+    }
+    assert.equal(database.prepare('SELECT count(*) AS count FROM owner').get().count, 0);
+  });
+
+  // Accepting a non-Jellyfin answer, letting a non-administrator in, storing the Jellyfin access token, taking a typed address
+  // after first run, letting a second administrator in, or opening a session before Quick Connect is approved turns this red.
+  await t.test('Jellyfin first run checks the address, lets in only an administrator, and locks the owner and address', async () => {
+    const jellyfin = createJellyfinFixture();
+    const { app, database } = await makeApp({ ownerPlexId: undefined, fetch: jellyfin.fetch });
+    const { getSetting } = await import(settingsModuleUrl);
+    const post = (path, body, cookie) => app.request(path, {
+      method: 'POST', headers: { ...jsonHeaders(), ...(cookie === undefined ? {} : { Cookie: cookie }) }, body: JSON.stringify(body),
+    });
+    const address = 'http://jellyfin.test:8096/';
+    const check = async () => (await post('/auth/jellyfin/check', { url: address })).json();
+    jellyfin.state.down = true;
+    assert.deepEqual(await check(), { kind: 'no_answer' });
+    jellyfin.state.down = false;
+    jellyfin.state.publicStatus = 404;
+    assert.deepEqual(await check(), { kind: 'not_jellyfin' });
+    jellyfin.state.publicStatus = 200;
+    jellyfin.state.publicBody = { ...jellyfin.publicInfo, ProductName: 'Emby Server' };
+    assert.deepEqual(await check(), { kind: 'not_jellyfin' });
+    // Accepting an answer with no ProductName as Jellyfin, instead of requiring it, turns this red.
+    jellyfin.state.publicBody = { Id: 'server-guid', Version: '10.10.0' };
+    assert.deepEqual(await check(), { kind: 'not_jellyfin' });
+    jellyfin.state.publicBody = jellyfin.publicInfo;
+    assert.deepEqual(await check(), { kind: 'ok', url: 'http://jellyfin.test:8096', serverName: 'Home' });
+    assert.equal((await post('/auth/jellyfin/check', { url: 'http://user:secret@jellyfin.test:8096' })).status, 400);
+
+    const viewer = await post('/auth/jellyfin/password', { url: address, username: 'viewer', password: 'pw' });
+    assert.equal(viewer.status, 403);
+    assert.deepEqual(await viewer.json(), { error: 'not_administrator', userName: 'viewer', serverName: 'Home' });
+    assert.equal(cookieValue(viewer, '__Host-mm_session'), undefined);
+    assert.equal(database.prepare('SELECT count(*) AS count FROM owner').get().count, 0);
+    assert.equal(getSetting(database, 'serviceAddresses', 'jellyfin.url'), undefined);
+
+    const admin = await post('/auth/jellyfin/password', { url: address, username: 'admin', password: 'pw' });
+    assert.equal(admin.status, 200);
+    const session = cookieValue(admin, '__Host-mm_session');
+    assert.ok(session);
+    assert.deepEqual({ ...database.prepare('SELECT provider, user_id, user_name, server_name FROM owner').get() },
+      { provider: 'jellyfin', user_id: 'admin-guid', user_name: 'admin', server_name: 'Home' });
+    assert.equal(getSetting(database, 'serviceAddresses', 'jellyfin.url'), 'http://jellyfin.test:8096');
+    assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
+    const stored = JSON.stringify([database.prepare('SELECT * FROM sessions').all(), database.prepare('SELECT * FROM settings').all()]);
+    assert.doesNotMatch(stored, /jellyfin-access-token/);
+
+    assert.deepEqual(await (await app.request('/auth/status')).json(), { configured: true, pending: false, firstRun: false, provider: 'jellyfin' });
+    const recheck = await post('/auth/jellyfin/check', { url: address });
+    assert.equal(recheck.status, 409);
+    assert.deepEqual(await recheck.json(), { error: 'owner_exists' });
+    const typedAddress = await post('/auth/jellyfin/password', { url: 'http://elsewhere.test:8096', username: 'admin', password: 'pw' });
+    assert.equal(typedAddress.status, 409);
+    const other = await post('/auth/jellyfin/password', { username: 'other', password: 'pw' });
+    assert.equal(other.status, 403);
+    assert.deepEqual(await other.json(), { error: 'owner_only' });
+
+    const quick = await post('/auth/jellyfin/quick-connect', {});
+    assert.equal(quick.status, 201);
+    assert.equal((await quick.json()).code, '123456');
+    const binding = cookieValue(quick, '__Host-mm_plex');
+    const waiting = await post('/auth/jellyfin/quick-connect/complete', {}, binding);
+    assert.equal(waiting.status, 202);
+    assert.deepEqual(await waiting.json(), { status: 'pending' });
+    jellyfin.state.approved = true;
+    const approved = await post('/auth/jellyfin/quick-connect/complete', {}, binding);
+    assert.equal(approved.status, 200);
+    const quickSession = cookieValue(approved, '__Host-mm_session');
+    assert.equal((await app.request('/api/session', { headers: { Cookie: quickSession } })).status, 200);
+    jellyfin.state.quickConnect = false;
+    const off = await post('/auth/jellyfin/quick-connect', {});
+    assert.equal(off.status, 409);
+    assert.deepEqual(await off.json(), { error: 'quick_connect_off' });
+    assert.deepEqual([...new Set(jellyfin.signInAuthorizations)], [JELLYFIN_SIGN_IN]);
+  });
+
+  // Dropping the admit call from the Jellyfin password sign-in, so a client can try passwords without limit, turns this red.
+  await t.test('the Jellyfin password sign-in admits ten tries per client a minute', async () => {
+    const jellyfin = createJellyfinFixture();
+    const { app, clock } = await makeApp({ ownerPlexId: undefined, fetch: jellyfin.fetch });
+    const attempt = () => app.request('/auth/jellyfin/password', {
+      method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ url: 'http://jellyfin.test:8096', username: 'admin', password: 'wrong' }),
+    });
+    for (let index = 0; index < 10; index += 1) assert.equal((await attempt()).status, 401);
+    const limited = await attempt();
+    assert.equal(limited.status, 429);
+    assert.deepEqual(await limited.json(), { error: 'rate_limited' });
+    assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+    clock.value += 60_000;
+    assert.equal((await attempt()).status, 401);
+  });
+
+  // Counting a Jellyfin owner's media server done before its key is saved, saving a key Jellyfin refused, or giving a Plex owner
+  // the Jellyfin step turns this red.
+  await t.test('the setup wizard\'s media server step follows the owner\'s provider', async () => {
+    const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+    const { getSetting, setSetting } = await import(settingsModuleUrl);
+    const { createSetupRoutes } = await import(setupModuleUrl);
+    const build = async (input) => {
+      const database = new DatabaseSync(':memory:');
+      migrateDatabase(database, applicationMigrations);
+      const setup = createSetupRoutes({ database, arr: {}, rtorrent: {}, trackers: {}, env: {}, fetch: input.fetch });
+      const { app } = await makeApp({ ...input, database, setup });
+      return { app, database };
+    };
+    const send = (app, session, method, path, body) => app.request(`/api/setup${path}`, {
+      method, headers: { ...jsonHeaders(), Cookie: session }, body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    const jellyfin = createJellyfinFixture();
+    const owned = await build({ ownerPlexId: undefined, fetch: jellyfin.fetch });
+    const signedIn = await owned.app.request('/auth/jellyfin/password', {
+      method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ url: 'http://jellyfin.test:8096', username: 'admin', password: 'pw' }),
+    });
+    const session = cookieValue(signedIn, '__Host-mm_session');
+    const status = async () => (await send(owned.app, session, 'GET', '')).json();
+    const before = await status();
+    assert.equal(before.required.mediaServer, 'not_done');
+    assert.deepEqual(before.mediaServer, { kind: 'jellyfin', url: 'http://jellyfin.test:8096', serverName: 'Home', ownerName: 'admin' });
+    const rejected = await send(owned.app, session, 'POST', '/jellyfin', { apiKey: 'bad-key' });
+    assert.deepEqual(await rejected.json(), { kind: 'rejected' });
+    assert.equal(getSetting(owned.database, 'credentials', 'jellyfin.apiKey'), undefined);
+    const accepted = await send(owned.app, session, 'POST', '/jellyfin', { apiKey: 'good-key' });
+    assert.deepEqual(await accepted.json(), { kind: 'ok', version: '10.10.0' });
+    assert.equal(getSetting(owned.database, 'credentials', 'jellyfin.apiKey'), 'good-key');
+    assert.equal((await status()).required.mediaServer, 'done');
+
+    const plex = await build({});
+    const plexSession = (await signIn(plex.app)).session;
+    const plexStatus = async () => (await send(plex.app, plexSession, 'GET', '')).json();
+    const plexBefore = await plexStatus();
+    assert.equal(plexBefore.required.mediaServer, 'not_done');
+    assert.deepEqual(plexBefore.mediaServer, { kind: 'plex' });
+    const refused = await send(plex.app, plexSession, 'POST', '/jellyfin', { apiKey: 'good-key' });
+    assert.equal(refused.status, 409);
+    assert.deepEqual(await refused.json(), { error: 'not_jellyfin_owner' });
+    setSetting(plex.database, 'serviceAddresses', 'plex.url', 'http://plex.test:32400');
+    setSetting(plex.database, 'credentials', 'plex.token', 'token');
+    assert.equal((await plexStatus()).required.mediaServer, 'done');
+  });
+
+  // Reading the owner row instead of letting a valid PLEX_OWNER_ID outrank it, in the media server pick or the setup wizard,
+  // turns this red.
+  await t.test('PLEX_OWNER_ID outranks a Jellyfin owner row for the media server and the setup wizard', async () => {
+    const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+    const { saveOwner } = await import(ownerModuleUrl);
+    const { createMediaServer } = await import(mediaServerModuleUrl);
+    const { createSetupRoutes } = await import(setupModuleUrl);
+    const database = new DatabaseSync(':memory:');
+    migrateDatabase(database, applicationMigrations);
+    saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home' });
+    assert.equal(createMediaServer(database)().name, 'jellyfin');
+    assert.equal(createMediaServer(database, { ownerPlexId: '42' })().name, 'plex');
+    const setup = createSetupRoutes({ database, arr: {}, rtorrent: {}, trackers: {}, env: { PLEX_OWNER_ID: '42' } });
+    const { app } = await makeApp({ database, setup });
+    const { session } = await signIn(app);
+    const status = await (await app.request('/api/setup', { headers: { Cookie: session } })).json();
+    assert.deepEqual(status.mediaServer, { kind: 'plex' });
   });
 });
 
@@ -2500,9 +2762,11 @@ test('service connections read saved settings and classify each outcome', async 
 });
 
 // Matching a library of the wrong type or by a name prefix, reading a refused library list as "no library", sending the scan
-// anywhere but /Library/Media/Updated, keeping Plex once Jellyfin is set up, or naming Plex in a Jellyfin install's problem turns this red.
-test('the Jellyfin version finds the library holding a folder, asks it to scan, and is used once Jellyfin is set up', async (t) => {
+// anywhere but /Library/Media/Updated, picking the media server from saved settings instead of the owner's provider, or naming
+// Plex in a Jellyfin install's problem turns this red.
+test('the Jellyfin version finds the library holding a folder, asks it to scan, and is used once a Jellyfin owner exists', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
+  const { saveOwner } = await import(ownerModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
   const { createMediaServer } = await import(mediaServerModuleUrl);
   const { createEventHub } = await import(eventsModuleUrl);
@@ -2529,6 +2793,8 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
   assert.equal(mediaServer().name, 'plex');
   setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test/');
   setSetting(database, 'credentials', 'jellyfin.apiKey', key);
+  assert.equal(mediaServer().name, 'plex');
+  saveOwner(database, { provider: 'jellyfin', userId: 'jellyfin-admin', userName: 'Alec', serverName: 'Home' });
   const jellyfin = mediaServer();
   assert.equal(jellyfin.name, 'jellyfin');
 
@@ -2594,6 +2860,9 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   assert.equal(mediaServer().mergeVersions, undefined);
   setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test');
   setSetting(database, 'credentials', 'jellyfin.apiKey', 'jellyfin-key');
+  // The media server follows the owner's provider, so Jellyfin needs a Jellyfin owner, not just its settings.
+  const { saveOwner } = await import(ownerModuleUrl);
+  saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home' });
 
   let dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' };
   let pilot = { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' };
@@ -3681,7 +3950,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
   await t.test('the status reports each part and BACKUP_KEY', async () => {
     const { database, status } = await build();
     const fresh = await status();
-    assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', plex: 'not_done', folders: 'not_done' });
+    assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', mediaServer: 'not_done', folders: 'not_done' });
     assert.equal(fresh.requiredComplete, false);
     assert.deepEqual(fresh.optional, {
       trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false },
@@ -3699,11 +3968,11 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
       setSetting(database, 'hostPaths', key, '/data');
     }
     const partial = await status();
-    assert.deepEqual(partial.required, { sonarr: 'done', radarr: 'done', rtorrent: 'not_done', plex: 'done', folders: 'not_done' });
+    assert.deepEqual(partial.required, { sonarr: 'done', radarr: 'done', rtorrent: 'not_done', mediaServer: 'done', folders: 'not_done' });
     setSetting(database, 'credentials', 'rtorrent.password', 'value');
     setSetting(database, 'hostPaths', 'versions.radarr', '/data');
     const complete = await status();
-    assert.deepEqual(complete.required, { sonarr: 'done', radarr: 'done', rtorrent: 'done', plex: 'done', folders: 'done' });
+    assert.deepEqual(complete.required, { sonarr: 'done', radarr: 'done', rtorrent: 'done', mediaServer: 'done', folders: 'done' });
     assert.equal(complete.requiredComplete, true);
   });
 
@@ -3916,7 +4185,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     assert.equal(getSetting(database, 'credentials', 'plex.token'), 'plex-secret-token');
     const text = await statusText();
     assert.equal(text.includes('plex-secret-token'), false);
-    assert.equal(JSON.parse(text).required.plex, 'done');
+    assert.equal(JSON.parse(text).required.mediaServer, 'done');
 
     // Fails if logout stops dropping the session, so the sign-in token stays usable.
     const loggedOut = await app.request('/auth/logout', {
@@ -4024,6 +4293,21 @@ test('the Blutopia token moves to the blutopia.cc tracker and the Beyond-HD and 
     ['trackerConfiguration', 'rules.blutopia.cc', '{"seedHours":[{"hours":168}]}'], ['trackerConfiguration', 'software.blutopia.cc', 'unit3d'],
   ]);
   assert.deepEqual(migrate([['credentials', 'blutopia.apiToken', '']]), []);
+});
+
+// Dropping the old rows in the sessions rebuild instead of copying them with a text owner ID, or keeping owner_id an integer
+// column that refuses a Jellyfin GUID, turns this red.
+test('the sessions rebuild keeps old sessions with a text owner ID and takes a Jellyfin GUID', async () => {
+  const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+  const rebuild = applicationMigrations.findIndex((migration) => migration.includes('DROP TABLE sessions'));
+  assert.ok(rebuild > 0);
+  const database = new DatabaseSync(':memory:');
+  migrateDatabase(database, applicationMigrations.slice(0, rebuild));
+  database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('old', 42, 1);
+  migrateDatabase(database, applicationMigrations);
+  assert.deepEqual({ ...database.prepare('SELECT token_hash, owner_id, expires_at FROM sessions').get() }, { token_hash: 'old', owner_id: '42', expires_at: 1 });
+  database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('new', 'b5a4e0c2-guid', 1);
+  database.close();
 });
 
 // Classifying a status differently, dropping the service name from a message, or changing any operation's request turns a subtest red.
@@ -11416,7 +11700,7 @@ test('the settings screen sends only changed fields and ranks each service state
   // Opening on a done step, visiting an unwanted or skipped optional part, skipping the posters and ratings step between trackers and backup, or reaching Done with a required part missing turns this red.
   await t.test('the wizard moves to the next open step and reaches Done only once every required part is saved', () => {
     const status = (done, optional = {}) => ({
-      required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
+      required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'mediaServer', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
       optional: { trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
     });
     const fresh = status([]);
@@ -11426,7 +11710,7 @@ test('the settings screen sends only changed fields and ranks each service state
     // Radarr saved in Settings earlier is passed over.
     assert.equal(nextStep('sonarr', status(['sonarr', 'radarr']), { trackers: true, backup: true }), 'rtorrent');
     assert.equal(firstStep(status(['sonarr']), { trackers: true, backup: true }), 'radarr');
-    const required = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
+    const required = ['sonarr', 'radarr', 'rtorrent', 'mediaServer', 'folders'];
     const chosen = status(required, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'not_done', wanted: true } });
     assert.deepEqual(wantedParts(chosen), { trackers: false, metadata: false, backup: true });
     assert.equal(nextStep('folders', chosen, wantedParts(chosen)), 'backup');
@@ -11437,8 +11721,8 @@ test('the settings screen sends only changed fields and ranks each service state
     assert.equal(nextStep('trackers', status(required, { metadata: { status: 'skipped', wanted: true } }), all), 'backup');
     const skipped = status(required, { trackers: { status: 'skipped', wanted: true }, backup: { status: 'skipped', wanted: true } });
     assert.equal(nextStep('folders', skipped, wantedParts(skipped)), 'done');
-    // Past the end with Plex missing goes back to Plex, not to Done.
-    assert.equal(nextStep('backup', status(['sonarr', 'radarr', 'rtorrent', 'folders']), { trackers: true, backup: true }), 'plex');
+    // Past the end with the media server missing goes back to it, not to Done.
+    assert.equal(nextStep('backup', status(['sonarr', 'radarr', 'rtorrent', 'folders']), { trackers: true, backup: true }), 'mediaServer');
   });
 
   // Letting a suggestion replace a saved folder, or leaving a field null when nothing is known, turns this red.

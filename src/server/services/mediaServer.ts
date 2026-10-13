@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { type ConnectionStatus, readSetting, type ServiceOptions } from './connection.js';
+import { effectiveOwner } from '../owner.js';
+import type { ConnectionStatus, ServiceOptions } from './connection.js';
 import { createJellyfin } from './jellyfin.js';
 import { createPlex } from './plex.js';
 
@@ -21,15 +22,10 @@ export type MediaServer = {
   mergeVersions?(type: LibraryType, trackedPath: string, versionPath: string, season?: number): Promise<boolean>;
 };
 
-// One media server per install: Jellyfin once a Jellyfin setting is saved, else Plex. Picked on every call, so a
-// settings change needs no restart.
-// razor: picked from saved settings; AA-143 replaces this with the owner's own choice.
-export const createMediaServer = (database: DatabaseSync, options: ServiceOptions = {}) => {
+// One media server per install: Jellyfin when the owner signed in with Jellyfin, else Plex. Picked on every call, so the
+// first-run sign-in needs no restart. ownerPlexId is PLEX_OWNER_ID, which outranks the owner row.
+export const createMediaServer = (database: DatabaseSync, { ownerPlexId, ...options }: ServiceOptions & { ownerPlexId?: string } = {}) => {
   const plex = createPlex(database, options);
   const jellyfin = createJellyfin(database, options);
-  return (): MediaServer => (
-    readSetting(database, 'serviceAddresses', 'jellyfin.url') !== undefined || readSetting(database, 'credentials', 'jellyfin.apiKey') !== undefined
-      ? jellyfin
-      : plex
-  );
+  return (): MediaServer => (effectiveOwner(database, ownerPlexId)?.provider === 'jellyfin' ? jellyfin : plex);
 };
