@@ -1,13 +1,15 @@
 // v2/Select trigger — ~/Projects/media-manager-2-design/design-system.lib.pen v8Swg
+// v2/Select trigger/sm — ~/Projects/media-manager-2-design/design-system.lib.pen VlOeD (size="sm")
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { ChevronDown, Plus } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-type SelectSize = 'row' | 'default' | 'large';
+type SelectSize = 'row' | 'sm' | 'default' | 'large';
 
 const sizes: Record<SelectSize, string> = {
   row: 'h-(--control-h-row) rounded-(--control-radius-row) pr-2 pl-(--control-px-row) text-(length:--control-text-row) [&_svg]:size-(--control-icon-row)',
+  sm: 'h-(--control-h-sm) rounded-(--control-radius-default) pr-3 pl-(--control-px-default) text-(length:--control-text-default) [&_svg]:size-(--control-icon-default)',
   default: 'h-(--control-h-default) rounded-(--control-radius-default) pr-3 pl-(--control-px-default) text-(length:--control-text-default) [&_svg]:size-(--control-icon-default)',
   large: 'h-(--control-h-large) rounded-(--control-radius-large) pr-3.5 pl-(--control-px-large) text-(length:--control-text-large) [&_svg]:size-(--control-icon-large)',
 };
