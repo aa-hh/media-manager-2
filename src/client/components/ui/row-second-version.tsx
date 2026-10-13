@@ -32,7 +32,7 @@ type RowSecondVersionProps = Omit<TableRowProps, 'progress'> & {
   tracked?: boolean;
   /** Role words after the release name; defaults to "Tracked version" or "Second version". */
   roleLabel?: ReactNode;
-  /** The release name; a trailing "-group" is drawn in 700 foreground. */
+  /** The release name; its trailing group is drawn in 700 foreground. */
   release: string;
   group?: string | null;
   /** Second line under the release name, such as a failure reason; the row grows to fit. */

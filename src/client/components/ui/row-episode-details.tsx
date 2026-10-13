@@ -58,9 +58,11 @@ function RowEpisodeDetails({ selected = true, overview, stillUrl, details, versi
       )}
       {/* Full width and white, no card: the version rows keep the episode table's column edges from x 152. */}
       {versions !== undefined && (
-        <section role="table" aria-label="Versions" className="flex flex-col bg-card">
-          {versions}
-        </section>
+        <div role="cell">
+          <section role="table" aria-label="Versions" className="flex flex-col bg-card">
+            {versions}
+          </section>
+        </div>
       )}
       {(versionsEmpty !== undefined || hasHistory) && (
         <div role="cell" className="flex flex-col gap-6 pt-4 pr-4 pb-6 pl-(--detail-indent)">
