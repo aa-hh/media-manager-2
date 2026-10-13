@@ -10240,7 +10240,7 @@ test('marking a grab failed keeps the file and the torrent, blocklists and searc
   // Searching a season whole when one of its missing episodes is in the search backlog turns this red.
   database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?)').run('sonarr:episode:33', 1);
   assert.deepEqual(await sent([31, 32, 33]), [{ name: 'EpisodeSearch', episodeIds: [31, 32, 33] }]);
-  database.prepare('DELETE FROM search_backlog').run();
+  database.prepare('DELETE FROM search_backlog WHERE subject = ?').run('sonarr:episode:33');
   // Treating an anime series as a pack, which Sonarr searches episode by episode anyway, turns this red.
   fake.sonarr.state.series = [seriesRecord({ id: 3, seriesType: 'anime' })];
   assert.deepEqual(await sent([31, 32, 33]), [{ name: 'EpisodeSearch', episodeIds: [31, 32, 33] }]);
@@ -10437,7 +10437,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?)').run('sonarr:episode:33', 1);
     const response = await post('/search', { service: 'sonarr', kind: 'season', seriesId: 3, seasonNumber: 2 });
     fake.sonarr.state.episodes.pop();
-    database.prepare('DELETE FROM search_backlog').run();
+    database.prepare('DELETE FROM search_backlog WHERE subject = ?').run('sonarr:episode:33');
     assert.equal(response.status, 409);
     assert.deepEqual(await response.json(), {
       error: 'refused', reason: 'Sonarr already has a download, a hand-picked release or a backlog entry for every missing episode of this season.',
