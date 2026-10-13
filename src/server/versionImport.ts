@@ -342,33 +342,36 @@ export const createVersionImport = (options: {
   }));
 
   // Jellyfin groups versions only within one folder, so each imported version is merged with the tracked file by hand.
-  // Every try counts, a failed one too, so a version Jellyfin never finds stops being tried.
+  // A try counts only when every service answered, so an outage spends none; a version Jellyfin never finds stops being tried.
   const mergeVersions = async () => {
     const server = mediaServer();
     if (server.mergeVersions === undefined) return;
     const pending = database.prepare("SELECT id, service, movie_id, series_id, episode_id, file_path, merge_tries FROM second_versions WHERE state = 'imported' AND merge_tries < ? ORDER BY id")
       .all(MERGE_TRIES);
     for (const row of pending) {
-      let merged = false;
+      let outcome: 'merged' | 'missing' | 'outage' = 'missing';
       try {
         let tracked: string | null | undefined;
         let season: number | undefined;
         if (row.service === 'radarr') {
           const movie = await arr.radarr.movie(Number(row.movie_id));
+          if (movie.kind !== 'ok' && movie.kind !== 'not_found') outcome = 'outage';
           tracked = movie.kind === 'ok' ? movie.value.file?.path : undefined;
         } else {
           const episodes = await arr.sonarr.episodes(Number(row.series_id), { withFiles: true });
+          if (episodes.kind !== 'ok' && episodes.kind !== 'not_found') outcome = 'outage';
           const episode = episodes.kind === 'ok' ? episodes.value.find((item) => item.id === Number(row.episode_id)) : undefined;
           tracked = episode?.file?.path;
           season = episode?.seasonNumber;
         }
-        if (typeof tracked === 'string') {
-          merged = await server.mergeVersions(row.service === 'radarr' ? 'movie' : 'show', tracked, String(row.file_path), season);
+        if (typeof tracked === 'string' && await server.mergeVersions(row.service === 'radarr' ? 'movie' : 'show', tracked, String(row.file_path), season)) {
+          outcome = 'merged';
         }
       } catch {
-        // Counted as a try below.
+        outcome = 'outage';
       }
-      database.prepare('UPDATE second_versions SET merge_tries = ? WHERE id = ?').run(merged ? MERGE_TRIES : Number(row.merge_tries ?? 0) + 1, row.id);
+      if (outcome === 'outage') continue;
+      database.prepare('UPDATE second_versions SET merge_tries = ? WHERE id = ?').run(outcome === 'merged' ? MERGE_TRIES : Number(row.merge_tries) + 1, row.id);
     }
   };
 

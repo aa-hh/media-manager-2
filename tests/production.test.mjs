@@ -2560,7 +2560,8 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
 });
 
 // Matching items by full path (Radarr and Jellyfin see different mounts), merging before both items exist, not narrowing
-// episodes by season, retrying a merged row or past MERGE_TRIES, or giving Plex installs a merge step turns this red.
+// episodes by season, counting an outage as a try, retrying a merged row or past MERGE_TRIES, or giving Plex installs a
+// merge step turns this red.
 test('an imported second version is merged with the tracked file in Jellyfin once both are scanned', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -2606,6 +2607,15 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   const tries = (id) => Number(database.prepare('SELECT merge_tries FROM second_versions WHERE id = ?').get(id).merge_tries);
   const problems = createProblems({ database, events: createEventHub() });
   const versionImport = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer, problems });
+
+  // An outage spends no try.
+  const reachable = fetch;
+  let down = true;
+  const outageFetch = async (url, init) => (down ? Promise.reject(new TypeError('fetch failed')) : reachable(url, init));
+  const outage = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer: createMediaServer(database, { fetch: outageFetch }), problems });
+  await outage.run();
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [0, 0, MERGE_TRIES - 1]);
+  down = false;
 
   // Jellyfin has not scanned yet: nothing to merge, one try spent each.
   await versionImport.run();
