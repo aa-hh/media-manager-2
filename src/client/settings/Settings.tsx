@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ChevronRight, DatabaseBackup, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronRight, DatabaseBackup, Eraser, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -26,7 +26,7 @@ import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
 import { backupPill, backupWords, type SetupStatus } from './setup';
 import { useScreenReady } from '../navigation';
-import { infoOf, requester, useServices } from './useServices';
+import { infoOf, requester, useServices, writeHeaders } from './useServices';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
@@ -61,9 +61,24 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const [discardOpen, setDiscardOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
   const [setup, setSetup] = useState<SetupStatus>();
+  const [clearing, setClearing] = useState(false);
   const toasts = useToastManager();
   const unauthorizedRef = useRef(onUnauthenticated);
   unauthorizedRef.current = onUnauthenticated;
+
+  const clearCache = async () => {
+    setClearing(true);
+    const failed = { title: 'Cache could not be cleared', description: 'Check that media-manager-2 is running, then try again.' };
+    try {
+      const response = await fetch('/api/cache/clear', { method: 'POST', credentials: 'same-origin', headers: writeHeaders, body: '{}' });
+      if (response.status === 401) unauthorizedRef.current();
+      else toasts.add(response.ok ? { title: 'Cache cleared', description: 'Pages fetch details and pictures again as you open them. Posters return within a few minutes; reload a page to see them.' } : failed);
+    } catch {
+      toasts.add(failed);
+    } finally {
+      setClearing(false);
+    }
+  };
   const readServices = connections.read;
 
   useEffect(() => {
@@ -288,6 +303,10 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
               <Button variant="outline" size="row" icon={<Plus />} onClick={() => { setNewAddress(''); setSelected('add'); }}>Add tracker</Button>
             </div>
           )}
+          <LabelGroup>Cache</LabelGroup>
+          <div className="px-4 py-2">
+            <Button variant="outline" size="row" icon={<Eraser />} loading={clearing} onClick={() => void clearCache()}>Clear cache</Button>
+          </div>
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {adding ? (

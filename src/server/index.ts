@@ -56,6 +56,7 @@ import { createTorrentFiles } from './torrentFiles.js';
 import { createTitleDelete } from './titleDelete.js';
 import { adviseRemoval } from './advice.js';
 import { createImageRoutes, createTitleCache, createTmdbImages, IMAGE_SWEEP_INTERVAL_MS } from './titles.js';
+import { createCacheRoutes } from './clearCache.js';
 
 const clientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
 // An empty HOST or PORT means the default, never every interface or a random port.
@@ -225,6 +226,7 @@ if (database !== undefined) {
       blocklist,
     }),
     images: createImageRoutes(titles, tmdbImages),
+    cache: createCacheRoutes(database, imageDirectory, titles.reconcile),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
       // One receiver for both: live downloads record every event, a Grab of a manual download is vetoed,

@@ -26,5 +26,5 @@ Routes, background jobs and the SQLite database that act on Sonarr, Radarr, rTor
 - `secondVersions.ts`, `versionImport.ts`, `secondVersionRows.ts`, `secondVersionDelete.ts` → second versions.
 - `titleDelete.ts`, `advice.ts`, `trackerRules.ts`, `health.ts` → deletion, removal advice, health.
 - `problems.ts`, `flagged.ts`, `blocklist.ts`, `history.ts`, `api.ts` → problems, blocklist, History, queue actions.
-- `library.ts`, `owned.ts`, `add.ts`, `search.ts`, `labels.ts`, `titles.ts`, `titleStore.ts`, `tmdbTitles.ts`, `backdrops.ts`, `discover/` → library.
+- `library.ts`, `owned.ts`, `add.ts`, `search.ts`, `labels.ts`, `titles.ts`, `titleStore.ts`, `tmdbTitles.ts`, `backdrops.ts`, `clearCache.ts`, `discover/` → library.
 - `log.ts` → timing records, one JSON line each on stdout.
