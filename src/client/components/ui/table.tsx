@@ -95,11 +95,12 @@ function TableRow({ selected = false, marker, best = false, progress, className,
       />
       {children}
       {progress !== undefined && (
-        <span
-          aria-hidden="true"
-          style={{ '--row-progress': `${progress}%` } as CSSProperties}
-          className="pointer-events-none absolute bottom-0 left-0 h-0.75 w-(--row-progress) rounded-r-[2px] bg-foreground transition-[width] duration-(--duration-slow) ease-out starting:w-0"
-        />
+        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-0.75 overflow-hidden">
+          <span
+            style={{ '--row-progress': `${progress - 100}%` } as CSSProperties}
+            className="block h-full w-full translate-x-(--row-progress) rounded-r-[2px] bg-foreground transition-[translate] duration-(--duration-slow) ease-out starting:-translate-x-full"
+          />
+        </span>
       )}
     </div>
   );

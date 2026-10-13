@@ -11,7 +11,7 @@ function TabsList({ className, children, ...props }: ComponentProps<typeof TabsP
   return (
     <TabsPrimitive.List className={cn('relative flex items-center', className)} {...props}>
       {children}
-      <TabsPrimitive.Indicator className="absolute bottom-0 left-(--active-tab-left) h-0.5 w-(--active-tab-width) bg-foreground transition-[left,width] duration-(--duration-base) ease-out" />
+      <TabsPrimitive.Indicator className="absolute bottom-0 left-0 translate-x-(--active-tab-left) h-0.5 w-(--active-tab-width) bg-foreground transition-[translate,width] duration-(--duration-base) ease-out" />
     </TabsPrimitive.List>
   );
 }

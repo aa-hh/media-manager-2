@@ -12,7 +12,11 @@ import { seedingText } from './secondVersionText';
 import { SecondVersionRows } from './SecondVersions';
 import { episodeCode } from './TitleHeader';
 
-const day = (iso: string | null) => (iso === null ? '' : new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }));
+const dayFormat = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const day = (iso: string | null) => {
+  const time = iso === null ? Number.NaN : Date.parse(iso);
+  return Number.isNaN(time) ? '' : dayFormat.format(time);
+};
 
 const releaseName = (file: FileDetail) => {
   const name = file.relativePath?.split('/').pop() ?? '';
@@ -56,7 +60,7 @@ export function EpisodeDetails({ episode, seeding, secondVersions, onSecondVersi
   onClose: () => void;
   onUnauthenticated: () => void;
 }) {
-  const history = useTitleHistory(`service=sonarr&episodeId=${episode.id}`, onUnauthenticated);
+  const { load: history, retry } = useTitleHistory(`service=sonarr&episodeId=${episode.id}`, onUnauthenticated);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape') return;
     event.stopPropagation();
@@ -70,7 +74,7 @@ export function EpisodeDetails({ episode, seeding, secondVersions, onSecondVersi
       {[day(episode.airDate), episode.runtime === null || episode.runtime <= 0 ? '' : `${episode.runtime} min`].filter((part) => part !== '').join(' · ') || '–'}
     </FactRow>,
     <FactRow key="monitored" label="Monitored">{episode.monitored ? 'Yes' : 'No'}</FactRow>,
-    <FactRow key="last-search" label="Last search">{episode.lastSearchTime === null ? 'Never' : day(episode.lastSearchTime)}</FactRow>,
+    <FactRow key="last-search" label="Last search">{episode.lastSearchTime === null ? 'Never' : day(episode.lastSearchTime) || '–'}</FactRow>,
     ...(profile === null ? [] : [<FactRow key="profile" label="Quality profile">{`${profile} · ${fit}`}</FactRow>]),
     ...(folder === undefined || folder === '' ? [] : [
       <FactRow key="folder" label="Folder"><span className="[overflow-wrap:anywhere]">{[seriesPath, folder].filter((part) => part !== null).join('/')}</span></FactRow>,
@@ -102,7 +106,7 @@ export function EpisodeDetails({ episode, seeding, secondVersions, onSecondVersi
       history={history.kind === 'loading'
         ? <SkeletonRow />
         : history.kind === 'ready' && history.entries.length > 0 ? <><RowHistoryHeader />{historyRows(history.entries)}</> : undefined}
-      historyEmpty={historyEmpty(history, 'Sonarr')}
+      historyEmpty={historyEmpty(history, 'Sonarr', retry)}
     />
   );
 }

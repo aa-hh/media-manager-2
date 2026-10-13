@@ -213,9 +213,12 @@ export const hiddenRowsNote = (type: MediaType): string | undefined => {
   return undefined;
 };
 
-/** Rows with nothing to show are hidden; `traktMissing` is true when every extra row failed only because Trakt is not set up. */
+/**
+ * Rows with nothing to show are hidden, except a row whose source failed for a reason other than missing setup, which shows its retry.
+ * `traktMissing` is true when every extra row failed only because Trakt is not set up.
+ */
 export const extraRowsView = (rows: HomeReply['extraRows']) => ({
-  shown: rows.filter((row) => row.results.length > 0 || row.pending),
+  shown: rows.filter((row) => row.results.length > 0 || row.pending || (row.failed && row.failure !== 'not_configured')),
   traktMissing: rows.length > 0 && rows.every((row) => row.failed && row.failure === 'not_configured'),
 });
 

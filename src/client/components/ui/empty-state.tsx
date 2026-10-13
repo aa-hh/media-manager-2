@@ -14,11 +14,11 @@ type EmptyStateProps = Omit<ComponentProps<'div'>, 'title'> & {
 /** Nothing to show yet, said plainly with one next step. Centred, 360 px. */
 function EmptyState({ icon, title, action, className, children, ...props }: EmptyStateProps) {
   return (
-    <div className={cn('mx-auto flex w-90 flex-col items-center gap-2 p-6 text-center', className)} {...props}>
+    <div className={cn('mx-auto flex w-90 max-w-full flex-col items-center gap-2 p-6 text-center', className)} {...props}>
       <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground [&>svg]:size-5">
         {icon}
       </span>
-      <p className="font-ui text-base font-bold text-foreground">{title}</p>
+      <p className="font-ui text-base font-bold [overflow-wrap:anywhere] text-foreground">{title}</p>
       {children !== undefined && <p className="w-full font-ui text-sm leading-[1.45] font-normal text-muted-foreground">{children}</p>}
       {action}
     </div>

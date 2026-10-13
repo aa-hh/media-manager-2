@@ -1,5 +1,5 @@
 import { CircleCheck, CircleX, TriangleAlert } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { CardChoice } from '@/components/ui/card-choice';
@@ -15,7 +15,8 @@ import { keepChoiceText, removeChoiceText, timeLeftText, versionSeedingText } fr
 
 // "720p" from "720p WEB-DL", as the dialog names a version.
 const resolution = (quality: string | null) => (quality === null ? null : /\d{3,4}p/i.exec(quality)?.[0] ?? quality);
-const addedDay = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const addedFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const addedDay = (ms: number) => (Number.isFinite(ms) ? addedFormat.format(ms) : '');
 const sizeText = (version: SecondVersion) => (version.sizeBytes === null ? '' : formatBytes(version.sizeBytes));
 const deletable = (version: SecondVersion) => version.state === 'imported' || version.state === 'failed';
 const tracker = (version: SecondVersion) => trackerName(version.seeding?.trackerHost ?? version.indexer);
@@ -62,6 +63,7 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
 }) {
   const [choice, setChoice] = useState<'keep' | 'remove'>('keep');
   const [sending, setSending] = useState(false);
+  const inFlight = useRef(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // Only a torrent rTorrent still holds, or one behind an imported file, has a choice to make.
   const choices = version.hash !== null && (version.path !== null || version.seeding?.inRtorrent === true);
@@ -85,9 +87,21 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
     keep = 'Checking the hit and run rule.';
   }
 
+  // Held until the reply is fully read, so a second press cannot send another delete.
   const confirm = async () => {
-    const removeTorrent = choices && choice === 'remove';
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSending(true);
+    try {
+      await send();
+    } finally {
+      inFlight.current = false;
+      setSending(false);
+    }
+  };
+
+  const send = async () => {
+    const removeTorrent = choices && choice === 'remove';
     setOutcome(null);
     const response = await fetch(`/api/second-versions/${version.id}`, {
       method: 'DELETE',
@@ -95,7 +109,6 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'media-manager-2', Accept: 'application/json' },
       body: JSON.stringify({ removeTorrent }),
     }).catch(() => null);
-    setSending(false);
     if (response === null) {
       setOutcome({ look: 'risk', title: "media-manager-2 didn't answer.", body: 'Reload the page to see whether the second version was deleted.', done: false });
       return;
@@ -141,14 +154,14 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
   return (
     <Dialog
       open
-      onOpenChange={(next) => { if (!next) onClose(); }}
+      onOpenChange={(next) => { if (!next && !sending) onClose(); }}
       title={`Delete the ${quality}second version?`}
       subject={`${what}.${tracked === null ? '' : ` The ${tracked} tracked version is not touched.`}`}
       scrollEdges
       footerCallout={callouts.length === 0 ? undefined : <div className="flex flex-col gap-2">{callouts}</div>}
       actions={outcome?.done ? <Button size="large" onClick={onClose}>Done</Button> : (
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" disabled={sending} onClick={onClose}>Cancel</Button>
           <Button variant="destructive" size="large" loading={sending} onClick={() => void confirm()}>
             {!choices ? 'Delete second version' : choice === 'keep' ? 'Delete file, keep seeding' : 'Delete file and torrent'}
           </Button>
@@ -156,7 +169,7 @@ function DeleteSecondVersion({ version, subject, trackedQuality, onClose, onChan
       )}
     >
       {choices ? (
-        <RadioGroup value={choice} onValueChange={(value) => setChoice(value as 'keep' | 'remove')} className="flex flex-col gap-2">
+        <RadioGroup value={choice} onValueChange={(value) => setChoice(value as 'keep' | 'remove')} disabled={sending} className="flex flex-col gap-2">
           <CardChoice value="keep" title="Keep seeding the torrent" description={keep} />
           <CardChoice value="remove" title="Remove the torrent too" description={remove} />
         </RadioGroup>

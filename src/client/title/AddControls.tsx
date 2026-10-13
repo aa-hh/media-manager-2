@@ -131,6 +131,7 @@ export function AddControls({ subject, onAdded, onUnauthenticated }: {
   // Counts the owner's monitor and season changes only, so line 3 replays its fade on those and never on data arriving.
   const [searchChange, setSearchChange] = useState(0);
   const factPill = useRef<HTMLSpanElement>(null);
+  const inFlight = useRef(false);
   const kinds = tv ? 'shows' : 'movies';
   const loadFailed = `Couldn't load ${serviceName}'s quality profiles and root folders.`;
 
@@ -207,8 +208,10 @@ export function AddControls({ subject, onAdded, onUnauthenticated }: {
   // What the search covers for these choices. The sentence's third line and the toast both word it.
   const fact = choices === undefined ? undefined : searchFact(choices, { tv, airing, collection, movie: subject.type === 'movie' ? subject.detail : null });
 
+  // The server does not deduplicate adds, so a second Enter or click while one is out is dropped.
   const submit = async () => {
-    if (choices === undefined || fact === undefined) return;
+    if (choices === undefined || fact === undefined || inFlight.current || add.kind === 'added') return;
+    inFlight.current = true;
     setAdd({ kind: 'adding' });
     const { monitor, qualityProfileId, rootFolderPath } = choices;
     try {
@@ -260,6 +263,8 @@ export function AddControls({ subject, onAdded, onUnauthenticated }: {
       setAdd({ kind: 'refused', title: failureMessage(serviceName, body.error, `${serviceName} didn't add it.`), body: 'Nothing was added.' });
     } catch {
       setAdd({ kind: 'refused', title: "Lost contact with media-manager-2's server. The add may have gone through, so check the library before trying again." });
+    } finally {
+      inFlight.current = false;
     }
   };
 

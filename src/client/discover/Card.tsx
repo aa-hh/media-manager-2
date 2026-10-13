@@ -1,5 +1,5 @@
 import { Calendar, CalendarClock, Check, Star } from 'lucide-react';
-import type { MouseEvent } from 'react';
+import { memo, type MouseEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { LibraryPosterCard } from '@/components/ui/library-poster-card';
 import { navigateFrom } from '../navigation';
@@ -23,8 +23,12 @@ const localToday = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 
+const ratingFormat = new Intl.NumberFormat(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+type CardProps = { result: DiscoverResult; rank?: number; upcoming?: boolean; size: 'default' | 'large' };
+
 /** A Discover title as a poster card that opens its title page. */
-export function Card({ result, rank, upcoming = false, size }: { result: DiscoverResult; rank?: number; upcoming?: boolean; size: 'default' | 'large' }) {
+export const Card = memo(function Card({ result, rank, upcoming = false, size }: CardProps) {
   const path = titlePath(result);
   const when = upcoming ? countdown(result.date, localToday()) : undefined;
   return (
@@ -56,4 +60,4 @@ export function Card({ result, rank, upcoming = false, size }: { result: Discove
       )}
     />
   );
-}
+});

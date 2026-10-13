@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, RefreshCw, SearchX, SlidersHorizontal } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
 import { CardChoice } from './components/ui/card-choice';
@@ -280,6 +280,93 @@ function OverridePanel({ target, episodes, qualities, value, onApply, onCancel }
   );
 }
 
+// Everything a release row shows that depends only on the release, worked out once per result set.
+type ReleaseView = { release: Release; risks: string[]; fit: ProfileFit; text: string; name: string; group: string | undefined; hover: string };
+
+const viewOf = (release: Release): ReleaseView => {
+  const risks = risksOf(release);
+  const notes = [
+    ...risks,
+    ...release.flags.filter((flag) => flag !== 'Nuked'),
+    ...release.past.filter((event) => event.kind === 'grabbed').map(pastText),
+    // The table follows the design's columns, which leave out Age, so the age moves to the hover text.
+    ...(release.ageHours === null ? [] : [`${formatAge(release.ageHours)} old`]),
+  ];
+  // The name cell truncates, so the hover text leads with the full release name.
+  return { release, risks, ...fitOf(release, risks), ...splitName(release.title), hover: [release.title, notes.join(' · ')].filter((part) => part !== '').join('\n') };
+};
+
+// Memoised so moving the selection with the arrow keys re-renders two rows, not every release.
+const ReleaseRow = memo(function ReleaseRow({ view, selected, tabbable, best, grabbed, grabbing, showOverride, onSelect, onGrab, onOverride }: {
+  view: ReleaseView; selected: boolean; tabbable: boolean; best: boolean; grabbed: boolean; grabbing: boolean; showOverride: boolean;
+  onSelect: (guid: string) => void; onGrab: (guid: string) => void; onOverride: () => void;
+}) {
+  const { release, risks, fit, text, name, group } = view;
+  const actions = grabbed
+    ? <Badge variant="live" className="bg-best transition-opacity duration-(--duration-base) ease-out starting:opacity-0">Grabbed</Badge>
+    : (
+      <>
+        {showOverride && (
+          <Tooltip text="Override what this counts as">
+            <Button
+              variant="ghost"
+              size="row"
+              iconOnly
+              icon={<SlidersHorizontal className="text-muted-foreground" />}
+              aria-label="Override"
+              onClick={(event) => { event.stopPropagation(); onOverride(); }}
+            />
+          </Tooltip>
+        )}
+        <Button size="row" disabled={grabbing || release.hitAndRun?.cooldown === true} onClick={(event) => { event.stopPropagation(); onGrab(release.guid); }}>
+          {grabbing && selected ? 'Grabbing…' : 'Grab'}
+        </Button>
+      </>
+    );
+  return (
+    <RowRelease
+      data-guid={release.guid}
+      aria-selected={selected}
+      tabIndex={tabbable ? 0 : -1}
+      title={view.hover}
+      onClick={() => onSelect(release.guid)}
+      selected={selected}
+      best={best}
+      rejected={!release.approved}
+      quality={release.quality ?? '–'}
+      name={name}
+      group={group}
+      comparison={best ? <MarkComparison kind="best" />
+        : release.compared == null ? '' : <MarkComparison kind={release.compared} />}
+      fit={(
+        <span className="flex min-w-0 items-center gap-1.5">
+          <CellProfileFit fit={fit}>{text}</CellProfileFit>
+          {risks.length > 1 && (
+            <Tooltip text={risks.slice(1).join(' · ')}>
+              <button
+                type="button"
+                tabIndex={tabbable ? 0 : -1}
+                aria-label={`${risks.length - 1} more: ${risks.slice(1).join(', ')}`}
+                className="shrink-0 rounded-xs font-data text-sm text-muted-foreground focus-ring"
+              >
+                +{risks.length - 1}
+              </button>
+            </Tooltip>
+          )}
+        </span>
+      )}
+      size={formatSize(release.size)}
+      seeders={release.seeders ?? '?'}
+      tracker={release.indexer ?? ''}
+      hitAndRun={release.hitAndRun == null ? '–'
+        : release.hitAndRun.cooldown ? <span className="text-destructive">cooldown</span>
+          : ruleText(release.hitAndRun)}
+      audio={audioHdrText(release)}
+      actions={actions}
+    />
+  );
+});
+
 export function PickRelease({ target, title, name, episodes, movieHasFile, onClose, onUnauthenticated }: {
   target: ReleaseTarget;
   title: string;
@@ -299,6 +386,8 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
   const [qualityFilter, setQualityFilter] = useState<string>(ALL);
   const [qualities, setQualities] = useState<Quality[] | undefined>(undefined);
   const [grabbing, setGrabbing] = useState(false);
+  // State lags a render behind, so two fast sends could both read grabbing as false; the ref is set before the first await.
+  const inFlight = useRef(false);
   const [grabbed, setGrabbed] = useState<Set<string>>(() => new Set());
   const [outcome, setOutcome] = useState<GrabOutcome | undefined>(undefined);
   const [now, setNow] = useState(Date.now);
@@ -363,8 +452,15 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
   // Sonarr and Radarr return releases in their own preference order, so the first one that
   // passes the profile is the one they would grab themselves.
   const best = releases.find((release) => release.approved)?.guid;
-  const qualitiesShown = useMemo(() => [...new Set(releases.map((release) => release.quality).filter((quality): quality is string => quality !== null))], [releases]);
-  const visible = qualityFilter === ALL ? releases : releases.filter((release) => release.quality === qualityFilter);
+  const qualityCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const release of releases) if (release.quality !== null) counts.set(release.quality, (counts.get(release.quality) ?? 0) + 1);
+    return counts;
+  }, [releases]);
+  const views = useMemo(() => releases.map(viewOf), [releases]);
+  const visible = qualityFilter === ALL ? views : views.filter((view) => view.release.quality === qualityFilter);
+  // The selected row takes Tab; when the quality filter hides it, the first shown row does, so the list stays reachable.
+  const tabbableGuid = visible.some((view) => view.release.guid === selected) ? selected : visible[0]?.release.guid;
 
   const overridesFor = (guid: string | undefined): Overrides => (override !== undefined && override.guid === guid ? override.value : {});
   const overrides = overridesFor(selected);
@@ -378,6 +474,8 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
         : episodes.some((episode) => episode.seasonNumber === target.seasonNumber && episode.hasFile));
 
   const sendGrab = async (guid: string, intent: 'grab' | 'replace') => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setGrabbing(true);
     setOutcome(undefined);
     const overrides = overridesFor(guid);
@@ -419,12 +517,15 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     } catch {
       setOutcome({ guid, outOfDate: false, message: "The grab didn't reach media-manager-2's server." });
     } finally {
+      inFlight.current = false;
       setGrabbing(false);
     }
   };
 
   // A second version goes from media-manager-2 to rTorrent directly; Sonarr and Radarr never see it.
   const sendSecondVersion = async (guid: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setGrabbing(true);
     setOutcome(undefined);
     try {
@@ -456,6 +557,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     } catch {
       setOutcome({ guid, outOfDate: false, message: "The grab didn't reach media-manager-2's server." });
     } finally {
+      inFlight.current = false;
       setGrabbing(false);
     }
   };
@@ -465,7 +567,7 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
 
   // Enter on a row reaches here while a grab is in flight or done, and the server records and sends every grab it gets.
   const onGrab = (guid: string) => {
-    if (grabbing || grabbed.has(guid)) return;
+    if (grabbing || inFlight.current || grabbed.has(guid)) return;
     if (onCooldown(releases.find((release) => release.guid === guid))) return;
     setSelected(guid);
     if (grabTargetHasFile(overridesFor(guid))) {
@@ -476,14 +578,14 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
 
   const overridden = overrides.episodeIds !== undefined || overrides.qualityId !== undefined;
   const confirm = () => {
-    if (selected === undefined || grabbing) return;
+    if (selected === undefined || grabbing || inFlight.current) return;
     // The second-version route takes no overrides, so an overridden release can only replace.
     if (choice === 'second' && !overridden) void sendSecondVersion(selected);
     else void sendGrab(selected, 'replace');
   };
 
-  // The dialog's keys reach here through its portal. 1 and 2 pick; Enter grabs wherever focus sits except on Cancel,
-  // caught before the focused button (the dialog starts on Close) can act on it.
+  // The dialog's keys reach here through its portal. 1 and 2 pick; Enter grabs wherever focus sits except on Cancel or
+  // Close (both carry data-cancel), caught before the focused button can act on it.
   const onDecisionKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (panel !== 'decision') return;
     if (event.key === '1') setChoice('replace');
@@ -499,7 +601,8 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     if (panel !== undefined) return;
     if (event.key === 'R' && event.shiftKey) {
       event.preventDefault();
-      void load(true);
+      // Same as the Refresh button: off until a search has answered, and once while it runs.
+      if (list.kind === 'ready' && !list.refreshing) void load(true);
       return;
     }
     if (event.key === 'Escape') {
@@ -508,18 +611,27 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
     }
     if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && visible.length > 0) {
       event.preventDefault();
-      const index = visible.findIndex((release) => release.guid === selected);
-      const next = visible[Math.min(visible.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)))];
+      const index = visible.findIndex((view) => view.release.guid === selected);
+      const next = visible[Math.min(visible.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)))].release;
       setSelected(next.guid);
       listRef.current?.querySelector<HTMLElement>(`[data-guid="${CSS.escape(next.guid)}"]`)?.focus();
     }
-    if (event.key === 'Enter' && selected !== undefined && (event.target as HTMLElement).dataset.guid !== undefined) {
+    // Enter grabs the focused row, which is the selected one except after the quality filter hid the selection.
+    const focusedGuid = (event.target as HTMLElement).dataset.guid;
+    if (event.key === 'Enter' && focusedGuid !== undefined) {
       event.preventDefault();
-      onGrab(selected);
+      onGrab(focusedGuid);
     }
   };
 
   const refreshing = list.kind === 'ready' && list.refreshing;
+
+  // Rows are memoised, so the handlers they get keep one identity and read the latest state through this ref.
+  const latest = useRef({ onGrab, panel });
+  latest.current = { onGrab, panel };
+  const selectRow = useCallback((guid: string) => { if (latest.current.panel === undefined) setSelected(guid); }, []);
+  const grabRow = useCallback((guid: string) => latest.current.onGrab(guid), []);
+  const openOverride = useCallback(() => setPanel('override'), []);
 
   // What the grab decision describes: the owned file for one episode or movie, the pack and its episodes for a season.
   const chosen = releases.find((release) => release.guid === selected);
@@ -541,9 +653,11 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
   const lead = name === undefined ? undefined
     : target.kind === 'season' ? `${name} S${pad(target.seasonNumber)}`
       : targetEpisode === undefined ? name : `${name} S${pad(targetEpisode.seasonNumber)}E${pad(targetEpisode.episodeNumber)}`;
+  const incoming = chosen === undefined ? ''
+    : `${[chosen.quality, splitName(chosen.title).group, formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}${chosen.indexer === null ? '' : ` from ${chosen.indexer}`}`;
   const decisionSubject = target.kind === 'season'
     ? `${lead === undefined ? '' : `${lead} · `}${[chosen?.quality, chosen === undefined ? undefined : splitName(chosen.title).group, chosen === undefined ? undefined : formatSize(chosen.size)].filter((part) => part != null && part !== '').join(' · ')}, one torrent with ${packEpisodes.length} episodes. You have files for ${packEpisodes.length - missing.length} of them; their torrents keep seeding either way.`
-    : `${owned === null ? (lead === undefined ? '' : `${lead}. `) : `${lead === undefined ? 'Your' : `${lead} · your`} ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
+    : `${incoming === '' ? '' : `Grabbing ${incoming}. `}${owned === null ? (lead === undefined ? '' : `${lead}. `) : `${lead === undefined ? 'Your' : `${lead} · your`} ${[owned.quality, owned.releaseGroup, formatSize(owned.size)].filter((part) => part != null && part !== '').join(' · ')}. `}The current file's torrent keeps seeding either way.`;
   const second = choice === 'second' && secondAllowed;
   const confirmLabel = grabbing
     ? (second ? 'Grabbing…' : 'Replacing…')
@@ -577,11 +691,11 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
               Searching every indexer. This takes about 20 seconds…
             </span>
           )}
-          {showRows && qualitiesShown.length > 0 && (
+          {showRows && qualityCounts.size > 0 && (
             <ToggleGroup aria-label="Quality" value={qualityFilter} onValueChange={setQualityFilter} className={cn(refreshing && 'opacity-40')}>
               <ToggleGroupItem value={ALL} count={releases.length}>All</ToggleGroupItem>
-              {qualitiesShown.map((quality) => (
-                <ToggleGroupItem key={quality} value={quality} count={releases.filter((release) => release.quality === quality).length}>{quality}</ToggleGroupItem>
+              {[...qualityCounts].map(([quality, count]) => (
+                <ToggleGroupItem key={quality} value={quality} count={count}>{quality}</ToggleGroupItem>
               ))}
             </ToggleGroup>
           )}
@@ -666,83 +780,25 @@ export function PickRelease({ target, title, name, episodes, movieHasFile, onClo
                 />
               );
             })()}
-            {visible.map((release) => {
+            {visible.map((view) => {
+              const { release } = view;
               const isSelected = release.guid === selected;
-              const risks = risksOf(release);
-              const { fit, text } = fitOf(release, risks);
-              const { name, group } = splitName(release.title);
-              const notes = [
-                ...risks,
-                ...release.flags.filter((flag) => flag !== 'Nuked'),
-                ...release.past.filter((event) => event.kind === 'grabbed').map(pastText),
-                // The table follows the design's columns, which leave out Age, so the age moves to the hover text.
-                ...(release.ageHours === null ? [] : [`${formatAge(release.ageHours)} old`]),
-              ];
-              const actions = grabbed.has(release.guid)
-                ? <Badge variant="live" className="bg-best transition-opacity duration-(--duration-base) ease-out starting:opacity-0">Grabbed</Badge>
-                : (
-                  <>
-                    {isSelected && panel === undefined && (
-                      <Tooltip text="Override what this counts as">
-                        <Button
-                          variant="ghost"
-                          size="row"
-                          iconOnly
-                          icon={<SlidersHorizontal className="text-muted-foreground" />}
-                          aria-label="Override"
-                          onClick={(event) => { event.stopPropagation(); setPanel('override'); }}
-                        />
-                      </Tooltip>
-                    )}
-                    <Button size="row" disabled={grabbing || onCooldown(release)} onClick={(event) => { event.stopPropagation(); onGrab(release.guid); }}>
-                      {grabbing && isSelected ? 'Grabbing…' : 'Grab'}
-                    </Button>
-                  </>
-                );
               return (
                 <Fragment key={release.guid}>
-                  <RowRelease
-                    data-guid={release.guid}
-                    aria-selected={isSelected}
-                    tabIndex={isSelected || (selected === undefined && release === visible[0]) ? 0 : -1}
-                    title={notes.length === 0 ? undefined : notes.join(' · ')}
-                    onClick={() => { if (panel === undefined) setSelected(release.guid); }}
+                  <ReleaseRow
+                    view={view}
                     selected={isSelected}
+                    tabbable={release.guid === tabbableGuid}
                     best={release.guid === best}
-                    rejected={!release.approved}
-                    quality={release.quality ?? '–'}
-                    name={name}
-                    group={group}
-                    comparison={release.guid === best ? <MarkComparison kind="best" />
-                      : release.compared == null ? '' : <MarkComparison kind={release.compared} />}
-                    fit={(
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <CellProfileFit fit={fit}>{text}</CellProfileFit>
-                        {risks.length > 1 && (
-                          <Tooltip text={risks.slice(1).join(' · ')}>
-                            <button
-                              type="button"
-                              tabIndex={isSelected || (selected === undefined && release === visible[0]) ? 0 : -1}
-                              aria-label={`${risks.length - 1} more: ${risks.slice(1).join(', ')}`}
-                              className="shrink-0 rounded-xs font-data text-sm text-muted-foreground focus-ring"
-                            >
-                              +{risks.length - 1}
-                            </button>
-                          </Tooltip>
-                        )}
-                      </span>
-                    )}
-                    size={formatSize(release.size)}
-                    seeders={release.seeders ?? '?'}
-                    tracker={release.indexer ?? ''}
-                    hitAndRun={release.hitAndRun == null ? '–'
-                      : release.hitAndRun.cooldown ? <span className="text-destructive">cooldown</span>
-                        : ruleText(release.hitAndRun)}
-                    audio={audioHdrText(release)}
-                    actions={actions}
+                    grabbed={grabbed.has(release.guid)}
+                    grabbing={grabbing}
+                    showOverride={isSelected && panel === undefined}
+                    onSelect={selectRow}
+                    onGrab={grabRow}
+                    onOverride={openOverride}
                   />
                   {outcome?.guid === release.guid && !outcome.outOfDate && (
-                    <div className="flex h-8 items-center border-b border-border bg-muted px-4">
+                    <div className="flex min-h-8 items-center border-b border-border bg-muted px-4 py-1">
                       <StatusInline status="failed">{outcome.message}</StatusInline>
                     </div>
                   )}

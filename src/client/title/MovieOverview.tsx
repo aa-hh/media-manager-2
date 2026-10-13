@@ -1,4 +1,4 @@
-import { type SetStateAction, useState } from 'react';
+import { Suspense, useState, type SetStateAction } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { LabelGroup } from '@/components/ui/label-group';
 import { Table } from '@/components/ui/table';
@@ -6,13 +6,15 @@ import { formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
 import type { OwnedMovieDetail, SecondVersion } from '../library/api';
 import { seedingFacts, type SubjectProgress } from '../library/progress';
-import { PickRelease } from '../PickRelease';
+import { lazyScreen } from '../lazyScreen';
 import { statusLabel } from '../Search';
 import { TrackedVersion } from './EpisodeDetails';
 import { History } from './History';
 import { movieWord } from './rows';
 import { SecondVersionRows } from './SecondVersions';
 import { sendAction, TitleHeader, type TitleFact } from './TitleHeader';
+
+const PickRelease = lazyScreen(() => import('../PickRelease').then((module) => module.PickRelease));
 
 const wordLook = (word: string, live: boolean): BadgeVariant => {
   if (live) return 'live';
@@ -79,7 +81,7 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         picking={picking}
         pickPanel={picking && (
           <div className="pt-2">
-            <PickRelease target={{ service: 'radarr', kind: 'movie', movieId: detail.id }} title={detail.title} name={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} />
+            <Suspense fallback={null}><PickRelease target={{ service: 'radarr', kind: 'movie', movieId: detail.id }} title={detail.title} name={detail.title} episodes={[]} movieHasFile={detail.hasFile} onClose={() => setPicking(false)} onUnauthenticated={onUnauthenticated} /></Suspense>
           </div>
         )}
         monitored={detail.monitored ? 'all' : 'none'}

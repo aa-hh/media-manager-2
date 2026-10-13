@@ -53,7 +53,10 @@ export function Row({ heading, intro, control, row, size, seeAll, ranked = false
     const element = strip.current;
     if (element === null) return;
     left.current = element.scrollLeft;
-    setEnds({ start: element.scrollLeft <= 0, end: element.scrollLeft >= element.scrollWidth - element.clientWidth - 1 });
+    const start = element.scrollLeft <= 0;
+    const end = element.scrollLeft >= element.scrollWidth - element.clientWidth - 1;
+    // Runs on every scroll event; a fresh object each time would re-render the whole strip per frame.
+    setEnds((current) => (current.start === start && current.end === end ? current : { start, end }));
   }, []);
 
   useLayoutEffect(() => {
@@ -87,9 +90,9 @@ export function Row({ heading, intro, control, row, size, seeAll, ranked = false
 
   return (
     <section aria-label={heading} className="flex flex-col gap-5">
-      <div className={cn('flex w-full', control === undefined ? 'items-end gap-2' : 'items-center gap-3')}>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 className="font-ui text-lg font-bold text-foreground">{heading}</h2>
+      <div className={cn('flex w-full flex-wrap', control === undefined ? 'items-end gap-2' : 'items-center gap-3')}>
+        <div className="flex min-w-0 flex-1 basis-60 flex-col gap-1">
+          <h2 className="font-ui text-lg font-bold text-foreground [overflow-wrap:anywhere]">{heading}</h2>
           {intro !== undefined && <p className="font-ui text-[13px] text-muted-foreground">{intro}</p>}
         </div>
         {control}
@@ -105,6 +108,10 @@ export function Row({ heading, intro, control, row, size, seeAll, ranked = false
         <div className="flex h-30 flex-col items-center justify-center gap-3 rounded-md bg-muted">
           <p className="font-ui text-sm font-semibold text-foreground">Couldn't load these titles</p>
           <Button variant="outline" icon={<RotateCw />} onClick={onRetry}>Try again</Button>
+        </div>
+      ) : results?.length === 0 ? (
+        <div className="flex h-30 items-center justify-center rounded-md bg-muted">
+          <p className="font-ui text-sm font-semibold text-foreground">No titles to show</p>
         </div>
       ) : (
         <Arrival

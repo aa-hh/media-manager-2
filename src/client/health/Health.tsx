@@ -85,7 +85,7 @@ function Sections({ snapshot, now }: { snapshot: HealthSnapshot; now: number }) 
                     key={problem.id}
                     marker={level.marker}
                     logo={problemLogo(problem.source)}
-                    problem={problem.message}
+                    problem={<span title={problem.message}>{problem.message}</span>}
                     detail={problem.source}
                     fixIcon={level.icon}
                     fix={<span className={level.text}>{level.word}</span>}
@@ -101,8 +101,8 @@ function Sections({ snapshot, now }: { snapshot: HealthSnapshot; now: number }) 
           )}
       </section>
 
-      <div className="flex gap-10">
-        <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex flex-wrap gap-10">
+        <div className="flex min-w-0 flex-1 basis-150 flex-col">
           <section className="flex flex-col">
             <LabelGroup count={snapshot.services.length}>Services</LabelGroup>
             <div className="flex flex-wrap gap-2">
@@ -149,9 +149,9 @@ function Sections({ snapshot, now }: { snapshot: HealthSnapshot; now: number }) 
                       return account.hitAndRunsIsLifetime ? `${account.hitAndRuns} lifetime` : String(account.hitAndRuns);
                     }} />
                     <TableCell className={tracker.cooldown?.known === false ? 'w-60 text-destructive' : 'w-60 text-muted-foreground'}>
-                      <span className="truncate">
-                        {tracker.cooldown === null ? 'none' : `since ${new Date(tracker.cooldown.since).toLocaleString()} · "${tracker.cooldown.text}"`}
-                      </span>
+                      {tracker.cooldown === null
+                        ? <span className="truncate">none</span>
+                        : <span className="truncate" title={tracker.cooldown.text}>since {new Date(tracker.cooldown.since).toLocaleString()} · "{tracker.cooldown.text}"</span>}
                     </TableCell>
                   </TableRow>
                 );
@@ -160,9 +160,10 @@ function Sections({ snapshot, now }: { snapshot: HealthSnapshot; now: number }) 
           </section>
         </div>
 
-        <div className="flex w-130 shrink-0 flex-col">
+        <div className="flex w-130 max-w-full shrink-0 flex-col">
           <section className="flex flex-col">
             <LabelGroup>Disk</LabelGroup>
+            {snapshot.disks.length === 0 && <p className="font-ui text-sm text-muted-foreground">No disk space reported yet.</p>}
             <dl className="m-0">
               {snapshot.disks.map((disk) => {
                 const used = disk.totalBytes > 0 ? Math.round(((disk.totalBytes - disk.freeBytes) / disk.totalBytes) * 100) : 100;

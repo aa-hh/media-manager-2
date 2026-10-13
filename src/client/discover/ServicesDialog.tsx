@@ -54,6 +54,9 @@ export function ServicesDialog({ open, onOpenChange, providers, selected, onSave
           );
         })}
       </ul>
+      {shown.length === 0 && query.trim() !== '' && (
+        <p role="status" className="px-2 font-ui text-sm text-muted-foreground [overflow-wrap:anywhere]">No services match “{query.trim()}”.</p>
+      )}
       <div className="flex items-center gap-2">
         <span className="flex-1 font-ui text-[13px] text-muted-foreground">
           {draft.length} selected · adds {draft.length} {draft.length === 1 ? 'row' : 'rows'}

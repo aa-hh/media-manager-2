@@ -1,6 +1,6 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { Ban, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Collapsible } from '@/components/ui/collapsible-trigger';
@@ -13,7 +13,8 @@ import { StatusInline } from '@/components/ui/status-inline';
 import { Table } from '@/components/ui/table';
 import { useToastManager } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import { dayTitle, FilterTabs, formatWhen } from './History';
+import { FilterTabs } from './History';
+import { dayTitle, formatWhen } from './when';
 import { type BlockEntry, sendJson, type useBlocklist } from './useHistory';
 
 type View = 'all' | 'you' | 'automatic' | 'sonarr' | 'radarr';
@@ -46,7 +47,7 @@ const panelMotion = cn(
   'data-starting-style:h-0 data-ending-style:h-0 motion-reduce:transition-none',
 );
 
-export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof useBlocklist> }) {
+export const BlocklistScreen = memo(function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof useBlocklist> }) {
   const { state, loadMore, reload } = blocklist;
   const toasts = useToastManager();
   const [view, setView] = useState<View>('all');
@@ -152,10 +153,10 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
                 <Collapsible key={key} open={!hidden.has(key)}>
                   <CollapsiblePrimitive.Panel className={panelMotion}>
                     <RowBlocklist
-                      release={entry.release}
+                      release={<span title={entry.release}>{entry.release}</span>}
                       title={entry.title}
                       tracker={entry.indexer ?? undefined}
-                      reason={why(entry)}
+                      reason={<span title={why(entry)}>{why(entry)}</span>}
                       added={when(entry.at)}
                       actions={(
                         <Button
@@ -199,4 +200,4 @@ export function BlocklistScreen({ blocklist }: { blocklist: ReturnType<typeof us
       )}
     </section>
   );
-}
+});

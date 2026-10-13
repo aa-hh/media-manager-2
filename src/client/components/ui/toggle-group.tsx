@@ -66,8 +66,8 @@ function ToggleGroup({ value, onValueChange, size = 'default', className, childr
         <span
           aria-hidden="true"
           className={cn(
-            'pointer-events-none absolute left-(--segment-left) w-(--segment-width) border border-border bg-card',
-            'transition-[left,width] duration-(--duration-base) ease-out',
+            'pointer-events-none absolute left-0 translate-x-(--segment-left) w-(--segment-width) border border-border bg-card',
+            'transition-[translate,width] duration-(--duration-base) ease-out',
             'group-data-segment-none/toggle:hidden group-data-segment-risk/toggle:border-destructive group-data-segment-risk/toggle:bg-destructive-soft',
             segments[size],
           )}

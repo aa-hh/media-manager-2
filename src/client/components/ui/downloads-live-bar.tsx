@@ -44,7 +44,7 @@ function DownloadsLiveBar({ count, idle = false, speeds, items = [], problem, ex
       <div className="flex h-(--livebar) items-center gap-4 overflow-hidden bg-bar px-(--page-margin) whitespace-nowrap">
         <ArrowDownToLine aria-hidden="true" className={cn('size-4 shrink-0', idle ? 'text-bar-muted-foreground' : 'text-live')} />
         <span className={cn('font-ui text-sm text-bar-foreground', idle ? 'font-medium' : 'font-semibold')}>{count}</span>
-        {speeds !== undefined && <span className="font-data text-sm text-bar-muted-foreground">{speeds}</span>}
+        {speeds !== undefined && <span className="min-w-0 truncate font-data text-sm text-bar-muted-foreground">{speeds}</span>}
         {!idle && items.slice(0, 3).map((item) => (
           <span key={item.key} className="flex min-w-0 items-center gap-2 font-data text-sm">
             <span className="truncate text-bar-foreground">{item.name}</span>

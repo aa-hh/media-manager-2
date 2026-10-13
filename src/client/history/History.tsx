@@ -1,6 +1,6 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { CircleX, Download, FilePen, FolderInput, History as HistoryIcon, RefreshCw, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Collapsible } from '@/components/ui/collapsible-trigger';
@@ -18,6 +18,7 @@ import { Table } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs-trigger';
 import { cn } from '@/lib/utils';
 import { type HistoryEvent, type HistoryFilter, type ServiceChoice, sendJson, type useHistory } from './useHistory';
+import { dayTitle, formatWhen } from './when';
 
 const filters: { value: HistoryFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -33,21 +34,6 @@ const serviceChoices: { value: ServiceChoice; label: string }[] = [
   { value: 'radarr', label: 'Radarr' },
 ];
 const serviceWords = { sonarr: 'Sonarr', radarr: 'Radarr' } as const;
-
-const dayKey = (at: number) => new Date(at).toDateString();
-const shortDate = (at: number) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-const clock = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-
-export const dayTitle = (at: number, now = Date.now()) => {
-  if (dayKey(at) === dayKey(now)) return 'Today';
-  if (dayKey(at) === dayKey(now - 86_400_000)) return 'Yesterday';
-  return shortDate(at);
-};
-
-// Times today and yesterday are under their day's heading; older ones carry their date.
-export const formatWhen = (at: number, now = Date.now()) => (
-  dayTitle(at, now) === shortDate(at) ? `${shortDate(at)} ${clock(at)}` : clock(at)
-);
 
 export function FilterTabs<T extends string>({ label: name, choices, value, onChange }: {
   label: string; choices: { value: T; label: string }[]; value: T; onChange: (value: T) => void;
@@ -211,7 +197,8 @@ const linkTitle = (history: ReturnType<typeof useHistory>) => {
   return link.seriesId !== undefined && link.episodeId === undefined ? first.title.replace(/ S\d+E\d+$/, '') : first.title;
 };
 
-export function HistoryScreen({ history, onNavigate }: { history: ReturnType<typeof useHistory>; onNavigate: (path: string) => void }) {
+// Memo: the parent re-renders on every download event, and this table can hold thousands of rows.
+export const HistoryScreen = memo(function HistoryScreen({ history, onNavigate }: { history: ReturnType<typeof useHistory>; onNavigate: (path: string) => void }) {
   const { state, filter, setFilter, service, setService, loadMore, reload } = history;
   const [expanded, setExpanded] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
@@ -308,4 +295,4 @@ export function HistoryScreen({ history, onNavigate }: { history: ReturnType<typ
       )}
     </section>
   );
-}
+});

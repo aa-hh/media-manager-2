@@ -24,7 +24,7 @@ function RowFlagged({ poster, title, reason, gaveUp, tries, actions, className, 
     <TableRow className={cn('h-(--row-two-line)', className)} {...props}>
       <TableCell className={w.poster}>
         {poster !== undefined
-          ? <img src={poster} alt="" className="h-12 w-8 rounded-xs object-cover" />
+          ? <img src={poster} alt="" width={32} height={48} loading="lazy" decoding="async" className="h-12 w-8 rounded-xs object-cover" />
           : <span aria-hidden="true" className="h-12 w-8 rounded-xs bg-muted" />}
       </TableCell>
       <TableCell fill className="flex-col items-start justify-center gap-0.5">

@@ -41,6 +41,8 @@ export function useServices(onUnauthenticated: () => void) {
   loadRef.current = load;
   const unauthorizedRef = useRef(onUnauthenticated);
   unauthorizedRef.current = onUnauthenticated;
+  // Set synchronously, so a second Connect for the same service before the next render sends nothing.
+  const connecting = useRef(new Set<ServiceName>());
 
   /** Tests one service with the given form values laid over the saved ones; undefined when the test could not run. */
   const test = useCallback(async (name: ServiceName, body: object, ofSaved: boolean): Promise<TestResult | undefined> => {
@@ -92,7 +94,8 @@ export function useServices(onUnauthenticated: () => void) {
 
   /** Tests the form, then saves what changed. True once saved. */
   const connect = async (name: ServiceName) => {
-    if (saved === undefined) return false;
+    if (saved === undefined || connecting.current.has(name)) return false;
+    connecting.current.add(name);
     const info = infoOf(name);
     const changed = changes(name, saved[name], draftOf(name));
     setPending((current) => ({ ...current, [name]: 'connect' }));
@@ -146,12 +149,15 @@ export function useServices(onUnauthenticated: () => void) {
       });
       return true;
     } finally {
+      connecting.current.delete(name);
       setPending((current) => ({ ...current, [name]: undefined }));
     }
   };
 
   /** Tests the Plex address with the token from the owner's Plex sign-in; the server saves both only when the test passes. True once saved. */
   const connectPlexWithSignIn = async () => {
+    if (connecting.current.has('plex')) return false;
+    connecting.current.add('plex');
     const address = draftOf('plex').address.trim();
     const previous = checksRef.current.plex;
     setPending((current) => ({ ...current, plex: 'connect' }));
@@ -191,6 +197,7 @@ export function useServices(onUnauthenticated: () => void) {
     } catch {
       return fail('The test could not reach media-manager-2. Try again.');
     } finally {
+      connecting.current.delete('plex');
       setPending((current) => ({ ...current, plex: undefined }));
     }
   };

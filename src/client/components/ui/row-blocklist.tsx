@@ -37,7 +37,7 @@ function RowBlocklist({ release, title, tracker, reason, added, actions, marker,
         <span className="truncate">{release}</span>
       </TableCell>
       <TableCell className={cn(w.title, 'font-ui font-medium')}>
-        <span className="truncate">{title}</span>
+        <span className="truncate" title={typeof title === 'string' ? title : undefined}>{title}</span>
       </TableCell>
       <TableCell className={w.tracker}>{tracker !== undefined && <TableCellTracker name={tracker} />}</TableCell>
       <TableCell className={cn(w.reason, marker === 'risk' ? 'text-destructive' : 'text-muted-foreground')}>

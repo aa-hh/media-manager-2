@@ -63,6 +63,10 @@ export const movieWord = (movie: Pick<MovieDetail, 'status' | 'hasFile' | 'isAva
 };
 
 const DAY = 24 * 60 * 60_000;
+const weekday = new Intl.DateTimeFormat('en-GB', { weekday: 'short' });
+const clock = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+const dayMonth = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+const dayMonthYear = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 // "Fri 21:00" or "3 days ago" when near, else "7 Mar".
 export const relativeAirDate = (iso: string | null, now: number): string => {
@@ -71,9 +75,7 @@ export const relativeAirDate = (iso: string | null, now: number): string => {
   const date = new Date(time);
   const diff = time - now;
   if (diff >= 0 && diff < 7 * DAY) {
-    const day = date.toLocaleDateString('en-GB', { weekday: 'short' });
-    const clock = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `${day} ${clock}`;
+    return `${weekday.format(date)} ${clock.format(date)}`;
   }
   if (diff < 0 && -diff < 7 * DAY) {
     const hours = Math.floor(-diff / 3_600_000);
@@ -82,7 +84,7 @@ export const relativeAirDate = (iso: string | null, now: number): string => {
     return days === 1 ? '1 day ago' : `${days} days ago`;
   }
   const sameYear = date.getFullYear() === new Date(now).getFullYear();
-  return date.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+  return (sameYear ? dayMonth : dayMonthYear).format(date);
 };
 
 export const cutoffLine = (profile: SeriesDetail['qualityProfile']): string | null => {

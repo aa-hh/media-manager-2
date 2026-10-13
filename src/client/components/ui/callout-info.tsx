@@ -21,8 +21,8 @@ function CalloutInfo({ icon, title, action, className, children, ...props }: Cal
     <div role="status" className={cn('flex w-full gap-2.5 rounded-md bg-muted px-3.5 py-3', className)} {...props}>
       <span aria-hidden="true" className="flex shrink-0 text-muted-foreground [&>svg]:size-4">{icon ?? <Info />}</span>
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-        <p className="font-ui text-sm font-semibold text-foreground">{title}</p>
-        {children !== undefined && <p className="font-ui text-[13px] leading-[1.45] font-normal text-foreground">{children}</p>}
+        <p className="font-ui text-sm font-semibold [overflow-wrap:anywhere] text-foreground">{title}</p>
+        {children !== undefined && <p className="font-ui text-[13px] leading-[1.45] font-normal [overflow-wrap:anywhere] text-foreground">{children}</p>}
         {action}
       </div>
     </div>

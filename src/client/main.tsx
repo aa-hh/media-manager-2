@@ -1,7 +1,8 @@
-import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
 import { Home } from './Home';
+import { lazyScreen, preloadScreens } from './lazyScreen';
 import { navigate, replace, useLocation } from './navigation';
 import { clearSessionState, withoutFilters } from './discover/model';
 import { Button } from './components/ui/button';
@@ -13,19 +14,19 @@ import { RowDownload } from './components/ui/row-download';
 import { StatusInline } from './components/ui/status-inline';
 import { ToastProvider } from './components/ui/toast';
 import { DownloadsScreen } from './downloads/Downloads';
-import { FlaggedScreen } from './flagged/Flagged';
 import { useFlagged } from './flagged/useFlagged';
 import { buildRows, formatSpeed, groupRows } from './downloads/model';
 import { useDownloads } from './downloads/useDownloads';
-import { HealthScreen } from './health/Health';
 import { useHealth } from './health/useHealth';
-import { BlocklistScreen } from './history/Blocklist';
 import { HistoryScreen } from './history/History';
 import { useBlocklist, useHistory } from './history/useHistory';
-import { startMetrics } from './metrics';
 import type { SetupStatus } from './settings/setup';
-import { SetupWizard } from './settings/SetupWizard';
 import './globals.css';
+
+const SetupWizard = lazyScreen(() => import('./settings/SetupWizard').then((module) => module.SetupWizard));
+const FlaggedScreen = lazyScreen(() => import('./flagged/Flagged').then((module) => module.FlaggedScreen));
+const HealthScreen = lazyScreen(() => import('./health/Health').then((module) => module.HealthScreen));
+const BlocklistScreen = lazyScreen(() => import('./history/Blocklist').then((module) => module.BlocklistScreen));
 
 type SessionState =
   | { kind: 'checking' }
@@ -183,12 +184,12 @@ function App() {
     void checkSession(true);
   }, [checkSession]);
 
-  useEffect(() => {
-    if (session.kind !== 'signed-in' || !focusAfterSignInRef.current) return;
+  // The heading exists only once SetupGate has read /api/setup and drawn the app or the wizard, so SetupGate says when to focus it.
+  const focusHeadingAfterSignIn = useCallback(() => {
+    if (!focusAfterSignInRef.current) return;
     focusAfterSignInRef.current = false;
-    const frame = window.requestAnimationFrame(() => headingRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [session]);
+    headingRef.current?.focus();
+  }, []);
 
   const signOut = useCallback(async (expiresAt: number) => {
     if (sessionRef.current.kind === 'signing-out') return;
@@ -259,6 +260,7 @@ function App() {
       )}
       onSignOut={() => void signOut(session.expiresAt)}
       onUnauthenticated={recheckSession}
+      onShown={focusHeadingAfterSignIn}
     />
   );
 }
@@ -266,7 +268,13 @@ function App() {
 type SignedInProps = Omit<ComponentProps<typeof Home>, 'downloadsState' | 'needsYou' | 'downloading' | 'healthProblems' | 'healthRisk'>;
 
 // The setup wizard blocks the app until every required part is set up; once open, it stays until the owner leaves Done.
-function SetupGate(props: SignedInProps) {
+// Its effect runs only when everything in its Suspense boundary has drawn, so it fires after a lazy sibling has loaded.
+function WhenDrawn({ run }: { run: () => void }) {
+  useEffect(run, [run]);
+  return null;
+}
+
+function SetupGate({ onShown, ...props }: SignedInProps & { onShown: () => void }) {
   const [gate, setGate] = useState<{ kind: 'checking' | 'failed' | 'app' } | { kind: 'setup'; status: SetupStatus }>({ kind: 'checking' });
   const unauthorizedRef = useRef(props.onUnauthenticated);
   unauthorizedRef.current = props.onUnauthenticated;
@@ -289,8 +297,20 @@ function SetupGate(props: SignedInProps) {
 
   useEffect(() => { void check(); }, [check]);
 
+  const app = gate.kind === 'app';
+  useEffect(() => {
+    if (app) onShown();
+  }, [app, onShown]);
+
   if (gate.kind === 'app') return <SignedIn {...props} />;
-  if (gate.kind === 'setup') return <SetupWizard {...props} status={gate.status} onFinished={() => setGate({ kind: 'app' })} />;
+  if (gate.kind === 'setup') {
+    return (
+      <Suspense fallback={<main className="min-h-screen bg-background" />}>
+        <SetupWizard {...props} status={gate.status} onFinished={() => setGate({ kind: 'app' })} />
+        <WhenDrawn run={onShown} />
+      </Suspense>
+    );
+  }
   return (
     <main className="min-h-screen bg-background px-(--page-margin) pt-10">
       {gate.kind === 'failed'
@@ -317,6 +337,15 @@ function SignedIn(props: SignedInProps) {
   const downloadingRows = rows.filter((row) => row.downloading);
   const speeds = `${formatSpeed(rows.reduce((total, row) => total + row.downRate, 0))} down · ${formatSpeed(rows.reduce((total, row) => total + row.upRate, 0))} up`;
   const [barOpen, setBarOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window.requestIdleCallback !== 'function') {
+      const timeout = window.setTimeout(preloadScreens, 2_000);
+      return () => window.clearTimeout(timeout);
+    }
+    const idle = window.requestIdleCallback(preloadScreens, { timeout: 5_000 });
+    return () => window.cancelIdleCallback(idle);
+  }, []);
 
   useEffect(() => {
     if (!barOpen) return;
@@ -397,5 +426,6 @@ function SignedIn(props: SignedInProps) {
   );
 }
 
-startMetrics();
 createRoot(document.getElementById('root')!).render(<ToastProvider><App /></ToastProvider>);
+// After the first render and out of the main chunk; web-vitals reads buffered entries, so starting late loses nothing.
+void import('./metrics').then(({ startMetrics }) => startMetrics(), () => undefined);

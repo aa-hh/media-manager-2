@@ -23,7 +23,7 @@ const looks = {
     'not-has-disabled:hover:bg-surface-pressed [&>svg]:size-5',
   ),
   field: cn(
-    'h-(--control-h-default) gap-2 rounded-(--control-radius-default) border-input bg-card px-(--control-px-default) text-(length:--control-text-default)',
+    'h-(--control-h-default) gap-2 rounded-(--control-radius-default) border-input bg-card px-(--control-px-default) text-(length:--control-text-default) pointer-coarse:text-base',
     'not-has-disabled:hover:border-muted-foreground has-disabled:border-border has-disabled:bg-muted [&>svg]:size-4',
   ),
 };

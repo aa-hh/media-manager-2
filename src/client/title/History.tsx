@@ -1,5 +1,6 @@
 import { Ban, CircleX, Download, FileCheck, FilePen, FileX } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
 import { LabelGroup } from '@/components/ui/label-group';
 import { RowHistory } from '@/components/ui/row-history';
 import { SkeletonRow } from '@/components/ui/skeleton';
@@ -35,11 +36,16 @@ const eventIcons: Record<string, ReactNode> = {
 
 export type HistoryLoad = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; entries: HistoryEntry[] };
 
-const when = (iso: string | null) => (iso === null ? '' : new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+const whenFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string | null) => {
+  const time = iso === null ? Number.NaN : Date.parse(iso);
+  return Number.isNaN(time) ? '' : whenFormat.format(time);
+};
 
 // `query` is the /api/library/history query string, e.g. "service=sonarr&episodeId=12".
 export function useTitleHistory(query: string, onUnauthenticated: () => void) {
   const [load, setLoad] = useState<HistoryLoad>({ kind: 'loading' });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     setLoad({ kind: 'loading' });
@@ -47,8 +53,8 @@ export function useTitleHistory(query: string, onUnauthenticated: () => void) {
       .then((entries) => { if (!controller.signal.aborted) setLoad({ kind: 'ready', entries }); })
       .catch(() => { if (!controller.signal.aborted) setLoad({ kind: 'failed' }); });
     return () => controller.abort();
-  }, [query, onUnauthenticated]);
-  return load;
+  }, [query, onUnauthenticated, attempt]);
+  return { load, retry: () => setAttempt((count) => count + 1) };
 }
 
 // Hand-off to AA-34: mark as failed.
@@ -66,16 +72,23 @@ export const historyRows = (entries: HistoryEntry[]) => entries.map((entry, inde
 ));
 
 // The one line the history panel shows when there are no rows to draw.
-export const historyEmpty = (load: HistoryLoad, service: 'Sonarr' | 'Radarr') => {
+export const historyEmpty = (load: HistoryLoad, service: 'Sonarr' | 'Radarr', retry: () => void) => {
   if (load.kind === 'loading') return undefined;
-  if (load.kind === 'failed') return <StatusInline status="failed">{service} didn't answer.</StatusInline>;
+  if (load.kind === 'failed') {
+    return (
+      <span className="flex items-center gap-2">
+        <StatusInline status="failed">{service} didn't answer.</StatusInline>
+        <Button variant="outline" size="row" onClick={retry}>Try again</Button>
+      </span>
+    );
+  }
   return load.entries.length === 0 ? `${service} has no history for this yet.` : undefined;
 };
 
 /** A title's history as its own group: heading with the count, then a table of events. */
 export function History({ query, service, onUnauthenticated }: { query: string; service: 'Sonarr' | 'Radarr'; onUnauthenticated: () => void }) {
-  const load = useTitleHistory(query, onUnauthenticated);
-  const empty = historyEmpty(load, service);
+  const { load, retry } = useTitleHistory(query, onUnauthenticated);
+  const empty = historyEmpty(load, service, retry);
   return (
     <section aria-label="History" className="flex flex-col">
       <LabelGroup count={load.kind === 'ready' ? load.entries.length : undefined}>History</LabelGroup>

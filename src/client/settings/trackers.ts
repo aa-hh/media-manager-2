@@ -130,8 +130,13 @@ export const addBand = (bands: Band[]): Band[] => {
   return [...bands.slice(0, at), emptyBand, ...bands.slice(at)];
 };
 
-// Blank is null; text that isn't a number is NaN, which notANumber catches before anything is sent.
-const num = (text: string) => (text.trim() === '' ? null : Number(text.trim()));
+// Blank is null; text that isn't a number is NaN, which notANumber catches before anything is sent. So is a number too
+// large to send: JSON writes Infinity as null, which would quietly clear an optional field.
+const num = (text: string) => {
+  if (text.trim() === '') return null;
+  const value = Number(text.trim());
+  return Math.abs(value) <= Number.MAX_SAFE_INTEGER ? value : NaN;
+};
 
 /** The first typed value that isn't a number, as { field, reason } with the server's field paths; undefined when all are numbers. */
 export const notANumber = (draft: RuleDraft): { field: string; reason: string } | undefined => {
@@ -237,7 +242,8 @@ const bytes = (value: number) => {
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   let size = value;
   let unit = 0;
-  while (size >= 1000 && unit < units.length - 1) { size /= 1000; unit += 1; }
+  // A buffer below zero is scaled by its size too.
+  while (Math.abs(size) >= 1000 && unit < units.length - 1) { size /= 1000; unit += 1; }
   return `${unit === 0 ? size : size.toPrecision(3)} ${units[unit]}`;
 };
 

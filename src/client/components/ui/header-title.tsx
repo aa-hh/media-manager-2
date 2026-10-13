@@ -50,6 +50,7 @@ function FadeImage({ src, settle = false, className }: { src: string; settle?: b
     <img
       src={src}
       alt=""
+      decoding="async"
       onLoad={() => setLoaded(true)}
       className={cn(
         'object-cover ease-out',
@@ -78,7 +79,7 @@ function HeaderBackdrop({ posterUrl, backdropUrl, tall, className }: { posterUrl
   if (posterUrl === undefined && backdropUrl === undefined) return null;
   return (
     <div aria-hidden="true" className={cn('absolute top-0 overflow-hidden', tall ? 'bottom-0' : 'h-55', className)}>
-      {posterUrl !== undefined && <img src={posterUrl} alt="" className="absolute inset-0 size-full scale-125 object-cover opacity-70 blur-3xl saturate-150" />}
+      {posterUrl !== undefined && <img src={posterUrl} alt="" decoding="async" className="absolute inset-0 size-full scale-125 object-cover opacity-70 blur-3xl saturate-150" />}
       {backdropUrl !== undefined && <FadeImage key={backdropUrl} src={backdropUrl} settle className="absolute inset-0 size-full" />}
       <div className={cn('relative size-full bg-linear-to-b', tall ? 'from-background/20 via-background/70 via-45% to-background' : 'from-transparent via-background/55 via-55% to-background')} />
     </div>
@@ -134,9 +135,9 @@ function HeaderTitle({
         <Poster url={posterUrl} className="title-poster h-66 w-44 rounded-md" />
         <div className="flex min-w-0 flex-1 flex-col gap-3 pt-15">
           {breadcrumb}
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
             {bookmark !== undefined && <ToggleBookmark state={bookmark.state} onToggle={bookmark.onToggle} className="size-9" />}
-            <h1 className="font-ui text-4xl font-extrabold tracking-[-0.6px] text-foreground">{title}</h1>
+            <h1 className="min-w-0 font-ui text-4xl font-extrabold tracking-[-0.6px] [overflow-wrap:anywhere] text-foreground">{title}</h1>
             {status}
           </div>
           {meta !== undefined && <p className="font-data text-[15px] font-normal text-muted-foreground">{meta}</p>}

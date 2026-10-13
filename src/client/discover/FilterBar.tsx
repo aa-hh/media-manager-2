@@ -152,7 +152,7 @@ export function FilterBar<S extends BarState>({ state, onChange, genres, provide
   const rating = state.minRating === null ? 'any' : String(state.minRating);
   return (
     <>
-      <div className="sticky top-16 z-[5] flex items-center gap-2 border-b border-border bg-background pt-2 pb-5">
+      <div className="sticky top-16 z-[5] flex flex-wrap items-center gap-2 border-b border-border bg-background pt-2 pb-5">
         {type !== undefined && (
           <>
             <ToggleGroup aria-label="Media type" value={type.value} onValueChange={(value) => onChange({ ...state, type: value as MediaType })}>

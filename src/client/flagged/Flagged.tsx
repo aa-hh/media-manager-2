@@ -1,5 +1,5 @@
 import { Flag } from 'lucide-react';
-import { type RefObject, useEffect, useState } from 'react';
+import { memo, Suspense, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,9 +16,12 @@ import { cn } from '@/lib/utils';
 import { ImportPanel } from '../downloads/ImportPanel';
 import { formatDuration, type Service } from '../downloads/model';
 import { postAction } from '../downloads/useDownloads';
-import { PickRelease, type OwnedEpisode, type ReleaseTarget } from '../PickRelease';
+import type { OwnedEpisode, ReleaseTarget } from '../PickRelease';
+import { lazyScreen } from '../lazyScreen';
 import { useScreenReady } from '../navigation';
 import type { FlaggedAction, FlaggedItem, FlaggedState, Wanted } from './useFlagged';
+
+const PickRelease = lazyScreen(() => import('../PickRelease').then((module) => module.PickRelease));
 
 type Tab = 'needs_you' | 'missing' | 'cutoff';
 
@@ -76,7 +79,7 @@ function PickPanel({ target, title, onClose, onUnauthenticated }: {
   if (owned.kind === 'ready') {
     // The server's labels read "Series S02E08" or "Movie (2024)"; its "Sonarr episode 12" and "Radarr movie 7" fallbacks carry no name.
     const name = target.kind === 'movie' ? (/^Radarr movie \d+$/.test(title) ? undefined : title) : /^(.+) S\d{2,}E\d{2,}$/.exec(title)?.[1];
-    return <PickRelease target={target} title={title} name={name} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} />;
+    return <Suspense fallback={null}><PickRelease target={target} title={title} name={name} episodes={owned.episodes} movieHasFile={owned.movieHasFile} onClose={onClose} onUnauthenticated={onUnauthenticated} /></Suspense>;
   }
   return (
     <PanelInline open title={`Pick a release for ${title}`} onClose={onClose}>
@@ -166,7 +169,8 @@ const searchedText = (item: Wanted, now: number) => [
     : item.nextSearchAt === null ? 'not available yet' : `next in ${formatDuration(item.nextSearchAt - now)}`,
 ].join(' · ');
 
-const dateText = (at: number | null) => (at === null ? '' : new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
+const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const dateText = (at: number | null) => (at === null ? '' : dateFormat.format(at));
 
 const wantedKey = (item: Wanted) => `${item.service}:${item.type}:${item.id}`;
 
@@ -174,6 +178,53 @@ const wantedTarget = (item: Wanted): ReleaseTarget | undefined => {
   if (item.type === 'movie') return { service: 'radarr', kind: 'movie', movieId: item.id };
   return item.seriesId === null ? undefined : { service: 'sonarr', kind: 'episode', seriesId: item.seriesId, episodeId: item.id };
 };
+
+// Memoised so ticking one checkbox in a long Missing list re-renders one row, not all of them.
+const WantedRow = memo(function WantedRow({ item, now, checked, selected, dimmed, panelOpen, actionsShown, onToggle, onSelect, onPick, onChanged, onUnauthenticated }: {
+  item: Wanted; now: number; checked: boolean; selected: boolean; dimmed: boolean; panelOpen: boolean; actionsShown: boolean;
+  onToggle: (key: string) => void; onSelect: (key: string) => void; onPick: (key: string) => void; onChanged: () => void; onUnauthenticated: () => void;
+}) {
+  const key = wantedKey(item);
+  const target = wantedTarget(item);
+  return (
+    <div className="contents">
+      <TableRow
+        selected={selected}
+        aria-selected={selected}
+        onClick={() => onSelect(key)}
+        className={cn('h-(--row-two-line)', dim(dimmed))}
+      >
+        <TableCell className="w-4">
+          {!item.inQueue && (
+            <Checkbox
+              aria-label={`Select ${item.title}`}
+              checked={checked}
+              onClick={(event) => event.stopPropagation()}
+              onCheckedChange={() => onToggle(key)}
+            />
+          )}
+        </TableCell>
+        <TableCell fill className="flex-col items-start justify-center gap-0.5">
+          <span className="w-full truncate font-ui font-semibold" title={item.title}>{item.title}</span>
+          <span className="w-full truncate text-muted-foreground" title={item.lastResult}>Last result: {item.lastResult}</span>
+        </TableCell>
+        <TableCell className="w-40 text-muted-foreground">{dateText(item.availableAt)}</TableCell>
+        <TableCell className="w-16 text-muted-foreground">{item.type === 'movie' ? 'Movie' : 'Episode'}</TableCell>
+        <TableCell className="w-60 text-muted-foreground">
+          <span className="min-w-0 truncate">{searchedText(item, now)}</span>
+        </TableCell>
+      </TableRow>
+      {actionsShown && target !== undefined && (
+        <div className={cn(actionsLine, 'pl-12')}>
+          <Button size="row" variant="outline" onClick={() => onPick(key)}>Pick a release</Button>
+        </div>
+      )}
+      {panelOpen && target !== undefined && (
+        <PickPanel target={target} title={item.title} onClose={onChanged} onUnauthenticated={onUnauthenticated} />
+      )}
+    </div>
+  );
+});
 
 function WantedList({ items, empty, now, open, setOpen, onChanged, onUnauthenticated }: {
   items: Wanted[]; empty: string; now: number; open: Open | null; setOpen: (open: Open | null) => void;
@@ -183,14 +234,18 @@ function WantedList({ items, empty, now, open, setOpen, onChanged, onUnauthentic
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
   const [refused, setRefused] = useState<Service[] | null>(null);
+  const openRef = useRef(open);
+  openRef.current = open;
   const searchable = items.filter((item) => !item.inQueue);
   const chosen = searchable.filter((item) => checked.has(wantedKey(item)));
-  const toggle = (key: string) => setChecked((current) => {
+  const toggle = useCallback((key: string) => setChecked((current) => {
     const next = new Set(current);
     if (next.has(key)) next.delete(key);
     else next.add(key);
     return next;
-  });
+  }), []);
+  const select = useCallback((key: string) => { if (openRef.current === null) setSelected(key); }, []);
+  const pick = useCallback((key: string) => setOpen({ key, panel: 'pick' }), [setOpen]);
   // One search per service and type, since Sonarr and Radarr each take one command for many ids.
   const search = async () => {
     setSearching(true);
@@ -206,7 +261,7 @@ function WantedList({ items, empty, now, open, setOpen, onChanged, onUnauthentic
     onChanged();
   };
   const allChecked = searchable.length > 0 && chosen.length === searchable.length;
-  if (items.length === 0) return <EmptyState icon={<Flag />} title={empty} className="py-16" />;
+  if (items.length === 0) return <EmptyState icon={<Flag />} title={empty} className="w-full max-w-90 py-16" />;
   return (
     <>
       {refused !== null && (
@@ -240,45 +295,22 @@ function WantedList({ items, empty, now, open, setOpen, onChanged, onUnauthentic
         </TableHeader>
         {items.map((item) => {
           const key = wantedKey(item);
-          const target = wantedTarget(item);
-          const isSelected = selected === key;
           return (
-            <div key={key} className="contents">
-              <TableRow
-                selected={isSelected}
-                aria-selected={isSelected}
-                onClick={() => { if (open === null) setSelected(key); }}
-                className={cn('h-(--row-two-line)', dim(open !== null && open.key !== key))}
-              >
-                <TableCell className="w-4">
-                  {!item.inQueue && (
-                    <Checkbox
-                      aria-label={`Select ${item.title}`}
-                      checked={checked.has(key)}
-                      onClick={(event) => event.stopPropagation()}
-                      onCheckedChange={() => toggle(key)}
-                    />
-                  )}
-                </TableCell>
-                <TableCell fill className="flex-col items-start justify-center gap-0.5">
-                  <span className="w-full truncate font-ui font-semibold">{item.title}</span>
-                  <span className="w-full truncate text-muted-foreground" title={item.lastResult}>Last result: {item.lastResult}</span>
-                </TableCell>
-                <TableCell className="w-40 text-muted-foreground">{dateText(item.availableAt)}</TableCell>
-                <TableCell className="w-16 text-muted-foreground">{item.type === 'movie' ? 'Movie' : 'Episode'}</TableCell>
-                <TableCell className="w-60 text-muted-foreground">
-                  <span className="truncate">{searchedText(item, now)}</span>
-                </TableCell>
-              </TableRow>
-              {isSelected && open === null && target !== undefined && (
-                <div className={cn(actionsLine, 'pl-12')}>
-                  <Button size="row" variant="outline" onClick={() => setOpen({ key, panel: 'pick' })}>Pick a release</Button>
-                </div>
-              )}
-              {open?.key === key && target !== undefined && (
-                <PickPanel target={target} title={item.title} onClose={onChanged} onUnauthenticated={onUnauthenticated} />
-              )}
-            </div>
+            <WantedRow
+              key={key}
+              item={item}
+              now={now}
+              checked={checked.has(key)}
+              selected={selected === key}
+              dimmed={open !== null && open.key !== key}
+              panelOpen={open?.key === key}
+              actionsShown={selected === key && open === null}
+              onToggle={toggle}
+              onSelect={select}
+              onPick={pick}
+              onChanged={onChanged}
+              onUnauthenticated={onUnauthenticated}
+            />
           );
         })}
       </Table>
@@ -307,11 +339,11 @@ export function FlaggedScreen({ state, reload, headingRef, onUnauthenticated, on
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const changed = () => {
+  const changed = useCallback(() => {
     setOpen(null);
     setSelected(null);
     void reload();
-  };
+  }, [reload]);
   const switchTab = (next: Tab) => {
     setTab(next);
     setOpen(null);
@@ -321,8 +353,8 @@ export function FlaggedScreen({ state, reload, headingRef, onUnauthenticated, on
   const handled = state.needsYou.kind === 'ready' ? state.needsYou.value.handledThisWeek : undefined;
   const note = handled === undefined ? undefined
     : tab === 'needs_you'
-      ? `Automatic fixes handled ${handled} problems this week on their own. These are the ones they gave up on.`
-      : `Automatic fixes handled ${handled} problems this week. Missing items are searched every 6h.`;
+      ? `Automatic fixes handled ${handled} ${handled === 1 ? 'problem' : 'problems'} this week on their own. These are the ones they gave up on.`
+      : `Automatic fixes handled ${handled} ${handled === 1 ? 'problem' : 'problems'} this week. Missing items are searched every 6h.`;
   const counts: Record<Tab, number | undefined> = {
     needs_you: state.needsYou.kind === 'ready' ? state.needsYou.value.items.length : undefined,
     missing: state.wanted.kind === 'ready' ? state.wanted.value.missing.length : undefined,
@@ -359,7 +391,7 @@ export function FlaggedScreen({ state, reload, headingRef, onUnauthenticated, on
         )}
         {tab === 'needs_you' && state.needsYou.kind === 'ready' && (state.needsYou.value.items.length === 0
           ? (
-            <EmptyState icon={<Flag />} title="Nothing needs you" className="py-16">
+            <EmptyState icon={<Flag />} title="Nothing needs you" className="w-full max-w-90 py-16">
               Automatic fixes handled everything. Anything they give up on lands here.
             </EmptyState>
           )

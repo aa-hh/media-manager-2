@@ -36,6 +36,8 @@ const trackerKey = (host: string): Selected => `tracker:${host}`;
 
 const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected' || check.kind === 'not_configured';
 const timeOf = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// iOS Safari zooms into any focused input under 16px, so touch screens get 16px in every field.
+export const touchInputs = 'pointer-coarse:[&_input]:text-base';
 // The pill's own logo and name are off here: its first two children are hidden, the dot stays.
 const pillOnly = '[&>span:nth-child(-n+2)]:hidden';
 
@@ -220,7 +222,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   };
 
   return (
-    <div className="flex flex-col gap-6 pt-2 pb-6">
+    <div className={cn('flex flex-col gap-6 pt-2 pb-6', touchInputs)}>
       <HeaderPage
         title="Settings"
         summary={headerSummary(checks, edited, lastChecked, trackerSummary(trackers, adding))}
@@ -482,6 +484,8 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
   const configured = isConfigured(saved);
   const edits = changedCount(info.name, saved, draft);
   const testing = check.kind === 'testing';
+  // After a passing test the save is still running and clears the form when it lands, so nothing can be typed meanwhile.
+  const busy = testing || pending === 'connect';
   const formFailed = failed(check) && 'at' in check && !check.ofSaved;
   const pill = pillFor(info, check, edits, true);
   const savedUrl = savedAddress(saved);
@@ -530,13 +534,13 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
           onValueChange={(value) => signInToken.onChange(value === 'signIn')}
         >
           <OptionRow
-            control={<Radio value="signIn" disabled={testing} />}
+            control={<Radio value="signIn" disabled={busy} />}
             title="Use my sign-in token"
             description="The token from your Plex sign-in. Nothing to paste."
             bordered
           />
           <OptionRow
-            control={<Radio value="paste" disabled={testing} />}
+            control={<Radio value="paste" disabled={busy} />}
             title="Paste a token"
             description="The X-Plex-Token of your Plex server."
             bordered
@@ -549,7 +553,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
           label={wizard?.hints?.address?.label ?? 'Address'}
           error={check.kind === 'unreachable' ? 'Nothing answered at this address within 10 seconds. Check the port.' : undefined}
           help={savedUrl !== '' && address !== savedUrl
-            ? <span className="text-muted-foreground">Changed from {savedUrl}. Not saved yet.</span>
+            ? <span className="text-muted-foreground [overflow-wrap:anywhere]">Changed from {savedUrl}. Not saved yet.</span>
             : wizard?.hints?.address?.help ?? `Where media-manager-2 reaches ${info.label} on the seedbox, with the port.`}
         >
           <InputSearch
@@ -560,7 +564,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
             spellCheck={false}
             placeholder={info.addressPlaceholder}
             value={draft.address}
-            readOnly={testing}
+            readOnly={busy}
             aria-invalid={check.kind === 'unreachable' || undefined}
             onValueChange={(value) => onDraft({ ...draft, address: value })}
           />
@@ -583,7 +587,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
               action={isSaved && (
                 <Button
                   variant="outline"
-                  disabled={testing}
+                  disabled={busy}
                   onClick={() => {
                     onReplacing(credential.key, locked);
                     if (locked) window.requestAnimationFrame(() => inputs.current[credential.key]?.focus());
@@ -606,7 +610,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
                     ref={(element) => { inputs.current[credential.key] = element; }}
                     placeholder={hint?.placeholder ?? credential.placeholder}
                     value={draft.secrets[credential.key] ?? ''}
-                    readOnly={testing}
+                    readOnly={busy}
                     aria-invalid={refused || undefined}
                     onValueChange={(value) => onDraft({ ...draft, secrets: { ...draft.secrets, [credential.key]: value } })}
                   />
@@ -631,7 +635,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
         unsavedNote={edits > 0 && !testing && !formFailed ? 'Unsaved edits' : undefined}
         secondary={wizard !== undefined ? <Button variant="outline" icon={<ArrowLeft />} disabled={testing} onClick={wizard.onBack}>Back</Button>
           : edits > 0 || (testing && pending === 'connect')
-            ? <Button variant="outline" icon={<Undo2 />} disabled={testing} onClick={onDiscard}>Discard edits</Button>
+            ? <Button variant="outline" icon={<Undo2 />} disabled={busy} onClick={onDiscard}>Discard edits</Button>
             : configured && <Button variant="ghost" icon={<RefreshCw />} loading={pending === 'check'} disabled={testing && pending !== 'check'} onClick={onCheck}>Check now</Button>}
         action={(
           <Button
@@ -649,6 +653,7 @@ export function Editor({ info, saved, draft, check, pending, problem, replacing,
       {problem !== undefined && <Callout title={problem} />}
       {problem === undefined && failed(check) && 'at' in check && (
         <Callout
+          className="[overflow-wrap:anywhere]"
           title={failureTitle(info, check, address || savedUrl)}
           action={<Button variant="outline" icon={<RefreshCw />} onClick={signIn || edits > 0 || !configured ? onConnect : onCheck}>Try again</Button>}
         >

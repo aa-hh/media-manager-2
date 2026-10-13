@@ -60,9 +60,12 @@ export const episodeCode = (episode: Pick<EpisodeDetail, 'seasonNumber' | 'episo
   `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`
 );
 
-const day = (iso: string | null | undefined) => (
-  iso === null || iso === undefined ? null : new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-);
+const dayFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const airingFormat = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const day = (iso: string | null | undefined) => {
+  const time = iso === null || iso === undefined ? Number.NaN : Date.parse(iso);
+  return Number.isNaN(time) ? null : dayFormat.format(time);
+};
 
 // External pages for the title, each only when the data has its id.
 const titleLinks = (subject: Subject) => {
@@ -112,9 +115,10 @@ const airing = (tv: SeriesDetail, which: 'nextAiring' | 'previousAiring') => {
     .filter((time) => time !== null)
     .sort((a, b) => Date.parse(a) - Date.parse(b));
   const at = tv[which] ?? (which === 'nextAiring' ? times[0] : times[times.length - 1]);
-  if (at === undefined) return null;
-  const episode = tv.episodes.find((candidate) => candidate.airDate !== null && Date.parse(candidate.airDate) === Date.parse(at));
-  const when = new Date(at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const time = at === undefined ? Number.NaN : Date.parse(at);
+  if (Number.isNaN(time)) return null;
+  const episode = tv.episodes.find((candidate) => candidate.airDate !== null && Date.parse(candidate.airDate) === time);
+  const when = airingFormat.format(time);
   return episode === undefined ? when : `${episodeCode(episode)} · ${when}`;
 };
 
@@ -168,7 +172,7 @@ function FactGrid({ rows, className }: { rows: Cell[][]; className: string }) {
     <div className={`flex flex-col gap-4 ${className}`}>
       {filled.map((row) => (
         <dl key={row[0].label} className="m-0 grid grid-cols-3 gap-6">
-          {row.map((cell) => <FactStacked key={cell.label} label={cell.label}>{cell.value}</FactStacked>)}
+          {row.map((cell) => <FactStacked key={cell.label} label={cell.label} className="[overflow-wrap:anywhere]">{cell.value}</FactStacked>)}
         </dl>
       ))}
     </div>
@@ -184,11 +188,11 @@ function OverviewBand({ subject, owned, library }: { subject: Subject; owned: bo
     <section aria-label="About" className="flex items-start gap-10 pt-6 pb-8">
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <h2 className="m-0 font-ui text-xl font-bold text-foreground">Overview</h2>
-        {detail.overview !== null && <p className="m-0 text-body leading-normal text-muted-foreground">{detail.overview}</p>}
+        {detail.overview !== null && detail.overview !== '' && <p className="m-0 text-body leading-normal break-words text-muted-foreground">{detail.overview}</p>}
         <FactGrid rows={subject.type === 'tv' ? tvFacts(subject.detail) : movieFacts(subject.detail)} className="pt-2" />
         {subject.type === 'movie' && <FactGrid rows={crewFacts(subject.detail)} className="pt-4" />}
         {links.length > 0 && (
-          <div className="flex items-center gap-5 pt-1">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
             {links.map((link) => (
               <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="focus-ring flex items-center gap-1 rounded-xs text-label text-foreground hover:underline">
                 {link.label}
