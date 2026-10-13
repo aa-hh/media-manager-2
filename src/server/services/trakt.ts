@@ -85,7 +85,7 @@ export const createTrakt = (database: DatabaseSync, options: ServiceOptions & { 
     return response.ok ? { kind: 'ok', version: 'key accepted' } : { kind: 'unreachable' };
   };
 
-  // After a 429, list and genres send nothing until the wait Trakt named has passed. check() is not paused.
+  // After a 429, list, genres and fanart send nothing until the wait Trakt named has passed. check() is not paused.
   const get = async (operation: string, path: string, query: Array<[string, string]>): Promise<Result<unknown>> => {
     const clientId = readSetting(database, 'credentials', 'trakt.clientId');
     if (clientId === undefined) return notConfigured(LABEL, operation);
@@ -124,7 +124,19 @@ export const createTrakt = (database: DatabaseSync, options: ServiceOptions & { 
     return result.kind === 'ok' ? { kind: 'ok', value: parseGenres(result.value) } : result;
   };
 
-  return { check, list, genres };
+  // Trakt sends one fanart per title as a path without https://, at 'medium' (1280 wide); 'full' is the 1920 wide copy.
+  const fanart = async (type: 'movie' | 'tv', tmdbId: number): Promise<Result<string | null>> => {
+    const result = await get('the backdrop lookup', `/search/tmdb/${tmdbId}`, [['type', type === 'movie' ? 'movie' : 'show'], ['extended', 'images']]);
+    if (result.kind !== 'ok') return result;
+    const entry = (Array.isArray(result.value) ? result.value.filter(isRecord) : [])[0];
+    const record = entry?.[type === 'movie' ? 'movie' : 'show'];
+    const images = isRecord(record) && isRecord(record.images) ? record.images : {};
+    const path = Array.isArray(images.fanart) && typeof images.fanart[0] === 'string' ? images.fanart[0] : '';
+    const link = `https://${path.replace(/^https?:\/\//, '').replace('/medium/', '/full/')}`;
+    return { kind: 'ok', value: /^https:\/\/[a-z0-9.-]*trakt\.tv\//.test(link) ? link : null };
+  };
+
+  return { check, list, genres, fanart };
 };
 
 export type Trakt = ReturnType<typeof createTrakt>;

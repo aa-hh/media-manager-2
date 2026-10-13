@@ -38,6 +38,8 @@ const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url
 const connectionModuleUrl = new URL('../dist/server/services/connection.js', import.meta.url).href;
 const logModuleUrl = new URL('../dist/server/log.js', import.meta.url).href;
 const traktModuleUrl = new URL('../dist/server/services/trakt.js', import.meta.url).href;
+const fanartModuleUrl = new URL('../dist/server/services/fanart.js', import.meta.url).href;
+const backdropsModuleUrl = new URL('../dist/server/backdrops.js', import.meta.url).href;
 const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
 const cliPath = fileURLToPath(new URL('../dist/server/cli.js', import.meta.url));
@@ -79,6 +81,7 @@ const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js'
 const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).href;
 const setupModuleUrl = new URL('../dist/server/setup.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
+const preferencesModuleUrl = new URL('../dist/server/preferences.js', import.meta.url).href;
 const titleStoreModuleUrl = new URL('../dist/server/titleStore.js', import.meta.url).href;
 const tmdbTitlesModuleUrl = new URL('../dist/server/tmdbTitles.js', import.meta.url).href;
 // The modules loaded in this process log timing records nowhere; a test that checks them installs its own sink and puts this one back.
@@ -2920,7 +2923,8 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
   let respond = () => { throw new TypeError('fetch failed'); };
   let calls = 0;
   const tmdb = createTmdb(database, { now: () => clock.value, fetch: async (url) => { calls += 1; return respond(new URL(String(url))); } });
-  const titles = createTmdbTitles({ database, tmdb, store: createTitleStore(database, { now: () => clock.value }) });
+  const store = createTitleStore(database, { now: () => clock.value });
+  const titles = createTmdbTitles({ database, tmdb, store });
   const routes = createTmdbTitleRoutes(titles);
   const json = (body, status = 200) => () => new Response(JSON.stringify(body), { status });
   const page = async (path) => {
@@ -2964,6 +2968,24 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     assert.deepEqual(await titles.tvdbIdOf(50), { kind: 'ok', value: null });
     respond = () => { throw new TypeError('fetch failed'); };
     assert.equal((await titles.tvdbIdOf(51)).kind, 'unreachable');
+  });
+
+  // Waiting for TMDB when no details are saved, skipping the save for the next visit, or folding a TMDB failure into anything but null turns this red.
+  await t.test('backdropPath answers from the saved details and loads missing ones in the background', async () => {
+    let release;
+    respond = () => new Promise((resolve) => { release = resolve; });
+    assert.equal(await titles.backdropPath('tv', 424242), null);
+    await settle(() => release !== undefined);
+    assert.notEqual(release, undefined);
+    release(json({ id: 424242, name: 'Held show', external_ids: { tvdb_id: 515151 }, backdrop_path: '/held.jpg' })());
+    await settle(() => store.get({ type: 'tv', tmdbId: 424242 }, 'tmdbDetails') !== undefined);
+    assert.equal(await titles.backdropPath('tv', 424242), '/held.jpg');
+
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.equal(await titles.backdropPath('movie', 88888), null);
+    await settle(() => store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails') !== undefined);
+    assert.equal(store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails'), undefined);
+    assert.equal(await titles.backdropPath('movie', 88888), null);
   });
 
   // Throwing or dropping a section when TMDB omits keywords, credits or recommendations turns this red.
@@ -6768,6 +6790,14 @@ test('operator command stores settings from stdin and checks connections without
   assert.ok(listed.stdout.split('\n').includes('credentials sonarr.apiKey'), listed.stdout);
   assert.equal(listed.stdout.includes(credentials['sonarr.apiKey']), false);
 
+  // Switching to a source outside tmdb, trakt and fanart, or printing anything but the saved source, turns this red.
+  assert.equal((await cli(['backdrop', 'source'])).stdout, 'backdrop source: tmdb\n');
+  assert.equal((await cli(['backdrop', 'source', 'trakt'])).stdout, 'backdrop source: trakt\n');
+  const unknownSource = await cli(['backdrop', 'source', 'nope']);
+  assert.equal(unknownSource.code, 1);
+  assert.match(unknownSource.stderr, /must be one of: tmdb, trakt, fanart/);
+  assert.equal((await cli(['backdrop', 'source'])).stdout, 'backdrop source: trakt\n');
+
   const unconfigured = await cli(['connections', 'check']);
   assert.equal(unconfigured.code, 1, unconfigured.stderr);
   assert.equal(unconfigured.stdout, 'sonarr: not_configured\nradarr: not_configured\nrtorrent: not_configured\nplex: not_configured\n');
@@ -7112,11 +7142,14 @@ test('search, the title page and add for one title ask Sonarr for it once', asyn
   assert.deepEqual(fake.sonarr.requests.find((request) => request.method === 'POST').body.seasons, [{ seasonNumber: 1 }]);
 });
 
-// Dropping the fanart fallback when TMDB has no backdrop or the title no TMDB id, or serving TMDB's backdrop at another size, turns this red.
-test('title pages show TMDB\'s backdrop through the image route and fall back to the Sonarr or Radarr fanart', async (t) => {
+// Dropping the fanart fallback when the chosen source has no picture, ignoring the backdrop.source preference, asking fanart.tv for a show by anything
+// but its TVDB id, waiting on Trakt or fanart.tv instead of loading in the background, or serving TMDB's backdrop at another size, turns this red.
+test('title pages take the backdrop from the chosen source and fall back to the Sonarr or Radarr fanart', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createLibrary } = await import(libraryModuleUrl);
   const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createBackdrops } = await import(backdropsModuleUrl);
+  const { setPreference } = await import(preferencesModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backdrop-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -7131,25 +7164,71 @@ test('title pages show TMDB\'s backdrop through the image route and fall back to
   ];
   fake.sonarr.state.lookup = [{ title: 'Severance', tvdbId: 371980, tmdbId: 95396, seasons: [], images: fanart('severance') }];
   fake.radarr.state.movies = [movieRecord({ id: 3, title: 'Spirited Away', tmdbId: 129, images: fanart('spirited') })];
-  const library = (paths) => createLibrary(services, () => [], createTitleStore(database), undefined, undefined, async (type, tmdbId) => paths[`${type}/${tmdbId}`] ?? null);
-  const backdrops = async (paths) => {
-    const pages = library(paths);
-    return [(await pages.series(7)).value.backdropUrl, (await pages.series(8)).value.backdropUrl,
-      (await pages.preview('sonarr', 371980)).value.backdropUrl, (await pages.movie(3)).value.backdropUrl];
-  };
+  let answers = {};
+  const answer = (source) => async (type, id) => ({ kind: 'ok', value: answers[`${source}:${type}/${id}`] ?? null });
+  const pages = createLibrary(services, () => [], createTitleStore(database), undefined, undefined, createBackdrops({
+    database,
+    store: createTitleStore(database),
+    tmdbTitles: { backdropPath: async (type, id) => answers[`tmdb:${type}/${id}`] ?? null },
+    trakt: { fanart: answer('trakt') },
+    fanart: { background: answer('fanart') },
+  }));
+  const backdrops = async () => [(await pages.series(7)).value.backdropUrl, (await pages.series(8)).value.backdropUrl,
+    (await pages.preview('sonarr', 371980)).value.backdropUrl, (await pages.movie(3)).value.backdropUrl];
+  const fallbacks = ['https://artworks.thetvdb.com/severance.jpg', 'https://artworks.thetvdb.com/none.jpg', 'https://artworks.thetvdb.com/severance.jpg', 'https://artworks.thetvdb.com/spirited.jpg'];
+  const settle = async () => { for (let turn = 0; turn < 20; turn += 1) await new Promise((resolve) => setImmediate(resolve)); };
 
-  assert.deepEqual(await backdrops({ 'tv/95396': '/sev.jpg', 'movie/129': '/spirit.jpg' }), [
-    '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg',
-    'https://artworks.thetvdb.com/none.jpg',
-    '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg',
-    '/api/images/tmdb/w1920_and_h800_multi_faces/spirit.jpg',
+  assert.deepEqual(await backdrops(), fallbacks);
+  answers = { 'tmdb:tv/95396': '/sev.jpg', 'tmdb:movie/129': '/spirit.jpg', 'trakt:tv/95396': 'https://media.trakt.tv/sev.webp', 'trakt:movie/129': 'https://media.trakt.tv/spirit.webp', 'fanart:tv/371980': 'https://assets.fanart.tv/sev.jpg', 'fanart:tv/1': 'https://assets.fanart.tv/none.jpg' };
+  assert.deepEqual(await backdrops(), [
+    '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg', fallbacks[1], '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg', '/api/images/tmdb/w1920_and_h800_multi_faces/spirit.jpg',
   ]);
-  assert.deepEqual(await backdrops({}), [
-    'https://artworks.thetvdb.com/severance.jpg',
-    'https://artworks.thetvdb.com/none.jpg',
-    'https://artworks.thetvdb.com/severance.jpg',
-    'https://artworks.thetvdb.com/spirited.jpg',
-  ]);
+  setPreference(database, 'backdrop.source', 'trakt');
+  assert.equal((await pages.series(7)).value.backdropUrl, fallbacks[0]);
+  await backdrops();
+  await settle();
+  assert.deepEqual(await backdrops(), ['https://media.trakt.tv/sev.webp', fallbacks[1], 'https://media.trakt.tv/sev.webp', 'https://media.trakt.tv/spirit.webp']);
+  setPreference(database, 'backdrop.source', 'fanart');
+  await backdrops();
+  await settle();
+  assert.deepEqual(await backdrops(), ['https://assets.fanart.tv/sev.jpg', 'https://assets.fanart.tv/none.jpg', 'https://assets.fanart.tv/sev.jpg', fallbacks[3]]);
+});
+
+// Linking Trakt's 1280-wide copy instead of the 1920-wide one, passing on a link to another host, picking a fanart.tv background other than the
+// most-liked, or treating fanart.tv's 404 for a title with no art as a failure turns this red.
+test('Trakt and fanart.tv backdrop lookups read their replies', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createTrakt } = await import(traktModuleUrl);
+  const { createFanart } = await import(fanartModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backdrop-sources-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  setSetting(database, 'credentials', 'trakt.clientId', 'trakt-id');
+  setSetting(database, 'credentials', 'fanart.apiKey', 'fanart-key');
+  const sent = [];
+  const replying = (status, body) => ({ fetch: async (url, init) => { sent.push({ url: String(url), headers: init.headers }); return new Response(JSON.stringify(body), { status }); } });
+  // The real Trakt reply shape for Severance (/search/tmdb/95396?type=show&extended=images), 13 Oct 2026.
+  const traktReply = (fanart) => [{ type: 'show', show: { title: 'Severance', images: { fanart } } }];
+  assert.deepEqual(await createTrakt(database, replying(200, traktReply(['media.trakt.tv/images/shows/000/154/997/fanarts/medium/9400ecb8e2.jpg.webp']))).fanart('tv', 95396),
+    { kind: 'ok', value: 'https://media.trakt.tv/images/shows/000/154/997/fanarts/full/9400ecb8e2.jpg.webp' });
+  assert.deepEqual(await createTrakt(database, replying(200, traktReply(['evil.example/x.webp']))).fanart('tv', 95396), { kind: 'ok', value: null });
+  assert.deepEqual(await createTrakt(database, replying(200, [])).fanart('movie', 129), { kind: 'ok', value: null });
+
+  const backgrounds = { showbackground: [
+    { url: 'http://assets.fanart.tv/fanart/tv/371980/showbackground/a.jpg', likes: '2' },
+    { url: 'https://assets.fanart.tv/fanart/tv/371980/showbackground/b.jpg', likes: '9' },
+    { url: 'https://evil.example/c.jpg', likes: '99' },
+  ] };
+  assert.deepEqual(await createFanart(database, replying(200, backgrounds)).background('tv', 371980),
+    { kind: 'ok', value: 'https://assets.fanart.tv/fanart/tv/371980/showbackground/b.jpg' });
+  // Putting the fanart.tv key in the URL instead of its api-key header turns this red.
+  assert.deepEqual(sent.at(-1), { url: 'https://webservice.fanart.tv/v3/tv/371980', headers: { Accept: 'application/json', 'api-key': 'fanart-key' } });
+  assert.deepEqual(await createFanart(database, replying(404, { status: 'error', 'error message': 'Not found' })).background('movie', 129), { kind: 'ok', value: null });
+  assert.equal((await createFanart(database, replying(401, {})).background('movie', 129)).kind, 'rejected');
 });
 
 // Using one max age for every part, saving a failed load, letting a second caller start its own load while one runs,

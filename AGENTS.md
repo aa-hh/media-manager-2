@@ -94,7 +94,7 @@ symbol you cannot find in source, believe the source and fix the doc.
   search again** (`skipRedownload`). Left out, Sonarr and Radarr search by
   themselves and can grab release after release on a private tracker.
 - **Every request to Sonarr, Radarr, rTorrent, Plex's media API, TMDB,
-  MDBList, tracker sites and S3 goes through `src/server/services/`.** The
+  MDBList, Trakt, fanart.tv, tracker sites and S3 goes through `src/server/services/`.** The
   service clients hold the timeouts, paging and error mapping; a second
   caller skips all three. Three exceptions exist: Plex sign-in in
   `src/server/auth.ts`, .torrent downloads from indexers in

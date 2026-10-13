@@ -489,13 +489,13 @@ export const createLibrary = (
   store: TitleStore,
   mdblist?: Pick<Mdblist, 'showRatings'>,
   tvdbIdOf?: (tmdbId: number) => Promise<ArrResult<number | null>>,
-  backdropPathOf?: (type: 'tv' | 'movie', tmdbId: number) => Promise<string | null>,
+  backdropOf?: (type: 'tv' | 'movie', ids: { tmdbId: number | null; tvdbId: number | null }) => Promise<string | null>,
 ) => {
-  // TMDB's main backdrop differs from Sonarr's TVDB fanart and is often newer than Radarr's copy; fanart stays the fallback.
-  const backdropUrl = async (type: 'tv' | 'movie', record: Series | Movie) => {
-    const path = record.tmdbId === null || backdropPathOf === undefined ? null : await backdropPathOf(type, record.tmdbId);
-    return path === null ? imageUrl(record.images, 'fanart') : `/api/images/tmdb/w1920_and_h800_multi_faces/${path.replace(/^\//, '')}`;
-  };
+  // The chosen backdrop source (TMDB unless set) beats Sonarr's TVDB fanart and Radarr's older copy; fanart stays the fallback.
+  const backdropUrl = async (type: 'tv' | 'movie', record: Series | Movie) => (
+    (backdropOf === undefined ? null : await backdropOf(type, { tmdbId: record.tmdbId, tvdbId: 'tvdbId' in record ? record.tvdbId : null }))
+      ?? imageUrl(record.images, 'fanart')
+  );
   const showRatings = (record: Series) => (
     mdblist === undefined ? Promise.resolve(noRatings) : mdblist.showRatings(store, { tvdbId: record.tvdbId, tmdbId: record.tmdbId })
   );
