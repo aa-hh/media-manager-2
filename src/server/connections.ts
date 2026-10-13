@@ -70,12 +70,22 @@ export const createConnectionRoutes = (database: DatabaseSync, options: ServiceO
   const routes = new Hono();
 
   // A Jellyfin owner belongs to one server, so its address may change only to an address of that same server (same Id).
+  // An owner saved without the Id (before it was stored, or when the server did not answer) gets it from the saved address first.
   const sameServer = async (url: string): Promise<'ok' | 'unreachable' | { different: string }> => {
     const owner = effectiveOwner(database, options.ownerPlexId);
-    if (owner?.provider !== 'jellyfin' || owner.serverId === null) return 'ok';
-    const identified = await identify(options.fetch ?? globalThis.fetch, url.replace(/\/+$/, ''));
+    if (owner?.provider !== 'jellyfin') return 'ok';
+    const fetch = options.fetch ?? globalThis.fetch;
+    let serverId = owner.serverId;
+    if (serverId === null) {
+      const saved = getSetting(database, 'serviceAddresses', 'jellyfin.url');
+      const current = saved === undefined ? undefined : await identify(fetch, saved.replace(/\/+$/, ''));
+      if (current?.kind !== 'ok') return 'unreachable';
+      serverId = current.serverId;
+      database.prepare('UPDATE owner SET server_id = ? WHERE id = 1 AND server_id IS NULL').run(serverId);
+    }
+    const identified = await identify(fetch, url.replace(/\/+$/, ''));
     if (identified.kind !== 'ok') return 'unreachable';
-    return identified.serverId === owner.serverId ? 'ok' : { different: identified.serverName };
+    return identified.serverId === serverId ? 'ok' : { different: identified.serverName };
   };
 
   // A saved credential never leaves the server, not even masked: the browser learns only whether it is set.

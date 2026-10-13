@@ -370,7 +370,7 @@ export const createApp = (options: CreateAppOptions) => {
     return jellyfinRefusal(context, result);
   });
 
-  // The address is sent only during first run; once a Jellyfin owner exists the saved one is used.
+  // The address is sent only during first run; once a Jellyfin owner exists, or a Plex owner switches, the saved one is used.
   app.post('/auth/jellyfin/password', requireBrowserPost, async (context) => {
     const body = await readExactJson(context, ['url', 'username', 'password']) ?? await readExactJson(context, ['username', 'password']);
     if (

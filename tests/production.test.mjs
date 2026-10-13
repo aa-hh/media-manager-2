@@ -3815,6 +3815,13 @@ test('the settings screen tests and saves Jellyfin, refuses a key it rejects and
   assert.equal(getSetting(database, 'serviceAddresses', 'jellyfin.url'), 'http://jellyfin.test:8096');
   assert.equal((await send('PUT', '/api/settings/serviceAddresses/jellyfin.url', { value: 'http://jellyfin.test:8097' })).status, 204);
 
+  // An owner saved before the server Id was stored is held to the server at its saved address; skipping that lets any address in.
+  database.exec('UPDATE owner SET server_id = NULL');
+  const unknown = await send('PUT', '/api/settings/serviceAddresses/jellyfin.url', { value: 'http://den.test:8096' });
+  assert.equal(unknown.status, 409);
+  assert.deepEqual(await unknown.json(), { error: 'different_server' });
+  assert.equal(database.prepare('SELECT server_id FROM owner').get().server_id, 'server-guid');
+
   const plexDatabase = new DatabaseSync(':memory:');
   migrateDatabase(plexDatabase, applicationMigrations);
   const plexClock = { value: 1_800_000_000_000 };

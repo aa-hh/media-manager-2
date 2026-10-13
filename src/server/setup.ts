@@ -368,7 +368,7 @@ export const createSetupRoutes = ({ database, arr, rtorrent, trackers, env = pro
   });
 
   // Connects the Jellyfin server the owner signed in through, checked in a throwaway database first like Plex above, so a
-  // refused key saves nothing. The address is the one locked at first run; only the key comes from the request.
+  // refused key saves nothing. The address is the saved one; only the key comes from the request.
   routes.post('/jellyfin', async (context) => {
     const body = await readBody(context);
     if (!hasExactly(body, ['apiKey']) || typeof body.apiKey !== 'string' || body.apiKey === '') return context.json({ error: 'invalid_request' }, 400);

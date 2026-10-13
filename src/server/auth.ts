@@ -8,7 +8,7 @@ import {
 } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { DatabaseSync } from 'node:sqlite';
-import { effectiveOwner, readEnvironmentOwner, replaceOwner, saveOwner } from './owner.js';
+import { effectiveOwner, type Owner, readEnvironmentOwner, replaceOwner, saveOwner } from './owner.js';
 import { readSetting } from './services/connection.js';
 import {
   authenticateByName,
@@ -229,7 +229,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     && validateSession(suppliedSession).kind === 'success';
 
   // Swaps the owner and ends every session in one write; the caller then creates the new owner's session.
-  const switchOwner = (owner: Parameters<typeof replaceOwner>[1]) => {
+  const switchOwner = (owner: Owner) => {
     database.exec('BEGIN IMMEDIATE;');
     try {
       replaceOwner(database, owner);
@@ -488,12 +488,12 @@ export const createAuthentication = (options: AuthenticationOptions) => {
         database.exec('ROLLBACK;'); // the owner check below reads the winner
       }
     }
-    // Settings already saved jellyfin.url, so the switch leaves it as it is.
-    if (currentOwner()?.provider === 'plex' && switching(suppliedSession)) {
+    const savedUrl = readSetting(database, 'serviceAddresses', 'jellyfin.url')?.replace(/\/+$/, '');
+    // Settings already saved jellyfin.url, so the switch leaves it as it is; an address changed mid-login switches nobody.
+    if (currentOwner()?.provider === 'plex' && savedUrl === url && switching(suppliedSession)) {
       switchOwner({ provider: 'jellyfin', userId: user.userId, userName: user.userName, serverName, serverId });
     }
     owner = currentOwner();
-    const savedUrl = readSetting(database, 'serviceAddresses', 'jellyfin.url')?.replace(/\/+$/, '');
     if (owner?.provider !== 'jellyfin' || owner.userId !== user.userId || savedUrl !== url) return { kind: 'owner_only' };
     return createSession(owner.userId, suppliedSession);
   };

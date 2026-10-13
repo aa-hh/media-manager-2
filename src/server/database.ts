@@ -403,7 +403,7 @@ export const applicationMigrations = [
   `ALTER TABLE second_versions ADD COLUMN tracked_path TEXT;`,
   // When Radarr or Sonarr was last asked for the tracked path; NULL while a merged row owes a check after a rename or download event.
   `ALTER TABLE second_versions ADD COLUMN merge_checked_at INTEGER;`,
-  // The install's owner: one row, written by the first sign-in on the first-run page.
+  // The install's owner: one row, written by the first sign-in on the first-run page or replaced by a media-server switch.
   `CREATE TABLE owner (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     provider TEXT NOT NULL CHECK (provider IN ('plex', 'jellyfin')),
