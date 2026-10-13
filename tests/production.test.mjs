@@ -4394,8 +4394,28 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     const tracker = createGrabTracker({ database, arr, events, now: () => clock.value });
     const heard = [];
     tracker.onGrab((grab) => { heard.push(grab.hash); });
-    return { database, clock, fake, tracker, heard };
+    return { database, clock, events, fake, tracker, heard };
   };
+
+  // Skipping the read for a new torrent that already has the app's own grab record turns this red: a season grabbed
+  // in the app has no episodes until Sonarr is read, so its episode rows wait for the five-minute check.
+  await t.test('a new torrent from a season grabbed in the app gets its episodes from Sonarr on the next rTorrent poll', async () => {
+    const { database, clock, events, fake, tracker } = setup();
+    tracker.readOnNewTorrents();
+    tracker.recordGrab({
+      hash: packHash.toUpperCase(), service: 'sonarr', movieId: null, seriesId: 4, episodeIds: [], releaseTitle: 'Show.S02.1080p',
+      indexer: '', grabbedAt: clock.value, publishedAt: null, byHand: true,
+    });
+    fake.sonarr.state.history = [41, 42, 43].map((episodeId) => historyRecord({
+      downloadId: packHash.toUpperCase(), seriesId: 4, episodeId, sourceTitle: 'Show.S02.1080p', date: '2026-10-08T11:59:59Z',
+    }));
+    clock.value += 30_000;
+    events.publish('torrents', { changed: [{ hash: packHash.toUpperCase(), firstSeenAt: clock.value, lastSeenAt: clock.value }], gone: [] });
+    for (let turn = 0; turn < 100 && findGrab(database, packHash).episodeIds.length === 0; turn += 1) await drain();
+    assert.deepEqual(findGrab(database, packHash).episodeIds, [41, 42, 43]);
+    assert.ok(fake.sonarr.requests.some((request) => request.path === '/api/v3/queue'));
+    database.close();
+  });
 
   // Dropping the hash normalization, losing a pack's episodes, or splitting one grab into two records turns this red.
   await t.test('webhooks and the history check record a movie, an episode, a multi-episode and a season pack as one record per hash', async () => {

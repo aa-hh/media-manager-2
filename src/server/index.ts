@@ -35,7 +35,7 @@ import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
 import { createSetupRoutes } from './setup.js';
 import { createVersionImport } from './versionImport.js';
-import { createGrabTracker, findGrab } from './torrentGrabs.js';
+import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createMdblist } from './services/mdblist.js';
@@ -46,7 +46,7 @@ import { createFanart } from './services/fanart.js';
 import { createBackdrops } from './backdrops.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
-import { createTorrentPoller, type Torrent } from './torrents.js';
+import { createTorrentPoller } from './torrents.js';
 import { trackerRulesFromEnvironment } from './trackerRules.js';
 import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
@@ -110,15 +110,7 @@ if (database !== undefined) {
   runner.register('backup', 5 * 60_000, async () => { await backup.run(); });
   const torrentGrabs = createGrabTracker({ database, arr, events });
   runner.register('arr-reconcile', torrentGrabs.intervalMs, torrentGrabs.reconcile);
-  // A torrent that appears in rTorrent before Sonarr or Radarr was last read gets its episodes or movie now,
-  // so title pages show its progress within one rTorrent poll instead of after the next five-minute read.
-  events.subscribe((event) => {
-    if (event.type !== 'torrents') return;
-    const { changed } = event.data as { changed: Torrent[] };
-    if (changed.some((torrent) => torrent.firstSeenAt === torrent.lastSeenAt && findGrab(database, torrent.hash) === undefined)) {
-      void torrentGrabs.reconcile();
-    }
-  });
+  torrentGrabs.readOnNewTorrents();
   runner.register('dependency-problems', 30_000, problems.syncDependencies);
   const trackers = createTrackerWatch({ database, rtorrent, problems, events });
   runner.register('tracker-watch', 30_000, trackers.check);

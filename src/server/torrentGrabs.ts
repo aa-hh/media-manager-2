@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import { type ArrServices, type HistoryRecord, type QueueItem, valueOrThrow } from './services/arr.js';
+import type { Torrent } from './torrents.js';
 
 export type Service = 'sonarr' | 'radarr';
 
@@ -316,6 +317,14 @@ export const createGrabTracker = (options: {
 
   return {
     reconcile,
+    // A torrent new to rTorrent gets its episodes or movie and its queue item now, so title pages show its progress within
+    // one rTorrent poll instead of after the next five-minute read. A grab made in the app already has a record, but a
+    // season grab's record lists no episodes until Sonarr's history is read.
+    readOnNewTorrents: () => events.subscribe((event) => {
+      if (event.type !== 'torrents') return;
+      const { changed } = event.data as { changed: Torrent[] };
+      if (changed.some((torrent) => torrent.firstSeenAt === torrent.lastSeenAt)) void reconcile();
+    }),
     // Re-reads one service now, for example after the owner changed its queue.
     refresh: reconcileService,
     receiveWebhook,
