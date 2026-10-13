@@ -3360,8 +3360,9 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
     rottenTomatoes: { value: 95, votes: 242 },
     rottenTomatoesAudience: { value: 80, votes: null },
     metacritic: { value: 85, votes: 82 },
+    trakt: { value: 86, votes: 25373 },
   };
-  const none = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null };
+  const none = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null, trakt: null };
   const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers });
   const clock = { value: 1_800_000_000_000 };
   const connect = (respond, tvdbIdOf = async () => ({ kind: 'ok', value: 371980 })) => {
