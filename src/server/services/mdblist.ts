@@ -16,7 +16,8 @@ const CHECK_PATH = '/tvdb/show/371980';
 
 type MdblistRating = { source: string; value: number | null; votes: number | null };
 export type SiteRating = { value: number; votes: number | null } | null;
-export type RatingsBySite = { imdb: SiteRating; rottenTomatoes: SiteRating; rottenTomatoesAudience: SiteRating; metacritic: SiteRating };
+// MDBList scores Trakt out of 100, unlike Radarr's Trakt score out of 10.
+export type RatingsBySite = { imdb: SiteRating; rottenTomatoes: SiteRating; rottenTomatoesAudience: SiteRating; metacritic: SiteRating; trakt: SiteRating };
 export type ShowIds = { tvdbId: number | null; tmdbId: number | null };
 
 const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
@@ -28,14 +29,14 @@ const parseRatings = (body: unknown): MdblistRating[] => (
   ))
 );
 
-export const noRatings: RatingsBySite = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null };
+export const noRatings: RatingsBySite = { imdb: null, rottenTomatoes: null, rottenTomatoesAudience: null, metacritic: null, trakt: null };
 
 export const ratingsBySite = (ratings: MdblistRating[]): RatingsBySite => {
   const site = (source: string): SiteRating => {
     const found = ratings.find((rating) => rating.source === source);
     return found === undefined || found.value === null ? null : { value: found.value, votes: found.votes };
   };
-  return { imdb: site('imdb'), rottenTomatoes: site('tomatoes'), rottenTomatoesAudience: site('popcorn'), metacritic: site('metacritic') };
+  return { imdb: site('imdb'), rottenTomatoes: site('tomatoes'), rottenTomatoesAudience: site('popcorn'), metacritic: site('metacritic'), trakt: site('trakt') };
 };
 
 export const createMdblist = (database: DatabaseSync, options: ServiceOptions & { now?: () => number } = {}) => {

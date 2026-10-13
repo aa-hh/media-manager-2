@@ -7,6 +7,7 @@ import { CardLibrary } from '@/components/ui/card-library';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { FactStacked } from '@/components/ui/fact-stacked';
 import { HeaderTitle } from '@/components/ui/header-title';
+import { Logo } from '@/components/ui/logo';
 import { StatusInline } from '@/components/ui/status-inline';
 import type { BookmarkState } from '@/components/ui/toggle-bookmark';
 import { postJson, type Credits, type EpisodeDetail, type MovieDetail, type SeriesDetail } from '../library/api';
@@ -81,31 +82,28 @@ const titleLinks = (subject: Subject) => {
   ].filter((link) => link !== null);
 };
 
-const movieRatingSites = [
-  ['imdb', 'IMDb'], ['tmdb', 'TMDB'], ['trakt', 'Trakt'], ['rottenTomatoes', 'RT'], ['metacritic', 'Metacritic'],
+// The owner picked these three sites, in this order. Trakt shows as a percentage like the other two:
+// Radarr gives it out of 10 and MDBList out of 100, so the movie value is scaled up.
+const ratingSites = [
+  { site: 'metacritic', source: 'Metacritic', logo: 'metacritic', text: (value: number) => String(value) },
+  { site: 'trakt', source: 'Trakt', logo: 'trakt', text: (value: number, outOf10: boolean) => `${Math.round(outOf10 ? value * 10 : value)}%` },
+  { site: 'rottenTomatoes', source: 'Rotten Tomatoes', logo: 'rotten-tomatoes', text: (value: number) => `${value}%` },
 ] as const;
-
-// TMDB scores out of 10 but shows as a percentage; Rotten Tomatoes and Metacritic already score out of 100.
-const movieRatingValue = (site: (typeof movieRatingSites)[number][0], value: number) => {
-  if (site === 'tmdb') return `${Math.round(value * 10)}%`;
-  if (site === 'rottenTomatoes') return `${value}%`;
-  if (site === 'metacritic') return String(value);
-  return value.toFixed(1);
-};
 
 const votesText = (votes: number | null) => (votes === null || votes <= 0 ? undefined : `${votes.toLocaleString('en-GB')} votes`);
 
-// A movie has one rating per site; a show has Sonarr's single rating, which the server does not attribute to a site.
+// A movie's ratings come from Radarr; a show's from MDBList, falling back to Sonarr's single rating, which names no site.
 const cardRatings = (subject: Subject) => {
-  if (subject.type === 'tv') {
-    const { rating, ratingVotes } = subject.detail;
-    return rating === null ? [] : [{ source: 'Rating', icon: <Star />, value: rating.toFixed(1), votes: votesText(ratingVotes) }];
-  }
-  const { ratings } = subject.detail;
-  return movieRatingSites.flatMap(([site, source]) => {
-    const rating = ratings[site];
-    return rating === null ? [] : [{ source, value: movieRatingValue(site, rating.value), votes: votesText(rating.votes) }];
+  const bySite = subject.type === 'tv' ? subject.detail.ratingsBySite : subject.detail.ratings;
+  const rows = ratingSites.flatMap(({ site, source, logo, text }) => {
+    const rating = bySite[site];
+    return rating === null
+      ? []
+      : [{ source, icon: <Logo name={logo} alt="" />, value: text(rating.value, subject.type === 'movie'), votes: votesText(rating.votes) }];
   });
+  if (rows.length > 0 || subject.type === 'movie') return rows;
+  const { rating, ratingVotes } = subject.detail;
+  return rating === null ? [] : [{ source: 'Rating', icon: <Star />, value: rating.toFixed(1), votes: votesText(ratingVotes) }];
 };
 
 // The server sends the show's next and previous air time; when it has none, fall back to the earliest next and latest previous across the seasons.

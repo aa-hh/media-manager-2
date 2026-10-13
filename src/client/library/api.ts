@@ -87,6 +87,8 @@ export type SeriesDetail = {
   /** Sonarr's one rating, out of 10; the server does not say which site it comes from. */
   rating: number | null;
   ratingVotes: number | null;
+  /** From MDBList, all null when it is not set up. Trakt, Rotten Tomatoes and Metacritic score out of 100, IMDb out of 10. */
+  ratingsBySite: Record<'imdb' | 'rottenTomatoes' | 'rottenTomatoesAudience' | 'metacritic' | 'trakt', { value: number; votes: number | null } | null>;
   certification: string | null;
   genres: string[];
   runtime: number | null;

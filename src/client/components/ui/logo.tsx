@@ -1,21 +1,23 @@
-// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold); jellyfin and jellyfin-black have no library component z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
+// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold); jellyfin, jellyfin-black, metacritic and rotten-tomatoes have no library component z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
 import type { ComponentProps } from 'react';
 import beyondHd from '@/assets/logos/beyondhd-logo.png';
 import blutopia from '@/assets/logos/blutopia-logo.svg';
 import jellyfinBlack from '@/assets/logos/jellyfin-icon-black.svg';
 import jellyfin from '@/assets/logos/jellyfin-icon.svg';
 import mdblist from '@/assets/logos/mdblist-logo.png';
+import metacritic from '@/assets/logos/metacritic-logo.svg';
 import plexGold from '@/assets/logos/plex-icon-gold.svg';
 import plex from '@/assets/logos/plex-icon.svg';
 import privateHd from '@/assets/logos/privatehd-logo.png';
 import radarr from '@/assets/logos/radarr-logo.svg';
+import rottenTomatoes from '@/assets/logos/rottentomatoes-logo.svg';
 import rtorrent from '@/assets/logos/rutorrent-logo.png';
 import sonarr from '@/assets/logos/sonarr-logo.svg';
 import tmdb from '@/assets/logos/tmdb-logo.svg';
 import trakt from '@/assets/logos/trakt-logo.svg';
 import { cn } from '@/lib/utils';
 
-type LogoName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'plex-gold' | 'jellyfin' | 'jellyfin-black' | 'blutopia' | 'privatehd' | 'beyond-hd' | 'tmdb' | 'mdblist' | 'trakt';
+type LogoName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'plex-gold' | 'jellyfin' | 'jellyfin-black' | 'blutopia' | 'privatehd' | 'beyond-hd' | 'tmdb' | 'mdblist' | 'trakt' | 'metacritic' | 'rotten-tomatoes';
 
 const logos: Record<LogoName, { src: string; alt: string }> = {
   sonarr: { src: sonarr, alt: 'Sonarr' },
@@ -31,6 +33,8 @@ const logos: Record<LogoName, { src: string; alt: string }> = {
   tmdb: { src: tmdb, alt: 'TMDB' },
   mdblist: { src: mdblist, alt: 'MDBList' },
   trakt: { src: trakt, alt: 'Trakt' },
+  metacritic: { src: metacritic, alt: 'Metacritic' },
+  'rotten-tomatoes': { src: rottenTomatoes, alt: 'Rotten Tomatoes' },
 };
 
 /** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on the black button; Jellyfin black only on the Jellyfin button. */
