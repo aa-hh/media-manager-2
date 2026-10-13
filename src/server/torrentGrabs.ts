@@ -60,6 +60,13 @@ export const findGrab = (database: DatabaseSync, hash: string): Grab | undefined
   return row === undefined ? undefined : readGrab(row as Record<string, unknown>);
 };
 
+// A torrent is watched only when Sonarr, Radarr or this app grabbed it; rTorrent also holds downloads added by other means, such as music.
+export const isOwnedTorrent = (database: DatabaseSync, hash: string) => findGrab(database, hash) !== undefined
+  || database.prepare('SELECT 1 FROM second_versions WHERE upper(hash) = ? LIMIT 1').get(hash.toUpperCase()) !== undefined;
+
+// Problems the stall fix and tracker watch open on a torrent; import problems come from the queue and are left alone.
+export const WATCH_KINDS = ['stalled', 'unfinished', 'unregistered', 'tracker_down', 'damaged'];
+
 export const listGrabs = (database: DatabaseSync): Grab[] => database
   .prepare('SELECT * FROM torrent_grabs ORDER BY grabbed_at, hash')
   .all()
