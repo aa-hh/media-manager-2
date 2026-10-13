@@ -406,13 +406,14 @@ function SignedIn(props: SignedInProps) {
                       <RowDownload
                         key={row.key}
                         title={row.label}
-                        detail={row.release}
+                        release={row.releaseName}
                         progress={row.progress ?? 0}
                         speed={formatSpeed(row.downRate)}
                         eta={row.timeLeft}
                         tracker={row.tracker}
                         state={row.status.tone === 'risk' ? 'stalled' : 'downloading'}
                         stateLabel={row.seeders === null ? row.status.word : `${row.status.word} · ${row.seeders} seeders`}
+                        quality={row.qualityName}
                       />
                     ))}
                   </div>

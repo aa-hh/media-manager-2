@@ -5,11 +5,11 @@ import { RowHistoryHeader } from '@/components/ui/row-history';
 import { RowSecondVersion, RowSecondVersionHeader } from '@/components/ui/row-second-version';
 import { SkeletonRow } from '@/components/ui/skeleton';
 import { formatBytes } from '../downloads/model';
-import type { EpisodeDetail, FileDetail, SecondVersion } from '../library/api';
+import type { EpisodeDetail, FileDetail, SecondVersion, TrackedHitAndRun } from '../library/api';
 import type { SeedingFact } from '../library/progress';
 import { historyEmpty, historyRows, useTitleHistory } from './History';
-import { seedingText } from './secondVersionText';
-import { SecondVersionRows } from './SecondVersions';
+import { hitAndRunText } from './secondVersionText';
+import { SecondVersionRows, seedingLook, StatusChip } from './SecondVersions';
 import { episodeCode } from './TitleHeader';
 
 const dayFormat = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -32,25 +32,30 @@ const fileDetail = (file: FileDetail) => {
   return text === '' ? undefined : text;
 };
 
-// The file Sonarr or Radarr tracks, as the tracked-version row; movies use the same row under their header.
-export function TrackedVersion({ file, seeding, indent }: { file: FileDetail; seeding: SeedingFact[]; indent: boolean }) {
+// The file Sonarr or Radarr tracks, as the tracked-version row; movies use the same row at the top of their table.
+// `hitAndRun` is the rule against the torrent behind its newest import, when this app grabbed it.
+export function TrackedVersion({ file, seeding, hitAndRun, inset }: { file: FileDetail; seeding: SeedingFact[]; hitAndRun: TrackedHitAndRun['hitAndRun'] | null; inset: boolean }) {
+  const fact = seeding[0];
   return (
     <RowSecondVersion
       tracked
-      indent={indent}
-      quality={file.quality ?? ''}
+      inset={inset}
       release={releaseName(file)}
+      group={file.releaseGroup}
       detail={fileDetail(file)}
+      hitAndRun={hitAndRunText(hitAndRun)}
+      tracker={fact?.trackerHost ?? hitAndRun?.host ?? ''}
+      status={fact === undefined ? undefined : <StatusChip look={fact.complete ? seedingLook(hitAndRun) : { label: 'Downloading', circle: 'downloading' }} />}
+      quality={file.quality ?? ''}
       size={formatBytes(file.size)}
-      tracker={seeding[0]?.trackerHost ?? ''}
-      seeding={seeding.map(seedingText).join('; ')}
     />
   );
 }
 
-export function EpisodeDetails({ episode, seeding, secondVersions, onSecondVersions, profile, seriesPath, onClose, onUnauthenticated }: {
+export function EpisodeDetails({ episode, seeding, hitAndRun, secondVersions, onSecondVersions, profile, seriesPath, onClose, onUnauthenticated }: {
   episode: EpisodeDetail;
   seeding: SeedingFact[];
+  hitAndRun: TrackedHitAndRun['hitAndRun'] | null;
   /** This episode's second versions. */
   secondVersions: SecondVersion[];
   /** Takes the series' whole list, as the delete reply gives it, or an update to it. */
@@ -86,14 +91,13 @@ export function EpisodeDetails({ episode, seeding, secondVersions, onSecondVersi
       overview={episode.overview ?? undefined}
       stillUrl={episode.imageUrl ?? undefined}
       details={details}
-      versionCount={(file === null ? 0 : 1) + secondVersions.length}
       versions={file === null && secondVersions.length === 0 ? undefined : (
         <>
-          <RowSecondVersionHeader />
-          {file !== null && <TrackedVersion file={file} seeding={seeding} indent={false} />}
+          <RowSecondVersionHeader inset />
+          {file !== null && <TrackedVersion file={file} seeding={seeding} hitAndRun={hitAndRun} inset />}
           <SecondVersionRows
             versions={secondVersions}
-            indent={false}
+            inset
             subject={episodeCode(episode)}
             trackedQuality={file?.quality ?? null}
             onChanged={onSecondVersions}

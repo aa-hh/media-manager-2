@@ -38,7 +38,7 @@ const colours: Partial<Record<ReleaseState, string>> = {
   'import-blocked': '#A3150F',
 };
 
-// 12 px: a 1.8 px ring plus a fill. A pie fills clockwise from 12 o'clock; importing turns its ring, gap first.
+// v2/Status/download circle, also used by the status chips in rows. 12 px: a 1.8 px ring plus a fill. A pie fills clockwise from 12 o'clock; importing turns its ring, gap first.
 function Circle({ state, percent }: { state: ReleaseState; percent: number }) {
   const colour = colours[state];
   if (colour === undefined) return null;
@@ -89,5 +89,5 @@ function ChipReleaseState({ state, percent }: { state: ReleaseState; percent?: n
   );
 }
 
-export { ChipReleaseState };
+export { ChipReleaseState, Circle as DownloadCircle };
 export type { ReleaseState };

@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { recommendationLabels, useAdvice } from '../title/advice';
 import { downloadsAdviceText } from '../title/secondVersionText';
 import { ImportPanel } from './ImportPanel';
-import { buildRows, formatDuration, formatSpeed, groupRows, latestStep, type Group, type QueueItem, type Row } from './model';
+import { buildRows, formatBytes, formatDuration, formatSpeed, groupRows, latestStep, type Group, type QueueItem, type Row } from './model';
 import { postAction, type DownloadsState } from './useDownloads';
 
 type Release = 'keep' | 'blocklist' | 'blocklist_search';
@@ -47,11 +47,13 @@ const useClock = () => {
   return now;
 };
 
-// Lime while bytes arrive, amber when the import is blocked, red for every other risk except waiting for peers, grey otherwise.
+// Green circle while bytes arrive, purple while importing, dark red when the import is blocked, light red for every
+// other risk except waiting for peers, grey otherwise.
 const downloadState = (row: Row): DownloadState => {
   if (row.status.word === 'import blocked') return 'import-blocked';
   if (row.status.tone === 'risk' && row.status.word !== 'waiting for peers') return 'stalled';
   if (row.downloading && row.status.word === 'downloading') return 'downloading';
+  if (row.status.word === 'importing') return 'importing';
   return 'waiting';
 };
 
@@ -74,16 +76,18 @@ const speedText = (row: Row) => {
   return row.upRate > 0 ? `${formatSpeed(row.upRate)} up` : '';
 };
 
-// The second line: what media-manager-2 is doing about a problem, else why it stopped, else the release.
-const detailText = (row: Row) => {
+// The band's message: what media-manager-2 is doing about a problem, else why it stopped.
+const messageText = (row: Row) => {
   if (row.problems.length > 0) {
-    const needsYou = row.problems.some((problem) => problem.state === 'needs_you');
-    const text = row.problems.map((problem) => (latestStep(problem) === problem.summary ? problem.summary : `${problem.summary} ${latestStep(problem)}`)).join(' · ');
-    return <span className={cn(needsYou && 'text-foreground')}>{text}</span>;
+    return row.problems.map((problem) => (latestStep(problem) === problem.summary ? problem.summary : `${problem.summary} ${latestStep(problem)}`)).join(' · ');
   }
-  if (row.status.tone === 'risk' && row.status.detail !== '') return <span className="text-foreground">{row.status.detail}</span>;
-  const parts = [row.quality, row.release];
-  if (row.status.word === 'importing' || row.status.word === 'queued') parts.push(row.status.detail);
+  if (row.status.tone === 'risk' && row.status.detail !== '') return row.status.detail;
+  return undefined;
+};
+
+// The band's line: the release name and size.
+const releaseText = (row: Row) => {
+  const parts = [row.releaseName, row.sizeBytes === null || row.sizeBytes === 0 ? '' : formatBytes(row.sizeBytes)];
   if (row.progress === null && row.queueItem !== null) parts.push(`in ${row.queueItem.service === 'sonarr' ? "Sonarr's" : "Radarr's"} queue, not in rTorrent yet`);
   const text = parts.filter((part) => part !== '').join(' · ');
   return text === '' ? undefined : text;
@@ -176,42 +180,48 @@ function DownloadRow({ row, selected, dimmed, panel, onSelect, onOpen, onClose, 
   const canImport = row.importable !== null;
   const canRemove = item !== null;
   const hasActions = canGrab || canImport || canRemove;
+  // An import-blocked row always shows its two ways out; every other row keeps them in its menu.
+  const blocked = row.status.word === 'import blocked' && (canImport || canRemove);
+  const message = grabFailed && item !== null ? `${serviceName(item)} did not grab it. Try again.` : messageText(row);
   return (
     <>
-      <RowDownload
-        title={row.label}
-        detail={detailText(row)}
-        progress={row.progress ?? undefined}
-        speed={speedText(row)}
-        eta={row.timeLeft}
-        tracker={row.tracker === '' ? undefined : row.tracker}
-        state={downloadState(row)}
-        stateLabel={stateLabel(row)}
-        selected={selected}
-        aria-selected={selected}
-        onClick={onSelect}
-        className={cn('transition', dimmed && 'opacity-35')}
-        actions={hasActions && (
-          <span className="flex items-center" onClick={(event) => event.stopPropagation()}>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="row" iconOnly icon={<Ellipsis className="text-muted-foreground" />} aria-label={`Actions for ${row.label}`} />} />
-              <DropdownMenuContent align="end">
-                {canGrab && <DropdownMenuItem disabled={grabbing} onClick={() => void grabNow()}>Grab now</DropdownMenuItem>}
-                {canImport && <DropdownMenuItem onClick={() => onOpen('import')}>Import by hand</DropdownMenuItem>}
-                {canRemove && <DropdownMenuItem onClick={() => onOpen('remove')}>Remove from downloads</DropdownMenuItem>}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </span>
-        )}
-      />
-      {selected && panel !== 'import' && hasActions && (
-        <div className="flex h-(--row) w-full shrink-0 items-center gap-2 border-b border-border bg-selected px-4">
-          {canGrab && <Button size="row" loading={grabbing} onClick={() => void grabNow()}>Grab now</Button>}
-          {canImport && <Button size="row" variant="outline" onClick={() => onOpen('import')}>Import by hand</Button>}
-          {canRemove && <Button size="row" variant="outline" onClick={() => onOpen('remove')}>Remove from downloads</Button>}
-          {grabFailed && item !== null && <StatusInline status="failed">{serviceName(item)} did not grab it. Try again.</StatusInline>}
-        </div>
-      )}
+      {/* Dims the row and its band together while another row's import panel is open. */}
+      <div className={cn('flex flex-col transition', dimmed && 'opacity-35')}>
+        <RowDownload
+          title={row.label}
+          release={releaseText(row)}
+          message={message === undefined ? undefined : <span className={cn(grabFailed && 'text-destructive')}>{message}</span>}
+          bandActions={blocked ? (
+            <>
+              {canImport && <Button size="row" variant="outline" onClick={() => onOpen('import')}>Import by hand</Button>}
+              {canRemove && <Button size="row" variant="outline-destructive" onClick={() => onOpen('remove')}>Remove from downloads</Button>}
+            </>
+          ) : undefined}
+          progress={row.progress ?? undefined}
+          speed={speedText(row)}
+          eta={row.timeLeft}
+          tracker={row.tracker === '' ? undefined : row.tracker}
+          state={downloadState(row)}
+          stateLabel={stateLabel(row)}
+          quality={row.qualityName}
+          size={row.sizeBytes === null || row.sizeBytes === 0 ? undefined : formatBytes(row.sizeBytes)}
+          selected={selected}
+          aria-selected={selected}
+          onClick={onSelect}
+          actions={hasActions && (
+            <span className="flex items-center" onClick={(event) => event.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="row" iconOnly icon={<Ellipsis className="text-muted-foreground" />} aria-label={`Actions for ${row.label}`} />} />
+                <DropdownMenuContent align="end">
+                  {canGrab && <DropdownMenuItem disabled={grabbing} onClick={() => void grabNow()}>Grab now</DropdownMenuItem>}
+                  {canImport && <DropdownMenuItem onClick={() => onOpen('import')}>Import by hand</DropdownMenuItem>}
+                  {canRemove && <DropdownMenuItem onClick={() => onOpen('remove')}>Remove from downloads</DropdownMenuItem>}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </span>
+          )}
+        />
+      </div>
       {selected && item !== null && <RemoveDialog open={panel === 'remove'} row={row} item={item} onDone={onChanged} onCancel={onClose} onUnauthenticated={onUnauthenticated} />}
       {panel === 'import' && row.importable !== null && (
         <div className="w-full border-b border-border bg-selected px-4 pt-1 pb-4">

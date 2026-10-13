@@ -1,77 +1,76 @@
 // v2/Row/second-version — ~/Projects/media-manager-2-design/design-system.lib.pen c49N0
 import type { ReactNode } from 'react';
-import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
-// Indent 40, Label 128, Quality 120, Release fill, Size 72, Tracker 112, Seeding 180, Action 88.
-const w = { indent: 'w-10', label: 'w-32', quality: 'w-30', size: 'w-18', tracker: 'w-28', seeding: 'w-45', action: 'w-22' };
+// Release fill, Hit and run 160, Tracker 104, Status 176, Quality 104, Size 72, Actions 112: Tracker sits on the
+// episode table's Air date edge, and the rest on its shared edges.
+const w = { hitAndRun: 'w-40', tracker: 'w-26', status: 'w-44', quality: 'w-26', size: 'w-18', actions: 'w-28' };
 
-/** Versions header as drawn inside RowEpisodeDetails (no indent there). */
-function RowSecondVersionHeader({ indent = false }: { indent?: boolean }) {
+// Under an open episode the rows, the header and their lines start at x 152; on the movie page at x 16.
+const insetRow = 'border-b-0 pl-38 after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:left-38 after:h-px after:bg-border';
+
+/** Versions header. `inset` under an open episode. */
+function RowSecondVersionHeader({ inset = false }: { inset?: boolean }) {
   return (
-    <TableHeader>
-      {indent && <TableHead className={w.indent} />}
-      <TableHead className={w.label}>Version</TableHead>
-      <TableHead className={w.quality}>Quality</TableHead>
+    <TableHeader className={cn(inset && cn('relative', insetRow))}>
       <TableHead fill>Release</TableHead>
-      <TableHead align="end" className={w.size}>Size</TableHead>
+      <TableHead className={w.hitAndRun}>Hit and run</TableHead>
       <TableHead className={w.tracker}>Tracker</TableHead>
-      <TableHead className={w.seeding}>Seeding</TableHead>
-      <TableHead className={w.action} />
+      <TableHead className={w.status}>Status</TableHead>
+      <TableHead className={w.quality}>Quality</TableHead>
+      <TableHead align="end" className={w.size}>Size</TableHead>
+      <TableHead className={w.actions} />
     </TableHeader>
   );
 }
 
 type RowSecondVersionProps = Omit<TableRowProps, 'progress'> & {
-  /** 40 px indent when the row sits straight under a movie row; off inside RowEpisodeDetails. */
-  indent?: boolean;
-  /** The file Sonarr or Radarr tracks: white outlined badge, black release name, no action. */
+  /** Under an open episode: starts at x 152. Off on the movie page, where versions are the table's top level. */
+  inset?: boolean;
+  /** The file Sonarr or Radarr tracks: no action. */
   tracked?: boolean;
-  /** Badge words; defaults to "Tracked version" or "Second version". */
-  label?: ReactNode;
-  /** Badge look for a second version's state: live while downloading, risk when failed, warning when stalled and removed. */
-  labelVariant?: BadgeVariant;
-  /** A 12 px lucide icon before the badge words. */
-  labelIcon?: ReactNode;
-  /** Spinner before the badge words, while sending or importing. */
-  labelSpinner?: boolean;
-  quality: ReactNode;
-  release: ReactNode;
-  /** Second line under the release name, such as HDR, audio, languages and custom formats; the row grows to fit. */
+  /** Role words after the release name; defaults to "Tracked version" or "Second version". */
+  roleLabel?: ReactNode;
+  /** The release name; a trailing "-group" is drawn in 700 foreground. */
+  release: string;
+  group?: string | null;
+  /** Second line under the release name, such as a failure reason; the row grows to fit. */
   detail?: ReactNode;
-  size: ReactNode;
+  /** Rule progress, such as "41 h of 72 h". */
+  hitAndRun?: ReactNode;
   tracker: string;
-  /** Seeding words, or a progress bar while downloading. */
-  seeding?: ReactNode;
+  /** One Badge. */
+  status?: ReactNode;
+  quality: ReactNode;
+  size: ReactNode;
   /** Delete (outline-destructive, row size); ignored for the tracked version. */
   actions?: ReactNode;
 };
 
-function RowSecondVersion({ indent = true, tracked = false, label, labelVariant, labelIcon, labelSpinner, quality, release, detail, size, tracker, seeding, actions, className, ...props }: RowSecondVersionProps) {
+function RowSecondVersion({ inset = false, tracked = false, roleLabel, release, group, detail, hitAndRun, tracker, status, quality, size, actions, className, ...props }: RowSecondVersionProps) {
+  const split = group != null && group !== '' && release.endsWith(`-${group}`) ? release.length - group.length : release.length;
   return (
-    <TableRow className={cn(detail !== undefined && 'h-auto min-h-(--row) py-2', className)} {...props}>
-      {indent && <TableCell className={w.indent} />}
-      <TableCell className={w.label}>
-        <Badge variant={tracked ? 'outline' : labelVariant ?? 'neutral'} icon={labelIcon} spinner={labelSpinner} className={cn(tracked && 'bg-card text-foreground')}>
-          {label ?? (tracked ? 'Tracked version' : 'Second version')}
-        </Badge>
-      </TableCell>
-      <TableCell className={w.quality}>
-        <Badge>{quality}</Badge>
-      </TableCell>
-      <TableCell fill className={cn(!tracked && 'text-muted-foreground', detail !== undefined && 'flex-col items-start justify-center gap-0.5')}>
-        <span className="max-w-full truncate">{release}</span>
+    <TableRow className={cn(inset && insetRow, detail !== undefined && 'h-auto min-h-(--row) py-2', className)} {...props}>
+      <TableCell fill className={cn(detail !== undefined && 'flex-col items-start justify-center gap-0.5')}>
+        <span className="flex max-w-full min-w-0 items-baseline gap-3">
+          {/* The group is never cut; the dotted name before it truncates. */}
+          <span className="flex min-w-0" title={release}>
+            <span className="truncate text-muted-foreground">{release.slice(0, split)}</span>
+            <span className="shrink-0 font-bold text-foreground">{release.slice(split)}</span>
+          </span>
+          <span className="shrink-0 font-ui text-[13px] text-subtle-foreground">{roleLabel ?? (tracked ? 'Tracked version' : 'Second version')}</span>
+        </span>
         {detail !== undefined && <span className="max-w-full truncate text-data-small text-muted-foreground">{detail}</span>}
       </TableCell>
-      <TableCell align="end" className={w.size}>{size}</TableCell>
+      <TableCell className={cn(w.hitAndRun, 'text-muted-foreground')}><span className="truncate">{hitAndRun}</span></TableCell>
       <TableCell className={w.tracker}>
         <TableCellTracker name={tracker} />
       </TableCell>
-      <TableCell className={cn(w.seeding, 'text-muted-foreground')}>
-        <span className="truncate">{seeding}</span>
-      </TableCell>
-      <TableCell align="end" className={w.action}>{!tracked && actions}</TableCell>
+      <TableCell className={w.status}>{status}</TableCell>
+      <TableCell className={cn(w.quality, 'text-muted-foreground')}><span className="truncate">{quality}</span></TableCell>
+      <TableCell align="end" className={w.size}>{size}</TableCell>
+      <TableCell align="end" className={w.actions}>{!tracked && actions}</TableCell>
     </TableRow>
   );
 }

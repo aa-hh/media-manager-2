@@ -1,20 +1,24 @@
 // v2/Row/episode — ~/Projects/media-manager-2-design/design-system.lib.pen rjunT
+// v2/Table/Header/episode — ~/Projects/media-manager-2-design/design-system.lib.pen L91ABo
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
-// Bookmark 28, Number 40, Title fill, Air date 104, File 128, State 220, Actions 112.
-const w = { bookmark: 'w-7', number: 'w-10', aired: 'w-26', file: 'w-32', state: 'w-55', actions: 'w-28' };
+// Cells start at x 52 (the chevron column stays empty). Bookmark 28, Number 40, Title fill, Air date 104, Status 176,
+// Quality 104, Size 72, Actions 112: the same edges as the season row above.
+const w = { monitor: 'w-16', bookmark: 'w-7', number: 'w-10', aired: 'w-26', status: 'w-44', quality: 'w-26', size: 'w-18', actions: 'w-28' };
 
+/** Directly under each open season. */
 function RowEpisodeHeader() {
   return (
     <TableHeader>
-      <TableHead className={w.bookmark} />
-      <TableHead className={w.number}>#</TableHead>
+      <TableHead align="end" className={w.monitor}>Monitor</TableHead>
+      <TableHead className={w.number}>Ep</TableHead>
       <TableHead fill>Title</TableHead>
-      <TableHead className={w.aired}>Aired</TableHead>
-      <TableHead className={w.file}>File</TableHead>
-      <TableHead className={w.state}>State</TableHead>
+      <TableHead className={w.aired}>Air date</TableHead>
+      <TableHead className={w.status}>Status</TableHead>
+      <TableHead className={w.quality}>Quality</TableHead>
+      <TableHead align="end" className={w.size}>Size</TableHead>
       <TableHead className={w.actions} />
     </TableHeader>
   );
@@ -26,29 +30,31 @@ type RowEpisodeProps = Omit<TableRowProps, 'progress' | 'title'> & {
   number: ReactNode;
   title: ReactNode;
   aired: ReactNode;
-  /** Quality Badge of the file, or nothing. */
-  file?: ReactNode;
   /** One Badge, or nothing when normal. */
-  state?: ReactNode;
+  status?: ReactNode;
+  /** The file's quality in plain words, or nothing. */
+  quality?: ReactNode;
+  size?: ReactNode;
   /** Icon-only row buttons: search, pick a release, more. */
   actions?: ReactNode;
   /** Not monitored: the title turns muted. */
   monitored?: boolean;
   /** Not aired yet: the date reads in black. */
   upcoming?: boolean;
-  /** The releases inset is open under it: accent tint from the number column, no bar. */
+  /** Something is open under it: accent tint from the number column, no bar. */
   open?: boolean;
 };
 
 /** Episode row inside a season. Use marker "warning" for missing and "risk" for stalled. */
-function RowEpisode({ bookmark, number, title, aired, file, state, actions, monitored = true, upcoming = false, open = false, selected, line = 'episode', className, ...props }: RowEpisodeProps) {
+function RowEpisode({ bookmark, number, title, aired, status, quality, size, actions, monitored = true, upcoming = false, open = false, selected, line = 'episode', className, ...props }: RowEpisodeProps) {
   return (
     <TableRow
       selected={selected}
       line={line}
       className={cn(
+        'pl-13',
         // The open tint paints above the row's own fill, so it steps aside for the selected tint.
-        open && !selected && 'isolate before:absolute before:inset-y-0 before:right-0 before:left-24 before:-z-10 before:bg-accent hover:before:bg-surface-pressed',
+        open && !selected && 'isolate before:absolute before:inset-y-0 before:right-4 before:left-24 before:-z-10 before:bg-accent hover:before:bg-surface-pressed',
         className,
       )}
       {...props}
@@ -59,8 +65,9 @@ function RowEpisode({ bookmark, number, title, aired, file, state, actions, moni
         <span className="truncate">{title}</span>
       </TableCell>
       <TableCell className={cn(w.aired, !upcoming && 'text-muted-foreground')}>{aired}</TableCell>
-      <TableCell className={w.file}>{file}</TableCell>
-      <TableCell className={w.state}>{state}</TableCell>
+      <TableCell className={cn(w.status, 'min-w-0')}>{status}</TableCell>
+      <TableCell className={cn(w.quality, 'text-muted-foreground')}><span className="truncate">{quality}</span></TableCell>
+      <TableCell align="end" className={w.size}>{size}</TableCell>
       <TableCell align="end" className={cn(w.actions, 'gap-0.5')}>{actions}</TableCell>
     </TableRow>
   );
