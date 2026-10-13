@@ -2560,10 +2560,10 @@ test('the Jellyfin version finds the library holding a folder, asks it to scan, 
 });
 
 // Matching items by full path (Radarr and Jellyfin see different mounts), merging before both items exist, not narrowing
-// episodes by season, counting an outage or a 503 as a try, retrying a rejected request forever, retrying a merged row or
-// past MERGE_TRIES, not merging again after a rename of the tracked file, merging again after a same-path upgrade, asking
-// Radarr or Sonarr about merged rows more than once an hour, fetching a series' episodes once per row, or giving Plex
-// installs a merge step turns this red.
+// episodes by season, counting an outage or a 503 as a try, retrying a rejected request forever, spending a try on a refused
+// key or asking again for the next row after it, retrying a merged row or past MERGE_TRIES, not merging again after a rename
+// of the tracked file, merging again after a same-path upgrade, asking Radarr or Sonarr about merged rows more than once an
+// hour, fetching a series' episodes once per row, or giving Plex installs a merge step turns this red.
 test('an imported second version is merged with the tracked file in Jellyfin once both are scanned', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -2648,6 +2648,12 @@ test('an imported second version is merged with the tracked file in Jellyfin onc
   // A 503 while Jellyfin restarts spends none; a rejected request spends a try instead of being retried forever.
   refuse = 503;
   await versionImport.run();
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [1, 2, MERGE_TRIES]);
+  // A refused key spends no try and stops the run after one request, since every other row would be refused too.
+  refuse = 401;
+  calls.length = 0;
+  await versionImport.run();
+  assert.equal(calls.length, 1);
   assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [1, 2, MERGE_TRIES]);
   refuse = 400;
   await versionImport.run();
