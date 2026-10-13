@@ -22,7 +22,7 @@ type RowProps = {
   onRetry: () => void;
 };
 
-const STEP = 252;
+const STEP = 242;
 const SKELETONS = 8;
 
 const readScroll = (key: string) => {
@@ -137,7 +137,7 @@ export function Row({ heading, intro, control, row, seeAll, ranked = false, upco
                 <a
                   href={seeAll.path}
                   onClick={openLink(seeAll.path)}
-                  className="flex h-82.5 w-55 flex-col items-center justify-center gap-3.5 rounded-lg bg-muted p-5 focus-ring"
+                  className="flex h-78.75 w-52.5 flex-col items-center justify-center gap-3.5 rounded-lg bg-muted p-5 focus-ring"
                 >
                   {minis.length > 0 && (
                     <span className="grid grid-cols-2 gap-1.5">

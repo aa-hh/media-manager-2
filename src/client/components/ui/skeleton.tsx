@@ -51,11 +51,11 @@ function SkeletonRowTwoLine({ className, ...props }: ComponentProps<'div'>) {
   );
 }
 
-/** Loading poster card: 220 by 330 poster, title and meta lines. */
+/** Loading poster card: 210 by 315 poster, title and meta lines. */
 function SkeletonPosterCard({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div role="status" aria-label="Loading" className={cn('flex w-(--poster-width) flex-col gap-2', className)} {...props}>
-      <Skeleton className="h-82.5 w-(--poster-width) rounded-md" />
+      <Skeleton className="h-78.75 w-(--poster-width) rounded-md" />
       <Skeleton className="w-30" />
       <Skeleton className="h-3 w-20" />
     </div>

@@ -33,7 +33,7 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
 };
 
 /**
- * Poster card for Library and Discover, 220 by 330 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
+ * Poster card for Library and Discover, 210 by 315 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
  * pressed 84 %; focus rings the poster; selected adds a 2 px black edge and a 700 title.
  * Its poster block keeps the skeleton shimmer until the image has loaded, then the image fades in, unless it was cached or
  * arrived during a screen change, whose crossfade already brings it in (the screen around the card decides whether the card
@@ -51,7 +51,7 @@ function LibraryPosterCard({
       <span
         data-poster
         className={cn(
-          'relative block h-82.5 w-full overflow-hidden rounded-md bg-muted',
+          'relative block h-78.75 w-full overflow-hidden rounded-md bg-muted',
           showPoster && image === 'loading' && 'skeleton-shimmer motion-reduce:bg-none',
           'group-focus-visible:outline-2 group-focus-visible:outline-offset-0 group-focus-visible:outline-ring',
         )}

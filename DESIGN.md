@@ -88,7 +88,7 @@ spacing:
   page-margin: "40px"
   page-margin-phone: "16px"
   poster-gutter: "20px"
-  poster-width: "220px"
+  poster-width: "210px"
   detail-indent: "133px"
 components:
   button-default: {backgroundColor: "{colors.action}", textColor: "{colors.action-foreground}", rounded: "{rounded.button-radius}", padding: "0px 16px", height: "36px"}
@@ -137,7 +137,7 @@ components:
   tooltip: {backgroundColor: "{colors.bar}", textColor: "{colors.bar-foreground}", rounded: "{rounded.radius-sm}"}
   callout-destructive: {backgroundColor: "{colors.destructive-soft}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}"}
   callout-warning: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}"}
-  poster-card: {rounded: "{rounded.radius-md}", width: "220px"}
+  poster-card: {rounded: "{rounded.radius-md}", width: "210px"}
   callout-info: {backgroundColor: "{colors.muted}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}"}
   status-rule-pill: {backgroundColor: "{colors.muted}", textColor: "{colors.muted-foreground}", typography: "{typography.data-small}", rounded: "{rounded.radius-sm}", padding: "0px 8px", height: "26px"}
   status-rule-pill-no-rule: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.warning}"}
@@ -153,7 +153,7 @@ components:
 
 ## Overview
 
-Paper white and black with lime. Black carries the content and every "on" state (checkboxes, radios, selected rows, toggles). The main action on a screen is a glow-blue button (`action`, the rim of light on the planet mascot, near-black text 11:1); hover `action-hover` with the corners easing from 12 to 14px (`button-radius` to `button-radius-hover`), pressed `action-pressed`, focus the usual 2px black ring, disabled the muted look. Secondary buttons stay white with an edge and tertiary buttons have no fill; buttons use 12px corners, row-size buttons in tables 6px. Destructive buttons stay red. Lime appears in two places only: the best release and live downloads. Red means something went wrong, amber means something is missing or waiting. Tables stay dense: 40px rows inside a 40px page margin, 5 posters per row on Library.
+Paper white and black with lime. Black carries the content and every "on" state (checkboxes, radios, selected rows, toggles). The main action on a screen is a glow-blue button (`action`, the rim of light on the planet mascot, near-black text 11:1); hover `action-hover` with the corners easing from 12 to 14px (`button-radius` to `button-radius-hover`), pressed `action-pressed`, focus the usual 2px black ring, disabled the muted look. Secondary buttons stay white with an edge and tertiary buttons have no fill; buttons use 12px corners, row-size buttons in tables 6px. Destructive buttons stay red. Lime appears in two places only: the best release and live downloads. Red means something went wrong, amber means something is missing or waiting. Tables stay dense: 40px rows inside a 40px page margin, 6 posters per row on Library.
 
 Light mode only for now. The dark design is archived in `~/Projects/media-manager-2-design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
 
@@ -199,10 +199,10 @@ Schibsted Grotesk (`font-ui`) for the interface: titles, labels, buttons, naviga
 
 - **Desktop:** 64px app bar (`topbar`) with a 48px search field centred between the product name and the navigation, 560 to 720px wide (640 in the library). 40px black downloads bar (`livebar`) at the bottom of every desktop screen. 40px page margin (`page-margin`).
 - **Tables:** 40px rows, 56px for two-line rows (`row-two-line`), 32px header row (`row-header`), 16px side padding in every row so columns line up across pages. Column edges are shared across tables; see Tables and rows.
-- **Library:** 220px posters (`poster-width`) with a 20px gutter, 5 per row at 1440px.
+- **Library:** 210px posters (`poster-width`), 6 per row at 1440px with 20px gaps (`poster-gutter`). The first and last poster in a row sit on the page margins; at other widths the gaps widen to fill the row, never below 20px. The Discover grids work the same way.
 - **Group headings:** 24px above, 8px below, no band and no line.
 - **Episode details:** opens under the row as a full-width `muted` band with the 3px selection bar continuing from the open row, content starting at the Title column (`detail-indent`, 133px). Three sections 24px apart: Details, Versions, History, each a group heading over a white panel.
-- **Title header:** 220px backdrop band fading to white behind a 220 by 330 poster, title 36/800, facts column on the right. When the page scrolls it collapses to a 72px strip with a 32 by 48 poster thumb, breadcrumb, 20/700 title and the same three actions.
+- **Title header:** 220px backdrop band fading to white behind a 210 by 315 poster, title 36/800, facts column on the right. When the page scrolls it collapses to a 72px strip with a 32 by 48 poster thumb, breadcrumb, 20/700 title and the same three actions.
 - **Phone:** 16px margin (`page-margin-phone`), 52px top bar with a full-width 44px search under it, bottom sheets for grabs and choices, 44px touch targets.
 - **Spacing:** the `space-*` scale, 4 to 64px.
 
@@ -288,7 +288,7 @@ Icon-only buttons are squares at the same heights. pen.dev cannot bind height or
 
 ### Library, search and calendar
 
-- **Poster card:** 220 by 330 everywhere (Library, Discover rows and grids), radius 12, 1px inner edge. Hover darkens the poster 8%, pressed 16%; selected adds a 2px black edge and a 700 title. Downloading shows a 4px lime strip on the poster's bottom edge; just imported shows it full width plus a black chip with a lime check.
+- **Poster card:** 210 by 315 everywhere (Library, Discover rows and grids, title page), radius 12, 1px inner edge. Hover darkens the poster 8%, pressed 16%; selected adds a 2px black edge and a 700 title. Downloading shows a 4px lime strip on the poster's bottom edge; just imported shows it full width plus a black chip with a lime check.
 - **Search result:** 84px row with a 40 by 60 poster, title and year, one meta line, one overview line, and either "In library" as a plain badge (check and words, no box) with the file count (fixed 80px column) or a row-size outline Add button, both 28px.
 - **Calendar:** entries are `muted` tiles, radius 12, no edge, with a 3px marker (amber missing, red gave up) and a black progress bar while downloading. Today's date sits in a black circle. Month cells are 188 by 132 with up to three entries and "+2 more". Week view has a 2px black now line with an 8px dot. The calendar is view-only; entries open the title.
 
