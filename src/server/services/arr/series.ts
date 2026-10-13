@@ -211,9 +211,9 @@ export const createSeries = ({ label, send }: { label: string; send: Send }) => 
     return done(await send(operation, `/api/v3/series/${seriesId}`, { method: 'PUT', body }));
   };
 
-  // Sonarr deletes the files in the background after it answers, and never adds an import list exclusion here.
-  const deleteSeries = async (seriesId: number): Promise<Result<void>> => done(
-    await send('the series delete', `/api/v3/series/${seriesId}?deleteFiles=true&addImportListExclusion=false`, { method: 'DELETE' }),
+  // Sonarr deletes the files in the background after it answers. An exclusion is added only when the owner asks for one.
+  const deleteSeries = async (seriesId: number, excludeFromImportLists = false): Promise<Result<void>> => done(
+    await send('the series delete', `/api/v3/series/${seriesId}?deleteFiles=true&addImportListExclusion=${excludeFromImportLists}`, { method: 'DELETE' }),
   );
 
   return { listSeries, series, lookupSeries, addSeries, monitorSeries, monitorSeason, setSeriesMonitoring, setTag, deleteSeries };

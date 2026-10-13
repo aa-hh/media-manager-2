@@ -26,7 +26,7 @@ export type SonarrTitles = {
   episodeFiles: (seriesId: number) => Promise<Result<FileDetail[]>>;
   monitorEpisodes: (episodeIds: number[], monitored: boolean) => Promise<Result<void>>;
   deleteEpisodeFile: (fileId: number) => Promise<Result<void>>;
-  deleteSeries: (seriesId: number) => Promise<Result<void>>;
+  deleteSeries: (seriesId: number, excludeFromImportLists?: boolean) => Promise<Result<void>>;
 };
 
 export type RadarrTitles = {
@@ -37,7 +37,7 @@ export type RadarrTitles = {
   monitorMovie: (movieId: number, monitored: boolean) => Promise<Result<void>>;
   setTag: (movieId: number, tagId: number, tagged: boolean) => Promise<Result<void>>;
   credits: (movieId: number) => Promise<Result<Credit[]>>;
-  deleteMovie: (movieId: number) => Promise<Result<void>>;
+  deleteMovie: (movieId: number, excludeFromImportLists?: boolean) => Promise<Result<void>>;
   deleteMovieFile: (fileId: number) => Promise<Result<void>>;
 };
 
@@ -63,6 +63,7 @@ export type Arr<S extends Service> = {
   refreshMonitoredDownloads: () => Promise<Result<void>>;
   forceImport: ForceImport;
   recycleBin: () => Promise<Result<string | null>>;
+  importLists: () => Promise<Result<boolean>>;
 } & (S extends 'sonarr' ? SonarrTitles : RadarrTitles);
 
 export type ArrServices = { sonarr: Arr<'sonarr'>; radarr: Arr<'radarr'> };

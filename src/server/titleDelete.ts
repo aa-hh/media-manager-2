@@ -22,11 +22,13 @@ export type DeleteTarget =
 // What Sonarr or Radarr does afterwards: forget the title, keep it listed without searching, or search for another copy.
 export type Mode = 'remove' | 'keepUnmonitored' | 'searchAgain';
 // blocklistCurrent: with searchAgain, blocklist the releases the deleted files came from.
+// excludeFromImportLists: with remove, stop the service's import lists adding the title back.
 // keepFollowing: per selected season with episodes still to air, whether Sonarr keeps grabbing them.
 export type Choices = {
   removeTorrents: string[];
   secondVersions: { id: number; removeTorrent: boolean }[];
   blocklistCurrent: boolean;
+  excludeFromImportLists: boolean;
   keepFollowing: Record<number, boolean>;
 };
 
@@ -85,6 +87,8 @@ export type DeletePlan = {
   };
   // What may happen afterwards, in the order the dialog offers it.
   modes: Mode[];
+  // A removed title could come back from an import list; false when the lists could not be read, so the choice is hidden.
+  importLists: boolean;
   // Set when Sonarr or Radarr moves deleted files to a recycle bin, so no space is freed until it is emptied.
   recycleBin: string | null;
   files: PlanFile[];
@@ -293,7 +297,11 @@ export const createTitleDelete = (options: {
     // Second versions start ticked, so their files count as gone when checking whether a torrent is still needed.
     const after = [...files.map((file) => file.path), ...secondVersions.flatMap((row) => row.path ?? [])];
     const library = torrentFiles.readLibraryInodes(after);
-    const recycleBin = await arr[target.service].recycleBin();
+    const [recycleBin, importLists] = await Promise.all([
+      arr[target.service].recycleBin(),
+      // Only a removed title can come back: one kept unmonitored is still listed, so no list adds it again.
+      modesOf(target).includes('remove') ? arr[target.service].importLists() : null,
+    ]);
     return {
       kind: 'ok',
       value: {
@@ -305,6 +313,7 @@ export const createTitleDelete = (options: {
         willUnmonitor: part !== null,
         monitoring,
         modes: modesOf(target),
+        importLists: importLists?.kind === 'ok' && importLists.value,
         recycleBin: recycleBin.kind === 'ok' ? recycleBin.value : null,
         files,
         torrents: await Promise.all(torrents.map(async (torrent) => ({
@@ -560,14 +569,14 @@ export const createTitleDelete = (options: {
       let planned: Intent | null = null;
 
       if (mode === 'remove' && target.service === 'sonarr') {
-        const result = await arr.sonarr.deleteSeries(target.seriesId);
+        const result = await arr.sonarr.deleteSeries(target.seriesId, choices.excludeFromImportLists);
         if (result.kind !== 'ok') return stop('delete', result.message);
-        summary = 'Removed from Sonarr with its files.';
+        summary = `Removed from Sonarr with its files${choices.excludeFromImportLists ? ', and excluded from its import lists' : ''}.`;
         steps.push({ step: 'delete', outcome: 'done', message: summary });
       } else if (mode === 'remove' && target.service === 'radarr') {
-        const result = await arr.radarr.deleteMovie(target.movieId);
+        const result = await arr.radarr.deleteMovie(target.movieId, choices.excludeFromImportLists);
         if (result.kind !== 'ok') return stop('delete', result.message);
-        summary = 'Removed from Radarr with its file.';
+        summary = `Removed from Radarr with its file${choices.excludeFromImportLists ? ', and excluded from its import lists' : ''}.`;
         steps.push({ step: 'delete', outcome: 'done', message: summary });
       } else {
         // Unmonitored first, so nothing searches for the files once they are gone; or monitored first, so the search that follows wants them.
@@ -768,14 +777,14 @@ const parseKeepFollowing = (value: unknown): Record<number, boolean> | undefined
 };
 
 // Choices the dialog already sends that this server does not act on yet, with the one value it can safely accept.
-const neutral: Record<string, string> = { excludeFromImportLists: 'false', queue: '[]' };
+const neutral: Record<string, string> = { queue: '[]' };
 
 // A movie delete has always named its mode; a show or season delete that leaves it out gets what it did before the choice existed.
 // A selection is new, so it names its mode and carries the seasons and episodes it was planned for.
 const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: Mode }) | undefined => {
   if (!isRecord(body) || !('removeTorrents' in body) || !('secondVersions' in body)) return undefined;
   const selected = target.service === 'sonarr' && target.selection !== undefined;
-  const allowed = ['mode', 'blocklistCurrent', 'keepFollowing', 'removeTorrents', 'secondVersions', ...Object.keys(neutral), ...(selected ? ['seasons', 'episodeIds'] : [])];
+  const allowed = ['mode', 'blocklistCurrent', 'excludeFromImportLists', 'keepFollowing', 'removeTorrents', 'secondVersions', ...Object.keys(neutral), ...(selected ? ['seasons', 'episodeIds'] : [])];
   if (Object.keys(body).some((key) => !allowed.includes(key))) return undefined;
   // The dialog sends these once the plan has modes; until their own changes land, only the value that asks for nothing is accepted.
   if (Object.entries(neutral).some(([key, value]) => key in body && JSON.stringify(body[key]) !== value)) return undefined;
@@ -784,6 +793,8 @@ const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: M
   if (!modesOf(target).includes(mode as Mode)) return undefined;
   const blocklistCurrent = body.blocklistCurrent ?? false;
   if (typeof blocklistCurrent !== 'boolean' || (blocklistCurrent && mode !== 'searchAgain')) return undefined;
+  const excludeFromImportLists = body.excludeFromImportLists ?? false;
+  if (typeof excludeFromImportLists !== 'boolean' || (excludeFromImportLists && mode !== 'remove')) return undefined;
   const keepFollowing = parseKeepFollowing(body.keepFollowing);
   if (keepFollowing === undefined) return undefined;
   if (!Array.isArray(removeTorrents) || removeTorrents.length > MAX_CHOICES || !Array.isArray(secondVersions) || secondVersions.length > MAX_CHOICES) return undefined;
@@ -796,7 +807,7 @@ const parseChoices = (body: unknown, target: DeleteTarget): (Choices & { mode: M
     versions.push({ id: item.id as number, removeTorrent: item.removeTorrent });
   }
   if (new Set(versions.map((version) => version.id)).size !== versions.length) return undefined;
-  return { removeTorrents: hashes, secondVersions: versions, blocklistCurrent, keepFollowing, mode: mode as Mode };
+  return { removeTorrents: hashes, secondVersions: versions, blocklistCurrent, excludeFromImportLists, keepFollowing, mode: mode as Mode };
 };
 
 // Mounted under /api/library next to the library routes.
