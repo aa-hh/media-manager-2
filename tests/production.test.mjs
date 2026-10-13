@@ -6615,6 +6615,14 @@ test('operator command stores settings from stdin and checks connections without
   assert.ok(listed.stdout.split('\n').includes('credentials sonarr.apiKey'), listed.stdout);
   assert.equal(listed.stdout.includes(credentials['sonarr.apiKey']), false);
 
+  // Switching to a source outside tmdb, trakt and fanart, or printing anything but the saved source, turns this red.
+  assert.equal((await cli(['backdrop', 'source'])).stdout, 'backdrop source: tmdb\n');
+  assert.equal((await cli(['backdrop', 'source', 'trakt'])).stdout, 'backdrop source: trakt\n');
+  const unknownSource = await cli(['backdrop', 'source', 'nope']);
+  assert.equal(unknownSource.code, 1);
+  assert.match(unknownSource.stderr, /must be one of: tmdb, trakt, fanart/);
+  assert.equal((await cli(['backdrop', 'source'])).stdout, 'backdrop source: trakt\n');
+
   const unconfigured = await cli(['connections', 'check']);
   assert.equal(unconfigured.code, 1, unconfigured.stderr);
   assert.equal(unconfigured.stdout, 'sonarr: not_configured\nradarr: not_configured\nrtorrent: not_configured\nplex: not_configured\n');
@@ -7026,7 +7034,8 @@ test('Trakt and fanart.tv backdrop lookups read their replies', async (t) => {
   });
   setSetting(database, 'credentials', 'trakt.clientId', 'trakt-id');
   setSetting(database, 'credentials', 'fanart.apiKey', 'fanart-key');
-  const replying = (status, body) => ({ fetch: async () => new Response(JSON.stringify(body), { status }) });
+  const sent = [];
+  const replying = (status, body) => ({ fetch: async (url, init) => { sent.push({ url: String(url), headers: init.headers }); return new Response(JSON.stringify(body), { status }); } });
   // The real Trakt reply shape for Severance (/search/tmdb/95396?type=show&extended=images), 13 Oct 2026.
   const traktReply = (fanart) => [{ type: 'show', show: { title: 'Severance', images: { fanart } } }];
   assert.deepEqual(await createTrakt(database, replying(200, traktReply(['media.trakt.tv/images/shows/000/154/997/fanarts/medium/9400ecb8e2.jpg.webp']))).fanart('tv', 95396),
@@ -7041,6 +7050,8 @@ test('Trakt and fanart.tv backdrop lookups read their replies', async (t) => {
   ] };
   assert.deepEqual(await createFanart(database, replying(200, backgrounds)).background('tv', 371980),
     { kind: 'ok', value: 'https://assets.fanart.tv/fanart/tv/371980/showbackground/b.jpg' });
+  // Putting the fanart.tv key in the URL instead of its api-key header turns this red.
+  assert.deepEqual(sent.at(-1), { url: 'https://webservice.fanart.tv/v3/tv/371980', headers: { Accept: 'application/json', 'api-key': 'fanart-key' } });
   assert.deepEqual(await createFanart(database, replying(404, { status: 'error', 'error message': 'Not found' })).background('movie', 129), { kind: 'ok', value: null });
   assert.equal((await createFanart(database, replying(401, {})).background('movie', 129)).kind, 'rejected');
 });

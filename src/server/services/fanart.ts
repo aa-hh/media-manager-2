@@ -9,16 +9,15 @@ const BASE_URL = 'https://webservice.fanart.tv/v3';
 export const createFanart = (database: DatabaseSync, options: ServiceOptions = {}) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  // The most-liked background, or null when fanart.tv has none. The key sits in the URL, so no message carries the URL.
+  // The most-liked background, or null when fanart.tv has none. The key goes only in the api-key header.
   const background = async (type: 'movie' | 'tv', id: number): Promise<Result<string | null>> => {
     const operation = `the ${type === 'movie' ? 'movie' : 'show'} backgrounds`;
     const key = readSetting(database, 'credentials', 'fanart.apiKey');
     if (key === undefined) return notConfigured(LABEL, operation);
-    const url = `${BASE_URL}/${type === 'movie' ? 'movies' : 'tv'}/${id}?api_key=${encodeURIComponent(key)}`;
     let status: number;
     let body: unknown;
     try {
-      const response = await requestWithTimeout(fetchImpl, url, { headers: { Accept: 'application/json' } });
+      const response = await requestWithTimeout(fetchImpl, `${BASE_URL}/${type === 'movie' ? 'movies' : 'tv'}/${id}`, { headers: { Accept: 'application/json', 'api-key': key } });
       status = response.status;
       body = await response.json().catch(() => undefined);
     } catch {

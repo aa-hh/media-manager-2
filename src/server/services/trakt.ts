@@ -85,7 +85,7 @@ export const createTrakt = (database: DatabaseSync, options: ServiceOptions & { 
     return response.ok ? { kind: 'ok', version: 'key accepted' } : { kind: 'unreachable' };
   };
 
-  // After a 429, list and genres send nothing until the wait Trakt named has passed. check() is not paused.
+  // After a 429, list, genres and fanart send nothing until the wait Trakt named has passed. check() is not paused.
   const get = async (operation: string, path: string, query: Array<[string, string]>): Promise<Result<unknown>> => {
     const clientId = readSetting(database, 'credentials', 'trakt.clientId');
     if (clientId === undefined) return notConfigured(LABEL, operation);
