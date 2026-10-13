@@ -2,7 +2,8 @@ import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState 
 import { createRoot } from 'react-dom/client';
 import { SignIn } from './SignIn';
 import { Home } from './Home';
-import { navigate, useLocation } from './navigation';
+import { navigate, replace, useLocation } from './navigation';
+import { clearSessionState, withoutFilters } from './discover/model';
 import { Button } from './components/ui/button';
 import { Callout } from './components/ui/callout';
 import { DownloadsLiveBar } from './components/ui/downloads-live-bar';
@@ -154,6 +155,14 @@ function App() {
       channelRef.current = undefined;
     };
   }, []);
+
+  // A new sign-in starts Discover without the old session's filters.
+  useEffect(() => {
+    if (session.kind !== 'signed-out') return;
+    clearSessionState();
+    const { pathname, search } = window.location;
+    if (pathname.startsWith('/discover') && withoutFilters(search) !== search) replace(pathname + withoutFilters(search));
+  }, [session.kind]);
 
   useEffect(() => {
     if (session.kind !== 'signed-in' && session.kind !== 'sign-out-failed') return;
