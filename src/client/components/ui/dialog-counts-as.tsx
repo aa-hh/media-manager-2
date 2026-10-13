@@ -23,7 +23,7 @@ type DialogCountsAsProps = {
  */
 function DialogCountsAs({ open, onOpenChange, summary, season, select, help }: DialogCountsAsProps) {
   return (
-    <Collapsible open={open} onOpenChange={(next) => onOpenChange(next)} data-counts-as="">
+    <Collapsible open={open} onOpenChange={(next) => onOpenChange(next)} data-counts-as="" className="flex flex-col gap-0.5">
       <CollapsibleTrigger summary={open ? undefined : summary} className="px-3">Counts as</CollapsibleTrigger>
       <CollapsibleContent className="gap-2 pb-2">
         <div className="flex items-center gap-2">

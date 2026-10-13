@@ -94,7 +94,7 @@ function LibraryPosterCard({
           </span>
         )}
         {dateTab !== undefined && (
-          <span className="absolute top-2 left-2 flex flex-col items-center rounded-xs bg-card px-2.25 pt-1.25 pb-1.5 shadow-[0_1px_4px_var(--shadow)]">
+          <span className="absolute top-2 left-2 flex flex-col items-center rounded-md bg-card px-2.25 pt-1.25 pb-1.5 shadow-[0_1px_4px_var(--shadow)]">
             <span className="font-ui text-[11px] font-bold tracking-[0.6px] text-muted-foreground">{dateTab.month}</span>
             <span className="font-data text-[22px] leading-none font-semibold text-foreground">{dateTab.day}</span>
           </span>
@@ -103,7 +103,7 @@ function LibraryPosterCard({
           <span
             aria-hidden="true"
             className={cn(
-              'pointer-events-none absolute inset-x-0 bottom-0 flex h-50 flex-col justify-end gap-2 p-3 opacity-0 transition-opacity duration-(--duration-base) ease-out',
+              'pointer-events-none absolute inset-x-0 bottom-0 flex h-32.5 flex-col justify-end gap-2 p-3 opacity-0 transition-opacity duration-(--duration-base) ease-out',
               'bg-[linear-gradient(to_bottom,#11111100_0%,#111111E6_60%)] group-hover:opacity-100 group-focus-visible:opacity-100',
             )}
           >
@@ -124,11 +124,11 @@ function LibraryPosterCard({
       <span className="flex flex-col gap-0.5">
         <span className="flex gap-2">
           {rank !== undefined && (
-            <span className="font-data text-base font-semibold text-subtle-foreground">{rank}</span>
+            <span className="font-data text-sm font-semibold text-subtle-foreground">{rank}</span>
           )}
           <span
             className={cn(
-              'min-w-0 flex-1 font-ui text-base text-foreground',
+              'min-w-0 flex-1 font-ui text-sm text-foreground',
               rank !== undefined && 'leading-[1.25]',
               kind === undefined ? 'truncate' : 'line-clamp-2 [overflow-wrap:anywhere]',
               selected ? 'font-bold' : 'font-semibold',

@@ -102,6 +102,11 @@
   --inline-control-border: #7889a3;
   --inline-control-border-hover: #66778f;
   --inline-control-foreground: #334766;
+  --status-queued: #e06a10;
+  --status-downloading: #2f8a1f;
+  --status-importing: #7a3fd1;
+  --status-stalled: #e5534b;
+  --status-blocked: #a3150f;
 
   /* Radius */
   --radius-xs: 4px;
@@ -109,7 +114,7 @@
   --radius-md: 12px;
   --radius-lg: 12px;
   --radius-full: 999px;
-  --radius: 10px;
+  --radius: 12px;
   --radius-xl: 14px;
 
   /* Sizes and spacing */
@@ -344,6 +349,11 @@
   --color-inline-control-border: var(--inline-control-border);
   --color-inline-control-border-hover: var(--inline-control-border-hover);
   --color-inline-control-foreground: var(--inline-control-foreground);
+  --color-status-queued: var(--status-queued);
+  --color-status-downloading: var(--status-downloading);
+  --color-status-importing: var(--status-importing);
+  --color-status-stalled: var(--status-stalled);
+  --color-status-blocked: var(--status-blocked);
 
   --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
@@ -431,6 +441,7 @@
   font-feature-settings: "tnum";
 }
 
+/* v2/Focus ring — ~/Projects/media-manager-2-design/design-system.lib.pen v1tSkC */
 /* 2px ring with a 2px gap (DESIGN.md "Focus"). The Kbd and bars use the white ring. */
 @utility focus-ring {
   &:focus-visible {

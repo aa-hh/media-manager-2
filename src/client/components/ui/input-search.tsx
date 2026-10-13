@@ -19,7 +19,7 @@ type InputSearchProps = ComponentProps<typeof Input> & {
 
 const looks = {
   search: cn(
-    'h-12 gap-3 rounded-(--control-radius-large) border-transparent bg-muted px-(--space-4) text-base',
+    'h-12 gap-3 rounded-(--control-radius-large) border-[1.5px] border-transparent bg-muted px-(--space-4) text-base',
     'not-has-disabled:hover:bg-surface-pressed [&>svg]:size-5',
   ),
   field: cn(

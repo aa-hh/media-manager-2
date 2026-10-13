@@ -12,15 +12,15 @@ type ItemEpisodeListProps = ComponentProps<'div'> & {
   selected?: boolean;
 };
 
-/** Episode in a compact list, 56 px, outside a table. Selected: selected fill and the 3 px bar. Use role="option" in a listbox. */
+/** Episode in a compact list, 56 px, outside a table. Selected: the 3 px bar, no fill. Use role="option" in a listbox. */
 function ItemEpisodeList({ number, title, detail, state, selected = false, className, ...props }: ItemEpisodeListProps) {
   return (
     <div
       aria-selected={props.role === 'option' ? selected : undefined}
       className={cn(
-        'relative flex h-14 w-full items-center gap-3 rounded-(--control-radius-row) px-4',
+        'relative flex h-14 w-full items-center gap-3 rounded-sm px-4',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0',
-        selected ? 'bg-selected' : 'hover:bg-surface-hover active:bg-surface-pressed',
+        !selected && 'hover:bg-surface-hover active:bg-surface-pressed',
         'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
         className,
       )}

@@ -58,10 +58,10 @@ type AppBarDesktopProps = ComponentProps<'header'> & {
   signedOut?: boolean;
 };
 
-/** Top bar, 64 px, white with a line under, page-margin side padding. The 28 px logo is the small-size render, design/app-logo/small-on-light.png. */
+/** Top bar, 64 px, white at 70% over a 24 px blur so what scrolls under it shows through, a line under, page-margin side padding. The 28 px logo is the small-size render, design/app-logo/small-on-light.png. */
 function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, signedOut = false, className, ...props }: AppBarDesktopProps) {
   return (
-    <header className={cn('flex h-(--topbar) w-full items-center gap-6 border-b border-border bg-card px-(--page-margin)', className)} {...props}>
+    <header className={cn('flex h-(--topbar) w-full items-center gap-6 border-b border-border bg-card/70 px-(--page-margin) backdrop-blur-[24px]', className)} {...props}>
       <div className="flex shrink-0 items-center gap-2.5 font-ui text-base font-extrabold tracking-[-0.2px] text-foreground">
         <img src={logo} alt="" width={28} height={28} className="size-7" />
         {productName}

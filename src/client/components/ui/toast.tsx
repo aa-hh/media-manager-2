@@ -60,7 +60,7 @@ function ToastList() {
       {toast.actionProps !== undefined && (
         <Toast.Action
           className={cn(
-            'inline-flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-1 font-ui text-sm font-semibold text-bar-foreground',
+            'inline-flex shrink-0 items-center gap-1.5 rounded-xs px-1.5 py-1 font-ui text-sm font-semibold text-bar-foreground',
             'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring-on-dark',
             'hover:bg-bar-foreground/12 hover:underline',
           )}
