@@ -36,8 +36,8 @@ const RETRYABLE_CODES = new Set(['EACCES', 'EPERM', 'ENOENT', 'EROFS']);
 class FolderError extends Error {}
 
 const VIDEO_EXTENSIONS = new Set(['.mkv', '.mp4', '.avi', '.m2ts', '.ts']);
-// Plex files a name ending in one of these after a separator as an extra, never as a version.
-const EXTRAS_WORDS = ['behindthescenes', 'deleted', 'featurette', 'interview', 'scene', 'short', 'trailer', 'other', 'sample'];
+// Plex or Jellyfin files a name ending in one of these after a separator as an extra, never as a version.
+const EXTRAS_WORDS = ['behindthescenes', 'deleted', 'featurette', 'interview', 'scene', 'short', 'trailer', 'other', 'sample', 'clip', 'extra', 'deletedscene'];
 const EXTRAS_ENDING = new RegExp(`(?:^|[-_. ]+)(?:${EXTRAS_WORDS.join('|')})$`, 'i');
 const serviceWords: Record<Service, string> = { sonarr: 'Sonarr', radarr: 'Radarr' };
 
