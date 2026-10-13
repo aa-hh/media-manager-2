@@ -10633,7 +10633,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   const { createTorrentPoller } = await import(torrentsModuleUrl);
   const { createTorrentFiles } = await import(torrentFilesModuleUrl);
   const { createSecondVersionDelete } = await import(secondVersionDeleteModuleUrl);
-  const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE, KEPT_FILES } = await import(titleDeleteModuleUrl);
+  const { createTitleDelete, createTitleDeleteRoutes, UNLINKED_FILE, KEPT_FILES, KEPT_EPISODES } = await import(titleDeleteModuleUrl);
   const { createBlocklist } = await import(new URL('../dist/server/blocklist.js', import.meta.url).href);
   const { createHistory } = await import(historyModuleUrl);
   const { createSearch, parseSearchQuery } = await import(searchModuleUrl);
@@ -10931,8 +10931,6 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       ['/movie/1', { mode: 'remove', removeTorrents: [CUR, CUR.toLowerCase()], secondVersions: [] }],
       ['/movie/1', { mode: 'remove', removeTorrents: [], secondVersions: [{ id: 1 }] }],
       ['/movie/0', { mode: 'remove', removeTorrents: [], secondVersions: [] }],
-      // A choice the server cannot carry out yet must be refused, not silently ignored.
-      ['/movie/1', { mode: 'remove', excludeFromImportLists: false, keepFollowing: {}, queue: [{ downloadId: 'x', action: 'remove' }], removeTorrents: [], secondVersions: [] }],
     ];
     for (const [path, body] of bad) assert.equal((await w.remove(path, body)).status, 400, JSON.stringify(body));
     assert.equal((await w.remove('/movie/1', { mode: 'remove', removeTorrents: [SHARED], secondVersions: [] })).status, 409);
@@ -11034,6 +11032,48 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(w.steps(body).slice(0, 2), ['map:done', 'delete:done']);
     assert.equal(body.steps[1].message, 'Removed from Radarr with its file, and excluded from its import lists.');
     assert.deepEqual(w.requests('radarr').filter((request) => request.startsWith('DELETE')), ['DELETE /api/v3/movie/1?deleteFiles=true&addImportExclusion=true']);
+  });
+
+  // A REPACK of Dune still downloading (60%), and another movie's download that must never be listed.
+  const REPACK = 'F1'.repeat(20);
+  const downloading = async (w) => {
+    await w.addTorrent(REPACK, 'downloads', ['Dune.2021.2160p.REPACK.mkv']);
+    await w.poller.poll();
+    w.arrFake.radarr.state.queue.push(
+      queueItem({ movieId: 1, downloadId: REPACK.toLowerCase(), title: 'Dune.2021.2160p.REPACK-GRP', size: 100, sizeleft: 40 }),
+      queueItem({ movieId: 2, downloadId: 'f2'.repeat(20), title: 'Arrival.2016.1080p-GRP', size: 100, sizeleft: 100 }),
+    );
+  };
+
+  // Listing another movie's download, leaving the download in the queue to import after the delete, letting Radarr search or remove it from
+  // rTorrent itself, or deleting before the queue is cleared turns this red.
+  await t.test('removing a movie lists its download, takes it out of the queue without a search, then removes its torrent through the shared-data check', async () => {
+    const w = await dune();
+    await downloading(w);
+    const planned = (await w.plan('/movie/1')).body;
+    assert.deepEqual(planned.queue.map((item) => [item.downloadId, item.title, item.progress, item.removable.allowed, item.advice?.reason ?? null]),
+      [[REPACK, 'Dune.2021.2160p.REPACK-GRP', 0.6, true, 'advice for F1']]);
+    w.onDelete('radarr', '/api/v3/movie/1', { removes: [w.file] });
+    const { body } = await w.remove('/movie/1', { mode: 'remove', queue: [{ downloadId: REPACK, action: 'removeWithTorrent' }], removeTorrents: [], secondVersions: [] });
+    assert.deepEqual(w.steps(body).slice(0, 3), ['map:done', 'queue:done', 'delete:done']);
+    assert.deepEqual(body.steps[1].queue, [{ downloadId: REPACK, title: 'Dune.2021.2160p.REPACK-GRP', removed: true, torrentRemoved: true, reason: null }]);
+    assert.deepEqual(w.arrFake.radarr.state.removals.map(({ removeFromClient, blocklist, skipRedownload }) => [removeFromClient, blocklist, skipRedownload]), [[false, false, true]]);
+    const radarr = w.requests('radarr');
+    assert.ok(radarr.findIndex((request) => request.startsWith('DELETE /api/v3/queue/')) < radarr.indexOf('DELETE /api/v3/movie/1?deleteFiles=true&addImportExclusion=false'));
+    assert.equal(w.fake.torrents.some((torrent) => torrent.hash === REPACK), false);
+    assert.deepEqual(w.arrFake.radarr.state.queue.map((item) => item.movieId), [2]);
+  });
+
+  // Deleting anything when the chosen download already left the queue, or accepting an action the server does not know, turns this red.
+  await t.test('a download that left the queue since the plan stops the delete, and a queue choice must be well formed', async () => {
+    const w = await dune();
+    await downloading(w);
+    const gone = await w.remove('/movie/1', { mode: 'remove', queue: [{ downloadId: 'ab'.repeat(20), action: 'remove' }], removeTorrents: [], secondVersions: [] });
+    assert.deepEqual([gone.status, gone.body.error], [409, 'plan_changed']);
+    for (const queue of [[{ downloadId: REPACK, action: 'purge' }], [{ downloadId: REPACK }], [{ downloadId: REPACK, action: 'remove' }, { downloadId: REPACK, action: 'leave' }]]) {
+      assert.equal((await w.remove('/movie/1', { mode: 'remove', queue, removeTorrents: [], secondVersions: [] })).status, 400, JSON.stringify(queue));
+    }
+    assert.equal(w.requests('radarr').some((request) => request.startsWith('DELETE')), false);
   });
 
   // Marking the grab failed while the download client would erase its seeding torrent, or dropping the search because the blocklist failed, turns this red.
@@ -11420,6 +11460,22 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       ['/series/5/season/1', { ...base, mode: 'keepUnmonitored', seasons: [1], episodeIds: [] }],
     ];
     for (const [path, body] of bad) assert.equal((await w.remove(path, body)).status, 400, `${path} ${JSON.stringify(body)}`);
+    assert.equal(w.requests('sonarr').some((request) => !request.startsWith('GET')), false);
+  });
+
+  // Offering to remove a pack that also downloads episodes the delete keeps, or listing another season's download, turns this red.
+  await t.test('a season delete lists a pack that also holds other seasons as one it can only leave', async () => {
+    const w = await seasons();
+    const SEASONS = 'F3'.repeat(20);
+    w.arrFake.sonarr.state.queue.push(
+      ...[101, 201].map((episodeId) => queueItem({ seriesId: 5, episodeId, downloadId: SEASONS.toLowerCase(), title: 'Andor.S01-S02.2160p-GRP', size: 10, sizeleft: 10 })),
+      queueItem({ seriesId: 5, episodeId: 201, downloadId: 'f4'.repeat(20), title: 'Andor.S02E01.2160p-GRP', size: 10, sizeleft: 10 }),
+    );
+    const planned = (await w.plan('/series/5/season/1')).body;
+    assert.deepEqual(planned.queue.map((item) => [item.downloadId, item.episodeIds, item.removable.allowed, item.removable.reason ?? null, item.advice]),
+      [[SEASONS, [101, 201], false, KEPT_EPISODES, null]]);
+    const refused = await w.remove('/series/5/season/1', { queue: [{ downloadId: SEASONS, action: 'remove' }], removeTorrents: [], secondVersions: [] });
+    assert.deepEqual([refused.status, refused.body.error], [400, 'invalid_request']);
     assert.equal(w.requests('sonarr').some((request) => !request.startsWith('GET')), false);
   });
 
