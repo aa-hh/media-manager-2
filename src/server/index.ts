@@ -40,7 +40,7 @@ import { createGrabTracker } from './torrentGrabs.js';
 import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createMdblist } from './services/mdblist.js';
-import { createPlex } from './services/plex.js';
+import { createMediaServer } from './services/mediaServer.js';
 import { createTmdb } from './services/tmdb.js';
 import { createTrakt } from './services/trakt.js';
 import { createFanart } from './services/fanart.js';
@@ -91,8 +91,8 @@ if (database !== undefined) {
   const releases = createReleases(database, arr);
   const secondVersions = createSecondVersions({ database, releases, rtorrent });
   const problems = createProblems({ database, events });
-  const plex = createPlex(database);
-  const versionImport = createVersionImport({ database, rtorrent, arr, plex, problems });
+  const mediaServer = createMediaServer(database);
+  const versionImport = createVersionImport({ database, rtorrent, arr, mediaServer, problems });
   // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them,
   // and finished ones are imported after it.
   runner.register('rtorrent-poll', poller.intervalMs, async () => {
@@ -154,7 +154,7 @@ if (database !== undefined) {
   const tmdb = createTmdb(database);
   const trakt = createTrakt(database);
   const mdblist = createMdblist(database);
-  const health = createHealth({ database, arr, rtorrent, plex, tmdb, mdblist, jobs: runner, trackerAccounts, events });
+  const health = createHealth({ database, arr, rtorrent, mediaServer, tmdb, mdblist, jobs: runner, trackerAccounts, events });
   runner.register('health-check', 5 * 60_000, async () => { await health.check(); });
   runner.register('replace-completion', 60_000, () => replaces.run());
   runner.register('grab-download-ids', 30_000, () => grabs.resolvePending());

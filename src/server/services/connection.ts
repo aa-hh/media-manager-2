@@ -1,3 +1,4 @@
+import { isAbsolute, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { logEvent } from '../log.js';
 import { getSetting } from '../settings.js';
@@ -38,4 +39,10 @@ export const requestWithTimeout = async (
 export const readSetting = (database: DatabaseSync, category: string, key: string): string | undefined => {
   const value = getSetting(database, category, key);
   return value === '' ? undefined : value;
+};
+
+// The folder itself counts as inside.
+export const isInsideFolder = (folder: string, path: string) => {
+  const inside = relative(folder, path);
+  return !inside.startsWith('..') && !isAbsolute(inside);
 };

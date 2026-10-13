@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { type ConnectionStatus, readSetting, requestWithTimeout, type ServiceOptions } from './connection.js';
+import { type ConnectionStatus, isInsideFolder, readSetting, requestWithTimeout, type ServiceOptions } from './connection.js';
+import type { Library, LibraryType } from './mediaServer.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -51,5 +52,20 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     return { kind: 'ok', version: container.version };
   };
 
-  return { check, request };
+  const findLibraryFor = async (folder: string, type: LibraryType): Promise<Library | undefined> => {
+    const result = await request('/library/sections');
+    if (result.status < 200 || result.status > 299) throw new Error('Plex refused the library list.');
+    const container = isRecord(result.body) ? result.body.MediaContainer : undefined;
+    const sections = isRecord(container) && Array.isArray(container.Directory) ? container.Directory.filter(isRecord) : [];
+    const section = sections.find((item) => item.type === type && Array.isArray(item.Location)
+      && item.Location.some((location) => isRecord(location) && typeof location.path === 'string' && isInsideFolder(location.path, folder)));
+    if (section === undefined || (typeof section.key !== 'string' && typeof section.key !== 'number')) return undefined;
+    return { id: String(section.key) };
+  };
+
+  const refresh = async (library: Library, folder: string) => {
+    await request(`/library/sections/${encodeURIComponent(library.id)}/refresh?path=${encodeURIComponent(folder)}`);
+  };
+
+  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh };
 };

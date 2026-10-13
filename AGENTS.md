@@ -45,7 +45,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 ## Folder Map
 
 - `src/server/` → HTTP routes, background jobs and the SQLite database. Has AGENTS.md.
-- `src/server/services/` → clients for Sonarr, Radarr, rTorrent, Plex, TMDB and the rest. Has AGENTS.md.
+- `src/server/services/` → clients for Sonarr, Radarr, rTorrent, Plex, Jellyfin, TMDB and the rest. Has AGENTS.md.
 - `src/client/` → the React app the browser runs. Has AGENTS.md.
 - `tests/` → the test suite and the fakes of outside services. Has AGENTS.md.
 - `scripts/` → the only sanctioned way to build, test, review, land and deploy. Has AGENTS.md.
@@ -93,7 +93,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 - **Every removal from a Sonarr or Radarr queue says whether the service may
   search again** (`skipRedownload`). Left out, Sonarr and Radarr search by
   themselves and can grab release after release on a private tracker.
-- **Every request to Sonarr, Radarr, rTorrent, Plex's media API, TMDB,
+- **Every request to Sonarr, Radarr, rTorrent, Plex's media API, Jellyfin, TMDB,
   MDBList, Trakt, fanart.tv, tracker sites and S3 goes through `src/server/services/`.** The
   service clients hold the timeouts, paging and error mapping; a second
   caller skips all three. Three exceptions exist: Plex sign-in in
