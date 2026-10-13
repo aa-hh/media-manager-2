@@ -17,8 +17,6 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
   imported?: boolean;
   importedLabel?: ReactNode;
   selected?: boolean;
-  /** Large is the Discover size: 220 wide, poster 330 tall. */
-  size?: 'default' | 'large';
   /** Position in a ranked list such as Trending, shown before the title. */
   rank?: number;
   /** Shows a type line (icon, word, year) in place of `meta`. */
@@ -35,7 +33,7 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
 };
 
 /**
- * Library grid card, 152 by 228 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
+ * Poster card for Library and Discover, 210 by 315 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
  * pressed 84 %; focus rings the poster; selected adds a 2 px black edge and a 700 title.
  * Its poster block keeps the skeleton shimmer until the image has loaded, then the image fades in, unless it was cached or
  * arrived during a screen change, whose crossfade already brings it in (the screen around the card decides whether the card
@@ -43,20 +41,18 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
  */
 function LibraryPosterCard({
   poster, title, meta, status, progress, imported = false, importedLabel = 'Imported', selected = false,
-  size = 'default', rank, kind, year, genres, badges, dateTab, overview, className, ...props
+  rank, kind, year, genres, badges, dateTab, overview, className, ...props
 }: LibraryPosterCardProps) {
-  const large = size === 'large';
   const strip = imported ? 100 : progress;
   const [image, setImage] = useState<'loading' | 'loaded' | 'shown' | 'failed'>('loading');
   const showPoster = poster !== undefined && image !== 'failed';
   return (
-    <a className={cn('group flex flex-col gap-2 outline-none', large ? 'w-55' : 'w-(--poster-width)', className)} {...props}>
+    <a className={cn('group flex w-(--poster-width) flex-col gap-2 outline-none', className)} {...props}>
       <span
         data-poster
         className={cn(
-          'relative block w-full overflow-hidden rounded-md bg-muted',
+          'relative block h-78.75 w-full overflow-hidden rounded-md bg-muted',
           showPoster && image === 'loading' && 'skeleton-shimmer motion-reduce:bg-none',
-          large ? 'h-82.5' : 'h-57',
           'group-focus-visible:outline-2 group-focus-visible:outline-offset-0 group-focus-visible:outline-ring',
         )}
       >
@@ -98,7 +94,7 @@ function LibraryPosterCard({
           </span>
         )}
         {dateTab !== undefined && (
-          <span className="absolute top-2 left-2 flex flex-col items-center rounded-xs bg-card px-2.25 pt-1.25 pb-1.5 shadow-[0_1px_4px_var(--shadow)]">
+          <span className="absolute top-2 left-2 flex flex-col items-center rounded-md bg-card px-2.25 pt-1.25 pb-1.5 shadow-[0_1px_4px_var(--shadow)]">
             <span className="font-ui text-[11px] font-bold tracking-[0.6px] text-muted-foreground">{dateTab.month}</span>
             <span className="font-data text-[22px] leading-none font-semibold text-foreground">{dateTab.day}</span>
           </span>
@@ -107,7 +103,7 @@ function LibraryPosterCard({
           <span
             aria-hidden="true"
             className={cn(
-              'pointer-events-none absolute inset-x-0 bottom-0 flex h-50 flex-col justify-end gap-2 p-3 opacity-0 transition-opacity duration-(--duration-base) ease-out',
+              'pointer-events-none absolute inset-x-0 bottom-0 flex h-32.5 flex-col justify-end gap-2 p-3 opacity-0 transition-opacity duration-(--duration-base) ease-out',
               'bg-[linear-gradient(to_bottom,#11111100_0%,#111111E6_60%)] group-hover:opacity-100 group-focus-visible:opacity-100',
             )}
           >
@@ -128,12 +124,11 @@ function LibraryPosterCard({
       <span className="flex flex-col gap-0.5">
         <span className="flex gap-2">
           {rank !== undefined && (
-            <span className={cn('font-data leading-[1.25] font-semibold text-subtle-foreground', large ? 'text-base' : 'text-sm')}>{rank}</span>
+            <span className="font-data text-sm font-semibold text-subtle-foreground">{rank}</span>
           )}
           <span
             className={cn(
-              'min-w-0 flex-1 font-ui text-foreground',
-              large ? 'text-base' : 'text-sm',
+              'min-w-0 flex-1 font-ui text-sm text-foreground',
               rank !== undefined && 'leading-[1.25]',
               kind === undefined ? 'truncate' : 'line-clamp-2 [overflow-wrap:anywhere]',
               selected ? 'font-bold' : 'font-semibold',

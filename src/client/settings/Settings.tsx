@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ChevronRight, DatabaseBackup, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronRight, DatabaseBackup, Eraser, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -11,7 +11,7 @@ import { FieldLabelled } from '@/components/ui/field-labelled';
 import { HeaderPage } from '@/components/ui/header-page';
 import { InputSearch } from '@/components/ui/input-search';
 import { LabelGroup } from '@/components/ui/label-group';
-import { Logo } from '@/components/ui/logo';
+import { Logo, type LogoName } from '@/components/ui/logo';
 import { Radio, RadioGroup } from '@/components/ui/radio';
 import { RowService } from '@/components/ui/row-service';
 import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
@@ -26,7 +26,7 @@ import { BackupEditor } from './BackupEditor';
 import { FoldersEditor } from './FoldersEditor';
 import { backupPill, backupWords, type SetupStatus } from './setup';
 import { useScreenReady } from '../navigation';
-import { infoOf, requester, useServices } from './useServices';
+import { infoOf, requester, useServices, writeHeaders } from './useServices';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
@@ -61,9 +61,24 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const [discardOpen, setDiscardOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
   const [setup, setSetup] = useState<SetupStatus>();
+  const [clearing, setClearing] = useState(false);
   const toasts = useToastManager();
   const unauthorizedRef = useRef(onUnauthenticated);
   unauthorizedRef.current = onUnauthenticated;
+
+  const clearCache = async () => {
+    setClearing(true);
+    const failed = { title: 'Cache could not be cleared', description: 'Check that media-manager-2 is running, then try again.' };
+    try {
+      const response = await fetch('/api/cache/clear', { method: 'POST', credentials: 'same-origin', headers: writeHeaders, body: '{}' });
+      if (response.status === 401) unauthorizedRef.current();
+      else toasts.add(response.ok ? { title: 'Cache cleared', description: 'Pages fetch details and pictures again as you open them. Posters return within a few minutes; reload a page to see them.' } : failed);
+    } catch {
+      toasts.add(failed);
+    } finally {
+      setClearing(false);
+    }
+  };
   const readServices = connections.read;
 
   useEffect(() => {
@@ -288,6 +303,10 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
               <Button variant="outline" size="row" icon={<Plus />} onClick={() => { setNewAddress(''); setSelected('add'); }}>Add tracker</Button>
             </div>
           )}
+          <LabelGroup>Cache</LabelGroup>
+          <div className="px-4 py-2">
+            <Button variant="outline" size="row" icon={<Eraser />} loading={clearing} onClick={() => void clearCache()}>Clear cache</Button>
+          </div>
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {adding ? (
@@ -406,13 +425,18 @@ type PiecesStripProps = {
   folders: { state: ServiceState; text: string };
   /** The setup wizard's lit pills: black with a lime dot, all lime once setup is done. */
   look?: 'plain' | 'setup' | 'done';
+  /** The setup wizard for a Jellyfin owner: this pill takes the Watch column's place of Plex. */
+  watch?: { logo: LogoName; name: string; state: ServiceState; text: string };
 };
 
+// v2/Strip/connection map — ~/Projects/media-manager-2-design/design-system.lib.pen jOF0R
+// v2/Strip/connection map/column — ~/Projects/media-manager-2-design/design-system.lib.pen tCtqz
+// v2/Strip/connection map/link — ~/Projects/media-manager-2-design/design-system.lib.pen yfHN6
 /** The "How the pieces connect" strip: each service column with the links between them. Pills in a column share the widest one's width. */
-export function PiecesStrip({ checks, editedOf, folders, look = 'plain' }: PiecesStripProps) {
+export function PiecesStrip({ checks, editedOf, folders, look = 'plain', watch }: PiecesStripProps) {
   const done = look === 'done';
   const pillLook = look === 'setup' ? 'dark' : done ? 'lime' : 'plain';
-  const caption = 'font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground uppercase';
+  const caption = 'font-ui text-[11px] font-semibold tracking-[0.4px] text-subtle-foreground uppercase';
   return (
     <section aria-labelledby="pieces-title" className="flex flex-col">
       <LabelGroup id="pieces-title" className="pt-0">How the pieces connect</LabelGroup>
@@ -428,6 +452,9 @@ export function PiecesStrip({ checks, editedOf, folders, look = 'plain' }: Piece
                   <h3 className={caption}>{column.caption}</h3>
                   <div className="flex h-23.5 flex-col items-stretch justify-center gap-2">
                     {column.names.map((name) => {
+                      if (watch !== undefined && name === 'plex') {
+                        return <StatusServicePill key={name} look={pillLook} logo={<Logo name={watch.logo} alt="" />} name={watch.name} state={watch.state}>{watch.text}</StatusServicePill>;
+                      }
                       const member = infoOf(name);
                       const pill = pillFor(member, checks[name], editedOf(name));
                       return <StatusServicePill key={name} look={pillLook} logo={member.logo === null ? null : <Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;

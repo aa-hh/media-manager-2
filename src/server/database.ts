@@ -397,6 +397,30 @@ export const applicationMigrations = [
   ) STRICT;`,
   // When a season search was last sent for each season, so the six-hour repeats alternate season and episode searches.
   `CREATE TABLE season_search_log (series_id INTEGER NOT NULL, season_number INTEGER NOT NULL, searched_at INTEGER NOT NULL, PRIMARY KEY (series_id, season_number)) STRICT;`,
+  // How many times an imported second version was offered to Jellyfin to merge with the tracked file; a merge sets the cap.
+  `ALTER TABLE second_versions ADD COLUMN merge_tries INTEGER NOT NULL DEFAULT 0;`,
+  // The tracked file's path as Radarr or Sonarr last reported it; a change means a rename or upgrade, which splits a Jellyfin merge.
+  `ALTER TABLE second_versions ADD COLUMN tracked_path TEXT;`,
+  // When Radarr or Sonarr was last asked for the tracked path; NULL while a merged row owes a check after a rename or download event.
+  `ALTER TABLE second_versions ADD COLUMN merge_checked_at INTEGER;`,
+  // The install's owner: one row, written by the first sign-in on the first-run page.
+  `CREATE TABLE owner (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    provider TEXT NOT NULL CHECK (provider IN ('plex', 'jellyfin')),
+    user_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    server_name TEXT
+  ) STRICT;`,
+  // owner_id is text because a Jellyfin user ID is a GUID. Existing rows are copied with their Plex ID as text, which
+  // matches String(PLEX_OWNER_ID), so an upgrade keeps the owner signed in.
+  `CREATE TABLE sessions_rebuilt (
+    token_hash TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  ) STRICT;
+  INSERT INTO sessions_rebuilt (token_hash, owner_id, expires_at) SELECT token_hash, CAST(owner_id AS TEXT), expires_at FROM sessions;
+  DROP TABLE sessions;
+  ALTER TABLE sessions_rebuilt RENAME TO sessions;`,
   // Automatic searches the app follows to their end, so a restart resumes them and the client can show the outcome.
   `CREATE TABLE search_runs (id INTEGER PRIMARY KEY, service TEXT NOT NULL CHECK (service IN ('sonarr', 'radarr')), target TEXT NOT NULL, started_by TEXT NOT NULL CHECK (started_by IN ('search', 'monitor')), state TEXT NOT NULL CHECK (state IN ('running', 'finished', 'failed')), phase TEXT NOT NULL CHECK (phase IN ('season', 'episodes', 'movie')), command_id INTEGER NOT NULL, history_mark INTEGER NOT NULL, grabbed TEXT NOT NULL, message TEXT, started_at INTEGER NOT NULL, ended_at INTEGER) STRICT;`,
 ] as const;

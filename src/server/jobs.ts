@@ -13,6 +13,8 @@ type Job = {
   intervalMs: number;
   run: () => void | Promise<void>;
   inFlight?: Promise<void>;
+  // A trigger that arrived mid-run; the run may have read its source before the change, so one more follows.
+  again?: boolean;
   lastStartedAt: number | null;
   lastFinishedAt: number | null;
   lastFailed: boolean;
@@ -44,6 +46,10 @@ export const createJobRunner = (timers: Timers = globalTimers, now: () => number
       .finally(() => {
         job.lastFinishedAt = now();
         job.inFlight = undefined;
+        if (job.again === true && started) {
+          job.again = false;
+          tick(job);
+        }
       });
   };
 
@@ -58,6 +64,13 @@ export const createJobRunner = (timers: Timers = globalTimers, now: () => number
       started = true;
       startedAt = now();
       for (const job of jobs.values()) handles.push(timers.setInterval(() => tick(job), job.intervalMs));
+    },
+    // Runs a job now, or once more after the run in flight; triggers during one run share that one extra run.
+    trigger(name: string) {
+      const job = jobs.get(name);
+      if (job === undefined || !started) return;
+      if (job.inFlight === undefined) tick(job);
+      else job.again = true;
     },
     // A job is late when it has not finished within three intervals, counted from start when it never ran.
     status() {

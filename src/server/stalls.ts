@@ -1,14 +1,14 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type ArrServices, valueOrThrow } from './services/arr.js';
 import type { createLabels } from './labels.js';
-import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
+import { findGrab, type Grab, isOwnedTorrent, listQueue, type Service, WATCH_KINDS } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
-import { findOpenProblem, RELEASE_LIMIT } from './problems.js';
+import { findOpenProblem, listOpenProblems, RELEASE_LIMIT } from './problems.js';
 import { searchSeasonFirst } from './seasonSearch.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import type { Removal } from './torrentFiles.js';
 import { listTorrents, type Torrent } from './torrents.js';
-import { listCooldowns, type createTrackerWatch } from './trackers.js';
+import { listCooldowns, NOT_WATCHED, type createTrackerWatch } from './trackers.js';
 
 type Problems = ReturnType<typeof createProblems>;
 type TrackerWatch = ReturnType<typeof createTrackerWatch>;
@@ -304,6 +304,10 @@ export const createStallFix = (options: {
     const at = now();
     const torrents = listTorrents(database);
     const byHash = new Map(torrents.map((torrent) => [torrent.hash, torrent]));
+    // Flags opened before torrents nobody here grabbed were ignored close here.
+    for (const problem of listOpenProblems(database, WATCH_KINDS)) {
+      if (problem.subject.type === 'torrent' && !isOwnedTorrent(database, problem.subject.id)) problems.setState(problem.id, 'resolved', NOT_WATCHED);
+    }
     const requested = new Set(trackers.replacementRequests().map((issue) => issue.hash));
     for (const hash of requested) {
       if ((readWatch(database, hash)?.replacedAt ?? null) !== null) {
@@ -313,7 +317,7 @@ export const createStallFix = (options: {
       await replace(byHash.get(hash), hash, 'The tracker can\'t serve this torrent.');
     }
     for (const torrent of torrents) {
-      if (torrent.goneAt !== null || requested.has(torrent.hash)) continue;
+      if (torrent.goneAt !== null || requested.has(torrent.hash) || !isOwnedTorrent(database, torrent.hash)) continue;
       clearRecovered(torrent);
       if (torrent.complete) continue;
       flagLongUnfinished(torrent, at);

@@ -17,9 +17,9 @@ The only sanctioned way to build, test, review, land and deploy this repo. Hooks
 - `build.sh` → compile and typecheck server and client.
 - `test.sh` → the test suite; `--full`, `--review-script`, `--production` modes.
 - `review-branch.sh` → picks and runs the branch review, posts the `review` status.
-- `test-review-branch.sh` → self-test for `review-branch.sh`.
-- `test-guard-agents-docs.sh` → self-test for the AGENTS.md budget guard.
+- `test-review-branch.sh`, `test-guard-agents-docs.sh`, `test-screenshots.sh` → self-tests; `test.sh --review-script` runs them.
 - `setup.sh` → one-time hook setup; `--sync-main` installs the main mirror job.
 - `sync-main.sh` → keeps local `main` matching `origin/main`.
 - `deploy.sh`, `ensure-running.sh` → deploy to and keep the server running on the host.
 - `launchd/` → macOS job template used by `setup.sh --sync-main`.
+- `screenshots/` → headless-Chrome shots of the title page against the arr fake; macOS.

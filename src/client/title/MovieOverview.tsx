@@ -3,6 +3,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { CollapsibleContent } from '@/components/ui/collapsible-content';
 import { Collapsible } from '@/components/ui/collapsible-trigger';
 import { LabelGroup } from '@/components/ui/label-group';
+import { RowSecondVersionHeader } from '@/components/ui/row-second-version';
 import { Table } from '@/components/ui/table';
 import { formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
@@ -75,7 +76,7 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
         badges={(
           <>
             <Badge variant="strong">{versionCount > 1 ? `In library · ${versionCount} versions` : 'In library'}</Badge>
-            {word !== null && <Badge variant={wordLook(word, live !== undefined)}>{word.charAt(0).toUpperCase() + word.slice(1)}</Badge>}
+            {word !== null && <Badge variant={wordLook(word, live !== undefined)} percent={live?.percent ?? undefined}>{word.charAt(0).toUpperCase() + word.slice(1)}</Badge>}
           </>
         )}
         facts={facts}
@@ -89,7 +90,15 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
       <div className="flex flex-col pt-2 pb-10">
         <LabelGroup count={(detail.file === null ? 0 : 1) + detail.secondVersions.length}>Versions</LabelGroup>
         <Table>
-          {detail.file !== null && <TrackedVersion file={detail.file} seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { movieId: detail.id })} indent />}
+          <RowSecondVersionHeader />
+          {detail.file !== null && (
+            <TrackedVersion
+              file={detail.file}
+              seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { movieId: detail.id })}
+              hitAndRun={detail.trackedHitAndRun[0]?.hitAndRun ?? null}
+              inset={false}
+            />
+          )}
           <Collapsible open={picking}>
             <CollapsibleContent className="gap-0 p-0">
               <Suspense fallback={null}>
@@ -109,7 +118,7 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
           {detail.file === null && detail.secondVersions.length === 0 && <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">No file yet.</p>}
           <SecondVersionRows
             versions={detail.secondVersions}
-            indent
+            inset={false}
             subject={detail.title}
             trackedQuality={detail.file?.quality ?? null}
             onChanged={setVersions}

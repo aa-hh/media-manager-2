@@ -495,7 +495,7 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
           )
           : undefined}
       >
-        {list.kind === 'loading' && Array.from({ length: 4 }, (_, index) => <RowReleaseSkeleton key={index} />)}
+        {list.kind === 'loading' && Array.from({ length: 4 }, (_, index) => <RowReleaseSkeleton key={index} index={index} />)}
         {list.kind === 'ready' && visible.map((release) => {
           const isBest = release.guid === best;
           const cooling = release.hitAndRun?.cooldown === true;
@@ -548,15 +548,17 @@ export function PickRelease({ target, name, episodes, movieHasFile, variant, liv
           ? `${seasonName(target.seasonNumber)} ${target.seasonNumber === 0 ? 'are' : 'is'} already in your library`
           : 'This is already in your library'}
         subject={decisionSubject}
+        escOnCancel
         footerCallout={outcome === undefined || outcome.guid !== picked ? undefined : <Callout look={outcome.outOfDate ? 'warning' : 'risk'} title={outcome.message} />}
         actions={(
           <>
-            <Button variant="outline" kbd="Esc" data-cancel="" disabled={grabbing} onClick={() => setPanel(undefined)}>Cancel</Button>
+            <Button variant="outline" kbd="Esc" data-cancel="" onClick={() => setPanel(undefined)}>Cancel</Button>
             <Button
               size="large"
               kbd="↵"
               icon={grabbing ? <Spinner className="text-current" /> : undefined}
-              disabled={grabbing || picked === undefined}
+              loading={grabbing}
+              disabled={picked === undefined}
               onClick={confirm}
             >
               {confirmLabel}

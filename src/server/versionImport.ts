@@ -1,10 +1,12 @@
 import { linkSync, mkdirSync, rmSync, statSync } from 'node:fs';
-import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { findOpenProblem, type createProblems, type Subject } from './problems.js';
 import type { FailureCode } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import { JellyfinKeyRefused } from './services/jellyfin.js';
+import type { Library, MediaServer } from './services/mediaServer.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import { listTorrents } from './torrents.js';
 
@@ -34,11 +36,20 @@ export const FOLDER_PROBLEM_KIND = 'second_version_folder';
 const RETRYABLE_CODES = new Set(['EACCES', 'EPERM', 'ENOENT', 'EROFS']);
 class FolderError extends Error {}
 
+// Jellyfin scans after a delay and confirms nothing, so a merge is retried on later runs (30 seconds apart) up to this many times.
+export const MERGE_TRIES = 20;
 const VIDEO_EXTENSIONS = new Set(['.mkv', '.mp4', '.avi', '.m2ts', '.ts']);
-// Plex files a name ending in one of these after a separator as an extra, never as a version.
-const EXTRAS_WORDS = ['behindthescenes', 'deleted', 'featurette', 'interview', 'scene', 'short', 'trailer', 'other', 'sample'];
+// Plex or Jellyfin files a name ending in one of these after a separator as an extra, never as a version.
+const EXTRAS_WORDS = ['behindthescenes', 'deleted', 'featurette', 'interview', 'scene', 'short', 'trailer', 'other', 'sample', 'clip', 'extra', 'deletedscene'];
 const EXTRAS_ENDING = new RegExp(`(?:^|[-_. ]+)(?:${EXTRAS_WORDS.join('|')})$`, 'i');
 const serviceWords: Record<Service, string> = { sonarr: 'Sonarr', radarr: 'Radarr' };
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+const positiveInteger = (value: unknown) => (
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
+);
+const idOf = (value: unknown) => (isRecord(value) ? positiveInteger(value.id) : null);
 
 // Removes what file systems or Plex would misread: path and wildcard characters, and braces, so no {edition-…} tag appears.
 export const cleanName = (text: string) => text
@@ -76,21 +87,17 @@ export const episodeCodes = (fileName: string) => {
 
 const pad = (value: number) => String(value).padStart(2, '0');
 const isVideo = (path: string) => VIDEO_EXTENSIONS.has(extname(path).toLowerCase()) && !basename(path).toLowerCase().includes('sample');
-const isInside = (folder: string, path: string) => {
-  const inside = relative(folder, path);
-  return !inside.startsWith('..') && !isAbsolute(inside);
-};
 
 // A finished second-version torrent becomes hardlinks in the versions folder, so it keeps seeding and uses no more disk.
 export const createVersionImport = (options: {
   database: DatabaseSync;
   rtorrent: { call: XmlRpcCall };
   arr: ArrServices;
-  plex: { request: (path: string) => Promise<{ status: number; body: unknown }> };
+  mediaServer: () => MediaServer;
   problems: Problems;
   now?: () => number;
 }) => {
-  const { database, rtorrent, arr, plex, problems } = options;
+  const { database, rtorrent, arr, mediaServer, problems } = options;
   const now = options.now ?? Date.now;
 
   const versionsFolder = (service: Service) => {
@@ -247,30 +254,24 @@ export const createVersionImport = (options: {
     }
   };
 
-  // Plex unset or unreachable skips the scan: its own scheduled scan finds the file later.
+  // A media server unset or unreachable skips the scan: its own scheduled scan finds the file later.
   const scan = async (service: Service, root: string, folders: Set<string>) => {
-    let body: unknown;
+    const server = mediaServer();
+    let library: Library | undefined;
     try {
-      const result = await plex.request('/library/sections');
-      if (result.status < 200 || result.status > 299) return;
-      body = result.body;
+      library = await server.findLibraryFor(root, service === 'radarr' ? 'movie' : 'show');
     } catch {
       return;
     }
-    const container = (body as { MediaContainer?: { Directory?: unknown } } | undefined)?.MediaContainer;
-    const sections = Array.isArray(container?.Directory) ? container.Directory as Array<Record<string, unknown>> : [];
-    const type = service === 'radarr' ? 'movie' : 'show';
-    const section = sections.find((item) => item.type === type && Array.isArray(item.Location)
-      && (item.Location as Array<Record<string, unknown>>).some((location) => typeof location.path === 'string' && isInside(location.path, root)));
     const subject: Subject = { type: 'dependency', service, id: root };
-    if (section === undefined || (typeof section.key !== 'string' && typeof section.key !== 'number')) {
-      problems.open({ kind: PLEX_PROBLEM_KIND, subject, state: 'needs_you', summary: `Add ${root} to the Plex ${service === 'radarr' ? 'Movies' : 'TV'} library.` });
+    if (library === undefined) {
+      problems.open({ kind: PLEX_PROBLEM_KIND, subject, state: 'needs_you', summary: `Add ${root} to the ${server.label} ${service === 'radarr' ? 'Movies' : 'TV'} library.` });
       return;
     }
-    resolveOpen(PLEX_PROBLEM_KIND, subject, `Plex reads ${root} now.`);
+    resolveOpen(PLEX_PROBLEM_KIND, subject, `${server.label} reads ${root} now.`);
     for (const folder of folders) {
       try {
-        await plex.request(`/library/sections/${encodeURIComponent(String(section.key))}/refresh?path=${encodeURIComponent(folder)}`);
+        await server.refresh(library, folder);
       } catch {
         return;
       }
@@ -348,6 +349,64 @@ export const createVersionImport = (options: {
     hash: String(row.hash),
   }));
 
+  // Jellyfin groups versions only within one folder, so each imported version is merged with the tracked file by hand.
+  // A try counts only when Radarr or Sonarr and Jellyfin answered, so an outage spends none; a rejected request or a version
+  // Jellyfin never finds spends one, and stops being tried after MERGE_TRIES. A rename or upgrade of the tracked file splits
+  // the merge, so a tracked path that differs from the one stored on the row resets the tries and the version is merged
+  // again. A file replaced under the same path keeps its Jellyfin item and its merge, so the path alone is enough.
+  // razor: a scan that runs while the tracked file is gone, before its replacement lands under the same path, hides the
+  // version until the next rename; looking the version up by its stored Jellyfin item id is the upgrade if that shows up.
+  // Rows at MERGE_TRIES are checked again only once a Radarr or Sonarr rename or download event clears merge_checked_at
+  // (trackedFileChanged), and a series' episodes are fetched once per run. merge_checked_at holds when a capped row was
+  // last checked, or NULL while a check is owed.
+  // razor: an event sent while this app is down is not replayed, so that rename stays split until the next event for the
+  // title; a daily check of capped rows is the upgrade if that shows up.
+  // Counts trackedFileChanged calls, so a run that awaited Radarr or Sonarr while an event arrived does not record a check
+  // whose answer may predate the rename.
+  let changes = 0;
+  const mergeVersions = async () => {
+    const server = mediaServer();
+    if (server.mergeVersions === undefined) return;
+    const at = now();
+    const changesAtStart = changes;
+    const imported = database.prepare("SELECT id, service, movie_id, series_id, episode_id, file_path, merge_tries, tracked_path, merge_checked_at FROM second_versions WHERE state = 'imported' ORDER BY id").all();
+    const episodesBySeries = new Map<number, ReturnType<typeof arr.sonarr.episodes>>();
+    for (const row of imported) {
+      let tries = Number(row.merge_tries);
+      if (tries >= MERGE_TRIES && row.merge_checked_at !== null) continue;
+      try {
+        let tracked: string | null | undefined;
+        let season: number | undefined;
+        if (row.service === 'radarr') {
+          const movie = await arr.radarr.movie(Number(row.movie_id));
+          if (movie.kind !== 'ok' && movie.kind !== 'not_found') continue;
+          tracked = movie.kind === 'ok' ? movie.value.file?.path : undefined;
+        } else {
+          const seriesId = Number(row.series_id);
+          if (!episodesBySeries.has(seriesId)) episodesBySeries.set(seriesId, arr.sonarr.episodes(seriesId, { withFiles: true }));
+          const episodes = await episodesBySeries.get(seriesId)!;
+          if (episodes.kind !== 'ok' && episodes.kind !== 'not_found') continue;
+          const episode = episodes.kind === 'ok' ? episodes.value.find((item) => item.id === Number(row.episode_id)) : undefined;
+          tracked = episode?.file?.path;
+          season = episode?.seasonNumber;
+        }
+        if (changes === changesAtStart) database.prepare('UPDATE second_versions SET merge_checked_at = ? WHERE id = ?').run(at, row.id);
+        if (typeof tracked === 'string' && tracked !== row.tracked_path) {
+          // The first path seen is only recorded, so rows imported before this column existed are not merged again.
+          if (row.tracked_path !== null) tries = 0;
+          database.prepare('UPDATE second_versions SET tracked_path = ?, merge_tries = ? WHERE id = ?').run(tracked, tries, row.id);
+        }
+        if (tries >= MERGE_TRIES) continue;
+        const merged = typeof tracked === 'string' && await server.mergeVersions(row.service === 'radarr' ? 'movie' : 'show', tracked, String(row.file_path), season);
+        database.prepare('UPDATE second_versions SET merge_tries = ? WHERE id = ?').run(merged ? MERGE_TRIES : tries + 1, row.id);
+      } catch (error) {
+        // A refused key refuses every row, so the rest wait for the next run; the health check reports the key.
+        if (error instanceof JellyfinKeyRefused) return;
+        // Jellyfin or Radarr/Sonarr unreachable, or Jellyfin answering 5xx: no try spent.
+      }
+    }
+  };
+
   const run = async () => {
     const torrents = listTorrents(database);
     const complete = new Set(torrents.filter((torrent) => torrent.goneAt === null && torrent.complete).map((torrent) => torrent.hash));
@@ -388,7 +447,35 @@ export const createVersionImport = (options: {
         resolveOpen(FOLDER_PROBLEM_KIND, folderSubject(service), `An import run for hostPaths versions.${service} hit no folder error.`);
       }
     }
+    await mergeVersions();
   };
 
-  return { run, scan };
+  // A Radarr or Sonarr rename or download (a download over an existing file is an upgrade) may move the tracked file, so
+  // the title's imported rows are checked on the next run. Sonarr's Rename lists file ids, not episode ids, so it marks
+  // every row of the series. The payload comes from outside: anything malformed marks nothing, and nothing is thrown.
+  const trackedFileChanged = (service: Service, payload: unknown) => {
+    if (!isRecord(payload) || (payload.eventType !== 'Rename' && payload.eventType !== 'Download')) return;
+    changes += 1;
+    try {
+      if (service === 'radarr') {
+        const movieId = idOf(payload.movie);
+        if (movieId !== null) database.prepare("UPDATE second_versions SET merge_checked_at = NULL WHERE state = 'imported' AND service = 'radarr' AND movie_id = ?").run(movieId);
+        return;
+      }
+      const seriesId = idOf(payload.series);
+      if (seriesId === null) return;
+      const update = "UPDATE second_versions SET merge_checked_at = NULL WHERE state = 'imported' AND service = 'sonarr' AND series_id = ?";
+      if (payload.episodes === undefined) {
+        database.prepare(update).run(seriesId);
+        return;
+      }
+      if (!Array.isArray(payload.episodes)) return;
+      const episodeIds = payload.episodes.map(idOf).filter((id) => id !== null);
+      if (episodeIds.length > 0) database.prepare(`${update} AND episode_id IN (${episodeIds.map(() => '?').join(', ')})`).run(seriesId, ...episodeIds);
+    } catch (error) {
+      console.error(`Marking second versions for a merge check failed: ${(error as Error).message}`);
+    }
+  };
+
+  return { run, scan, trackedFileChanged };
 };

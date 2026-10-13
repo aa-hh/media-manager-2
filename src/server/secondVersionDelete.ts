@@ -145,7 +145,7 @@ export const createSecondVersionDelete = (options: {
         statSync(folder);
         await options.scan(service, root, new Set([folder]));
       } catch {
-        // A folder gone since the delete leaves Plex to its own scheduled scan.
+        // A folder gone since the delete leaves the media server to its own scheduled scan.
       }
     }
 

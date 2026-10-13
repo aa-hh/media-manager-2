@@ -258,6 +258,14 @@ export const createImportFix = (options: {
         save({ ...readHandling(service, downloadId) as Handling, done: true });
         closeImportProblems(downloadId, 'The download is no longer blocked in the queue.');
       }
+      // A problem handed to the owner leaves its row finished, so the sweep above skips it. Import problems carry no service,
+      // so they close only once neither queue lists the download.
+      const left = database.prepare(`
+        SELECT DISTINCT h.download_id FROM import_handling h JOIN problems p
+          ON p.subject_type = 'torrent' AND p.service = '' AND p.subject_id = h.download_id AND p.state != 'resolved' AND p.kind LIKE 'import\\_%' ESCAPE '\\'
+        WHERE h.service = ? AND NOT EXISTS (SELECT 1 FROM arr_queue q WHERE q.download_id = h.download_id)
+      `).all(service).map((row) => String(row.download_id));
+      for (const downloadId of left) closeImportProblems(downloadId, 'The download is no longer in the queue.');
     }
   };
 

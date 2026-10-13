@@ -1,25 +1,25 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
-import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search } from 'lucide-react';
+import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search, X } from 'lucide-react';
 import { Fragment, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
-import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { BarSelection, BarSelectionAction } from '@/components/ui/bar-selection';
 import { Button } from '@/components/ui/button';
 import { Collapsible } from '@/components/ui/collapsible-trigger';
 import { EmptyState } from '@/components/ui/empty-state';
-import { RowEpisode } from '@/components/ui/row-episode';
-import { RowSeason } from '@/components/ui/row-season';
+import { RowEpisode, RowEpisodeHeader } from '@/components/ui/row-episode';
+import { RowSeason, RowSeasonHeader } from '@/components/ui/row-season';
 import { StatusInline } from '@/components/ui/status-inline';
 import { Table } from '@/components/ui/table';
 import { ToggleBookmark } from '@/components/ui/toggle-bookmark';
 import { Tooltip } from '@/components/ui/tooltip';
 import { formatBytes, type Snapshot } from '../downloads/model';
-import type { EpisodeDetail, SecondVersion, SeriesDetail } from '../library/api';
-import { progressText } from '../library/grid';
-import { downloadingEpisodes, seedingFacts, type SubjectProgress } from '../library/progress';
+import type { EpisodeDetail, SecondVersion, SeriesDetail, TrackedHitAndRun } from '../library/api';
+import { seedingFacts, type SubjectProgress } from '../library/progress';
 import type { ReleaseTarget } from '../PickRelease';
 import { lazyScreen } from '../lazyScreen';
 import { EpisodeDetails } from './EpisodeDetails';
-import { episodeMarks, episodeWord, relativeAirDate, seasonAiredState, seasonMonitoredState } from './rows';
+import { episodeMarks, episodeWord, relativeAirDate, seasonAirDates, seasonMonitoredState, seasonQuality, seasonStatus } from './rows';
+import { StatusChip } from './SecondVersions';
 import { moveFocus, rangeBetween, selectionSummary, type RowRef } from './selection';
 import { sendAction } from './TitleHeader';
 
@@ -33,15 +33,16 @@ export type MonitorChange =
   | { kind: 'season'; seasonNumber: number; monitored: boolean }
   | { kind: 'episodes'; episodeIds: number[]; monitored: boolean };
 
-const airedLabels = { aired: 'Aired', airing: 'Airing', upcoming: 'Upcoming' } as const;
 const seasonKey = (seasonNumber: number) => `season:${seasonNumber}`;
 const episodeKey = (id: number) => `episode:${id}`;
-const code = (episode: EpisodeDetail) => `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
 
 // Height 0 to full as a season or an episode's details open (duration-size); the reverse at duration-fast.
 const openPanel = 'h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-size) ease-out data-ending-style:h-0 data-ending-style:duration-(--duration-fast) data-ending-style:ease-in data-starting-style:h-0 motion-reduce:transition-none';
 
-function IconAction({ label, icon, pressed = false, onClick }: { label: string; icon: ReactNode; pressed?: boolean; onClick: () => void }) {
+// The button that opened a release list turns black with an X while the list is open, so it reads as the way to close it.
+const closeLook = 'before:bg-foreground not-data-disabled:hover:before:bg-foreground/85 not-data-disabled:active:before:bg-foreground';
+
+function IconAction({ label, icon, pressed = false, className, onClick }: { label: string; icon: ReactNode; pressed?: boolean; className?: string; onClick: () => void }) {
   return (
     <Tooltip text={label}>
       <Button
@@ -50,7 +51,7 @@ function IconAction({ label, icon, pressed = false, onClick }: { label: string; 
         iconOnly
         icon={icon}
         aria-label={label}
-        className={pressed ? 'bg-surface-pressed' : undefined}
+        className={className ?? (pressed ? 'bg-surface-pressed' : undefined)}
         onClick={(event) => { event.stopPropagation(); onClick(); }}
       />
     </Tooltip>
@@ -58,9 +59,17 @@ function IconAction({ label, icon, pressed = false, onClick }: { label: string; 
 }
 
 
-const stateLook = (word: string, live: SubjectProgress | undefined): BadgeVariant => {
-  if (live !== undefined) return live.tone === 'risk' ? 'risk' : 'live';
-  return word === 'Missing' || word === 'Below cutoff' ? 'warning' : 'neutral';
+// The download circle for a live download: dark red when its import is blocked, light red for other risks.
+const circleFor = (live: SubjectProgress) => {
+  if (live.word === 'import blocked') return 'import-blocked' as const;
+  if (live.tone === 'risk') return 'stalled' as const;
+  return live.word === 'importing' ? 'importing' as const : 'downloading' as const;
+};
+
+// The episode's one status chip: live with the download circle, amber for missing or below cutoff.
+const episodeLook = (word: string, live: SubjectProgress | undefined): Parameters<typeof StatusChip>[0]['look'] => {
+  if (live !== undefined) return { label: word, variant: live.tone === 'risk' ? 'risk' : undefined, circle: circleFor(live), percent: live.percent ?? 0 };
+  return { label: word, variant: word === 'Missing' || word === 'Below cutoff' ? 'warning' : undefined };
 };
 
 type Sent = 'sent' | 'failed';
@@ -96,6 +105,8 @@ type EpisodeRowProps = {
   problem: string | undefined;
   sent: Sent | undefined;
   secondVersions: SecondVersion[];
+  /** The rule against the torrent behind the tracked file, when this app grabbed it. */
+  hitAndRun: TrackedHitAndRun['hitAndRun'] | null;
   /** Only while the details are open: the seeding facts there follow the live snapshot. */
   snapshot: Snapshot | undefined;
   profile: string | null;
@@ -103,6 +114,8 @@ type EpisodeRowProps = {
   pickBand: ReactNode;
   handlers: RowHandlers;
   onUnauthenticated: () => void;
+  /** The season's last episode ends the group, so it takes the season line. */
+  last?: boolean;
 };
 
 // The progress map is rebuilt on every stream event, so its entries are compared by what the row prints.
@@ -116,7 +129,7 @@ const noVersions: SecondVersion[] = [];
 const noEpisodes: EpisodeDetail[] = [];
 
 const EpisodeRow = memo(function EpisodeRow({
-  episode, live, protectedIds, now, selected, detailsOpen, pickOpen, tabIndex, problem, sent, secondVersions, snapshot, profile, seriesPath, pickBand, handlers, onUnauthenticated,
+  episode, live, protectedIds, now, selected, detailsOpen, pickOpen, tabIndex, problem, sent, secondVersions, hitAndRun, snapshot, profile, seriesPath, pickBand, handlers, onUnauthenticated, last = false,
 }: EpisodeRowProps) {
   const rowKey = episodeKey(episode.id);
   const word = episodeWord(episode, live, protectedIds, now);
@@ -130,9 +143,10 @@ const EpisodeRow = memo(function EpisodeRow({
         aria-selected={selected}
         onFocus={(event) => { if (event.target === event.currentTarget) handlers.focus(rowKey); }}
         onClick={(event) => handlers.click(event, rowKey)}
-        className="pl-13 select-none"
+        className="select-none"
         selected={selected || detailsOpen}
         open={pickOpen}
+        line={last ? 'season' : 'episode'}
         marker={live?.tone === 'risk' ? 'risk' : word === 'Missing' ? 'warning' : undefined}
         bookmark={<ToggleBookmark state={episode.monitored ? 'all' : 'none'} onToggle={() => handlers.toggle(episode)} />}
         number={`E${String(episode.episodeNumber).padStart(2, '0')}`}
@@ -143,13 +157,13 @@ const EpisodeRow = memo(function EpisodeRow({
           </>
         )}
         aired={relativeAirDate(episode.airDate, now) || '–'}
-        file={episode.file?.quality == null ? undefined : <Badge>{episode.file.quality}</Badge>}
-        state={(
+        quality={episode.file?.quality ?? undefined}
+        size={episode.file === null ? undefined : formatBytes(episode.file.size)}
+        status={(
           <>
-            {word !== null
-              ? <Badge variant={stateLook(word, live)}>{word}</Badge>
-              : upcoming && <Badge variant="outline">Not out yet</Badge>}
-            {versionCount > 1 && <Badge>{`${versionCount} versions`}</Badge>}
+            {word !== null && <StatusChip look={episodeLook(word, live)} />}
+            {word === null && upcoming && <StatusChip look={{ label: 'Not out yet', variant: 'plain' }} />}
+            {word === null && !upcoming && versionCount > 1 && <StatusChip look={{ label: `${versionCount} versions`, variant: 'plain' }} />}
             {statusLine(problem, sent)}
           </>
         )}
@@ -163,9 +177,9 @@ const EpisodeRow = memo(function EpisodeRow({
               onClick={() => handlers.search(rowKey, { service: 'sonarr', kind: 'episodes', episodeIds: [episode.id] })}
             />
             <IconAction
-              label="Pick a release"
-              icon={<List className="text-muted-foreground" />}
-              pressed={pickOpen}
+              label={pickOpen ? 'Close releases' : 'Pick a release'}
+              icon={pickOpen ? <X className="text-background" /> : <List className="text-muted-foreground" />}
+              className={pickOpen ? closeLook : undefined}
               onClick={() => handlers.pick(episode)}
             />
             <IconAction
@@ -182,6 +196,7 @@ const EpisodeRow = memo(function EpisodeRow({
           <EpisodeDetails
             episode={episode}
             seeding={snapshot === undefined ? [] : seedingFacts(snapshot, { episodeId: episode.id })}
+            hitAndRun={hitAndRun}
             secondVersions={secondVersions}
             onSecondVersions={handlers.secondVersions}
             profile={profile}
@@ -224,6 +239,12 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
     }
     return map;
   }, [detail.secondVersions]);
+  // The first entry per episode is its newest import, so it is the torrent behind the file Sonarr tracks now.
+  const ruleByEpisode = useMemo(() => {
+    const map = new Map<number, TrackedHitAndRun['hitAndRun']>();
+    for (const tracked of detail.trackedHitAndRun ?? []) for (const id of tracked.episodeIds) if (!map.has(id)) map.set(id, tracked.hitAndRun);
+    return map;
+  }, [detail.trackedHitAndRun]);
   const [open, setOpen] = useState<Set<number>>(() => new Set(seasons.length === 0 ? [] : [seasons[0].seasonNumber]));
   const [panel, setPanel] = useState<Panel | null>(null);
   // The pick panel opened last. Its row keeps the inset's content while it animates closed; every other row gets none,
@@ -458,17 +479,19 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
   return (
     <div ref={containerRef} onKeyDown={onKeyDown}>
       <Table aria-label="Seasons">
+        <RowSeasonHeader />
         {seasons.map((season) => {
           const key = seasonKey(season.seasonNumber);
           const episodes = episodesOf(season.seasonNumber);
           const isOpen = open.has(season.seasonNumber);
           const label = seasonLabel(season.seasonNumber);
-          const downloading = downloadingEpisodes(progress, episodes.map((episode) => episode.id));
           const monitored = seasonState(season);
           const { episodeFileCount, episodeCount, sizeOnDisk } = season.statistics;
-          const off = episodes.filter((episode) => !episode.monitored);
-          const summary = monitored !== 'mixed' ? undefined
-            : `${episodes.length - off.length} of ${episodes.length} monitored${off.length <= 2 ? ` · ${off.map(code).join(', ')} off` : ''}`;
+          const onCount = episodes.filter((episode) => episode.monitored).length;
+          const counts = episodes.length === 0
+            ? 'No episodes listed yet'
+            : `${episodes.length} ${episodes.length === 1 ? 'episode' : 'episodes'} · ${onCount === episodes.length ? 'all' : onCount} monitored`;
+          const status = seasonStatus(episodes, (episode) => progress.get(episodeKey(episode.id)), { onDisk: episodeFileCount, total: episodeCount }, now);
           return (
             <Fragment key={key}>
               <RowSeason
@@ -482,20 +505,22 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                 open={isOpen}
                 bookmark={<ToggleBookmark state={monitored} onToggle={() => toggleSeason(season.seasonNumber)} />}
                 title={label}
-                progress={episodeCount === 0 ? 0 : Math.min(100, (episodeFileCount / episodeCount) * 100)}
-                progressTone={episodeCount > 0 && episodeFileCount >= episodeCount ? 'done' : undefined}
-                count={(
-                  <>
-                    {episodes.length === 0 && season.statistics.totalEpisodeCount === 0
-                      ? 'No episodes listed yet'
-                      : progressText(episodeFileCount, downloading, episodeCount)}
-                    {statusOf(key)}
-                  </>
+                counts={<>{counts}{statusOf(key)}</>}
+                airDates={seasonAirDates(episodes, now) || '–'}
+                status={(
+                  <StatusChip
+                    look={{
+                      label: status.label,
+                      variant: status.look === 'live' ? undefined : status.look,
+                      circle: status.live === undefined ? undefined : circleFor(status.live),
+                      percent: status.live?.percent ?? 0,
+                    }}
+                  />
                 )}
-                status={airedLabels[seasonAiredState(episodes, now)]}
+                quality={seasonQuality(episodes) || '–'}
                 size={sizeOnDisk > 0 ? formatBytes(sizeOnDisk) : '–'}
-                summary={summary}
                 monitored={monitored !== 'none'}
+                marker={status.look === 'risk' ? 'risk' : status.look === 'warning' ? 'warning' : undefined}
                 actions={(
                   <>
                     <IconAction
@@ -504,9 +529,9 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                       onClick={() => void search(key, { service: 'sonarr', kind: 'season', seriesId, seasonNumber: season.seasonNumber })}
                     />
                     <IconAction
-                      label="Pick a season pack"
-                      icon={<List className="text-muted-foreground" />}
-                      pressed={pickOpen(key)}
+                      label={pickOpen(key) ? 'Close season packs' : 'Pick a season pack'}
+                      icon={pickOpen(key) ? <X className="text-background" /> : <List className="text-muted-foreground" />}
+                      className={pickOpen(key) ? closeLook : undefined}
                       onClick={() => openPick(key, seasonTarget(season.seasonNumber))}
                     />
                   </>
@@ -517,7 +542,8 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
               </Collapsible>
               <Collapsible open={isOpen}>
                 <CollapsiblePrimitive.Panel aria-label={label} className={openPanel}>
-                  {episodes.map((episode) => {
+                  {episodes.length > 0 && <RowEpisodeHeader />}
+                  {episodes.map((episode, index) => {
                     const rowKey = episodeKey(episode.id);
                     const detailsOpen = panel?.key === rowKey && panel.panel === 'details';
                     return (
@@ -534,12 +560,14 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                         problem={problems[rowKey]}
                         sent={sent[rowKey]}
                         secondVersions={versionsByEpisode.get(episode.id) ?? noVersions}
+                        hitAndRun={ruleByEpisode.get(episode.id) ?? null}
                         snapshot={detailsOpen ? snapshot : undefined}
                         profile={detail.qualityProfile?.name ?? null}
                         seriesPath={detail.path}
                         pickBand={pickBand(rowKey)}
                         handlers={handlers}
                         onUnauthenticated={onUnauthenticated}
+                        last={index === episodes.length - 1}
                       />
                     );
                   })}

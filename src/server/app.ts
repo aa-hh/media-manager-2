@@ -7,7 +7,7 @@ import { deleteCookie, setCookie } from 'hono/cookie';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import { createAuthentication, isLoopback } from './auth.js';
+import { createAuthentication, isLoopback, type JellyfinQuickConnectStartResult, type JellyfinSignInResult } from './auth.js';
 import { createDiscoverRoutes, type Discover } from './discover/index.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
@@ -52,6 +52,7 @@ export type CreateAppOptions = {
   setup?: Hono<SetupEnvironment>;
   api?: Hono;
   images?: Hono;
+  cache?: Hono;
   webhooks?: {
     secret(): string | undefined;
     receive(service: 'sonarr' | 'radarr', payload: unknown): 'ok' | 'ignored' | 'invalid';
@@ -340,7 +341,107 @@ export const createApp = (options: CreateAppOptions) => {
     return context.body(null, 204);
   });
 
-  for (const path of ['/auth/status', '/auth/start', '/auth/callback', '/auth/complete', '/auth/cancel', '/auth/logout']) {
+  // The answers the four Jellyfin sign-in routes share for everything but success.
+  const jellyfinRefusal = (context: Context, result: JellyfinSignInResult | JellyfinQuickConnectStartResult) => {
+    switch (result.kind) {
+      case 'not_configured': return context.json({ error: 'not_configured' }, 503);
+      case 'invalid_url': return context.json({ error: 'invalid_request' }, 400);
+      case 'owner_exists': return context.json({ error: 'owner_exists' }, 409);
+      case 'rate_limited':
+        context.header('Retry-After', String(result.retryAfter));
+        return context.json({ error: 'rate_limited' }, 429);
+      case 'refused': return context.json({ error: 'refused' }, 401);
+      case 'not_administrator': return context.json({ error: 'not_administrator', userName: result.userName, serverName: result.serverName }, 403);
+      case 'owner_only': return context.json({ error: 'owner_only' }, 403);
+      case 'off': return context.json({ error: 'quick_connect_off' }, 409);
+      case 'pending': return context.json({ status: 'pending' }, 202);
+      case 'in_progress': return context.json({ error: 'in_progress' }, 409);
+      case 'invalid_flow': return context.json({ error: 'invalid_flow' }, 401);
+      case 'flow_expired': return context.json({ error: 'flow_expired' }, 401);
+      default: return context.json({ error: 'jellyfin_unavailable' }, 503);
+    }
+  };
+
+  app.post('/auth/jellyfin/check', requireBrowserPost, async (context) => {
+    const body = await readExactJson(context, ['url']);
+    if (body === undefined || typeof body.url !== 'string') return context.json({ error: 'invalid_request' }, 400);
+    const result = await authentication.jellyfinCheck(body.url, clientOf(context));
+    if (result.kind === 'ok') return context.json({ kind: 'ok', url: result.url, serverName: result.serverName });
+    if (result.kind === 'no_answer' || result.kind === 'not_jellyfin') return context.json({ kind: result.kind });
+    return jellyfinRefusal(context, result);
+  });
+
+  // The address is sent only during first run; once a Jellyfin owner exists the saved one is used.
+  app.post('/auth/jellyfin/password', requireBrowserPost, async (context) => {
+    const body = await readExactJson(context, ['url', 'username', 'password']) ?? await readExactJson(context, ['username', 'password']);
+    if (
+      body === undefined
+      || (Object.hasOwn(body, 'url') && (typeof body.url !== 'string' || body.url === ''))
+      || typeof body.username !== 'string' || body.username === ''
+      || typeof body.password !== 'string' || body.password === ''
+    ) return context.json({ error: 'invalid_request' }, 400);
+    const session = readCookie(context.req.header('Cookie'), sessionCookieName);
+    if (session.kind === 'duplicate' || session.kind === 'invalid') {
+      clearSessionCookie(context);
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    const result = await authentication.jellyfinPassword(
+      body.url as string | undefined,
+      body.username,
+      body.password,
+      clientOf(context),
+      session.kind === 'value' ? session.value : undefined,
+    );
+    if (result.kind !== 'success') return jellyfinRefusal(context, result);
+    setCookie(context, sessionCookieName, result.session, { ...cookieOptions, maxAge: SESSION_LIFETIME_SECONDS });
+    return context.json({ expiresAt: result.expiresAt });
+  });
+
+  app.post('/auth/jellyfin/quick-connect', requireBrowserPost, async (context) => {
+    const body = await readExactJson(context, ['url']) ?? await readExactJson(context, []);
+    if (body === undefined || (Object.hasOwn(body, 'url') && typeof body.url !== 'string')) return context.json({ error: 'invalid_request' }, 400);
+    const binding = readCookie(context.req.header('Cookie'), bindingCookieName);
+    if (binding.kind === 'duplicate' || binding.kind === 'invalid') {
+      clearBindingCookie(context);
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    const result = await authentication.jellyfinQuickConnectStart(
+      body.url as string | undefined,
+      binding.kind === 'value' ? binding.value : undefined,
+      clientOf(context),
+    );
+    if (result.kind !== 'success') return jellyfinRefusal(context, result);
+    setCookie(context, bindingCookieName, result.binding, {
+      ...cookieOptions,
+      maxAge: Math.max(1, Math.ceil((result.expiresAt - now()) / 1000)),
+    });
+    return context.json({ code: result.code, expiresAt: result.expiresAt }, 201);
+  });
+
+  app.post('/auth/jellyfin/quick-connect/complete', requireBrowserPost, async (context) => {
+    if (await readExactJson(context, []) === undefined) return context.json({ error: 'invalid_request' }, 400);
+    const binding = readCookie(context.req.header('Cookie'), bindingCookieName);
+    if (binding.kind !== 'value') {
+      clearBindingCookie(context);
+      return context.json({ error: 'invalid_flow' }, 401);
+    }
+    const session = readCookie(context.req.header('Cookie'), sessionCookieName);
+    if (session.kind === 'duplicate' || session.kind === 'invalid') {
+      clearSessionCookie(context);
+      return context.json({ error: 'invalid_flow' }, 401);
+    }
+    const result = await authentication.jellyfinQuickConnectComplete(binding.value, session.kind === 'value' ? session.value : undefined);
+    if (result.kind === 'pending' || result.kind === 'in_progress' || result.kind === 'invalid_flow') return jellyfinRefusal(context, result);
+    clearBindingCookie(context);
+    if (result.kind !== 'success') return jellyfinRefusal(context, result);
+    setCookie(context, sessionCookieName, result.session, { ...cookieOptions, maxAge: SESSION_LIFETIME_SECONDS });
+    return context.json({ expiresAt: result.expiresAt });
+  });
+
+  for (const path of [
+    '/auth/status', '/auth/start', '/auth/callback', '/auth/complete', '/auth/cancel', '/auth/logout',
+    '/auth/jellyfin/check', '/auth/jellyfin/password', '/auth/jellyfin/quick-connect', '/auth/jellyfin/quick-connect/complete',
+  ]) {
     app.all(path, (context) => context.json({ error: 'method_not_allowed' }, 405));
   }
   app.all('/auth', (context) => context.json({ error: 'not_found' }, 404));
@@ -435,15 +536,14 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.releases !== undefined) app.route('/api/releases', createReleaseRoutes(options.releases));
   if (options.grabs !== undefined) app.route('/api/grabs', createGrabRoutes(options.grabs));
   if (options.secondVersions !== undefined) app.route('/api/second-versions', createSecondVersionRoutes(options.secondVersions, options.secondVersionDelete));
-  if (options.owned !== undefined && options.grabs !== undefined) {
-    app.route('/api/owned', createOwnedRoutes(options.owned, options.grabs.qualities));
-  }
+  if (options.owned !== undefined) app.route('/api/owned', createOwnedRoutes(options.owned));
   if (options.protection !== undefined) app.route('/api/protected', createProtectionRoutes(options.protection));
   if (options.library !== undefined && options.searchRuns !== undefined) app.route('/api/library', createLibraryRoutes(options.library, options.searchRuns));
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
   if (options.tmdbTitles !== undefined) app.route('/api/library', createTmdbTitleRoutes(options.tmdbTitles));
   if (options.discover !== undefined) app.route('/api/discover', createDiscoverRoutes(options.discover));
   if (options.images !== undefined) app.route('/api/images', options.images);
+  if (options.cache !== undefined) app.route('/api/cache', options.cache);
   if (options.setup !== undefined) app.route('/api/setup', options.setup);
   if (options.api !== undefined) app.route('/api', options.api);
   app.all('/api', (context) => context.json({ error: 'not_found' }, 404));

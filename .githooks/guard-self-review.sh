@@ -9,7 +9,7 @@
 # legitimate hit takes a trailing `slop-ok` comment.
 
 hook_dir=$(dirname "$0")
-COMMENT_EXTS="ts tsx js py swift go rs sh"
+COMMENT_EXTS="ts tsx js mjs py swift go rs sh"
 [ -f "$hook_dir/project.conf" ] && . "$hook_dir/project.conf"
 
 specs=""

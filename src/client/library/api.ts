@@ -107,6 +107,8 @@ export type SeriesDetail = {
   episodes: EpisodeDetail[];
   /** Only on a series already in the library. */
   secondVersions?: SecondVersion[];
+  /** Only on a series already in the library. */
+  trackedHitAndRun?: TrackedHitAndRun[];
 };
 
 export type MovieDetail = {
@@ -150,7 +152,10 @@ export type Credits = {
   cast: Array<{ name: string; character: string | null; order: number | null; photoUrl: string | null; tmdbId: number | null }>;
   crew: Array<{ name: string; job: string | null; department: string | null; photoUrl: string | null; tmdbId: number | null }>;
 };
-export type OwnedMovieDetail = MovieDetail & { credits: Credits; secondVersions: SecondVersion[] };
+export type OwnedMovieDetail = MovieDetail & { credits: Credits; secondVersions: SecondVersion[]; trackedHitAndRun: TrackedHitAndRun[] };
+
+/** The tracker rule against each imported grab's torrent, newest import first; src/server/secondVersionRows.ts is the source of truth. */
+export type TrackedHitAndRun = { episodeIds: number[]; hitAndRun: NonNullable<SecondVersion['hitAndRun']> };
 
 /** A version media-manager-2 grabbed next to the tracked one; src/server/secondVersionRows.ts is the source of truth. */
 export type SecondVersion = {

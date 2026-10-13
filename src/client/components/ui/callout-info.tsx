@@ -13,7 +13,7 @@ type CalloutInfoProps = Omit<ComponentProps<'div'>, 'title'> & {
 };
 
 /**
- * A fact to know, not a problem: muted fill, radius 8, no side bar. Unlike Callout's info look, the icon can be swapped,
+ * A fact to know, not a problem: muted fill, radius 12, no side bar. Unlike Callout's info look, the icon can be swapped,
  * such as a file icon for a rule read from the env file. Use Callout for risk and warning.
  */
 function CalloutInfo({ icon, title, action, className, children, ...props }: CalloutInfoProps) {
@@ -23,7 +23,7 @@ function CalloutInfo({ icon, title, action, className, children, ...props }: Cal
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
         <p className="font-ui text-sm font-semibold [overflow-wrap:anywhere] text-foreground">{title}</p>
         {children !== undefined && <p className="font-ui text-[13px] leading-[1.45] font-normal [overflow-wrap:anywhere] text-foreground">{children}</p>}
-        {action}
+        {action !== undefined && <div className="mt-3">{action}</div>}
       </div>
     </div>
   );

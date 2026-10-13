@@ -90,7 +90,7 @@ const PosterCard = memo(function PosterCard({ title, fields, live, downloading }
   ].filter((fact) => fact !== '');
   const path = `/${title.tv === null ? 'movie' : 'series'}/${title.id}`;
   return (
-    <li className="[contain-intrinsic-size:auto_var(--poster-width)_auto_280px] [content-visibility:auto]">
+    <li className="[contain-intrinsic-size:auto_var(--poster-width)_auto_372px] [content-visibility:auto]">
       <LibraryPosterCard
         href={path}
         onClick={openLink(path)}
@@ -193,7 +193,7 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
       <Arrival
         ready={state.kind !== 'loading'}
         skeleton={(
-          <div className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
+          <div className="grid grid-cols-[repeat(auto-fill,var(--poster-width))] justify-between gap-x-(--poster-gutter) gap-y-8">
             {Array.from({ length: SKELETON_CARDS }, (_, index) => <SkeletonPosterCard key={index} />)}
           </div>
         )}
@@ -236,7 +236,7 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
                   </div>
                 )
                 : (
-                  <ul className="flex flex-wrap gap-x-(--poster-gutter) gap-y-8">
+                  <ul className="grid grid-cols-[repeat(auto-fill,var(--poster-width))] justify-between gap-x-(--poster-gutter) gap-y-8">
                     {shown.map((title) => (
                       <PosterCard
                         key={`${title.service}:${title.id}`}

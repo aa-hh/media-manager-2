@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import { type ArrServices, type HistoryRecord, type QueueItem, valueOrThrow } from './services/arr.js';
+import type { Torrent } from './torrents.js';
 
 export type Service = 'sonarr' | 'radarr';
 
@@ -58,6 +59,13 @@ export const findGrab = (database: DatabaseSync, hash: string): Grab | undefined
   const row = database.prepare('SELECT * FROM torrent_grabs WHERE hash = ?').get(hash.toUpperCase());
   return row === undefined ? undefined : readGrab(row as Record<string, unknown>);
 };
+
+// A torrent is watched only when Sonarr, Radarr or this app grabbed it; rTorrent also holds downloads added by other means, such as music.
+export const isOwnedTorrent = (database: DatabaseSync, hash: string) => findGrab(database, hash) !== undefined
+  || database.prepare('SELECT 1 FROM second_versions WHERE upper(hash) = ? LIMIT 1').get(hash.toUpperCase()) !== undefined;
+
+// Problems the stall fix and tracker watch open on a torrent; import problems come from the queue and are left alone.
+export const WATCH_KINDS = ['stalled', 'unfinished', 'unregistered', 'tracker_down', 'damaged'];
 
 export const listGrabs = (database: DatabaseSync): Grab[] => database
   .prepare('SELECT * FROM torrent_grabs ORDER BY grabbed_at, hash')
@@ -316,6 +324,15 @@ export const createGrabTracker = (options: {
 
   return {
     reconcile,
+    // A torrent new to rTorrent gets its episodes or movie and its queue item now, so title pages show its progress within
+    // one rTorrent poll instead of after the next five-minute read. A grab made in the app already has a record, but a
+    // season grab's record lists no episodes until Sonarr's history is read.
+    readOnNewTorrents: () => events.subscribe((event) => {
+      if (event.type !== 'torrents') return;
+      const { changed, live } = event.data as { changed: Torrent[]; live?: boolean };
+      // The one-second refresh resends a new torrent every second; the full poll that found it already asked once.
+      if (live !== true && changed.some((torrent) => torrent.firstSeenAt === torrent.lastSeenAt)) void reconcile();
+    }),
     // Re-reads one service now, for example after the owner changed its queue.
     refresh: reconcileService,
     receiveWebhook,

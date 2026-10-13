@@ -1,6 +1,6 @@
 # Service logos
 
-Each file is the service's own published logo, unchanged, fetched 11 Oct 2026. rTorrent has no logo, so its slot uses ruTorrent's icon. The `.png` twins of the `.svg` files, where a PNG exists, are rasters for the design files, and `plex-icon-gold.svg` is `plex-icon.svg` refilled `#E5A00D` for the black Plex button.
+Each file is the service's own published logo, unchanged, fetched 11 Oct 2026. rTorrent has no logo, so its slot uses ruTorrent's icon. The `.png` twins of the `.svg` files, where a PNG exists, are rasters for the design files, and `plex-icon-gold.svg` is `plex-icon.svg` refilled `#E5A00D` for the black Plex button. `jellyfin-icon-black.svg` is Jellyfin's white mark (`icon-transparent-white.svg`, SHA-256 `ac3ae1839fe6f496449efa3071def6b7d622fc939eb01873cc0375a8e8b9db0a`) refilled `#07080B` for the blue Jellyfin button; `jellyfin-icon.svg`, the full-colour mark, stays the logo everywhere else.
 
 | File | Service | Source | SHA-256 |
 | --- | --- | --- | --- |
@@ -14,3 +14,4 @@ Each file is the service's own published logo, unchanged, fetched 11 Oct 2026. r
 | `tmdb-logo.svg` | TMDB | "Primary short (blue)" from https://www.themoviedb.org/about/logos-attribution, file https://www.themoviedb.org/assets/v4/logos/v2/blue_square_1-5bdc75aaebeb75dc7ae79426ddd9be3b2be1e342510f8202baf6bffa71d7f5c4.svg. TMDB requires attribution in apps using its data. | `5bdc75aaebeb75dc7ae79426ddd9be3b2be1e342510f8202baf6bffa71d7f5c4` |
 | `mdblist-logo.png` | MDBList | https://mdblist.com/static/android-chrome-512x512.png | `3c72538997d200e6108eab19ee491d70141f075c7e4071358ad9d8c02be3c928` |
 | `trakt-logo.svg` | Trakt | Trakt web app favicon, https://raw.githubusercontent.com/trakt/trakt-web/fb98b54360c5946130005b01a5862d413be03c41/projects/client/static/favicon.svg (trakt.tv/branding is behind a Cloudflare check) | `f4c6abc0b190fecdc39dd1502d0a759ffae3e3757b92d6abe92fb58f167c860c` |
+| `jellyfin-icon.svg` | Jellyfin | https://github.com/jellyfin/jellyfin-ux/blob/69a2b7b1237732a134dd501ff55b9404cf2d1601/branding/SVG/icon-transparent.svg (fetched 13 Oct 2026, licence CC BY-SA 4.0) | `817c25b47442b192250448fe48cd5f265fe9183bc75aa12030bbe335495255d1` |

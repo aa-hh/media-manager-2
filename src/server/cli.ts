@@ -1,17 +1,18 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { isAbsolute } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { backupKeyFromEnvironment, createBackup, listSnapshots, restoreBackup, restoreKeyFromEnvironment, setBackupsOff } from './backup.js';
 import { backupDestinationFromEnvironment, createBackupStore, readBackupDestination } from './backupDestination.js';
-import { openDatabase } from './database.js';
+import { defaultDatabasePath, openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { setLogSink } from './log.js';
 import { createArr } from './services/arr.js';
-import { createPlex } from './services/plex.js';
+import { createMediaServer } from './services/mediaServer.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { deleteSetting, listSettingKeys, setSetting } from './settings.js';
 import { getPreference, setPreference } from './preferences.js';
 import { BACKDROP_SOURCE_KEY, BACKDROP_SOURCES } from './backdrops.js';
+import { clearCache } from './clearCache.js';
 
 const usage = [
   'usage: node dist/server/cli.js settings set <category> <key>   (value read from stdin)',
@@ -19,6 +20,7 @@ const usage = [
   '       node dist/server/cli.js settings list',
   '       node dist/server/cli.js connections check',
   '       node dist/server/cli.js backdrop source [tmdb | trakt | fanart]   (shows the source, or switches it)',
+  '       node dist/server/cli.js cache clear   (saved title details, backdrops, Discover rows and copied images)',
   '       node dist/server/cli.js backup now   (a key made in the app, or BACKUP_KEY)',
   '       node dist/server/cli.js backup off | on',
   '       node dist/server/cli.js backup list   (BACKUP_FOLDER or BACKUP_ENDPOINT, BACKUP_BUCKET, BACKUP_ACCESS_KEY_ID, BACKUP_SECRET_ACCESS_KEY)',
@@ -32,11 +34,12 @@ const readStdin = async () => {
 };
 
 const checkConnections = async (database: DatabaseSync) => {
+  const mediaServer = createMediaServer(database, { ownerPlexId: process.env.PLEX_OWNER_ID })();
   const services = [
     ['sonarr', createArr('sonarr', database)],
     ['radarr', createArr('radarr', database)],
     ['rtorrent', createRtorrent(database)],
-    ['plex', createPlex(database)],
+    [mediaServer.name, mediaServer],
   ] as const;
   const [statuses, trackerStatuses] = await Promise.all([
     Promise.all(services.map(([, service]) => service.check())),
@@ -118,6 +121,7 @@ const command = group === 'settings' && action === 'set' && args.length === 4 ? 
     : group === 'settings' && action === 'list' && args.length === 2 ? 'list'
       : group === 'connections' && action === 'check' && args.length === 2 ? 'check'
         : group === 'backdrop' && action === 'source' && args.length <= 3 ? 'backdrop'
+          : group === 'cache' && action === 'clear' && args.length === 2 ? 'cache-clear'
         : group === 'backup' && action === 'now' && args.length === 2 ? 'backup-now'
           : group === 'backup' && action === 'list' && args.length === 2 ? 'backup-list'
             : group === 'backup' && (action === 'off' || action === 'on') && args.length === 2 ? 'backup-switch'
@@ -143,6 +147,9 @@ if (command === undefined) {
         setSetting(database, category, key, await readStdin());
       } else if (command === 'delete') {
         deleteSetting(database, category, key);
+      } else if (command === 'cache-clear') {
+        clearCache(database, join(dirname(process.env.DB_PATH ?? defaultDatabasePath), 'images'));
+        console.log('cache cleared');
       } else if (command === 'backdrop') {
         if (category !== undefined) {
           if (!(BACKDROP_SOURCES as readonly string[]).includes(category)) throw new Error(`The backdrop source must be one of: ${BACKDROP_SOURCES.join(', ')}.`);

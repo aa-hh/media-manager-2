@@ -142,6 +142,24 @@ export const listSecondVersionRows = (database: DatabaseSync, title: { service: 
   .all(title.service, title.service === 'radarr' ? title.movieId : title.seriesId)
   .map((row) => toRow(database, row as Record<string, unknown>));
 
+// The tracker rule against the torrent behind each imported grab of the title, newest import first, so the first match
+// for an episode or the movie is the file Sonarr or Radarr tracks now. Grabs with no live torrent or no rule are left out.
+export type TrackedHitAndRun = { episodeIds: number[]; hitAndRun: HitAndRunProgress };
+
+export const listTrackedHitAndRun = (database: DatabaseSync, title: { service: 'radarr'; movieId: number } | { service: 'sonarr'; seriesId: number }): TrackedHitAndRun[] => database
+  .prepare(`
+    SELECT g.episode_ids, t.hash AS t_hash, t.size_bytes AS t_size, t.completed_bytes AS t_completed, t.ratio_thousandths AS t_ratio,
+      t.seeding_seconds AS t_seeding, t.tracker_host AS t_tracker, t.gone_at AS t_gone
+    FROM torrent_grabs g JOIN torrents t ON t.hash = g.hash
+    WHERE g.imported_at IS NOT NULL AND g.service = ? AND ${title.service === 'radarr' ? 'g.movie_id' : 'g.series_id'} = ?
+    ORDER BY g.imported_at DESC
+  `)
+  .all(title.service, title.service === 'radarr' ? title.movieId : title.seriesId)
+  .flatMap((row) => {
+    const hitAndRun = hitAndRunOf(database, row as Record<string, unknown>);
+    return hitAndRun === null ? [] : [{ episodeIds: JSON.parse(String(row.episode_ids)) as number[], hitAndRun }];
+  });
+
 const inside = (folder: string, path: string) => {
   const rest = relative(folder, path);
   return rest === '' || (rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest));

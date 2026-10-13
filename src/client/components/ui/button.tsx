@@ -1,5 +1,7 @@
 // v2/Button — ~/Projects/media-manager-2-design/design-system.lib.pen ht3RN
 // v2/Button/sm — ~/Projects/media-manager-2-design/design-system.lib.pen FU0kO (size="sm")
+// v2/Button/plex — ~/Projects/media-manager-2-design/design-system.lib.pen yb2vM (variant="plex" size="large")
+// v2/Button/jellyfin — ~/Projects/media-manager-2-design/design-system.lib.pen hi4Y1 (variant="jellyfin" size="large")
 import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
@@ -7,7 +9,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
-type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive' | 'outline-destructive' | 'menu' | 'plex';
+type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive' | 'outline-destructive' | 'menu' | 'plex' | 'jellyfin';
 type ButtonSize = 'row' | 'sm' | 'default' | 'large';
 
 type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
@@ -19,18 +21,19 @@ type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
   iconOnly?: boolean;
   /** Key hint after the label, such as "/" or "Esc". */
   kbd?: ReactNode;
-  /** Swaps the icon for a spinner and keeps the width. */
+  /** Swaps the icon for a spinner, keeps the width and the fill, and takes no clicks. */
   loading?: boolean;
 };
 
 const variants: Record<ButtonVariant, string> = {
   default: 'text-action-foreground before:bg-action not-data-disabled:hover:before:bg-action-hover not-data-disabled:active:before:bg-action-pressed',
-  outline: 'text-foreground before:border before:border-input before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
+  outline: 'text-foreground before:border-[1.5px] before:border-foreground before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
   ghost: 'text-foreground before:bg-transparent not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:bg-transparent',
   destructive: 'text-primary-foreground before:bg-destructive not-data-disabled:hover:before:bg-destructive-hover not-data-disabled:active:before:bg-destructive-pressed',
   'outline-destructive': 'text-destructive before:border before:border-destructive before:bg-card not-data-disabled:hover:before:bg-destructive-soft not-data-disabled:active:before:bg-destructive/20 data-disabled:before:border-border',
-  menu: 'text-foreground before:border before:border-input before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
+  menu: 'text-foreground before:border-[1.5px] before:border-foreground before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
   plex: 'text-plex-foreground before:bg-plex not-data-disabled:hover:before:bg-plex-hover not-data-disabled:active:before:bg-plex-pressed aria-busy:opacity-[0.78]',
+  jellyfin: 'text-jellyfin-foreground before:bg-jellyfin not-data-disabled:hover:before:bg-jellyfin-hover not-data-disabled:active:before:bg-jellyfin-pressed aria-busy:opacity-[0.78]',
 };
 
 const icons: Record<ButtonSize, string> = {
@@ -82,10 +85,12 @@ function Button({
         'before:absolute before:inset-0 before:-z-10 before:rounded-[inherit]',
         'before:transition-[inset,border-radius,background-color,border-color] before:duration-(--duration-fast) before:ease-out active:before:duration-0 motion-reduce:before:transition-none',
         'not-data-disabled:hover:before:-inset-0.5 not-data-disabled:hover:focus-visible:outline-offset-4',
-        'data-disabled:cursor-not-allowed data-disabled:before:bg-muted data-disabled:text-faint-foreground',
+        'data-disabled:cursor-not-allowed data-disabled:before:bg-muted data-disabled:text-faint-foreground aria-busy:pointer-events-none',
         sizes[size],
         icons[size],
         variants[variant],
+        // Inside table rows the outline edge is the thin row line colour.
+        size === 'row' && (variant === 'outline' || variant === 'menu') && 'before:border before:border-border',
         iconOnly && squares[size],
         className,
       )}
@@ -94,7 +99,7 @@ function Button({
       {loading && icon ? spinner : icon}
       {children !== undefined && <span className={cn(hideContent && 'invisible')}>{children}</span>}
       {kbd !== undefined && (
-        <Kbd onFill={variant === 'default' || variant === 'destructive'} className={cn('group-data-disabled:hidden', hideContent && 'invisible')}>
+        <Kbd onFill={variant === 'default' || variant === 'destructive'} className={cn('group-data-disabled:hidden group-aria-busy:hidden', hideContent && 'invisible')}>
           {kbd}
         </Kbd>
       )}

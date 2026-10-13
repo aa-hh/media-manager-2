@@ -34,11 +34,14 @@ const settingsModuleUrl = new URL('../dist/server/settings.js', import.meta.url)
 const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).href;
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
+const jellyfinModuleUrl = new URL('../dist/server/services/jellyfin.js', import.meta.url).href;
+const mediaServerModuleUrl = new URL('../dist/server/services/mediaServer.js', import.meta.url).href;
 const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
 const connectionModuleUrl = new URL('../dist/server/services/connection.js', import.meta.url).href;
 const logModuleUrl = new URL('../dist/server/log.js', import.meta.url).href;
 const traktModuleUrl = new URL('../dist/server/services/trakt.js', import.meta.url).href;
 const fanartModuleUrl = new URL('../dist/server/services/fanart.js', import.meta.url).href;
+const clearCacheModuleUrl = new URL('../dist/server/clearCache.js', import.meta.url).href;
 const backdropsModuleUrl = new URL('../dist/server/backdrops.js', import.meta.url).href;
 const mdblistModuleUrl = new URL('../dist/server/services/mdblist.js', import.meta.url).href;
 const trackerAccountsModuleUrl = new URL('../dist/server/services/trackerAccounts.js', import.meta.url).href;
@@ -81,6 +84,7 @@ const s3ModuleUrl = new URL('../dist/server/services/s3.js', import.meta.url).hr
 const backupDestinationModuleUrl = new URL('../dist/server/backupDestination.js', import.meta.url).href;
 const backupModuleUrl = new URL('../dist/server/backup.js', import.meta.url).href;
 const setupModuleUrl = new URL('../dist/server/setup.js', import.meta.url).href;
+const ownerModuleUrl = new URL('../dist/server/owner.js', import.meta.url).href;
 const titlesModuleUrl = new URL('../dist/server/titles.js', import.meta.url).href;
 const preferencesModuleUrl = new URL('../dist/server/preferences.js', import.meta.url).href;
 const titleStoreModuleUrl = new URL('../dist/server/titleStore.js', import.meta.url).href;
@@ -524,12 +528,54 @@ const openStream = async (app, session) => {
 
 const drain = () => new Promise((resolve) => setImmediate(resolve));
 
+// A Jellyfin server for the first-run sign-in: two administrators, one ordinary user, Quick Connect and a keyed /System/Info.
+const JELLYFIN_SIGN_IN = 'MediaBrowser Client="media-manager-2", Device="media-manager-2", DeviceId="media-manager-2", Version="1"';
+const createJellyfinFixture = () => {
+  const publicInfo = { Id: 'server-guid', Version: '10.10.0', ProductName: 'Jellyfin Server', ServerName: 'Home', StartupWizardCompleted: true };
+  const state = { down: false, publicStatus: 200, publicBody: publicInfo, quickConnect: true, approved: false };
+  const users = {
+    admin: { Id: 'admin-guid', Name: 'admin', Policy: { IsAdministrator: true, IsDisabled: false } },
+    other: { Id: 'other-guid', Name: 'other', Policy: { IsAdministrator: true, IsDisabled: false } },
+    viewer: { Id: 'viewer-guid', Name: 'viewer', Policy: { IsAdministrator: false, IsDisabled: false } },
+  };
+  const signedIn = (user) => responseJson({ AccessToken: 'jellyfin-access-token', ServerId: 'server-guid', SessionInfo: {}, User: user });
+  const signInAuthorizations = [];
+  const fetch = async (input, init = {}) => {
+    const url = new URL(input);
+    const headers = new Headers(init.headers);
+    assert.equal(init.redirect, 'error');
+    assert.ok(init.signal);
+    if (state.down) throw new TypeError('fixture network failure');
+    if (url.pathname === '/System/Info') {
+      return headers.get('authorization') === 'MediaBrowser Token="good-key"' ? responseJson({ Version: '10.10.0' }) : responseJson({}, 401);
+    }
+    signInAuthorizations.push(headers.get('authorization'));
+    const body = init.body === undefined ? undefined : JSON.parse(init.body);
+    if (url.pathname === '/System/Info/Public') return responseJson(state.publicBody, state.publicStatus);
+    if (url.pathname === '/Users/AuthenticateByName') {
+      const user = users[body.Username];
+      return user !== undefined && body.Pw === 'pw' ? signedIn(user) : responseJson({}, 401);
+    }
+    if (url.pathname === '/QuickConnect/Initiate') {
+      return state.quickConnect ? responseJson({ Code: '123456', Secret: 'qc-secret', Authenticated: false }) : responseJson({}, 401);
+    }
+    if (url.pathname === '/QuickConnect/Connect') {
+      return url.searchParams.get('secret') === 'qc-secret' ? responseJson({ Code: '123456', Authenticated: state.approved }) : responseJson({}, 404);
+    }
+    if (url.pathname === '/Users/AuthenticateWithQuickConnect') {
+      return body.Secret === 'qc-secret' && state.approved ? signedIn(users.admin) : responseJson({}, 400);
+    }
+    throw new Error(`Unexpected Jellyfin request: ${url.href}`);
+  };
+  return { state, publicInfo, signInAuthorizations, fetch };
+};
+
 // Weakening provider verification, cookie binding, expiry, or private-prefix routing must turn at least one case red.
 test('Plex owner authentication', async (t) => {
   await t.test('owner success uses signed Plex requests and protects the private prefix', async () => {
     const { app, clock, fixture } = await makeApp();
     const status = await app.request('/auth/status');
-    assert.deepEqual(await status.json(), { configured: true, pending: false });
+    assert.deepEqual(await status.json(), { configured: true, pending: false, firstRun: false, provider: 'plex' });
     const started = await startAuthentication(app);
     assert.equal(started.response.status, 201);
     assert.match(started.binding, /^__Host-mm_plex=/);
@@ -543,7 +589,7 @@ test('Plex owner authentication', async (t) => {
     assert.equal(parameters.get('context[device][product]'), 'media-manager-2');
     assert.ok(state);
     const pendingStatus = await app.request('/auth/status', { headers: { Cookie: started.binding } });
-    assert.deepEqual(await pendingStatus.json(), { configured: true, pending: true });
+    assert.deepEqual(await pendingStatus.json(), { configured: true, pending: true, firstRun: false, provider: 'plex' });
     const callback = await app.request(`/auth/callback?state=${encodeURIComponent(state)}`);
     assert.equal(callback.status, 200);
     assert.match(callback.headers.get('content-type'), /text\/html/);
@@ -595,11 +641,31 @@ test('Plex owner authentication', async (t) => {
   });
 
   await t.test('invalid configuration keeps the public document available', async () => {
+    // Ignoring a set but malformed PLEX_OWNER_ID, so first run opens to anyone instead of sign-in being off, turns this red.
+    for (const ownerPlexId of [undefined, '']) {
+      const { app } = await makeApp({ ownerPlexId });
+      const status = await app.request('/auth/status');
+      assert.deepEqual(await status.json(), { configured: true, pending: false, firstRun: true, provider: null }, String(ownerPlexId));
+    }
+    for (const ownerPlexId of ['0', '01', 'abc', ' ', String(Number.MAX_SAFE_INTEGER + 1)]) {
+      const { app, database } = await makeApp({ ownerPlexId });
+      const status = await app.request('/auth/status');
+      assert.deepEqual(await status.json(), { configured: false, pending: false, firstRun: false, provider: null }, ownerPlexId);
+      const start = await startAuthentication(app);
+      assert.equal(start.response.status, 503, ownerPlexId);
+      assert.deepEqual(start.json, { error: 'not_configured' });
+      for (const [path, body] of [
+        ['/auth/jellyfin/check', { url: 'http://jellyfin.test:8096' }],
+        ['/auth/jellyfin/password', { url: 'http://jellyfin.test:8096', username: 'admin', password: 'pw' }],
+        ['/auth/jellyfin/quick-connect', { url: 'http://jellyfin.test:8096' }],
+      ]) {
+        const response = await app.request(path, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body) });
+        assert.equal(response.status, 503, `${ownerPlexId} ${path}`);
+        assert.deepEqual(await response.json(), { error: 'not_configured' });
+      }
+      assert.equal(database.prepare('SELECT count(*) AS count FROM owner').get().count, 0, ownerPlexId);
+    }
     for (const options of [
-      { ownerPlexId: undefined },
-      { ownerPlexId: '0' },
-      { ownerPlexId: '01' },
-      { ownerPlexId: String(Number.MAX_SAFE_INTEGER + 1) },
       { publicOrigin: undefined },
       { publicOrigin: 'http://media.example' },
       { publicOrigin: 'https://user:pass@media.example' },
@@ -610,7 +676,7 @@ test('Plex owner authentication', async (t) => {
     ]) {
       const { app } = await makeApp(options);
       const status = await app.request('/auth/status');
-      assert.deepEqual(await status.json(), { configured: false, pending: false }, JSON.stringify(options));
+      assert.deepEqual(await status.json(), { configured: false, pending: false, firstRun: false, provider: null }, JSON.stringify(options));
       const start = await startAuthentication(app, { origin: options.publicOrigin?.startsWith('http') ? new URL(options.publicOrigin).origin : undefined });
       assert.equal(start.response.status, 503, JSON.stringify(options));
       assert.deepEqual(start.json, { error: 'not_configured' });
@@ -716,7 +782,7 @@ test('Plex owner authentication', async (t) => {
     assert.equal(pending.status, 202);
     assert.deepEqual(await pending.json(), { status: 'pending' });
     const status = await app.request('/auth/status', { headers: { Cookie: started.binding } });
-    assert.deepEqual(await status.json(), { configured: true, pending: true });
+    assert.deepEqual(await status.json(), { configured: true, pending: true, firstRun: false, provider: 'plex' });
   });
 
   await t.test('cancel, restart, and logout prevent late provider results from creating sessions', async () => {
@@ -903,13 +969,13 @@ test('Plex owner authentication', async (t) => {
             assert.deepEqual(responseCookies(rejected), []);
             assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
             const status = await app.request('/auth/status', { headers: { Cookie: pending.binding } });
-            assert.deepEqual(await status.json(), { configured: true, pending: true });
+            assert.deepEqual(await status.json(), { configured: true, pending: true, firstRun: false, provider: 'plex' });
             const retried = await app.request(path, {
               method: 'POST', headers: { ...jsonHeaders(origin), Cookie: cookies.join('; ') }, body: '{}',
             });
             assert.equal(retried.status, 204);
             const after = await app.request('/auth/status', { headers: { Cookie: pending.binding } });
-            assert.deepEqual(await after.json(), { configured: true, pending: false });
+            assert.deepEqual(await after.json(), { configured: true, pending: false, firstRun: false, provider: 'plex' });
             assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, path === '/auth/logout' ? 401 : 200);
           }
         }
@@ -1052,6 +1118,205 @@ test('Plex owner authentication', async (t) => {
       assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
       assert.equal(response.headers.get('x-frame-options'), 'DENY');
     }
+  });
+  // Saving no owner on the first sign-in, letting a second account in once an owner exists, or letting the owner row outrank
+  // PLEX_OWNER_ID turns this red.
+  await t.test('first run makes the first Plex sign-in the owner, and PLEX_OWNER_ID outranks the owner row', async () => {
+    const first = await makeApp({ ownerPlexId: undefined, fixtureOptions: { userBody: { id: 7, username: 'seven', restricted: false, anonymous: false } } });
+    const status = async (app) => (await app.request('/auth/status')).json();
+    assert.deepEqual(await status(first.app), { configured: true, pending: false, firstRun: true, provider: null });
+    const { session } = await signIn(first.app);
+    assert.deepEqual({ ...first.database.prepare('SELECT provider, user_id, user_name, server_name FROM owner').get() },
+      { provider: 'plex', user_id: '7', user_name: 'seven', server_name: null });
+    assert.equal((await first.app.request('/api/session', { headers: { Cookie: session } })).status, 200);
+    assert.deepEqual(await status(first.app), { configured: true, pending: false, firstRun: false, provider: 'plex' });
+
+    const second = await makeApp({
+      ownerPlexId: undefined, clock: first.clock, database: first.database, fixtureOptions: { userBody: { id: 8, restricted: false, anonymous: false } },
+    });
+    const started = await startAuthentication(second.app);
+    const refused = await completeAuthentication(second.app, started.binding, plexStateFromUrl(started.json.url).state);
+    assert.equal(refused.status, 403);
+    assert.deepEqual(await refused.json(), { error: 'owner_only' });
+
+    const pinned = await makeApp({ clock: first.clock, database: first.database });
+    assert.deepEqual(await status(pinned.app), { configured: true, pending: false, firstRun: false, provider: 'plex' });
+    assert.equal((await pinned.app.request('/api/session', { headers: { Cookie: session } })).status, 401);
+    const owner = await signIn(pinned.app);
+    assert.equal((await pinned.app.request('/api/session', { headers: { Cookie: owner.session } })).status, 200);
+  });
+
+  // Opening the first-run page or a Jellyfin sign-in on an install whose owner PLEX_OWNER_ID pins turns this red.
+  await t.test('PLEX_OWNER_ID hides the first-run page and refuses the Jellyfin routes', async () => {
+    const { app, database } = await makeApp();
+    assert.deepEqual(await (await app.request('/auth/status')).json(), { configured: true, pending: false, firstRun: false, provider: 'plex' });
+    for (const [path, body] of [
+      ['/auth/jellyfin/check', { url: 'http://jellyfin.test:8096' }],
+      ['/auth/jellyfin/password', { url: 'http://jellyfin.test:8096', username: 'admin', password: 'pw' }],
+      ['/auth/jellyfin/quick-connect', { url: 'http://jellyfin.test:8096' }],
+    ]) {
+      const response = await app.request(path, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body) });
+      assert.equal(response.status, 409, path);
+      assert.deepEqual(await response.json(), { error: 'owner_exists' });
+    }
+    assert.equal(database.prepare('SELECT count(*) AS count FROM owner').get().count, 0);
+  });
+
+  // Accepting a non-Jellyfin answer, letting a non-administrator in, storing the Jellyfin access token, taking a typed address
+  // after first run, letting a second administrator in, or opening a session before Quick Connect is approved turns this red.
+  await t.test('Jellyfin first run checks the address, lets in only an administrator, and locks the owner and address', async () => {
+    const jellyfin = createJellyfinFixture();
+    const { app, database } = await makeApp({ ownerPlexId: undefined, fetch: jellyfin.fetch });
+    const { getSetting } = await import(settingsModuleUrl);
+    const post = (path, body, cookie) => app.request(path, {
+      method: 'POST', headers: { ...jsonHeaders(), ...(cookie === undefined ? {} : { Cookie: cookie }) }, body: JSON.stringify(body),
+    });
+    const address = 'http://jellyfin.test:8096/';
+    const check = async () => (await post('/auth/jellyfin/check', { url: address })).json();
+    jellyfin.state.down = true;
+    assert.deepEqual(await check(), { kind: 'no_answer' });
+    jellyfin.state.down = false;
+    jellyfin.state.publicStatus = 404;
+    assert.deepEqual(await check(), { kind: 'not_jellyfin' });
+    jellyfin.state.publicStatus = 200;
+    jellyfin.state.publicBody = { ...jellyfin.publicInfo, ProductName: 'Emby Server' };
+    assert.deepEqual(await check(), { kind: 'not_jellyfin' });
+    // Accepting an answer with no ProductName as Jellyfin, instead of requiring it, turns this red.
+    jellyfin.state.publicBody = { Id: 'server-guid', Version: '10.10.0' };
+    assert.deepEqual(await check(), { kind: 'not_jellyfin' });
+    jellyfin.state.publicBody = jellyfin.publicInfo;
+    assert.deepEqual(await check(), { kind: 'ok', url: 'http://jellyfin.test:8096', serverName: 'Home' });
+    assert.equal((await post('/auth/jellyfin/check', { url: 'http://user:secret@jellyfin.test:8096' })).status, 400);
+
+    const viewer = await post('/auth/jellyfin/password', { url: address, username: 'viewer', password: 'pw' });
+    assert.equal(viewer.status, 403);
+    assert.deepEqual(await viewer.json(), { error: 'not_administrator', userName: 'viewer', serverName: 'Home' });
+    assert.equal(cookieValue(viewer, '__Host-mm_session'), undefined);
+    assert.equal(database.prepare('SELECT count(*) AS count FROM owner').get().count, 0);
+    assert.equal(getSetting(database, 'serviceAddresses', 'jellyfin.url'), undefined);
+
+    const admin = await post('/auth/jellyfin/password', { url: address, username: 'admin', password: 'pw' });
+    assert.equal(admin.status, 200);
+    const session = cookieValue(admin, '__Host-mm_session');
+    assert.ok(session);
+    assert.deepEqual({ ...database.prepare('SELECT provider, user_id, user_name, server_name FROM owner').get() },
+      { provider: 'jellyfin', user_id: 'admin-guid', user_name: 'admin', server_name: 'Home' });
+    assert.equal(getSetting(database, 'serviceAddresses', 'jellyfin.url'), 'http://jellyfin.test:8096');
+    assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
+    const stored = JSON.stringify([database.prepare('SELECT * FROM sessions').all(), database.prepare('SELECT * FROM settings').all()]);
+    assert.doesNotMatch(stored, /jellyfin-access-token/);
+
+    assert.deepEqual(await (await app.request('/auth/status')).json(), { configured: true, pending: false, firstRun: false, provider: 'jellyfin' });
+    const recheck = await post('/auth/jellyfin/check', { url: address });
+    assert.equal(recheck.status, 409);
+    assert.deepEqual(await recheck.json(), { error: 'owner_exists' });
+    const typedAddress = await post('/auth/jellyfin/password', { url: 'http://elsewhere.test:8096', username: 'admin', password: 'pw' });
+    assert.equal(typedAddress.status, 409);
+    const other = await post('/auth/jellyfin/password', { username: 'other', password: 'pw' });
+    assert.equal(other.status, 403);
+    assert.deepEqual(await other.json(), { error: 'owner_only' });
+
+    const quick = await post('/auth/jellyfin/quick-connect', {});
+    assert.equal(quick.status, 201);
+    assert.equal((await quick.json()).code, '123456');
+    const binding = cookieValue(quick, '__Host-mm_plex');
+    const waiting = await post('/auth/jellyfin/quick-connect/complete', {}, binding);
+    assert.equal(waiting.status, 202);
+    assert.deepEqual(await waiting.json(), { status: 'pending' });
+    jellyfin.state.approved = true;
+    const approved = await post('/auth/jellyfin/quick-connect/complete', {}, binding);
+    assert.equal(approved.status, 200);
+    const quickSession = cookieValue(approved, '__Host-mm_session');
+    assert.equal((await app.request('/api/session', { headers: { Cookie: quickSession } })).status, 200);
+    jellyfin.state.quickConnect = false;
+    const off = await post('/auth/jellyfin/quick-connect', {});
+    assert.equal(off.status, 409);
+    assert.deepEqual(await off.json(), { error: 'quick_connect_off' });
+    assert.deepEqual([...new Set(jellyfin.signInAuthorizations)], [JELLYFIN_SIGN_IN]);
+  });
+
+  // Dropping the admit call from the Jellyfin password sign-in, so a client can try passwords without limit, turns this red.
+  await t.test('the Jellyfin password sign-in admits ten tries per client a minute', async () => {
+    const jellyfin = createJellyfinFixture();
+    const { app, clock } = await makeApp({ ownerPlexId: undefined, fetch: jellyfin.fetch });
+    const attempt = () => app.request('/auth/jellyfin/password', {
+      method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ url: 'http://jellyfin.test:8096', username: 'admin', password: 'wrong' }),
+    });
+    for (let index = 0; index < 10; index += 1) assert.equal((await attempt()).status, 401);
+    const limited = await attempt();
+    assert.equal(limited.status, 429);
+    assert.deepEqual(await limited.json(), { error: 'rate_limited' });
+    assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+    clock.value += 60_000;
+    assert.equal((await attempt()).status, 401);
+  });
+
+  // Counting a Jellyfin owner's media server done before its key is saved, saving a key Jellyfin refused, or giving a Plex owner
+  // the Jellyfin step turns this red.
+  await t.test('the setup wizard\'s media server step follows the owner\'s provider', async () => {
+    const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+    const { getSetting, setSetting } = await import(settingsModuleUrl);
+    const { createSetupRoutes } = await import(setupModuleUrl);
+    const build = async (input) => {
+      const database = new DatabaseSync(':memory:');
+      migrateDatabase(database, applicationMigrations);
+      const setup = createSetupRoutes({ database, arr: {}, rtorrent: {}, trackers: {}, env: {}, fetch: input.fetch });
+      const { app } = await makeApp({ ...input, database, setup });
+      return { app, database };
+    };
+    const send = (app, session, method, path, body) => app.request(`/api/setup${path}`, {
+      method, headers: { ...jsonHeaders(), Cookie: session }, body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    const jellyfin = createJellyfinFixture();
+    const owned = await build({ ownerPlexId: undefined, fetch: jellyfin.fetch });
+    const signedIn = await owned.app.request('/auth/jellyfin/password', {
+      method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ url: 'http://jellyfin.test:8096', username: 'admin', password: 'pw' }),
+    });
+    const session = cookieValue(signedIn, '__Host-mm_session');
+    const status = async () => (await send(owned.app, session, 'GET', '')).json();
+    const before = await status();
+    assert.equal(before.required.mediaServer, 'not_done');
+    assert.deepEqual(before.mediaServer, { kind: 'jellyfin', url: 'http://jellyfin.test:8096', serverName: 'Home', ownerName: 'admin' });
+    const rejected = await send(owned.app, session, 'POST', '/jellyfin', { apiKey: 'bad-key' });
+    assert.deepEqual(await rejected.json(), { kind: 'rejected' });
+    assert.equal(getSetting(owned.database, 'credentials', 'jellyfin.apiKey'), undefined);
+    const accepted = await send(owned.app, session, 'POST', '/jellyfin', { apiKey: 'good-key' });
+    assert.deepEqual(await accepted.json(), { kind: 'ok', version: '10.10.0' });
+    assert.equal(getSetting(owned.database, 'credentials', 'jellyfin.apiKey'), 'good-key');
+    assert.equal((await status()).required.mediaServer, 'done');
+
+    const plex = await build({});
+    const plexSession = (await signIn(plex.app)).session;
+    const plexStatus = async () => (await send(plex.app, plexSession, 'GET', '')).json();
+    const plexBefore = await plexStatus();
+    assert.equal(plexBefore.required.mediaServer, 'not_done');
+    assert.deepEqual(plexBefore.mediaServer, { kind: 'plex' });
+    const refused = await send(plex.app, plexSession, 'POST', '/jellyfin', { apiKey: 'good-key' });
+    assert.equal(refused.status, 409);
+    assert.deepEqual(await refused.json(), { error: 'not_jellyfin_owner' });
+    setSetting(plex.database, 'serviceAddresses', 'plex.url', 'http://plex.test:32400');
+    setSetting(plex.database, 'credentials', 'plex.token', 'token');
+    assert.equal((await plexStatus()).required.mediaServer, 'done');
+  });
+
+  // Reading the owner row instead of letting a valid PLEX_OWNER_ID outrank it, in the media server pick or the setup wizard,
+  // turns this red.
+  await t.test('PLEX_OWNER_ID outranks a Jellyfin owner row for the media server and the setup wizard', async () => {
+    const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+    const { saveOwner } = await import(ownerModuleUrl);
+    const { createMediaServer } = await import(mediaServerModuleUrl);
+    const { createSetupRoutes } = await import(setupModuleUrl);
+    const database = new DatabaseSync(':memory:');
+    migrateDatabase(database, applicationMigrations);
+    saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home' });
+    assert.equal(createMediaServer(database)().name, 'jellyfin');
+    assert.equal(createMediaServer(database, { ownerPlexId: '42' })().name, 'plex');
+    const setup = createSetupRoutes({ database, arr: {}, rtorrent: {}, trackers: {}, env: { PLEX_OWNER_ID: '42' } });
+    const { app } = await makeApp({ database, setup });
+    const { session } = await signIn(app);
+    const status = await (await app.request('/api/setup', { headers: { Cookie: session } })).json();
+    assert.deepEqual(status.mediaServer, { kind: 'plex' });
   });
 });
 
@@ -1570,6 +1835,30 @@ test('background job runner', async (t) => {
     assert.throws(() => runner.register('a', 1000, () => {}), { message: 'Duplicate job: a' });
     runner.start();
     assert.throws(() => runner.register('b', 1000, () => {}), { message: 'Register jobs before start.' });
+  });
+
+  // Dropping a trigger that lands mid-run, or running once per trigger instead of once for all of them, turns this red.
+  await t.test('a trigger runs the job now, and triggers during a run add exactly one more run', async () => {
+    const { runner } = setup();
+    const blocked = gate();
+    let runs = 0;
+    runner.register('a', 60_000, async () => {
+      runs += 1;
+      if (runs === 1) await blocked.wait;
+    });
+    runner.trigger('a');
+    assert.equal(runs, 0);
+    runner.start();
+    runner.trigger('missing');
+    runner.trigger('a');
+    assert.equal(runs, 1);
+    runner.trigger('a');
+    runner.trigger('a');
+    blocked.open();
+    await drain();
+    assert.equal(runs, 2);
+    await drain();
+    assert.equal(runs, 2);
   });
 
   // Not recording a finished run's time or failure, or never marking a job late after three silent intervals, turns this red.
@@ -2322,6 +2611,7 @@ test('service connections read saved settings and classify each outcome', async 
   const { createArr } = await import(arrModuleUrl);
   const { createRtorrent } = await import(rtorrentModuleUrl);
   const { createPlex } = await import(plexModuleUrl);
+  const { createJellyfin } = await import(jellyfinModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-connections-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -2381,6 +2671,21 @@ test('service connections read saved settings and classify each outcome', async 
       malformedBody: '{}',
       usePrimitive: (service) => service.request('/'),
       primitiveResult: { status: 200, body: { MediaContainer: { version: '1.41.0.8994' } } },
+    },
+    {
+      name: 'jellyfin',
+      create: (fetch) => createJellyfin(database, { fetch }),
+      url: 'http://127.0.0.1:65005',
+      credentials: { 'jellyfin.apiKey': `jellyfin-key-${pid}-distinctive` },
+      method: 'GET',
+      // The public /System/Info/Public answers without a key, so probing it would pass a wrong key.
+      probeUrl: 'http://127.0.0.1:65005/System/Info',
+      headers: { authorization: `MediaBrowser Token="jellyfin-key-${pid}-distinctive"`, accept: 'application/json' },
+      okBody: JSON.stringify({ Version: '10.11.0' }),
+      version: '10.11.0',
+      malformedBody: '{}',
+      usePrimitive: (service) => service.findLibraryFor('/media', 'movie'),
+      primitiveResult: undefined,
     },
   ];
 
@@ -2456,6 +2761,264 @@ test('service connections read saved settings and classify each outcome', async 
       assert.equal(errorText.includes(value), false, `${service.name} error mentions ${value}`);
     }
   }
+});
+
+// Matching a library of the wrong type or by a name prefix, reading a refused library list as "no library", sending the scan
+// anywhere but /Library/Media/Updated, picking the media server from saved settings instead of the owner's provider, or naming
+// Plex in a Jellyfin install's problem turns this red.
+test('the Jellyfin version finds the library holding a folder, asks it to scan, and is used once a Jellyfin owner exists', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { saveOwner } = await import(ownerModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createMediaServer } = await import(mediaServerModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createVersionImport, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-jellyfin-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const key = `jellyfin-key-${process.pid}`;
+  const calls = [];
+  let libraries = [];
+  let listStatus = 200;
+  const fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method ?? 'GET', headers: new Headers(init.headers), body: init.body });
+    if (String(url).endsWith('/Library/VirtualFolders')) return new Response(JSON.stringify(libraries), { status: listStatus });
+    return new Response(null, { status: 204 });
+  };
+  const mediaServer = createMediaServer(database, { fetch });
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  assert.equal(mediaServer().name, 'plex');
+  setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test/');
+  setSetting(database, 'credentials', 'jellyfin.apiKey', key);
+  assert.equal(mediaServer().name, 'plex');
+  saveOwner(database, { provider: 'jellyfin', userId: 'jellyfin-admin', userName: 'Alec', serverName: 'Home' });
+  const jellyfin = mediaServer();
+  assert.equal(jellyfin.name, 'jellyfin');
+
+  libraries = [
+    { Name: 'Shows', ItemId: 'tv1', CollectionType: 'tvshows', Locations: ['/media/versions'] },
+    { Name: 'Films', ItemId: 'mv1', CollectionType: 'movies', Locations: ['/media/films', '/media/versions'] },
+  ];
+  assert.deepEqual(await jellyfin.findLibraryFor('/media/versions/movies', 'movie'), { id: 'mv1' });
+  assert.deepEqual(await jellyfin.findLibraryFor('/media/versions/tv', 'show'), { id: 'tv1' });
+  assert.equal(await jellyfin.findLibraryFor('/media/versions-old', 'movie'), undefined);
+  assert.equal(calls[0].url, 'http://jellyfin.test/Library/VirtualFolders');
+  assert.equal(calls[0].headers.get('authorization'), `MediaBrowser Token="${key}"`);
+  listStatus = 401;
+  await assert.rejects(jellyfin.findLibraryFor('/media/versions/movies', 'movie'));
+  listStatus = 200;
+
+  const folder = '/media/versions/movies/Dune - Part Two (2024)';
+  await jellyfin.refresh({ id: 'mv1' }, folder);
+  const scan = calls.at(-1);
+  assert.deepEqual([scan.method, scan.url, scan.headers.get('content-type')], ['POST', 'http://jellyfin.test/Library/Media/Updated', 'application/json']);
+  assert.deepEqual(JSON.parse(scan.body), { Updates: [{ Path: folder, UpdateType: 'Created' }] });
+
+  const problems = createProblems({ database, events: createEventHub() });
+  const versionImport = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr: {}, mediaServer, problems });
+  libraries = [];
+  await versionImport.scan('radarr', '/media/versions/movies', new Set([folder]));
+  assert.deepEqual(database.prepare("SELECT summary FROM problems WHERE kind = ? AND state != 'resolved'").all(PLEX_PROBLEM_KIND).map((row) => row.summary),
+    ['Add /media/versions/movies to the Jellyfin Movies library.']);
+});
+
+// Matching items by full path (Radarr and Jellyfin see different mounts), merging before both items exist, not narrowing
+// episodes by season, counting an outage or a 503 as a try, retrying a rejected request forever, spending a try on a refused
+// key or asking again for the next row after it, retrying a merged row or past MERGE_TRIES, not merging again after a Radarr
+// or Sonarr rename or upgrade event for the tracked file, merging again after a same-path upgrade, asking Radarr or Sonarr
+// about merged rows with no event, letting an event for another title, another event type or a malformed payload mark a
+// row, fetching a series' episodes once per row, or giving Plex installs a merge step turns this red.
+test('an imported second version is merged with the tracked file in Jellyfin once both are scanned', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createMediaServer } = await import(mediaServerModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createVersionImport, MERGE_TRIES } = await import(versionImportModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-jellyfin-merge-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const calls = [];
+  let items = [];
+  let refuse = null;
+  const fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    calls.push({ path: parsed.pathname, query: parsed.searchParams, method: init.method ?? 'GET' });
+    if (refuse !== null) return new Response(null, { status: refuse });
+    if (parsed.pathname === '/Items') return new Response(JSON.stringify({ Items: items }), { status: 200 });
+    return new Response(null, { status: 204 });
+  };
+  const mediaServer = createMediaServer(database, { fetch });
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  assert.equal(mediaServer().mergeVersions, undefined);
+  setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test');
+  setSetting(database, 'credentials', 'jellyfin.apiKey', 'jellyfin-key');
+  // The media server follows the owner's provider, so Jellyfin needs a Jellyfin owner, not just its settings.
+  const { saveOwner } = await import(ownerModuleUrl);
+  saveOwner(database, { provider: 'jellyfin', userId: 'admin-guid', userName: 'admin', serverName: 'Home' });
+
+  let dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' };
+  let pilot = { id: 30, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' };
+  const arrCalls = [];
+  let duringRadarr = null;
+  const arr = {
+    radarr: { movie: async (id) => {
+      arrCalls.push(`radarr ${id}`);
+      duringRadarr?.();
+      duringRadarr = null;
+      return { kind: 'ok', value: { file: id === 1 ? dune : { id: 20, path: '/radarr/movies/Gone (2001)/Gone (2001) Bluray-1080p.mkv' } } };
+    } },
+    sonarr: {
+      episodes: async (seriesId, options) => {
+        assert.deepEqual([seriesId, options], [5, { withFiles: true }]);
+        arrCalls.push(`sonarr ${seriesId}`);
+        return { kind: 'ok', value: [
+          { id: 7, seasonNumber: 1, file: pilot },
+          { id: 8, seasonNumber: 1, file: { id: 31, path: '/sonarr/tv/Show/Season 01/Show - S01E02 - Bluray-1080p.mkv' } },
+        ] };
+      },
+    },
+  };
+  let clock = 1_800_000_000_000;
+  const now = () => clock;
+  const hour = 60 * 60 * 1000;
+  const insert = database.prepare(`INSERT INTO second_versions (service, movie_id, series_id, episode_id, release_title, guid, indexer, quality, hash, state, file_path, merge_tries, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'release', 'guid', 'indexer', 'Bluray-2160p', 'HASH', 'imported', ?, ?, 0, 0)`);
+  const movieRow = insert.run('radarr', 1, null, null, '/media/versions/movies/Dune (2024)/Dune (2024) - Bluray-2160p GRP.mkv', 0).lastInsertRowid;
+  const episodeRow = insert.run('sonarr', null, 5, 7, '/media/versions/tv/Show/Season 01/Show - S01E01 - Bluray-2160p GRP.mkv', 0).lastInsertRowid;
+  const lastTryRow = insert.run('radarr', 2, null, null, '/media/versions/movies/Gone (2001)/Gone (2001) - Bluray-2160p GRP.mkv', MERGE_TRIES - 1).lastInsertRowid;
+  // A second episode of the same series, merged long ago.
+  insert.run('sonarr', null, 5, 8, '/media/versions/tv/Show/Season 01/Show - S01E02 - Bluray-2160p GRP.mkv', MERGE_TRIES);
+  const tries = (id) => Number(database.prepare('SELECT merge_tries FROM second_versions WHERE id = ?').get(id).merge_tries);
+  const problems = createProblems({ database, events: createEventHub() });
+  const versionImport = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer, problems, now });
+
+  // An outage spends no try.
+  const reachable = fetch;
+  let down = true;
+  const outageFetch = async (url, init) => (down ? Promise.reject(new TypeError('fetch failed')) : reachable(url, init));
+  const outage = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr, mediaServer: createMediaServer(database, { fetch: outageFetch }), problems, now });
+  await outage.run();
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [0, 0, MERGE_TRIES - 1]);
+  down = false;
+
+  // Radarr down spends no try on the movies; Sonarr answered, so the episode spends one.
+  const radarrDown = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr: { ...arr, radarr: { movie: async () => ({ kind: 'unreachable' }) } }, mediaServer, problems, now });
+  await radarrDown.run();
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [0, 1, MERGE_TRIES - 1]);
+
+  // Jellyfin has not scanned yet: nothing to merge, one try spent each.
+  await versionImport.run();
+  assert.equal(calls.some((call) => call.path === '/Videos/MergeVersions'), false);
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [1, 2, MERGE_TRIES]);
+
+  // A 503 while Jellyfin restarts spends none; a rejected request spends a try instead of being retried forever.
+  refuse = 503;
+  await versionImport.run();
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [1, 2, MERGE_TRIES]);
+  // A refused key spends no try and stops the run after one request, since every other row would be refused too.
+  refuse = 401;
+  calls.length = 0;
+  await versionImport.run();
+  assert.equal(calls.length, 1);
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [1, 2, MERGE_TRIES]);
+  refuse = 400;
+  await versionImport.run();
+  refuse = null;
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [2, 3, MERGE_TRIES]);
+
+  items = [
+    { Id: 'm-old', Path: '/data/movies/Dune (2024)/Dune (2024) Bluray-1080p.mkv' },
+    { Id: 'm-new', Path: '/media/versions/movies/Dune (2024)/Dune (2024) - Bluray-2160p GRP.mkv' },
+    { Id: 'e-old', Path: '/data/tv/Show/Season 01/Show - S01E01 - Pilot Bluray-1080p.mkv' },
+    { Id: 'e-new', Path: '/media/versions/tv/Show/Season 01/Show - S01E01 - Bluray-2160p GRP.mkv' },
+  ];
+  calls.length = 0;
+  await versionImport.run();
+  const lists = calls.filter((call) => call.path === '/Items');
+  assert.deepEqual(lists.map((call) => [call.query.get('IncludeItemTypes'), call.query.get('ParentIndexNumber'), call.query.get('Fields')]),
+    [['Movie', null, 'Path'], ['Episode', '1', 'Path']]);
+  assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => [call.method, call.query.getAll('ids')]),
+    [['POST', ['m-old', 'm-new']], ['POST', ['e-old', 'e-new']]]);
+  assert.deepEqual([tries(movieRow), tries(episodeRow)], [MERGE_TRIES, MERGE_TRIES]);
+
+  // Merged rows are not asked about again without an event, however long passes.
+  calls.length = 0;
+  arrCalls.length = 0;
+  clock += 24 * hour;
+  await versionImport.run();
+  assert.deepEqual([calls, arrCalls], [[], []]);
+
+  // An event for another movie, an event that moves no file, and malformed payloads mark nothing.
+  for (const [service, payload] of [
+    ['radarr', { eventType: 'Rename', movie: { id: 3 } }],
+    ['radarr', { eventType: 'Grab', movie: { id: 1 } }],
+    ['sonarr', { eventType: 'Grab', series: { id: 5 }, episodes: [{ id: 7 }] }],
+    ['radarr', { eventType: 'Rename', movie: { id: '1' } }],
+    ['radarr', { eventType: 'Rename', series: { id: 1 } }],
+    ['sonarr', { eventType: 'Download', series: { id: 5 }, episodes: 'all' }],
+    ['sonarr', { eventType: 'Download', series: { id: 5 }, episodes: [{ id: -7 }] }],
+    ['sonarr', 'Download'],
+    ['radarr', null],
+  ]) versionImport.trackedFileChanged(service, payload);
+  await versionImport.run();
+  assert.deepEqual([calls, arrCalls], [[], []]);
+
+  // Radarr renames the tracked file: the merge splits in Jellyfin, so the version is merged again with the new item.
+  dune = { id: 10, path: '/radarr/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' };
+  items = [...items.filter((item) => item.Id !== 'm-old'), { Id: 'm-renamed', Path: '/data/movies/Dune (2024)/Dune (2024) Remux-2160p.mkv' }];
+  versionImport.trackedFileChanged('radarr', { eventType: 'Rename', movie: { id: 1 }, renamedMovieFiles: [{ id: 10 }] });
+  await versionImport.run();
+  assert.deepEqual(arrCalls, ['radarr 1']);
+  assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['m-renamed', 'm-new']]);
+  assert.deepEqual([tries(movieRow), tries(episodeRow), tries(lastTryRow)], [MERGE_TRIES, MERGE_TRIES, MERGE_TRIES]);
+
+  // Sonarr upgrades the episode to a new path: only the named episode is checked and merged again.
+  calls.length = 0;
+  arrCalls.length = 0;
+  pilot = { id: 32, path: '/sonarr/tv/Show/Season 01/Show - S01E01 - Pilot Remux-2160p.mkv' };
+  items = [...items.filter((item) => item.Id !== 'e-old'), { Id: 'e-upgraded', Path: '/data/tv/Show/Season 01/Show - S01E01 - Pilot Remux-2160p.mkv' }];
+  versionImport.trackedFileChanged('sonarr', { eventType: 'Download', isUpgrade: true, series: { id: 5 }, episodes: [{ id: 7 }], episodeFile: { id: 32 } });
+  assert.deepEqual(database.prepare('SELECT id FROM second_versions WHERE merge_checked_at IS NULL').all().map((row) => Number(row.id)), [Number(episodeRow)]);
+  await versionImport.run();
+  assert.deepEqual(arrCalls, ['sonarr 5']);
+  assert.deepEqual(calls.filter((call) => call.path === '/Videos/MergeVersions').map((call) => call.query.getAll('ids')), [['e-upgraded', 'e-new']]);
+  assert.equal(tries(episodeRow), MERGE_TRIES);
+
+  // An upgrade under the same path keeps the Jellyfin item and its merge (slot test, 13 Oct 2026), so nothing is sent.
+  calls.length = 0;
+  arrCalls.length = 0;
+  dune = { id: 11, path: dune.path };
+  versionImport.trackedFileChanged('radarr', { eventType: 'Download', isUpgrade: true, movie: { id: 1 }, movieFile: { id: 11 } });
+  await versionImport.run();
+  assert.deepEqual(arrCalls, ['radarr 1']);
+  assert.deepEqual(calls, []);
+  assert.equal(tries(movieRow), MERGE_TRIES);
+
+  // An event that lands while a run waits on Radarr may postdate its answer, so the next run checks again.
+  arrCalls.length = 0;
+  versionImport.trackedFileChanged('radarr', { eventType: 'Rename', movie: { id: 1 } });
+  duringRadarr = () => versionImport.trackedFileChanged('radarr', { eventType: 'Rename', movie: { id: 1 } });
+  await versionImport.run();
+  await versionImport.run();
+  await versionImport.run();
+  assert.deepEqual(arrCalls, ['radarr 1', 'radarr 1']);
+
+  // A Sonarr rename lists no episodes, so every row of the series is checked.
+  arrCalls.length = 0;
+  versionImport.trackedFileChanged('sonarr', { eventType: 'Rename', series: { id: 5 }, renamedEpisodeFiles: [{ id: 32 }] });
+  await versionImport.run();
+  assert.deepEqual([calls, arrCalls], [[], ['sonarr 5']]);
+  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM second_versions WHERE merge_checked_at IS NULL').get().n, 0);
 });
 
 test('the TMDB client sends the key only to TMDB, parses partial replies and caches lists', async (t) => {
@@ -3396,7 +3959,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
   await t.test('the status reports each part and BACKUP_KEY', async () => {
     const { database, status } = await build();
     const fresh = await status();
-    assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', plex: 'not_done', folders: 'not_done' });
+    assert.deepEqual(fresh.required, { sonarr: 'not_done', radarr: 'not_done', rtorrent: 'not_done', mediaServer: 'not_done', folders: 'not_done' });
     assert.equal(fresh.requiredComplete, false);
     assert.deepEqual(fresh.optional, {
       trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false },
@@ -3414,11 +3977,11 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
       setSetting(database, 'hostPaths', key, '/data');
     }
     const partial = await status();
-    assert.deepEqual(partial.required, { sonarr: 'done', radarr: 'done', rtorrent: 'not_done', plex: 'done', folders: 'not_done' });
+    assert.deepEqual(partial.required, { sonarr: 'done', radarr: 'done', rtorrent: 'not_done', mediaServer: 'done', folders: 'not_done' });
     setSetting(database, 'credentials', 'rtorrent.password', 'value');
     setSetting(database, 'hostPaths', 'versions.radarr', '/data');
     const complete = await status();
-    assert.deepEqual(complete.required, { sonarr: 'done', radarr: 'done', rtorrent: 'done', plex: 'done', folders: 'done' });
+    assert.deepEqual(complete.required, { sonarr: 'done', radarr: 'done', rtorrent: 'done', mediaServer: 'done', folders: 'done' });
     assert.equal(complete.requiredComplete, true);
   });
 
@@ -3631,7 +4194,7 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     assert.equal(getSetting(database, 'credentials', 'plex.token'), 'plex-secret-token');
     const text = await statusText();
     assert.equal(text.includes('plex-secret-token'), false);
-    assert.equal(JSON.parse(text).required.plex, 'done');
+    assert.equal(JSON.parse(text).required.mediaServer, 'done');
 
     // Fails if logout stops dropping the session, so the sign-in token stays usable.
     const loggedOut = await app.request('/auth/logout', {
@@ -3741,6 +4304,21 @@ test('the Blutopia token moves to the blutopia.cc tracker and the Beyond-HD and 
   assert.deepEqual(migrate([['credentials', 'blutopia.apiToken', '']]), []);
 });
 
+// Dropping the old rows in the sessions rebuild instead of copying them with a text owner ID, or keeping owner_id an integer
+// column that refuses a Jellyfin GUID, turns this red.
+test('the sessions rebuild keeps old sessions with a text owner ID and takes a Jellyfin GUID', async () => {
+  const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+  const rebuild = applicationMigrations.findIndex((migration) => migration.includes('DROP TABLE sessions'));
+  assert.ok(rebuild > 0);
+  const database = new DatabaseSync(':memory:');
+  migrateDatabase(database, applicationMigrations.slice(0, rebuild));
+  database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('old', 42, 1);
+  migrateDatabase(database, applicationMigrations);
+  assert.deepEqual({ ...database.prepare('SELECT token_hash, owner_id, expires_at FROM sessions').get() }, { token_hash: 'old', owner_id: '42', expires_at: 1 });
+  database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('new', 'b5a4e0c2-guid', 1);
+  database.close();
+});
+
 // Classifying a status differently, dropping the service name from a message, or changing any operation's request turns a subtest red.
 test('Sonarr and Radarr operations answer with one result shape and never throw', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
@@ -3754,16 +4332,18 @@ test('Sonarr and Radarr operations answer with one result shape and never throw'
   const { sonarr, radarr, fake } = connectArr(database, { sonarr: {} });
   const { state } = fake.sonarr;
 
-  await t.test('the queue read walks every page and keeps unknown items', async () => {
-    // Stopping the page walk early, dropping the unknown-item flags, or changing the queue parser turns this red.
+  await t.test('the queue read walks every page and leaves out items matched to no title', async () => {
+    // Stopping the page walk early, asking for unknown items again (they list the other service's torrents), or changing the queue parser turns this red.
     const hash = 'ab'.repeat(20);
-    state.queue = Array.from({ length: 501 }, (_, index) => queueItem(
-      index === 0 ? { unknown: true } : index === 1 ? { downloadId: hash } : {},
+    state.queue = Array.from({ length: 502 }, (_, index) => queueItem(
+      index === 0
+        ? { unknown: true, downloadId: hash, trackedDownloadStatus: 'warning', statusMessages: [{ title: 'Show.S01', messages: ["Download wasn't grabbed by Radarr and not in a category, Skipping."] }] }
+        : index === 1 ? { downloadId: hash } : {},
     ));
     const result = await sonarr.queue();
     assert.equal(result.kind, 'ok');
     assert.equal(result.value.length, 501);
-    assert.ok(result.value.some((item) => item.queueId === state.queue[0].id));
+    assert.ok(!result.value.some((item) => item.queueId === state.queue[0].id));
     assert.equal(result.value.find((item) => item.queueId === state.queue[1].id).downloadId, hash.toUpperCase());
   });
 
@@ -4314,6 +4894,49 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     second.database.close();
   });
 
+  // Publishing unchanged rows, adding a torrent the full poll has not stored, moving lastSeenAt, crediting seeding time
+  // from the one-second refresh, or calling rTorrent while it is marked down turns this red.
+  await t.test('the one-second refresh updates and publishes only changed live values and leaves the seeding counter to the full poll', async () => {
+    const { database, clock, published, fake, poller } = setup();
+    // Live field order: the full row without name, size and directory.
+    const live = (hash, overrides) => row(hash, overrides).filter((_cell, index) => index !== 1 && index !== 2 && index !== 15);
+    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 0 })];
+    await poller.poll();
+    const startedAt = clock.value;
+    const before = published.length;
+    fake.rows = [live(hashA), live(hashB, { complete: 0, completed: 0 })];
+    clock.value += 1_000;
+    await poller.pollLive();
+    assert.equal(published.length, before);
+
+    fake.rows = [live(hashA, { up: 70 }), live(hashB, { complete: 0, completed: 400, down: 99 }), live(hashC)];
+    for (let second = 0; second < 29; second += 1) {
+      clock.value += 1_000;
+      await poller.pollLive();
+    }
+    const liveEvents = published.slice(before);
+    assert.equal(liveEvents.length, 1);
+    assert.equal(liveEvents[0].data.live, true);
+    assert.deepEqual(liveEvents[0].data.changed.map((torrent) => [torrent.hash, torrent.completedBytes, torrent.upRate]),
+      [[hashA.toUpperCase(), 1000, 70], [hashB, 400, 50]]);
+    const stored = listTorrents(database);
+    assert.equal(stored.length, 2);
+    assert.equal(stored.find((torrent) => torrent.hash === hashB).downRate, 99);
+    assert.equal(stored.every((torrent) => torrent.lastSeenAt === startedAt && torrent.seedingSeconds === 0), true);
+
+    fake.rows = [row(hashA, { up: 70 }), row(hashB, { complete: 0, completed: 400, down: 99 })];
+    await poller.poll();
+    assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).seedingSeconds, 30);
+
+    // While the full poll has rTorrent marked down, the refresh does not call it.
+    fake.fail = 'unreachable';
+    await poller.poll();
+    const calls = fake.calls.length;
+    await poller.pollLive();
+    assert.equal(fake.calls.length, calls);
+    database.close();
+  });
+
   // Re-reading a stored file list, reading more than 20 per poll, or keeping the list of a gone torrent turns this red.
   await t.test('file lists are read once, 20 per poll, and dropped when the torrent is gone', async () => {
     const { database, fake, poller } = setup();
@@ -4402,8 +5025,32 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     const tracker = createGrabTracker({ database, arr, events, now: () => clock.value });
     const heard = [];
     tracker.onGrab((grab) => { heard.push(grab.hash); });
-    return { database, clock, fake, tracker, heard };
+    return { database, clock, events, fake, tracker, heard };
   };
+
+  // Skipping the read for a new torrent that already has the app's own grab record turns this red: a season grabbed
+  // in the app has no episodes until Sonarr is read, so its episode rows wait for the five-minute check. Reading on the
+  // one-second refresh's events turns it red too: that would read Sonarr every second for a new torrent's first 30 seconds.
+  await t.test('a new torrent from a season grabbed in the app gets its episodes from Sonarr on the next rTorrent poll', async () => {
+    const { database, clock, events, fake, tracker } = setup();
+    tracker.readOnNewTorrents();
+    tracker.recordGrab({
+      hash: packHash.toUpperCase(), service: 'sonarr', movieId: null, seriesId: 4, episodeIds: [], releaseTitle: 'Show.S02.1080p',
+      indexer: '', grabbedAt: clock.value, publishedAt: null, byHand: true,
+    });
+    fake.sonarr.state.history = [41, 42, 43].map((episodeId) => historyRecord({
+      downloadId: packHash.toUpperCase(), seriesId: 4, episodeId, sourceTitle: 'Show.S02.1080p', date: '2026-10-08T11:59:59Z',
+    }));
+    clock.value += 30_000;
+    events.publish('torrents', { changed: [{ hash: packHash.toUpperCase(), firstSeenAt: clock.value, lastSeenAt: clock.value }], gone: [], live: true });
+    for (let turn = 0; turn < 20; turn += 1) await drain();
+    assert.equal(fake.sonarr.requests.some((request) => request.path === '/api/v3/queue'), false);
+    events.publish('torrents', { changed: [{ hash: packHash.toUpperCase(), firstSeenAt: clock.value, lastSeenAt: clock.value }], gone: [] });
+    for (let turn = 0; turn < 100 && findGrab(database, packHash).episodeIds.length === 0; turn += 1) await drain();
+    assert.deepEqual(findGrab(database, packHash).episodeIds, [41, 42, 43]);
+    assert.ok(fake.sonarr.requests.some((request) => request.path === '/api/v3/queue'));
+    database.close();
+  });
 
   // Dropping the hash normalization, losing a pack's episodes, or splitting one grab into two records turns this red.
   await t.test('webhooks and the history check record a movie, an episode, a multi-episode and a season pack as one record per hash', async () => {
@@ -5382,14 +6029,40 @@ test('tracker messages become cooldowns, retries, rechecks and replacement reque
     const poller = createTorrentPoller({ database, rtorrent, events, now });
     const problems = createProblems({ database, events, now });
     const watch = createTrackerWatch({ database, rtorrent, problems, events, now });
+    // Every torrent here counts as a Sonarr grab unless listed in unowned; the watch ignores torrents nobody here grabbed.
+    const unowned = new Set();
     const step = async (rows, elapsed = 60_000) => {
       clock.value += elapsed;
       fake.rows = rows;
+      for (const [h] of rows) {
+        if (unowned.has(h)) continue;
+        database.prepare(`INSERT OR IGNORE INTO torrent_grabs (hash, service, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand)
+          VALUES (?, 'sonarr', 1, '[1]', 'Show.S01E01', 'Tracker', 0, 0)`).run(h);
+      }
       await poller.poll();
       await watch.check();
     };
-    return { database, clock, events, fake, watch, step, poller };
+    return { database, clock, events, fake, watch, step, poller, unowned };
   };
+
+  // Flagging a torrent that Sonarr, Radarr and media-manager-2 never grabbed (a music download, say) turns this red.
+  await t.test('torrents nobody here grabbed are never flagged, and their old flags resolve', async () => {
+    const { database, fake, watch, step, unowned } = setup();
+    const music = row(hash(1), { state: 0, active: 0, message: 'Tracker: [Failure reason "Unregistered torrent"]' });
+    const damaged = row(hash(2), { completed: 0, state: 0, active: 0, message: 'Hash check on download completion found bad chunks' });
+    unowned.add(hash(1)).add(hash(2));
+    // A flag opened before this rule existed must resolve on the next check.
+    database.prepare(`INSERT INTO torrent_issues (hash, kind, since, replace) VALUES (?, 'unregistered', 0, 1)`).run(hash(1));
+    database.prepare(`INSERT INTO problems (kind, subject_type, service, subject_id, hash, state, summary, opened_at, updated_at)
+      VALUES ('unregistered', 'torrent', '', ?, ?, 'needs_you', 'old flag', 0, 0)`).run(hash(1), hash(1));
+    await step([music, damaged]);
+    await step([music, damaged], 31 * 60_000);
+    assert.deepEqual(listOpenProblems(database), []);
+    assert.deepEqual(listIssues(database), []);
+    assert.deepEqual(watch.replacementRequests(), []);
+    assert.deepEqual(fake.calls, []);
+    database.close();
+  });
 
   // Treating a refusal as a tracker outage, or missing rTorrent's failure wrapper, turns this red.
   await t.test('messages are classified from rTorrent wording', () => {
@@ -5831,6 +6504,19 @@ test('a stalled torrent is replaced without risking a hit and run', async (t) =>
     assert.deepEqual(listSecondVersionRows(run.database, { service: 'radarr', movieId: 7 }).map((row) => [row.state, row.stalled]), [
       ['failed', false], ['downloading', true],
     ]);
+    run.database.close();
+  });
+
+  // Watching or flagging a torrent with no grab record and no second version row (a music download, say) turns this red.
+  await t.test('a stalled torrent nobody here grabbed is left alone, and its old stall flag resolves', async () => {
+    const other = 'CD'.repeat(20);
+    const run = await setup({ versions: [], releases: [], torrentHash: other });
+    run.database.prepare(`INSERT INTO problems (kind, subject_type, service, subject_id, hash, state, summary, opened_at, updated_at)
+      VALUES ('stalled', 'torrent', '', ?, ?, 'needs_you', 'old flag', 0, 0)`).run(other, other);
+    await run.tick(15 * 24 * 60);
+    assert.deepEqual(listOpenProblems(run.database), []);
+    assert.equal(run.database.prepare('SELECT COUNT(*) AS count FROM stall_watch').get().count, 0);
+    assert.deepEqual(run.calls, []);
     run.database.close();
   });
 
@@ -7056,6 +7742,25 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     }
   });
 
+  // Sweeping only unfinished rows leaves a problem handed to the owner open forever after its download leaves the queue;
+  // closing it while the other service still lists the download hides a live block.
+  await t.test('a problem handed to the owner resolves once neither queue lists its download', async () => {
+    const run = await setup({ message: 'Something new' });
+    await run.fix.check();
+    const [handed] = listOpenProblems(run.database);
+    assert.equal(handed.state, 'needs_you');
+    run.fake.radarr.state.queue = [{ ...run.queue[0], movieId: 7 }];
+    run.queue.length = 0;
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database).map((problem) => problem.id), [handed.id]);
+    run.fake.radarr.state.queue = [];
+    await run.grabs.reconcile();
+    await run.fix.check();
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
   // Resolving only the problem named by the latest block kind leaves the first one open when a locked file then fails to move;
   // matching on anything wider than this download's import problems closes another download's or a stall's.
   await t.test('a block that changes kind before clearing resolves every import problem on the download, and only those', async () => {
@@ -7181,6 +7886,7 @@ test('operator command stores settings from stdin and checks connections without
   assert.equal(unknownSource.code, 1);
   assert.match(unknownSource.stderr, /must be one of: tmdb, trakt, fanart/);
   assert.equal((await cli(['backdrop', 'source'])).stdout, 'backdrop source: trakt\n');
+  assert.equal((await cli(['cache', 'clear'])).stdout, 'cache cleared\n');
 
   const unconfigured = await cli(['connections', 'check']);
   assert.equal(unconfigured.code, 1, unconfigured.stderr);
@@ -7524,6 +8230,40 @@ test('search, the title page and add for one title ask Sonarr for it once', asyn
   assert.equal((await add.addSeries(371980, choices)).kind, 'added');
   assert.equal(fake.sonarr.requests.filter((request) => request.path === '/api/v3/series/lookup').length, 1);
   assert.deepEqual(fake.sonarr.requests.find((request) => request.method === 'POST').body.seasons, [{ seasonNumber: 1 }]);
+});
+
+// Deleting the Sonarr and Radarr image rows (posters would then never download again), leaving a copied file behind,
+// or clearing anything beyond the fetched-again data (the library, settings, preferences) turns this red.
+test('clearing the cache drops saved details, Discover rows and image copies, and keeps everything else', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { setPreference } = await import(preferencesModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { clearCache } = await import(clearCacheModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-clear-cache-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const images = join(root, 'images');
+  await mkdir(images);
+  for (const file of ['sonarr-7-poster.jpg', 'tmdb-w342-abc.jpg', 'unrelated.txt']) await writeFile(join(images, file), 'x');
+  database.prepare('INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('sonarr', 7, 'Severance', 2022, '{}', 'f', 1);
+  database.prepare('INSERT INTO title_images (service, id, kind, source, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run('sonarr', 7, 'poster', '/poster.jpg', 'image/jpeg', 'e', 'sonarr-7-poster.jpg', 1);
+  database.prepare('INSERT INTO tmdb_images (size, path, content_type, etag, file, fetched_at) VALUES (?, ?, ?, ?, ?, ?)').run('w342', 'abc.jpg', 'image/jpeg', 'e', 'tmdb-w342-abc.jpg', 1);
+  database.prepare('INSERT INTO discover_rows (key, json, fetched_at, read_at) VALUES (?, ?, ?, ?)').run('row', '{}', 1, 1);
+  createTitleStore(database).put({ type: 'movie', tmdbId: 129 }, 'traktBackdrop', { url: 'https://media.trakt.tv/x.webp' });
+  setSetting(database, 'credentials', 'tmdb.apiKey', 'key');
+  setPreference(database, 'backdrop.source', 'trakt');
+
+  clearCache(database, images);
+
+  const count = (table) => Number(database.prepare(`SELECT count(*) AS n FROM ${table}`).get().n);
+  assert.deepEqual(['title_store_parts', 'title_store', 'discover_rows', 'tmdb_images'].map(count), [0, 0, 0, 0]);
+  assert.deepEqual(['titles', 'title_images', 'settings', 'preferences'].map((table) => count(table) > 0), [true, true, true, true]);
+  assert.deepEqual(await readdir(images), ['unrelated.txt']);
 });
 
 // Dropping the fanart fallback when the chosen source has no picture, ignoring the backdrop.source preference, asking fanart.tv for a show by anything
@@ -8424,6 +9164,9 @@ test('second version file names are cleaned and episodes read from file names', 
     ['Bluray-1080p', 'Movie.2020.1080p.BluRay-SAMPLE[rarbg]', 'Bluray-1080p'],
     ['Featurette', 'Movie.2020-OTHER', ''],
     ['{edition-x}', 'Movie.2020-GRP', 'edition-x GRP'],
+    ['Bluray-1080p', 'Movie.2020.1080p.BluRay-CLIP', 'Bluray-1080p'],
+    ['WEBDL-1080p', 'Movie.2020.1080p.WEB-DL-Extra', 'WEBDL-1080p'],
+    ['Bluray-2160p', 'Movie.2020.2160p.BluRay-DeletedScene', 'Bluray-2160p'],
   ]) assert.equal(versionSuffix(quality, title), expected, title);
   for (const [name, season, episodes] of [
     ['Andor.S01E02.2160p.mkv', 1, [2]],
@@ -8443,6 +9186,7 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems } = await import(problemsModuleUrl);
   const { createVersionImport, FOLDER_PROBLEM_KIND, IMPORT_PROBLEM_KIND, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
+  const { createPlex } = await import(plexModuleUrl);
   const root = await realpath(await mkdtemp(join(tmpdir(), 'media-manager-2-version-import-')));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -8504,14 +9248,17 @@ test('a finished second version is hardlinked into the versions folder and Plex 
 
   const plexRequests = [];
   let sections = [{ key: '3', type: 'movie', Location: [{ path: join(root, 'versions') }] }];
-  const plex = {
-    request: async (path) => {
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  const plex = createPlex(database, {
+    fetch: async (url) => {
+      const path = String(url).slice('http://plex.test'.length);
       plexRequests.push(path);
-      return { status: 200, body: path === '/library/sections' ? { MediaContainer: { Directory: sections } } : undefined };
+      return new Response(path === '/library/sections' ? JSON.stringify({ MediaContainer: { Directory: sections } }) : '', { status: 200 });
     },
-  };
+  });
   const problems = createProblems({ database, events: createEventHub() });
-  const versionImport = createVersionImport({ database, rtorrent, arr, plex, problems });
+  const versionImport = createVersionImport({ database, rtorrent, arr, mediaServer: () => plex, problems });
 
   // Copying instead of linking, linking an extra or a sample, or recording the event twice on a rerun turns this red.
   const duneHash = 'A1'.repeat(20);
@@ -8908,7 +9655,7 @@ test('second versions are served under their movie and series, and a check flags
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems, listOpenProblems } = await import(problemsModuleUrl);
   const { createLibrary, createLibraryRoutes } = await import(libraryModuleUrl);
-  const { createSecondVersionChecks, listSecondVersionRows } = await import(secondVersionRowsModuleUrl);
+  const { createSecondVersionChecks, listSecondVersionRows, listTrackedHitAndRun } = await import(secondVersionRowsModuleUrl);
   const { createSearchRuns } = await import(searchRunsModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-version-rows-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
@@ -8951,8 +9698,21 @@ test('second versions are served under their movie and series, and a check flags
   torrent.run('F'.repeat(40), 'Show S01E02', 400, 100, 0, 0, 0);
   database.prepare('INSERT INTO stall_watch (hash, replaced_at) VALUES (?, 550)').run('F'.repeat(40));
 
-  const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title)), createSearchRuns({ database, arr, pollMs: 1, isManualDownload: () => false }));
+  // Grabs behind the tracked files: an older and a newer import of the movie, one still downloading, one for the show.
+  const grab = database.prepare(`INSERT INTO torrent_grabs (hash, service, movie_id, series_id, episode_ids, release_title, indexer, grabbed_at, by_hand, imported_at)
+    VALUES (?, ?, ?, ?, ?, 'release', 'Blutopia', 1, 0, ?)`);
+  torrent.run('G'.repeat(40), 'Dune old', 1000, 0, 1, 500, 360000);
+  grab.run('G'.repeat(40), 'radarr', 9, null, '[]', 50);
+  grab.run('M'.repeat(40), 'radarr', 9, null, '[]', 150);
+  grab.run('F'.repeat(40), 'sonarr', null, 5, '[102]', null);
+
+  const routes = createLibraryRoutes(createLibrary(arr, (title) => listSecondVersionRows(database, title), undefined, undefined, undefined, undefined,
+    (title) => listTrackedHitAndRun(database, title)), createSearchRuns({ database, arr, pollMs: 1, isManualDownload: () => false }));
   const read = async (path) => (await routes.request(path)).json();
+
+  // Putting an older import first, or listing a grab that never imported, turns this red.
+  assert.deepEqual((await read('/movie/9')).trackedHitAndRun.map((row) => [row.hitAndRun.seededHours, row.hitAndRun.met]), [[2, false], [100, false]]);
+  assert.deepEqual((await read('/series/5')).trackedHitAndRun, []);
 
   // The tracked version and the second version come back in one answer; a deleted second version does not.
   const movie = await read('/movie/9');
@@ -9649,7 +10409,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       database,
       arr: { sonarr: fake('sonarr'), radarr: fake('radarr') },
       rtorrent: { check: async () => ok },
-      plex: { check: async () => ok },
+      mediaServer: () => ({ name: 'plex', check: async () => ok }),
       tmdb: { check: async () => input.statuses?.tmdb ?? ok },
       mdblist: { check: async () => input.statuses?.mdblist ?? ok },
       jobs: { status: () => input.jobs ?? [] },
@@ -10573,7 +11333,7 @@ test('title pages mark episodes and select ranges of episodes only', async (t) =
   // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
-  const { episodeMarks, seasonMonitoredState, movieWord } = await load('../src/client/title/rows.ts');
+  const { episodeMarks, seasonMonitoredState, seasonStatus, seasonAirDates, movieWord } = await load('../src/client/title/rows.ts');
   const { rangeBetween } = await load('../src/client/title/selection.ts');
 
   // Letting a season header or version row into a range, or depending on which end the range starts from, turns this red.
@@ -10612,6 +11372,40 @@ test('title pages mark episodes and select ranges of episodes only', async (t) =
       [episode({ unverifiedSceneNumbering: true }), ['Scene numbering unverified']],
     ];
     for (const [input, marks] of cases) assert.deepEqual(episodeMarks(input), marks, JSON.stringify(input));
+  });
+
+  // Letting a missing episode outrank a stall, counting a downloading episode as missing, or dropping the files count turns this red.
+  await t.test('a season\'s status chip shows its worst state first with a count', () => {
+    const now = Date.parse('2026-10-13T12:00:00Z');
+    const episode = (id, overrides = {}) => ({ id, airDate: '2026-10-01T00:00:00Z', monitored: true, hasFile: true, ...overrides });
+    const live = (map) => (found) => map[found.id];
+    const counts = { onDisk: 2, total: 4 };
+    const stalled = { word: 'stalled', tone: 'risk', percent: 10, downRate: 0 };
+    const downloading = { word: 'downloading', tone: 'normal', percent: 40, downRate: 9 };
+    const missing = episode(3, { hasFile: false });
+    const cases = [
+      [[episode(1), missing, episode(4, { hasFile: false })], { 4: stalled }, { label: '1 stalled · 2 of 4', look: 'risk' }],
+      [[episode(1), missing, episode(4, { hasFile: false })], { 4: downloading }, { label: '1 missing · 2 of 4', look: 'warning' }],
+      [[episode(1), episode(4, { hasFile: false })], { 4: downloading }, { label: '1 downloading · 2 of 4', look: 'live' }],
+      [[episode(1), episode(3, { hasFile: false, monitored: false })], {}, { label: 'Aired · 2 of 4', look: 'plain' }],
+      [[episode(1, { airDate: '2026-11-01T00:00:00Z', hasFile: false })], {}, { label: 'Upcoming', look: 'plain' }],
+    ];
+    for (const [episodes, map, expected] of cases) {
+      const { label, look } = seasonStatus(episodes, live(map), episodes[0].airDate.startsWith('2026-11') ? { onDisk: 0, total: 0 } : counts, now);
+      assert.deepEqual({ label, look }, expected);
+    }
+  });
+
+  // Losing the year on another year's dates, or printing a one-day season as a span, turns this red.
+  await t.test('a season\'s air dates run from its first to its last episode', () => {
+    const now = Date.parse('2026-10-13T12:00:00Z');
+    const aired = (...dates) => dates.map((airDate) => ({ airDate }));
+    assert.equal(seasonAirDates(aired('2026-10-24T01:00:00Z', null, '2026-08-22T01:00:00Z'), now), '22 Aug – 24 Oct');
+    assert.equal(seasonAirDates(aired('2025-12-30T01:00:00Z', '2026-01-06T01:00:00Z'), now), 'Dec 2025 – Jan 2026');
+    assert.equal(seasonAirDates(aired('2024-01-17T01:00:00Z', '2024-03-13T01:00:00Z'), now), 'Jan – Mar 2024');
+    assert.equal(seasonAirDates(aired('2024-01-17T01:00:00Z', '2024-01-24T01:00:00Z'), now), 'Jan 2024');
+    assert.equal(seasonAirDates(aired('2026-08-22T01:00:00Z'), now), '22 Aug');
+    assert.equal(seasonAirDates(aired(null), now), '');
   });
 
   // Reading a partly monitored season as fully monitored or not monitored turns this red.
@@ -11397,7 +12191,7 @@ test('the settings screen sends only changed fields and ranks each service state
   // Opening on a done step, visiting an unwanted or skipped optional part, skipping the posters and ratings step between trackers and backup, or reaching Done with a required part missing turns this red.
   await t.test('the wizard moves to the next open step and reaches Done only once every required part is saved', () => {
     const status = (done, optional = {}) => ({
-      required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
+      required: Object.fromEntries(['sonarr', 'radarr', 'rtorrent', 'mediaServer', 'folders'].map((part) => [part, done.includes(part) ? 'done' : 'not_done'])),
       optional: { trackers: { status: 'not_done', wanted: false }, metadata: { status: 'not_done', wanted: false }, backup: { status: 'not_done', wanted: false }, ...optional },
     });
     const fresh = status([]);
@@ -11407,7 +12201,7 @@ test('the settings screen sends only changed fields and ranks each service state
     // Radarr saved in Settings earlier is passed over.
     assert.equal(nextStep('sonarr', status(['sonarr', 'radarr']), { trackers: true, backup: true }), 'rtorrent');
     assert.equal(firstStep(status(['sonarr']), { trackers: true, backup: true }), 'radarr');
-    const required = ['sonarr', 'radarr', 'rtorrent', 'plex', 'folders'];
+    const required = ['sonarr', 'radarr', 'rtorrent', 'mediaServer', 'folders'];
     const chosen = status(required, { trackers: { status: 'skipped', wanted: false }, backup: { status: 'not_done', wanted: true } });
     assert.deepEqual(wantedParts(chosen), { trackers: false, metadata: false, backup: true });
     assert.equal(nextStep('folders', chosen, wantedParts(chosen)), 'backup');
@@ -11418,8 +12212,8 @@ test('the settings screen sends only changed fields and ranks each service state
     assert.equal(nextStep('trackers', status(required, { metadata: { status: 'skipped', wanted: true } }), all), 'backup');
     const skipped = status(required, { trackers: { status: 'skipped', wanted: true }, backup: { status: 'skipped', wanted: true } });
     assert.equal(nextStep('folders', skipped, wantedParts(skipped)), 'done');
-    // Past the end with Plex missing goes back to Plex, not to Done.
-    assert.equal(nextStep('backup', status(['sonarr', 'radarr', 'rtorrent', 'folders']), { trackers: true, backup: true }), 'plex');
+    // Past the end with the media server missing goes back to it, not to Done.
+    assert.equal(nextStep('backup', status(['sonarr', 'radarr', 'rtorrent', 'folders']), { trackers: true, backup: true }), 'mediaServer');
   });
 
   // Letting a suggestion replace a saved folder, or leaving a field null when nothing is known, turns this red.
@@ -13072,27 +13866,18 @@ test('second-version rows and hit and run advice word themselves from the struct
   // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
-  const { versionSeedingText, timeLeftText, keepChoiceText, removeChoiceText, downloadsAdviceText } = await load('../src/client/title/secondVersionText.ts');
-  const seeding = { inRtorrent: true, complete: true, ratio: 0.41, seedingSeconds: 41 * 3600, upRate: 0, trackerHost: 'privatehd.to' };
+  const { hitAndRunText, keepChoiceText, removeChoiceText, downloadsAdviceText } = await load('../src/client/title/secondVersionText.ts');
   const rule = (overrides = {}) => ({ host: 'privatehd.to', requiredHours: 72, seededHours: 41.6, ratio: 0.41, requiredRatio: 0.9, met: false, ...overrides });
   const advice = (overrides = {}) => ({ recommendation: 'keep', reason: 'Keep seeding: 39 hours of seeding left', globalRatio: null, host: 'privatehd.to',
     requiredHours: 79.2, seededHours: 41.6, hoursLeft: 37.6, detail: '39 hours of seeding left', ...overrides });
 
-  // Rounding seeded hours up, or dropping the fallback when no rule applies, turns this red.
-  await t.test('the Seeding column shows rule progress, rule met, or the plain seeding text', () => {
-    assert.equal(versionSeedingText({ seeding, hitAndRun: rule() }), 'seeding 41 h of 72 h');
-    assert.equal(versionSeedingText({ seeding, hitAndRun: rule({ seededHours: 1950.2, met: true }) }), 'seeding 1,950 h · rule met');
-    assert.equal(versionSeedingText({ seeding, hitAndRun: null }), 'seeding 41 h · ratio 0.41');
-    assert.equal(versionSeedingText({ seeding, hitAndRun: rule({ requiredHours: null }) }), 'seeding 41 h · ratio 0.41');
-    assert.equal(versionSeedingText({ seeding: null, hitAndRun: null }), '');
-  });
-
-  await t.test('time left reads in minutes, hours or days', () => {
-    assert.equal(timeLeftText(330), '6 min left');
-    assert.equal(timeLeftText(5), '1 min left');
-    assert.equal(timeLeftText(5 * 3600 + 1), '6 h left');
-    assert.equal(timeLeftText(3 * 86400), '3 days left');
-    assert.equal(timeLeftText(null), '');
+  // Rounding seeded hours up, required hours down, or dropping the ratio fallback when a rule has no hours, turns this red.
+  await t.test('the Hit and run column shows seeded hours against the rule, else the ratio', () => {
+    assert.equal(hitAndRunText(rule()), '41 h of 72 h');
+    assert.equal(hitAndRunText(rule({ seededHours: 1950.2, requiredHours: 71.2, met: true })), '1,950 h of 72 h');
+    assert.equal(hitAndRunText(rule({ requiredHours: null })), 'ratio 0.41 of 0.90');
+    assert.equal(hitAndRunText(rule({ requiredHours: null, requiredRatio: null })), '');
+    assert.equal(hitAndRunText(null), '');
   });
 
   // Matching on the reason's text instead of the fields, or showing the margin as the tracker's ask, turns this red.
