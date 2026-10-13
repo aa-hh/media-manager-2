@@ -93,10 +93,11 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
       return { kind: 'ok', value: typeof found.value.tvdbId === 'number' ? found.value.tvdbId : null };
     },
 
-    // Null when TMDB is unset, down or has no backdrop, so the title page keeps the Sonarr or Radarr fanart.
+    // A title with no saved details gets null now (the page keeps the fanart) and the load runs in the background, so waiting on TMDB never holds the page.
     async backdropPath(type: TmdbMediaType, tmdbId: number): Promise<string | null> {
-      const found = await details(type, tmdbId);
-      return found.kind === 'ok' ? found.value.backdropPath ?? null : null;
+      const saved = store.get<Partial<TmdbDetails>>(type === 'movie' ? { type, tmdbId } : { type, tmdbId }, PART);
+      void details(type, tmdbId).catch(() => undefined);
+      return saved?.value.backdropPath ?? null;
     },
 
     async airing(tmdbId: number): Promise<{ seasons: Array<{ seasonNumber: number; aired: number }> | null; nextAirDate: string | null }> {
