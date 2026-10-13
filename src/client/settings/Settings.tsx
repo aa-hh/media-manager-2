@@ -36,7 +36,7 @@ import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, ty
 type Selected = ServiceName | `tracker:${string}` | 'add' | 'folders' | 'backup';
 const trackerKey = (host: string): Selected => `tracker:${host}`;
 
-const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected' || check.kind === 'different_server' || check.kind === 'not_configured';
+const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected' || check.kind === 'not_configured';
 const timeOf = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 // iOS Safari zooms into any focused input under 16px, so touch screens get 16px in every field.
 export const touchInputs = 'pointer-coarse:[&_input]:text-base';
@@ -181,12 +181,12 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
       description: `You’re signed in as ${status.mediaServer.ownerName}. ${infoOf(owner).label} settings stay saved in case you switch back.`,
     });
   };
-  const differentServer = checks.jellyfin.kind === 'different_server' ? checks.jellyfin.serverName : undefined;
+  const differentServer = connections.differentServers.jellyfin;
   const editorExtras: Pick<EditorProps, 'addressHelp' | 'addressError' | 'facts' | 'afterFacts'> = {
     ...(service === 'jellyfin' && mediaServer.kind === 'jellyfin' ? {
       addressHelp: 'Where media-manager-2 reaches Jellyfin, with the port. It must stay the same Jellyfin server.',
       addressError: differentServer === undefined ? undefined
-        : `That’s a different Jellyfin server (“${differentServer}”). The owner, ${mediaServer.ownerName}, belongs to “${mediaServer.serverName}”. To move to ${differentServer}, switch media server below and log in there.`,
+        : `That’s a different Jellyfin server (“${differentServer}”). The owner, ${mediaServer.ownerName}, belongs to “${mediaServer.serverName}”.`,
       facts: { server: `${mediaServer.serverName}${jellyfinVersion}`, owner: `${mediaServer.ownerName}, Jellyfin administrator` },
     } : {}),
     ...(service === 'jellyfin' && mediaServer.kind === 'plex' ? {
@@ -477,7 +477,7 @@ type PiecesStripProps = {
   folders: { state: ServiceState; text: string };
   /** The setup wizard's lit pills: black with a lime dot, all lime once setup is done. */
   look?: 'plain' | 'setup' | 'done';
-  /** The setup wizard for a Jellyfin owner: this pill takes the Watch column's place of Plex. */
+  /** For a Jellyfin owner, in Settings and the setup wizard: this pill takes Plex's place in the Watch column. */
   watch?: { logo: LogoName; name: string; state: ServiceState; text: string };
 };
 
@@ -753,14 +753,10 @@ export function Editor({
           title={failureTitle(info, check, address || savedUrl)}
           action={<Button variant="outline" icon={<RefreshCw />} onClick={signIn || edits > 0 || !configured ? onConnect : onCheck}>Try again</Button>}
         >
-          {check.kind === 'different_server' ? 'The address above is kept so you can fix it.' : (
-            <>
-              {check.kind === 'unreachable'
-                ? (info.addressPlaceholder === undefined ? `Check that the seedbox can reach ${info.label} over the internet.` : `Check that ${info.label} is running and that the port is right.`)
-                : check.kind === 'rejected' ? (signIn ? 'Plex refused your sign-in token. Check that this is your own Plex server, or paste a token instead.' : info.credentials[0].help) : `Fill in the ${fieldWords(info)}, then Connect again.`}
-              {!check.ofSaved && check.kind !== 'not_configured' ? (signIn ? ' The address above is kept so you can fix it.' : (info.addressPlaceholder === undefined ? ` The ${info.refused} above is kept so you can fix it.` : ` The address and ${info.refused} above are kept so you can fix them.`)) : ''}
-            </>
-          )}
+          {check.kind === 'unreachable'
+            ? (info.addressPlaceholder === undefined ? `Check that the seedbox can reach ${info.label} over the internet.` : `Check that ${info.label} is running and that the port is right.`)
+            : check.kind === 'rejected' ? (signIn ? 'Plex refused your sign-in token. Check that this is your own Plex server, or paste a token instead.' : info.credentials[0].help) : `Fill in the ${fieldWords(info)}, then Connect again.`}
+          {!check.ofSaved && check.kind !== 'not_configured' ? (signIn ? ' The address above is kept so you can fix it.' : (info.addressPlaceholder === undefined ? ` The ${info.refused} above is kept so you can fix it.` : ` The address and ${info.refused} above are kept so you can fix them.`)) : ''}
         </Callout>
       )}
     </section>

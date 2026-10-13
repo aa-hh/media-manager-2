@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useToastManager } from '@/components/ui/toast';
-import { changedCount, changes, type Check, type Draft, emptyDraft, isConfigured, list, type SavedService, type ServiceName, services, type TestResult } from './model';
+import { afterTest, changedCount, changes, type Check, type Draft, emptyDraft, isConfigured, list, type SavedService, type ServiceName, services, type TestResult } from './model';
 import { usesSignInToken } from './setup';
 import type { TrackerRequest } from './TrackerEditor';
 
@@ -33,6 +33,8 @@ export function useServices(onUnauthenticated: () => void) {
   const [replacing, setReplacing] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState<Partial<Record<ServiceName, 'connect' | 'check'>>>({});
   const [problems, setProblems] = useState<Partial<Record<ServiceName, string>>>({});
+  // The server name from a test that reached a different server than the saved one, until the address changes or the next test.
+  const [differentServers, setDifferentServers] = useState<Partial<Record<ServiceName, string>>>({});
   const [plexSignIn, setPlexSignIn] = useState<boolean>();
   const toasts = useToastManager();
   const checksRef = useRef(checks);
@@ -49,6 +51,7 @@ export function useServices(onUnauthenticated: () => void) {
     const previous = checksRef.current[name];
     setChecks((current) => ({ ...current, [name]: { kind: 'testing' } }));
     setProblems((current) => ({ ...current, [name]: undefined }));
+    setDifferentServers((current) => ({ ...current, [name]: undefined }));
     try {
       const response = await fetch(`/api/settings/test/${name}`, { method: 'POST', credentials: 'same-origin', headers: writeHeaders, body: JSON.stringify(body) });
       if (response.status === 401) {
@@ -57,7 +60,9 @@ export function useServices(onUnauthenticated: () => void) {
       }
       if (!response.ok) throw new Error('The test did not run.');
       const result = await response.json() as TestResult;
-      setChecks((current) => ({ ...current, [name]: { ...result, at: Date.now(), ofSaved } }));
+      const { check, differentServer } = afterTest(previous, result, Date.now(), ofSaved);
+      setChecks((current) => ({ ...current, [name]: check }));
+      if (differentServer !== undefined) setDifferentServers((current) => ({ ...current, [name]: differentServer }));
       return result;
     } catch {
       setChecks((current) => ({ ...current, [name]: previous }));
@@ -90,6 +95,7 @@ export function useServices(onUnauthenticated: () => void) {
     setDrafts((current) => ({ ...current, [name]: undefined }));
     setReplacing((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${name}.`))));
     setProblems((current) => ({ ...current, [name]: undefined }));
+    setDifferentServers((current) => ({ ...current, [name]: undefined }));
   };
 
   /** Tests the form, then saves what changed. True once saved. */
@@ -177,7 +183,7 @@ export function useServices(onUnauthenticated: () => void) {
       if (response.status === 409) return fail('Your sign-in has no Plex token to use. Sign out and sign in again, or paste a token.');
       if (response.status !== 200) return fail('The test could not reach media-manager-2. Try again.');
       const result = await response.json() as TestResult;
-      setChecks((current) => ({ ...current, plex: { ...result, at: Date.now(), ofSaved: result.kind === 'ok' } }));
+      setChecks((current) => ({ ...current, plex: afterTest(previous, result, Date.now(), result.kind === 'ok').check }));
       if (result.kind !== 'ok') return false;
       setLoad((current) => (current.kind !== 'ready' ? current : {
         kind: 'ready',
@@ -218,7 +224,10 @@ export function useServices(onUnauthenticated: () => void) {
     }
   };
 
-  const setDraft = (name: ServiceName, draft: Draft) => setDrafts((current) => ({ ...current, [name]: draft }));
+  const setDraft = (name: ServiceName, draft: Draft) => {
+    if (draft.address !== draftOf(name).address) setDifferentServers((current) => ({ ...current, [name]: undefined }));
+    setDrafts((current) => ({ ...current, [name]: draft }));
+  };
 
   const setReplacingKey = (name: ServiceName, key: string, value: boolean) => {
     setReplacing((current) => ({ ...current, [key]: value }));
@@ -235,7 +244,7 @@ export function useServices(onUnauthenticated: () => void) {
   };
 
   return {
-    load, setLoad, saved, checks, replacing, pending, problems,
+    load, setLoad, saved, checks, replacing, pending, problems, differentServers,
     read, draftOf, editedOf, usingSignIn, connect, connectPlexWithSignIn, checkSaved, discard, setDraft, setReplacingKey, choosePlexSignIn,
   };
 }

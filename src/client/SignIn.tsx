@@ -35,7 +35,7 @@ export const browserPost = (path: string, body: object, signal: AbortSignal) => 
   signal,
 });
 
-const readJson = async (response: Response): Promise<Record<string, unknown>> => {
+export const readJson = async (response: Response): Promise<Record<string, unknown>> => {
   try {
     const value: unknown = await response.json();
     return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -45,6 +45,8 @@ const readJson = async (response: Response): Promise<Record<string, unknown>> =>
     return {};
   }
 };
+
+export const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
 const isPlexHandoff = (value: unknown): value is string => {
   if (typeof value !== 'string') return false;

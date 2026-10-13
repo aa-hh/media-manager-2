@@ -11828,7 +11828,7 @@ test('the settings screen sends only changed fields and ranks each service state
   // The client model is bundled by Vite, not compiled to dist, so it is loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
   const source = await readFile(new URL('../src/client/settings/model.ts', import.meta.url), 'utf8');
-  const { changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const { afterTest, changes, pillFor, linkTone, services } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
   const saved = { service: 'sonarr', serviceAddresses: { 'sonarr.url': 'http://localhost:8989' }, credentials: { 'sonarr.apiKey': true } };
 
   // Sending an unchanged address or a blank secret turns this red: Save would rewrite fields the owner never touched.
@@ -11870,10 +11870,12 @@ test('the settings screen sends only changed fields and ranks each service state
     ];
     for (const [check, edited, state] of cases) assert.equal(pillFor(sonarr, check, edited).state, state);
     assert.equal(pillFor(sonarr, connected, 0).text, 'Connected · 4.0.10');
-    // Showing the media server not in use as plainly connected, or letting unsaved edits hide a different Jellyfin server, turns these red.
+    // Showing the media server not in use as plainly connected turns this red.
     const jellyfin = services.find((info) => info.name === 'jellyfin');
-    assert.deepEqual(pillFor(jellyfin, { kind: 'ok', version: '10.10.0', at: 0, ofSaved: true }, 0, false, true), { state: 'connected', text: 'Connected · not in use' });
-    assert.deepEqual(pillFor(jellyfin, { kind: 'different_server', serverName: 'Den', at: 0, ofSaved: false }, 1), { state: 'failed', text: 'Failed: different server' });
+    const home = { kind: 'ok', version: '10.10.0', at: 0, ofSaved: true };
+    assert.deepEqual(pillFor(jellyfin, home, 0, false, true), { state: 'connected', text: 'Connected · not in use' });
+    // Storing a different-server answer as Jellyfin's check turns this red: the pills would read failed and the saved server's Last checked would vanish.
+    assert.deepEqual(afterTest(home, { kind: 'different_server', serverName: 'Den' }, 5, false), { check: home, differentServer: 'Den' });
   });
 
   // Drawing a link red while one side has never answered, or grey while a whole side is failing, turns this red.

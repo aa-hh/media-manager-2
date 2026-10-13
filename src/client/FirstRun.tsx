@@ -46,26 +46,11 @@ const loginFailure = (status: number, body: Record<string, unknown>, password: b
 };
 
 const heading = 'font-ui text-2xl leading-[1.2] font-extrabold tracking-[-0.3px] text-[#ece9e1]';
-// Dark for the sign-in page; light for the media-server switch dialog in Settings.
-const looks = {
-  dark: {
-    body: 'font-ui text-[15px] leading-[22px] text-[#b8b9b6]',
-    errorText: 'font-ui text-sm leading-[21px] text-[#f2a097]',
-    input: 'h-10 w-full rounded-xl border border-[#3a3b40] bg-[#121317] px-3 font-ui text-[15px] text-[#ece9e1] placeholder:text-[#6f716e] focus-ring-on-dark',
-    label: 'flex flex-col gap-1.5 font-ui text-sm font-semibold text-[#ece9e1]',
-    link: 'self-start font-ui text-sm font-semibold text-[#ece9e1] underline underline-offset-2 focus-ring-on-dark',
-    strong: 'text-[#ece9e1]',
-  },
-  light: {
-    body: 'font-ui text-sm text-muted-foreground',
-    errorText: 'font-ui text-sm text-destructive',
-    input: 'h-10 w-full rounded-xl border border-input bg-background px-3 font-ui text-[15px] text-foreground focus-ring',
-    label: 'flex flex-col gap-1.5 font-ui text-sm font-semibold text-foreground',
-    link: 'self-start font-ui text-sm font-semibold text-foreground underline underline-offset-2 focus-ring',
-    strong: 'text-foreground',
-  },
-};
-const { body, errorText, input, label, link } = looks.dark;
+const body = 'font-ui text-[15px] leading-[22px] text-[#b8b9b6]';
+const errorText = 'font-ui text-sm leading-[21px] text-[#f2a097]';
+const input = 'h-10 w-full rounded-xl border border-[#3a3b40] bg-[#121317] px-3 font-ui text-[15px] text-[#ece9e1] placeholder:text-[#6f716e] focus-ring-on-dark';
+const label = 'flex flex-col gap-1.5 font-ui text-sm font-semibold text-[#ece9e1]';
+const link = 'self-start font-ui text-sm font-semibold text-[#ece9e1] underline underline-offset-2 focus-ring-on-dark';
 
 function DoneRow({ children, onChange }: { children: ReactNode; onChange: () => void }) {
   return (
@@ -91,15 +76,16 @@ function PickRow({ logo, title, line, onClick }: { logo: 'plex' | 'jellyfin'; ti
   );
 }
 
-/** The Quick Connect button and the username-and-password form. With no url the server uses the owner's saved, locked address. */
-export function JellyfinLogin({ url, look = 'dark', stillLine = 'You’re still signed out.', onSignedIn }: {
+/**
+ * A Jellyfin log-in, by Quick Connect or by username and password, shared by the dark log-in pages and the media-server switch
+ * dialog in Settings. With no url the server uses the owner's saved, locked address.
+ */
+export function useJellyfinLogin({ url, stillLine = 'You’re still signed out.', onSignedIn }: {
   url?: string;
-  look?: 'dark' | 'light';
   /** The sentence after a refusal that says nothing changed. */
   stillLine?: string;
   onSignedIn: (expiresAt: number) => void;
 }) {
-  const classes = looks[look];
   const [error, setError] = useState<string | undefined>(undefined);
   const [quickConnect, setQuickConnect] = useState<{ code: string; expiresAt: number } | undefined>(undefined);
   const [usePassword, setUsePassword] = useState(false);
@@ -117,10 +103,25 @@ export function JellyfinLogin({ url, look = 'dark', stillLine = 'You’re still 
     return browserPost(path, payload, controller.signal);
   };
 
-  useEffect(() => () => {
+  const stop = () => {
     controllerRef.current?.abort();
     window.clearTimeout(pollRef.current);
-  }, []);
+    pollRef.current = undefined;
+  };
+
+  useEffect(() => stop, []);
+
+  /** Stops any request or Quick Connect wait and empties the form. */
+  const reset = () => {
+    stop();
+    setError(undefined);
+    setQuickConnect(undefined);
+    setQuickConnectBusy(false);
+    setPasswordBusy(false);
+    setUsePassword(false);
+    setUsername('');
+    setPassword('');
+  };
 
   const showFailure = (message: string) => {
     if (message === 'reload') {
@@ -207,6 +208,17 @@ export function JellyfinLogin({ url, look = 'dark', stillLine = 'You’re still 
     }
   };
 
+  return {
+    error, quickConnect, usePassword, setUsePassword, username, setUsername, password, setPassword, quickConnectBusy, passwordBusy,
+    startQuickConnect, passwordLogin, stop, reset,
+  };
+}
+
+/** The Quick Connect button and the username-and-password form on the dark log-in pages. */
+function JellyfinLogin({ url, onSignedIn }: { url?: string; onSignedIn: (expiresAt: number) => void }) {
+  const {
+    error, quickConnect, usePassword, setUsePassword, username, setUsername, password, setPassword, quickConnectBusy, passwordBusy, startQuickConnect, passwordLogin,
+  } = useJellyfinLogin({ url, onSignedIn });
   return (
     <>
       <div className="flex flex-col gap-3">
@@ -217,25 +229,25 @@ export function JellyfinLogin({ url, look = 'dark', stillLine = 'You’re still 
           </span>
         </Button>
         {quickConnect !== undefined && (
-          <p className={classes.body}>Enter code <strong className={cn('font-semibold', classes.strong)}>{quickConnect.code}</strong> in Jellyfin, under your user menu &gt; Quick Connect.</p>
+          <p className={body}>Enter code <strong className="font-semibold text-[#ece9e1]">{quickConnect.code}</strong> in Jellyfin, under your user menu &gt; Quick Connect.</p>
         )}
       </div>
       {usePassword ? (
         <form className="flex flex-col gap-4" onSubmit={(event) => void passwordLogin(event)}>
-          <label className={classes.label}>
+          <label className={label}>
             Username
-            <input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} className={classes.input} />
+            <input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} className={input} />
           </label>
-          <label className={classes.label}>
+          <label className={label}>
             Password
-            <input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={classes.input} />
+            <input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={input} />
           </label>
           <Button type="submit" variant="jellyfin" size="large" loading={passwordBusy} className="self-start">Log in</Button>
         </form>
       ) : (
-        <button type="button" onClick={() => setUsePassword(true)} className={classes.link}>Log in with username and password</button>
+        <button type="button" onClick={() => setUsePassword(true)} className={link}>Log in with username and password</button>
       )}
-      {error !== undefined && <p className={classes.errorText}>{error}</p>}
+      {error !== undefined && <p className={errorText}>{error}</p>}
     </>
   );
 }

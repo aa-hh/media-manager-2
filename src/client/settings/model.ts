@@ -14,8 +14,16 @@ export type TestResult =
 /** The form for one service. A blank secret means "keep the saved one". */
 export type Draft = { address: string; secrets: Record<string, string> };
 
-/** The last test of one service; ofSaved is false when it tested values still in the form. */
-export type Check = { kind: 'idle' } | { kind: 'testing' } | (TestResult & { at: number; ofSaved: boolean });
+/** The last test of one service; ofSaved is false when it tested values still in the form. A different-server answer is never a check (see afterTest). */
+export type Check = { kind: 'idle' } | { kind: 'testing' } | (Exclude<TestResult, { kind: 'different_server' }> & { at: number; ofSaved: boolean });
+
+/**
+ * A test's answer as the service's check. A different-server answer leaves the previous check in place, since the saved server
+ * still answers, and comes back separately as the name of the server that answered, for the address field's error.
+ */
+export const afterTest = (previous: Check, result: TestResult, at: number, ofSaved: boolean): { check: Check; differentServer?: string } => (
+  result.kind === 'different_server' ? { check: previous, differentServer: result.serverName } : { check: { ...result, at, ofSaved } }
+);
 
 type Credential = { key: string; label: string; short: string; placeholder: string; help: string; secret: boolean };
 
@@ -116,7 +124,6 @@ export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = 
   if (check.kind === 'testing') return { state: 'testing', text: 'Testing' };
   if (check.kind === 'unreachable') return { state: 'failed', text: 'Failed: no answer in 10 s' };
   if (check.kind === 'rejected') return { state: 'failed', text: `Failed: ${info.refused} refused` };
-  if (check.kind === 'different_server') return { state: 'failed', text: 'Failed: different server' };
   if (edited > 0) return { state: 'unsaved', text: full ? `Unsaved edits · ${edited} ${edited === 1 ? 'field' : 'fields'}` : 'Unsaved edits' };
   if (check.kind === 'ok' && notInUse) return { state: 'connected', text: 'Connected · not in use' };
   if (check.kind === 'ok') {
@@ -126,7 +133,7 @@ export const pillFor = (info: ServiceInfo, check: Check, edited: number, full = 
   return { state: 'not-set-up', text: 'Not set up' };
 };
 
-const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected' || check.kind === 'different_server';
+const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected';
 
 export const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
@@ -178,7 +185,6 @@ export const linkTone = (left: Check[], right: Check[]): 'idle' | 'risk' | 'ok' 
 export const failureTitle = (info: ServiceInfo, check: Check, address: string) => {
   if (check.kind === 'unreachable') return address === '' ? `${info.label} did not answer within 10 seconds` : `${info.label} did not answer at ${address}`;
   if (check.kind === 'rejected') return `${info.label} refused the ${info.refused}`;
-  if (check.kind === 'different_server') return `${info.label} at ${address} is a different server`;
   return `${info.label} needs its ${fieldWords(info)} first`;
 };
 

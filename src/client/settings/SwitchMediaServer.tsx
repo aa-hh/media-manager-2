@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Dialog } from '@/components/ui/dialog';
+import { FieldLabelled } from '@/components/ui/field-labelled';
+import { InputSearch } from '@/components/ui/input-search';
 import { Logo } from '@/components/ui/logo';
-import { JellyfinLogin } from '../FirstRun';
+import { StatusInline } from '@/components/ui/status-inline';
+import { useJellyfinLogin } from '../FirstRun';
 import { handoffState, isPopupMessage, openPopup, sendToPlex } from '../plexPopup';
-import { browserPost, popupHost } from '../SignIn';
+import { browserPost, isAbort, popupHost, readJson } from '../SignIn';
 
 type SwitchMediaServerProps = {
   /** The media server not in use, which the owner can switch to. */
@@ -21,18 +24,14 @@ type SwitchMediaServerProps = {
   onSwitched: (expiresAt: number) => void;
 };
 
-const readJson = async (response: Response): Promise<Record<string, unknown>> => {
-  try {
-    const value: unknown = await response.json();
-    return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  } catch {
-    return {};
-  }
-};
-
-const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
-
 const UNAVAILABLE = 'Plex sign-in is unavailable. Try again.';
+const textLink = 'self-start font-ui text-sm font-semibold text-foreground underline underline-offset-2 focus-ring';
+
+/** "9:42" from milliseconds. */
+const minutesSeconds = (ms: number) => {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+};
 
 /** The row under the not-in-use media server's facts: what switching does, and the button that opens the log-in dialog. */
 export function SwitchMediaServer({ target, pinned, ready, currentServerName, jellyfin, onSwitched }: SwitchMediaServerProps) {
@@ -51,6 +50,32 @@ export function SwitchMediaServer({ target, pinned, ready, currentServerName, je
   };
 
   useEffect(() => () => endRun(true), []);
+
+  const login = useJellyfinLogin({
+    stillLine: 'Plex is still the media server.',
+    onSignedIn: (expiresAt) => {
+      setOpen(false);
+      onSwitched(expiresAt);
+    },
+  });
+  const code = login.quickConnect;
+  const [now, setNow] = useState(Date.now);
+  // Ticks the Quick Connect expiry once a second while the dialog shows a code.
+  useEffect(() => {
+    if (code === undefined || !open) return undefined;
+    setNow(Date.now());
+    const handle = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(handle);
+  }, [code, open]);
+  // Opening starts a fresh log-in; closing stops any request or Quick Connect wait.
+  const openJellyfin = () => {
+    login.reset();
+    setOpen(true);
+  };
+  const closeJellyfin = () => {
+    login.stop();
+    setOpen(false);
+  };
 
   const plex = target === 'plex';
   const label = plex ? 'Plex' : 'Jellyfin';
@@ -161,7 +186,7 @@ export function SwitchMediaServer({ target, pinned, ready, currentServerName, je
         <p className="font-ui text-sm text-muted-foreground">{body}</p>
       </div>
       {!pinned && ready && (
-        <Button variant={target} onClick={() => setOpen(true)} className="shrink-0">
+        <Button variant={target} onClick={plex ? () => setOpen(true) : openJellyfin} className="shrink-0">
           <span className="inline-flex items-center gap-2">
             <Logo name={plex ? 'plex' : 'jellyfin-black'} alt="" className="size-4" />
             Switch to {label}
@@ -177,7 +202,7 @@ export function SwitchMediaServer({ target, pinned, ready, currentServerName, je
           subject={`You’re the owner through Jellyfin “${currentServerName ?? ''}”. Switching changes whose account can open media-manager-2.`}
           callout={(
             <Callout look="warning" title="Jellyfin log-in stops working">
-              Next you log in with Plex, and that Plex account becomes the owner. Plex then needs its address here in Settings. The Jellyfin address and key stay saved in case you switch back.
+              Next you log in with Plex, and that Plex account becomes the owner. The Jellyfin address and key stay saved in case you switch back.
             </Callout>
           )}
           actions={(
@@ -198,27 +223,69 @@ export function SwitchMediaServer({ target, pinned, ready, currentServerName, je
       ) : (
         <Dialog
           open={open}
-          onOpenChange={setOpen}
+          onOpenChange={(next) => (next ? setOpen(true) : closeJellyfin())}
           title="Switch the media server to Jellyfin?"
-          subject={`You’re the owner through Plex. Log in with a Jellyfin administrator account on ${serverWords ?? ''} to switch.`}
-          callout={(
+          subject={code === undefined
+            ? `You’re the owner through Plex. Log in with a Jellyfin administrator account on ${serverWords ?? ''} to switch.`
+            : 'You’re the owner through Plex. Approve the code in Jellyfin to switch.'}
+          callout={code === undefined ? (
             <Callout look="warning" title="Plex log-in stops working">
               The Jellyfin administrator who logs in next becomes the owner. The Plex address and token stay saved in case you switch back.
             </Callout>
+          ) : undefined}
+          actions={(
+            <>
+              <Button variant="outline" onClick={closeJellyfin}>Cancel</Button>
+              {code === undefined && (
+                <Button variant="jellyfin" size="large" loading={login.quickConnectBusy} onClick={() => void login.startQuickConnect()}>
+                  <span className="inline-flex items-center gap-2">
+                    <Logo name="jellyfin-black" alt="" />
+                    Log in with Jellyfin
+                  </span>
+                </Button>
+              )}
+            </>
           )}
-          actions={<Button variant="outline" size="large" onClick={() => setOpen(false)}>Cancel</Button>}
         >
-          <p className="font-data text-sm text-muted-foreground">
-            Jellyfin {jellyfin?.serverName === undefined ? '' : `“${jellyfin.serverName}” `}answered{jellyfin?.version === undefined ? '' : ` · ${jellyfin.version}`}
-          </p>
-          <JellyfinLogin
-            look="light"
-            stillLine="Plex is still the media server."
-            onSignedIn={(expiresAt) => {
-              setOpen(false);
-              onSwitched(expiresAt);
-            }}
-          />
+          {code === undefined ? (
+            <>
+              <StatusInline status="sent" className="self-start">
+                Jellyfin {jellyfin?.serverName === undefined ? '' : `“${jellyfin.serverName}” `}answered{jellyfin?.version === undefined ? '' : ` · ${jellyfin.version}`}
+              </StatusInline>
+              {login.usePassword ? (
+                <form className="flex flex-col gap-4" onSubmit={(event) => void login.passwordLogin(event)}>
+                  <FieldLabelled label="Username">
+                    <InputSearch variant="field" type="text" required autoComplete="username" value={login.username} onValueChange={login.setUsername} />
+                  </FieldLabelled>
+                  <FieldLabelled label="Password">
+                    <InputSearch variant="field" type="password" required autoComplete="current-password" value={login.password} onValueChange={login.setPassword} />
+                  </FieldLabelled>
+                  <Button type="submit" variant="jellyfin" size="large" loading={login.passwordBusy} className="self-start">Log in</Button>
+                </form>
+              ) : (
+                <button type="button" onClick={() => login.setUsePassword(true)} className={textLink}>Log in with username and password</button>
+              )}
+              {login.error !== undefined && <p role="alert" className="font-ui text-[13px] text-destructive">{login.error}</p>}
+            </>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <p className="font-ui text-sm text-foreground">In any Jellyfin app where you’re signed in as an administrator, open your user menu &gt; Quick Connect and enter:</p>
+              <p aria-label={code.code.split('').join(' ')} className="font-data text-[48px] leading-[1.2] font-semibold tracking-[6px] text-foreground">
+                {code.code.length === 6 ? `${code.code.slice(0, 3)} ${code.code.slice(3)}` : code.code}
+              </p>
+              <p className="font-ui text-[13px] text-muted-foreground">Expires in {minutesSeconds(code.expiresAt - now)} · Waiting for you to approve it</p>
+              <button
+                type="button"
+                onClick={() => {
+                  login.reset();
+                  login.setUsePassword(true);
+                }}
+                className={textLink}
+              >
+                Use username and password instead
+              </button>
+            </div>
+          )}
         </Dialog>
       )}
     </div>
