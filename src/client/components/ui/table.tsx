@@ -19,11 +19,6 @@ function Table({ className, children, ...props }: ComponentProps<'div'>) {
   );
 }
 
-/** Column header row, 32 px, white, line under. Children are TableHead cells with the widths of the rows below. */
-function TableHeader({ className, ...props }: ComponentProps<'div'>) {
-  return <div role="row" className={cn('flex h-(--row-header) w-full shrink-0 items-center gap-4 border-b border-border bg-card px-4', className)} {...props} />;
-}
-
 type CellProps = ComponentProps<'div'> & {
   /** Numbers right-align. */
   align?: 'start' | 'end';
@@ -62,20 +57,33 @@ type TableRowProps = ComponentProps<'div'> & {
   best?: boolean;
   /** Grabbed: a 3 px black line along the bottom edge at this percent; it grows from 0. */
   progress?: number;
+  /** Line inset by depth: season x 16, episode x 96, version x 152, all ending 16 from the right. Without it the line runs full width. */
+  line?: 'season' | 'episode' | 'version';
 };
+
+const lineClass = (line: TableRowProps['line']) =>
+  line === undefined
+    ? 'border-b border-border'
+    : cn('after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:h-px after:bg-border', line === 'season' ? 'after:left-4' : line === 'episode' ? 'after:left-24' : 'after:left-38');
+
+/** Column header row, 32 px, white, line under. Children are TableHead cells with the widths of the rows below. */
+function TableHeader({ line, className, ...props }: ComponentProps<'div'> & { line?: TableRowProps['line'] }) {
+  return <div role="row" className={cn('relative flex h-(--row-header) w-full shrink-0 items-center gap-4 bg-card px-4', lineClass(line), className)} {...props} />;
+}
 
 /**
  * The base row, 40 px with 16 px side padding. Hover and pressed fills, the selected tint and bar, risk and
  * warning bars, the best tint and a 2 px inner focus edge. Give it tabIndex when the screen moves focus to rows.
  */
-function TableRow({ selected = false, marker, best = false, progress, className, children, onClick, ...props }: TableRowProps) {
+function TableRow({ selected = false, marker, best = false, progress, line, className, children, onClick, ...props }: TableRowProps) {
   return (
     <div
       role="row"
       data-selected={selected || undefined}
       onClick={onClick}
       className={cn(
-        'relative flex h-(--row) w-full shrink-0 items-center gap-4 border-b border-border px-4',
+        'relative flex h-(--row) w-full shrink-0 items-center gap-4 px-4',
+        lineClass(line),
         'transition-colors duration-(--duration-fast) ease-out active:duration-0',
         'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
         selected ? 'bg-selected' : best ? 'bg-best-soft' : 'bg-card hover:bg-surface-hover',

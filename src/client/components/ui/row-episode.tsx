@@ -41,10 +41,11 @@ type RowEpisodeProps = Omit<TableRowProps, 'progress' | 'title'> & {
 };
 
 /** Episode row inside a season. Use marker "warning" for missing and "risk" for stalled. */
-function RowEpisode({ bookmark, number, title, aired, file, state, actions, monitored = true, upcoming = false, open = false, selected, className, ...props }: RowEpisodeProps) {
+function RowEpisode({ bookmark, number, title, aired, file, state, actions, monitored = true, upcoming = false, open = false, selected, line = 'episode', className, ...props }: RowEpisodeProps) {
   return (
     <TableRow
       selected={selected}
+      line={line}
       className={cn(
         // The open tint paints above the row's own fill, so it steps aside for the selected tint.
         open && !selected && 'isolate before:absolute before:inset-y-0 before:right-0 before:left-24 before:-z-10 before:bg-accent hover:before:bg-surface-pressed',

@@ -209,7 +209,6 @@ export const createGrabs = (
 
   return {
     read,
-    qualities,
     list(target: ReleaseTarget) {
       return database.prepare('SELECT * FROM grabs WHERE searched_for_key = ? OR target_key = ? ORDER BY id DESC LIMIT 20')
         .all(targetKey(target), targetKey(target))

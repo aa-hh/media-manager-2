@@ -62,7 +62,7 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
               {title}
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
-              render={<Button variant="ghost" icon={<X />} kbd={wide ? undefined : 'Esc'} aria-label={closeLabel} data-cancel="" className="px-2.5 [&>svg]:text-muted-foreground" />}
+              render={<Button variant="ghost" icon={<X />} aria-label={closeLabel} data-cancel="" className="px-2.5 [&>svg]:text-muted-foreground" />}
             />
           </div>
           {scrollEdges && subject !== undefined && (

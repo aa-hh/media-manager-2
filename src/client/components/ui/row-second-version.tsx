@@ -8,9 +8,9 @@ import { cn } from '@/lib/utils';
 const w = { indent: 'w-10', label: 'w-32', quality: 'w-30', size: 'w-18', tracker: 'w-28', seeding: 'w-45', action: 'w-22' };
 
 /** Versions header as drawn inside RowEpisodeDetails (no indent there). */
-function RowSecondVersionHeader({ indent = false }: { indent?: boolean }) {
+function RowSecondVersionHeader({ indent = false, line }: { indent?: boolean; line?: TableRowProps['line'] }) {
   return (
-    <TableHeader>
+    <TableHeader line={line}>
       {indent && <TableHead className={w.indent} />}
       <TableHead className={w.label}>Version</TableHead>
       <TableHead className={w.quality}>Quality</TableHead>

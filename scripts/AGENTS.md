@@ -23,3 +23,4 @@ The only sanctioned way to build, test, review, land and deploy this repo. Hooks
 - `sync-main.sh` → keeps local `main` matching `origin/main`.
 - `deploy.sh`, `ensure-running.sh` → deploy to and keep the server running on the host.
 - `launchd/` → macOS job template used by `setup.sh --sync-main`.
+- `screenshots/` → headless-Chrome shots of the title page against the arr fake; macOS.
