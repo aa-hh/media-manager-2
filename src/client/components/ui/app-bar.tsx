@@ -1,5 +1,6 @@
 // v2/AppBar/Nav item — ~/Projects/media-manager-2-design/design-system.lib.pen ACA2W
 // v2/AppBar/Desktop — ~/Projects/media-manager-2-design/design-system.lib.pen F5qou
+// v2/AppBar/Desktop/setup — ~/Projects/media-manager-2-design/design-system.lib.pen uWAN1 (no search or nav; a ghost Sign out with the log-out icon in actions)
 import type { ComponentProps, ReactNode } from 'react';
 import logo from '@/assets/logos/media-manager-2.png';
 import { cn } from '@/lib/utils';

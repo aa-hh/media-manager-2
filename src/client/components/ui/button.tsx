@@ -1,5 +1,7 @@
 // v2/Button — ~/Projects/media-manager-2-design/design-system.lib.pen ht3RN
 // v2/Button/sm — ~/Projects/media-manager-2-design/design-system.lib.pen FU0kO (size="sm")
+// v2/Button/plex — ~/Projects/media-manager-2-design/design-system.lib.pen yb2vM (variant="plex" size="large")
+// v2/Button/jellyfin — ~/Projects/media-manager-2-design/design-system.lib.pen hi4Y1 (variant="jellyfin" size="large")
 import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
@@ -7,7 +9,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
-type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive' | 'outline-destructive' | 'menu' | 'plex';
+type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive' | 'outline-destructive' | 'menu' | 'plex' | 'jellyfin';
 type ButtonSize = 'row' | 'sm' | 'default' | 'large';
 
 type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
@@ -31,6 +33,7 @@ const variants: Record<ButtonVariant, string> = {
   'outline-destructive': 'text-destructive before:border before:border-destructive before:bg-card not-data-disabled:hover:before:bg-destructive-soft not-data-disabled:active:before:bg-destructive/20 data-disabled:before:border-border',
   menu: 'text-foreground before:border-[1.5px] before:border-foreground before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
   plex: 'text-plex-foreground before:bg-plex not-data-disabled:hover:before:bg-plex-hover not-data-disabled:active:before:bg-plex-pressed aria-busy:opacity-[0.78]',
+  jellyfin: 'text-jellyfin-foreground before:bg-jellyfin not-data-disabled:hover:before:bg-jellyfin-hover not-data-disabled:active:before:bg-jellyfin-pressed aria-busy:opacity-[0.78]',
 };
 
 const icons: Record<ButtonSize, string> = {

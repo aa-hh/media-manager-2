@@ -1,7 +1,9 @@
-// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold) z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
+// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold); jellyfin and jellyfin-black have no library component z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
 import type { ComponentProps } from 'react';
 import beyondHd from '@/assets/logos/beyondhd-logo.png';
 import blutopia from '@/assets/logos/blutopia-logo.svg';
+import jellyfinBlack from '@/assets/logos/jellyfin-icon-black.svg';
+import jellyfin from '@/assets/logos/jellyfin-icon.svg';
 import mdblist from '@/assets/logos/mdblist-logo.png';
 import plexGold from '@/assets/logos/plex-icon-gold.svg';
 import plex from '@/assets/logos/plex-icon.svg';
@@ -13,7 +15,7 @@ import tmdb from '@/assets/logos/tmdb-logo.svg';
 import trakt from '@/assets/logos/trakt-logo.svg';
 import { cn } from '@/lib/utils';
 
-type LogoName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'plex-gold' | 'blutopia' | 'privatehd' | 'beyond-hd' | 'tmdb' | 'mdblist' | 'trakt';
+type LogoName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'plex-gold' | 'jellyfin' | 'jellyfin-black' | 'blutopia' | 'privatehd' | 'beyond-hd' | 'tmdb' | 'mdblist' | 'trakt';
 
 const logos: Record<LogoName, { src: string; alt: string }> = {
   sonarr: { src: sonarr, alt: 'Sonarr' },
@@ -21,6 +23,8 @@ const logos: Record<LogoName, { src: string; alt: string }> = {
   rtorrent: { src: rtorrent, alt: 'rTorrent' },
   plex: { src: plex, alt: 'Plex' },
   'plex-gold': { src: plexGold, alt: 'Plex' },
+  jellyfin: { src: jellyfin, alt: 'Jellyfin' },
+  'jellyfin-black': { src: jellyfinBlack, alt: 'Jellyfin' },
   blutopia: { src: blutopia, alt: 'Blutopia' },
   privatehd: { src: privateHd, alt: 'PrivateHD' },
   'beyond-hd': { src: beyondHd, alt: 'Beyond-HD' },
@@ -29,7 +33,7 @@ const logos: Record<LogoName, { src: string; alt: string }> = {
   trakt: { src: trakt, alt: 'Trakt' },
 };
 
-/** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on the black button. */
+/** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on the black button; Jellyfin black only on the Jellyfin button. */
 function Logo({ name, alt, className, ...props }: Omit<ComponentProps<'img'>, 'src'> & { name: LogoName }) {
   const logo = logos[name];
   return <img src={logo.src} alt={alt ?? logo.alt} width={20} height={20} className={cn('size-5 shrink-0 object-contain', className)} {...props} />;
