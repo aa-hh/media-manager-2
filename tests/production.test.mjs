@@ -6937,6 +6937,46 @@ test('search, the title page and add for one title ask Sonarr for it once', asyn
   assert.deepEqual(fake.sonarr.requests.find((request) => request.method === 'POST').body.seasons, [{ seasonNumber: 1 }]);
 });
 
+// Dropping the fanart fallback when TMDB has no backdrop or the title no TMDB id, or serving TMDB's backdrop at another size, turns this red.
+test('title pages show TMDB\'s backdrop through the image route and fall back to the Sonarr or Radarr fanart', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createLibrary } = await import(libraryModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backdrop-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const { fake, ...services } = connectArr(database);
+  const fanart = (name) => [{ coverType: 'fanart', remoteUrl: `https://artworks.thetvdb.com/${name}.jpg` }];
+  fake.sonarr.state.series = [
+    seriesRecord({ id: 7, title: 'Severance', tvdbId: 371980, tmdbId: 95396, images: fanart('severance') }),
+    seriesRecord({ id: 8, title: 'No TMDB id', tvdbId: 1, images: fanart('none') }),
+  ];
+  fake.sonarr.state.lookup = [{ title: 'Severance', tvdbId: 371980, tmdbId: 95396, seasons: [], images: fanart('severance') }];
+  fake.radarr.state.movies = [movieRecord({ id: 3, title: 'Spirited Away', tmdbId: 129, images: fanart('spirited') })];
+  const library = (paths) => createLibrary(services, () => [], createTitleStore(database), undefined, undefined, async (type, tmdbId) => paths[`${type}/${tmdbId}`] ?? null);
+  const backdrops = async (paths) => {
+    const pages = library(paths);
+    return [(await pages.series(7)).value.backdropUrl, (await pages.series(8)).value.backdropUrl,
+      (await pages.preview('sonarr', 371980)).value.backdropUrl, (await pages.movie(3)).value.backdropUrl];
+  };
+
+  assert.deepEqual(await backdrops({ 'tv/95396': '/sev.jpg', 'movie/129': '/spirit.jpg' }), [
+    '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg',
+    'https://artworks.thetvdb.com/none.jpg',
+    '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg',
+    '/api/images/tmdb/w1920_and_h800_multi_faces/spirit.jpg',
+  ]);
+  assert.deepEqual(await backdrops({}), [
+    'https://artworks.thetvdb.com/severance.jpg',
+    'https://artworks.thetvdb.com/none.jpg',
+    'https://artworks.thetvdb.com/severance.jpg',
+    'https://artworks.thetvdb.com/spirited.jpg',
+  ]);
+});
+
 // Using one max age for every part, saving a failed load, letting a second caller start its own load while one runs,
 // finding a show only by its TVDB id, or keeping parts in memory instead of the database turns this red.
 test('the title store refetches a part only once it is older than that part\'s max age', async (t) => {

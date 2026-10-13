@@ -93,6 +93,12 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
       return { kind: 'ok', value: typeof found.value.tvdbId === 'number' ? found.value.tvdbId : null };
     },
 
+    // Null when TMDB is unset, down or has no backdrop, so the title page keeps the Sonarr or Radarr fanart.
+    async backdropPath(type: TmdbMediaType, tmdbId: number): Promise<string | null> {
+      const found = await details(type, tmdbId);
+      return found.kind === 'ok' ? found.value.backdropPath ?? null : null;
+    },
+
     async airing(tmdbId: number): Promise<{ seasons: Array<{ seasonNumber: number; aired: number }> | null; nextAirDate: string | null }> {
       const result = await tmdb.tvAiring(tmdbId);
       return result.kind === 'ok' ? result.value : { seasons: null, nextAirDate: null };
