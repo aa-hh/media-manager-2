@@ -329,8 +329,9 @@ export const createGrabTracker = (options: {
     // season grab's record lists no episodes until Sonarr's history is read.
     readOnNewTorrents: () => events.subscribe((event) => {
       if (event.type !== 'torrents') return;
-      const { changed } = event.data as { changed: Torrent[] };
-      if (changed.some((torrent) => torrent.firstSeenAt === torrent.lastSeenAt)) void reconcile();
+      const { changed, live } = event.data as { changed: Torrent[]; live?: boolean };
+      // The one-second refresh resends a new torrent every second; the full poll that found it already asked once.
+      if (live !== true && changed.some((torrent) => torrent.firstSeenAt === torrent.lastSeenAt)) void reconcile();
     }),
     // Re-reads one service now, for example after the owner changed its queue.
     refresh: reconcileService,

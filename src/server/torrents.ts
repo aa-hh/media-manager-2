@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { writeDependency } from './dependencies.js';
+import { readDependency, writeDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 
 type XmlRpcCall = (method: string, params: readonly string[]) => Promise<unknown>;
@@ -29,6 +29,7 @@ export type Torrent = {
 };
 
 export const POLL_INTERVAL_MS = 30_000;
+export const LIVE_POLL_INTERVAL_MS = 1_000;
 // razor: at most this many tracker lookups per poll, so a first run against a full client stays one light call per torrent.
 const TRACKER_LOOKUPS_PER_POLL = 20;
 // razor: same ceiling for file list reads; a full client fills in over a few minutes of polls.
@@ -72,6 +73,10 @@ const fields = [
 
 type Observed = Pick<Torrent, (typeof fields)[number][0]>;
 
+// The values that move second to second. Name, size and folder change rarely and stay with the full poll.
+const liveFields = fields.filter(([key]) => key !== 'name' && key !== 'sizeBytes' && key !== 'directory');
+type Live = Pick<Torrent, (typeof liveFields)[number][0]>;
+
 const columns: Record<keyof Torrent, string> = {
   hash: 'hash',
   name: 'name',
@@ -98,12 +103,12 @@ const columns: Record<keyof Torrent, string> = {
 const flagKeys = new Set(['started', 'open', 'active', 'complete']);
 const keys = Object.keys(columns) as (keyof Torrent)[];
 
-const parseRows = (value: unknown): Observed[] => {
+const parseRows = <T extends { hash: string }>(value: unknown, requested: readonly (typeof fields)[number][] = fields): T[] => {
   if (!Array.isArray(value)) throw new Error('Unexpected rTorrent response.');
   return value.map((row) => {
-    if (!Array.isArray(row) || row.length !== fields.length) throw new Error('Unexpected rTorrent response.');
+    if (!Array.isArray(row) || row.length !== requested.length) throw new Error('Unexpected rTorrent response.');
     const torrent: Record<string, unknown> = {};
-    fields.forEach(([key, , kind], index) => {
+    requested.forEach(([key, , kind], index) => {
       const cell = row[index];
       if (kind === 'string') {
         if (typeof cell !== 'string') throw new Error('Unexpected rTorrent response.');
@@ -113,7 +118,7 @@ const parseRows = (value: unknown): Observed[] => {
         torrent[key] = kind === 'flag' ? cell !== 0 : cell;
       }
     });
-    const observed = torrent as Observed;
+    const observed = torrent as T;
     if (!/^[0-9A-Fa-f]{40}$/.test(observed.hash)) throw new Error('Unexpected rTorrent response.');
     return { ...observed, hash: observed.hash.toUpperCase() };
   });
@@ -198,7 +203,7 @@ export const createTorrentPoller = (options: {
     const startedAt = now();
     let observed: Observed[];
     try {
-      observed = parseRows(await rtorrent.call('d.multicall2', ['', 'main', ...fields.map(([, command]) => command)]));
+      observed = parseRows<Observed>(await rtorrent.call('d.multicall2', ['', 'main', ...fields.map(([, command]) => command)]));
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'rTorrent is unreachable.';
       setDependency('down', startedAt, detail);
@@ -269,5 +274,42 @@ export const createTorrentPoller = (options: {
     return true;
   };
 
-  return { poll, intervalMs };
+  // Refreshes the moving values of torrents the full poll already stored, publishing only rows that changed.
+  // It never adds, marks gone or touches lastSeenAt and seedingSeconds, so the seeding credit stays with the full poll's gaps;
+  // a failed read is left for the full poll to report.
+  const pollLive = async () => {
+    // While the full poll has rTorrent marked down, a hanging client would hold every run for the request time limit.
+    if (readDependency(database, 'rtorrent')?.state === 'down') return;
+    let observed: Live[];
+    try {
+      observed = parseRows<Live>(await rtorrent.call('d.multicall2', ['', 'main', ...liveFields.map(([, command]) => command)]), liveFields);
+    } catch {
+      return;
+    }
+    const existing = new Map(listTorrents(database).map((torrent) => [torrent.hash, torrent]));
+    const changed: Torrent[] = [];
+    const update = database.prepare(`UPDATE torrents SET ${liveFields.filter(([key]) => key !== 'hash').map(([key]) => `${columns[key]} = ?`).join(', ')} WHERE hash = ?`);
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      for (const live of observed) {
+        const previous = existing.get(live.hash);
+        if (previous === undefined || previous.goneAt !== null) continue;
+        const next: Torrent = { ...previous, ...live };
+        if (!liveFields.some(([key]) => previous[key] !== next[key])) continue;
+        existing.set(live.hash, next);
+        update.run(...liveFields.filter(([key]) => key !== 'hash').map(([key]) => {
+          const value = next[key];
+          return typeof value === 'boolean' ? Number(value) : value;
+        }), live.hash);
+        changed.push(next);
+      }
+      database.exec('COMMIT;');
+    } catch (error) {
+      database.exec('ROLLBACK;');
+      throw error;
+    }
+    if (changed.length > 0) events.publish('torrents', { changed, gone: [], live: true });
+  };
+
+  return { poll, pollLive, intervalMs };
 };

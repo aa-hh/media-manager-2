@@ -4306,6 +4306,49 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     second.database.close();
   });
 
+  // Publishing unchanged rows, adding a torrent the full poll has not stored, moving lastSeenAt, crediting seeding time
+  // from the one-second refresh, or calling rTorrent while it is marked down turns this red.
+  await t.test('the one-second refresh updates and publishes only changed live values and leaves the seeding counter to the full poll', async () => {
+    const { database, clock, published, fake, poller } = setup();
+    // Live field order: the full row without name, size and directory.
+    const live = (hash, overrides) => row(hash, overrides).filter((_cell, index) => index !== 1 && index !== 2 && index !== 15);
+    fake.rows = [row(hashA), row(hashB, { complete: 0, completed: 0 })];
+    await poller.poll();
+    const startedAt = clock.value;
+    const before = published.length;
+    fake.rows = [live(hashA), live(hashB, { complete: 0, completed: 0 })];
+    clock.value += 1_000;
+    await poller.pollLive();
+    assert.equal(published.length, before);
+
+    fake.rows = [live(hashA, { up: 70 }), live(hashB, { complete: 0, completed: 400, down: 99 }), live(hashC)];
+    for (let second = 0; second < 29; second += 1) {
+      clock.value += 1_000;
+      await poller.pollLive();
+    }
+    const liveEvents = published.slice(before);
+    assert.equal(liveEvents.length, 1);
+    assert.equal(liveEvents[0].data.live, true);
+    assert.deepEqual(liveEvents[0].data.changed.map((torrent) => [torrent.hash, torrent.completedBytes, torrent.upRate]),
+      [[hashA.toUpperCase(), 1000, 70], [hashB, 400, 50]]);
+    const stored = listTorrents(database);
+    assert.equal(stored.length, 2);
+    assert.equal(stored.find((torrent) => torrent.hash === hashB).downRate, 99);
+    assert.equal(stored.every((torrent) => torrent.lastSeenAt === startedAt && torrent.seedingSeconds === 0), true);
+
+    fake.rows = [row(hashA, { up: 70 }), row(hashB, { complete: 0, completed: 400, down: 99 })];
+    await poller.poll();
+    assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).seedingSeconds, 30);
+
+    // While the full poll has rTorrent marked down, the refresh does not call it.
+    fake.fail = 'unreachable';
+    await poller.poll();
+    const calls = fake.calls.length;
+    await poller.pollLive();
+    assert.equal(fake.calls.length, calls);
+    database.close();
+  });
+
   // Re-reading a stored file list, reading more than 20 per poll, or keeping the list of a gone torrent turns this red.
   await t.test('file lists are read once, 20 per poll, and dropped when the torrent is gone', async () => {
     const { database, fake, poller } = setup();
@@ -4398,7 +4441,8 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
   };
 
   // Skipping the read for a new torrent that already has the app's own grab record turns this red: a season grabbed
-  // in the app has no episodes until Sonarr is read, so its episode rows wait for the five-minute check.
+  // in the app has no episodes until Sonarr is read, so its episode rows wait for the five-minute check. Reading on the
+  // one-second refresh's events turns it red too: that would read Sonarr every second for a new torrent's first 30 seconds.
   await t.test('a new torrent from a season grabbed in the app gets its episodes from Sonarr on the next rTorrent poll', async () => {
     const { database, clock, events, fake, tracker } = setup();
     tracker.readOnNewTorrents();
@@ -4410,6 +4454,9 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
       downloadId: packHash.toUpperCase(), seriesId: 4, episodeId, sourceTitle: 'Show.S02.1080p', date: '2026-10-08T11:59:59Z',
     }));
     clock.value += 30_000;
+    events.publish('torrents', { changed: [{ hash: packHash.toUpperCase(), firstSeenAt: clock.value, lastSeenAt: clock.value }], gone: [], live: true });
+    for (let turn = 0; turn < 20; turn += 1) await drain();
+    assert.equal(fake.sonarr.requests.some((request) => request.path === '/api/v3/queue'), false);
     events.publish('torrents', { changed: [{ hash: packHash.toUpperCase(), firstSeenAt: clock.value, lastSeenAt: clock.value }], gone: [] });
     for (let turn = 0; turn < 100 && findGrab(database, packHash).episodeIds.length === 0; turn += 1) await drain();
     assert.deepEqual(findGrab(database, packHash).episodeIds, [41, 42, 43]);

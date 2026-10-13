@@ -46,7 +46,7 @@ import { createFanart } from './services/fanart.js';
 import { createBackdrops } from './backdrops.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
-import { createTorrentPoller } from './torrents.js';
+import { createTorrentPoller, LIVE_POLL_INTERVAL_MS } from './torrents.js';
 import { trackerRulesFromEnvironment } from './trackerRules.js';
 import { createTrackerWatch } from './trackers.js';
 import { createSearchScheduler } from './searches.js';
@@ -99,6 +99,7 @@ if (database !== undefined) {
     await secondVersions.reconcile(startedAt);
     await versionImport.run();
   });
+  runner.register('rtorrent-live-poll', LIVE_POLL_INTERVAL_MS, poller.pollLive);
   const backup = createBackup({
     database,
     events,
