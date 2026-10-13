@@ -30,13 +30,13 @@ type RowEpisodeDetailsProps = ComponentProps<'div'> & {
  * Overview and still and Details, then the versions table full width and white, then History. A section shows only
  * when its content is given.
  */
-function RowEpisodeDetails({ selected = false, overview, stillUrl, details, versions, versionsEmpty, history, historyCount, historyEmpty, className, ...props }: RowEpisodeDetailsProps) {
+function RowEpisodeDetails({ selected = true, overview, stillUrl, details, versions, versionsEmpty, history, historyCount, historyEmpty, className, ...props }: RowEpisodeDetailsProps) {
   const half = Math.ceil((details?.length ?? 0) / 2);
   const hasDetails = details !== undefined && details.length > 0;
   const hasHistory = history !== undefined || historyEmpty !== undefined;
   return (
     <div role="row" className={cn('relative w-full shrink-0 border-b border-border bg-card', className)} {...props}>
-      {selected && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.75 bg-foreground" />}
+      {selected && <span aria-hidden="true" className="absolute inset-y-0 left-0 z-10 w-0.75 bg-foreground" />}
       {(overview !== undefined || stillUrl !== undefined || hasDetails) && (
         <div role="cell" className="flex flex-col gap-6 pt-4 pr-4 pb-6 pl-(--detail-indent)">
           {(overview !== undefined || stillUrl !== undefined) && (

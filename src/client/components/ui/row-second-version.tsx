@@ -9,7 +9,7 @@ const w = { hitAndRun: 'w-40', tracker: 'w-26', status: 'w-44', quality: 'w-26',
 
 // Under an open episode the rows, the header and their lines start at x 152; on the movie page at x 16.
 const insetRow = 'pl-38 after:left-38';
-const insetHeader = 'relative border-b-0 pl-38 after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:left-38 after:h-px after:bg-border';
+const insetHeader = 'relative border-b-0 pl-38 after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:left-38 after:h-px after:bg-input';
 
 /** Versions header. `inset` under an open episode. */
 function RowSecondVersionHeader({ inset = false }: { inset?: boolean }) {
