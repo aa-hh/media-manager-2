@@ -156,13 +156,14 @@ function App() {
     };
   }, []);
 
-  // A new sign-in starts Discover without the old session's filters.
+  const clearsDiscoverFilters = session.kind === 'signed-out' && session.reason !== 'session-unavailable';
+  // A sign-out or expiry starts the next sign-in's Discover without the old session's filters; a session check that fails does not.
   useEffect(() => {
-    if (session.kind !== 'signed-out') return;
+    if (!clearsDiscoverFilters) return;
     clearSessionState();
     const { pathname, search } = window.location;
     if (pathname.startsWith('/discover') && withoutFilters(search) !== search) replace(pathname + withoutFilters(search));
-  }, [session.kind]);
+  }, [clearsDiscoverFilters]);
 
   useEffect(() => {
     if (session.kind !== 'signed-in' && session.kind !== 'sign-out-failed') return;
