@@ -34,6 +34,8 @@ const settingsModuleUrl = new URL('../dist/server/settings.js', import.meta.url)
 const arrModuleUrl = new URL('../dist/server/services/arr.js', import.meta.url).href;
 const rtorrentModuleUrl = new URL('../dist/server/services/rtorrent.js', import.meta.url).href;
 const plexModuleUrl = new URL('../dist/server/services/plex.js', import.meta.url).href;
+const jellyfinModuleUrl = new URL('../dist/server/services/jellyfin.js', import.meta.url).href;
+const mediaServerModuleUrl = new URL('../dist/server/services/mediaServer.js', import.meta.url).href;
 const tmdbModuleUrl = new URL('../dist/server/services/tmdb.js', import.meta.url).href;
 const connectionModuleUrl = new URL('../dist/server/services/connection.js', import.meta.url).href;
 const logModuleUrl = new URL('../dist/server/log.js', import.meta.url).href;
@@ -2320,6 +2322,7 @@ test('service connections read saved settings and classify each outcome', async 
   const { createArr } = await import(arrModuleUrl);
   const { createRtorrent } = await import(rtorrentModuleUrl);
   const { createPlex } = await import(plexModuleUrl);
+  const { createJellyfin } = await import(jellyfinModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-connections-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -2379,6 +2382,21 @@ test('service connections read saved settings and classify each outcome', async 
       malformedBody: '{}',
       usePrimitive: (service) => service.request('/'),
       primitiveResult: { status: 200, body: { MediaContainer: { version: '1.41.0.8994' } } },
+    },
+    {
+      name: 'jellyfin',
+      create: (fetch) => createJellyfin(database, { fetch }),
+      url: 'http://127.0.0.1:65005',
+      credentials: { 'jellyfin.apiKey': `jellyfin-key-${pid}-distinctive` },
+      method: 'GET',
+      // The public /System/Info/Public answers without a key, so probing it would pass a wrong key.
+      probeUrl: 'http://127.0.0.1:65005/System/Info',
+      headers: { authorization: `MediaBrowser Token="jellyfin-key-${pid}-distinctive"`, accept: 'application/json' },
+      okBody: JSON.stringify({ Version: '10.11.0' }),
+      version: '10.11.0',
+      malformedBody: '{}',
+      usePrimitive: (service) => service.findLibraryFor('/media', 'movie'),
+      primitiveResult: undefined,
     },
   ];
 
@@ -2454,6 +2472,66 @@ test('service connections read saved settings and classify each outcome', async 
       assert.equal(errorText.includes(value), false, `${service.name} error mentions ${value}`);
     }
   }
+});
+
+// Matching a library of the wrong type or by a name prefix, reading a refused library list as "no library", sending the scan
+// anywhere but /Library/Media/Updated, keeping Plex once Jellyfin is set up, or naming Plex in a Jellyfin install's problem turns this red.
+test('the Jellyfin version finds the library holding a folder, asks it to scan, and is used once Jellyfin is set up', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createMediaServer } = await import(mediaServerModuleUrl);
+  const { createEventHub } = await import(eventsModuleUrl);
+  const { createProblems } = await import(problemsModuleUrl);
+  const { createVersionImport, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-jellyfin-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const key = `jellyfin-key-${process.pid}`;
+  const calls = [];
+  let libraries = [];
+  let listStatus = 200;
+  const fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method ?? 'GET', headers: new Headers(init.headers), body: init.body });
+    if (String(url).endsWith('/Library/VirtualFolders')) return new Response(JSON.stringify(libraries), { status: listStatus });
+    return new Response(null, { status: 204 });
+  };
+  const mediaServer = createMediaServer(database, { fetch });
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  assert.equal(mediaServer().name, 'plex');
+  setSetting(database, 'serviceAddresses', 'jellyfin.url', 'http://jellyfin.test/');
+  setSetting(database, 'credentials', 'jellyfin.apiKey', key);
+  const jellyfin = mediaServer();
+  assert.equal(jellyfin.name, 'jellyfin');
+
+  libraries = [
+    { Name: 'Shows', ItemId: 'tv1', CollectionType: 'tvshows', Locations: ['/media/versions'] },
+    { Name: 'Films', ItemId: 'mv1', CollectionType: 'movies', Locations: ['/media/films', '/media/versions'] },
+  ];
+  assert.deepEqual(await jellyfin.findLibraryFor('/media/versions/movies', 'movie'), { id: 'mv1' });
+  assert.deepEqual(await jellyfin.findLibraryFor('/media/versions/tv', 'show'), { id: 'tv1' });
+  assert.equal(await jellyfin.findLibraryFor('/media/versions-old', 'movie'), undefined);
+  assert.equal(calls[0].url, 'http://jellyfin.test/Library/VirtualFolders');
+  assert.equal(calls[0].headers.get('authorization'), `MediaBrowser Token="${key}"`);
+  listStatus = 401;
+  await assert.rejects(jellyfin.findLibraryFor('/media/versions/movies', 'movie'));
+  listStatus = 200;
+
+  const folder = '/media/versions/movies/Dune - Part Two (2024)';
+  await jellyfin.refresh({ id: 'mv1' }, folder);
+  const scan = calls.at(-1);
+  assert.deepEqual([scan.method, scan.url, scan.headers.get('content-type')], ['POST', 'http://jellyfin.test/Library/Media/Updated', 'application/json']);
+  assert.deepEqual(JSON.parse(scan.body), { Updates: [{ Path: folder, UpdateType: 'Created' }] });
+
+  const problems = createProblems({ database, events: createEventHub() });
+  const versionImport = createVersionImport({ database, rtorrent: { call: async () => assert.fail('not asked') }, arr: {}, mediaServer, problems });
+  libraries = [];
+  await versionImport.scan('radarr', '/media/versions/movies', new Set([folder]));
+  assert.deepEqual(database.prepare("SELECT summary FROM problems WHERE kind = ? AND state != 'resolved'").all(PLEX_PROBLEM_KIND).map((row) => row.summary),
+    ['Add /media/versions/movies to the Jellyfin Movies library.']);
 });
 
 test('the TMDB client sends the key only to TMDB, parses partial replies and caches lists', async (t) => {
@@ -8139,6 +8217,7 @@ test('a finished second version is hardlinked into the versions folder and Plex 
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems } = await import(problemsModuleUrl);
   const { createVersionImport, FOLDER_PROBLEM_KIND, IMPORT_PROBLEM_KIND, PLEX_PROBLEM_KIND } = await import(versionImportModuleUrl);
+  const { createPlex } = await import(plexModuleUrl);
   const root = await realpath(await mkdtemp(join(tmpdir(), 'media-manager-2-version-import-')));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
   t.after(async () => {
@@ -8200,14 +8279,17 @@ test('a finished second version is hardlinked into the versions folder and Plex 
 
   const plexRequests = [];
   let sections = [{ key: '3', type: 'movie', Location: [{ path: join(root, 'versions') }] }];
-  const plex = {
-    request: async (path) => {
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  const plex = createPlex(database, {
+    fetch: async (url) => {
+      const path = String(url).slice('http://plex.test'.length);
       plexRequests.push(path);
-      return { status: 200, body: path === '/library/sections' ? { MediaContainer: { Directory: sections } } : undefined };
+      return new Response(path === '/library/sections' ? JSON.stringify({ MediaContainer: { Directory: sections } }) : '', { status: 200 });
     },
-  };
+  });
   const problems = createProblems({ database, events: createEventHub() });
-  const versionImport = createVersionImport({ database, rtorrent, arr, plex, problems });
+  const versionImport = createVersionImport({ database, rtorrent, arr, mediaServer: () => plex, problems });
 
   // Copying instead of linking, linking an extra or a sample, or recording the event twice on a rerun turns this red.
   const duneHash = 'A1'.repeat(20);
@@ -9344,7 +9426,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       database,
       arr: { sonarr: fake('sonarr'), radarr: fake('radarr') },
       rtorrent: { check: async () => ok },
-      plex: { check: async () => ok },
+      mediaServer: () => ({ name: 'plex', check: async () => ok }),
       tmdb: { check: async () => input.statuses?.tmdb ?? ok },
       mdblist: { check: async () => input.statuses?.mdblist ?? ok },
       jobs: { status: () => input.jobs ?? [] },

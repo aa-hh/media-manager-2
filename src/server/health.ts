@@ -5,6 +5,7 @@ import { readDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import type { createJobRunner } from './jobs.js';
 import type { ConnectionStatus } from './services/connection.js';
+import type { MediaServer } from './services/mediaServer.js';
 import type { TrackerConnection } from './services/trackerAccounts.js';
 import { trackerRule } from './trackerRules.js';
 import type { Service } from './torrentGrabs.js';
@@ -21,7 +22,7 @@ export type HealthProblem = {
   docsUrl: string | null;
 };
 type JobStatus = ReturnType<ReturnType<typeof createJobRunner>['status']>;
-type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'tmdb' | 'mdblist';
+type ServiceName = 'sonarr' | 'radarr' | 'rtorrent' | 'plex' | 'jellyfin' | 'tmdb' | 'mdblist';
 export type TrackerAccount =
   | { kind: 'not_set_up' }
   | { kind: 'unavailable'; reason: 'rejected' | 'unreachable' | 'unsupported' }
@@ -44,7 +45,7 @@ type ArrClient = {
 };
 
 const ranks: Record<HealthLevel, number> = { ok: 0, notice: 1, warning: 2, error: 3 };
-const labels: Record<ServiceName, string> = { sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex', tmdb: 'TMDB', mdblist: 'MDBList' };
+const labels: Record<ServiceName, string> = { sonarr: 'Sonarr', radarr: 'Radarr', rtorrent: 'rTorrent', plex: 'Plex', jellyfin: 'Jellyfin', tmdb: 'TMDB', mdblist: 'MDBList' };
 const arrServices: Service[] = ['sonarr', 'radarr'];
 // The account's minimum ratio: a Gazelle site's own required ratio, else the minGlobalRatio of the tracker's rule.
 // A saved rule that fails validation leaves it unknown here; removal advice reports that rule's problem.
@@ -115,7 +116,7 @@ export const createHealth = (options: {
   database: DatabaseSync;
   arr: Record<Service, ArrClient>;
   rtorrent: { check(): Promise<ConnectionStatus> };
-  plex: { check(): Promise<ConnectionStatus> };
+  mediaServer: () => Pick<MediaServer, 'name' | 'check'>;
   tmdb: { check(): Promise<ConnectionStatus> };
   mdblist: { check(): Promise<ConnectionStatus> };
   jobs: { status(): JobStatus };
@@ -123,7 +124,7 @@ export const createHealth = (options: {
   events: EventHub;
   now?: () => number;
 }) => {
-  const { database, arr, rtorrent, plex, tmdb, mdblist, jobs, trackerAccounts, events } = options;
+  const { database, arr, rtorrent, mediaServer, tmdb, mdblist, jobs, trackerAccounts, events } = options;
   const now = options.now ?? Date.now;
   let snapshot: HealthSnapshot | undefined;
   // Kept in memory only: the first check after a restart records the count without warning.
@@ -140,8 +141,9 @@ export const createHealth = (options: {
   const check = async (): Promise<HealthSnapshot> => {
     const checkedAt = now();
     const configured = arrServices.filter((service) => arr[service].configured());
+    const server = mediaServer();
     const [statuses, arrReads, accountStats] = await Promise.all([
-      Promise.allSettled([arr.sonarr.check(), arr.radarr.check(), rtorrent.check(), plex.check(), tmdb.check(), mdblist.check()]),
+      Promise.allSettled([arr.sonarr.check(), arr.radarr.check(), rtorrent.check(), server.check(), tmdb.check(), mdblist.check()]),
       Promise.all(configured.map(async (service) => {
         const [health, disks, updates, clients, media] = await Promise.allSettled([
           read(service, '/api/v3/health'),
@@ -167,7 +169,7 @@ export const createHealth = (options: {
       problems.push({ id, level, source: 'media-manager-2', check, message, docsUrl: null });
     };
 
-    const names: ServiceName[] = ['sonarr', 'radarr', 'rtorrent', 'plex', 'tmdb', 'mdblist'];
+    const names: ServiceName[] = ['sonarr', 'radarr', 'rtorrent', server.name, 'tmdb', 'mdblist'];
     const services = names.map((name, index) => {
       const status = settled<ConnectionStatus>(statuses[index], { kind: 'unreachable' });
       const label = labels[name];

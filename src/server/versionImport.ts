@@ -1,10 +1,11 @@
 import { linkSync, mkdirSync, rmSync, statSync } from 'node:fs';
-import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { findOpenProblem, type createProblems, type Subject } from './problems.js';
 import type { FailureCode } from './secondVersions.js';
 import type { ArrServices } from './services/arr.js';
 import { readSetting } from './services/connection.js';
+import type { Library, MediaServer } from './services/mediaServer.js';
 import type { XmlRpcParam } from './services/rtorrent.js';
 import { listTorrents } from './torrents.js';
 
@@ -76,21 +77,17 @@ export const episodeCodes = (fileName: string) => {
 
 const pad = (value: number) => String(value).padStart(2, '0');
 const isVideo = (path: string) => VIDEO_EXTENSIONS.has(extname(path).toLowerCase()) && !basename(path).toLowerCase().includes('sample');
-const isInside = (folder: string, path: string) => {
-  const inside = relative(folder, path);
-  return !inside.startsWith('..') && !isAbsolute(inside);
-};
 
 // A finished second-version torrent becomes hardlinks in the versions folder, so it keeps seeding and uses no more disk.
 export const createVersionImport = (options: {
   database: DatabaseSync;
   rtorrent: { call: XmlRpcCall };
   arr: ArrServices;
-  plex: { request: (path: string) => Promise<{ status: number; body: unknown }> };
+  mediaServer: () => MediaServer;
   problems: Problems;
   now?: () => number;
 }) => {
-  const { database, rtorrent, arr, plex, problems } = options;
+  const { database, rtorrent, arr, mediaServer, problems } = options;
   const now = options.now ?? Date.now;
 
   const versionsFolder = (service: Service) => {
@@ -247,30 +244,24 @@ export const createVersionImport = (options: {
     }
   };
 
-  // Plex unset or unreachable skips the scan: its own scheduled scan finds the file later.
+  // A media server unset or unreachable skips the scan: its own scheduled scan finds the file later.
   const scan = async (service: Service, root: string, folders: Set<string>) => {
-    let body: unknown;
+    const server = mediaServer();
+    let library: Library | undefined;
     try {
-      const result = await plex.request('/library/sections');
-      if (result.status < 200 || result.status > 299) return;
-      body = result.body;
+      library = await server.findLibraryFor(root, service === 'radarr' ? 'movie' : 'show');
     } catch {
       return;
     }
-    const container = (body as { MediaContainer?: { Directory?: unknown } } | undefined)?.MediaContainer;
-    const sections = Array.isArray(container?.Directory) ? container.Directory as Array<Record<string, unknown>> : [];
-    const type = service === 'radarr' ? 'movie' : 'show';
-    const section = sections.find((item) => item.type === type && Array.isArray(item.Location)
-      && (item.Location as Array<Record<string, unknown>>).some((location) => typeof location.path === 'string' && isInside(location.path, root)));
     const subject: Subject = { type: 'dependency', service, id: root };
-    if (section === undefined || (typeof section.key !== 'string' && typeof section.key !== 'number')) {
-      problems.open({ kind: PLEX_PROBLEM_KIND, subject, state: 'needs_you', summary: `Add ${root} to the Plex ${service === 'radarr' ? 'Movies' : 'TV'} library.` });
+    if (library === undefined) {
+      problems.open({ kind: PLEX_PROBLEM_KIND, subject, state: 'needs_you', summary: `Add ${root} to the ${server.label} ${service === 'radarr' ? 'Movies' : 'TV'} library.` });
       return;
     }
-    resolveOpen(PLEX_PROBLEM_KIND, subject, `Plex reads ${root} now.`);
+    resolveOpen(PLEX_PROBLEM_KIND, subject, `${server.label} reads ${root} now.`);
     for (const folder of folders) {
       try {
-        await plex.request(`/library/sections/${encodeURIComponent(String(section.key))}/refresh?path=${encodeURIComponent(folder)}`);
+        await server.refresh(library, folder);
       } catch {
         return;
       }

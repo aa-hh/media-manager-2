@@ -6,7 +6,7 @@ import { openDatabase } from './database.js';
 import { createEventHub } from './events.js';
 import { setLogSink } from './log.js';
 import { createArr } from './services/arr.js';
-import { createPlex } from './services/plex.js';
+import { createMediaServer } from './services/mediaServer.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { deleteSetting, listSettingKeys, setSetting } from './settings.js';
@@ -32,11 +32,12 @@ const readStdin = async () => {
 };
 
 const checkConnections = async (database: DatabaseSync) => {
+  const mediaServer = createMediaServer(database)();
   const services = [
     ['sonarr', createArr('sonarr', database)],
     ['radarr', createArr('radarr', database)],
     ['rtorrent', createRtorrent(database)],
-    ['plex', createPlex(database)],
+    [mediaServer.name, mediaServer],
   ] as const;
   const [statuses, trackerStatuses] = await Promise.all([
     Promise.all(services.map(([, service]) => service.check())),
