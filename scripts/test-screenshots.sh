@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for scripts/screenshots/{start,stop,run}.sh: a run never kills another run. Fakes an out dir whose pid file
-# points at a sleep, holds one of the harness ports with a node listener, and runs the three scripts against them.
+# points at a sleep, holds one free port as the stand-in Sonarr port, and runs the three scripts against them.
 # Needs no build and no Chrome: every case stops at the refusal or at the pid files.
 #
 # Usage: scripts/test-screenshots.sh
@@ -18,21 +18,23 @@ trap 'kill $LISTENER $SLEEPER 2>/dev/null; rm -rf "$TMP_DIR"' EXIT
 FAILURES=0
 fail() { echo "FAIL: $1" >&2; FAILURES=$((FAILURES + 1)); }
 ok()   { echo "  ok — $1"; }
-ports() { lsof -nP -i tcp:3999 -i tcp:9333 -i tcp:65301 -sTCP:LISTEN 2>/dev/null; }
 # Polls until the command holds, a generous ceiling instead of a fixed sleep.
 until_ok() { for _ in $(seq 1 40); do "$@" && return 0; sleep 0.25; done; return 1; }
 
-held=$(ports)
-if [ -n "$held" ]; then
-  printf 'the harness ports are held, so this test cannot run; left running:\n%s\n' "$held" >&2
-  exit 1
-fi
-
-# The listener plays a run from another out dir; the sleeper plays a process this out dir started.
-node -e "require('node:net').createServer().listen(65301, '127.0.0.1')" >/dev/null 2>&1 &
+# Free ports picked by the system, so a real screenshot run or a second copy of this test never collides with it.
+# The listener keeps the third one, playing a run from another out dir; the other two are released.
+node -e "
+const net = require('node:net');
+const servers = [0, 1, 2].map(() => net.createServer());
+Promise.all(servers.map((server) => new Promise((done) => server.listen(0, '127.0.0.1', done)))).then(() => {
+  require('node:fs').writeFileSync(process.argv[1], servers.map((server) => server.address().port).join(' '));
+  servers[0].close(); servers[1].close();
+});" "$TMP_DIR/ports" >/dev/null 2>&1 &
 LISTENER=$!
 disown "$LISTENER"
-until_ok sh -c 'lsof -t -i tcp:65301 -sTCP:LISTEN >/dev/null 2>&1' || { echo "listener never bound 65301" >&2; exit 1; }
+until_ok test -s "$TMP_DIR/ports" || { echo "listener never bound a port" >&2; exit 1; }
+read -r SHOTS_SERVER_PORT SHOTS_CHROME_PORT SHOTS_SONARR_PORT < "$TMP_DIR/ports"
+export SHOTS_SERVER_PORT SHOTS_CHROME_PORT SHOTS_SONARR_PORT
 # Started from a subshell so it is nobody's child: killed, it leaves no zombie, and kill -0 then tells the truth.
 SLEEPER=$( (sleep 300 >/dev/null 2>&1 & echo $!) )
 mkdir -p "$OUT/run" && echo "$SLEEPER" > "$OUT/run/server.pid"
