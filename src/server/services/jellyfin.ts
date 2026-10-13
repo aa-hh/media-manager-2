@@ -80,7 +80,7 @@ export const createJellyfin = (database: DatabaseSync, options: ServiceOptions =
     const query = new URLSearchParams({ Recursive: 'true', IncludeItemTypes: type === 'movie' ? 'Movie' : 'Episode', Fields: 'Path', EnableImages: 'false', EnableUserData: 'false' });
     if (season !== undefined) query.set('ParentIndexNumber', String(season));
     const result = await request(`/Items?${query}`);
-    if (result.status < 200 || result.status > 299) throw new Error('Jellyfin refused the item list.');
+    if (result.status < 200 || result.status > 299) return false;
     const items = isRecord(result.body) && Array.isArray(result.body.Items) ? result.body.Items.filter(isRecord) : [];
     const tail = (path: string) => path.split(/[\\/]+/).filter(Boolean).slice(-2).join('/');
     const idAt = (path: string) => {
@@ -91,8 +91,7 @@ export const createJellyfin = (database: DatabaseSync, options: ServiceOptions =
     const version = idAt(versionPath);
     if (tracked === undefined || version === undefined || tracked === version) return false;
     const merge = await request(`/Videos/MergeVersions?ids=${encodeURIComponent(tracked)}&ids=${encodeURIComponent(version)}`, { method: 'POST' });
-    if (merge.status < 200 || merge.status > 299) throw new Error('Jellyfin refused the merge.');
-    return true;
+    return merge.status >= 200 && merge.status <= 299;
   };
 
   return { name: 'jellyfin' as const, label: 'Jellyfin', check, findLibraryFor, refresh, mergeVersions };
