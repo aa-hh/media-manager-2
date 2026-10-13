@@ -1,5 +1,5 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
-import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search } from 'lucide-react';
+import { Bookmark, BookmarkX, ChevronUp, Ellipsis, List, ListVideo, RotateCw, Search, X } from 'lucide-react';
 import { Fragment, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type SetStateAction } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { BarSelection, BarSelectionAction } from '@/components/ui/bar-selection';
@@ -41,7 +41,10 @@ const code = (episode: EpisodeDetail) => `S${String(episode.seasonNumber).padSta
 // Height 0 to full as a season or an episode's details open (duration-size); the reverse at duration-fast.
 const openPanel = 'h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-size) ease-out data-ending-style:h-0 data-ending-style:duration-(--duration-fast) data-ending-style:ease-in data-starting-style:h-0 motion-reduce:transition-none';
 
-function IconAction({ label, icon, pressed = false, onClick }: { label: string; icon: ReactNode; pressed?: boolean; onClick: () => void }) {
+// The button that opened a release list turns black with an X while the list is open, so it reads as the way to close it.
+const closeLook = 'before:bg-foreground not-data-disabled:hover:before:bg-foreground/85 not-data-disabled:active:before:bg-foreground';
+
+function IconAction({ label, icon, pressed = false, className, onClick }: { label: string; icon: ReactNode; pressed?: boolean; className?: string; onClick: () => void }) {
   return (
     <Tooltip text={label}>
       <Button
@@ -50,7 +53,7 @@ function IconAction({ label, icon, pressed = false, onClick }: { label: string; 
         iconOnly
         icon={icon}
         aria-label={label}
-        className={pressed ? 'bg-surface-pressed' : undefined}
+        className={className ?? (pressed ? 'bg-surface-pressed' : undefined)}
         onClick={(event) => { event.stopPropagation(); onClick(); }}
       />
     </Tooltip>
@@ -163,9 +166,9 @@ const EpisodeRow = memo(function EpisodeRow({
               onClick={() => handlers.search(rowKey, { service: 'sonarr', kind: 'episodes', episodeIds: [episode.id] })}
             />
             <IconAction
-              label="Pick a release"
-              icon={<List className="text-muted-foreground" />}
-              pressed={pickOpen}
+              label={pickOpen ? 'Close releases' : 'Pick a release'}
+              icon={pickOpen ? <X className="text-background" /> : <List className="text-muted-foreground" />}
+              className={pickOpen ? closeLook : undefined}
               onClick={() => handlers.pick(episode)}
             />
             <IconAction
@@ -504,9 +507,9 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                       onClick={() => void search(key, { service: 'sonarr', kind: 'season', seriesId, seasonNumber: season.seasonNumber })}
                     />
                     <IconAction
-                      label="Pick a season pack"
-                      icon={<List className="text-muted-foreground" />}
-                      pressed={pickOpen(key)}
+                      label={pickOpen(key) ? 'Close season packs' : 'Pick a season pack'}
+                      icon={pickOpen(key) ? <X className="text-background" /> : <List className="text-muted-foreground" />}
+                      className={pickOpen(key) ? closeLook : undefined}
                       onClick={() => openPick(key, seasonTarget(season.seasonNumber))}
                     />
                   </>
