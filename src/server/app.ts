@@ -238,8 +238,8 @@ export const createApp = (options: CreateAppOptions) => {
       || contentType !== 'application/json'
       || fetchSite === 'cross-site'
     ) return context.json({ error: 'invalid_origin' }, 403);
-    // A batch of browser timings holds up to 50 items, so it gets the same room as a grab.
-    if (context.req.path === '/api/grabs' || context.req.path === '/api/second-versions' || context.req.path === '/api/metrics') return grabRequestLimit(context, next);
+    // A batch of browser timings holds up to 50 items, so it gets the same room as a grab. So do the six folder paths, which can be 170 characters each.
+    if (context.req.path === '/api/grabs' || context.req.path === '/api/second-versions' || context.req.path === '/api/metrics' || context.req.path === '/api/setup/folders') return grabRequestLimit(context, next);
     // A movie or show delete lists every torrent and second version chosen, which for a long show is many.
     if (context.req.path.startsWith('/api/imports/') || /^\/api\/library\/(movie|series)\/\d+\/delete$/.test(context.req.path)) return importRequestLimit(context, next);
     return requestLimit(context, next);

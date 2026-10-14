@@ -4310,6 +4310,18 @@ test('the setup wizard reports each part, keeps the owner\'s choices and saves w
     );
     assert.equal(hostPaths(database).length, 6);
     assert.deepEqual((await folders()).saved, values);
+
+    // Dropping /api/setup/folders from the 16 KB limit, so six long paths hit the 1 KB default and answer 413, turns this red.
+    const long = {};
+    for (const field of Object.keys(values)) {
+      long[field] = join(root, `${field}-${'d'.repeat(170)}`);
+      await mkdir(long[field], { recursive: true });
+    }
+    assert.ok(JSON.stringify(long).length > 1_024);
+    const savedLong = await send('POST', '/folders', long);
+    assert.equal(savedLong.status, 200);
+    assert.deepEqual((await folders()).saved, long);
+    assert.equal((await send('POST', '/folders', { ...long, versionsRadarr: 'x'.repeat(20_000) })).status, 413);
   });
 
   // Saving Plex after a failed check, or sending the sign-in token back in any response, turns this red.
