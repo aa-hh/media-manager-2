@@ -107,7 +107,9 @@ export function FoldersEditor({ request, onSaved, wizard }: {
           return;
         }
       }
-      setProblem('The folders could not be saved. Try again.');
+      setProblem(response.status === 413
+        ? 'The folder paths are too long to save together. Shorten them and try again.'
+        : 'The folders could not be saved. Try again.');
     } catch {
       setProblem(noAnswer);
     } finally {
