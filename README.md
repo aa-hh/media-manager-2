@@ -7,43 +7,142 @@
 
 # media-manager-2
 
-Discover, download and manage your media, all in one app. It runs Sonarr and
-Radarr through one interface and keeps their torrent downloads on track: it
-reads rTorrent directly, spots downloads that stall or report vague status,
-and fixes them.
+Find, download and manage your movies and TV shows from one place. It puts
+Sonarr and Radarr behind a single search box and watches their torrents in
+rTorrent, so stalled downloads and missed searches get fixed without you
+checking on them. It works with both Plex and Jellyfin as your media server.
+
+Install it with three commands, then finish in your browser. A setup wizard
+asks for one thing at a time, tests each answer before saving it, and fills in
+whatever it can read from your other services.
+
+![The library page after setup](docs/screenshots/library.png)
+
+[Quick start](#quick-start) · [Setup wizard](#the-setup-wizard) · [Sign in](#sign-in) · [Backups](#backups-optional) · [Run it on a server](#run-it-on-a-server) · [Development](#development)
+
+## What it does
+
+- **One search box.** It finds titles in your library first, then Sonarr and
+  Radarr lookups, and sends a new title to the right one.
+- **You pick the release.** Choose the exact release yourself, or let it
+  search. For a title you already own, replace the file or keep a second
+  version next to it.
+- **Downloads stay on track.** It reads rTorrent directly and retries missed
+  searches, stalled torrents and blocked imports on its own.
+- **Private trackers stay happy.** It knows each tracker's hit and run rule,
+  and before a delete it tells you whether the torrent can go yet. Imports use
+  hardlinks, so a torrent keeps seeding after it reaches your library.
+- **Plex or Jellyfin.** Log in with either one. You can switch later in
+  Settings (not when `PLEX_OWNER_ID` pins the owner).
+- **Problems come to you.** The Flagged, History and Health pages show what
+  the app fixed and what it gave up on. Discover and Calendar show what to add
+  and what airs next.
 
 It is a single Node.js process (a Hono server that also serves the React app)
 with its state in one SQLite file. It is built for one person, the owner, who
-signs in with their Plex account.
+signs in with Plex or Jellyfin.
 
-## What you need
+## Quick start
 
-- Node.js 22.16 or newer. Node may print an experimental SQLite warning at
-  startup because its built-in SQLite module is still marked experimental.
-- Sonarr and Radarr, each with an API key.
-- rTorrent with its XML-RPC interface reachable over HTTP(S), as most
-  seedboxes provide it.
-- A Plex account, used to sign in, and a Plex Media Server.
-- Optional: accounts on the Blutopia, PrivateHD or Beyond-HD trackers, for
-  account stats.
-- Optional: somewhere to keep backups, either a folder (another disk, a
-  network share) or an S3-compatible bucket. See [Backups](#backups-optional).
+### 1. Have these ready
 
-## Install and start
+The wizard lists the same things on its first screen.
+
+| You need | Where to find it |
+| --- | --- |
+| Node.js 22.16 or newer | `node --version`. Node may print an experimental SQLite warning at startup because its built-in SQLite module is still marked experimental. |
+| Sonarr address and API key | In Sonarr: Settings > General |
+| Radarr address and API key | In Radarr: Settings > General |
+| rTorrent's password | Your seedbox or rTorrent setup. Its XML-RPC interface must be reachable over HTTP(S), as most seedboxes provide it. If Sonarr already uses it as a download client, the wizard reads the address and username from there. |
+| A Plex account and your Plex Media Server's address | Plex signs you in, and the wizard reuses that sign-in for the server token. Jellyfin works instead: you need an administrator login and an API key from Dashboard > API Keys. |
+| Optional | Accounts at your private trackers, API keys for TMDB, MDBList or Trakt (posters and ratings), and a folder or S3-compatible bucket for backups. The wizard lets you skip each one. |
+
+### 2. Install and start
 
 ```sh
 npm ci
 sh scripts/build.sh
-npm start
+APP_ORIGIN=http://127.0.0.1:3000 npm start
 ```
+
+`APP_ORIGIN` is the address you will type into your browser. Without it nobody
+can sign in. For anything other than your own computer, use an HTTPS address
+and see [Run it on a server](#run-it-on-a-server).
 
 The server prepares its database, then prints its listening address. If the
 database cannot be prepared it prints `Database initialization failed.` and
 exits unsuccessfully. An invalid `TRACKER_RULES` stops it the same way, with a
-message naming the tracker and field at fault. Production runs the Hono server, which serves the
-compiled React app; Vite's preview server is not used.
+message naming the tracker and field at fault. Production runs the Hono
+server, which serves the compiled React app; Vite's preview server is not
+used.
 
-### Environment variables
+### 3. Open it and log in
+
+Open the `APP_ORIGIN` address in a browser. A fresh install opens on a page
+that asks whether you use Plex or Jellyfin.
+
+![First screen of a fresh install: choose Plex or Jellyfin](docs/screenshots/first-run.png)
+
+Pick one and log in. **The first account to log in becomes the owner**, so do
+this before you share the address with anyone. To fix the owner ahead of time,
+set `PLEX_OWNER_ID` (see [Environment variables](#environment-variables)).
+
+With Jellyfin the page first checks that the address you typed answers as a
+Jellyfin server, then you log in as an administrator with a username and
+password or with Quick Connect.
+
+## The setup wizard
+
+Right after your first login the app opens the setup wizard instead of an
+empty library. It will not open the library until the five required parts are
+connected. The header counts your progress ("2 of 5 required steps done") and
+a strip of service pills shows which parts are connected.
+
+![The wizard's first screen lists what to have ready and what is optional](docs/screenshots/setup-what-to-set-up.png)
+
+Each required step asks for as little as it can:
+
+| Step | You do | The app does |
+| --- | --- | --- |
+| Sonarr | Type its address and API key | Tests them, shows the version it found, then saves |
+| Radarr | Type its address and API key | The same |
+| rTorrent | Type its password | Fills in the address and username from Sonarr's download client settings |
+| Plex | Type your server's address | Tests it with your sign-in token, then saves, so there is no token to hunt for. You can paste a token instead. |
+| Jellyfin (instead of Plex) | Paste an API key | Tests it against the server you logged in through, then saves |
+| Folders | Confirm what it filled in | Reads your library folders from Sonarr and Radarr and the download folders from their download clients and rTorrent, suggests a second-versions folder beside each library, and checks every folder exists |
+
+![The Sonarr step after a successful test](docs/screenshots/setup-sonarr.png)
+
+The Folders step also makes a test hardlink from each downloads folder into
+the matching second-versions folder and refuses to save when it fails, which
+usually means the two folders are on different drives. If a library folder
+cannot be hardlinked from downloads, it saves but warns you that a deleted
+download cannot be re-linked from there.
+
+![The Folders step with every folder filled in](docs/screenshots/setup-folders.png)
+
+After the required steps, three optional ones. Untick any you do not want on
+the first screen, or skip it when you reach it. Settings has all three later.
+
+- **Trackers.** Add each private tracker and its hit and run rule, so deleting
+  a version never breaks one.
+- **Posters and ratings.** Keys for TMDB, MDBList and Trakt.
+- **Backup.** Pick a folder or an S3-compatible bucket. The app makes the
+  restore key itself and shows it once with Copy and Download buttons; finish
+  setup waits until you have saved it. The first backup runs within five
+  minutes. Details under [Backups](#backups-optional).
+
+The last screen, "Setup is done", has a search box ("Find something to watch")
+so your first action is adding a title.
+
+![Setup is done, with every required part connected](docs/screenshots/setup-done.png)
+
+Anything you skipped or want to change lives in Settings. To check all your
+connections from a terminal at any time, run `node dist/server/cli.js
+connections check`; it prints one line per service, as described under
+[Connect your services](#connect-your-services).
+
+## Environment variables
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
@@ -109,8 +208,10 @@ The backup settings are listed under [Backups](#backups-optional); tracker
 settings under [Tracker accounts](#tracker-accounts) and
 [Tracker hit-and-run rules](#tracker-hit-and-run-rules).
 
-Until a settings screen exists, save and check settings with the command-line
-tool, run from the app folder with the same `DB_PATH` as the server:
+The setup wizard and Settings save all of these for you. The command-line tool
+does the same from a terminal, for scripts or for fixing an install you cannot
+reach in the browser. Run it from the app folder with the same `DB_PATH` as
+the server:
 
 ```sh
 node dist/server/cli.js settings set <category> <key>   (value read from stdin)
