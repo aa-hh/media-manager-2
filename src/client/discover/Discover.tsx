@@ -10,10 +10,11 @@ import { replace, useLocation, useScreenReady } from '../navigation';
 import { Attribution } from './Attribution';
 import { openLink } from './Card';
 import { FilterBar } from './FilterBar';
-import { Grid, TmdbNudge, useOptions } from './Grid';
+import { Grid, TmdbNudge, useKeywordNames, useOptions } from './Grid';
 import {
   extraRowsView,
   gridPath,
+  homePath,
   homeQuery,
   readServices,
   readState,
@@ -36,13 +37,6 @@ type Load =
   | { kind: 'ready'; url: string; reply: HomeReply; exhausted: boolean }
   | { kind: 'not_configured' }
   | { kind: 'failed' };
-
-// `window` lives only in the page address; the server never sees it.
-const homeAddress = (state: HomeState) => {
-  const params = new URLSearchParams(homeQuery(state, []));
-  if (state.window === 30) params.set('window', '30');
-  return params.size === 0 ? '/discover' : `/discover?${params}`;
-};
 
 const homeRows = (reply: HomeReply): RowData[] => [
   reply.trending.all, reply.trending.movie, reply.trending.tv,
@@ -69,19 +63,20 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const options = useOptions('both', 'movie', onUnauthenticated);
+  const keywords = useKeywordNames(state.keywords, onUnauthenticated);
   // The screen change holds until the rows are in; each row fades its own titles in if they come later.
   useScreenReady(load.kind !== 'loading');
 
   // The address catches up right after the render; stored defaults give a bare address again, so the check stops a loop.
   useEffect(() => {
-    if (search !== '' || homeAddress(state) === '/discover') return;
-    replace(homeAddress(state));
+    if (search !== '' || homePath(state) === '/discover') return;
+    replace(homePath(state));
   }, [search, state]);
 
   const change = (next: HomeState) => {
     // Stored first: a bare address re-reads the stored filters.
     writeStoredState(next);
-    replace(homeAddress(next));
+    replace(homePath(next));
   };
 
   const query = homeQuery(state, services);
@@ -148,6 +143,7 @@ function DiscoverHome({ onUnauthenticated }: { onUnauthenticated: () => void }) 
         state={state}
         onChange={change}
         genres={options.genres}
+        keywords={keywords}
         providers={options.providers}
         type={{ value: state.type, options: ['all', 'movie', 'tv'] }}
         window

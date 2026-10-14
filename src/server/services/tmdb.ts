@@ -135,7 +135,7 @@ const parseDetails = (body: unknown, mediaType: TmdbMediaType): TmdbDetails | un
 export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { now?: () => number } = {}) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const now = options.now ?? Date.now;
-  // razor: an unbounded in-memory map; discover pages, tvAiring (one key per show id) and collection (one key per collection id) are the growing keys, add eviction if memory shows it.
+  // razor: an unbounded in-memory map; discover pages, tvAiring (one key per show id), collection (one key per collection id) and keyword (one key per keyword id) are the growing keys, add eviction if memory shows it.
   const cache = new Map<string, { expiresAt: number; value: unknown }>();
 
   const apiKey = () => readSetting(database, 'credentials', 'tmdb.apiKey');
@@ -222,6 +222,9 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
   const genres = (mediaType: TmdbMediaType) => cached(
     REFERENCE_TTL_MS, 'the genre list', `/genre/${mediaType}/list`, {}, (body) => named(isRecord(body) ? body.genres : undefined),
   );
+
+  // A keyword's id and name, or null when TMDB's reply names none.
+  const keyword = (id: number) => cached(REFERENCE_TTL_MS, 'the keyword', `/keyword/${id}`, {}, (body) => named([body])[0] ?? null);
 
   const regions = () => cached(REFERENCE_TTL_MS, 'the region list', '/watch/providers/regions', {}, (body) => (
     records(isRecord(body) ? body.results : undefined).flatMap((region) => {
@@ -333,5 +336,5 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
     return { kind: 'ok', version: '3' };
   };
 
-  return { check, discover, trending, genres, regions, providers, details, summary, watchProviders, tvAiring, collection };
+  return { check, discover, trending, genres, keyword, regions, providers, details, summary, watchProviders, tvAiring, collection };
 };

@@ -3138,6 +3138,14 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
     assert.equal(calls[0].searchParams.get('api_key'), key);
   });
 
+  // Asking the wrong path, or reading a body without a name as a keyword, turns this red.
+  await t.test('a keyword reads its id and name, and a body without a name reads as null', async () => {
+    const { tmdb, calls } = connect((url) => json(url.pathname.endsWith('/1') ? { id: 1, name: 'heist' } : { id: 2 }));
+    assert.deepEqual(await tmdb.keyword(1), { kind: 'ok', value: { id: 1, name: 'heist' } });
+    assert.equal(calls[0].pathname, '/3/keyword/1');
+    assert.deepEqual(await tmdb.keyword(2), { kind: 'ok', value: null });
+  });
+
   // Dropping the cache, keeping a list past five minutes, or caching a failure turns this red.
   await t.test('a list is served from memory for five minutes, then fetched again', async () => {
     let fail = true;
@@ -3632,6 +3640,16 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     await settle(() => store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails') !== undefined);
     assert.equal(store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails'), undefined);
     assert.equal(await titles.backdropPath('movie', 88888), null);
+  });
+
+  // Dropping the ids, reading TV keywords from the movie field, or answering a TMDB failure with anything but null turns this red.
+  await t.test('chips gives genres and keywords with their ids, and null when TMDB fails', async () => {
+    respond = json({ id: 61, title: 'Film', genres: [{ id: 28, name: 'Action' }], keywords: { keywords: [{ id: 9715, name: 'superhero' }] } });
+    assert.deepEqual(await titles.chips('movie', 61), { genres: [{ id: 28, name: 'Action' }], keywords: [{ id: 9715, name: 'superhero' }] });
+    respond = json({ id: 62, name: 'Show', external_ids: { tvdb_id: 62062 }, genres: [{ id: 10765, name: 'Sci-Fi & Fantasy' }], keywords: { results: [{ id: 818, name: 'based on novel' }] } });
+    assert.deepEqual(await titles.chips('tv', 62), { genres: [{ id: 10765, name: 'Sci-Fi & Fantasy' }], keywords: [{ id: 818, name: 'based on novel' }] });
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.equal(await titles.chips('movie', 63), null);
   });
 
   // Throwing or dropping a section when TMDB omits keywords, credits or recommendations turns this red.
@@ -11157,8 +11175,8 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
   const { countdown, dateTab, homeQuery, gridPath, readState, readGridState, titlePath, extraRowsView, visibleCards, filterTags,
-    readStoredState, writeStoredState, readRememberedState, clearSessionState, withoutFilters, readServices, writeServices } = await load('../src/client/discover/model.ts');
-  const empty = { genres: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
+    readStoredState, writeStoredState, readRememberedState, clearSessionState, withoutFilters, readServices, writeServices, chipState, homePath } = await load('../src/client/discover/model.ts');
+  const empty = { genres: [], keywords: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
   const fakeStorage = () => {
     const map = new Map();
     return { getItem: (key) => map.get(key) ?? null, setItem: (key, value) => { map.set(key, String(value)); }, removeItem: (key) => { map.delete(key); }, clear: () => map.clear() };
@@ -11184,9 +11202,9 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
   // Sending window or region to the server, or keeping an empty value, turns this red.
   await t.test('the home query uses the API names and drops empty values and the client-only window', () => {
     assert.equal(homeQuery({ ...empty, type: 'all', window: 90 }, []), '');
-    const state = { type: 'tv', window: 30, genres: [18, 10765], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
+    const state = { type: 'tv', window: 30, genres: [18, 10765], keywords: [9715], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
     const query = homeQuery(state, [8, 337]);
-    assert.equal(query, 'type=tv&genres=18%2C10765&providers=8&yearFrom=2006&minRating=7&services=8%2C337');
+    assert.equal(query, 'type=tv&genres=18%2C10765&keywords=9715&providers=8&yearFrom=2006&minRating=7&services=8%2C337');
     assert.ok(!query.includes('window') && !query.includes('region'));
     assert.deepEqual(readState(`?${query}`), { ...state, window: 90 });
     assert.equal(readState('?window=30').window, 30);
@@ -11206,6 +11224,15 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
     // Dropping the 1870–2200 bounds from yearOf turns this red: the server answers those years with a 400.
     assert.deepEqual([readState('?yearFrom=1869&yearTo=2201'), readState('?yearFrom=1870&yearTo=2200')].map(({ yearFrom, yearTo }) => [yearFrom, yearTo]),
       [[null, null], [1870, 2200]]);
+  });
+
+  // Keeping any other filter, or leaving out the media type (TMDB's movie and TV genre ids differ), turns this red.
+  await t.test('a title page chip opens the Discover home with its type and that one genre or keyword only', () => {
+    assert.equal(homePath(chipState('tv', { genres: [10765] })), '/discover?type=tv&genres=10765');
+    const keyword = chipState('movie', { keywords: [9715] });
+    assert.equal(homePath(keyword), '/discover?type=movie&keywords=9715');
+    assert.deepEqual(readState('?type=movie&keywords=9715'), keyword);
+    assert.deepEqual(readState('?keywords=x,9715,1234567890').keywords, [9715]);
   });
 
   // Sending a library title to the preview page, or a show to the movie preview, turns this red.
@@ -11240,16 +11267,17 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
 
   // Dropping a tag, or removing more than the one the tag names, turns this red.
   await t.test('filter tags name each active filter and clear only their own', () => {
-    const filters = { genres: [18, 99], providers: [8], yearFrom: 2006, yearTo: 2024, minRating: 7 };
-    const tags = filterTags(filters, [{ id: 18, name: 'Drama' }], [{ id: 8, name: 'Netflix' }]);
-    assert.deepEqual(tags.map((tag) => tag.label), ['Drama', 'Netflix', '2006–2024', 'Rating 7 and above']);
+    const filters = { genres: [18, 99], keywords: [9715], providers: [8], yearFrom: 2006, yearTo: 2024, minRating: 7 };
+    const tags = filterTags(filters, [{ id: 18, name: 'Drama' }], [{ id: 8, name: 'Netflix' }], [{ id: 9715, name: 'superhero' }]);
+    assert.deepEqual(tags.map((tag) => tag.label), ['Drama', 'superhero', 'Netflix', '2006–2024', 'Rating 7 and above']);
+    assert.deepEqual(tags[1].remove, { ...filters, keywords: [] });
     assert.deepEqual(tags[0].remove, { ...filters, genres: [99] });
-    assert.deepEqual(tags[2].remove, { ...filters, yearFrom: null, yearTo: null });
+    assert.deepEqual(tags[3].remove, { ...filters, yearFrom: null, yearTo: null });
     assert.equal(filterTags({ ...empty, yearFrom: 2006 }, [], [])[0].label, 'From 2006');
     assert.equal(filterTags({ ...empty, yearTo: 2024 }, [], [])[0].label, 'Up to 2024');
   });
 
-  const filtered = { type: 'tv', window: 30, genres: [18, 10765], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
+  const filtered = { type: 'tv', window: 30, genres: [18, 10765], keywords: [], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
 
   // Writing the filters to localStorage again, or reading the remembered set back as the current state, turns this red.
   await t.test('filters are saved for the tab session only and the last non-empty set is remembered', () => {
@@ -11281,7 +11309,7 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
     assert.equal(readStoredState(), undefined);
     assert.deepEqual(readRememberedState(), filtered);
     assert.deepEqual(readServices(), [8]);
-    assert.equal(withoutFilters('?type=tv&genres=36&providers=8&yearFrom=2000&yearTo=2010&minRating=7&window=30'), '');
+    assert.equal(withoutFilters('?type=tv&genres=36&keywords=9715&providers=8&yearFrom=2000&yearTo=2010&minRating=7&window=30'), '');
     assert.equal(withoutFilters('?sort=rating&genres=36'), '?sort=rating');
     assert.equal(withoutFilters('?type=movie&window=90&sort=rating'), '?sort=rating');
     assert.equal(withoutFilters('?genres=36'), '');
@@ -13141,6 +13169,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     if (path === '/genre/movie/list') return json({ genres: [{ id: 878, name: 'Science Fiction' }, { id: 18, name: 'Drama' }] });
     if (path === '/genre/tv/list') return json({ genres: [{ id: 18, name: 'Drama' }] });
     if (path === '/watch/providers/movie') return json({ results: [{ provider_id: 8, provider_name: 'Netflix' }] });
+    if (path === '/keyword/9715') return json({ id: 9715, name: 'superhero' });
     let match = path.match(/^\/(movie|tv)\/(\d+)\/watch\/providers$/);
     if (match && providersDown) return new Response('', { status: 500 });
     if (match) return json({ id: Number(match[2]), results: { US: { flatrate: flatrate(Number(match[2])).map((id) => ({ provider_id: id })) } } });
@@ -13218,7 +13247,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
   // Mounting the home outside the private guard, or letting an unchecked value reach TMDB or Trakt, turns this red.
   await t.test('the home refuses a signed-out caller and every invalid value before any upstream call', async () => {
     assert.equal((await app.request('/api/discover/home')).status, 401);
-    for (const query of ['?type=person', '?services=a', '?providers=8|9']) {
+    for (const query of ['?type=person', '?services=a', '?providers=8|9', '?keywords=a', '?keywords=1|2']) {
       const response = await home(query);
       assert.equal(response.status, 400, query);
       assert.deepEqual(response.body, { error: 'invalid_request' });
@@ -13316,6 +13345,23 @@ test('the discover home serves recipe rows from saved results, blends sources by
     assert.deepEqual(ids(body.trending.movie), [101, 103, 102]);
   });
 
+  // Not sending the keyword to TMDB discover, showing Trakt or trending titles nothing checked against it, or a keyword tag without its name turns this red.
+  await t.test('a keyword filter reaches TMDB discover, empties the rows it cannot be checked on, and its name is served', async () => {
+    const at = mark();
+    const { status, body } = await home('?type=movie&keywords=9715');
+    assert.equal(status, 200);
+    const { tmdb: tmdbSent, trakt: traktSent } = since(at);
+    const discoverCalls = tmdbSent.filter((call) => call.pathname.startsWith('/3/discover/'));
+    assert.ok(discoverCalls.length > 0);
+    for (const call of discoverCalls) assert.equal(call.searchParams.get('with_keywords'), '9715');
+    assert.equal(tmdbSent.some((call) => call.pathname.startsWith('/3/trending/')), false);
+    assert.deepEqual(traktSent, []);
+    assert.deepEqual(ids(body.trending.movie), []);
+    assert.deepEqual(ids(body.popularMovies), [601]);
+    assert.deepEqual((await get('/api/discover/keywords/9715')).body, { id: 9715, name: 'superhero' });
+    assert.equal((await get('/api/discover/keywords/x')).status, 400);
+  });
+
   // Filtering Trakt titles out by streaming service, looking up a title twice, dropping a TMDB-only show unchecked,
   // or keeping a title not on the chosen service turns this red.
   await t.test('the services filter checks each title once and keeps Trakt-only titles on that service', async () => {
@@ -13392,7 +13438,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     await signInAgain();
     // Every other row is built first on the long cap, so only movie trending depends on the real timer.
     await home('?type=movie');
-    discover.rows.remove(rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } }));
+    discover.rows.remove(rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], keywords: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } }));
     const capped = createDiscover({ tmdb, trakt: traktFake, store, database, now, fillTimeoutMs: 20 });
     const { app: cappedApp } = await makeApp({ clock, discover: capped });
     const { session: cappedSession } = await signIn(cappedApp);
@@ -13501,7 +13547,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     await signInAgain();
     database.prepare('DELETE FROM discover_rows').run();
     database.prepare("DELETE FROM title_store_parts WHERE key = 'movie:201' AND part = 'tmdbSummary'").run();
-    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
+    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], keywords: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
     missingSummary = '/movie/201';
     const without = (await home()).body;
     await discover.idle();
@@ -13545,7 +13591,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     const { app: plain } = await makeApp({ clock, discover: noClientId });
     const { session: plainSession } = await signIn(plain);
     database.prepare('DELETE FROM discover_rows').run();
-    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
+    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], keywords: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
     const before = await get('/api/discover/home', plain, plainSession);
     assert.equal(before.status, 200);
     assert.deepEqual(ids(before.body.trending.movie), [102, 101, 103]);

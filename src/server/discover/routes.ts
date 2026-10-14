@@ -1,11 +1,16 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-import type { Failure } from '../services/arr/result.js';
+import type { Failure, Result } from '../services/arr/result.js';
 import type { Orchestrator } from './orchestrator.js';
 import { EXTRA_ROWS, recipeById } from './recipes.js';
 import { type DiscoverResult, type Filters, present, type Rows, rowKey, type RowSpec, type Sort, sorts, type StoredRow } from './rows.js';
 
-export type Discover = { rows: Rows; database: DatabaseSync; orchestrator: Pick<Orchestrator, 'request'> };
+export type Discover = {
+  rows: Rows;
+  database: DatabaseSync;
+  orchestrator: Pick<Orchestrator, 'request'>;
+  keyword: (id: number) => Promise<Result<{ id: number; name: string } | null>>;
+};
 
 type Row = { results: DiscoverResult[]; pending: boolean; failed: boolean; failure: Failure['kind'] | null };
 
@@ -27,16 +32,17 @@ const year = (value: string | undefined) => {
 // Every value is checked here, so nothing the browser sends reaches TMDB or Trakt unchecked.
 const parseFilters = (query: Record<string, string | undefined>): Filters | undefined => {
   const genres = idList(query.genres);
+  const keywords = idList(query.keywords);
   const providers = idList(query.providers);
   const regionCode = region(query.region);
   const yearFrom = year(query.yearFrom);
   const yearTo = year(query.yearTo);
   const minRating = query.minRating === undefined ? null
     : /^\d{1,2}(\.\d)?$/.test(query.minRating) && Number(query.minRating) <= 10 ? Number(query.minRating) : undefined;
-  if (genres === undefined || providers === undefined || regionCode === undefined
+  if (genres === undefined || keywords === undefined || providers === undefined || regionCode === undefined
     || yearFrom === undefined || yearTo === undefined || minRating === undefined) return undefined;
   if (yearFrom !== null && yearTo !== null && yearFrom > yearTo) return undefined;
-  return { genres, providers, region: regionCode, yearFrom, yearTo, minRating };
+  return { genres, keywords, providers, region: regionCode, yearFrom, yearTo, minRating };
 };
 
 const parseDiscoverQuery = (query: Record<string, string | undefined>): { page: number; sort: Sort; filters: Filters } | undefined => {
@@ -56,7 +62,7 @@ const parseHomeQuery = (query: Record<string, string | undefined>) => {
 };
 
 export const createDiscoverRoutes = (discover: Discover) => {
-  const { rows, database, orchestrator } = discover;
+  const { rows, database, orchestrator, keyword } = discover;
   const routes = new Hono();
   const invalid = { error: 'invalid_request' };
   const mediaType = (value: string) => (value === 'movie' || value === 'tv' ? value : undefined);
@@ -99,6 +105,14 @@ export const createDiscoverRoutes = (discover: Discover) => {
     const type = mediaType(context.req.param('type'));
     if (type === undefined) return context.json(invalid, 400);
     return reference(context, { kind: 'reference', name: 'genres', type, region: '' }, 'genres');
+  });
+  // The keyword filter's tag shows the keyword's name; the page address carries only its id.
+  routes.get('/keywords/:id', async (context) => {
+    const id = idList(context.req.param('id'));
+    if (id === undefined || id.length !== 1) return context.json(invalid, 400);
+    const result = await keyword(id[0]);
+    if (result.kind === 'ok') return result.value === null ? context.json(invalid, 404) : context.json(result.value);
+    return result.kind === 'not_found' ? context.json(invalid, 404) : reply(context, result);
   });
   routes.get('/providers/:type', async (context) => {
     const type = mediaType(context.req.param('type'));
