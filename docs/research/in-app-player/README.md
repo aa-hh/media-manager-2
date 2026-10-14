@@ -25,7 +25,9 @@ The Jellyfin recommendation below stands as research but is no longer the plan.
   - Arrival ran 14 minutes with 4 dropped frames, the buffer holding 53 seconds (94 MB) against 60 requested, DTS-HD audio decoded on the Mac, and SRT subtitles shown.
   - This Mac has no hardware AV1 decoder, so the AV1 file used the processor: 9 dropped frames in the first 20 seconds. Needs a longer run.
   - The repeated "Multiple Dolby Vision RPUs found" warnings (RPU is the Dolby Vision colour data attached to each frame) did not affect the picture.
-  - Not run yet: plain HDR10 (`hdr`) and Dolby Vision profile 8 (`dv8`), the most common type.
+  - Bugonia (Dolby Vision profile 8, E-AC-3 5.1) ran 24 minutes with no dropped frames reported, buffer 36 seconds (117 MB). The Devil Wears Prada (HDR10, DTS-HD) played with a 49-second buffer.
+  - The AV1 file dropped 16 frames in its first minute. Hereditary (76 Mbps remux) dropped 22 frames in its first 30 seconds and held only 15 seconds of buffer (150 MB): at that bitrate the connection from the slot barely keeps ahead.
+  - Several files carry PGS (picture-based Blu-ray) subtitles. mpv shows these itself, which a browser can't.
 - **Open: how mpv sits in the window.** The only package found that draws mpv inside an Electron page is electron-mpv-video 0.1.1, two releases old. The fallback is mpv in its own window, controlled by the app; the mini player would then be a small mpv window kept on top.
 
 The desktop-app section below was added after the owner asked about it. Neither report researched it, so its claims are marked where unverified.
