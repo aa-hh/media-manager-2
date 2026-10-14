@@ -1,5 +1,5 @@
 import { Settings as SettingsIcon } from 'lucide-react';
-import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { AppBarDesktop, AppBarNavItem } from './components/ui/app-bar';
 import { Button } from './components/ui/button';
 import { InputSearch } from './components/ui/input-search';
@@ -103,6 +103,14 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         : /^\/(series|movie|title)\//.test(pathname) ? 'title'
           : 'library';
 
+  // A modified click or a middle click is left to the browser, so the link still opens in a new tab.
+  const openPath = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    event.preventDefault();
+    setQuery('');
+    navigate(path);
+  };
+
   const counts: Record<string, { count: number; risk: boolean }> = {
     '/downloads': { count: downloading, risk: false },
     '/flagged': { count: needsYou, risk: true },
@@ -114,6 +122,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
       <AppBarDesktop
         className="sticky top-0 z-10"
         productName={<h1 ref={headingRef} tabIndex={-1}>media-manager-2</h1>}
+        home={{ href: '/', 'aria-label': 'media-manager-2, go to the library', onClick: openPath('/') }}
         search={(
           <form
             role="search"
@@ -155,12 +164,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
               current={current}
               count={counts[item.path]?.count}
               countRisk={counts[item.path]?.risk}
-              onClick={(event) => {
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-                event.preventDefault();
-                setQuery('');
-                navigate(item.path);
-              }}
+              onClick={openPath(item.path)}
             >
               {item.label}
             </AppBarNavItem>
