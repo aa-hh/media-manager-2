@@ -293,21 +293,25 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
               {shown.length === 0
                 ? (
                   <div className="flex justify-center pt-24">
-                    <EmptyState
-                      icon={<LibraryIcon aria-hidden="true" />}
-                      title="Nothing here yet"
-                      action={(
-                        <Button
-                          variant="outline"
-                          kbd="/"
-                          onClick={() => document.querySelector<HTMLInputElement>('[role="search"] input')?.focus()}
+                    {titles.length > 0
+                      ? <EmptyState icon={<LibraryIcon aria-hidden="true" />} title="Nothing matches this filter" />
+                      : (
+                        <EmptyState
+                          icon={<LibraryIcon aria-hidden="true" />}
+                          title="Nothing here yet"
+                          action={(
+                            <Button
+                              variant="outline"
+                              kbd="/"
+                              onClick={() => document.querySelector<HTMLInputElement>('[role="search"] input')?.focus()}
+                            >
+                              Search
+                            </Button>
+                          )}
                         >
-                          Search
-                        </Button>
+                          Add a show or movie from search.
+                        </EmptyState>
                       )}
-                    >
-                      Add a show or movie from search.
-                    </EmptyState>
                   </div>
                 )
                 : (
