@@ -59,6 +59,9 @@ const secondVersionRowsModuleUrl = new URL('../dist/server/secondVersionRows.js'
 const secondVersionDeleteModuleUrl = new URL('../dist/server/secondVersionDelete.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
 const libraryModuleUrl = new URL('../dist/server/library.js', import.meta.url).href;
+const watchStatusModuleUrl = new URL('../dist/server/watchStatus.js', import.meta.url).href;
+const playbackModuleUrl = new URL('../dist/server/playback.js', import.meta.url).href;
+const plexPlaybackModuleUrl = new URL('../dist/server/services/plexPlayback.js', import.meta.url).href;
 const protectionModuleUrl = new URL('../dist/server/protection.js', import.meta.url).href;
 const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.meta.url).href;
 const torrentGrabsModuleUrl = new URL('../dist/server/torrentGrabs.js', import.meta.url).href;
@@ -440,7 +443,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api, library, discover, titleDelete, images, setup } = input;
+  const { fetch, fixtureOptions, events, timers, webhooks, api, library, discover, titleDelete, images, setup, playback } = input;
   const { createApp } = await import(appModuleUrl);
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const database = input.database ?? new DatabaseSync(':memory:');
@@ -464,6 +467,7 @@ const makeApp = async (input = {}) => {
     titleDelete,
     images,
     setup,
+    playback,
   });
   return { app, clock, fixture, database };
 };
@@ -3555,6 +3559,367 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
     clock.value += 1;
     assert.deepEqual(JSON.parse((await page()).text).ratingsBySite, expected);
     assert.equal(calls.length, 2);
+  });
+});
+
+test('watch status from Plex marks library titles, both title pages and Continue Watching', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createLibrary, createLibraryRoutes } = await import(libraryModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createPlex } = await import(plexModuleUrl);
+  const { createWatchStatus } = await import(watchStatusModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-watch-status-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const { fake, ...services } = connectArr(database);
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  const dune1080 = '/movies/Dune Part Two (2024)/Dune.Part.Two.1080p.mkv';
+  const dune2160 = '/movies/Dune Part Two (2024)/Dune.Part.Two.2160p.mkv';
+  fake.radarr.state.movies = [
+    movieRecord({ id: 9, title: 'Dune: Part Two', tmdbId: 693134, hasFile: true, movieFile: { id: 91, path: dune1080 } }),
+    movieRecord({ id: 10, title: 'Arrival', tmdbId: 329865, hasFile: true, movieFile: { id: 101, path: '/movies/Arrival (2016)/Arrival.mkv' } }),
+  ];
+  fake.sonarr.state.series = [seriesRecord({ id: 7, title: 'Severance', tvdbId: 371980, path: '/tv/Severance' })];
+  fake.sonarr.state.episodes = [
+    episodeRecord({ id: 70, seriesId: 7, seasonNumber: 1, episodeNumber: 2, hasFile: true, episodeFile: { id: 701, path: '/old/Severance.S01E02.mkv' } }),
+  ];
+  const movies = [
+    {
+      ratingKey: '100', type: 'movie', Guid: [{ id: 'tmdb://693134' }], viewOffset: 600000, duration: 9960000, viewCount: 1, lastViewedAt: 1800000000,
+      Media: [
+        { id: 11, height: 1080, bitrate: 8000, container: 'mkv', Part: [{ id: 111, key: '/library/parts/111/file.mkv', file: dune1080 }] },
+        { id: 12, height: 2160, bitrate: 40000, container: 'mkv', Part: [{ id: 122, key: '/library/parts/122/file.mkv', file: dune2160 }] },
+      ],
+    },
+    {
+      ratingKey: '200', type: 'movie', Guid: [{ id: 'imdb://tt2543164' }, { id: 'tmdb://329865' }], viewOffset: 120000, duration: 6960000,
+      Media: [{ id: 21, height: 1080, bitrate: 9000, container: 'mkv', Part: [{ id: 211, file: '/plex/films/Arrival.mkv' }] }],
+    },
+  ];
+  const shows = [{ ratingKey: '300', type: 'show', Guid: [{ id: 'tvdb://371980' }], leafCount: 19, viewedLeafCount: 3, lastViewedAt: 1800000100 }];
+  const episodes = [{
+    ratingKey: '302', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 2, viewOffset: 2511000, duration: 3300000,
+    Media: [{ id: 31, height: 2160, bitrate: 20000, container: 'mkv', Part: [{ id: 3021, file: '/plex/tv/Severance/S01E02.mkv' }] }],
+  }];
+  const continueWatching = [
+    { ratingKey: '302', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 2, title: 'Half Loop', viewOffset: 2511000, duration: 3300000, lastViewedAt: 1800000200 },
+    { ratingKey: '999', type: 'movie', viewOffset: 5000, duration: 7000000, lastViewedAt: 1800000300 },
+    { ratingKey: '100', type: 'movie', viewOffset: 600000, duration: 9960000, lastViewedAt: 1800000000 },
+  ];
+  const plexFetch = async (url, init) => {
+    assert.equal(init.redirect, 'error');
+    assert.equal(init.headers['X-Plex-Token'], 'plex-token');
+    const { pathname, searchParams } = new URL(String(url));
+    if (pathname.endsWith('/all')) assert.equal(searchParams.get('includeGuids'), '1');
+    const answers = {
+      '/': { machineIdentifier: 'plex-machine-1', version: '1.41.0' },
+      '/library/sections': { Directory: [{ key: '1', type: 'movie' }, { key: '2', type: 'show' }, { key: '5', type: 'artist' }] },
+      '/library/sections/1/all': { Metadata: movies },
+      '/library/sections/2/all': { Metadata: searchParams.get('type') === '2' ? shows : episodes },
+      '/hubs/continueWatching/items': { Metadata: continueWatching },
+      '/library/metadata/300': { Metadata: [{ ratingKey: '300', OnDeck: { Metadata: [{ ratingKey: '303', parentIndex: 1, index: 3 }] } }] },
+    };
+    const body = answers[pathname];
+    return body === undefined ? new Response('', { status: 404 }) : new Response(JSON.stringify({ MediaContainer: body }), { status: 200 });
+  };
+  const clock = { value: 1_800_000_000_000 };
+  const connect = ({ fetch = plexFetch, enabled = () => true } = {}) => {
+    const requests = [];
+    const plex = createPlex(database, { fetch: async (url, init) => {
+      requests.push(new URL(String(url)).pathname);
+      return fetch(url, init);
+    } });
+    const watchStatus = createWatchStatus({ plex, enabled, now: () => clock.value });
+    const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database), undefined, undefined, undefined, undefined, undefined, watchStatus));
+    const get = async (path) => {
+      const response = await routes.request(path);
+      return { status: response.status, body: await response.json() };
+    };
+    return { requests, get };
+  };
+  const titleWatch = (titles, title) => titles.find((item) => item.title === title).watch;
+
+  // Picking the first Media entry instead of the tallest, or pairing a mediaIndex with another entry's part, turns this red.
+  await t.test('a second version plays the tallest file and both stay listed', async () => {
+    const { body } = await connect().get('/movie/9');
+    assert.equal(body.watch.kind, 'ok');
+    assert.equal(body.watch.machineIdentifier, 'plex-machine-1');
+    assert.deepEqual([body.watch.ratingKey, body.watch.mediaIndex, body.watch.partId], ['100', 1, 122]);
+    assert.deepEqual(body.watch.versions, [{ mediaIndex: 0, partId: 111, file: dune1080 }, { mediaIndex: 1, partId: 122, file: dune2160 }]);
+    assert.deepEqual([body.watch.viewOffsetMs, body.watch.durationMs, body.watch.viewCount], [600000, 9960000, 1]);
+  });
+
+  // Dropping the Guid fallback, or matching episodes by anything but season and episode number, turns this red.
+  await t.test('a renamed file still matches by Guid, then by season and episode number', async () => {
+    const { get } = connect();
+    const series = (await get('/series/7')).body;
+    assert.equal(series.watch.ratingKey, '300');
+    assert.deepEqual([series.watch.leafCount, series.watch.viewedLeafCount], [19, 3]);
+    assert.equal(series.watch.episodes['70'].viewOffsetMs, 2511000);
+    assert.equal(series.watch.episodes['70'].partId, 3021);
+    assert.deepEqual(series.watch.nextEpisode, { seasonNumber: 1, episodeNumber: 3 });
+    const movie = (await get('/movie/10')).body;
+    assert.deepEqual([movie.watch.ratingKey, movie.watch.viewOffsetMs, movie.watch.viewCount, movie.watch.lastViewedAt], ['200', 120000, 0, null]);
+    const { titles } = (await get('/titles')).body;
+    assert.deepEqual(titleWatch(titles, 'Severance'), { kind: 'show', ratingKey: '300', leafCount: 19, viewedLeafCount: 3, lastViewedAt: 1800000100 });
+    assert.deepEqual(titleWatch(titles, 'Arrival'), { kind: 'movie', ratingKey: '200', viewOffsetMs: 120000, durationMs: 6960000, viewCount: 0, lastViewedAt: null });
+  });
+
+  // Failing the library when Plex is down, or inventing marks without Plex, turns this red.
+  await t.test('an unreachable Plex leaves the library whole and unmarked', async () => {
+    const { status, body } = await connect({ fetch: async () => { throw new TypeError('fetch failed'); } }).get('/titles');
+    assert.equal(status, 200);
+    assert.deepEqual(body.titles.map((title) => title.title).sort(), ['Arrival', 'Dune: Part Two', 'Severance']);
+    assert.ok(body.titles.every((title) => title.watch === null));
+    assert.deepEqual(body.watch, { kind: 'unavailable' });
+  });
+
+  // Listing Continue Watching items that map to no library title, or showing Plex marks on a Jellyfin install, turns this red.
+  await t.test('Continue Watching keeps Plex order and only library titles, and is off without Plex', async () => {
+    const { body } = await connect().get('/titles');
+    assert.deepEqual(body.watch, {
+      kind: 'ok',
+      machineIdentifier: 'plex-machine-1',
+      continueWatching: [
+        { service: 'sonarr', id: 7, viewOffsetMs: 2511000, durationMs: 3300000, lastViewedAt: 1800000200, episode: { seasonNumber: 1, episodeNumber: 2, title: 'Half Loop' } },
+        { service: 'radarr', id: 9, viewOffsetMs: 600000, durationMs: 9960000, lastViewedAt: 1800000000, episode: null },
+      ],
+    });
+    const off = connect({ enabled: () => false });
+    const offBody = (await off.get('/titles')).body;
+    assert.deepEqual(offBody.watch, { kind: 'off' });
+    assert.ok(offBody.titles.every((title) => title.watch === null));
+    assert.deepEqual((await off.get('/movie/9')).body.watch, { kind: 'off' });
+    assert.deepEqual(off.requests, []);
+  });
+
+  // Listing Plex on every library load instead of keeping the listing for 60 seconds turns this red.
+  await t.test('the Plex listing is kept for 60 seconds', async () => {
+    const { requests, get } = connect();
+    const listings = () => requests.filter((path) => path === '/library/sections').length;
+    await get('/titles');
+    clock.value += 59_999;
+    await get('/titles');
+    assert.equal(listings(), 1);
+    clock.value += 60_001;
+    await get('/titles');
+    assert.equal(listings(), 2);
+  });
+});
+
+test('the playback API asks Plex for a decision and stream addresses, and passes the player\'s calls on without the owner token', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createPlexPlayback } = await import(plexPlaybackModuleUrl);
+  const { createPlayback, createPlaybackRoutes } = await import(playbackModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-playback-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const ownerToken = `plex-owner-token-${process.pid}-distinctive`;
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', ownerToken);
+  const direct = 'https://1-2-3-4.abc.plex.direct:32400';
+  const relay = 'https://5-6-7-8.abc.plex.direct:8443';
+  const movie = (ratingKey, height) => ({
+    ratingKey, type: 'movie', title: 'Dune: Part Two', librarySectionUUID: 'section-uuid-1', duration: 9960000,
+    Marker: [{ type: 'credits', startTimeOffset: 9600000, endTimeOffset: 9960000 }],
+    Chapter: [{ index: 1, tag: 'Arrakis', startTimeOffset: 0, endTimeOffset: 600000 }],
+    Media: [{
+      id: 11, container: 'mkv', bitrate: 8000, height,
+      Part: [{
+        id: 111,
+        key: '/library/parts/111/1700000000/file.mkv',
+        Stream: [
+          { id: 1000, streamType: 1, index: 0, codec: 'h264' },
+          { id: 1001, streamType: 2, index: 1, codec: 'eac3', language: 'English', title: 'Surround 5.1', selected: true, default: true },
+          { id: 1002, streamType: 2, index: 2, codec: 'aac', language: 'Japanese' },
+          { id: 1003, streamType: 3, index: 4, codec: 'srt', language: 'English' },
+          { id: 1004, streamType: 3, codec: 'srt', language: 'French', key: '/library/streams/1004' },
+        ],
+      }],
+    }],
+  });
+  const items = { '/library/metadata/100': movie('100', 1080), '/library/metadata/200': movie('200', 720) };
+  const accepted = () => ({ generalDecisionCode: 1000, mdeDecisionCode: 1000, transcodeDecisionCode: 1000, directPlayDecisionCode: 1000 });
+  const connect = ({ decision = accepted } = {}) => {
+    const requests = [];
+    const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push(url);
+      assert.equal(init.redirect, 'error');
+      assert.equal(init.headers['X-Plex-Token'], ownerToken);
+      assert.ok(!String(input).includes(ownerToken));
+      if (url.host === 'plex.tv') {
+        assert.equal(url.pathname, '/api/v2/resources');
+        return json([{
+          clientIdentifier: 'plex-machine-1',
+          accessToken: 'server-access-token',
+          connections: [{ uri: relay, relay: true }, { uri: direct, relay: false }],
+        }]);
+      }
+      switch (url.pathname) {
+        case '/': return json({ MediaContainer: { machineIdentifier: 'plex-machine-1', version: '1.41.0' } });
+        case '/security/token': return json({ MediaContainer: { token: 'transient-fixture-token' } });
+        case '/playQueues': return json({ MediaContainer: {
+          playQueueID: 5, playQueueSelectedItemID: 51, playQueueSelectedItemOffset: 0, playQueueTotalCount: 1, playQueueVersion: 1,
+          playQueueShuffled: false, allowShuffle: true, playQueueSourceURI: 'library://section-uuid-1/item/%2Flibrary%2Fmetadata%2F100',
+          playQueueLastAddedItemID: 51, Metadata: [{ playQueueItemID: 51, ratingKey: '100', type: 'movie', title: 'Dune: Part Two', duration: 9960000 }],
+        } });
+        case '/video/:/transcode/universal/decision': return json({ MediaContainer: await decision(init) });
+        case '/:/timeline': return json({ MediaContainer: { size: 0 } });
+        case '/video/:/transcode/universal/stop': return new Response('', { status: 404 });
+        case '/video/:/transcode/universal/ping':
+        case '/library/parts/111':
+        case '/library/streams/1004':
+        case '/:/scrobble': return new Response('', { status: 200 });
+        case '/photo/:/transcode': return new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+        case '/hubs/metadata/100/postplay': return json({ MediaContainer: { Hub: [{
+          hubIdentifier: 'tv.plex.hub.upnext', title: 'Up Next', Metadata: [{ ratingKey: '101', type: 'movie', title: 'Arrival', duration: 6960000, viewOffset: 0 }],
+        }] } });
+        default: return items[url.pathname] === undefined ? new Response('', { status: 404 }) : json({ MediaContainer: { Metadata: [items[url.pathname]] } });
+      }
+    };
+    const routes = createPlaybackRoutes(createPlayback({ plexPlayback: createPlexPlayback(database, { fetch }), enabled: () => true, now: () => 1_800_000_000_000 }));
+    const decisions = () => requests.filter((url) => url.pathname === '/video/:/transcode/universal/decision');
+    return { routes, decisions };
+  };
+  const ids = { clientId: 'desktop-client-0001', sessionIdentifier: 'player-session-0001' };
+  const start = async (routes, extra = {}, { desktop = false } = {}) => {
+    const response = await routes.request('/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(desktop ? { 'X-Media-Manager-Desktop': '1' } : {}) },
+      body: JSON.stringify({
+        ratingKey: '100', mediaIndex: 0, partIndex: 0, offsetSeconds: 0, directPlay: true, directStream: true, directStreamAudio: true, ...ids, ...extra,
+      }),
+    });
+    const text = await response.text();
+    return { status: response.status, text, body: JSON.parse(text) };
+  };
+
+  // Changing the decision's client profile or protocol, or putting the relay connection before the direct one, turns this red.
+  await t.test('the decision names the Plex Desktop profile and http, and the direct connection comes before the relay', async () => {
+    const { routes, decisions } = connect();
+    const { status, body } = await start(routes, {}, { desktop: true });
+    assert.equal(status, 200);
+    const [decision] = decisions();
+    assert.equal(decision.searchParams.get('X-Plex-Client-Profile-Name'), 'Plex Desktop');
+    assert.equal(decision.searchParams.get('protocol'), 'http');
+    assert.equal(body.streamAddresses.length, 2);
+    assert.ok(body.streamAddresses[0].startsWith(`${direct}/library/parts/111/1700000000/file.mkv?`));
+    assert.ok(body.streamAddresses[1].startsWith(`${relay}/library/parts/111/1700000000/file.mkv?`));
+  });
+
+  // Removing the 2 s decision timeout, or failing the start when the decision never answers, turns this red.
+  await t.test('a decision that never answers still gives a direct-play address', { timeout: 10_000 }, async () => {
+    const { routes } = connect({ decision: (init) => new Promise((resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(init.signal.reason));
+    }) });
+    const started = performance.now();
+    const { status, body } = await start(routes, {}, { desktop: true });
+    assert.ok(performance.now() - started < 5_000); // real-time-ok: the 2 s decision timeout is the behaviour under test
+    assert.equal(status, 200);
+    assert.equal(body.decision.directPlay, true);
+    assert.ok(body.streamAddresses[0].startsWith(`${direct}/library/parts/111/`));
+  });
+
+  // Putting the owner token in a stream address or any reply in place of the transient token turns this red.
+  await t.test('no playback reply carries the owner token, and stream addresses carry the transient one', async () => {
+    const { routes } = connect();
+    const page = await start(routes);
+    const desktop = await start(routes, {}, { desktop: true });
+    assert.ok(desktop.body.streamAddresses.every((address) => address.includes('X-Plex-Token=transient-fixture-token')));
+    for (const { status, text } of [page, desktop]) {
+      assert.equal(status, 200);
+      assert.ok(!text.includes(ownerToken));
+    }
+    const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const timelineQuery = new URLSearchParams({ ratingKey: '100', state: 'playing', time: '1000', duration: '9960000', playbackTime: '1000', playQueueItemID: '51', ...ids });
+    const replies = {
+      timeline: [200, await routes.request(`/timeline?${timelineQuery}`)],
+      ping: [200, await routes.request(`/ping?session=${desktop.body.session}&clientId=${ids.clientId}`)],
+      stop: [204, await post('/stop', { session: desktop.body.session, clientId: ids.clientId })],
+      track: [204, await post('/track', { partId: 111, kind: 'audio', streamId: 1002, allParts: false, clientId: ids.clientId })],
+      subtitleOffset: [204, await post('/subtitle-offset', { streamKey: '/library/streams/1004', offsetMs: 500, clientId: ids.clientId })],
+      played: [204, await post('/played', { ratingKey: '100', played: true, clientId: ids.clientId })],
+      postplay: [200, await routes.request(`/postplay?ratingKey=100&clientId=${ids.clientId}`)],
+      preview: [200, await routes.request(`/preview?partId=111&ms=61400&width=320&height=180&clientId=${ids.clientId}`)],
+    };
+    for (const [name, [status, response]] of Object.entries(replies)) {
+      assert.equal(response.status, status, name);
+      assert.ok(!(await response.text()).includes(ownerToken), name);
+    }
+  });
+
+  // Sending stream addresses or subtitle file addresses to the page without the desktop header turns this red.
+  await t.test('only the desktop header adds stream and subtitle addresses', async () => {
+    const { routes } = connect();
+    const page = (await start(routes)).body;
+    assert.ok(!Object.hasOwn(page, 'streamAddresses'));
+    assert.equal(page.tracks.subtitle.filter((track) => track.external).length, 1);
+    assert.ok(page.tracks.subtitle.every((track) => !Object.hasOwn(track, 'url')));
+    const desktop = (await start(routes, {}, { desktop: true })).body;
+    assert.equal(desktop.streamAddresses.length, 2);
+    assert.equal(desktop.tracks.subtitle.find((track) => track.external).url, `${direct}/library/streams/1004?X-Plex-Token=transient-fixture-token&encoding=utf-8`);
+  });
+
+  // Letting a quality step below the file's bitrate direct play, sending Original without the file's bitrate plus 10% or with
+  // direct play off, or offering steps taller than the file turns this red.
+  await t.test('a quality step below the file bitrate turns direct play off, Original sends the file bitrate plus 10%, and steps stop at the file height', async () => {
+    const { routes, decisions } = connect();
+    await start(routes, { maxVideoBitrate: 4000 });
+    const originalReply = (await start(routes, {}, { desktop: true })).body;
+    const [capped, original] = decisions();
+    assert.deepEqual([capped.searchParams.get('maxVideoBitrate'), capped.searchParams.get('directPlay')], ['4000', '0']);
+    assert.deepEqual([original.searchParams.get('maxVideoBitrate'), original.searchParams.get('directPlay')], ['8800', '1']);
+    assert.ok(originalReply.streamAddresses[0].startsWith(`${direct}/library/parts/111/1700000000/file.mkv?`));
+    assert.equal(originalReply.decision.maxVideoBitrate, null);
+    const steps = async (ratingKey) => (await start(routes, { ratingKey })).body.qualitySteps.map((step) => step.index);
+    assert.deepEqual(await steps('100'), [2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(await steps('200'), [2, 3, 4, 5, 6]);
+  });
+
+  // Dropping the retry with direct play off after Plex answers 1001, refusing on directPlayDecisionCode, or reusing the first
+  // transcode session for the retry turns this red.
+  await t.test('a 1001 answer with a refused direct play is retried once with direct play off in a new session', async () => {
+    let calls = 0;
+    const { routes, decisions } = connect({ decision: () => ((calls += 1) === 1
+      ? { generalDecisionCode: 1001, directPlayDecisionCode: 3000 }
+      : { generalDecisionCode: 1000 }) });
+    const { status, body } = await start(routes, {}, { desktop: true });
+    assert.equal(status, 200);
+    const sent = decisions();
+    assert.equal(sent.length, 2);
+    assert.deepEqual([sent[0].searchParams.get('directPlay'), sent[1].searchParams.get('directPlay'), sent[1].searchParams.get('directStream')], ['1', '0', '1']);
+    assert.notEqual(sent[1].searchParams.get('session'), sent[0].searchParams.get('session'));
+    assert.equal(body.session, sent[1].searchParams.get('session'));
+    assert.ok(body.streamAddresses[0].startsWith(`${direct}/video/:/transcode/universal/start?`));
+  });
+
+  // Moving X-Plex-Session-Identifier out of the decision parameters, which the transcode start address reuses, turns this red.
+  await t.test('the player session identifier is in the decision query and the transcode start address', async () => {
+    const { routes, decisions } = connect();
+    const { body } = await start(routes, { maxVideoBitrate: 4000 }, { desktop: true });
+    const [decision] = decisions();
+    assert.equal(decision.searchParams.get('X-Plex-Session-Identifier'), ids.sessionIdentifier);
+    const address = new URL(body.streamAddresses[0]);
+    assert.equal(address.pathname, '/video/:/transcode/universal/start');
+    assert.equal(address.searchParams.get('X-Plex-Session-Identifier'), ids.sessionIdentifier);
+  });
+
+  // Mounting the playback routes ahead of the sign-in check turns this red.
+  await t.test('the app serves the playback routes only to a signed-in session', async () => {
+    const playback = createPlayback({ plexPlayback: createPlexPlayback(database), enabled: () => true, now: () => 1_800_000_000_000 });
+    const { app } = await makeApp({ playback });
+    assert.equal((await app.request('/api/playback/ping')).status, 401);
   });
 });
 

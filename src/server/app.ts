@@ -16,6 +16,7 @@ import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
 import { createLibraryRoutes, type Library } from './library.js';
 import { createOwnedRoutes, type Owned } from './owned.js';
+import { createPlaybackRoutes, type Playback } from './playback.js';
 import { effectiveOwner } from './owner.js';
 import { createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
@@ -48,6 +49,7 @@ export type CreateAppOptions = {
   discover?: Discover;
   titleDelete?: TitleDelete;
   tmdbTitles?: TmdbTitles;
+  playback?: Playback;
   setup?: Hono<SetupEnvironment>;
   api?: Hono;
   images?: Hono;
@@ -188,10 +190,11 @@ export const createApp = (options: CreateAppOptions) => {
   };
 
   // Times every API request but these: the event stream stays open for hours, browser timings are logged by their own route,
-  // and image loads would flood the log.
+  // and image loads would flood the log, as would the player's timeline, reported every 10 s, and previews, which follow the pointer.
   app.use('*', async (context, next) => {
     const { path } = context.req;
-    if (!path.startsWith('/api') || path === '/api/events' || path === '/api/metrics' || path.startsWith('/api/images/')) return next();
+    if (!path.startsWith('/api') || path === '/api/events' || path === '/api/metrics' || path.startsWith('/api/images/')
+      || path === '/api/playback/timeline' || path === '/api/playback/preview') return next();
     const started = performance.now();
     await next();
     logEvent('api', { method: context.req.method, path, status: context.res.status, ms: Math.round((performance.now() - started) * 10) / 10 });
@@ -551,6 +554,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
   if (options.tmdbTitles !== undefined) app.route('/api/library', createTmdbTitleRoutes(options.tmdbTitles));
   if (options.discover !== undefined) app.route('/api/discover', createDiscoverRoutes(options.discover));
+  if (options.playback !== undefined) app.route('/api/playback', createPlaybackRoutes(options.playback));
   if (options.images !== undefined) app.route('/api/images', options.images);
   if (options.cache !== undefined) app.route('/api/cache', options.cache);
   if (options.setup !== undefined) app.route('/api/setup', options.setup);
