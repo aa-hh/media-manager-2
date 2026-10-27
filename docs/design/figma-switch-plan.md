@@ -9,6 +9,9 @@ The owner made these on 27 Oct 2026:
 - Figma replaces pen.dev for this app. The `.pen` files in `~/Projects/media-manager-2-design/` stay as read-only reference, and no new work goes into them.
 - New designs start in Figma. Once a component is built, the code (`src/client/components/ui/` and `src/client/globals.css`) is the master copy, and the Figma library gets refreshed from the code after each build.
 - Most screens are already built. The owner will rebuild the missing ones in Figma, starting from the code.
+- Story tests join `sh scripts/test.sh --full` and CI, and accessibility violations fail the run.
+- `/library-review`, the `library-reviewer` agent and the `pen-refresh` and `pen-library-changes` scripts get retired.
+- The global `~/.claude/CLAUDE.md` gets a "Working in Figma" section for this app. The "Working in .pen files" section stays for other projects.
 
 ## How a design moves from idea to code
 
@@ -29,7 +32,7 @@ A fix made directly in code, like PR #219's toast and selection-bar fixes, skips
 
 ## Work
 
-Tracks A and B can run at the same time because they touch different files. Track C waits for the owner's answer to open question 1.
+Tracks A, B and C can run at the same time because they touch different files.
 
 ### Track A: build the Figma library from the code
 
@@ -60,7 +63,7 @@ Done when `grep -rn 'pen\.dev\|design-system\.lib' CLAUDE.md AGENTS.md DESIGN.md
 
 ### Track C: make story tests part of the checks
 
-Waits for open question 1. If the answer is yes:
+One Opus agent.
 
 - add the Storybook test project to `sh scripts/test.sh --full`;
 - install Playwright's Chromium in the CI job;
@@ -69,10 +72,6 @@ Waits for open question 1. If the answer is yes:
 ### After the tracks
 
 - The main session updates the pen.dev memories in `~/.claude/projects/-Users-alechenderson-Projects-media-manager-2/memory/`: deletes the ones about pen.dev's own bugs and rewrites the ones about design rules (explorations in screen files, design before UI code, extend library components first) for Figma.
+- The main session deletes `/library-review` (`~/.claude/skills/library-review/`), the `library-reviewer` agent (`~/.claude/agents/library-reviewer.md`) and `~/.claude/scripts/pen-refresh` and `pen-library-changes`.
+- The main session drafts the "Working in Figma" section of `~/.claude/CLAUDE.md`. It goes in only after the owner approves the wording.
 - The owner rebuilds missing screens in Figma, using instances from the library.
-
-## Open questions for the owner
-
-1. Should story tests run in `scripts/test.sh --full` and CI, with accessibility violations failing the run (Track C)?
-2. Should `/library-review`, the `library-reviewer` agent and `~/.claude/scripts/pen-refresh` and `pen-library-changes` be retired? This app is their only user.
-3. Should the "Working in .pen files" section of the global `~/.claude/CLAUDE.md` get a Figma version for this app? That file is the owner's, so it changes only when the owner says so.
