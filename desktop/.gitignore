@@ -1,0 +1,7 @@
+# Made by `npx @electron/rebuild` and scripts/desktop-build.sh.
+build/
+bin/
+out/
+# Made by prepare.mjs from src/client, so the web app stays their one source.
+address/planet.js
+address/SchibstedGrotesk.ttf

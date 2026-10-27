@@ -14464,3 +14464,142 @@ test('the add sentence picks the search fact from the choices and the title', as
   ];
   for (const [choices, title, fact] of cases) assert.deepEqual(searchFact(choices, title), fact, `${choices.monitor} ${JSON.stringify(title.movie?.status ?? title.airing?.seasons)}`);
 });
+
+test('the desktop app streams from the first Plex address in the server\'s order that is really this server', async () => {
+  const { chooseConnection, answerPasses } = await import(new URL('../desktop/lib/connection.js', import.meta.url));
+  const deferred = () => {
+    let resolve;
+    let reject;
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+  };
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+  // Accepting the quickest answer instead of the first in order turns this red: a relay or later address would beat a direct one still being tested.
+  const pending = new Map(['https://direct-a', 'https://direct-b', 'https://relay'].map((origin) => [origin, deferred()]));
+  let chosen;
+  const choice = chooseConnection([...pending.keys()], (origin) => pending.get(origin).promise, 'server-1').then((value) => { chosen = value; });
+  pending.get('https://relay').resolve('server-1');
+  pending.get('https://direct-b').resolve('server-1');
+  await tick();
+  assert.equal(chosen, undefined, 'a later address won while the first was still being tested');
+  pending.get('https://direct-a').reject(new Error('timed out'));
+  await choice;
+  assert.equal(chosen, 'https://direct-b');
+
+  // Dropping the machineIdentifier comparison turns this red: another Plex server on the owner's network would get the stream.
+  assert.equal(await chooseConnection(['http://192.168.1.20:32400', 'https://relay'], async (origin) => (origin.startsWith('http:') ? 'someone-else' : 'server-1'), 'server-1'), 'https://relay');
+  assert.equal(await chooseConnection(['http://192.168.1.20:32400'], async () => 'someone-else', 'server-1'), null);
+  assert.equal(await chooseConnection([], async () => 'server-1', 'server-1'), null);
+
+  // Raising the five-at-once limit, or testing addresses one by one, turns this red.
+  let inFlight = 0;
+  let most = 0;
+  const origins = Array.from({ length: 8 }, (_, index) => `https://address-${index}`);
+  assert.equal(await chooseConnection(origins, async (origin) => {
+    inFlight += 1;
+    most = Math.max(most, inFlight);
+    await tick();
+    inFlight -= 1;
+    return origin === 'https://address-7' ? 'server-1' : null;
+  }, 'server-1'), 'https://address-7');
+  assert.equal(most, 5);
+
+  // Letting a plain http address pass when the server's id is unknown turns this red; only a plex.direct certificate proves which server answered.
+  const unknownId = [
+    ['https://1-2-3-4.abc.plex.direct:32400', 'server-1', true],
+    ['http://192.168.1.20:32400', 'server-1', false],
+    ['https://plex.example.com', 'server-1', false],
+    ['https://1-2-3-4.abc.plex.direct:32400', null, false],
+  ];
+  for (const [origin, answered, passes] of unknownId) assert.equal(answerPasses(origin, answered, null), passes, origin);
+});
+
+test('the desktop app retries a failed stream with a fresh load first and steps down from direct play only when the plan never worked', async () => {
+  const { nextStep, planLabel, TOKEN_RELOADS, SAME_PLAN_RELOADS } = await import(new URL('../desktop/lib/retry.js', import.meta.url));
+  const directPlay = { directPlay: true, directStream: true, directStreamAudio: true };
+  const directStream = { directPlay: false, directStream: true, directStreamAudio: true };
+  const transcode = { directPlay: false, directStream: false, directStreamAudio: true };
+  const transcodeAudio = { directPlay: false, directStream: false, directStreamAudio: false };
+  const tries = (token, same) => ({ token, same });
+  // Each row: plan, failure, already played, tries since playback last moved, expected answer. Changing a rule turns
+  // its row red: a 401 reloads without stepping down, a plan that played reloads in place (a network drop), a transcode
+  // gets one reload, and the order is direct play, direct stream, transcode, transcode with the audio converted too.
+  const cases = [
+    [directPlay, 'unauthorized', false, tries(0, 0), { kind: 'reload', count: 'token' }],
+    [directPlay, 'unauthorized', true, tries(TOKEN_RELOADS - 1, 0), { kind: 'reload', count: 'token' }],
+    [directPlay, 'unauthorized', false, tries(TOKEN_RELOADS, 0), { kind: 'step', flags: directStream }],
+    [directPlay, 'failed', false, tries(0, 0), { kind: 'step', flags: directStream }],
+    [directPlay, 'failed', true, tries(0, 0), { kind: 'reload', count: 'same' }],
+    [directPlay, 'failed', true, tries(0, SAME_PLAN_RELOADS), { kind: 'step', flags: directStream }],
+    [directStream, 'failed', false, tries(0, 0), { kind: 'reload', count: 'same' }],
+    [directStream, 'failed', false, tries(0, 1), { kind: 'step', flags: transcode }],
+    [transcode, 'failed', false, tries(0, 1), { kind: 'step', flags: transcodeAudio }],
+    [{ ...directStream, maxVideoBitrate: 4000 }, 'failed', false, tries(0, 1), { kind: 'step', flags: { ...transcode, maxVideoBitrate: 4000 } }],
+    [transcodeAudio, 'failed', false, tries(0, 1), { kind: 'give-up' }],
+    [transcodeAudio, 'failed', true, tries(0, SAME_PLAN_RELOADS), { kind: 'give-up' }],
+  ];
+  for (const [flags, failure, played, count, expected] of cases) {
+    assert.deepEqual(nextStep(flags, failure, played, count), expected, `${planLabel(flags)} ${failure} played=${played} ${JSON.stringify(count)}`);
+  }
+});
+
+test('the desktop app\'s first-launch address keeps only an http or https origin and accepts only media-manager-2\'s status reply', async () => {
+  const { normaliseAddress, isMediaManager } = await import(new URL('../desktop/lib/address.js', import.meta.url));
+  // Keeping a path, accepting another scheme or credentials, or dropping the https default for a bare host turns its row red.
+  const addresses = [
+    ['media.example.com', 'https://media.example.com'],
+    ['  https://media.example.com/library?x=1  ', 'https://media.example.com'],
+    ['http://192.168.1.20:3000', 'http://192.168.1.20:3000'],
+    ['HTTPS://Media.Example.com', 'https://media.example.com'],
+    ['file:///etc/passwd', null],
+    ['javascript:alert(1)', null],
+    ['https://user:secret@media.example.com', null],
+    ['', null],
+    ['https://', null],
+    [undefined, null],
+  ];
+  for (const [input, origin] of addresses) assert.equal(normaliseAddress(input), origin, String(input));
+  // Accepting any 200 turns this red: a different site at a mistyped address would be saved as the app.
+  assert.equal(isMediaManager(200, { configured: true, firstRun: false }), true);
+  assert.equal(isMediaManager(200, { configured: false }), true);
+  assert.equal(isMediaManager(200, { ok: true }), false);
+  assert.equal(isMediaManager(200, null), false);
+  assert.equal(isMediaManager(503, { configured: true }), false);
+});
+
+test('the desktop app\'s page never gets a Plex token, and only the app page\'s main frame drives the player', async () => {
+  const { pageCopy, pageTrack, callerAllowed } = await import(new URL('../desktop/lib/page.js', import.meta.url));
+  const token = 'X-Plex-Token=transient-abc';
+  const reply = {
+    session: 'session-1',
+    decision: { directPlay: true },
+    tracks: {
+      audio: [{ id: 1, index: 0, title: 'English' }],
+      subtitle: [
+        { id: 7, index: 0, external: true, key: '/library/streams/7', url: `https://1-2-3-4.abc.plex.direct:32400/library/streams/7?${token}&encoding=utf-8` },
+        { id: 8, index: 0, external: false, key: null, ffIndex: 3 },
+      ],
+    },
+    streamAddresses: [`https://1-2-3-4.abc.plex.direct:32400/library/parts/5/file.mkv?${token}`],
+  };
+  // Keeping streamAddresses or a subtitle's url in the page's copy turns this red: the page would hold the transient token.
+  const copy = pageCopy(reply);
+  assert.equal(JSON.stringify(copy).includes('X-Plex-Token'), false);
+  assert.deepEqual(copy.tracks.subtitle.map((track) => track.url), ['/library/streams/7', null]);
+  // Passing an external track's title or language through turns this red: mpv makes both from the file's address.
+  const external = pageTrack({ id: 3, type: 'sub', external: true, title: `7?${token}&encoding=utf-8`, lang: null, codec: 'subrip' });
+  assert.equal(JSON.stringify(external).includes('X-Plex-Token'), false);
+
+  // Dropping the window, main-frame or origin check turns its row red: that caller could start playback and drive mpv.
+  const appOrigin = 'https://media.example.com';
+  const app = { fromAppWindow: true, mainFrame: true, frameUrl: `${appOrigin}/watch/123`, appOrigin };
+  const callers = [
+    [app, true],
+    [{ ...app, frameUrl: 'https://media.example.com.evil.test/watch/123' }, false],
+    [{ ...app, mainFrame: false }, false],
+    [{ ...app, frameUrl: 'file:///Applications/media-manager-2.app/Contents/Resources/app/address/index.html' }, false],
+    [{ ...app, fromAppWindow: false }, false],
+  ];
+  for (const [caller, allowed] of callers) assert.equal(callerAllowed(caller), allowed, JSON.stringify(caller));
+});

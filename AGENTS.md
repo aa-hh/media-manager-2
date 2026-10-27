@@ -48,6 +48,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 - `src/server/services/` → clients for Sonarr, Radarr, rTorrent, Plex, Jellyfin, TMDB and the rest. Has AGENTS.md.
 - `src/client/` → the React app the browser runs. Has AGENTS.md.
 - `tests/` → the test suite and the fakes of outside services. Has AGENTS.md.
+- `desktop/` → the Mac desktop app: Electron around the web app, mpv for playback. Has AGENTS.md.
 - `scripts/` → the only sanctioned way to build, test, review, land and deploy. Has AGENTS.md.
 - `.githooks/` → commit and push guards; settings in `project.conf`.
 - `.github/` → the CI workflow and the pull request template.
@@ -96,11 +97,16 @@ symbol you cannot find in source, believe the source and fix the doc.
 - **Every request to Sonarr, Radarr, rTorrent, Plex's media API, Jellyfin, TMDB,
   MDBList, Trakt, fanart.tv, tracker sites and S3 goes through `src/server/services/`.** The
   service clients hold the timeouts, paging and error mapping; a second
-  caller skips all three. Three exceptions exist: Plex sign-in in
+  caller skips all three. Four exceptions exist: Plex sign-in in
   `src/server/auth.ts`, .torrent downloads from indexers in
-  `src/server/secondVersions.ts`, and TMDB image downloads in
-  `src/server/titles.ts`. Each caps its own requests the same way (time
-  limit, redirects); keep those caps when editing them.
+  `src/server/secondVersions.ts`, TMDB image downloads in
+  `src/server/titles.ts`, and the desktop app's mpv fetching video straight
+  from Plex, with the unauthenticated `/identity` check that picks Plex's
+  address (`desktop/`). The first three cap their own requests the same way
+  (time limit, redirects); keep those caps when editing them. mpv's cap is
+  that its addresses come from `/api/playback/start` and carry only a
+  transient token, never the owner's Plex token, and that the page never
+  sees them.
 
 ## Tests
 
