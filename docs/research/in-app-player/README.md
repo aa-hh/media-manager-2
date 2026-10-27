@@ -16,6 +16,24 @@
 
 The Jellyfin recommendation below stands as research but is no longer the plan.
 
+## Decision, 27 Oct 2026
+
+Confirms and narrows the 14 Oct desktop decision below.
+
+- **A thin desktop wrapper around the existing web app, not a separate native app.**
+  - The Electron window loads the same web app and screens we already have.
+  - Only the video is native: mpv drawn inside the window, with our controls on top.
+  - This is the way the official Plex app works: Plex's web app in a Qt window, libmpv drawing the video, and a bridge passing commands between the two ([plex-desktop-network.md](plex-desktop-network.md)).
+  - So we copy Plex's desktop requests exactly, including the `Plex Desktop` profile, the `protocol=http` stream and seeking by `offset`, and the slot converts nothing for normal playback.
+  - The owner considered a player inside the browser, then chose this. A browser can't run mpv; mpv opened in its own window gives up our controls and the in-window mini player.
+- **Video never passes through Cloudflare.** It would cost too much.
+  - mpv fetches the video straight from Plex on the slot over Plex's `*.plex.direct` HTTPS address. The 14 Oct mpv test used that same address.
+  - Only the small control calls go through our app at the owner's domain.
+- **Token:** the stream address carries a Plex token (`X-Plex-Token`).
+  - Suggestion: our server fetches a short-lived one with `GET /security/token?type=delegation&scope=all` and hands only that to the desktop app.
+  - Plex Web calls this to hand playback to another device; the reply is a token starting with `transient-`, but how long it lasts is untested.
+- **Still open:** how mpv is drawn inside an Electron window (below).
+
 ## Decision, 14 Oct 2026
 
 - **Plex only.**
@@ -76,7 +94,8 @@ Recommended order: Jellyfin first, Plex second behind the same screens, Emby onl
 - Sending files straight from our own server is small work. Making them play in a browser means rebuilding Jellyfin's conversion, seeking, quality and subtitle code, about 12,000 lines.
 
 **What the build involves** (from codebase-fit.md)
-- A server route that passes video from Jellyfin through to the browser. The browser can't be given the Jellyfin key, Plex is only reachable from inside the slot, and the app runs on HTTPS. This is the largest single piece. The current request helper gives up after 10 seconds and only reads JSON, so it needs a streaming version.
+- A server route that passes video from Jellyfin through to the browser. The browser can't be given the Jellyfin key, Plex is only reachable from inside the slot, and the app runs on HTTPS. This is the largest single piece.
+  - Correction, 27 Oct: Plex is reachable from outside over its `plex.direct` address, which the 14 Oct mpv test used. The current request helper gives up after 10 seconds and only reads JSON, so it needs a streaming version.
 - Matching our episodes and movies to the media server's items, by file path first (everything shares one machine).
 - Keeping the owner's Jellyfin sign-in token, which sign-in currently throws away (`src/server/services/jellyfin.ts:153`). Progress can't be saved without it.
 - A player screen with quality and subtitle menus and a resume prompt. Player libraries: hls.js for playback, JASSUB for styled subtitles, libbitsub for picture subtitles.
@@ -112,6 +131,6 @@ Both server-side needs are small: a way for the desktop app to sign in (the app 
 
 ## Open questions for the owner
 
-- Browser or desktop? Route 1 works on any device, including a phone, and has the limits above. Route 2 plays everything but only where the desktop app is installed.
-- Is it worth upgrading the slot's Jellyfin from 10.11 to 12 first? The official TypeScript library targets version 12. The app's sign-in already uses the format version 12 requires.
-- Could not verify: the details listed under "Could not verify" at the end of [media-servers.md](media-servers.md), plus Cloudflare's terms for video and Whatbox's traffic limits.
+- ~~Browser or desktop?~~ Answered: desktop wrapper (14 Oct, confirmed 27 Oct). Route 2, option 2.
+- ~~Is it worth upgrading the slot's Jellyfin from 10.11 to 12 first?~~ Moot since Plex-only (14 Oct).
+- Could not verify: the details listed under "Could not verify" at the end of [media-servers.md](media-servers.md), plus Whatbox's traffic limits. Cloudflare's terms for video no longer matter: video doesn't go through it.
