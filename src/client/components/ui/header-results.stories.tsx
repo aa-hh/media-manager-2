@@ -14,7 +14,7 @@ const filter = (tv: ReactNode, movie: ReactNode, all: number) => (
 );
 
 const meta = {
-  title: 'UI/HeaderResults',
+  title: 'Headers & navigation/HeaderResults',
   component: HeaderResults,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-10091' } },

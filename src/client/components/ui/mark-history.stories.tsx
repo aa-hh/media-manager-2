@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { MarkHistory } from '@/components/ui/mark-history';
 
 const meta = {
-  title: 'UI/MarkHistory',
+  title: 'Badges, marks & status/MarkHistory',
   component: MarkHistory,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-862' } },

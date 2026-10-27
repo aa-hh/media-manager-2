@@ -3,7 +3,7 @@ import { CellProfileFit } from '@/components/ui/cell-profile-fit';
 import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const meta = {
-  title: 'UI/CellProfileFit',
+  title: 'Badges, marks & status/CellProfileFit',
   component: CellProfileFit,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-778' } },

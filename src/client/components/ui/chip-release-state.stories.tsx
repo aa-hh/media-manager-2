@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ChipReleaseState } from '@/components/ui/chip-release-state';
 
 const meta = {
-  title: 'UI/ChipReleaseState',
+  title: 'Badges, marks & status/ChipReleaseState',
   component: ChipReleaseState,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-746' } },

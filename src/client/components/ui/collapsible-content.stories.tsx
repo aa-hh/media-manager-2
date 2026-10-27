@@ -5,7 +5,7 @@ import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible-tri
 import { FieldNumber } from '@/components/ui/field-number';
 
 const meta = {
-  title: 'UI/CollapsibleContent',
+  title: 'Headers & navigation/CollapsibleContent',
   component: CollapsibleContent,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8945' } },

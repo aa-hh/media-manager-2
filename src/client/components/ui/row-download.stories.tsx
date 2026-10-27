@@ -6,7 +6,7 @@ import { RowDownload, RowDownloadHeader } from '@/components/ui/row-download';
 import { Table } from '@/components/ui/table';
 
 const meta = {
-  title: 'UI/RowDownload',
+  title: 'Rows — activity & settings/RowDownload',
   component: RowDownload,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7054' } },

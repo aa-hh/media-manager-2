@@ -5,7 +5,7 @@ import { BarBottomAction } from '@/components/ui/bar-bottom-action';
 import { Button } from '@/components/ui/button';
 
 const meta = {
-  title: 'UI/BarBottomAction',
+  title: 'Overlays & bars/BarBottomAction',
   component: BarBottomAction,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8292' } },

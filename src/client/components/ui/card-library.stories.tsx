@@ -3,7 +3,7 @@ import { Star } from 'lucide-react';
 import { CardLibrary } from '@/components/ui/card-library';
 
 const meta = {
-  title: 'UI/CardLibrary',
+  title: 'Cards & posters/CardLibrary',
   component: CardLibrary,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-420' } },

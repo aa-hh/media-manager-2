@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { SignInBlock } from '@/components/ui/sign-in-block';
 
 const meta = {
-  title: 'UI/SignInBlock',
+  title: 'Sign in/SignInBlock',
   component: SignInBlock,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-6069' } },

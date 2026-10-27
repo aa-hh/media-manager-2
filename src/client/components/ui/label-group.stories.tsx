@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LabelGroup } from '@/components/ui/label-group';
 
 const meta = {
-  title: 'UI/LabelGroup',
+  title: 'Badges, marks & status/LabelGroup',
   component: LabelGroup,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2308' } },

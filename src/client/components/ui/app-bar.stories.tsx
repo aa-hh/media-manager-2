@@ -53,7 +53,7 @@ const actions = (signOut = 'Sign out', problem?: string) => (
 );
 
 const meta = {
-  title: 'UI/AppBar',
+  title: 'Headers & navigation/AppBar',
   component: AppBarDesktop,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-240' }, layout: 'fullscreen' },

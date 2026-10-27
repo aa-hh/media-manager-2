@@ -16,7 +16,7 @@ const posterUrl = svg(420, 630, '#1d4e5f', '#c9d8c5');
 const backdropUrl = svg(1280, 720, '#7fa7b5', '#e8efe9');
 
 const meta = {
-  title: 'UI/HeaderTitle',
+  title: 'Headers & navigation/HeaderTitle',
   component: HeaderTitle,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=12-4118' }, layout: 'fullscreen' },

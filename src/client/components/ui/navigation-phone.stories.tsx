@@ -4,7 +4,7 @@ import { InputSearch } from '@/components/ui/input-search';
 import { NavigationPhone } from '@/components/ui/navigation-phone';
 
 const meta = {
-  title: 'UI/NavigationPhone',
+  title: 'Headers & navigation/NavigationPhone',
   component: NavigationPhone,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-5947' } },

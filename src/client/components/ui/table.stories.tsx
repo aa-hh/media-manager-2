@@ -45,7 +45,7 @@ function TrackerAccounts({ rowProps, sorted = false, ...props }: ComponentProps<
 }
 
 const meta = {
-  title: 'UI/Table',
+  title: 'Rows — titles & releases/Table',
   component: Table,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1228' } },

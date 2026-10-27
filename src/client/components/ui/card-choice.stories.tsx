@@ -3,7 +3,7 @@ import { CardChoice } from '@/components/ui/card-choice';
 import { RadioGroup } from '@/components/ui/radio';
 
 const meta = {
-  title: 'UI/CardChoice',
+  title: 'Actions & inputs/CardChoice',
   component: CardChoice,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5106' } },

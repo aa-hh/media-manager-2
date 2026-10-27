@@ -8,7 +8,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { RadioGroup } from '@/components/ui/radio';
 
 const meta = {
-  title: 'UI/Dialog',
+  title: 'Overlays & bars/Dialog',
   component: Dialog,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7741' } },

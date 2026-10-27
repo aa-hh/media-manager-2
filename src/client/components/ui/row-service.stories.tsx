@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { RowService } from '@/components/ui/row-service';
 
 const meta = {
-  title: 'UI/RowService',
+  title: 'Rows — activity & settings/RowService',
   component: RowService,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8191' } },

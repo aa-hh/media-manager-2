@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Progress } from '@/components/ui/progress';
 
 const meta = {
-  title: 'UI/Progress',
+  title: 'Feedback & notices/Progress',
   component: Progress,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-378' } },

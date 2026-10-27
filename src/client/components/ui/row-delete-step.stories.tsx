@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { RowDeleteStep } from '@/components/ui/row-delete-step';
 
 const meta = {
-  title: 'UI/RowDeleteStep',
+  title: 'Rows — activity & settings/RowDeleteStep',
   component: RowDeleteStep,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8538' } },

@@ -64,7 +64,7 @@ const history = (
 );
 
 const meta = {
-  title: 'UI/RowEpisodeDetails',
+  title: 'Rows — titles & releases/RowEpisodeDetails',
   component: RowEpisodeDetails,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8045' } },

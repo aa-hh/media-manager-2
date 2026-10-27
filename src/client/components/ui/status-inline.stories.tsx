@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { StatusInline } from '@/components/ui/status-inline';
 
 const meta = {
-  title: 'UI/StatusInline',
+  title: 'Badges, marks & status/StatusInline',
   component: StatusInline,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2905' } },

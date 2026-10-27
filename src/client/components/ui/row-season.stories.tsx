@@ -25,7 +25,7 @@ const actions = (
 );
 
 const meta = {
-  title: 'UI/RowSeason',
+  title: 'Rows — titles & releases/RowSeason',
   component: RowSeason,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5513' } },

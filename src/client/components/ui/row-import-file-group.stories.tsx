@@ -8,7 +8,7 @@ import { Table } from '@/components/ui/table';
 const folder = 'Severance.S02.1080p.ATVP.WEB-DL.DDP5.1.H.264-FLUX';
 
 const meta = {
-  title: 'UI/RowImportFileGroup',
+  title: 'Rows — activity & settings/RowImportFileGroup',
   component: RowImportFileGroup,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-13564' } },

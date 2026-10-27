@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { MarkPendingChange } from '@/components/ui/mark-pending-change';
 
 const meta = {
-  title: 'UI/MarkPendingChange',
+  title: 'Badges, marks & status/MarkPendingChange',
   component: MarkPendingChange,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-865' } },

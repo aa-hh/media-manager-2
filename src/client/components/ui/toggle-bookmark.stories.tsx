@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { ToggleBookmark } from '@/components/ui/toggle-bookmark';
 
 const meta = {
-  title: 'UI/ToggleBookmark',
+  title: 'Actions & inputs/ToggleBookmark',
   component: ToggleBookmark,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3497' } },

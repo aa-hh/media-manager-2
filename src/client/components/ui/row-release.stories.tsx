@@ -13,7 +13,7 @@ const grab = (variant: 'default' | 'outline' = 'default', loading = false) => (
 );
 
 const meta = {
-  title: 'UI/RowRelease',
+  title: 'Rows — titles & releases/RowRelease',
   component: RowRelease,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3346' } },

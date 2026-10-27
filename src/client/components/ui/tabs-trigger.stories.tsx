@@ -2,7 +2,7 @@ import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs-trigger';
 
 const meta = {
-  title: 'UI/TabsTrigger',
+  title: 'Actions & inputs/TabsTrigger',
   component: TabsTrigger,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3545' } },

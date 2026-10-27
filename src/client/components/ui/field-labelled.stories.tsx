@@ -6,7 +6,7 @@ import { FieldLabelled } from '@/components/ui/field-labelled';
 import { InputSearch } from '@/components/ui/input-search';
 
 const meta = {
-  title: 'UI/FieldLabelled',
+  title: 'Actions & inputs/FieldLabelled',
   component: FieldLabelled,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1769' } },

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TagFormat } from '@/components/ui/tag-format';
 
 const meta = {
-  title: 'UI/TagFormat',
+  title: 'Badges, marks & status/TagFormat',
   component: TagFormat,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-774' } },

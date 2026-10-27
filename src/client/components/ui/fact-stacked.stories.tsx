@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { FactStacked } from '@/components/ui/fact-stacked';
 
 const meta = {
-  title: 'UI/FactStacked',
+  title: 'Badges, marks & status/FactStacked',
   component: FactStacked,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1256' } },

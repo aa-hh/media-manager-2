@@ -36,7 +36,7 @@ const panel = (
 );
 
 const meta = {
-  title: 'UI/DownloadsLiveBar',
+  title: 'Overlays & bars/DownloadsLiveBar',
   component: DownloadsLiveBar,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5766' }, layout: 'fullscreen' },

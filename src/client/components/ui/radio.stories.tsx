@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { Radio, RadioGroup } from '@/components/ui/radio';
 
 const meta = {
-  title: 'UI/Radio',
+  title: 'Actions & inputs/Radio',
   component: Radio,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-648' } },

@@ -7,7 +7,7 @@ import { HeaderPage } from '@/components/ui/header-page';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 const meta = {
-  title: 'UI/HeaderPage',
+  title: 'Headers & navigation/HeaderPage',
   component: HeaderPage,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-9197' } },

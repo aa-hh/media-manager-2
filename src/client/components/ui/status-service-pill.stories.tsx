@@ -3,7 +3,7 @@ import { Logo } from '@/components/ui/logo';
 import { StatusServicePill } from '@/components/ui/status-service-pill';
 
 const meta = {
-  title: 'UI/StatusServicePill',
+  title: 'Badges, marks & status/StatusServicePill',
   component: StatusServicePill,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3119' } },
