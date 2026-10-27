@@ -3,8 +3,9 @@ import { flushSync } from 'react-dom';
 import type { SearchResult } from './Search';
 
 /*
- * Screen changes. Every change of screen goes through changeScreen: link clicks (navigate, navigateFrom) and the browser's
- * back and forward buttons; replace() only rewrites the address within a screen, such as the search box. A screen change is
+ * Screen changes. Every change of screen goes through changeScreen: link clicks (navigate, navigateFrom), replaceScreen and
+ * the browser's back and forward buttons; replace() only rewrites the address within a screen, such as the search box, or
+ * corrects an address inside the screen change that brought it (a /play address with nothing playing). A screen change is
  * one view transition: the old screen stays frozen on screen while the new one renders and, if the new screen loads data
  * (useScreenReady), until that data is in or HOLD_MS passes; then the two crossfade and a poster card's poster morphs into
  * the title page's poster (timing in globals.css). A fast load therefore never shows a skeleton, and there is never a second
@@ -198,6 +199,12 @@ export const preloadImages = (urls: Array<string | null | undefined>, maxWaitMs:
   })),
   new Promise((resolve) => setTimeout(resolve, maxWaitMs)),
 ]);
+
+/** A screen change in place of the current history entry, so Back skips it: leaving the player's /play address. */
+export const replaceScreen = (path: string) => {
+  window.history.replaceState(null, '', path);
+  changeScreen(announce, 0);
+};
 
 // Rewrites the address within a screen (the search box, filters); it is not a screen change and keeps the scroll.
 export const replace = (path: string, state?: unknown) => {

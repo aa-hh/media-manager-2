@@ -11630,7 +11630,7 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
   const {
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
-    activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey,
+    activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
 
@@ -11704,6 +11704,13 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     assert.deepEqual(['ArrowUp', 'ArrowDown', 'm', 'M', 'ArrowLeft', 'ArrowRight', ' '].map(volumeKey),
       [{ kind: 'step', by: 5 }, { kind: 'step', by: -5 }, { kind: 'mute' }, { kind: 'mute' }, null, null, null]);
     assert.deepEqual([102, -4, 47.4].map(clampVolume), [100, 0, 47]);
+  });
+
+  // Checking one command, or neither, turns a row red: on a desktop build older than the page, Volume, Up, Down and M would throw.
+  await t.test('volume and mute work only when the desktop app has both commands', () => {
+    const command = async () => {};
+    const bridges = [[{ setVolume: command, setMuted: command }, true], [{ setVolume: command }, false], [{ setMuted: command }, false], [{}, false], [undefined, false]];
+    for (const [bridge, takes] of bridges) assert.equal(hasSoundCommands(bridge), takes, JSON.stringify(Object.keys(bridge ?? {})));
   });
 
   // Mapping the desktop app's 512 MiB default to anything but 2 min, losing the quality cap on a step, or labelling a step-down Original turns this red.
@@ -14750,11 +14757,13 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
     streamAddresses: [`https://1-2-3-4.abc.plex.direct:32400/library/parts/5/file.mkv?${token}`],
   };
   // Keeping streamAddresses or a subtitle's url in the page's copy turns this red: the page would hold the transient token.
-  const copy = pageCopy(reply, { clientId: 'client-24-characters-long', sessionIdentifier: 'run-1' });
+  const copy = pageCopy(reply, { clientId: 'client-24-characters-long', sessionIdentifier: 'run-1' }, { volume: 35, muted: true });
   assert.equal(JSON.stringify(copy).includes('X-Plex-Token'), false);
   assert.deepEqual(copy.tracks.subtitle.map((track) => track.url), ['/library/streams/7', null]);
   // Leaving the install's ids out of the page's copy turns this red: the page's timeline reports would reach Plex as a second player.
   assert.deepEqual([copy.clientId, copy.sessionIdentifier], ['client-24-characters-long', 'run-1']);
+  // Leaving the saved volume or mute out turns this red: after a reload the page would start at 100 % unmuted while mpv keeps them.
+  assert.deepEqual([copy.volume, copy.muted], [35, true]);
   // Passing an external track's title or language through turns this red: mpv makes both from the file's address.
   const external = pageTrack({ id: 3, type: 'sub', external: true, title: `7?${token}&encoding=utf-8`, lang: null, codec: 'subrip' });
   assert.equal(JSON.stringify(external).includes('X-Plex-Token'), false);

@@ -22,7 +22,7 @@ if (app.isPackaged && fs.existsSync(driverFile)) {
   process.env.VK_ICD_FILENAMES = driverFile;
 }
 
-// --- Settings kept in userData: the address, the client id (network §1), Load ahead.
+// --- Settings kept in userData: the address, the client id (network §1), Load ahead, volume and mute.
 
 const settingsPath = () => path.join(app.getPath('userData'), 'desktop.json');
 const readSettings = () => {
@@ -97,6 +97,11 @@ function createWindow() {
   const contents = win.webContents;
   // As in native Mac apps, the app's frame is not selectable; fields and elements marked select-text still are.
   contents.on('dom-ready', () => { void contents.insertCSS(NO_SELECT_CSS); });
+  // A reload or a full page load of the app ends the page that drove mpv: mpv stops, so it never outlives its controls.
+  // The app's own address changes are same-document and pass; other origins are refused below and never load.
+  contents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument }) => {
+    if (isMainFrame && !isSameDocument && originOf(url) === appOrigin) stopPlayer();
+  });
   contents.on('will-navigate', (event, url) => {
     if (originOf(url) === appOrigin || isAddressPage(url)) return;
     event.preventDefault();
@@ -400,7 +405,7 @@ async function start(playing, offsetSeconds, retest) {
     .filter((track) => track.external && typeof track.url === 'string')
     .map((track) => [track.key, subtitleAdd(track, origin)]));
   await loadAddress(playing, playing.address, offsetSeconds, json.decision.directPlay);
-  return pageCopy(json, { clientId: clientId(), sessionIdentifier });
+  return pageCopy(json, { clientId: clientId(), sessionIdentifier }, { volume: savedVolume(), muted: savedMuted() });
 }
 
 async function recover(failure, playing = current) {

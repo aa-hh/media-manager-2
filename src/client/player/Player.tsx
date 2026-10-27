@@ -11,10 +11,10 @@ import { getJson, postJson, type ContinueWatchingItem, type EpisodeDetail, type 
 import { loadRequestFor } from '../library/play';
 import { subjectProgress } from '../library/progress';
 import { clockText, continueMeta, minutesText } from '../library/watch';
-import { navigate, replace, useLocation } from '../navigation';
+import { navigate, replace, replaceScreen, useLocation } from '../navigation';
 import {
   BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, TIMELINE_EVERY_MS,
-  activeMarker, applyEvent, clampSeek, clampVolume, volumeKey, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
+  activeMarker, applyEvent, clampSeek, clampVolume, hasSoundCommands, volumeKey, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
 } from './model';
@@ -97,6 +97,9 @@ const PlayerContext = createContext<PlayerContextValue | null>(null);
 const okWatch = (watch: SeriesWatch) => (watch !== null && watch.kind === 'ok' ? watch : null);
 const episodeCode = (season: number | null, episode: number | null) => (season === null || episode === null ? null : `S${season} E${episode}`);
 const isPlay = (pathname: string) => pathname.startsWith('/play/');
+// mpv sends no event when a load applies saved values it already had, so each start reply carries them; a desktop build
+// older than the page sends neither, and the page keeps what it had.
+const soundOf = (reply: StartReply, was: { volume: number; muted: boolean }) => ({ volume: reply.volume ?? was.volume, muted: reply.muted ?? was.muted });
 
 const startFailure = (error: unknown, name: string) => {
   const text = error instanceof Error ? error.message : '';
@@ -119,7 +122,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   const qualityRef = useRef<number | undefined>(undefined);
   const [loadAheadBytes, setLoadAheadBytes] = useState(LOAD_AHEAD[2].bytes);
   const [fullscreen, setFullscreenState] = useState(false);
-  // mpv's sound, from its events. Nothing on screen shows it yet: PlayerStage's Volume button has one fixed icon.
+  // mpv's sound, from the start reply and mpv's events. Nothing on screen shows it yet: PlayerStage's Volume button has one fixed icon.
   const sound = useRef({ volume: 100, muted: false });
   const fullscreenRef = useRef(false);
   const loads = useRef(0);
@@ -129,6 +132,11 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   downloadsRef.current = downloads;
   const unauthenticatedRef = useRef(onUnauthenticated);
   unauthenticatedRef.current = onUnauthenticated;
+  // postJson leaves a 401 to its caller; here it goes to onUnauthenticated (src/client/AGENTS.md).
+  const post = useCallback((path: string, body: unknown) => postJson(path, body).then((response) => {
+    if (response.status === 401) unauthenticatedRef.current();
+    return response;
+  }), []);
   const delaySave = useRef<number | undefined>(undefined);
 
   // The ref is the source of truth: bridge events and timers read it between renders.
@@ -163,7 +171,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
 
   // A load of `request`: `fresh` starts the opening state (a new title or a retry); otherwise the same title restarts at a
   // second (quality or track change, a transcode Plex lost) and shows as buffering.
-  const startLoad = useCallback(async (request: LoadRequest, title: PlayerTitle, fresh: boolean, signal?: AbortSignal) => {
+  const startLoad = useCallback(async (request: LoadRequest, title: PlayerTitle, fresh: boolean) => {
     if (bridge === undefined) return false;
     const load = ++loads.current;
     if (fresh) {
@@ -178,11 +186,12 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     try {
       const reply = await bridge.load(request) as unknown as StartReply;
       if (loads.current !== load) return false;
+      sound.current = soundOf(reply, sound.current);
       change((s) => ({ ...s, reply }));
       if (fresh) void bridge.setSubtitleDelay(0).catch(() => undefined);
       return true;
     } catch (error) {
-      if (loads.current !== load || signal?.aborted === true) return false;
+      if (loads.current !== load) return false;
       change((s) => ({ ...s, playback: { ...s.playback, phase: 'failed', buffering: false, restarting: false, failure: { message: startFailure(error, title.name), tried: [] } } }));
       return false;
     }
@@ -199,7 +208,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     if (s === null) return;
     loads.current += 1;
     if (s.reply !== null && s.playback.phase !== 'failed') sendTimeline(s, 'stopped');
-    if (s.reply !== null && !s.reply.decision.directPlay) void postJson('/api/playback/stop', { session: s.reply.session, clientId: idsOf(s.reply).clientId }).catch(() => undefined);
+    if (s.reply !== null && !s.reply.decision.directPlay) void post('/api/playback/stop', { session: s.reply.session, clientId: idsOf(s.reply).clientId }).catch(() => undefined);
     if (fullscreenRef.current) setFullscreen(false);
     void bridge?.stop().catch(() => undefined);
     commit(null);
@@ -207,7 +216,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     setQualityKbps(undefined);
     setPlexDownSince(null);
     if (to !== undefined) {
-      if (isPlay(window.location.pathname)) replace(to);
+      if (isPlay(window.location.pathname)) replaceScreen(to);
       else navigate(to);
     } else if (isPlay(window.location.pathname)) {
       window.history.back();
@@ -215,9 +224,9 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     const focus = returnFocus.current;
     returnFocus.current = null;
     if (focus !== null) window.requestAnimationFrame(() => { if (focus.isConnected) focus.focus(); });
-  }, [bridge, commit, sendTimeline, setFullscreen]);
+  }, [bridge, commit, post, sendTimeline, setFullscreen]);
 
-  const open = useCallback(async ({ request, title, signal }: OpenRequest) => {
+  const open = useCallback(async ({ request, title }: OpenRequest) => {
     const s = sessionRef.current;
     if (s?.reply != null) sendTimeline(s, 'stopped');
     const active = document.activeElement;
@@ -225,13 +234,8 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     const path = `/play/${request.ratingKey}`;
     if (isPlay(window.location.pathname)) replace(path);
     else navigate(path);
-    const load = loads.current + 1;
-    // Esc on the Play button, or leaving its page, cancels a load still opening; a newer Play keeps the player.
-    signal?.addEventListener('abort', () => {
-      if (loads.current === load && sessionRef.current?.playback.phase === 'opening') close();
-    }, { once: true });
-    return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, title, true, signal);
-  }, [close, sendTimeline, startLoad]);
+    return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, title, true);
+  }, [sendTimeline, startLoad]);
 
   const fetchSeries = useCallback((id: number) => getJson<SeriesReply>(`/api/library/series/${id}`, unauthenticatedRef.current), []);
 
@@ -303,11 +307,11 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
 
   // The title ended (or Skip credits was pressed): mark it played, then work out what follows.
   const endTitle = useCallback((s: Session) => {
-    void postJson('/api/playback/played', { ratingKey: s.request.ratingKey, played: true, clientId: idsOf(s.reply).clientId }).catch(() => undefined);
+    void post('/api/playback/played', { ratingKey: s.request.ratingKey, played: true, clientId: idsOf(s.reply).clientId }).catch(() => undefined);
     const ended = { ...s, playback: { ...s.playback, phase: 'ended' as const, buffering: false }, upNext: { kind: 'choosing' as const } };
     commit(ended);
     void chooseUpNext(ended);
-  }, [chooseUpNext, commit]);
+  }, [chooseUpNext, commit, post]);
 
   // Bridge events.
   useEffect(() => {
@@ -317,7 +321,9 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       if (s === null) return;
       if (event.type === 'position' && timelineState(s.playback) === 'playing') playedMs.current += playedBetween(s.playback.position, event.value) * 1000;
       const playback = applyEvent(s.playback, event);
-      const reply = event.type === 'started' ? event.value as unknown as StartReply : s.reply;
+      const started = event.type === 'started' ? event.value as unknown as StartReply : null;
+      if (started !== null) sound.current = soundOf(started, sound.current);
+      const reply = started ?? s.reply;
       if (playback === s.playback && reply === s.reply) return;
       const next = { ...s, playback, reply };
       if (event.type === 'endOfFile' && s.playback.phase !== 'ended' && playback.phase === 'ended') {
@@ -374,6 +380,17 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     };
   }, [bridge, sendTimeline, startLoad]);
 
+  // Signing out or the session expiring unmounts the player: mpv stops with it, so it never plays on with no controls.
+  useEffect(() => () => {
+    const s = sessionRef.current;
+    if (s === null) return;
+    loads.current += 1;
+    // The session is over by now, so a 401 on this last report is that, not news for onUnauthenticated.
+    unauthenticatedRef.current = () => undefined;
+    if (s.reply !== null && s.playback.phase !== 'failed') sendTimeline(s, 'stopped', { keepalive: true });
+    void bridge?.stop().catch(() => undefined);
+  }, [bridge, sendTimeline]);
+
   // Up Next: the countdown plays the next item when it runs out; a waiting episode plays once Plex has it.
   const upNext = session?.upNext ?? null;
   useEffect(() => {
@@ -418,7 +435,8 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   }, [bridge]);
   useEffect(readLoadAhead, [readLoadAhead]);
 
-  // An address left at /play with nothing playing (a reload, or forward after closing) goes to the library.
+  // An address left at /play with nothing playing (a reload, or forward after closing) goes to the library; replace(), not a
+  // screen change, because this runs inside the screen change that brought the address (navigation.ts).
   const playing = session !== null;
   useEffect(() => {
     if (isPlay(pathname) && !playing) replace('/');
@@ -438,9 +456,9 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   const saveTrack = useCallback(async (kind: 'audio' | 'subtitle', streamId: number | null) => {
     const s = sessionRef.current;
     if (s?.reply?.partId == null || streamId === null) return false;
-    const response = await postJson('/api/playback/track', { partId: s.reply.partId, kind, streamId, allParts: s.request.partIndex > 0, clientId: idsOf(s.reply).clientId }).catch(() => null);
+    const response = await post('/api/playback/track', { partId: s.reply.partId, kind, streamId, allParts: s.request.partIndex > 0, clientId: idsOf(s.reply).clientId }).catch(() => null);
     return response?.ok === true;
-  }, []);
+  }, [post]);
 
   const controller = useMemo<Controller>(() => {
     const selectTrack = <T extends AudioTrack>(tracks: T[], chosen: T | null) => tracks.map((track) => ({ ...track, selected: track === chosen }));
@@ -465,14 +483,16 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       setFullscreen,
       // No volume control is drawn (player.pen), so the Volume button mutes; Up and Down change the volume.
       toggleMute: () => {
+        if (!hasSoundCommands(bridge)) return;
         const next = !sound.current.muted;
         sound.current.muted = next;
-        void bridge?.setMuted(next).catch(() => undefined);
+        void bridge.setMuted(next).catch(() => undefined);
       },
       changeVolume: (by) => {
+        if (!hasSoundCommands(bridge)) return;
         const next = clampVolume(sound.current.volume + by);
         sound.current.volume = next;
-        void bridge?.setVolume(next).catch(() => undefined);
+        void bridge.setVolume(next).catch(() => undefined);
         if (sound.current.muted) controller.toggleMute();
       },
       // Original file: mpv switches at once and Plex saves it. Converted: Plex saves first, then the stream restarts (network §5.2).
@@ -510,7 +530,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         delaySave.current = window.setTimeout(() => {
           const key = streamKey(track);
           if (key === null) return;
-          void postJson('/api/playback/subtitle-offset', { streamKey: key, offsetMs: Math.round(delay * 1000), clientId: idsOf(s.reply).clientId })
+          void post('/api/playback/subtitle-offset', { streamKey: key, offsetMs: Math.round(delay * 1000), clientId: idsOf(s.reply).clientId })
             .then((response) => { if (response.ok) change((current) => ({ ...current, saved: { ...current.saved, delay: true } })); }, () => undefined);
         }, 600);
       },
@@ -560,7 +580,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         if (s !== null && state !== null) sendTimeline(s, state);
       },
     };
-  }, [bridge, change, close, endTitle, playItem, readLoadAhead, restartAt, saveTrack, sendTimeline, setFullscreen, startLoad]);
+  }, [bridge, change, close, endTitle, playItem, post, readLoadAhead, restartAt, saveTrack, sendTimeline, setFullscreen, startLoad]);
 
   const value = useMemo<PlayerContextValue>(() => ({
     session, series, plexDownSince, nextReportAt, qualityKbps, loadAheadBytes, fullscreen, downloads, returnFocus, controller,

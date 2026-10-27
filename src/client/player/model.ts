@@ -1,5 +1,5 @@
 // The player's decisions, kept apart from React and the bridge. Pure: type imports only, so the tests load this file from source.
-import type { DesktopEvents, LoadRequest, PlaybackFlags } from '../desktopBridge';
+import type { DesktopBridge, DesktopEvents, LoadRequest, PlaybackFlags } from '../desktopBridge';
 
 /** POST /api/playback/start's reply as the page gets it (src/server/playback.ts is the source of truth). */
 export type StartReply = {
@@ -7,6 +7,9 @@ export type StartReply = {
   /** The desktop app's own player ids, which every call to Plex during playback carries. */
   clientId?: string;
   sessionIdentifier?: string;
+  /** The desktop app's saved volume and mute, which mpv starts the file with; absent from builds older than the page. */
+  volume?: number;
+  muted?: boolean;
   partId: number | null;
   startPositionSeconds: number;
   durationMs: number | null;
@@ -160,6 +163,11 @@ export const playedBetween = (before: number, after: number) => (after > before 
 
 export const VOLUME_STEP = 5;
 export const clampVolume = (percent: number) => Math.min(100, Math.max(0, Math.round(percent)));
+
+/** Whether the desktop app takes volume and mute: a build older than the page has neither command, so those controls do nothing. */
+export const hasSoundCommands = (bridge: DesktopBridge | undefined): bridge is DesktopBridge & Required<Pick<DesktopBridge, 'setVolume' | 'setMuted'>> => (
+  typeof bridge?.setVolume === 'function' && typeof bridge.setMuted === 'function'
+);
 
 /** What a key does to the sound: Up and Down change the volume 5 %, M mutes or unmutes; null for any other key. */
 export const volumeKey = (key: string): { kind: 'step'; by: number } | { kind: 'mute' } | null => {

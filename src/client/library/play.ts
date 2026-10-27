@@ -25,7 +25,8 @@ export async function loadRequestFor(
 
 /**
  * Opens the player on the title. Resolves false when Plex has nothing to play, the signal aborted, or there is no player
- * (a plain browser); the player itself stops a load that the signal aborts, unless a newer Play has started since.
+ * (a plain browser). The signal stops at the load request: opening the player unmounts the Play button, whose cleanup aborts
+ * it, so the player's own Esc cancels a load still opening.
  * `options.mediaIndex` plays a version picked on the title page; left out, Plex's default version plays.
  */
 export async function playInDesktop(
@@ -39,5 +40,5 @@ export async function playInDesktop(
   if (!inDesktopApp()) return false;
   const request = await loadRequestFor(title, item, from, onUnauthenticated, signal, options?.mediaIndex);
   if (request === null || signal.aborted) return false;
-  return openPlayer({ request, title: { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id }, signal });
+  return openPlayer({ request, title: { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id } });
 }
