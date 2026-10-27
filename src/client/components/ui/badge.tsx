@@ -29,7 +29,7 @@ const variants: Record<BadgeVariant, string> = {
   plain: 'h-(--control-h-row) text-(length:--control-text-row) text-muted-foreground [&>svg]:size-(--control-icon-row) [&>svg]:text-foreground',
   /** The service logo and name in the add dialog's sentence (interface font, 500); never focusable. */
   inline: 'h-[38px] rounded-sm px-3 gap-2 font-ui text-[22px] font-medium bg-inline-control text-inline-control-foreground [&>svg]:size-5 [&>img]:size-6',
-  /** v2/Badge/inline: a calculated number or date in the same sentence (data font, 700, 26px, tabular); never focusable. */
+  /** A calculated number or date in the same sentence (data font, 700, 26px, tabular); never focusable. */
   'inline-value': 'h-[38px] rounded-sm px-3 font-data text-[26px] font-bold leading-[1.3] bg-inline-control text-inline-control-foreground',
 };
 
