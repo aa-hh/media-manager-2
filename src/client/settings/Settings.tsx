@@ -511,7 +511,7 @@ export function PiecesStrip({ checks, editedOf, folders, look = 'plain', watch }
                       }
                       const member = infoOf(name);
                       const pill = pillFor(member, checks[name], editedOf(name));
-                      return <StatusServicePill key={name} look={pillLook} logo={member.logo === null ? null : <Logo name={member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
+                      return <StatusServicePill key={name} look={pillLook} logo={member.logo === null ? null : <Logo name={member.logo === 'plex' && pillLook === 'dark' && pill.state === 'connected' ? 'plex-gold' : member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
                     })}
                     {column.names.includes('rtorrent') && (
                       <StatusServicePill look={pillLook} logo={<Folder aria-hidden="true" className={cn('size-4', pillLook === 'dark' && folders.state === 'connected' ? 'text-bar-foreground' : 'text-foreground')} />} name="Folders" state={folders.state}>
