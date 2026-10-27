@@ -6,7 +6,7 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
-const { originOf, pageCopy, pageTrack, callerAllowed } = require('./lib/page');
+const { originOf, pageCopy, pageTrack, callerAllowed, NO_SELECT_CSS } = require('./lib/page');
 const { fileEvent, playsOnOpen, subtitleAdd } = require('./lib/player');
 
 const MiB = 1024 * 1024;
@@ -51,8 +51,6 @@ const loadAheadBytes = () => {
 };
 // One per app run (network §1).
 const sessionIdentifier = randomUUID();
-
-const NO_SELECT_CSS = 'html { -webkit-user-select: none; user-select: none } input, textarea, [contenteditable], [contenteditable] * { -webkit-user-select: text; user-select: text }';
 
 let win;
 let appOrigin = null;
