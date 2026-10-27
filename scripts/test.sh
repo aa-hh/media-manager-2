@@ -4,8 +4,9 @@
 #
 # Usage: sh scripts/test.sh [--full] [extra args passed to the test runner]
 #   (no flag)  the fast run Guard 4 uses at commit
-#   --full     the full suite, plus every Storybook story in headless Chromium
-#              with its accessibility check; pre-push and CI run it
+#   --full     the full suite, plus the Storybook stories this branch changes,
+#              in headless Chromium with their accessibility check; pre-push
+#              and CI run it
 #   --review-script  check the review script with macOS Bash, then the shell self-tests
 #   --production  check the already built production application
 set -eu
@@ -53,8 +54,13 @@ fi
 
 sh scripts/build.sh
 if [ "$full" = 1 ]; then
-    # Every story renders and passes its accessibility check. Chromium comes
-    # from `sh scripts/setup.sh` locally and from the workflow in CI.
-    npx vitest run --project storybook
+    # Each story whose file, or a file it imports, changed since this branch
+    # left main renders and passes its accessibility check; on main itself,
+    # since the previous commit. A change to the Vite or Storybook config, the
+    # theme or the packages runs them all. Chromium comes from
+    # `sh scripts/setup.sh` locally and from the workflow in CI.
+    base=$(git merge-base HEAD origin/main)
+    [ "$base" = "$(git rev-parse HEAD)" ] && base=HEAD~1
+    npx vitest run --project storybook --changed "$base" --passWithNoTests
 fi
 exec node --test "$@" tests/production.test.mjs

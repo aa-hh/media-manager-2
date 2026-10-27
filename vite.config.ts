@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { configDefaults } from 'vitest/config';
 import path from 'node:path';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import { playwright } from '@vitest/browser-playwright';
@@ -20,6 +21,8 @@ export default defineConfig({
     outDir: 'dist/client'
   },
   test: {
+    // `scripts/test.sh --full` runs only the stories a branch changes; these files reach every story.
+    forceRerunTriggers: [...configDefaults.forceRerunTriggers, '**/package-lock.json', '**/.storybook/**', '**/src/client/globals.css'],
     projects: [{
       extends: true,
       plugins: [
