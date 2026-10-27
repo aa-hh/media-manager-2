@@ -53,7 +53,7 @@ function CalendarEntry({ state = 'normal', title, meta, progress, compact = fals
           {meta}
         </span>
       )}
-      {!compact && progress !== undefined && <Progress value={progress} className="[&>div]:bg-foreground/8" />}
+      {!compact && progress !== undefined && <Progress aria-label="Download progress" value={progress} className="[&>div]:bg-foreground/8" />}
     </a>
   );
 }

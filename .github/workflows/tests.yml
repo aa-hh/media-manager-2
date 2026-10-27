@@ -29,5 +29,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Chromium for the story tests
+        run: npx playwright install --with-deps --only-shell chromium
       - name: Full suite
         run: sh scripts/test.sh --full

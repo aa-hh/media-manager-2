@@ -1,4 +1,4 @@
-import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Fact, FactRow } from '@/components/ui/fact';
 
 const meta = {
@@ -31,24 +31,18 @@ export const TrackerStats: Story = {
   ),
 };
 
-const rows: Decorator = (Story) => <dl className="flex w-160 flex-col"><Story /></dl>;
-
 export const Row: Story = {
-  decorators: [rows],
-  render: () => <FactRow label="How often">Every 5 minutes</FactRow>,
+  render: () => <FactRow className="w-160" label="How often">Every 5 minutes</FactRow>,
 };
 
 export const RowWithNote: Story = {
-  decorators: [rows],
-  render: () => <FactRow label="Last checked" note="2 minutes ago, every 5 min">Today 14:32</FactRow>,
+  render: () => <FactRow className="w-160" label="Last checked" note="2 minutes ago, every 5 min">Today 14:32</FactRow>,
 };
 
 export const RowWithProgress: Story = {
-  decorators: [rows],
-  render: () => <FactRow label="Disk" progress={64} note="limit 90%">64%</FactRow>,
+  render: () => <FactRow className="w-160" label="Disk" progress={64} note="limit 90%">64%</FactRow>,
 };
 
 export const RowOverLimit: Story = {
-  decorators: [rows],
-  render: () => <FactRow label="Disk" progress={96} overLimit note="limit 90%">96%</FactRow>,
+  render: () => <FactRow className="w-160" label="Disk" progress={96} overLimit note="limit 90%">96%</FactRow>,
 };

@@ -73,7 +73,7 @@ function RowDownload({ title, release, message, bandActions, progress, speed, et
         <TableCell className={cn(w.progress, 'gap-2.5')}>
           {progress !== undefined && (
             <>
-              <Progress value={progress} tone={look.bar} className="w-30" />
+              <Progress aria-label="Download progress" value={progress} tone={look.bar} className="w-30" />
               <span className="font-semibold">{Math.floor(progress)}%</span>
             </>
           )}
