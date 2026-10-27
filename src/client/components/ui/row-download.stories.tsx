@@ -6,7 +6,7 @@ import { RowDownload, RowDownloadHeader } from '@/components/ui/row-download';
 import { Table } from '@/components/ui/table';
 
 const meta = {
-  title: 'UI/Row Download',
+  title: 'UI/RowDownload',
   component: RowDownload,
   tags: ['autodocs'],
   // The row is a set of table cells sized to the header's columns; the Downloads screen renders it inside this table.

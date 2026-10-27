@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { ChipFilter } from '@/components/ui/chip-filter';
 
 const meta = {
-  title: 'UI/Chip Filter',
+  title: 'UI/ChipFilter',
   component: ChipFilter,
   tags: ['autodocs'],
   args: { children: 'Rating 7 and above', removeLabel: 'Remove Rating 7 and above', onRemove: fn() },
