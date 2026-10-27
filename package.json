@@ -10,7 +10,7 @@
     "start": "node dist/server/index.js",
     "dev": "vite",
     "build": "tsc --project tsconfig.json && tsc --project tsconfig.server.json && vite build",
-    "storybook": "storybook dev -p 6006",
+    "storybook": "storybook dev -p 6006 --host localhost",
     "build-storybook": "storybook build"
   },
   "dependencies": {
@@ -26,7 +26,6 @@
     "web-vitals": "6.2.2"
   },
   "devDependencies": {
-    "@chromatic-com/storybook": "5.6.0",
     "@storybook/addon-a11y": "10.6.4",
     "@storybook/addon-docs": "10.6.4",
     "@storybook/addon-mcp": "10.6.4",
