@@ -564,24 +564,21 @@ async function continueWatchingItem(current: PlayerTitle, onUnauthenticated: () 
   if (watch.kind !== 'ok') return null;
   const isCurrent = (item: ContinueWatchingItem) => item.service === 'sonarr' && item.id === current.seriesId;
   const item = watch.continueWatching.find((entry) => !isCurrent(entry));
-  if (item !== undefined) {
-    const title = titles.find((entry) => entry.service === item.service && entry.id === item.id);
-    if (title === undefined) return null;
-    const request = await loadRequestFor(title, item, 'resume', onUnauthenticated, new AbortController().signal);
-    if (request === null) return null;
-    const code = item.episode === null ? null : episodeCode(item.episode.seasonNumber, item.episode.episodeNumber);
-    return {
-      request,
-      title: { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id },
-      view: {
-        still: title.posterUrl ?? undefined,
-        show: title.title,
-        episode: [code, item.episode?.title ?? null].filter((part) => part !== null).join(' · ') || String(title.year ?? ''),
-        facts: continueMeta(item) ?? '',
-      },
-    };
-  }
-  return null;
+  const title = item === undefined ? undefined : titles.find((entry) => entry.service === item.service && entry.id === item.id);
+  if (item === undefined || title === undefined) return null;
+  const request = await loadRequestFor(title, item, 'resume', onUnauthenticated, new AbortController().signal);
+  if (request === null) return null;
+  const code = item.episode === null ? null : episodeCode(item.episode.seasonNumber, item.episode.episodeNumber);
+  return {
+    request,
+    title: { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id },
+    view: {
+      still: title.posterUrl ?? undefined,
+      show: title.title,
+      episode: [code, item.episode?.title ?? null].filter((part) => part !== null).join(' · ') || String(title.year ?? ''),
+      facts: continueMeta(item) ?? '',
+    },
+  };
 }
 
 const waitingSteps = (progress: ReturnType<typeof progressOf>, hasFile: boolean): UpNextStep[] => {
@@ -689,9 +686,17 @@ export function Player() {
   useEffect(() => {
     if (keepControls) {
       setControlsShown(true);
+      lastMove.current = Date.now();
       return undefined;
     }
-    const timer = window.setTimeout(() => setControlsShown(false), Math.max(0, lastMove.current + CONTROLS_HIDE_MS - Date.now()));
+    // Moves only stamp the time; the timer looks again when it fires, so the pointer moving keeps the controls.
+    let timer: number | undefined;
+    const check = () => {
+      const left = lastMove.current + CONTROLS_HIDE_MS - Date.now();
+      if (left <= 0) setControlsShown(false);
+      else timer = window.setTimeout(check, left);
+    };
+    check();
     return () => window.clearTimeout(timer);
   }, [keepControls, controlsShown]);
   const onPointerMove = () => {
