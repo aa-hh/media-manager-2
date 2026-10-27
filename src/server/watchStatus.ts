@@ -54,7 +54,8 @@ type Snapshot = {
   moviesByGuid: Map<string, Item>;
   showsByKey: Map<string, Item>;
   showsByGuid: Map<string, Item>;
-  episodesByFile: Map<string, Item>;
+  // A file holding several episodes lists one Plex item per episode.
+  episodesByFile: Map<string, Item[]>;
   episodesByNumber: Map<string, Item>;
   // Each folder holding a Plex episode file, to its show's ratingKey.
   episodeFolders: Map<string, string>;
@@ -135,7 +136,7 @@ export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Prom
         } else {
           const showKey = key(item.grandparentRatingKey);
           for (const file of partFiles(item)) {
-            snapshot.episodesByFile.set(file, item);
+            snapshot.episodesByFile.set(file, [...(snapshot.episodesByFile.get(file) ?? []), item]);
             const folder = file.slice(0, Math.max(file.lastIndexOf('/'), 0));
             if (showKey !== null && !snapshot.episodeFolders.has(folder)) snapshot.episodeFolders.set(folder, showKey);
           }
@@ -248,7 +249,9 @@ export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Prom
         viewedLeafCount: num(show.viewedLeafCount) ?? 0,
         nextEpisode: nextSeason === null || nextEpisode === null ? null : { seasonNumber: nextSeason, episodeNumber: nextEpisode },
         episodes: Object.fromEntries(episodes.flatMap((episode) => {
-          const item = (episode.file?.path == null ? undefined : found.episodesByFile.get(episode.file.path))
+          const shared = episode.file?.path == null ? undefined : found.episodesByFile.get(episode.file.path);
+          const item = shared?.find((entry) => entry.parentIndex === episode.seasonNumber && entry.index === episode.episodeNumber)
+            ?? shared?.[0]
             ?? found.episodesByNumber.get(episodeNumberKey(showKey, episode.seasonNumber, episode.episodeNumber));
           const value = item === undefined ? null : playable(item);
           return value === null ? [] : [[String(episode.id), value]];

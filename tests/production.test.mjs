@@ -3728,6 +3728,39 @@ test('watch status from Plex marks library titles, both title pages and Continue
     await get('/titles');
     assert.equal(listings(), 2);
   });
+
+  // Keeping one Plex item per file, so the last episode in a shared file wins, turns this red.
+  await t.test('a file holding two episodes gives each episode its own Plex item', async () => {
+    const shared = '/tv/Severance/Severance.S01E04-E05.mkv';
+    const saved = fake.sonarr.state.episodes;
+    fake.sonarr.state.episodes = [
+      episodeRecord({ id: 74, seriesId: 7, seasonNumber: 1, episodeNumber: 4, hasFile: true, episodeFile: { id: 745, path: shared } }),
+      episodeRecord({ id: 75, seriesId: 7, seasonNumber: 1, episodeNumber: 5, hasFile: true, episodeFile: { id: 745, path: shared } }),
+    ];
+    const part = { id: 4545, file: shared };
+    const pair = [
+      { ratingKey: '304', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 4, viewOffset: 1000, Media: [{ id: 44, Part: [part] }] },
+      { ratingKey: '305', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 5, viewOffset: 2000, Media: [{ id: 44, Part: [part] }] },
+    ];
+    const { get } = connect({ fetch: async (url, init) => {
+      const { pathname, searchParams } = new URL(String(url));
+      return pathname === '/library/sections/2/all' && searchParams.get('type') === '4'
+        ? new Response(JSON.stringify({ MediaContainer: { Metadata: pair } }), { status: 200 })
+        : plexFetch(url, init);
+    } });
+    const { episodes: watched } = (await get('/series/7')).body.watch;
+    fake.sonarr.state.episodes = saved;
+    assert.deepEqual([watched['74'].ratingKey, watched['74'].viewOffsetMs], ['304', 1000]);
+    assert.deepEqual([watched['75'].ratingKey, watched['75'].viewOffsetMs], ['305', 2000]);
+  });
+
+  // Reading a 2xx reply with no readable body as an empty listing, which marks Plex working with every title unmarked, turns this red.
+  await t.test('a Plex listing cut off mid-reply reads as unavailable, not as an empty library', async () => {
+    const { body } = await connect({ fetch: async (url, init) => (
+      new URL(String(url)).pathname.endsWith('/all') ? new Response('{"MediaContainer": {"Meta', { status: 200 }) : plexFetch(url, init)
+    ) }).get('/titles');
+    assert.deepEqual(body.watch, { kind: 'unavailable' });
+  });
 });
 
 test('the playback API asks Plex for a decision and stream addresses, and passes the player\'s calls on without the owner token', async (t) => {

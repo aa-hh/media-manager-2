@@ -74,7 +74,9 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     const result = await request(path, timeoutMs);
     if (result.status < 200 || result.status > 299) throw new Error(`Plex refused ${what}.`);
     const body = isRecord(result.body) ? result.body.MediaContainer : undefined;
-    return isRecord(body) ? body : {};
+    // A 2xx reply with no readable body (a timeout or cut connection mid-body) is a failure, never an empty listing.
+    if (!isRecord(body)) throw new Error(`Plex sent an unreadable reply for ${what}.`);
+    return body;
   };
   const metadata = (body: Record<string, unknown>) => (Array.isArray(body.Metadata) ? body.Metadata.filter(isRecord) : []);
 
