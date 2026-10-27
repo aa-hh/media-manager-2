@@ -34,4 +34,7 @@ const pageTrack = (track) => (track.external ? { ...track, title: null, lang: nu
 const callerAllowed = ({ fromAppWindow, mainFrame, frameUrl, appOrigin }) =>
   fromAppWindow === true && mainFrame === true && typeof appOrigin === 'string' && originOf(frameUrl) === appOrigin;
 
-module.exports = { originOf, pageCopy, pageTrack, callerAllowed };
+// As in native Mac apps the app's frame is not selectable; fields, and elements the web app marks select-text, still are.
+const NO_SELECT_CSS = 'html { -webkit-user-select: none; user-select: none } input, textarea, [contenteditable], [contenteditable] * { -webkit-user-select: text; user-select: text }';
+
+module.exports = { originOf, pageCopy, pageTrack, callerAllowed, NO_SELECT_CSS };

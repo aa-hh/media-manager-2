@@ -6,7 +6,7 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
-const { originOf, pageCopy, pageTrack, callerAllowed } = require('./lib/page');
+const { originOf, pageCopy, pageTrack, callerAllowed, NO_SELECT_CSS } = require('./lib/page');
 const { fileEvent, playsOnOpen, subtitleAdd } = require('./lib/player');
 
 const MiB = 1024 * 1024;
@@ -84,12 +84,16 @@ function createWindow() {
     backgroundColor: '#00000000',
     // No visible title bar: in fullscreen this window takes mpv's frame exactly.
     titleBarStyle: 'hidden',
+    // Window buttons centred on the 64 px app header (--topbar); the header's desktop padding clears them.
+    trafficLightPosition: { x: 18, y: 25 },
     // macOS fullscreen would move only this window to a new Space; the player's fullscreen is mpv's (setFullscreen).
     fullscreenable: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
   });
 
   const contents = win.webContents;
+  // As in native Mac apps, the app's frame is not selectable; fields and elements marked select-text still are.
+  contents.on('dom-ready', () => { void contents.insertCSS(NO_SELECT_CSS); });
   contents.on('will-navigate', (event, url) => {
     if (originOf(url) === appOrigin || isAddressPage(url)) return;
     event.preventDefault();

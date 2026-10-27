@@ -44,7 +44,7 @@ function RowHistory({ when, icon, event, by, detail, tone, ...props }: RowHistor
         <span className="truncate">{by}</span>
       </TableCell>
       <TableCell className={cn(w.detail, 'text-muted-foreground')}>
-        <span className="truncate">{detail}</span>
+        <span className="truncate select-text">{detail}</span>
       </TableCell>
     </TableRow>
   );

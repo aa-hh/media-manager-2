@@ -168,7 +168,7 @@ function Sections({ snapshot, now }: { snapshot: HealthSnapshot; now: number }) 
               {snapshot.disks.map((disk) => {
                 const used = disk.totalBytes > 0 ? Math.round(((disk.totalBytes - disk.freeBytes) / disk.totalBytes) * 100) : 100;
                 return (
-                  <FactRow key={disk.path} label={disk.path} progress={used} note={`${formatBytes(disk.freeBytes)} free of ${formatBytes(disk.totalBytes)}`}>
+                  <FactRow key={disk.path} label={<span className="select-text">{disk.path}</span>} progress={used} note={`${formatBytes(disk.freeBytes)} free of ${formatBytes(disk.totalBytes)}`}>
                     {used}% used
                   </FactRow>
                 );

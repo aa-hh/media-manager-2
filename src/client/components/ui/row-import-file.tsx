@@ -49,7 +49,7 @@ function RowImportFile({ checked, onCheckedChange, checkLabel, file, mapsTo, qua
         <Checkbox checked={checked} onCheckedChange={(next) => onCheckedChange(next)} aria-label={checkLabel} />
       </TableCell>
       <TableCell fill className={cn('text-muted-foreground', dim)}>
-        <span className="truncate">{file}</span>
+        <span className="truncate select-text">{file}</span>
       </TableCell>
       <TableCell className={cn(w.mapsTo, 'font-semibold', problem && 'text-warning', dim)}>
         <span className="truncate">{mapsTo}</span>
