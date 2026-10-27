@@ -9,6 +9,7 @@
 
 - [plex-terms.md](plex-terms.md): whether the player fits Plex's terms.
 - [player-stack.md](player-stack.md): language, libraries, and how quality, subtitles and the mini player would work against Plex.
+- [plex-desktop-network.md](plex-desktop-network.md) (27 Oct): every request the official Plex desktop app (1.115.0, which also uses mpv) makes during playback, read from its bundled code.
 
 The Jellyfin recommendation below stands as research but is no longer the plan.
 
