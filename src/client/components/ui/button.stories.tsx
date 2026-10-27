@@ -57,6 +57,8 @@ export const SizeRow: Story = { args: { variant: 'outline', size: 'row', childre
 
 export const SizeSm: Story = { args: { size: 'sm' } };
 
+export const SizeSmMenu: Story = { args: { variant: 'menu', size: 'sm', children: 'Poster fields' } };
+
 export const SizeLarge: Story = { args: { size: 'large', children: 'Open Downloads' } };
 
 export const Disabled: Story = { args: { disabled: true } };

@@ -91,6 +91,8 @@
   --best-soft: #f3fcd6;
   --best-foreground: #3d5600;
   --live: #c6f135;
+  --watch-bar: #75bad1;
+  --poster-mark: #1111119e;
   --destructive: #cc1f17;
   --destructive-hover: #ad1912;
   --destructive-pressed: #8e140e;
@@ -347,6 +349,8 @@
   --color-best-soft: var(--best-soft);
   --color-best-foreground: var(--best-foreground);
   --color-live: var(--live);
+  --color-watch-bar: var(--watch-bar);
+  --color-poster-mark: var(--poster-mark);
   --color-destructive: var(--destructive);
   --color-destructive-hover: var(--destructive-hover);
   --color-destructive-pressed: var(--destructive-pressed);
