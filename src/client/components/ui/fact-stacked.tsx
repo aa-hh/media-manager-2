@@ -1,4 +1,4 @@
-// v2/Fact/stacked — ~/Projects/media-manager-2-design/design-system.lib.pen CgPEx
+// Figma: FactStacked — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1256
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

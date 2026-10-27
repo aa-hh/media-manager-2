@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/StatusServicePill',
   component: StatusServicePill,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3119' } },
   args: { logo: <Logo name="sonarr" alt="" />, name: 'Sonarr', state: 'connected', children: 'Connected · 4.0.10' },
 } satisfies Meta<typeof StatusServicePill>;
 

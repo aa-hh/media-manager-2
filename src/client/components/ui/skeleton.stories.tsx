@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/Skeleton',
   component: Skeleton,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-381' } },
 } satisfies Meta<typeof Skeleton>;
 
 export default meta;

@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/EmptyState',
   component: EmptyState,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-766' } },
   args: {
     icon: <Library aria-hidden="true" />,
     title: 'Nothing here yet',

@@ -1,4 +1,4 @@
-// v2/Progress — ~/Projects/media-manager-2-design/design-system.lib.pen eCSrr
+// Figma: Progress — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-378
 import { Progress as ProgressPrimitive } from '@base-ui/react/progress';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';

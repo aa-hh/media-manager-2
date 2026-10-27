@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/StatusInline',
   component: StatusInline,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2905' } },
   args: { status: 'sent', children: 'Jellyfin “Living room” answered · 10.10.3' },
 } satisfies Meta<typeof StatusInline>;
 

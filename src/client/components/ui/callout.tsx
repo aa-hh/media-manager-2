@@ -1,4 +1,4 @@
-// v2/Callout — ~/Projects/media-manager-2-design/design-system.lib.pen BXgoa
+// Figma: Callout — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-629
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
