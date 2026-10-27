@@ -273,7 +273,7 @@ export function TitleHeader({ subject, owned, badges, play, facts, monitored, on
   const libraryRows: TitleFact[] = [
     ...(facts ?? []),
     ...(detail.added === null ? [] : [{ label: 'Added', value: day(detail.added) }]),
-    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="[overflow-wrap:anywhere]">{detail.path}</span> }]),
+    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="select-text [overflow-wrap:anywhere]">{detail.path}</span> }]),
   ];
   const { state } = useLocation();
   const [search, setSearch] = useState<Sent | undefined>(undefined);

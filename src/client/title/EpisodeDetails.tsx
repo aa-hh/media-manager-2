@@ -82,7 +82,7 @@ export function EpisodeDetails({ episode, seeding, hitAndRun, secondVersions, on
     <FactRow key="last-search" label="Last search">{episode.lastSearchTime === null ? 'Never' : day(episode.lastSearchTime) || '–'}</FactRow>,
     ...(profile === null ? [] : [<FactRow key="profile" label="Quality profile">{`${profile} · ${fit}`}</FactRow>]),
     ...(folder === undefined || folder === '' ? [] : [
-      <FactRow key="folder" label="Folder"><span className="[overflow-wrap:anywhere]">{[seriesPath, folder].filter((part) => part !== null).join('/')}</span></FactRow>,
+      <FactRow key="folder" label="Folder"><span className="select-text [overflow-wrap:anywhere]">{[seriesPath, folder].filter((part) => part !== null).join('/')}</span></FactRow>,
     ]),
   ];
   return (
