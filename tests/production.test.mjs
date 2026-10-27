@@ -3821,7 +3821,9 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
   // Removing the 2 s decision timeout, or failing the start when the decision never answers, turns this red.
   await t.test('a decision that never answers still gives a direct-play address', { timeout: 10_000 }, async () => {
     const { routes } = connect({ decision: (init) => new Promise((resolve, reject) => {
-      init.signal.addEventListener('abort', () => reject(init.signal.reason));
+      // AbortSignal.timeout's timer does not keep Node running, so with nothing else pending the run would end first.
+      const hold = setTimeout(() => {}, 10_000);
+      init.signal.addEventListener('abort', () => { clearTimeout(hold); reject(init.signal.reason); });
     }) });
     const started = performance.now();
     const { status, body } = await start(routes, {}, { desktop: true });
