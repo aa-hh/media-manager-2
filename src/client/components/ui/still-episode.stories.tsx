@@ -9,6 +9,7 @@ const still = (top: string, bottom: string) => `data:image/svg+xml,${encodeURICo
 const meta = {
   title: 'Rows — titles & releases/StillEpisode',
   component: StillEpisode,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=117-4144' } },
   tags: ['autodocs'],
   decorators: [(Story) => <div className="p-6"><Story /></div>],
   args: { image: still('#41556b', '#a9b4bf') },

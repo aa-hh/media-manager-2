@@ -8,6 +8,7 @@ const still = `data:image/svg+xml,${encodeURIComponent(
 const meta = {
   title: 'Overlays & bars/PlayerScrubPreview',
   component: PlayerScrubPreview,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=109-267' } },
   tags: ['autodocs'],
   decorators: [(Story) => <div className="bg-black p-6"><Story /></div>],
   args: { image: still, time: '40:45', chapter: 'Chapter 6 · The council' },

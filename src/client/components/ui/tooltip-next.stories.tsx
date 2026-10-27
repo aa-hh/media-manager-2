@@ -11,6 +11,7 @@ const still = `data:image/svg+xml,${encodeURIComponent(
 const meta = {
   title: 'Overlays & bars/TooltipNext',
   component: TooltipNext,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=109-295' } },
   tags: ['autodocs'],
   // Room above the button for the tooltip, on the black player.
   decorators: [(Story) => <div className="flex h-48 items-end bg-black p-6"><Story /></div>],

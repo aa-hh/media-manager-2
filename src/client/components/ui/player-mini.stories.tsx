@@ -9,6 +9,7 @@ const arrival = `data:image/svg+xml,${encodeURIComponent(
 const meta = {
   title: 'Overlays & bars/PlayerMini',
   component: PlayerMini,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=112-396' } },
   tags: ['autodocs'],
   decorators: [(Story) => <div className="p-12"><Story /></div>],
   args: {

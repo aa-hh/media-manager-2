@@ -1,5 +1,4 @@
-// Settings Playback section — ~/Projects/media-manager-2-design/player.pen U9Z5wS (DISCOVERY "2026-10-14 · Entry points and Settings", status open)
-// settings.pen has no Playback page yet, so this follows the only drawn one. Not in Figma yet.
+// Figma: SettingsPlayback — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=117-5453
 import { useId } from 'react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';

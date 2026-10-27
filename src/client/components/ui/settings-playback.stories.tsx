@@ -5,6 +5,7 @@ import { SettingsPlayback } from '@/components/ui/settings-playback';
 const meta = {
   title: 'Rows — activity & settings/SettingsPlayback',
   component: SettingsPlayback,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=117-5453' } },
   tags: ['autodocs'],
   decorators: [(Story) => <div className="p-6"><Story /></div>],
   args: {

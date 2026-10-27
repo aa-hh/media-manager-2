@@ -1,5 +1,4 @@
-// v2/Player/Up next — ~/Projects/media-manager-2-design/player.pen I9SJH
-// Not in Figma yet.
+// Figma: PlayerUpNext — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=113-516
 import { Circle, Play } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';

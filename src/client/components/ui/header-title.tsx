@@ -1,5 +1,5 @@
 // Figma: HeaderTitle — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=12-4118
-// Play line (play, HeaderPlayLine) — ~/Projects/media-manager-2-design/title.pen uyR8T, which replaces 5:w2M8v in each 5:NaDkI instance (NIjoo, p6VuR). Not in Figma yet.
+// Figma: HeaderPlayLine — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=118-162
 import { type ReactNode, useState } from 'react';
 import { ToggleBookmark, type BookmarkState } from '@/components/ui/toggle-bookmark';
 import { cn } from '@/lib/utils';
