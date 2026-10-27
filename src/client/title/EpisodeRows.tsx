@@ -13,15 +13,18 @@ import { Table } from '@/components/ui/table';
 import { ToggleBookmark } from '@/components/ui/toggle-bookmark';
 import { Tooltip } from '@/components/ui/tooltip';
 import { formatBytes, type Snapshot } from '../downloads/model';
-import type { EpisodeDetail, SecondVersion, SeriesDetail, TrackedHitAndRun } from '../library/api';
+import type { EpisodeDetail, Playable, SecondVersion, SeriesDetail, SeriesWatch, TrackedHitAndRun } from '../library/api';
 import { seedingFacts, type SubjectProgress } from '../library/progress';
+import { plexWebUrl, type PlayMode, type StartFrom } from '../library/watch';
 import type { ReleaseTarget } from '../PickRelease';
 import { lazyScreen } from '../lazyScreen';
 import { EpisodeDetails } from './EpisodeDetails';
+import { itemMarks, playableEpisode, rowSecondLine } from './playLine';
 import { episodeMarks, episodeWord, relativeAirDate, seasonAirDates, seasonMonitoredState, seasonQuality, seasonStatus } from './rows';
 import { StatusChip } from './SecondVersions';
 import { moveFocus, rangeBetween, selectionSummary, type RowRef } from './selection';
 import { sendAction } from './TitleHeader';
+import { PlayStill, startOnPage } from './TitlePlay';
 
 const PickRelease = lazyScreen(() => import('../PickRelease').then((module) => module.PickRelease));
 
@@ -90,6 +93,7 @@ type RowHandlers = {
   details: (key: string) => void;
   closeDetails: (key: string) => void;
   secondVersions: (next: SetStateAction<SecondVersion[]>) => void;
+  play: (episode: EpisodeDetail, from: StartFrom, signal: AbortSignal) => Promise<unknown>;
 };
 
 type EpisodeRowProps = {
@@ -116,6 +120,12 @@ type EpisodeRowProps = {
   onUnauthenticated: () => void;
   /** The season's last episode ends the group, so it takes the season line. */
   last?: boolean;
+  /** Plex's copy of the episode; without one the still does not play. */
+  playable: Playable | undefined;
+  playMode: PlayMode;
+  machineIdentifier: string;
+  /** The episode the header plays: its still glows. */
+  next: boolean;
 };
 
 // The progress map is rebuilt on every stream event, so its entries are compared by what the row prints.
@@ -130,11 +140,16 @@ const noEpisodes: EpisodeDetail[] = [];
 
 const EpisodeRow = memo(function EpisodeRow({
   episode, live, protectedIds, now, selected, detailsOpen, pickOpen, tabIndex, problem, sent, secondVersions, hitAndRun, snapshot, profile, seriesPath, pickBand, handlers, onUnauthenticated, last = false,
+  playable, playMode, machineIdentifier, next,
 }: EpisodeRowProps) {
   const rowKey = episodeKey(episode.id);
   const word = episodeWord(episode, live, protectedIds, now);
   const upcoming = episode.airDate !== null && Date.parse(episode.airDate) > now;
   const versionCount = (episode.hasFile ? 1 : 0) + secondVersions.filter((version) => version.state === 'imported').length;
+  const number = `E${String(episode.episodeNumber).padStart(2, '0')}`;
+  const marks = playable === undefined ? {} : itemMarks(playable);
+  const secondLine = rowSecondLine(episode, playable);
+  const downloading = live?.percent ?? undefined;
   return (
     <>
       <RowEpisode
@@ -149,7 +164,23 @@ const EpisodeRow = memo(function EpisodeRow({
         line={last ? 'season' : 'episode'}
         marker={live?.tone === 'risk' ? 'risk' : word === 'Missing' ? 'warning' : undefined}
         bookmark={<ToggleBookmark state={episode.monitored ? 'all' : 'none'} onToggle={() => handlers.toggle(episode)} />}
-        number={`E${String(episode.episodeNumber).padStart(2, '0')}`}
+        number={number}
+        still={(
+          <PlayStill
+            mode={playable === undefined ? 'none' : playMode}
+            code={number}
+            image={episode.imageUrl ?? undefined}
+            noFile={!episode.hasFile && downloading === undefined}
+            downloading={downloading}
+            watched={marks.watched}
+            played={marks.watchMark === 'played'}
+            next={next}
+            resumeAtMs={marks.watched === undefined ? null : playable!.viewOffsetMs}
+            plexUrl={playable === undefined ? '' : plexWebUrl(machineIdentifier, playable.ratingKey)}
+            onStart={(from, signal) => handlers.play(episode, from, signal)}
+          />
+        )}
+        secondLine={secondLine === null ? undefined : marks.watched === undefined ? secondLine : <span className="font-medium text-foreground">{secondLine}</span>}
         title={(
           <>
             {episode.title}
@@ -214,8 +245,13 @@ const EpisodeRow = memo(function EpisodeRow({
   );
 }, sameRow);
 
-export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progress, problems, onMonitor, onSecondVersions, onUnauthenticated }: {
+export function EpisodeRows({ detail, watch, playMode, nextEpisodeId, pickRequest, snapshot, protectedIds, progress, problems, onMonitor, onSecondVersions, onUnauthenticated }: {
   detail: SeriesDetail;
+  watch: SeriesWatch;
+  /** Which Play the stills give; 'none' keeps every still still. */
+  playMode: PlayMode;
+  /** The episode the header plays, whose still glows. */
+  nextEpisodeId: number | null;
   /** Goes up each time the header's Pick a release is pressed: opens the first season's panel. */
   pickRequest: number;
   snapshot: Snapshot | undefined;
@@ -431,6 +467,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
         focusRow(key);
       },
       secondVersions: onSecondVersions,
+      play: (episode, from, signal) => startOnPage({ type: 'tv', detail }, watch, episode, onUnauthenticated)(from, signal),
     };
   });
   // Stable for the life of the list, so a memoized row redraws only when its own data changes.
@@ -443,6 +480,7 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
     details: (key) => latest.current?.details(key),
     closeDetails: (key) => latest.current?.closeDetails(key),
     secondVersions: (next) => latest.current?.secondVersions(next),
+    play: (episode, from, signal) => latest.current?.play(episode, from, signal) ?? Promise.resolve(false),
   }));
 
   if (seasons.length === 0) {
@@ -568,6 +606,10 @@ export function EpisodeRows({ detail, pickRequest, snapshot, protectedIds, progr
                         handlers={handlers}
                         onUnauthenticated={onUnauthenticated}
                         last={index === episodes.length - 1}
+                        playable={playableEpisode(episode, watch)}
+                        playMode={playMode}
+                        machineIdentifier={watch !== null && watch.kind === 'ok' ? watch.machineIdentifier : ''}
+                        next={episode.id === nextEpisodeId}
                       />
                     );
                   })}

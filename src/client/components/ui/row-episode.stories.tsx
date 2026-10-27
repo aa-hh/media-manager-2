@@ -7,6 +7,7 @@ import { relativeAirDate } from '@/title/rows';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RowEpisode, RowEpisodeHeader } from '@/components/ui/row-episode';
+import { StillEpisode } from '@/components/ui/still-episode';
 import { StatusDownloadCircle } from '@/components/ui/status-download-circle';
 import { Table } from '@/components/ui/table';
 import { ToggleBookmark } from '@/components/ui/toggle-bookmark';
@@ -119,6 +120,30 @@ export const ReleasesOpen: Story = { args: { open: true, actions: actions({ pick
 export const Selected: Story = { args: { selected: true, 'aria-selected': true } };
 
 export const DetailsOpen: Story = { args: { selected: true, actions: actions({ detailsOpen: true }) } };
+
+const stillImage = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="144" height="80"><defs><linearGradient id="g" x2="0" y2="1"><stop offset="0" stop-color="#1f3329"/><stop offset="1" stop-color="#4b5a3c"/></linearGradient></defs><rect width="144" height="80" fill="url(#g)"/></svg>',
+)}`;
+
+// title.pen NIjoo E04: the next episode, stopped partway; its still glows and plays, the second line says what is left.
+export const WithStillNext: Story = {
+  args: {
+    number: 'E04',
+    title: "Woe's Hollow",
+    still: <StillEpisode image={stillImage} playable next watched={60} aria-label="Resume E04" onClick={fn()} />,
+    secondLine: <span className="font-medium text-foreground">31 min left</span>,
+  },
+};
+
+// NIjoo E03: played; the still dims and shows a tick.
+export const WithStillPlayed: Story = {
+  args: { number: 'E03', title: 'Who Is Alive?', still: <StillEpisode image={stillImage} playable played aria-label="Play E03" onClick={fn()} />, secondLine: 'Played' },
+};
+
+// OJb8g: nothing to play yet; the still stays and does not play, the second line is the runtime.
+export const WithStillNoFile: Story = {
+  args: { number: 'E02', title: 'Low Tide', still: <StillEpisode image={stillImage} noFile />, secondLine: '48 min', quality: undefined, size: undefined },
+};
 
 // The season's last episode takes the season's full-width line.
 export const LastInSeason: Story = { args: { line: 'season' } };

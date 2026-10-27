@@ -1,4 +1,4 @@
-import { Suspense, useState, type SetStateAction } from 'react';
+import { Suspense, use, useState, type SetStateAction } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { CollapsibleContent } from '@/components/ui/collapsible-content';
 import { Collapsible } from '@/components/ui/collapsible-trigger';
@@ -7,15 +7,20 @@ import { RowSecondVersionHeader } from '@/components/ui/row-second-version';
 import { Table } from '@/components/ui/table';
 import { formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import type { OwnedMovieDetail, SecondVersion } from '../library/api';
+import { inDesktopApp } from '../desktopBridge';
+import type { MovieWatch, OwnedMovieDetail, SecondVersion } from '../library/api';
 import { seedingFacts, type SubjectProgress } from '../library/progress';
+import { plexWebUrl } from '../library/watch';
 import { lazyScreen } from '../lazyScreen';
+import { MediaServerContext } from '../mediaServer';
 import { statusLabel } from '../Search';
 import { TrackedVersion } from './EpisodeDetails';
 import { History } from './History';
+import { defaultQuality, moviePlayLine, titlePlayMode } from './playLine';
 import { movieWord } from './rows';
 import { SecondVersionRows } from './SecondVersions';
 import { sendAction, TitleHeader, type TitleFact } from './TitleHeader';
+import { startOnPage, TitlePlayLine } from './TitlePlay';
 
 const PickRelease = lazyScreen(() => import('../PickRelease').then((module) => module.PickRelease));
 
@@ -26,8 +31,10 @@ const wordLook = (word: string, live: boolean): BadgeVariant => {
   return 'neutral';
 };
 
-export function MovieOverview({ detail: loaded, downloads, progress, onUnauthenticated }: {
+export function MovieOverview({ detail: loaded, watch, downloads, progress, onUnauthenticated }: {
   detail: OwnedMovieDetail;
+  /** Plex's watch status; Play shows only when Plex has the movie. */
+  watch: MovieWatch;
   downloads: DownloadsState;
   progress: Map<string, SubjectProgress>;
   onUnauthenticated: () => void;
@@ -38,6 +45,9 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
   const live = progress.get(`movie:${detail.id}`);
   const word = movieWord(detail, live);
+  const mediaServer = use(MediaServerContext).name;
+  const playable = watch !== null && watch.kind === 'ok' ? watch : undefined;
+  const mode = titlePlayMode(mediaServer, inDesktopApp(), watch, detail.hasFile && playable !== undefined);
 
   // Optimistic: the bookmark flips at once and flips back with a reason if Radarr refuses.
   const toggleMonitored = async () => {
@@ -78,6 +88,15 @@ export function MovieOverview({ detail: loaded, downloads, progress, onUnauthent
             <Badge variant="strong">{versionCount > 1 ? `In library · ${versionCount} versions` : 'In library'}</Badge>
             {word !== null && <Badge variant={wordLook(word, live !== undefined)} percent={live?.percent ?? undefined}>{word.charAt(0).toUpperCase() + word.slice(1)}</Badge>}
           </>
+        )}
+        play={mode === 'none' || playable === undefined ? undefined : (
+          <TitlePlayLine
+            mode={mode}
+            play={moviePlayLine(playable, detail.runtime, defaultQuality(detail, playable))}
+            name={detail.title}
+            plexUrl={plexWebUrl(playable.machineIdentifier, playable.ratingKey)}
+            onPlay={startOnPage({ type: 'movie', detail }, watch, null, onUnauthenticated)}
+          />
         )}
         facts={facts}
         onPick={() => setPicking(!picking)}
