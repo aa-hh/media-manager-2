@@ -1,5 +1,4 @@
-// Resume menu — ~/Projects/media-manager-2-design/title.pen loTlh (a plain frame of 5:Gtcpe items in OkR0H; the same menu V6gBFx opens from E04's still in wnNt9)
-// Not in Figma yet.
+// Figma: MenuResume — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-825
 import { Play, RotateCcw } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import {

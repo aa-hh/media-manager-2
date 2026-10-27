@@ -7,6 +7,7 @@ import { PlayerError } from '@/components/ui/player-error';
 const meta = {
   title: 'Overlays & bars/PlayerError',
   component: PlayerError,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=111-358' } },
   tags: ['autodocs'],
   decorators: [(Story) => <div className="flex justify-center bg-black p-12"><Story /></div>],
   args: {

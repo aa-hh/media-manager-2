@@ -1,5 +1,4 @@
-// Mini player — ~/Projects/media-manager-2-design/player.pen lWnC7 (a plain frame in GrqIz state 17)
-// Not in Figma yet.
+// Figma: PlayerMini — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=112-396
 import { Maximize2, Pause, Play, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';

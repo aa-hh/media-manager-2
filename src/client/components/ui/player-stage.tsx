@@ -1,5 +1,4 @@
-// v2/Player/Stage — ~/Projects/media-manager-2-design/player.pen hMYCb
-// Not in Figma yet.
+// Figma: PlayerStage — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=114-725
 import { Slider } from '@base-ui/react/slider';
 import {
   AudioLines, Captions, ChevronLeft, Gauge, Maximize, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Settings, SkipBack, SkipForward, Volume2,

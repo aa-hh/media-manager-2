@@ -1,5 +1,4 @@
-// Subtitle timing stepper — ~/Projects/media-manager-2-design/player.pen eaMGS (a plain frame in GrqIz state 7)
-// Not in Figma yet.
+// Figma: StepperSubtitleTiming — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=111-284
 import { Menu } from '@base-ui/react/menu';
 import { Minus, Plus } from 'lucide-react';
 import { useId } from 'react';

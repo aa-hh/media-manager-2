@@ -1,7 +1,6 @@
-// Figma: DropdownMenuContent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4049
+// Figma: DropdownMenuContent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-673
 // Figma: DropdownMenuItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3626
-// v2/DropdownMenu/Item/on-dark — ~/Projects/media-manager-2-design/player.pen E0jSO; the dark menu panel is the plain frame b5iya in player.pen GrqIz.
-// The dark menu (onDark) is not in Figma yet.
+// Figma: DropdownMenuRadioItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-587
 import { Menu } from '@base-ui/react/menu';
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { Check, ChevronRight } from 'lucide-react';

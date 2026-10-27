@@ -20,7 +20,7 @@ const meta = {
   title: 'Actions & inputs/DropdownMenu',
   component: DropdownMenu,
   tags: ['autodocs'],
-  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4049' } },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-673' } },
   // Room under the trigger so the open menu sits inside the story.
   decorators: [
     (Story) => (

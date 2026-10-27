@@ -7,6 +7,7 @@ import { StepperSubtitleTiming } from '@/components/ui/stepper-subtitle-timing';
 const meta = {
   title: 'Overlays & bars/StepperSubtitleTiming',
   component: StepperSubtitleTiming,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=111-284' } },
   tags: ['autodocs'],
   // Inside the 280 px dark Subtitle timing menu.
   decorators: [

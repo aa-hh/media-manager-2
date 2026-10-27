@@ -4,6 +4,7 @@ import { LineSavedToPlex } from '@/components/ui/line-saved-to-plex';
 const meta = {
   title: 'Overlays & bars/LineSavedToPlex',
   component: LineSavedToPlex,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-1122' } },
   tags: ['autodocs'],
   // It sits at the foot of a dark player menu, 320 px wide.
   decorators: [(Story) => <div className="w-80 rounded-lg bg-bar p-1"><Story /></div>],

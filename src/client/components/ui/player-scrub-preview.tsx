@@ -1,5 +1,4 @@
-// Scrubbing preview — ~/Projects/media-manager-2-design/player.pen V9x4Ry (a plain frame in GrqIz state 11)
-// Not in Figma yet.
+// Figma: PlayerScrubPreview — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=109-267
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
