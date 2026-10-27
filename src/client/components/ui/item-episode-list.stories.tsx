@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { ItemEpisodeList } from '@/components/ui/item-episode-list';
 
 const meta = {
-  title: 'UI/ItemEpisodeList',
+  title: 'Rows — titles & releases/ItemEpisodeList',
   component: ItemEpisodeList,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7612' } },

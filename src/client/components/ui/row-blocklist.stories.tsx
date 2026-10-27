@@ -9,7 +9,7 @@ import { Table } from '@/components/ui/table';
 const release = 'Severance.S02E01.Hello.Ms.Cobel.1080p.ATVP.WEB-DL.DDP5.1.H.264-FLUX';
 
 const meta = {
-  title: 'UI/RowBlocklist',
+  title: 'Rows — activity & settings/RowBlocklist',
   component: RowBlocklist,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3473' } },

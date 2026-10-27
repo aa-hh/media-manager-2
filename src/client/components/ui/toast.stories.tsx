@@ -18,7 +18,7 @@ function AddToast(options: ToastOptions) {
 }
 
 const meta = {
-  title: 'UI/Toast',
+  title: 'Feedback & notices/Toast',
   component: ToastProvider,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-838' } },

@@ -80,7 +80,7 @@ const yours = (
 );
 
 const meta = {
-  title: 'UI/RowEpisodeReleases',
+  title: 'Rows — titles & releases/RowEpisodeReleases',
   component: RowEpisodeReleases,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-18095' } },

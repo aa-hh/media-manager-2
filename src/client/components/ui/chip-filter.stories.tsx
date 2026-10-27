@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { ChipFilter } from '@/components/ui/chip-filter';
 
 const meta = {
-  title: 'UI/ChipFilter',
+  title: 'Actions & inputs/ChipFilter',
   component: ChipFilter,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3500' } },

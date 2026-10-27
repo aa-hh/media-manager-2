@@ -12,7 +12,7 @@ const poster = (top: string, bottom: string) => `data:image/svg+xml,${encodeURIC
 )}`;
 
 const meta = {
-  title: 'UI/LibraryPosterCard',
+  title: 'Cards & posters/LibraryPosterCard',
   component: LibraryPosterCard,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-2830' } },

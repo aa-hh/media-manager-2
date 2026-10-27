@@ -6,7 +6,7 @@ import { RadioGroup } from '@/components/ui/radio';
 import { SheetPhone } from '@/components/ui/sheet-phone';
 
 const meta = {
-  title: 'UI/SheetPhone',
+  title: 'Overlays & bars/SheetPhone',
   component: SheetPhone,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7991' } },

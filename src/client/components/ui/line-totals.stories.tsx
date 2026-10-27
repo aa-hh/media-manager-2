@@ -12,7 +12,7 @@ const totals = [
 ];
 
 const meta = {
-  title: 'UI/LineTotals',
+  title: 'Badges, marks & status/LineTotals',
   component: LineTotals,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2311' } },

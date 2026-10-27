@@ -22,7 +22,7 @@ const episodes = [
 ];
 
 const meta = {
-  title: 'UI/DialogCountsAs',
+  title: 'Overlays & bars/DialogCountsAs',
   component: DialogCountsAs,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-11238' } },

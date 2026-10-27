@@ -3,7 +3,7 @@ import { Clapperboard, Tv } from 'lucide-react';
 import { ComboboxItem } from '@/components/ui/combobox-item';
 
 const meta = {
-  title: 'UI/ComboboxItem',
+  title: 'Actions & inputs/ComboboxItem',
   component: ComboboxItem,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3548' } },

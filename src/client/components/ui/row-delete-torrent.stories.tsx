@@ -17,7 +17,7 @@ const torrentChoice = (risky: boolean) => (
 );
 
 const meta = {
-  title: 'UI/RowDeleteTorrent',
+  title: 'Rows — activity & settings/RowDeleteTorrent',
   component: RowDeleteTorrent,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-10060' } },

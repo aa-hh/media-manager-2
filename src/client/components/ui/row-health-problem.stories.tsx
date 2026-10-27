@@ -13,7 +13,7 @@ const docs = (
 );
 
 const meta = {
-  title: 'UI/RowHealthProblem',
+  title: 'Rows — activity & settings/RowHealthProblem',
   component: RowHealthProblem,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4453' } },

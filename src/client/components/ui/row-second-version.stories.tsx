@@ -9,7 +9,7 @@ import { Table } from '@/components/ui/table';
 const deleteButton = <Button size="row" variant="outline-destructive" onClick={fn()}>Delete</Button>;
 
 const meta = {
-  title: 'UI/RowSecondVersion',
+  title: 'Rows — titles & releases/RowSecondVersion',
   component: RowSecondVersion,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7373' } },

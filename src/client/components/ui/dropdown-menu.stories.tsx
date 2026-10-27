@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 const meta = {
-  title: 'UI/DropdownMenu',
+  title: 'Actions & inputs/DropdownMenu',
   component: DropdownMenu,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4049' } },

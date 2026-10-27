@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SignInQuickConnectCode } from '@/components/ui/sign-in-quick-connect-code';
 
 const meta = {
-  title: 'UI/SignInQuickConnectCode',
+  title: 'Sign in/SignInQuickConnectCode',
   component: SignInQuickConnectCode,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-6084' } },

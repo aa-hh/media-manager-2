@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { StatusRulePill } from '@/components/ui/status-rule-pill';
 
 const meta = {
-  title: 'UI/StatusRulePill',
+  title: 'Badges, marks & status/StatusRulePill',
   component: StatusRulePill,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1248' } },

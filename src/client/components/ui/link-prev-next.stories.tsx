@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { LinkPrevNext } from '@/components/ui/link-prev-next';
 
 const meta = {
-  title: 'UI/LinkPrevNext',
+  title: 'Actions & inputs/LinkPrevNext',
   component: LinkPrevNext,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5109' } },

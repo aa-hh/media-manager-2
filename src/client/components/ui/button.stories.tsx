@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';
 
 const meta = {
-  title: 'UI/Button',
+  title: 'Actions & inputs/Button',
   component: Button,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2887' } },

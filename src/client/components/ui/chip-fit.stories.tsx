@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ChipFit } from '@/components/ui/chip-fit';
 
 const meta = {
-  title: 'UI/ChipFit',
+  title: 'Badges, marks & status/ChipFit',
   component: ChipFit,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-892' } },

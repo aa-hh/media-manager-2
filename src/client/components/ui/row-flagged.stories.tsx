@@ -11,7 +11,7 @@ const poster = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.
 const nextSteps = (words: string) => <span className="w-full truncate text-right font-ui text-muted-foreground">{words}</span>;
 
 const meta = {
-  title: 'UI/RowFlagged',
+  title: 'Rows — activity & settings/RowFlagged',
   component: RowFlagged,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4392' } },

@@ -19,7 +19,7 @@ const add = (
 );
 
 const meta = {
-  title: 'UI/RowSearchResult',
+  title: 'Rows — titles & releases/RowSearchResult',
   component: RowSearchResult,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7956' } },

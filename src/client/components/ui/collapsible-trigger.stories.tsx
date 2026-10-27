@@ -5,7 +5,7 @@ import { CollapsibleContent } from '@/components/ui/collapsible-content';
 import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible-trigger';
 
 const meta = {
-  title: 'UI/CollapsibleTrigger',
+  title: 'Headers & navigation/CollapsibleTrigger',
   component: CollapsibleTrigger,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8759' } },

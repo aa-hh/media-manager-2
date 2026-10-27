@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 
 const meta = {
-  title: 'UI/Breadcrumb',
+  title: 'Headers & navigation/Breadcrumb',
   component: Breadcrumb,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8596' } },

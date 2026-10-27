@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { FieldNumber } from '@/components/ui/field-number';
 
 const meta = {
-  title: 'UI/FieldNumber',
+  title: 'Actions & inputs/FieldNumber',
   component: FieldNumber,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-2001' } },

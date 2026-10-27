@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 
 const meta = {
-  title: 'UI/Tooltip',
+  title: 'Actions & inputs/Tooltip',
   component: Tooltip,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3507' } },

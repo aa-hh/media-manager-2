@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { StatusDownloadCircle } from '@/components/ui/status-download-circle';
 
 const meta = {
-  title: 'UI/StatusDownloadCircle',
+  title: 'Badges, marks & status/StatusDownloadCircle',
   component: StatusDownloadCircle,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-414' } },

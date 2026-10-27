@@ -4,7 +4,7 @@ import { CalendarDayHeader, CalendarEntry, CalendarHeader, CalendarMonthCell, Ca
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 const meta = {
-  title: 'UI/Calendar',
+  title: 'Cards & posters/Calendar',
   component: CalendarEntry,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3904' } },

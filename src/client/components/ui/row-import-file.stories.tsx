@@ -38,7 +38,7 @@ const language = (
 );
 
 const meta = {
-  title: 'UI/RowImportFile',
+  title: 'Rows — activity & settings/RowImportFile',
   component: RowImportFile,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-11301' } },

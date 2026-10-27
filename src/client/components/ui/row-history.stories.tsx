@@ -8,7 +8,7 @@ import { Table } from '@/components/ui/table';
 const today = Date.parse('2026-10-27T14:32:00');
 
 const meta = {
-  title: 'UI/RowHistory',
+  title: 'Rows — activity & settings/RowHistory',
   component: RowHistory,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1511' } },

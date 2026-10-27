@@ -6,7 +6,7 @@ import { OptionRow, OptionRowService } from '@/components/ui/option-row';
 import { Radio, RadioGroup } from '@/components/ui/radio';
 
 const meta = {
-  title: 'UI/OptionRow',
+  title: 'Actions & inputs/OptionRow',
   component: OptionRow,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4303' } },

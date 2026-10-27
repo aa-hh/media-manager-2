@@ -3,7 +3,7 @@ import { fn } from 'storybook/test';
 import { StripStillMissing } from '@/components/ui/strip-still-missing';
 
 const meta = {
-  title: 'UI/StripStillMissing',
+  title: 'Feedback & notices/StripStillMissing',
   component: StripStillMissing,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1228' } },

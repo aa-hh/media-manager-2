@@ -20,7 +20,7 @@ const option = (scope: typeof scopes[number]) => (
 );
 
 const meta = {
-  title: 'UI/PanelInline',
+  title: 'Overlays & bars/PanelInline',
   component: PanelInline,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7129' } },

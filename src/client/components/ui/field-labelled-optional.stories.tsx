@@ -3,7 +3,7 @@ import { FieldLabelledOptional } from '@/components/ui/field-labelled-optional';
 import { InputSearch } from '@/components/ui/input-search';
 
 const meta = {
-  title: 'UI/FieldLabelledOptional',
+  title: 'Actions & inputs/FieldLabelledOptional',
   component: FieldLabelledOptional,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1940' } },

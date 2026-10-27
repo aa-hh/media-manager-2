@@ -5,7 +5,7 @@ import { Select, SelectTrigger } from '@/components/ui/select-trigger';
 const sortLabels: Array<[string, string]> = [['popular', 'Popularity'], ['rating', 'Rating'], ['newest', 'Newest'], ['upcoming', 'Upcoming']];
 
 const meta = {
-  title: 'UI/SelectTrigger',
+  title: 'Actions & inputs/SelectTrigger',
   component: SelectTrigger,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1453' } },

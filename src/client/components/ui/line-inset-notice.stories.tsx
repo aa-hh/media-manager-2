@@ -6,7 +6,7 @@ import { LineInsetNotice } from '@/components/ui/line-inset-notice';
 import { RowEpisodeReleases } from '@/components/ui/row-episode-releases';
 
 const meta = {
-  title: 'UI/LineInsetNotice',
+  title: 'Feedback & notices/LineInsetNotice',
   component: LineInsetNotice,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1237' } },

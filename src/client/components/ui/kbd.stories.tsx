@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, CornerDownLeft } from 'lucide-react';
 import { Kbd } from '@/components/ui/kbd';
 
 const meta = {
-  title: 'UI/Kbd',
+  title: 'Actions & inputs/Kbd',
   component: Kbd,
   tags: ['autodocs'],
   parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-446' } },
