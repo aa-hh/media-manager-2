@@ -18,6 +18,7 @@ import { notConfigured } from './services/arr/result.js';
 import type { SecondVersionRow, TrackedHitAndRun } from './secondVersionRows.js';
 import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
 import type { TitleStore } from './titleStore.js';
+import type { LibraryWatch, MovieWatch, SeriesWatch, TitleWatch, WatchStatus } from './watchStatus.js';
 
 export type { FileDetail };
 
@@ -46,6 +47,8 @@ export type LibraryTitle = {
   sizeOnDisk: number;
   tv: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; seasonCount: number } | null;
   movie: { hasFile: boolean; isAvailable: boolean } | null;
+  // Plex watch marks; null when unmatched or when Plex is off or not answering.
+  watch: TitleWatch;
 };
 
 // A strict superset of OwnedEpisode in the client's PickRelease.
@@ -437,6 +440,7 @@ const toTitle = (service: Service, record: Series | Movie, profiles: unknown): L
     status: record.status,
     posterUrl: imageUrl(record.images, 'poster'),
     qualityProfile: profile?.name ?? null,
+    watch: null,
   };
   if (service === 'sonarr') {
     const { statistics } = record as Series;
@@ -505,6 +509,7 @@ export const createLibrary = (
   backdropOf?: (type: 'tv' | 'movie', ids: { tmdbId: number | null; tvdbId: number | null }) => Promise<string | null>,
   trackedHitAndRun: TrackedRows = () => [],
   chipsOf?: (type: 'tv' | 'movie', tmdbId: number) => Promise<TmdbChips>,
+  watchStatus?: WatchStatus,
 ) => {
   const chips = (type: 'tv' | 'movie', record: Series | Movie): Promise<TmdbChips> => (
     chipsOf === undefined || record.tmdbId === null ? Promise.resolve(null) : chipsOf(type, record.tmdbId)
@@ -532,20 +537,25 @@ export const createLibrary = (
   };
 
   return {
-    async titles(): Promise<{ titles: LibraryTitle[]; services: { sonarr: Outcome; radarr: Outcome } }> {
+    async titles(): Promise<{ titles: LibraryTitle[]; services: { sonarr: Outcome; radarr: Outcome }; watch: LibraryWatch }> {
       const fetchService = async (service: Service) => {
         const [items, profiles] = await Promise.all([
           (service === 'sonarr' ? services.sonarr.listSeries() : services.radarr.listMovies()).then((result) => fromArr<Array<Series | Movie>>(result)),
           optional(service, '/api/v3/qualityprofile'),
         ]);
-        const titles = items.kind === 'ok' ? items.value.flatMap((record) => toTitle(service, record, profiles)) : [];
-        return { titles, outcome: outcome(items) };
+        const records = items.kind === 'ok' ? items.value : [];
+        const titles = records.flatMap((record) => toTitle(service, record, profiles));
+        return { titles, records: records.map((record) => ({ service, record })), outcome: outcome(items) };
       };
       const [sonarr, radarr] = await Promise.all([fetchService('sonarr'), fetchService('radarr')]);
-      return { titles: newestFirst([...sonarr.titles, ...radarr.titles]), services: { sonarr: sonarr.outcome, radarr: radarr.outcome } };
+      const watched = watchStatus === undefined
+        ? { watch: { kind: 'off' } as const, byTitle: new Map<string, TitleWatch>() }
+        : await watchStatus.forLibrary([...sonarr.records, ...radarr.records]);
+      const titles = [...sonarr.titles, ...radarr.titles].map((title) => ({ ...title, watch: watched.byTitle.get(`${title.service}:${title.id}`) ?? null }));
+      return { titles: newestFirst(titles), services: { sonarr: sonarr.outcome, radarr: radarr.outcome }, watch: watched.watch };
     },
 
-    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[] }>> {
+    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[]; watch: SeriesWatch }>> {
       const read = services.sonarr.series(id).then(fromArr);
       const [record, episodes, profiles, tags, backdrop, tmdbChips] = await Promise.all([
         read,
@@ -557,7 +567,11 @@ export const createLibrary = (
       ]);
       if (record.kind !== 'ok') return record;
       if (episodes.kind !== 'ok') return episodes;
-      const ratingsBySite = await showRatings(record.value);
+      // Not `?? off`: an unmatched show's null must stay null.
+      const [ratingsBySite, watch] = await Promise.all([
+        showRatings(record.value),
+        watchStatus === undefined ? { kind: 'off' as const } : watchStatus.forSeries(record.value, episodes.value),
+      ]);
       return {
         kind: 'ok',
         value: {
@@ -565,12 +579,13 @@ export const createLibrary = (
           backdropUrl: backdrop,
           secondVersions: versionRows({ service: 'sonarr', seriesId: id }),
           trackedHitAndRun: trackedHitAndRun({ service: 'sonarr', seriesId: id }),
+          watch,
         },
       };
     },
 
     // Credits cost one more Radarr call, so only this route asks for them; a failed read leaves them empty.
-    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[] }>> {
+    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[]; watch: MovieWatch }>> {
       const read = services.radarr.movie(id).then(fromArr);
       const [record, profiles, tags, credits, backdrop, tmdbChips] = await Promise.all([
         read,
@@ -581,6 +596,7 @@ export const createLibrary = (
         read.then((found) => (found.kind === 'ok' ? chips('movie', found.value) : null)),
       ]);
       if (record.kind !== 'ok') return record;
+      const watch = watchStatus === undefined ? { kind: 'off' as const } : await watchStatus.forMovie(record.value);
       return {
         kind: 'ok',
         value: {
@@ -589,6 +605,7 @@ export const createLibrary = (
           credits: creditList(credits.kind === 'ok' ? credits.value : []),
           secondVersions: versionRows({ service: 'radarr', movieId: id }),
           trackedHitAndRun: trackedHitAndRun({ service: 'radarr', movieId: id }),
+          watch,
         },
       };
     },

@@ -22,6 +22,7 @@ import { createJobRunner } from './jobs.js';
 import { createLabels } from './labels.js';
 import { createLibrary } from './library.js';
 import { createOwned } from './owned.js';
+import { createPlayback } from './playback.js';
 import { createProblems } from './problems.js';
 import { createProtection, vetoInBackground } from './protection.js';
 import { createRelinkFix } from './relink.js';
@@ -31,6 +32,7 @@ import { createSearch } from './search.js';
 import { createDiscover } from './discover/index.js';
 import { createTitleStore } from './titleStore.js';
 import { createTmdbTitles } from './tmdbTitles.js';
+import { createWatchStatus } from './watchStatus.js';
 import { createSecondVersionChecks, listSecondVersionRows, listTrackedHitAndRun, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
@@ -41,6 +43,8 @@ import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createMdblist } from './services/mdblist.js';
 import { createMediaServer } from './services/mediaServer.js';
+import { createPlex } from './services/plex.js';
+import { createPlexPlayback } from './services/plexPlayback.js';
 import { createTmdb } from './services/tmdb.js';
 import { createTrakt } from './services/trakt.js';
 import { createFanart } from './services/fanart.js';
@@ -92,6 +96,17 @@ if (database !== undefined) {
   const secondVersions = createSecondVersions({ database, releases, rtorrent });
   const problems = createProblems({ database, events });
   const mediaServer = createMediaServer(database, { ownerPlexId: process.env.PLEX_OWNER_ID });
+  const plex = createPlex(database);
+  const watchStatus = createWatchStatus({
+    plex,
+    enabled: () => mediaServer().name === 'plex' && readSetting(openedDatabase, 'credentials', 'plex.token') !== undefined,
+    now: Date.now,
+  });
+  const plexPlayback = createPlexPlayback(database);
+  const playback = createPlayback({
+    plexPlayback,
+    enabled: () => mediaServer().name === 'plex' && readSetting(openedDatabase, 'credentials', 'plex.token') !== undefined,
+  });
   const versionImport = createVersionImport({ database, rtorrent, arr, mediaServer, problems });
   // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them,
   // and finished ones are imported after it.
@@ -179,7 +194,7 @@ if (database !== undefined) {
     forget: search.forget,
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
-  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips);
+  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips, watchStatus);
   const add = createAdd(arr, titleStore, openedDatabase);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);
@@ -214,6 +229,7 @@ if (database !== undefined) {
     library,
     discover,
     tmdbTitles,
+    playback,
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
       arr,

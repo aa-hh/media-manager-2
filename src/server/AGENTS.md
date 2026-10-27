@@ -6,7 +6,7 @@ Routes, jobs and SQLite storage behind `services/`. Never move or delete a file 
 
 ## Rules
 
-- Imports and relinks only hardlink, and forced imports go through `forceImport`, which refuses when hardlinks are off; moving a file ends seeding.
+- Imports and relinks only hardlink; forced imports go through `forceImport`, which refuses when hardlinks are off; moving a file ends seeding.
 - Delete torrent data only through `removeTorrent`, which checks nothing kept shares it.
 - Queue removals pass skipRedownload, or Sonarr and Radarr search again themselves.
 - Stalled means started and unfinished; never replace or regrab a finished torrent.
@@ -19,13 +19,13 @@ Routes, jobs and SQLite storage behind `services/`. Never move or delete a file 
 ## Map
 
 - `index.ts`, `app.ts`, `cli.ts`, `auth.ts`, `events.ts`, `jobs.ts` → startup, routes, sign-in, jobs.
-- `database.ts`, `settings.ts`, `preferences.ts`, `owner.ts`, `dependencies.ts`, `backup.ts`, `backupDestination.ts` → storage and backups.
-- `setup.ts`, `connections.ts`, `trackerSettings.ts` → setup and settings routes.
+- `database.ts`, `settings.ts`, `preferences.ts`, `owner.ts`, `dependencies.ts`, `backup.ts`, `backupDestination.ts` → storage, backups.
+- `setup.ts`, `connections.ts`, `trackerSettings.ts`, `playback.ts` → setup, settings, playback routes.
 - `grabs.ts`, `replace.ts`, `protection.ts`, `releases.ts`, `releaseDetails.ts`, `searches.ts` → searching, grabbing, replace, protection.
 - `torrents.ts`, `torrentGrabs.ts`, `torrentFiles.ts`, `stalls.ts`, `trackers.ts`, `relink.ts` → rTorrent poll, fixes, removal.
 - `imports.ts`, `manualImport.ts`, `assignments.ts` → blocked imports, import by hand.
 - `secondVersions.ts`, `versionImport.ts`, `secondVersionRows.ts`, `secondVersionDelete.ts` → second versions.
 - `titleDelete.ts`, `advice.ts`, `trackerRules.ts`, `health.ts` → deletion, removal advice, health.
 - `problems.ts`, `flagged.ts`, `blocklist.ts`, `history.ts`, `api.ts` → problems, blocklist, History, queue actions.
-- `library.ts`, `owned.ts`, `add.ts`, `search.ts`, `labels.ts`, `titles.ts`, `titleStore.ts`, `tmdbTitles.ts`, `backdrops.ts`, `clearCache.ts`, `discover/` → library.
+- `library.ts`, `owned.ts`, `add.ts`, `search.ts`, `labels.ts`, `titles.ts`, `titleStore.ts`, `tmdbTitles.ts`, `backdrops.ts`, `clearCache.ts`, `watchStatus.ts`, `discover/` → library.
 - `log.ts` → timing records on stdout.
