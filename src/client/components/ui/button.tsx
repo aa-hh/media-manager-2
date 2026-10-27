@@ -23,7 +23,8 @@ type ButtonProps = ComponentProps<typeof ButtonPrimitive> & {
 };
 
 const variants: Record<ButtonVariant, string> = {
-  default: 'text-action-foreground before:bg-action not-data-disabled:hover:before:bg-action-hover not-data-disabled:active:before:bg-action-pressed',
+  // A menu trigger keeps the pressed fill while its menu is open, such as the poster card's Resume menu.
+  default: 'text-action-foreground before:bg-action not-data-disabled:hover:before:bg-action-hover not-data-disabled:active:before:bg-action-pressed data-popup-open:before:bg-action-pressed',
   outline: 'text-foreground before:border-[1.5px] before:border-foreground before:bg-card not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:border-border',
   ghost: 'text-foreground before:bg-transparent not-data-disabled:hover:before:bg-surface-hover not-data-disabled:active:before:bg-surface-pressed data-disabled:before:bg-transparent',
   destructive: 'text-primary-foreground before:bg-destructive not-data-disabled:hover:before:bg-destructive-hover not-data-disabled:active:before:bg-destructive-pressed',

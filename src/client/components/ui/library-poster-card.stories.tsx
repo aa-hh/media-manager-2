@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { BookmarkX, CalendarClock, Check, Star } from 'lucide-react';
+import { BookmarkX, CalendarClock, Check, Play, Star } from 'lucide-react';
 import { fn } from 'storybook/test';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { LibraryPosterCard } from '@/components/ui/library-poster-card';
 import { formatBytes } from '@/downloads/model';
 import { progressText } from '@/library/grid';
@@ -103,4 +104,45 @@ export const Upcoming: Story = {
     dateTab: { month: 'NOV', day: '26' },
     badges: <Badge icon={<CalendarClock aria-hidden="true" />} className="text-foreground">In 4 weeks</Badge>,
   },
+};
+
+export const Played: Story = { args: { watchMark: 'played' } };
+
+export const StoppedPartway: Story = { args: { watched: 63 } };
+
+const show = {
+  href: '/series/87',
+  poster: poster('#6a7b4e', '#262e18'),
+  title: 'Severance',
+  meta: ['2022', progressText(24, 0, 24), formatBytes(39_700_000_000)].join(' · '),
+};
+
+export const UnwatchedEpisodes: Story = { args: { ...show, watchMark: 8 } };
+
+// Hover or tab to the card to show the button; a click on it plays, anywhere else opens the title.
+export const PlayOnHover: Story = {
+  args: { ...show, watchMark: 8, action: <Button icon={<Play aria-hidden="true" />} onClick={fn()}>Play S3 E5</Button> },
+};
+
+export const DownloadingOnTop: Story = {
+  args: {
+    ...show,
+    meta: ['2022', progressText(16, 3, 19), formatBytes(42_100_000_000)].join(' · '),
+    watchMark: 8,
+    statusOnTop: true,
+    status: <Badge variant="best" icon={<span aria-hidden="true" className="size-1.5 rounded-full bg-foreground" />}>Downloading 64%</Badge>,
+  },
+};
+
+export const ContinueWatching: Story = {
+  args: {
+    meta: '1 h 15 min left',
+    watched: 63,
+    actionAlwaysVisible: true,
+    action: <Button icon={<Play aria-hidden="true" />} onClick={fn()}>Resume</Button>,
+  },
+};
+
+export const ContinueWatchingLoading: Story = {
+  args: { ...ContinueWatching.args, action: <Button icon={<Play aria-hidden="true" />} loading>Resume</Button> },
 };
