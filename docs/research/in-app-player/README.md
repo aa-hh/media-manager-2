@@ -13,6 +13,7 @@
 - [plex-watch-status.md](plex-watch-status.md): showing Plex watch status in the app, and matching our titles to Plex items.
 - [plax-lessons.md](plax-lessons.md): what the owner's own Plex TV client, Plax, shows about Plex's playback calls.
 - [plex-desktop-network.md](plex-desktop-network.md) (27 Oct): every request the official Plex desktop app (1.115.0, which also uses mpv) makes during playback, read from its bundled code. Covers the full playback order, how it picks the server address, how mpv fetches the video, intro and credits skip, and recommendations for our player.
+- [mpv-in-window.md](mpv-in-window.md) (27 Oct): the test of three ways to draw mpv inside the desktop window, with the owner's measured results and what the desktop app takes from them.
 
 The Jellyfin recommendation below stands as research but is no longer the plan.
 
@@ -32,7 +33,7 @@ Confirms and narrows the 14 Oct desktop decision below.
 - **Token:** the stream address carries a Plex token (`X-Plex-Token`).
   - Suggestion: our server fetches a short-lived one with `GET /security/token?type=delegation&scope=all` and hands only that to the desktop app.
   - Plex Web calls this to hand playback to another device; the reply is a token starting with `transient-`, but how long it lasts is untested.
-- **Still open:** how mpv is drawn inside an Electron window (below).
+- **Settled 27 Oct: how mpv is drawn inside the window.** mpv draws with its `gpu-next` renderer in its own borderless window, with the transparent Electron window attached on top. It is the only way tested that shows Dolby Vision profile 5 in the right colours ([mpv-in-window.md](mpv-in-window.md)).
 
 ## Decision, 14 Oct 2026
 
