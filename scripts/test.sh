@@ -4,9 +4,12 @@
 #
 # Usage: sh scripts/test.sh [--full] [extra args passed to the test runner]
 #   (no flag)  the fast run Guard 4 uses at commit
-#   --full     the full suite; pre-push and CI run it
+#   --full     the full suite, plus the Storybook stories this branch changes,
+#              in headless Chromium with their accessibility check; pre-push
+#              and CI run it
 #   --review-script  check the review script with macOS Bash, then the shell self-tests
 #   --production  check the already built production application
+#   --story-args  print the story test arguments --full uses (for the self-test)
 set -eu
 cd "$(dirname "$0")/.."
 # The tests copy this environment into the servers they start, and the app
@@ -35,6 +38,24 @@ if [ "${1:-}" = --review-script ]; then
     /bin/bash scripts/test-review-branch.sh
     /bin/bash scripts/test-guard-agents-docs.sh
     /bin/bash scripts/test-screenshots.sh
+    /bin/bash scripts/test-story-args.sh
+    exit 0
+fi
+
+if [ "${1:-}" = --story-args ]; then
+    # Only the stories whose file, or a file it imports, changed since this
+    # branch left main; on main itself, since the previous commit. Prints
+    # nothing, which runs every story, when a file every story depends on
+    # changed or there is no main to compare with; a run of every story fails
+    # when it finds none, so a broken stories pattern cannot pass.
+    if base=$(git merge-base HEAD origin/main 2>/dev/null); then
+        if [ "$base" = "$(git rev-parse HEAD)" ]; then
+            base=$(git rev-parse -q --verify HEAD~1) || exit 0
+        fi
+        if git diff --quiet "$base" -- package.json package-lock.json vite.config.ts .storybook src/client/globals.css; then
+            echo "--changed $base --passWithNoTests"
+        fi
+    fi
     exit 0
 fi
 
@@ -51,4 +72,10 @@ if [ "$full" = 1 ]; then
 fi
 
 sh scripts/build.sh
+if [ "$full" = 1 ]; then
+    # The stories this branch changes (see --story-args) render and pass their
+    # accessibility check. Chromium comes from `sh scripts/setup.sh` locally
+    # and from the workflow in CI.
+    npx vitest run --project storybook $(sh scripts/test.sh --story-args)
+fi
 exec node --test "$@" tests/production.test.mjs

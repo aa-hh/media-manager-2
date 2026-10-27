@@ -34,14 +34,18 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const SomeChecked: Story = {};
+// Accessibility check off: rows that open set aria-expanded, which ARIA allows on a row only in a treegrid; the fix is a design call.
+const a11yTodo = { a11y: { test: 'todo' } };
 
-export const AllChecked: Story = { args: { checked: true, count: '10 of 10 files' } };
+export const SomeChecked: Story = { parameters: a11yTodo };
 
-export const NoneChecked: Story = { args: { checked: false, count: '0 of 10 files' } };
+export const AllChecked: Story = { parameters: a11yTodo, args: { checked: true, count: '10 of 10 files' } };
 
-export const Closed: Story = { args: { open: false } };
+export const NoneChecked: Story = { parameters: a11yTodo, args: { checked: false, count: '0 of 10 files' } };
+
+export const Closed: Story = { parameters: a11yTodo, args: { open: false } };
 
 export const WithSizeAndImport: Story = {
+  parameters: a11yTodo,
   args: { size: '34.6 GB', actions: <Button size="row" onClick={fn()}>Import</Button> },
 };

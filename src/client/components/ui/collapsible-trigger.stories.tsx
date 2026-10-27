@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 import { Badge } from '@/components/ui/badge';
+import { CollapsibleContent } from '@/components/ui/collapsible-content';
 import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible-trigger';
 
 const meta = {
@@ -29,7 +30,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Closed: Story = {};
 
-export const Open: Story = { args: { summary: undefined }, parameters: { open: true } };
+export const Open: Story = {
+  args: { summary: undefined },
+  parameters: { open: true },
+  render: (args) => <><CollapsibleTrigger {...args} /><CollapsibleContent>Partly downloaded torrents: below 10 %, ratio 1, 14 days</CollapsibleContent></>,
+};
 
 export const WithBadge: Story = { args: { badge: <Badge variant="risk">1 problem</Badge> } };
 
