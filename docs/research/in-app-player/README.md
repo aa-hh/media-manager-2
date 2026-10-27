@@ -16,51 +16,28 @@
 
 The Jellyfin recommendation below stands as research but is no longer the plan.
 
-## Decision, 27 Oct 2026 (replaces the desktop app)
+## Decision, 27 Oct 2026
 
-- **The player goes into the existing web app.** No desktop or native app for now. This brings back [player-stack.md](player-stack.md)'s recommendation: a player in the website using Shaka Player, with our own React controls.
-- **Video doesn't pass through Cloudflare.** Sending every byte of video through Cloudflare would cost too much.
-  - The browser fetches the video straight from Plex on the slot, over Plex's own `*.plex.direct` HTTPS address. Plex's web app does the same.
-  - Only the small control calls go through our app.
-  - Checked 14 Oct: Plex on the slot allows our site's address (CORS) once a token is sent ([media-servers.md](media-servers.md), CORS section).
-  - The 14 Oct mpv test shows the `plex.direct` address is reachable from the owner's Mac.
-  - This removes the largest piece of Route 1 below, the server route that passed video through.
-- **Token in the browser.** The stream address has to carry a Plex token (`X-Plex-Token`).
-  - Suggestion: our server fetches a short-lived token with `GET /security/token?type=delegation&scope=all` and hands only that to the browser, never the owner's long-lived token.
-  - Plex Web calls this to hand playback to another device; the reply is a token starting with `transient-` ([plex-desktop-network.md](plex-desktop-network.md) source, main 136714-136724).
-  - How long it lasts and what it allows are untested.
-- **The Plex calls carry over.** Play queues, timeline, track choice, played status, preferences and skip markers in [plex-desktop-network.md](plex-desktop-network.md) are the same in a browser.
-- **What doesn't carry over** is how the desktop app gets the video. The browser path in the same code differs:
-  - it streams over HLS or DASH, not `protocol=http`;
-  - seeking works inside the stream rather than by rewriting `offset`;
-  - it burns some subtitles into the picture;
-  - it can use Plex's server-side automatic quality.
-  - Next research step: trace that browser path the same way.
+Confirms and narrows the 14 Oct desktop decision below.
 
-### What this changes
-
-- **Conversion load on the slot comes back for some files.** A browser can't play every file as it is. The more files Plex has to convert, the more of the slot's shared processor it uses.
-
-| File feature | What Plex has to do |
-|---|---|
-| MKV container | repackage only (direct stream), which is cheap |
-| DTS or TrueHD audio | convert the audio only, which is moderate |
-| HEVC video in a browser that can't decode it | full conversion, which is heavy; banned for 4K HEVC on Whatbox |
-| PGS subtitles | either full conversion to burn them in, or draw them in the browser instead (libbitsub, in [player-stack.md](player-stack.md)) |
-
-  - Safari and Chrome on a Mac decode HEVC, so 4K HEVC files can still play as they are there.
-- **HDR and Dolby Vision on the laptop need new tests.**
-  - The 14 Oct mpv results below don't apply to a browser.
-  - Whether Safari or Chrome tone-map HDR10 correctly on the owner's non-HDR screen, and how they show Dolby Vision profile 5 (the type that can turn green and purple), is untested.
-  - If they don't, the only fix is converting on the slot, which is banned for 4K HEVC.
-- **No surround passthrough.** Browsers can't send DTS or TrueHD untouched to an amplifier.
+- **A thin desktop wrapper around the existing web app, not a separate native app.**
+  - The Electron window loads the same web app and screens we already have.
+  - Only the video is native: mpv drawn inside the window, with our controls on top.
+  - This is the way the official Plex app works: Plex's web app in a Qt window, libmpv drawing the video, and a bridge passing commands between the two ([plex-desktop-network.md](plex-desktop-network.md)).
+  - So we copy Plex's desktop requests exactly, including the `Plex Desktop` profile, the `protocol=http` stream and seeking by `offset`, and the slot converts nothing for normal playback.
+  - The owner considered a player inside the browser, then chose this. A browser can't run mpv; mpv opened in its own window gives up our controls and the in-window mini player.
+- **Video never passes through Cloudflare.** It would cost too much.
+  - mpv fetches the video straight from Plex on the slot over Plex's `*.plex.direct` HTTPS address. The 14 Oct mpv test used that same address.
+  - Only the small control calls go through our app at the owner's domain.
+- **Token:** the stream address carries a Plex token (`X-Plex-Token`).
+  - Suggestion: our server fetches a short-lived one with `GET /security/token?type=delegation&scope=all` and hands only that to the desktop app.
+  - Plex Web calls this to hand playback to another device; the reply is a token starting with `transient-`, but how long it lasts is untested.
+- **Still open:** how mpv is drawn inside an Electron window (below).
 
 ## Decision, 14 Oct 2026
 
-Superseded on 27 Oct where it concerns the desktop app (Electron, mpv, how mpv sits in the window). The points about Plex only, no playback tests on the slot, quality and HDR still stand.
-
 - **Plex only.**
-- **A desktop app built with Electron** (superseded 27 Oct), running on the owner's computer and connecting to the app and Plex on the slot. It plays the original file with mpv, so normal playback puts no conversion load on Whatbox. This rules out [player-stack.md](player-stack.md)'s recommendation of a player in the website. Its desktop section and the mpv details there still apply.
+- **A desktop app built with Electron**, running on the owner's computer and connecting to the app and Plex on the slot. It plays the original file with mpv, so normal playback puts no conversion load on Whatbox. This rules out [player-stack.md](player-stack.md)'s recommendation of a player in the website. Its desktop section and the mpv details there still apply.
 - **No playback tests on the slot.** Whatbox doesn't want resource-heavy programs running on shared slots.
 - **Quality: original file by default, a quality setting in the player for the rest.** Picking a lower quality asks Plex on the slot to convert, and the player plays whatever stream comes back. The owner has run Plex conversions on the slot before. Whatbox's rules still ban converting 4K HEVC ([aa-8-whatbox-hosting.md](../aa-8-whatbox-hosting.md)), so for those files the setting would offer only Original, or a lower-quality second version if one exists.
 - **HDR must not look grey on a non-HDR screen.** Many of the owner's files are HDR, and the Plex app shows them with correct colour on a laptop without an HDR display. Ours must too. Confirmed 14 Oct: Plex's dashboard shows these files as Direct Play, so the Plex app does the conversion on the laptop and Whatbox only sends the file. That means tone mapping on the owner's computer: converting HDR colour to normal colour while playing. mpv does this when the screen isn't HDR. The Plex app does it with libmpv drawn inside its own window (`vo=libmpv`, through mpv's render API), so an embedded mpv can keep tone mapping. That was shown in Plex's Qt app, not yet in Electron ([plex-desktop-network.md](plex-desktop-network.md) section 9). Plex's client also flags itself as able to show HDR but not Dolby Vision (`canDisplayHDR: true`, `canDisplayDolbyVision: false`), and still direct-plays Dolby Vision files. Dolby Vision files need checking separately: shown without Dolby Vision support, some of them come out green and purple.
@@ -118,7 +95,7 @@ Recommended order: Jellyfin first, Plex second behind the same screens, Emby onl
 
 **What the build involves** (from codebase-fit.md)
 - A server route that passes video from Jellyfin through to the browser. The browser can't be given the Jellyfin key, Plex is only reachable from inside the slot, and the app runs on HTTPS. This is the largest single piece.
-  - Correction, 27 Oct: Plex is reachable from outside over its `plex.direct` address, which the 14 Oct mpv test used. For Plex, the 27 Oct decision drops this route and has the browser fetch video from Plex directly. The current request helper gives up after 10 seconds and only reads JSON, so it needs a streaming version.
+  - Correction, 27 Oct: Plex is reachable from outside over its `plex.direct` address, which the 14 Oct mpv test used. The current request helper gives up after 10 seconds and only reads JSON, so it needs a streaming version.
 - Matching our episodes and movies to the media server's items, by file path first (everything shares one machine).
 - Keeping the owner's Jellyfin sign-in token, which sign-in currently throws away (`src/server/services/jellyfin.ts:153`). Progress can't be saved without it.
 - A player screen with quality and subtitle menus and a resume prompt. Player libraries: hls.js for playback, JASSUB for styled subtitles, libbitsub for picture subtitles.
@@ -129,11 +106,9 @@ Recommended order: Jellyfin first, Plex second behind the same screens, Emby onl
 - Files that need full conversion stay slow to start and slow to seek. 4K HEVC can't be converted at all on Whatbox, so it only plays in browsers that handle it natively (Safari, Chrome on a Mac).
 - Browsers can't pass surround sound untouched to an amplifier. DTS and TrueHD get converted.
 - Fancy subtitles don't show in iPhone fullscreen.
-- All video would pass through Cloudflare. Its terms for video weren't checked. Dropped 27 Oct: under the new decision, video goes from Plex to the browser directly.
+- All video would pass through Cloudflare. Its terms for video weren't checked.
 
 ## Route 2: a desktop app that talks to the app on Whatbox
-
-Not the plan as of 27 Oct. Kept as a possible later step.
 
 The owner asked whether a local app could connect to the server on Whatbox, like the Plex app. Neither of the 14 Oct reports researched this. The points below came from general knowledge of the tools named. Each one checked since is marked with its 27 Oct update, from [plex-desktop-network.md](plex-desktop-network.md).
 
@@ -156,7 +131,6 @@ Both server-side needs are small: a way for the desktop app to sign in (the app 
 
 ## Open questions for the owner
 
-- ~~Browser or desktop?~~ Answered 27 Oct: browser, inside the existing web app.
+- ~~Browser or desktop?~~ Answered: desktop wrapper (14 Oct, confirmed 27 Oct). Route 2, option 2.
 - ~~Is it worth upgrading the slot's Jellyfin from 10.11 to 12 first?~~ Moot since Plex-only (14 Oct).
-- Which browser does the owner watch in? Safari and Chrome on a Mac decode HEVC, which decides how many files need converting on the slot.
-- Could not verify: the details listed under "Could not verify" at the end of [media-servers.md](media-servers.md), plus Whatbox's traffic limits.
+- Could not verify: the details listed under "Could not verify" at the end of [media-servers.md](media-servers.md), plus Whatbox's traffic limits. Cloudflare's terms for video no longer matter: video doesn't go through it.
