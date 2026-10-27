@@ -1,4 +1,4 @@
-// v2/Downloads live bar — ~/Projects/media-manager-2-design/design-system.lib.pen jXjdR
+// Figma: DownloadsLiveBar — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5766
 import { Collapsible } from '@base-ui/react/collapsible';
 import { ArrowDownToLine, ChevronUp } from 'lucide-react';
 import type { ReactNode } from 'react';

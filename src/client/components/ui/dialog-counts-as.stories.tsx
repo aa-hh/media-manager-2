@@ -25,6 +25,7 @@ const meta = {
   title: 'UI/DialogCountsAs',
   component: DialogCountsAs,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-11238' } },
   // It sits under the choice cards in Pick a release's decision dialog, whose px-3 it lines up with.
   decorators: [
     (Story) => (

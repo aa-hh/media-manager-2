@@ -1,4 +1,5 @@
-// v2/Bar/selection — ~/Projects/media-manager-2-design/design-system.lib.pen TPw8z
+// Figma: BarSelection — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8764
+// Figma: BarSelectionAction — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8595
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button, type ButtonProps } from '@/components/ui/button';

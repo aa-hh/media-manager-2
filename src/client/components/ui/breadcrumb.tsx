@@ -1,4 +1,4 @@
-// v2/Breadcrumb — ~/Projects/media-manager-2-design/design-system.lib.pen K5LLLh
+// Figma: Breadcrumb — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8596
 import { ChevronRight } from 'lucide-react';
 import { Fragment, type ComponentProps, type MouseEvent, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';

@@ -7,6 +7,7 @@ const meta = {
   title: 'UI/NavigationPhone',
   component: NavigationPhone,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-5947' } },
   // A phone-width column, as the bar would sit at the top of a phone screen.
   decorators: [(Story) => <div className="w-[390px]"><Story /></div>],
   args: { title: 'Library', onBack: fn(), onMore: fn() },

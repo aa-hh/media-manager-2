@@ -1,4 +1,4 @@
-// v2/Header/title — ~/Projects/media-manager-2-design/design-system.lib.pen NaDkI
+// Figma: HeaderTitle — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=12-4118
 import { type ReactNode, useState } from 'react';
 import { ToggleBookmark, type BookmarkState } from '@/components/ui/toggle-bookmark';
 import { cn } from '@/lib/utils';

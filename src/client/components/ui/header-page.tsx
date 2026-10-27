@@ -1,4 +1,4 @@
-// v2/Header/page — ~/Projects/media-manager-2-design/design-system.lib.pen pLro9
+// Figma: HeaderPage — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-9197
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

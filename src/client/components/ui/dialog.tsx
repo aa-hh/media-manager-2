@@ -1,4 +1,4 @@
-// v2/Dialog — ~/Projects/media-manager-2-design/design-system.lib.pen Oi69B
+// Figma: Dialog — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7741
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';

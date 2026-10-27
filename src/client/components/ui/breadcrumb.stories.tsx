@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/Breadcrumb',
   component: Breadcrumb,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8596' } },
   args: {
     links: [{ label: 'Library', href: '/', onClick: fn() }],
     current: 'Severance',

@@ -17,6 +17,7 @@ const meta = {
   title: 'UI/HeaderResults',
   component: HeaderResults,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-10091' } },
   args: { count: '6 results for', query: '“dune”', filter: filter(2, 4, 6) },
 } satisfies Meta<typeof HeaderResults>;
 

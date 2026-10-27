@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/BarBottomAction',
   component: BarBottomAction,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8292' } },
   args: {
     summary: 'Unticked parts are skipped. Settings has them later.',
     action: <Button size="large" icon={<ArrowRight />} onClick={fn()}>Start with Sonarr</Button>,

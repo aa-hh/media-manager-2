@@ -1,4 +1,4 @@
-// v2/Bar/bottom-action — ~/Projects/media-manager-2-design/design-system.lib.pen z2z0d
+// Figma: BarBottomAction — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8292
 import { PencilLine } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';

@@ -1,4 +1,4 @@
-// v2/Panel/inline — ~/Projects/media-manager-2-design/design-system.lib.pen cZb0Z
+// Figma: PanelInline — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7129
 import { Collapsible } from '@base-ui/react/collapsible';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';

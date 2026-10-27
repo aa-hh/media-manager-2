@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/CollapsibleContent',
   component: CollapsibleContent,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8945' } },
   // The tracker editor's More group: the content sits under its trigger inside one Collapsible.
   decorators: [
     (Story, { parameters }) => (

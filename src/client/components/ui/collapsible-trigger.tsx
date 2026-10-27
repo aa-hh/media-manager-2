@@ -1,5 +1,4 @@
-// v2/Collapsible trigger — ~/Projects/media-manager-2-design/design-system.lib.pen c5J2uH
-// v2/Collapsible trigger/open — ~/Projects/media-manager-2-design/design-system.lib.pen T1mOH (the open state: chevron down, summary hidden)
+// Figma: CollapsibleTrigger — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8759
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
