@@ -1,4 +1,5 @@
 // Figma: HeaderTitle — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=12-4118
+// Play line (play, HeaderPlayLine) — ~/Projects/media-manager-2-design/title.pen uyR8T, which replaces 5:w2M8v in each 5:NaDkI instance (NIjoo, p6VuR). Not in Figma yet.
 import { type ReactNode, useState } from 'react';
 import { ToggleBookmark, type BookmarkState } from '@/components/ui/toggle-bookmark';
 import { cn } from '@/lib/utils';
@@ -17,6 +18,8 @@ type HeaderTitleProps = {
   meta?: ReactNode;
   /** Status Badges. */
   badges?: ReactNode;
+  /** A HeaderPlayLine under the badges, in both layouts; left out when nothing can play. */
+  play?: ReactNode;
   overview?: ReactNode;
   /** Large default Button. */
   primary?: ReactNode;
@@ -99,6 +102,7 @@ function HeaderTitle({
   status,
   meta,
   badges,
+  play,
   overview,
   primary,
   secondary,
@@ -145,6 +149,7 @@ function HeaderTitle({
           </div>
           {meta !== undefined && <p className="font-data text-[15px] font-normal text-muted-foreground">{meta}</p>}
           {badges !== undefined && <div className="flex flex-wrap items-center gap-1.5">{badges}</div>}
+          {play}
           {!actionsRight && overview !== undefined && <p className="max-w-170 font-ui text-[15px] leading-[1.55] font-normal text-muted-foreground">{overview}</p>}
           {!actionsRight && actions}
         </div>
@@ -155,4 +160,17 @@ function HeaderTitle({
   );
 }
 
-export { HeaderBackdrop, HeaderTitle };
+/** The header's Play line: a large default Play or Resume Button, then what it plays and how much is left. */
+function HeaderPlayLine({ action, line1, line2 }: { action: ReactNode; line1: ReactNode; line2: ReactNode }) {
+  return (
+    <div className="flex items-center gap-4 pt-2">
+      {action}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-ui text-sm font-semibold text-foreground">{line1}</span>
+        <span className="font-data text-sm text-muted-foreground">{line2}</span>
+      </div>
+    </div>
+  );
+}
+
+export { HeaderBackdrop, HeaderPlayLine, HeaderTitle };

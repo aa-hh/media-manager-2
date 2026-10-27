@@ -39,6 +39,12 @@ colors:
   destructive-on-dark: "#F2A097"
   card-on-dark: "#FFFFFF0D"
   input-on-dark: "#FFFFFF3D"
+  surface-on-video: "#111111D9"
+  surface-hover-on-video: "#FFFFFF14"
+  surface-pressed-on-video: "#FFFFFF1F"
+  border-on-video: "#FFFFFF1F"
+  kbd-on-video: "#FFFFFF26"
+  mark-on-video: "#FFFFFFB3"
   best: "#C6F135"
   best-soft: "#F3FCD6"
   best-foreground: "#3D5600"
@@ -197,6 +203,7 @@ Neutrals do most of the work. One meaning per colour.
 - **Amber:** `warning` and `warning-soft` are for missing, below cutoff, import blocked, unsaved edits and changes waiting for Sonarr or Radarr.
 - **On a poster:** `watch-bar` (#75BAD1) is the blue watch bar of a title stopped partway; `poster-mark` (black 62%) is the frosted base of the played tick and the unwatched number.
 - **Focus:** `ring` (black) on white; `focus-on-dark` (white) on the black bars and on posters.
+- **Over the video:** the player draws over a moving picture, so its colours are translucent. `surface-on-video` (#111111 at 85%) fills a control floating on the picture (Skip intro) and the played circle on an episode still. `surface-hover-on-video` (white 8%) is the highlighted row in a dark menu and the subtitle timing steps; `surface-pressed-on-video` (white 12%) is an on-dark button on hover, press and while its menu is open; `border-on-video` (white 12%) edges the dark menus and tooltips and draws their separators; `kbd-on-video` (white 15%) is a key hint's fill on Skip intro; `mark-on-video` (white 70%) draws the intro and credits marks over the timeline. Text on them is `foreground-on-dark` and `muted-foreground-on-dark`; menus fill with `bar`.
 - **Overlay:** `scrim` (black 30%) dims the page behind a phone sheet. `shadow` is the colour of the floating shadow.
 
 Posters keep their own colour; the interface stays black and white around them.
@@ -321,6 +328,24 @@ Icon-only buttons are squares at the same heights, and badges follow the same he
 - **Previous and next:** `v2/Link prev-next` (`link-prev-next.tsx`): two ghost buttons, 36 high, 600 words and 16px chevrons in `muted-foreground`, 6 between chevron and words.
 - **Search result:** 84px row with a 40 by 60 poster, title and year, one meta line, one overview line, and either "In library" as a plain badge (check and words, no box) with the file count (fixed 80px column) or a row-size outline Add button, both 28px.
 - **Calendar:** entries are `muted` tiles, radius 12, no edge, with a 3px marker (amber missing, red gave up) and a black progress bar while downloading. Today's date sits in a black circle. Month cells are 188 by 132 with up to three entries and "+2 more". Week view has a 2px black now line with an 8px dot. The calendar is view-only; entries open the title.
+
+### Player and playing
+
+From `player.pen` v96V7 and `title.pen` CaPVj (approved 27 Oct 2026); not in Figma yet.
+
+- **v2/Player/Stage** (`player-stage.tsx`): the player filling the window, drawn at 1280 by 720. Top bar 24 in and 20 down: an on-dark Back, the title 16/700 over a 13 line, and the format line (12/500, HDR and Dolby Vision only) at the right. Controls 24 in, 49 up: the timeline (time 14/500 data, a 4 high line in `input-on-dark` with the played part in `foreground-on-dark`, what has loaded ahead in white 45%, a 14px white dot, 3px black gaps at chapter starts, 2px `mark-on-video` lines above for the intro and credits) and the buttons row (Previous and Next only with a play queue; Back 10 s, Forward 30 s; Subtitles, Audio and Quality labelled with the current choice). Black scrims fade in 160 high from the top and 280 from the bottom. Hidden controls leave only the picture; opening and buffering dim the picture (55%, 35%) under a 40px spinner with one or two lines.
+- **v2/Button/on-dark** (`variant="on-dark"`): no fill or edge, `foreground-on-dark` 20px icon and 14/600 label, 10 padding; white 12% on hover and while its menu is open. `outline-on-dark` adds a 1.5px `input-on-dark` edge (Close player, Back to library). `on-video` is Skip intro and Skip credits: 44 high, `surface-on-video` fill, the same edge, a 16px icon and the S key, 24 in from the bottom right.
+- **Dark menus** (`DropdownMenuContent onDark`, rows from `v2/DropdownMenu/Item/on-dark`): `bar` fill, 1px `border-on-video` edge, radius 12, a deeper black shadow, 12/600 group labels in `bar-muted-foreground`, rows in `bar-foreground` highlighting white 8%, the chosen row ticked. Each opens above its button, right edges aligned; Timing and Load ahead open a second menu to the left. The last row may be the Saved to Plex line (`line-saved-to-plex.tsx`: the gold Plex mark and a 12px sentence) or a muted note.
+- **Subtitle timing** (`stepper-subtitle-timing.tsx`): minus and plus on white 8%, the offset in data 20/600 with "later than the voice" or "earlier than the voice" under it, 0.1 s a press.
+- **Scrubbing** (`player-scrub-preview.tsx`): Plex's preview picture 256 by 144 with a 2px light edge, radius 6, the time in data 16/600 and the chapter name, 20 above the line, centred on a 2px white hover line.
+- **Next tooltip** (`tooltip-next.tsx`): on Previous and Next, the item's 96 by 54 still, "Next · S1 E5" 12/600 muted and the title 14/600, on the dark menu surface.
+- **Error block** (`player-error.tsx`): over the picture dimmed 70%, a 36px `destructive-on-dark` icon, 22/700 title, a sentence, one data line (what was tried, or the next try), then a default Button and an outline-on-dark Close player.
+- **v2/Player/Up next** (`player-up-next.tsx`): 800 wide on black. "Next episode" 28/700 with "Starts in 8s" and a white bar that empties; the next item's 352 by 198 still, show 20/700, episode 16/500, runtime and a two-line summary; Play now (focused, white ring) and an outline Back to library; key hints in white 40%. While the next episode is still downloading: no countdown, the four steps (download with a lime bar, importing, the two Plex steps), the note and Stop waiting.
+- **Mini player** (`player-mini.tsx`): 400 by 225 inside the window, bottom right above the downloads bar, radius 12, the float shadow. With the pointer over it: a scrim, back to full size and close at the top right, a 56px play or pause circle in the middle, title and time at the foot over a 3px progress line.
+- **v2/Still/episode** (`still-episode.tsx`): 72 by 40, radius 4, at the start of every 56px episode row. Placeholder (`muted`, 1px `border` inside) without an image; grey and faded with no file; faded with a 4px lime strip while downloading; a 6px `watch-bar` on a black 60% track when stopped partway; 60% with a 16px `surface-on-video` tick when played. Only a still with a file is a button: a 40% black scrim and a 24px white play circle on hover and focus, glow-blue at rest on the next episode to watch, and a 2px inner `ring` on focus.
+- **Header Play line** (`HeaderPlayLine` in `header-title.tsx`, the `play` slot): under the badges, a large default Play or Resume ("Resume S2 E4") and two lines: what it plays 14/600 ("Stopped at 21:00 · S2 E4 · Woe's Hollow") over data 14 `muted-foreground` ("31 min left of 52 min"). A title with nothing downloaded has no Play line.
+- **Resume menu** (`menu-resume.tsx`): from the header's Resume, a still, or the poster card's Resume when there is a saved position. Start (Resume from 21:00, Play from the start), then Version when there are two or more, the default ticked.
+- **Settings, Playback** (`settings-playback.tsx`): only in the desktop app. Load ahead as a toggle group (30 s to 10 min), the same value as the player's gear menu, with a line on what it costs. Drawn only in the 14 Oct exploration `player.pen` U9Z5wS; `settings.pen` has no Playback page yet.
 
 ### Chrome and floating things
 

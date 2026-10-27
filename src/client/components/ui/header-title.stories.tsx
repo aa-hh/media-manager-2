@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Ellipsis, List, Search } from 'lucide-react';
+import { Ellipsis, List, Play, Search } from 'lucide-react';
 import { fn } from 'storybook/test';
 import { Badge } from '@/components/ui/badge';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { Fact } from '@/components/ui/fact';
-import { HeaderTitle } from '@/components/ui/header-title';
+import { HeaderPlayLine, HeaderTitle } from '@/components/ui/header-title';
 import { StatusInline } from '@/components/ui/status-inline';
 
 // Sample artwork as inline SVG; the app gets poster and backdrop URLs from Sonarr or Radarr.
@@ -91,3 +91,39 @@ export const NotAdded: Story = {
 };
 
 export const WithoutArtwork: Story = { args: { posterUrl: undefined, backdropUrl: undefined } };
+
+// title.pen NIjoo: the Play line under the badges with a saved position; Search missing and Pick a release move to outline.
+export const PlayLineResume: Story = {
+  decorators: [(Story) => <main className="isolate"><Story /></main>],
+  args: {
+    actionsRight: true,
+    play: (
+      <HeaderPlayLine
+        action={<Button size="large" icon={<Play />} onClick={fn()}>Resume S2 E4</Button>}
+        line1="Stopped at 21:00 · S2 E4 · Woe’s Hollow"
+        line2="31 min left of 52 min"
+      />
+    ),
+    primary: <Button variant="outline" size="large" icon={<Search />} onClick={fn()}>Search missing</Button>,
+  },
+};
+
+// p6VuR: a movie with two versions and no saved position; Play starts the highest quality at once.
+export const PlayLineMovie: Story = {
+  decorators: [(Story) => <main className="isolate"><Story /></main>],
+  args: {
+    actionsRight: true,
+    title: 'Dune: Part Two',
+    bookmark: undefined,
+    meta: 'Movie · 2024 · ★ 8.2 · 2 h 46 min',
+    badges: <Badge variant="strong">In library</Badge>,
+    play: (
+      <HeaderPlayLine
+        action={<Button size="large" icon={<Play />} onClick={fn()}>Play</Button>}
+        line1="2 h 46 min · plays 2160p WEB-DL"
+        line2="Highest quality of 2 versions; the 1080p one is in the ••• menu"
+      />
+    ),
+    primary: undefined,
+  },
+};

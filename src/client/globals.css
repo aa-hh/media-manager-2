@@ -87,6 +87,13 @@
   --destructive-on-dark: #f2a097;
   --card-on-dark: #ffffff0d;
   --input-on-dark: #ffffff3d;
+  /* Surfaces over the video picture in the player (DESIGN.md "Over the video"). */
+  --surface-on-video: #111111d9;
+  --surface-hover-on-video: #ffffff14;
+  --surface-pressed-on-video: #ffffff1f;
+  --border-on-video: #ffffff1f;
+  --kbd-on-video: #ffffff26;
+  --mark-on-video: #ffffffb3;
   --best: #c6f135;
   --best-soft: #f3fcd6;
   --best-foreground: #3d5600;
@@ -345,6 +352,12 @@
   --color-destructive-on-dark: var(--destructive-on-dark);
   --color-card-on-dark: var(--card-on-dark);
   --color-input-on-dark: var(--input-on-dark);
+  --color-surface-on-video: var(--surface-on-video);
+  --color-surface-hover-on-video: var(--surface-hover-on-video);
+  --color-surface-pressed-on-video: var(--surface-pressed-on-video);
+  --color-border-on-video: var(--border-on-video);
+  --color-kbd-on-video: var(--kbd-on-video);
+  --color-mark-on-video: var(--mark-on-video);
   --color-best: var(--best);
   --color-best-soft: var(--best-soft);
   --color-best-foreground: var(--best-foreground);

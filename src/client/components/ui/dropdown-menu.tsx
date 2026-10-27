@@ -1,9 +1,11 @@
 // Figma: DropdownMenuContent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4049
 // Figma: DropdownMenuItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3626
+// v2/DropdownMenu/Item/on-dark — ~/Projects/media-manager-2-design/player.pen E0jSO; the dark menu panel is the plain frame b5iya in player.pen GrqIz.
+// The dark menu (onDark) is not in Figma yet.
 import { Menu } from '@base-ui/react/menu';
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { Check, ChevronRight } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
+import { createContext, use, type ComponentProps, type ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +32,14 @@ const item = cn(
 
 const destructiveItem = 'text-destructive data-highlighted:bg-destructive-soft [&>svg]:text-destructive';
 
+// The dark menus over the player's picture: bar fill, white 12% edge, a deeper shadow; rows highlight white 8%.
+const contentOnDark = 'border-border-on-video bg-bar text-bar-foreground shadow-[0_2px_6px_#0000004d,0_8px_24px_#00000066]';
+const itemOnDark = 'text-bar-foreground data-highlighted:bg-surface-hover-on-video [&>svg]:text-bar-muted-foreground';
+const indicatorOnDark = 'text-bar-foreground';
+
+// Set by DropdownMenuContent so every row inside takes the dark look without a prop of its own.
+const OnDarkContext = createContext(false);
+
 type ItemParts = {
   /** A 16 px lucide icon before the label. */
   icon?: ReactNode;
@@ -52,14 +62,19 @@ const DropdownMenuTrigger = Menu.Trigger;
 const DropdownMenuGroup = Menu.Group;
 const DropdownMenuSubmenu = Menu.SubmenuRoot;
 
-type DropdownMenuContentProps = ComponentProps<typeof Menu.Popup> & Pick<ComponentProps<typeof Menu.Positioner>, 'side' | 'align' | 'sideOffset'>;
+type DropdownMenuContentProps = ComponentProps<typeof Menu.Popup> & Pick<ComponentProps<typeof Menu.Positioner>, 'side' | 'align' | 'sideOffset'> & {
+  /** The dark menu over the player's picture; set its width with className (260 to 340 in the player). */
+  onDark?: boolean;
+};
 
 /** The floating list: 248 px, radius 12, 4 px padding, line edge and the float shadow. */
-function DropdownMenuContent({ side = 'bottom', align = 'start', sideOffset = 4, className, ...props }: DropdownMenuContentProps) {
+function DropdownMenuContent({ side = 'bottom', align = 'start', sideOffset = 4, onDark = false, className, ...props }: DropdownMenuContentProps) {
   return (
     <Menu.Portal>
       <Menu.Positioner side={side} align={align} sideOffset={sideOffset} className="z-50 outline-hidden">
-        <Menu.Popup className={cn(content, className)} {...props} />
+        <OnDarkContext value={onDark}>
+          <Menu.Popup className={cn(content, onDark && contentOnDark, className)} {...props} />
+        </OnDarkContext>
       </Menu.Positioner>
     </Menu.Portal>
   );
@@ -69,8 +84,9 @@ type DropdownMenuItemProps = ComponentProps<typeof Menu.Item> & ItemParts & { de
 
 /** One 32 px menu row. Destructive: red label and icon, risk-soft highlight. */
 function DropdownMenuItem({ icon, kbd, destructive = false, className, children, ...props }: DropdownMenuItemProps) {
+  const onDark = use(OnDarkContext);
   return (
-    <Menu.Item className={cn(item, destructive && destructiveItem, className)} {...props}>
+    <Menu.Item className={cn(item, onDark && itemOnDark, destructive && destructiveItem, className)} {...props}>
       <ItemBody icon={icon} kbd={kbd}>{children}</ItemBody>
     </Menu.Item>
   );
@@ -78,20 +94,38 @@ function DropdownMenuItem({ icon, kbd, destructive = false, className, children,
 
 /** A menu row that keeps a check; the check shows at the right when on. */
 function DropdownMenuCheckboxItem({ icon, kbd, className, children, ...props }: ComponentProps<typeof Menu.CheckboxItem> & ItemParts) {
+  const onDark = use(OnDarkContext);
   return (
-    <Menu.CheckboxItem className={cn(item, className)} {...props}>
+    <Menu.CheckboxItem className={cn(item, onDark && itemOnDark, className)} {...props}>
       <ItemBody icon={icon} kbd={kbd}>{children}</ItemBody>
-      <Menu.CheckboxItemIndicator className="flex text-foreground [&>svg]:size-4">
+      <Menu.CheckboxItemIndicator className={cn('flex text-foreground [&>svg]:size-4', onDark && indicatorOnDark)}>
         <Check aria-hidden="true" />
       </Menu.CheckboxItemIndicator>
     </Menu.CheckboxItem>
   );
 }
 
+/** One choice of several, such as a version, an audio track or a quality step; holds DropdownMenuRadioItem rows. */
+const DropdownMenuRadioGroup = Menu.RadioGroup;
+
+/** A row in a DropdownMenuRadioGroup; the chosen one carries the check at the right. */
+function DropdownMenuRadioItem({ icon, kbd, className, children, ...props }: ComponentProps<typeof Menu.RadioItem> & ItemParts) {
+  const onDark = use(OnDarkContext);
+  return (
+    <Menu.RadioItem className={cn(item, onDark && itemOnDark, className)} {...props}>
+      <ItemBody icon={icon} kbd={kbd}>{children}</ItemBody>
+      <Menu.RadioItemIndicator className={cn('flex text-foreground [&>svg]:size-4', onDark && indicatorOnDark)}>
+        <Check aria-hidden="true" />
+      </Menu.RadioItemIndicator>
+    </Menu.RadioItem>
+  );
+}
+
 /** A menu row that opens a further menu; the chevron sits at the right. */
 function DropdownMenuSubmenuTrigger({ icon, kbd, className, children, ...props }: ComponentProps<typeof Menu.SubmenuTrigger> & ItemParts) {
+  const onDark = use(OnDarkContext);
   return (
-    <Menu.SubmenuTrigger className={cn(item, 'data-popup-open:bg-surface-hover', className)} {...props}>
+    <Menu.SubmenuTrigger className={cn(item, 'data-popup-open:bg-surface-hover', onDark && cn(itemOnDark, 'data-popup-open:bg-surface-hover-on-video'), className)} {...props}>
       <ItemBody icon={icon} kbd={kbd}>{children}</ItemBody>
       <ChevronRight aria-hidden="true" />
     </Menu.SubmenuTrigger>
@@ -100,12 +134,19 @@ function DropdownMenuSubmenuTrigger({ icon, kbd, className, children, ...props }
 
 /** Small heading over a group of rows; place inside DropdownMenuGroup. */
 function DropdownMenuGroupLabel({ className, ...props }: ComponentProps<typeof Menu.GroupLabel>) {
-  return <Menu.GroupLabel className={cn('font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground', className)} {...props} />;
+  const onDark = use(OnDarkContext);
+  return (
+    <Menu.GroupLabel
+      className={cn('font-ui text-[11px] font-semibold tracking-[0.5px] text-subtle-foreground', onDark && 'px-2 pt-2 pb-1 text-xs tracking-normal text-bar-muted-foreground', className)}
+      {...props}
+    />
+  );
 }
 
 /** 1 px line with 4 px above and below. */
 function DropdownMenuSeparator({ className, ...props }: ComponentProps<typeof Menu.Separator>) {
-  return <Menu.Separator className={cn('my-1 h-px w-full shrink-0 bg-border', className)} {...props} />;
+  const onDark = use(OnDarkContext);
+  return <Menu.Separator className={cn('my-1 h-px w-full shrink-0 bg-border', onDark && 'bg-border-on-video', className)} {...props} />;
 }
 
 /** The open list of a Select (its trigger is SelectTrigger): the same surface as the menu, dropping below the trigger. */
@@ -145,6 +186,8 @@ export {
   DropdownMenuGroup,
   DropdownMenuGroupLabel,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuSubmenu,
   DropdownMenuSubmenuTrigger,
