@@ -32,13 +32,13 @@ function StepperSubtitleTiming({ offset, onEarlier, onLater, className }: Steppe
   const valueId = useId();
   return (
     <div className={cn('flex items-center justify-between px-2 py-1', className)}>
-      <Menu.Item closeOnClick={false} onClick={onEarlier} aria-describedby={valueId} render={<Button variant="on-dark" iconOnly icon={<Minus />} aria-label="Earlier" className={step} />} />
+      <Menu.Item nativeButton closeOnClick={false} onClick={onEarlier} aria-describedby={valueId} render={<Button variant="on-dark" iconOnly icon={<Minus />} aria-label="Earlier" className={step} />} />
       <div id={valueId} className="flex flex-col items-center gap-0.5">
         <span className="font-data text-xl font-semibold text-bar-foreground">{formatOffset(offset)}</span>
         {/* min-h keeps the row one height when the line is empty. */}
         <span className="min-h-4 font-ui text-xs text-bar-muted-foreground">{meaning}</span>
       </div>
-      <Menu.Item closeOnClick={false} onClick={onLater} aria-describedby={valueId} render={<Button variant="on-dark" iconOnly icon={<Plus />} aria-label="Later" className={step} />} />
+      <Menu.Item nativeButton closeOnClick={false} onClick={onLater} aria-describedby={valueId} render={<Button variant="on-dark" iconOnly icon={<Plus />} aria-label="Later" className={step} />} />
     </div>
   );
 }
