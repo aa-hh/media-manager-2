@@ -11501,6 +11501,119 @@ test('library posters and title pages derive progress and totals from the live d
   });
 });
 
+test('library filters, watch marks and the card Play follow Plex watch status', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { filterTitles, filterCounts, segmentsFor } = await load('../src/client/library/grid.ts');
+  const { watchMarks, continueMeta, playLabel, playMode, plexWebUrl, movieLoad, episodeLoad, clockText } = await load('../src/client/library/watch.ts');
+
+  const show = (id, { files = 10, episodes = 10, watch = null } = {}) => ({ type: 'tv', service: 'sonarr', id, status: 'continuing', monitored: true,
+    tv: { episodeFileCount: files, episodeCount: episodes, totalEpisodeCount: episodes, seasonCount: 1 }, movie: null, watch });
+  const movie = (id, { hasFile = true, watch = null } = {}) => ({ type: 'movie', service: 'radarr', id, status: 'released', monitored: true,
+    tv: null, movie: { hasFile, isAvailable: true }, watch });
+  const shown = (watch) => ({ kind: 'show', ratingKey: 'S', leafCount: 10, viewedLeafCount: 0, lastViewedAt: null, ...watch });
+  const film = (watch) => ({ kind: 'movie', ratingKey: 'M', viewOffsetMs: null, durationMs: 7_200_000, viewCount: 0, lastViewedAt: null, ...watch });
+  const item = (service, id, rest = {}) => ({ service, id, viewOffsetMs: null, durationMs: null, lastViewedAt: null, episode: null, ...rest });
+  const titles = [
+    show(1, { watch: shown({ viewedLeafCount: 4 }) }),
+    show(2, { files: 7, watch: shown({ viewedLeafCount: 10 }) }),
+    show(3, { watch: shown({ viewedLeafCount: 10 }) }),
+    movie(4, { watch: film({ viewCount: 1 }) }),
+    movie(5, { watch: film({}) }),
+    movie(6, { hasFile: false }),
+  ];
+  const facts = {
+    progress: new Map([['movie:5', { word: 'downloading', tone: 'normal', percent: 40, downRate: 1 }]]),
+    downloadingByShow: new Map([[2, 1]]),
+    continueWatching: [item('radarr', 5), item('sonarr', 1), item('sonarr', 99)],
+  };
+  const ids = (list) => list.map((title) => title.id);
+
+  // Applying only one filter set, or making Continue Watching follow the library's order instead of Plex's, turns this red.
+  await t.test('the type tabs and the segments apply together, and Continue Watching keeps Plex\'s order', () => {
+    assert.deepEqual(ids(filterTitles(titles, 'all', 'continue', facts)), [5, 1]);
+    assert.deepEqual(ids(filterTitles(titles, 'tv', 'continue', facts)), [1]);
+    assert.deepEqual(ids(filterTitles(titles, 'all', 'unwatched', facts)), [1, 5]);
+    assert.deepEqual(ids(filterTitles(titles, 'movie', 'unwatched', facts)), [5]);
+    assert.deepEqual(ids(filterTitles(titles, 'all', 'missing', facts)), [2, 6]);
+    assert.deepEqual(ids(filterTitles(titles, 'all', 'downloading', facts)), [2, 5]);
+    assert.deepEqual(ids(filterTitles(titles, 'movie', 'all', facts)), [4, 5, 6]);
+  });
+
+  // Counting each set against the whole library, instead of the other set's choice, turns this red.
+  await t.test('each filter set counts within the other set\'s choice', () => {
+    assert.deepEqual(filterCounts(titles, 'tv', 'unwatched', facts), {
+      kinds: { all: 2, movie: 1, tv: 1 },
+      segments: { all: 3, continue: 1, unwatched: 1, missing: 1, downloading: 1 },
+    });
+  });
+
+  // Offering Continue Watching or Unwatched without Plex's answer turns this red.
+  await t.test('Continue Watching and Unwatched hide when Plex is off or not answering', () => {
+    assert.deepEqual(segmentsFor('ok'), ['all', 'continue', 'unwatched', 'missing', 'downloading']);
+    for (const kind of ['unavailable', 'off']) assert.deepEqual(segmentsFor(kind), ['all', 'missing', 'downloading']);
+  });
+
+  // A tick beside the watch bar, a tick on a partly watched show, or a mark with no Plex match turns this red.
+  await t.test('marks follow Plex: the bar when stopped partway, else a tick or the unwatched count', () => {
+    assert.deepEqual(watchMarks(film({ viewCount: 1 }), undefined), { watchMark: 'played' });
+    assert.deepEqual(watchMarks(film({ viewCount: 1, viewOffsetMs: 1_800_000 }), undefined), { watched: 25 });
+    assert.deepEqual(watchMarks(film({}), undefined), {});
+    assert.deepEqual(watchMarks(shown({ viewedLeafCount: 2 }), undefined), { watchMark: 8 });
+    assert.deepEqual(watchMarks(shown({ viewedLeafCount: 10 }), undefined), { watchMark: 'played' });
+    assert.deepEqual(watchMarks(shown({ viewedLeafCount: 2 }), item('sonarr', 1, { viewOffsetMs: 600_000, durationMs: 2_400_000 })), { watched: 25 });
+    assert.deepEqual(watchMarks(null, undefined), {});
+  });
+
+  // Changing the wording the design fixes ("S2 E4 · 31 min left", "Next: S3 E2 · 28 min", "1 h 15 min left") turns this red.
+  await t.test('the Continue Watching meta line and the button words', () => {
+    const resumed = item('sonarr', 1, { viewOffsetMs: 21 * 60_000, durationMs: 52 * 60_000, episode: { seasonNumber: 2, episodeNumber: 4, title: null } });
+    const next = item('sonarr', 1, { durationMs: 28 * 60_000, episode: { seasonNumber: 3, episodeNumber: 2, title: null } });
+    const film75 = item('radarr', 5, { viewOffsetMs: 30 * 60_000, durationMs: 105 * 60_000 });
+    assert.equal(continueMeta(resumed), 'S2 E4 · 31 min left');
+    assert.equal(continueMeta(next), 'Next: S3 E2 · 28 min');
+    assert.equal(continueMeta(film75), '1 h 15 min left');
+    assert.equal(continueMeta(item('radarr', 5, { durationMs: 120 * 60_000 })), '2 h');
+    assert.equal(playLabel(shown({}), resumed), 'Resume');
+    assert.equal(playLabel(shown({}), next), 'Play S3 E2');
+    assert.equal(playLabel(film({}), undefined), 'Play');
+    assert.equal(playLabel(film({ viewOffsetMs: 60_000 }), undefined), 'Resume');
+    assert.equal(clockText(21 * 60_000), '21:00');
+    assert.equal(clockText(3_909_000), '1:05:09');
+  });
+
+  // A Play on Jellyfin or for an unmatched title, the in-app player in a plain browser, or a wrong Plex address turns this red.
+  await t.test('which Play a card shows, and the Plex Web address', () => {
+    const plex = { mediaServer: 'plex', libraryWatch: 'ok', watch: film({}) };
+    assert.equal(playMode({ ...plex, desktop: true }), 'desktop');
+    assert.equal(playMode({ ...plex, desktop: false }), 'plex-web');
+    assert.equal(playMode({ ...plex, desktop: true, mediaServer: 'jellyfin' }), 'none');
+    assert.equal(playMode({ ...plex, desktop: false, libraryWatch: 'unavailable' }), 'none');
+    assert.equal(playMode({ ...plex, desktop: true, watch: null }), 'none');
+    assert.equal(plexWebUrl('abc123', '4521'), 'https://app.plex.tv/desktop/#!/server/abc123/details?key=%2Flibrary%2Fmetadata%2F4521');
+  });
+
+  // Loading a show's first episode instead of the asked or next one, or resuming from a start click, turns this red.
+  await t.test('the desktop load picks the asked episode, then Plex\'s next, then the earliest', () => {
+    const playable = (ratingKey, viewOffsetMs = null) => ({ ratingKey, mediaIndex: 1, partId: 9, versions: [], viewOffsetMs, durationMs: 1, viewCount: 0, lastViewedAt: null });
+    const episodes = [{ id: 10, seasonNumber: 0, episodeNumber: 1 }, { id: 11, seasonNumber: 1, episodeNumber: 1 }, { id: 12, seasonNumber: 1, episodeNumber: 2 }];
+    const watch = { kind: 'ok', machineIdentifier: 'm', ratingKey: 'S', leafCount: 3, viewedLeafCount: 0, nextEpisode: null,
+      episodes: { 10: playable('e10'), 11: playable('e11'), 12: playable('e12', 90_500) } };
+    const flags = { directPlay: true, directStream: true, directStreamAudio: true };
+    assert.deepEqual(episodeLoad({ episodes, watch }, { seasonNumber: 1, episodeNumber: 2 }, 'resume'),
+      { ratingKey: 'e12', mediaIndex: 1, partIndex: 0, offsetSeconds: 90, flags });
+    assert.equal(episodeLoad({ episodes, watch }, { seasonNumber: 1, episodeNumber: 2 }, 'start').offsetSeconds, 0);
+    assert.equal(episodeLoad({ episodes, watch: { ...watch, nextEpisode: { seasonNumber: 1, episodeNumber: 2 } } }, null, 'start').ratingKey, 'e12');
+    assert.equal(episodeLoad({ episodes, watch }, null, 'start').ratingKey, 'e11');
+    assert.equal(episodeLoad({ episodes, watch }, { seasonNumber: 4, episodeNumber: 1 }, 'start'), null);
+    assert.equal(episodeLoad({ episodes, watch: { kind: 'unavailable' } }, null, 'start'), null);
+    assert.deepEqual(movieLoad({ kind: 'ok', machineIdentifier: 'm', ...playable('m1', 61_000) }, 'resume'),
+      { ratingKey: 'm1', mediaIndex: 1, partIndex: 0, offsetSeconds: 61, flags });
+    assert.equal(movieLoad(null, 'start'), null);
+  });
+});
+
 test('title pages mark episodes and select ranges of episodes only', async (t) => {
   // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
