@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/SelectTrigger',
   component: SelectTrigger,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1453' } },
   // The trigger only works inside a Select; this is Discover's Sort select with its open list.
   // parameters.open opens the list on load; parameters.empty starts with nothing chosen so the placeholder shows.
   decorators: [

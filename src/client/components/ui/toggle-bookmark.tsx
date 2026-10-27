@@ -1,4 +1,4 @@
-// v2/Toggle/Bookmark — ~/Projects/media-manager-2-design/design-system.lib.pen QSZ23
+// Figma: ToggleBookmark — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3497
 import { Bookmark, BookmarkMinus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

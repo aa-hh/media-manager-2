@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/LinkPrevNext',
   component: LinkPrevNext,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5109' } },
   args: {
     previous: { label: 'S02E06', onClick: fn() },
     next: { label: 'S02E08', onClick: fn() },

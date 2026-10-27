@@ -1,5 +1,5 @@
-// v2/DropdownMenu/Content — ~/Projects/media-manager-2-design/design-system.lib.pen D3lFb
-// v2/DropdownMenu/Item — ~/Projects/media-manager-2-design/design-system.lib.pen Gtcpe
+// Figma: DropdownMenuContent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4049
+// Figma: DropdownMenuItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3626
 import { Menu } from '@base-ui/react/menu';
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { Check, ChevronRight } from 'lucide-react';

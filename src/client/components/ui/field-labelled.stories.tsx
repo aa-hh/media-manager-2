@@ -9,6 +9,7 @@ const meta = {
   title: 'UI/FieldLabelled',
   component: FieldLabelled,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1769' } },
   // The field fills its container; this is one column of the two-column grid on the Settings service editors.
   decorators: [(Story) => <div className="w-100"><Story /></div>],
   args: {

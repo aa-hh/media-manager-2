@@ -1,6 +1,4 @@
-// v2/Select trigger — ~/Projects/media-manager-2-design/design-system.lib.pen v8Swg
-// v2/Select trigger/sm — ~/Projects/media-manager-2-design/design-system.lib.pen VlOeD (size="sm")
-// v2/Select trigger/inline — ~/Projects/media-manager-2-design/design-system.lib.pen fzgYZ (variant="inline")
+// Figma: SelectTrigger — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1453
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { ChevronDown, Plus } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';

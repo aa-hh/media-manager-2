@@ -1,4 +1,4 @@
-// v2/Card/choice — ~/Projects/media-manager-2-design/design-system.lib.pen E7Mh6m
+// Figma: CardChoice — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5106
 import type { ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
 import { Radio } from '@/components/ui/radio';

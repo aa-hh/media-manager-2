@@ -1,7 +1,4 @@
-// v2/Field/labelled — ~/Projects/media-manager-2-design/design-system.lib.pen N61zp
-// v2/Field/labelled/empty — ~/Projects/media-manager-2-design/design-system.lib.pen SAhSg (the input's placeholder, in input-search.tsx)
-// v2/Field/labelled/on-dark — ~/Projects/media-manager-2-design/design-system.lib.pen z5mBu (onDark, with an InputSearch of variant "field-on-dark")
-// v2/Field/labelled/error — ~/Projects/media-manager-2-design/design-system.lib.pen n76fel (the error prop: destructive edge, help hidden, error text wraps)
+// Figma: FieldLabelled — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1769
 import { Field } from '@base-ui/react/field';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

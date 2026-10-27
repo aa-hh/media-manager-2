@@ -1,4 +1,4 @@
-// v2/Field/number — ~/Projects/media-manager-2-design/design-system.lib.pen FIdi9
+// Figma: FieldNumber — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-2001
 import type { ComponentProps, ReactNode } from 'react';
 import { InputSearch } from '@/components/ui/input-search';
 import { cn } from '@/lib/utils';

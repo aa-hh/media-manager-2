@@ -1,4 +1,4 @@
-// v2/Switch — ~/Projects/media-manager-2-design/design-system.lib.pen gNBGP
+// Figma: Switch — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-667
 import { Switch as SwitchPrimitive } from '@base-ui/react/switch';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
