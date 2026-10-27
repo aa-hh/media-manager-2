@@ -7,6 +7,7 @@ const meta = {
   title: 'UI/Calendar',
   component: CalendarEntry,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3904' } },
   // A tile fills its day column; week view columns are this wide.
   render: (args) => <div className="w-47"><CalendarEntry {...args} /></div>,
   args: { href: '/series/12', title: 'Severance', meta: '21:00 · S02E05', onClick: fn() },

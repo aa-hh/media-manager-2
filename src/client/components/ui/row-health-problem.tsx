@@ -1,4 +1,4 @@
-// v2/Row/health-problem — ~/Projects/media-manager-2-design/design-system.lib.pen rBoB2
+// Figma: RowHealthProblem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4453
 import type { ReactNode } from 'react';
 import { TableCell, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

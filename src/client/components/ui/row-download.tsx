@@ -1,4 +1,5 @@
-// v2/Row/download — ~/Projects/media-manager-2-design/design-system.lib.pen k3Rz6
+// Figma: RowDownload — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7054
+// Figma: RowDownloadHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7374
 import type { ReactNode } from 'react';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Progress, type ProgressTone } from '@/components/ui/progress';

@@ -11,6 +11,7 @@ const meta = {
   title: 'UI/RowHistory',
   component: RowHistory,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1511' } },
   // The row is a set of table cells sized to the header's columns; the History screen renders it inside this table.
   decorators: [
     (Story) => (

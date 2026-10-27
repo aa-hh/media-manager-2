@@ -1,4 +1,4 @@
-// Torrent row in the delete movie, show and season dialogs — ~/Projects/media-manager-2-design/title.pen "Dialog, delete season" (DASyr), "Dialog, delete show" (g9Y8c)
+// Figma: RowDeleteTorrent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-10060
 import { CircleCheck, Clock, Lock, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';

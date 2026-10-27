@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/CardLibrary',
   component: CardLibrary,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-420' } },
   args: {
     ratings: [
       { source: 'IMDb', value: '8.5', votes: '612,408 votes' },

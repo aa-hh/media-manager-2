@@ -14,6 +14,7 @@ const meta = {
   title: 'UI/RowFlagged',
   component: RowFlagged,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4392' } },
   // The Flagged screen's Needs you table and its header, whose columns the row's cells are sized to.
   decorators: [
     (Story) => (

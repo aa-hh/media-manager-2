@@ -1,4 +1,4 @@
-// v2/Library poster card — ~/Projects/media-manager-2-design/design-system.lib.pen Z0OVp
+// Figma: LibraryPosterCard — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-2830
 import { ArrowRight, Check, Clapperboard, ImageOff, Tv } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useState } from 'react';
 import { cn } from '@/lib/utils';

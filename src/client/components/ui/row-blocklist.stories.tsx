@@ -12,6 +12,7 @@ const meta = {
   title: 'UI/RowBlocklist',
   component: RowBlocklist,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3473' } },
   // The row's cells are sized to the header's columns; the Blocklist screen renders it inside this table.
   decorators: [
     (Story) => (

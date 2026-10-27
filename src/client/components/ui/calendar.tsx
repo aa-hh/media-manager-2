@@ -1,8 +1,8 @@
-// v2/Calendar/Entry — ~/Projects/media-manager-2-design/design-system.lib.pen zrJc8
-// v2/Calendar/DayHeader — ~/Projects/media-manager-2-design/design-system.lib.pen t2YxG
-// v2/Calendar/MonthCell — ~/Projects/media-manager-2-design/design-system.lib.pen z4pNq0
-// v2/Calendar/Now line — ~/Projects/media-manager-2-design/design-system.lib.pen Ey0Ju
-// v2/Calendar/Header — ~/Projects/media-manager-2-design/design-system.lib.pen kGPpG
+// Figma: CalendarEntry — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3904
+// Figma: CalendarDayHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5011
+// Figma: CalendarNowLine — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5014
+// Figma: CalendarMonthCell — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5244
+// Figma: CalendarHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-10114
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';

@@ -15,6 +15,7 @@ const meta = {
   title: 'UI/LibraryPosterCard',
   component: LibraryPosterCard,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-2830' } },
   args: {
     href: '/movie/412',
     poster: poster('#c8873a', '#3b2312'),

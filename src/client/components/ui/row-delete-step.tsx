@@ -1,4 +1,4 @@
-// Step row on the delete results screen — ~/Projects/media-manager-2-design/title.pen "Dialog, delete season results" (s6SYzN)
+// Figma: RowDeleteStep — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8538
 import { CircleCheck, CirclePause, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
