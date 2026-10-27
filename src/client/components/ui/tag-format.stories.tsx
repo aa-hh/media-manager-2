@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/TagFormat',
   component: TagFormat,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-774' } },
   args: { children: 'DDP 5.1' },
 } satisfies Meta<typeof TagFormat>;
 

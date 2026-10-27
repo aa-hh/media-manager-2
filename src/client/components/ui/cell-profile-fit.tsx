@@ -1,4 +1,4 @@
-// v2/Cell/profile-fit — ~/Projects/media-manager-2-design/design-system.lib.pen rolXw
+// Figma: CellProfileFit — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-778
 import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
 

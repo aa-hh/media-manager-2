@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/CellProfileFit',
   component: CellProfileFit,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-778' } },
   // A table cell's content; shown in a release row of the app's Table so it sits at row height.
   decorators: [
     (Story) => (

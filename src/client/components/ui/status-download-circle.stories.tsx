@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/StatusDownloadCircle',
   component: StatusDownloadCircle,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-414' } },
   args: { state: 'downloading', percent: 42 },
 } satisfies Meta<typeof StatusDownloadCircle>;
 
