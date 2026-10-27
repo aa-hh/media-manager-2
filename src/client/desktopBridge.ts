@@ -25,7 +25,7 @@ export type LoadRequest = {
  */
 export type LoadReply = Record<string, unknown> & { startPositionSeconds: number };
 
-/** The picture's place inside the window, in CSS pixels. */
+/** The picture's place inside the window, in the page's CSS pixels. */
 export type Rect = { x: number; y: number; width: number; height: number };
 
 export type DesktopEvents = {
@@ -37,21 +37,31 @@ export type DesktopEvents = {
   /** mpv's demuxer-cache-duration, in seconds. */
   loadedAhead: number;
   endOfFile: undefined;
-  error: { message: string };
+  /** Every way of playing failed; `tried` lists them in order, for the player's error screen. */
+  error: { message: string; tried: string[] };
   /** mpv's track-list property as mpv reports it. */
   tracks: Array<Record<string, unknown>>;
+  /** After an automatic retry: a fresh copy of the start reply, with a new `session`. */
+  started: LoadReply;
 };
 
 export type DesktopBridge = {
-  /** The only call that touches the token: the main process starts playback itself and keeps the stream address. */
+  /**
+   * The only call that touches the token: the main process starts playback itself and keeps the stream address.
+   * Playback unpauses by itself once the tracks are picked.
+   */
   load(request: LoadRequest): Promise<LoadReply>;
   play(): Promise<void>;
   pause(): Promise<void>;
   seek(seconds: number): Promise<void>;
   setAudio(index: number): Promise<void>;
+  /** Pass the reply track's `url` (its stream key, null when embedded) and `ffIndex` unchanged; Off is index -1 with both null. */
   setSubtitle(track: { index: number; url: string | null; ffIndex: number | null }): Promise<void>;
   setSubtitleDelay(seconds: number): Promise<void>;
+  /** 16 MiB to 8 GiB. */
   setLoadAhead(bytes: number): Promise<void>;
+  /** Bytes; 512 MiB until changed. */
+  getLoadAhead(): Promise<number>;
   /** Places the picture inside mpv's window; never moves a window. */
   setLayout(layout: 'full' | 'mini' | Rect): Promise<void>;
   setFullscreen(on: boolean): Promise<void>;
