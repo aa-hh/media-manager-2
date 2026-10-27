@@ -6,6 +6,7 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
+const { originOf, pageCopy, pageTrack, callerAllowed } = require('./lib/page');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -57,13 +58,6 @@ let appOrigin = null;
 
 const isHttp = (url) => /^https?:/i.test(url) || /^mailto:/i.test(url);
 const openOutside = (url) => { if (isHttp(url)) void shell.openExternal(url); };
-const originOf = (url) => {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
-};
 const isAddressPage = (url) => url.startsWith('file:') && decodeURIComponent(new URL(url).pathname) === ADDRESS_PAGE;
 
 const showAddressPage = (query = {}) => {
@@ -72,6 +66,9 @@ const showAddressPage = (query = {}) => {
 };
 const showApp = (origin) => {
   appOrigin = origin;
+  // Another address can mean another Plex server: its id and address are found again.
+  serverId = undefined;
+  keptOrigin = null;
   void win.loadURL(origin);
 };
 
@@ -114,7 +111,8 @@ function createWindow() {
     showAddressPage({ address: appOrigin, error: 'no_answer' });
   });
 
-  win.on('move', () => mpv?.matchFrame());
+  // Trap: Electron 45 documents 'moved' as an alias of 'move' on macOS, so the name alone does not make this once per drag.
+  win.on('moved', () => mpv?.matchFrame());
   win.on('resized', () => mpv?.matchFrame());
   let layoutTimer;
   win.on('resize', () => {
@@ -244,6 +242,8 @@ let mpv = null;
 let layout = 'full';
 let fullscreen = false;
 let current = null; // the title playing: what was asked, the plan, the kept address and the retry counts
+// The title whose file mpv last opened. mpv's file events belong to it, so they are ignored once a newer load replaces it.
+let loaded = null;
 
 const OBSERVED = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'demuxer-cache-duration', 'track-list'];
 const send = (name, value) => {
@@ -271,7 +271,7 @@ const readTracks = async () => {
       const value = await mpv.getProperty(`track-list/${index}/${field}`);
       return [field, value === null ? null : type === 'number' ? Number(value) : type === 'boolean' ? value === 'yes' : value];
     }),
-  ))));
+  )).then(pageTrack)));
 };
 
 function onMpvEvent(event) {
@@ -299,10 +299,10 @@ function onMpvEvent(event) {
   } else if (event.event === 'log-message') {
     if (current && /HTTP error 401/i.test(String(event.value))) current.unauthorized = true;
   } else if (event.event === 'file-loaded') {
-    startPlaying().catch(() => {}); // a track that cannot be picked still plays, with mpv's own choice
+    if (current === loaded) startPlaying().catch(() => {}); // a track that cannot be picked still plays, with mpv's own choice
   } else if (event.event === 'end-file') {
     const reason = String(event.value ?? '');
-    if (!current || reason === 'stop' || reason === 'quit' || reason === 'redirect') return;
+    if (!current || current !== loaded || reason === 'stop' || reason === 'quit' || reason === 'redirect') return;
     // A transcode often has no duration in mpv; Plex's own length stands in.
     const total = current.duration ?? (typeof current.reply?.durationMs === 'number' ? current.reply.durationMs / 1000 : null);
     const nearEnd = total === null || total - current.position < 15;
@@ -318,10 +318,14 @@ function onMpvEvent(event) {
   }
 }
 
-// After the file opens paused: pick the tracks, then unpause (the on_preloaded order in network §9).
+// After the file opens paused: pick the tracks, then unpause (the on_preloaded order in network §9), unless a seek
+// reloaded the title while the owner had it paused.
 async function startPlaying() {
   if (!current) return;
-  const { reply } = current;
+  const playing = current;
+  const { reply } = playing;
+  const stayPaused = playing.stayPaused === true;
+  playing.stayPaused = false;
   try {
     if (reply.decision.directPlay) {
       const tracks = await readTracks();
@@ -332,7 +336,7 @@ async function startPlaying() {
       if (subtitle) await selectSubtitle({ url: subtitle.external ? subtitle.key : null, ffIndex: subtitle.ffIndex }, tracks);
     }
   } finally {
-    await mpv.setProperty('pause', 'no');
+    if (!stayPaused) await mpv.setProperty('pause', 'no');
   }
 }
 
@@ -350,18 +354,6 @@ const requestBody = (ask, flags, offsetSeconds) => ({
   clientId: clientId(),
   sessionIdentifier,
 });
-
-// The page's copy: no stream address. An external subtitle's url becomes its tokenless stream key, which setSubtitle takes back.
-const pageCopy = (reply) => {
-  const { streamAddresses, ...rest } = reply;
-  return {
-    ...rest,
-    tracks: {
-      ...rest.tracks,
-      subtitle: rest.tracks.subtitle.map((track) => ({ ...track, url: track.external ? track.key : null })),
-    },
-  };
-};
 
 const withOrigin = (address, origin) => {
   const url = new URL(address);
@@ -393,6 +385,7 @@ async function loadAddress(playing, address, startSeconds, directPlay) {
   playing.unauthorized = false;
   playing.startedAt = startSeconds;
   playing.position = startSeconds;
+  loaded = playing;
   await mpv.command(['loadfile', address, 'replace']);
 }
 
@@ -409,9 +402,10 @@ async function start(playing, offsetSeconds, retest) {
   playing.reply = json;
   playing.address = addresses.find((address) => originOf(address) === origin);
   // External subtitle files come addressed to Plex's first connection; mpv fetches them from the one that answered.
+  // The title goes to sub-add: without one, mpv titles the track with the file's address, token included.
   playing.subtitles = new Map(json.tracks.subtitle
     .filter((track) => track.external && typeof track.url === 'string')
-    .map((track) => [track.key, withOrigin(track.url, origin)]));
+    .map((track) => [track.key, { address: withOrigin(track.url, origin), title: track.title ?? track.language ?? track.key }]));
   await loadAddress(playing, playing.address, offsetSeconds, json.decision.directPlay);
   return pageCopy(json);
 }
@@ -493,7 +487,13 @@ async function setFullscreen(on) {
 // --- The bridge (C1.2): every handler answers only the app window showing the app.
 
 const handle = (channel, run) => ipcMain.handle(channel, (event, ...args) => {
-  if (event.sender !== win?.webContents || appOrigin === null || originOf(event.senderFrame?.url ?? '') !== appOrigin) throw new Error('not_allowed');
+  const frame = event.senderFrame; // null once the frame has navigated away
+  if (!callerAllowed({
+    fromAppWindow: event.sender === win?.webContents,
+    mainFrame: frame?.parent === null,
+    frameUrl: frame?.url ?? '',
+    appOrigin,
+  })) throw new Error('not_allowed');
   return run(...args);
 });
 const ready = () => {
@@ -509,6 +509,8 @@ handle('player:load', async (ask) => {
   const { ask: wanted, offsetSeconds, flags } = readAsk(ask);
   current = { ask: wanted, flags, tried: [planLabel(flags)], tries: { token: 0, same: 0 }, played: false, position: offsetSeconds, duration: null };
   const playing = current;
+  // The old file ends now, with reason stop, so it cannot fail or finish into this load while its start request runs.
+  if (mpv) void mpv.command(['stop']).catch(() => {});
   try {
     return await start(playing, offsetSeconds, false);
   } catch (error) {
@@ -527,7 +529,12 @@ handle('player:seek', async (seconds) => {
   const url = new URL(current.address);
   url.searchParams.set('offset', String(Math.floor(target)));
   current.address = url.toString();
-  return loadAddress(current, current.address, Math.floor(target), false);
+  // The reload opens paused; startPlaying leaves it paused when the owner had paused it.
+  const playing = current;
+  const paused = await mpv.getProperty('pause');
+  if (current !== playing) throw new Error('replaced');
+  playing.stayPaused = paused === 'yes';
+  return loadAddress(playing, playing.address, Math.floor(target), false);
 });
 handle('player:setAudio', async (index) => {
   ready();
@@ -538,11 +545,11 @@ handle('player:setAudio', async (index) => {
 });
 async function selectSubtitle({ url, ffIndex }, tracks) {
   if (typeof url === 'string') {
-    const address = current?.subtitles.get(url);
-    if (address === undefined) throw new Error('no_such_track');
+    const file = current?.subtitles.get(url);
+    if (file === undefined) throw new Error('no_such_track');
     // network §9: the previous external file goes, then the new one is added and selected.
     for (const track of tracks.filter((entry) => entry.type === 'sub' && entry.external)) await mpv.command(['sub-remove', String(track.id)]);
-    return mpv.command(['sub-add', address, 'cached']);
+    return mpv.command(['sub-add', file.address, 'cached', file.title]);
   }
   if (typeof ffIndex === 'number') {
     const track = tracks.find((entry) => entry.type === 'sub' && entry['ff-index'] === ffIndex);

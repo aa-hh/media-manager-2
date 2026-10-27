@@ -14454,3 +14454,39 @@ test('the desktop app\'s first-launch address keeps only an http or https origin
   assert.equal(isMediaManager(200, null), false);
   assert.equal(isMediaManager(503, { configured: true }), false);
 });
+
+test('the desktop app\'s page never gets a Plex token, and only the app page\'s main frame drives the player', async () => {
+  const { pageCopy, pageTrack, callerAllowed } = await import(new URL('../desktop/lib/page.js', import.meta.url));
+  const token = 'X-Plex-Token=transient-abc';
+  const reply = {
+    session: 'session-1',
+    decision: { directPlay: true },
+    tracks: {
+      audio: [{ id: 1, index: 0, title: 'English' }],
+      subtitle: [
+        { id: 7, index: 0, external: true, key: '/library/streams/7', url: `https://1-2-3-4.abc.plex.direct:32400/library/streams/7?${token}&encoding=utf-8` },
+        { id: 8, index: 0, external: false, key: null, ffIndex: 3 },
+      ],
+    },
+    streamAddresses: [`https://1-2-3-4.abc.plex.direct:32400/library/parts/5/file.mkv?${token}`],
+  };
+  // Keeping streamAddresses or a subtitle's url in the page's copy turns this red: the page would hold the transient token.
+  const copy = pageCopy(reply);
+  assert.equal(JSON.stringify(copy).includes('X-Plex-Token'), false);
+  assert.deepEqual(copy.tracks.subtitle.map((track) => track.url), ['/library/streams/7', null]);
+  // Passing an external track's title or language through turns this red: mpv makes both from the file's address.
+  const external = pageTrack({ id: 3, type: 'sub', external: true, title: `7?${token}&encoding=utf-8`, lang: null, codec: 'subrip' });
+  assert.equal(JSON.stringify(external).includes('X-Plex-Token'), false);
+
+  // Dropping the window, main-frame or origin check turns its row red: that caller could start playback and drive mpv.
+  const appOrigin = 'https://media.example.com';
+  const app = { fromAppWindow: true, mainFrame: true, frameUrl: `${appOrigin}/watch/123`, appOrigin };
+  const callers = [
+    [app, true],
+    [{ ...app, frameUrl: 'https://media.example.com.evil.test/watch/123' }, false],
+    [{ ...app, mainFrame: false }, false],
+    [{ ...app, frameUrl: 'file:///Applications/media-manager-2.app/Contents/Resources/app/address/index.html' }, false],
+    [{ ...app, fromAppWindow: false }, false],
+  ];
+  for (const [caller, allowed] of callers) assert.equal(callerAllowed(caller), allowed, JSON.stringify(caller));
+});

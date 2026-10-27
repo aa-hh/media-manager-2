@@ -100,8 +100,8 @@ if [ -n "$leftover" ]; then
 fi
 echo "bundled $(ls "$FRAMEWORKS"/*.dylib | wc -l | tr -d ' ') libraries"
 
-# Every Mach-O file that is not a bundle's own executable, then the bundles from
-# the deepest out, then the app: codesign seals each bundle over what it holds.
+# Every Mach-O file under Contents, bundle executables included, then the bundles
+# from the deepest out, then the app: codesign seals each bundle over what it holds.
 sign_all() {
     find "$APP/Contents" -type f -print0 | while IFS= read -r -d '' file; do
         file -b "$file" | grep -q Mach-O || continue
