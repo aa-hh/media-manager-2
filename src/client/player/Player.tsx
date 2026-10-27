@@ -14,7 +14,7 @@ import { clockText, continueMeta, minutesText } from '../library/watch';
 import { navigate, replace, useLocation } from '../navigation';
 import {
   BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, TIMELINE_EVERY_MS,
-  activeMarker, applyEvent, clampSeek, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
+  activeMarker, applyEvent, clampSeek, clampVolume, volumeKey, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
 } from './model';
@@ -24,25 +24,16 @@ import './player.css';
 
 // --- Who this player is to Plex
 
-// The page's own player id, kept across runs, and one session id per page load (network §1).
-// razor: the desktop app's main process keeps its own client id and does not pass it to the page, so Plex sees the stream
-// and these reports under two ids. Upgrade path: the desktop's start reply carries its ids and the page uses them.
-const clientId = (() => {
-  const make = () => {
-    const bytes = crypto.getRandomValues(new Uint8Array(18));
-    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_');
-  };
-  try {
-    const saved = localStorage.getItem('player.clientId');
-    if (saved !== null && /^[A-Za-z0-9_-]{24}$/.test(saved)) return saved;
-    const made = make();
-    localStorage.setItem('player.clientId', made);
-    return made;
-  } catch {
-    return make();
-  }
-})();
-const sessionIdentifier = crypto.randomUUID();
+// Every call to Plex uses the desktop app's own player ids from the start reply, so Plex sees one player (network §1).
+// A reply without them (a desktop build older than the page) falls back to ids made for this page load.
+const fallbackIds = {
+  clientId: btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18)))).replace(/\+/g, '-').replace(/\//g, '_'),
+  sessionIdentifier: crypto.randomUUID(),
+};
+const idsOf = (reply: StartReply | null) => ({
+  clientId: reply?.clientId ?? fallbackIds.clientId,
+  sessionIdentifier: reply?.sessionIdentifier ?? fallbackIds.sessionIdentifier,
+});
 
 // --- State
 
@@ -72,6 +63,8 @@ type Controller = {
   seek: (seconds: number) => void;
   seekBy: (seconds: number) => void;
   setFullscreen: (on: boolean) => void;
+  toggleMute: () => void;
+  changeVolume: (by: number) => void;
   chooseAudio: (track: AudioTrack) => void;
   chooseSubtitle: (track: SubtitleTrack | null) => void;
   changeSubtitleDelay: (change: number | 'reset') => void;
@@ -126,6 +119,8 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   const qualityRef = useRef<number | undefined>(undefined);
   const [loadAheadBytes, setLoadAheadBytes] = useState(LOAD_AHEAD[2].bytes);
   const [fullscreen, setFullscreenState] = useState(false);
+  // mpv's sound, from its events. Nothing on screen shows it yet: PlayerStage's Volume button has one fixed icon.
+  const sound = useRef({ volume: 100, muted: false });
   const fullscreenRef = useRef(false);
   const loads = useRef(0);
   const playedMs = useRef(0);
@@ -156,8 +151,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       playedMs: playedMs.current,
       playQueueItemID: item?.playQueueItemID ?? null,
       continuing: options.continuing,
-      clientId,
-      sessionIdentifier,
+      ...idsOf(s.reply),
     });
     fetch(`/api/playback/timeline?${new URLSearchParams(query)}`, { credentials: 'same-origin', headers: { Accept: 'application/json' }, keepalive: options.keepalive })
       .then((response) => {
@@ -205,7 +199,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     if (s === null) return;
     loads.current += 1;
     if (s.reply !== null && s.playback.phase !== 'failed') sendTimeline(s, 'stopped');
-    if (s.reply !== null && !s.reply.decision.directPlay) void postJson('/api/playback/stop', { session: s.reply.session, clientId }).catch(() => undefined);
+    if (s.reply !== null && !s.reply.decision.directPlay) void postJson('/api/playback/stop', { session: s.reply.session, clientId: idsOf(s.reply).clientId }).catch(() => undefined);
     if (fullscreenRef.current) setFullscreen(false);
     void bridge?.stop().catch(() => undefined);
     commit(null);
@@ -309,7 +303,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
 
   // The title ended (or Skip credits was pressed): mark it played, then work out what follows.
   const endTitle = useCallback((s: Session) => {
-    void postJson('/api/playback/played', { ratingKey: s.request.ratingKey, played: true, clientId }).catch(() => undefined);
+    void postJson('/api/playback/played', { ratingKey: s.request.ratingKey, played: true, clientId: idsOf(s.reply).clientId }).catch(() => undefined);
     const ended = { ...s, playback: { ...s.playback, phase: 'ended' as const, buffering: false }, upNext: { kind: 'choosing' as const } };
     commit(ended);
     void chooseUpNext(ended);
@@ -335,6 +329,15 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     };
     const names = ['position', 'duration', 'paused', 'buffering', 'loadedAhead', 'endOfFile', 'error', 'started'] as const;
     const offs = names.map((name) => bridge.on(name, (value: unknown) => onEvent({ type: name, value } as BridgeEvent)));
+    offs.push(
+      bridge.on('volume', (value) => {
+        if (!Number.isFinite(value)) return;
+        sound.current.volume = value;
+      }),
+      bridge.on('muted', (value) => {
+        sound.current.muted = value;
+      }),
+    );
     return () => offs.forEach((off) => off());
   }, [bridge, commit, endTitle, sendTimeline]);
 
@@ -350,7 +353,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     const ping = window.setInterval(() => {
       const s = sessionRef.current;
       if (s?.reply == null || s.reply.decision.directPlay || !s.playback.paused || s.playback.phase !== 'playing') return;
-      getJson<{ status: string }>(`/api/playback/ping?${new URLSearchParams({ session: s.reply.session, clientId })}`, unauthenticatedRef.current)
+      getJson<{ status: string }>(`/api/playback/ping?${new URLSearchParams({ session: s.reply.session, clientId: idsOf(s.reply).clientId })}`, unauthenticatedRef.current)
         .then(async ({ status }) => {
           // Plex dropped the paused transcode: start it again at the same second, still paused.
           if (status !== 'gone' || sessionRef.current?.load !== s.load) return;
@@ -435,7 +438,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   const saveTrack = useCallback(async (kind: 'audio' | 'subtitle', streamId: number | null) => {
     const s = sessionRef.current;
     if (s?.reply?.partId == null || streamId === null) return false;
-    const response = await postJson('/api/playback/track', { partId: s.reply.partId, kind, streamId, allParts: s.request.partIndex > 0, clientId }).catch(() => null);
+    const response = await postJson('/api/playback/track', { partId: s.reply.partId, kind, streamId, allParts: s.request.partIndex > 0, clientId: idsOf(s.reply).clientId }).catch(() => null);
     return response?.ok === true;
   }, []);
 
@@ -460,6 +463,18 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         if (s !== null) controller.seek(s.playback.position + seconds);
       },
       setFullscreen,
+      // No volume control is drawn (player.pen), so the Volume button mutes; Up and Down change the volume.
+      toggleMute: () => {
+        const next = !sound.current.muted;
+        sound.current.muted = next;
+        void bridge?.setMuted(next).catch(() => undefined);
+      },
+      changeVolume: (by) => {
+        const next = clampVolume(sound.current.volume + by);
+        sound.current.volume = next;
+        void bridge?.setVolume(next).catch(() => undefined);
+        if (sound.current.muted) controller.toggleMute();
+      },
       // Original file: mpv switches at once and Plex saves it. Converted: Plex saves first, then the stream restarts (network §5.2).
       chooseAudio: async (track) => {
         const s = sessionRef.current;
@@ -495,7 +510,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         delaySave.current = window.setTimeout(() => {
           const key = streamKey(track);
           if (key === null) return;
-          void postJson('/api/playback/subtitle-offset', { streamKey: key, offsetMs: Math.round(delay * 1000), clientId })
+          void postJson('/api/playback/subtitle-offset', { streamKey: key, offsetMs: Math.round(delay * 1000), clientId: idsOf(s.reply).clientId })
             .then((response) => { if (response.ok) change((current) => ({ ...current, saved: { ...current.saved, delay: true } })); }, () => undefined);
         }, 600);
       },
@@ -738,7 +753,7 @@ export function Player() {
     };
   }, [controller]);
 
-  // Keys while full size: Space, arrows, S, F, Esc (player.pen; Esc leaves fullscreen, else shrinks to the mini player).
+  // Keys while full size: Space, Left and Right seek, Up and Down volume, M mute, S, F, Esc (leaves fullscreen, else mini).
   useEffect(() => {
     if (layout !== 'full' || controller === undefined || session === null) return undefined;
     const onKey = (event: KeyboardEvent) => {
@@ -746,6 +761,7 @@ export function Player() {
       const target = event.target instanceof HTMLElement ? event.target : null;
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
       const onTimeline = target?.getAttribute('role') === 'slider';
+      const soundKey = onTimeline ? null : volumeKey(event.key);
       if (event.key === 'Escape') {
         event.preventDefault();
         if (screen === 'up-next') controller.close('/');
@@ -754,6 +770,10 @@ export function Player() {
         else window.history.back();
       } else if (screen === 'up-next') {
         // Enter belongs to Play now, which holds focus.
+      } else if (soundKey !== null) {
+        event.preventDefault();
+        if (soundKey.kind === 'mute') controller.toggleMute();
+        else controller.changeVolume(soundKey.by);
       } else if (event.key === ' ') {
         event.preventDefault();
         controller.playPause();
@@ -832,7 +852,7 @@ export function Player() {
         ? [{ start: entry.startTimeOffset / 1000, end: entry.endTimeOffset / 1000 }] : []))}
       scrubAt={scrubAt}
       scrubImage={scrubAt === undefined || reply?.partId == null ? undefined
-        : `/api/playback/preview?${new URLSearchParams({ partId: String(reply.partId), ms: String(Math.round(scrubAt) * 1000), width: '512', height: '288', clientId })}`}
+        : `/api/playback/preview?${new URLSearchParams({ partId: String(reply.partId), ms: String(Math.round(scrubAt) * 1000), width: '512', height: '288', clientId: idsOf(reply).clientId })}`}
       previous={queueButton(neighbours.previous, 'Previous')}
       next={queueButton(neighbours.next, 'Next')}
       audio={{ tracks: reply?.tracks.audio ?? [], saved: session.saved.audio }}
@@ -858,8 +878,7 @@ export function Player() {
       onPlayPause={controller.playPause}
       onBack10={() => controller.seekBy(-BACK_SECONDS)}
       onForward30={() => controller.seekBy(FORWARD_SECONDS)}
-      // razor: the bridge has no volume command, so this button does nothing yet. Upgrade path: a setVolume bridge call.
-      onVolume={() => undefined}
+      onVolume={controller.toggleMute}
       onMini={() => window.history.back()}
       onExpand={() => navigate(`/play/${request.ratingKey}`)}
       onFullscreen={() => controller.setFullscreen(!context.fullscreen)}

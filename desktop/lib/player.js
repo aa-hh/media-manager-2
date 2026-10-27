@@ -47,4 +47,7 @@ const withOrigin = (address, origin) => {
  */
 const subtitleAdd = (track, origin) => ['sub-add', withOrigin(track.url, origin), 'cached', track.title ?? track.language ?? track.key];
 
-module.exports = { fileEvent, playsOnOpen, subtitleAdd };
+/** A volume for mpv: a whole percent from 0 to 100, or null for anything that is not a number (refused, or a saved value ignored). */
+const volumePercent = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : null);
+
+module.exports = { fileEvent, playsOnOpen, subtitleAdd, volumePercent };

@@ -4,6 +4,9 @@ import type { DesktopEvents, LoadRequest, PlaybackFlags } from '../desktopBridge
 /** POST /api/playback/start's reply as the page gets it (src/server/playback.ts is the source of truth). */
 export type StartReply = {
   session: string;
+  /** The desktop app's own player ids, which every call to Plex during playback carries. */
+  clientId?: string;
+  sessionIdentifier?: string;
   partId: number | null;
   startPositionSeconds: number;
   durationMs: number | null;
@@ -84,6 +87,8 @@ export const applyEvent = (state: Playback, event: BridgeEvent): Playback => {
     case 'started':
       return state.phase === 'opening' ? state : { ...state, phase: 'playing', restarting: true };
     case 'tracks':
+    case 'volume':
+    case 'muted':
       return state;
   }
 };
@@ -150,6 +155,18 @@ export const timelineQuery = (report: {
 
 /** Seconds actually played between two position reports: a jump (a seek) or going back counts nothing. */
 export const playedBetween = (before: number, after: number) => (after > before && after - before <= 2 ? after - before : 0);
+
+// --- Sound
+
+export const VOLUME_STEP = 5;
+export const clampVolume = (percent: number) => Math.min(100, Math.max(0, Math.round(percent)));
+
+/** What a key does to the sound: Up and Down change the volume 5 %, M mutes or unmutes; null for any other key. */
+export const volumeKey = (key: string): { kind: 'step'; by: number } | { kind: 'mute' } | null => {
+  if (key === 'ArrowUp') return { kind: 'step', by: VOLUME_STEP };
+  if (key === 'ArrowDown') return { kind: 'step', by: -VOLUME_STEP };
+  return key === 'm' || key === 'M' ? { kind: 'mute' } : null;
+};
 
 // --- Up Next (player.pen states 15 and 16)
 

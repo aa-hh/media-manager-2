@@ -11630,7 +11630,7 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
   const {
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
-    activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor,
+    activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
 
@@ -11697,6 +11697,13 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     assert.deepEqual(activeMarker(markers, 30), { kind: 'intro', key: 'intro:5000:65600', endSeconds: 66 });
     assert.equal(activeMarker(markers, 65.6), null);
     assert.equal(activeMarker(markers, 4), null);
+  });
+
+  // Taking Left or Right for volume (they seek), a step other than 5 %, or a volume outside 0 to 100 turns this red.
+  await t.test('Up and Down change the volume 5 %, M mutes, and the volume stays within 0 to 100', () => {
+    assert.deepEqual(['ArrowUp', 'ArrowDown', 'm', 'M', 'ArrowLeft', 'ArrowRight', ' '].map(volumeKey),
+      [{ kind: 'step', by: 5 }, { kind: 'step', by: -5 }, { kind: 'mute' }, { kind: 'mute' }, null, null, null]);
+    assert.deepEqual([102, -4, 47.4].map(clampVolume), [100, 0, 47]);
   });
 
   // Mapping the desktop app's 512 MiB default to anything but 2 min, losing the quality cap on a step, or labelling a step-down Original turns this red.
@@ -14682,9 +14689,11 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
     streamAddresses: [`https://1-2-3-4.abc.plex.direct:32400/library/parts/5/file.mkv?${token}`],
   };
   // Keeping streamAddresses or a subtitle's url in the page's copy turns this red: the page would hold the transient token.
-  const copy = pageCopy(reply);
+  const copy = pageCopy(reply, { clientId: 'client-24-characters-long', sessionIdentifier: 'run-1' });
   assert.equal(JSON.stringify(copy).includes('X-Plex-Token'), false);
   assert.deepEqual(copy.tracks.subtitle.map((track) => track.url), ['/library/streams/7', null]);
+  // Leaving the install's ids out of the page's copy turns this red: the page's timeline reports would reach Plex as a second player.
+  assert.deepEqual([copy.clientId, copy.sessionIdentifier], ['client-24-characters-long', 'run-1']);
   // Passing an external track's title or language through turns this red: mpv makes both from the file's address.
   const external = pageTrack({ id: 3, type: 'sub', external: true, title: `7?${token}&encoding=utf-8`, lang: null, codec: 'subrip' });
   assert.equal(JSON.stringify(external).includes('X-Plex-Token'), false);
@@ -14707,7 +14716,7 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, subtitleAdd } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const { fileEvent, playsOnOpen, subtitleAdd, volumePercent } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -14738,6 +14747,9 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   // Leaving a new load paused turns the first row red.
   assert.equal(playsOnOpen({ paused: false }), true);
   assert.equal(playsOnOpen({ paused: true }), false);
+
+  // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
+  assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);
 
   // Dropping the title, or falling back to the file's address, turns the title column red: mpv would name the track
   // after the address, token included. Keeping Plex's first connection turns the address column red.

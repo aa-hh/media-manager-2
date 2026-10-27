@@ -11,11 +11,17 @@ const originOf = (url) => {
   }
 };
 
-/** The start reply as the page gets it: no stream address, and an external subtitle's url is its tokenless stream key, which setSubtitle takes back. */
-const pageCopy = (reply) => {
+/**
+ * The start reply as the page gets it: no stream address, and an external subtitle's url is its tokenless stream key, which
+ * setSubtitle takes back. `ids` are this install's clientId and sessionIdentifier (not secrets), so the page's reports to
+ * Plex come from the same player as the stream.
+ */
+const pageCopy = (reply, ids) => {
   const { streamAddresses, ...rest } = reply;
   return {
     ...rest,
+    clientId: ids.clientId,
+    sessionIdentifier: ids.sessionIdentifier,
     tracks: {
       ...rest.tracks,
       subtitle: rest.tracks.subtitle.map((track) => ({ ...track, url: track.external ? track.key : null })),

@@ -7,7 +7,7 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, subtitleAdd } = require('./lib/player');
+const { fileEvent, playsOnOpen, subtitleAdd, volumePercent } = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -49,6 +49,9 @@ const loadAheadBytes = () => {
   const saved = readSettings().loadAheadBytes;
   return Number.isSafeInteger(saved) && saved > 0 ? saved : DEFAULT_LOAD_AHEAD;
 };
+// The owner's last volume and mute, applied before every file so a new one does not reset them.
+const savedVolume = () => volumePercent(readSettings().volume) ?? 100;
+const savedMuted = () => readSettings().muted === true;
 // One per app run (network §1).
 const sessionIdentifier = randomUUID();
 
@@ -250,7 +253,7 @@ let current = null; // the title playing: what was asked, the plan, the kept add
 // The title whose file mpv last opened. mpv's file events belong to it, so they are ignored once a newer load replaces it.
 let loaded = null;
 
-const OBSERVED = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'demuxer-cache-duration', 'track-list'];
+const OBSERVED = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'demuxer-cache-duration', 'track-list', 'volume', 'mute'];
 const send = (name, value) => {
   if (win && !win.isDestroyed()) win.webContents.send('player:event', name, value);
 };
@@ -300,6 +303,8 @@ function onMpvEvent(event) {
     } else if (name === 'pause') send('paused', value === 'yes');
     else if (name === 'paused-for-cache') send('buffering', value === 'yes');
     else if (name === 'demuxer-cache-duration') send('loadedAhead', number(value));
+    else if (name === 'volume') send('volume', volumePercent(number(value)));
+    else if (name === 'mute') send('muted', value === 'yes');
     else if (name === 'track-list') readTracks().then((tracks) => send('tracks', tracks), () => {});
   } else if (event.event === 'log-message') {
     if (current && /HTTP error 401/i.test(String(event.value))) current.unauthorized = true;
@@ -361,6 +366,8 @@ async function loadAddress(playing, address, startSeconds, directPlay) {
     ['sub-create-cc-track', 'yes'],
     ['hwdec', 'auto'],
     ['network-timeout', '15'],
+    ['volume', String(savedVolume())],
+    ['mute', savedMuted() ? 'yes' : 'no'],
     ['demuxer-max-bytes', String(loadAheadBytes())],
     ['demuxer-max-back-bytes', String(50 * MiB)],
     ['stream-lavf-o', directPlay ? 'reconnect=1,reconnect_on_network_error=1,reconnect_delay_max=5' : ''],
@@ -393,7 +400,7 @@ async function start(playing, offsetSeconds, retest) {
     .filter((track) => track.external && typeof track.url === 'string')
     .map((track) => [track.key, subtitleAdd(track, origin)]));
   await loadAddress(playing, playing.address, offsetSeconds, json.decision.directPlay);
-  return pageCopy(json);
+  return pageCopy(json, { clientId: clientId(), sessionIdentifier });
 }
 
 async function recover(failure, playing = current) {
@@ -557,6 +564,16 @@ handle('player:setLoadAhead', (bytes) => {
   if (mpv) return mpv.setProperty('demuxer-max-bytes', String(bytes));
 });
 handle('player:getLoadAhead', () => loadAheadBytes());
+handle('player:setVolume', (percent) => {
+  const volume = volumePercent(percent);
+  if (volume === null) throw new Error('invalid_request');
+  writeSettings({ volume });
+  if (mpv) return mpv.setProperty('volume', String(volume));
+});
+handle('player:setMuted', (on) => {
+  writeSettings({ muted: on === true });
+  if (mpv) return mpv.setProperty('mute', on === true ? 'yes' : 'no');
+});
 handle('player:setLayout', (wanted) => {
   if (wanted !== 'full' && wanted !== 'mini') {
     if (typeof wanted !== 'object' || wanted === null) throw new Error('invalid_request');
