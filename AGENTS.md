@@ -54,7 +54,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 - `docs/` → operations notes, agent setup and design notes.
 - `docs/adr/` → recorded architecture decisions.
 - `docs/review/` → instructions for each branch-review pass.
-- `design/` → logos and the sign-in shader page. The pen.dev design files live outside the repo; see `design/README.md`.
+- `design/` → logos and the sign-in shader page. The design files live in Figma; see `design/README.md`.
 - `public/` → tab and home-screen icons and the web app manifest, copied into the build as-is.
 - `.scratch/` → local issue tracker (`docs/agents/issue-tracker.md`).
 

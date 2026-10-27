@@ -1,7 +1,7 @@
 ---
 name: media-manager-2
 description: Paper white and black with lime. Dense release tables, glow-blue actions, lime only for the best release and live downloads.
-# Light mode only. Values come from the variables in ~/Projects/media-manager-2-design/design-system.lib.pen.
+# Light mode only. Values come from the CSS custom properties in src/client/globals.css; the Figma library "media-manager-2 library" keeps a copy.
 colors:
   background: "#FFFFFF"
   card: "#FFFFFF"
@@ -170,11 +170,11 @@ components:
 
 Paper white and black with lime. Black carries the content and every "on" state (checkboxes, radios, selected rows, toggles). The main action on a screen is a glow-blue button (`action`, the rim of light on the planet mascot, near-black text 11:1); hover `action-hover` with the corners easing from 12 to 14px (`button-radius` to `button-radius-hover`), pressed `action-pressed`, focus the usual 2px black ring, disabled the muted look. Secondary buttons stay white with an edge and tertiary buttons have no fill; buttons use 12px corners, row-size buttons in tables 6px. Destructive buttons stay red. Lime appears in two places only: the best release and live downloads. Red means something went wrong, amber means something is missing or waiting. Tables stay dense: 40px rows inside a 40px page margin, 6 posters per row on Library.
 
-Light mode only for now. The dark design is archived in `~/Projects/media-manager-2-design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
+Light mode only for now. The dark design survives only in the read-only old design file `~/Projects/media-manager-2-design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
 
-The source of truth is the pen.dev library `~/Projects/media-manager-2-design/design-system.lib.pen`: its variables, its five component sheets and a sixth sheet for motion. The nine screen files import it. `design/mediaManager2.pen` no longer exists; see [`design/README.md`](design/README.md) for which file holds which screen.
+The source of truth is the code: the components in `src/client/components/ui/` and the CSS custom properties in `src/client/globals.css`. The Figma library `media-manager-2 library` is a copy kept in step with it, redrawn from the code after each build. See [`design/README.md`](design/README.md) for the Figma files and their rules.
 
-These are static pen.dev components. Keyboard behaviour, focus handling, screen reader support, live updates and table sorting are implementation work; a static frame proves none of them.
+The Figma components are static. Keyboard behaviour, focus handling, screen reader support, live updates and table sorting are implementation work; a static frame proves none of them.
 
 Token names follow shadcn/ui, so code and design use the same words.
 
@@ -235,7 +235,7 @@ Two corner sizes. Everything outside a table is 12px: buttons, inputs, selects, 
 
 ## Components
 
-Every component lives in `~/Projects/media-manager-2-design/design-system.lib.pen` as `v2/Family/Variant` and shows its states as instances beside it. Each sheet note names the shadcn/ui component it maps to, or says "Custom". Screens use instances and override named children (`Label`, `Count`, `Value`, `Icon`, `Kbd`).
+Every component lives in `src/client/components/ui/`, and in the Figma library as `v2/Family/Variant` with its states as instances beside it. Each sheet note names the shadcn/ui component it maps to, or says "Custom". Screens use instances and override named children (`Label`, `Count`, `Value`, `Icon`, `Kbd`).
 
 ### Control sizes
 
@@ -246,7 +246,7 @@ Four sizes, set with the `control-*` tokens. Buttons, inputs, selects and toggle
 - **Default** 36px (`control-h-default`, padding 16, text 14, radius 12, icon 16): everywhere else.
 - **Large** 44px (`control-h-large`, padding 18, text 14, radius 12, icon 18): the one main action on a page or panel, such as the title header actions, the grab confirmation (Replace or Second version) and Settings Connect.
 
-Icon-only buttons are squares at the same heights. pen.dev cannot bind height or icon size to a variable, so those are typed numbers, on badges too; change them together with the tokens.
+Icon-only buttons are squares at the same heights, and badges follow the same heights and icon sizes.
 
 ### Buttons, badges and inputs
 

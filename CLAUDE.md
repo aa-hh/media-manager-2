@@ -55,7 +55,7 @@ only through a pull request, and only once the `tests` check and the
   initiative Media Manager 2 v1 — see `docs/agents/issue-tracker.md`.
 - **Triage labels:** `docs/agents/triage-labels.md`.
 - **Domain docs:** `CONTEXT.md` plus `docs/adr/` — see `docs/agents/domain.md`.
-- **`/approve-design`:** the next job once the owner approves a design that changed the
-  pen.dev library: brings `DESIGN.md` and `src/client/components/ui/` in line
-  (`.claude/skills/approve-design/`). Design files: `design/README.md`.
+- **`/approve-design`:** the next job once the owner approves a Figma design:
+  builds it in `src/client/components/ui/` and `DESIGN.md`, then redraws the Figma
+  library after merge (`.claude/skills/approve-design/`). Design files: `design/README.md`.
 - **`/pr-review`:** manual adversarial PR review (`.claude/skills/pr-review/`).

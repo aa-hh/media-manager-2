@@ -1,33 +1,18 @@
 # Design files
 
-The pen.dev design files live outside the repo, in `~/Projects/media-manager-2-design/`. There is one copy of each file, and every agent edits that copy through pen.dev, whichever worktree it runs in. They are not in git: the owner saves them in pen.dev (Cmd+S) and that folder is their only home. This folder keeps the logos and the sign-in shader page, which the code and the README use.
+Designs live in Figma, in the owner's Figma team. This folder keeps the logos and the sign-in shader page, which the code and the README use.
 
-Light mode, desktop first. Open and edit the `.pen` files in pen.dev; never edit a `.pen` file by hand.
+Light mode, desktop first. Once a component is built, the code (`src/client/components/ui/` and `src/client/globals.css`) is the master copy, and the Figma library is a copy kept in step with it.
 
-When the owner approves a design that changed the library, run `/approve-design` (`.claude/skills/approve-design/`): it brings `DESIGN.md` and `src/client/components/ui/` in line with the library before anything else happens.
-
-| File | What it holds |
-|---|---|
-| `design-system.lib.pen` | The pen.dev library: tokens (shadcn names), every v2 component, service logos |
-| `library-search.pen` | Library (`/`) and search results (`/search`) |
-| `title.pen` | Show and movie pages: overview, adding, monitoring, range select, episode details, deletes |
-| `releases.pen` | Pick a release and Grab, including already owned and after Grab |
-| `downloads.pen` | Downloads (`/downloads`), manual import, mark as failed |
-| `flagged-health.pen` | Flagged (`/flagged`) and Health (`/health`) |
-| `history.pen` | History (`/history`) and Blocklist (`/blocklist`) |
-| `calendar.pen` | Calendar (`/calendar`): week, month, forecast |
-| `settings.pen` | Settings |
-| `sign-in.pen` | Plex sign-in and sign out |
-| `setup-wizard.pen` | First-run setup wizard: each part's step, testing and failure states, the "How the pieces connect" map, Done |
-| `discovery.pen` | Discover (`/discover`) |
-| `archive/mediaManager2-2026-10-11.pen` | The single design file before the 11 Oct 2026 split, including every dark screen. Reference only. |
-
-Phone versions of a screen go in the same file as its desktop version.
+- **Library:** the Figma file `media-manager-2 library` holds the variables (the same names as the CSS custom properties in `globals.css`) and every `v2/Family/Variant` component.
+- **Screen files:** one Figma file per place in the app, built from instances of the library. Phone versions of a screen go in the same file as its desktop version.
 
 ## Rules
 
-- Paths in the table are inside `~/Projects/media-manager-2-design/`.
-- Every screen file imports `design-system.lib.pen`. Change a component or token there, save, and reopen the screen files to pick it up.
-- Copying a screen from one `.pen` file and pasting it into another cuts its link to the library: components arrive as plain frames and tokens as duplicates. To start a new screen file, copy an existing screen file on disk, in that folder (the library link is a relative path), then delete the screens you don't need.
-- pen.dev writes to disk only on Cmd+S.
-- Agents editing through pen.dev's tools can reach any file open in a pen.dev tab. A path to a file that isn't open silently edits the file in front instead.
+- Every screen file has three top-level frames: `README`, `FINAL` (the version of each screen the code is built from) and `DISCOVERY` (explorations).
+- Explorations go in `DISCOVERY` of the screen's own file and never change the library. A component an exploration needs that the library lacks is drawn inside the exploration.
+- The library changes only through `/approve-design` (`.claude/skills/approve-design/`): once the owner approves a design, it is built in code first, and the library is redrawn from the code after the pull request merges.
+
+## Old pen.dev files
+
+Before 27 Oct 2026 the designs were `.pen` files in `~/Projects/media-manager-2-design/`, outside git, with the library in `design-system.lib.pen`. They are read-only history: open them to look up an old decision, and make no new work in them. `archive/mediaManager2-2026-10-11.pen` in that folder holds the dark screens.
