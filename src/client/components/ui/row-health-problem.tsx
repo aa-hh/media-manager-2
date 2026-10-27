@@ -26,7 +26,7 @@ function RowHealthProblem({ logo, problem, detail, since, fixIcon, fix, actions,
     <TableRow className={cn('h-(--row-two-line)', className)} {...props}>
       <TableCell className={cn(w.logo, '[&_img]:size-5')}>{logo}</TableCell>
       <TableCell fill className="flex-col items-start justify-center gap-0.5">
-        <span className="w-full truncate font-ui font-semibold">{problem}</span>
+        <span className="w-full truncate font-ui font-semibold select-text">{problem}</span>
         {detail !== undefined && <span className="w-full truncate text-[13px] text-muted-foreground">{detail}</span>}
       </TableCell>
       <TableCell className={cn(w.since, 'text-muted-foreground')}>{since}</TableCell>

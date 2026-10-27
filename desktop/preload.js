@@ -8,6 +8,10 @@ const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 if (window.location.protocol === 'file:') {
   contextBridge.exposeInMainWorld('desktopAddress', { submit: call('address:submit') });
 } else {
+  // `desktop:` styles in the web app (src/client/globals.css) key on this attribute.
+  const mark = () => document.documentElement.setAttribute('data-desktop', '');
+  if (document.documentElement) mark();
+  else document.addEventListener('DOMContentLoaded', mark, { once: true });
   const listeners = new Map();
   ipcRenderer.on('player:event', (_event, name, value) => {
     for (const listener of listeners.get(name) ?? []) listener(value);

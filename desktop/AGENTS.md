@@ -16,12 +16,12 @@ The Mac desktop app: Electron loading the owner's media-manager-2 address, mpv p
 
 ## Map
 
-- `main.js` → windows, navigation, bridge handlers, mpv options, retries.
-- `preload.js` → `mediaManagerDesktop` for the web app, `desktopAddress` for the address page.
-- `src/mpvview.mm` → native addon: mpv's window under Electron's, async mpv calls.
-- `lib/connection.js` → picks the Plex address mpv streams from.
+- `main.js` → windows, navigation, no text selection, bridge handlers, mpv options, retries.
+- `preload.js` → `mediaManagerDesktop` and `data-desktop` for the web app, `desktopAddress` for the address page.
+- `src/mpvview.mm` → native addon: mpv's window under Electron's, async calls.
+- `lib/connection.js` → the Plex address mpv streams from.
 - `lib/retry.js` → reload or step down after mpv fails.
-- `lib/address.js` → checks the address typed at first launch.
+- `lib/address.js` → checks the first-launch address.
 - `lib/page.js` → what the page sees; who may call the player.
 - `lib/player.js` → which mpv file events count, unpausing, subtitle files.
 - `address/index.html` → first-launch address screen.

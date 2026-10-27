@@ -29,7 +29,7 @@ function RowFlagged({ poster, title, reason, gaveUp, tries, actions, className, 
       </TableCell>
       <TableCell fill className="flex-col items-start justify-center gap-0.5">
         <span className="w-full truncate font-ui font-semibold">{title}</span>
-        {reason !== undefined && <span className="w-full truncate text-[13px] text-muted-foreground">{reason}</span>}
+        {reason !== undefined && <span className="w-full truncate text-[13px] text-muted-foreground select-text">{reason}</span>}
       </TableCell>
       <TableCell className={cn(w.gaveUp, 'text-muted-foreground')}>{gaveUp}</TableCell>
       <TableCell align="end" className={w.tries}>{tries}</TableCell>

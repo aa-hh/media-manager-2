@@ -99,8 +99,8 @@ function RowDownload({ title, release, message, bandActions, progress, speed, et
       {band && (
         <div role="row" className="relative flex w-full shrink-0 items-center gap-4 bg-muted pt-2 pr-4 pb-1.75 pl-4 after:pointer-events-none after:absolute after:right-4 after:bottom-0 after:left-4 after:h-px after:bg-input">
           <div role="cell" className="flex min-w-0 flex-1 flex-col gap-0.5 text-[13px]">
-            {message !== undefined && <span className="font-ui text-foreground">{message}</span>}
-            {release !== undefined && <span className="truncate font-data text-muted-foreground">{release}</span>}
+            {message !== undefined && <span className="font-ui text-foreground select-text">{message}</span>}
+            {release !== undefined && <span className="truncate font-data text-muted-foreground select-text">{release}</span>}
           </div>
           {bandActions !== undefined && <div role="cell" className="flex shrink-0 items-center gap-2">{bandActions}</div>}
         </div>

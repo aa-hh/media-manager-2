@@ -18,7 +18,7 @@ function RowDeleteStep({ look, text, why }: { look: StepLook; text: string; why?
       {icons[look]}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 font-ui text-[13px]">
         <span className={cn('font-medium [overflow-wrap:anywhere]', look === 'failed' ? 'text-warning' : 'text-foreground')}>{text}</span>
-        {why !== null && why !== undefined && why !== '' && <span className="text-muted-foreground [overflow-wrap:anywhere]">{why}</span>}
+        {why !== null && why !== undefined && why !== '' && <span className="text-muted-foreground [overflow-wrap:anywhere] select-text">{why}</span>}
       </div>
     </div>
   );

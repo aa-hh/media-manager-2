@@ -22,7 +22,7 @@ function PlayerError({ icon, title, body, detail, actions, className }: PlayerEr
       <span aria-hidden="true" className="flex text-destructive-on-dark [&>svg]:size-9">{icon}</span>
       <h2 className="font-ui text-[22px] font-bold text-foreground-on-dark">{title}</h2>
       <p className="w-full font-ui text-sm leading-[1.5] text-muted-foreground-on-dark">{body}</p>
-      {detail !== undefined && <p className="font-data text-[13px] text-muted-foreground-on-dark">{detail}</p>}
+      {detail !== undefined && <p className="font-data text-[13px] text-muted-foreground-on-dark select-text">{detail}</p>}
       <div className="flex gap-2 pt-3">{actions}</div>
     </div>
   );
