@@ -155,10 +155,13 @@ export function PlayStill({ mode, code, resumeAtMs, plexUrl, onStart, ...still }
   if (resumeAtMs === null) {
     return <StillEpisode {...still} playable aria-label={label} aria-busy={running || undefined} onClick={(event) => { stop(event); start('start'); }} />;
   }
+  // The menu renders in a portal, but React still passes its clicks up to the row, which would select it.
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<StillEpisode {...still} playable aria-label={label} aria-busy={running || undefined} onClick={stop} />} />
-      <ResumeMenu resumeAtMs={resumeAtMs} start={start} />
-    </DropdownMenu>
+    <span className="contents" onClick={stop}>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<StillEpisode {...still} playable aria-label={label} aria-busy={running || undefined} onClick={stop} />} />
+        <ResumeMenu resumeAtMs={resumeAtMs} start={start} />
+      </DropdownMenu>
+    </span>
   );
 }

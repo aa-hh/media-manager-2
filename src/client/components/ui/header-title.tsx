@@ -18,7 +18,7 @@ type HeaderTitleProps = {
   meta?: ReactNode;
   /** Status Badges. */
   badges?: ReactNode;
-  /** A HeaderPlayLine under the badges, in both layouts; left out when nothing can play. */
+  /** A HeaderPlayLine under the badges; left out when nothing can play, and by the compact title header. */
   play?: ReactNode;
   overview?: ReactNode;
   /** Large default Button. */
