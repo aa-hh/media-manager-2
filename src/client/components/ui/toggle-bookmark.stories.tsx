@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/ToggleBookmark',
   component: ToggleBookmark,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3497' } },
   args: { state: 'all', onToggle: fn() },
 } satisfies Meta<typeof ToggleBookmark>;
 

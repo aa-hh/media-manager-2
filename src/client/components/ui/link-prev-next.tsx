@@ -1,4 +1,4 @@
-// v2/Link prev-next — ~/Projects/media-manager-2-design/design-system.lib.pen U5XiTa
+// Figma: LinkPrevNext — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5109
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 

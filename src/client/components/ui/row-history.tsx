@@ -1,4 +1,5 @@
-// v2/Row/history — ~/Projects/media-manager-2-design/design-system.lib.pen nT6fn
+// Figma: RowHistory — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1511
+// Figma: RowHistoryHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1650
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

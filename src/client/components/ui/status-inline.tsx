@@ -1,4 +1,4 @@
-// v2/Status/inline — ~/Projects/media-manager-2-design/design-system.lib.pen UMUhR
+// Figma: StatusInline — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2905
 import { AlertCircle, Check } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { Spinner } from '@/components/ui/spinner';

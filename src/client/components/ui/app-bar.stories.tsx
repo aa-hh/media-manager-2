@@ -56,7 +56,7 @@ const meta = {
   title: 'UI/AppBar',
   component: AppBarDesktop,
   tags: ['autodocs'],
-  parameters: { layout: 'fullscreen' },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-240' }, layout: 'fullscreen' },
   args: {
     productName: <h1>media-manager-2</h1>,
     search,

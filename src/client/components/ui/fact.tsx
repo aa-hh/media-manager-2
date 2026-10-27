@@ -1,5 +1,5 @@
-// v2/Fact — ~/Projects/media-manager-2-design/design-system.lib.pen TeJ1Y
-// v2/Fact/row — ~/Projects/media-manager-2-design/design-system.lib.pen e95lV
+// Figma: Fact — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1251
+// Figma: FactRow — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2299
 import { useId, type ComponentProps, type ReactNode } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';

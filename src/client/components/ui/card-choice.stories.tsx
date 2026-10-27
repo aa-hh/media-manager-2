@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/CardChoice',
   component: CardChoice,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5106' } },
   // A card is a radio; Pick a release renders it inside this RadioGroup, where "replace" is the picked value.
   decorators: [
     (Story) => (

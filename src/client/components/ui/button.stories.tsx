@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/Button',
   component: Button,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2887' } },
   args: { children: 'Check address', onClick: fn() },
 } satisfies Meta<typeof Button>;
 

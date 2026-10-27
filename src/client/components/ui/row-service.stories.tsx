@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/RowService',
   component: RowService,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8191' } },
   // Settings lists the rows in this 420 px column.
   decorators: [
     (Story) => (

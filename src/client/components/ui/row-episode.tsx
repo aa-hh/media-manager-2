@@ -1,5 +1,5 @@
-// v2/Row/episode — ~/Projects/media-manager-2-design/design-system.lib.pen rjunT
-// v2/Table/Header/episode — ~/Projects/media-manager-2-design/design-system.lib.pen L91ABo
+// Figma: RowEpisode — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4854
+// Figma: RowEpisodeHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4458
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

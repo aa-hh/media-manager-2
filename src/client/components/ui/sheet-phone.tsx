@@ -1,4 +1,4 @@
-// v2/Sheet (phone) — ~/Projects/media-manager-2-design/design-system.lib.pen E8opC
+// Figma: SheetPhone — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7991
 import type { ReactNode } from 'react';
 
 type SheetPhoneProps = {

@@ -1,10 +1,4 @@
-// v2/Chip/release-state — ~/Projects/media-manager-2-design/design-system.lib.pen rm58v
-// v2/Chip/release-state/downloading — ~/Projects/media-manager-2-design/design-system.lib.pen qdwqf
-// v2/Chip/release-state/importing — ~/Projects/media-manager-2-design/design-system.lib.pen VbdBY
-// v2/Chip/release-state/stalled — ~/Projects/media-manager-2-design/design-system.lib.pen SZZmJ
-// v2/Chip/release-state/import blocked — ~/Projects/media-manager-2-design/design-system.lib.pen txMnk
-// v2/Chip/release-state/cooldown — ~/Projects/media-manager-2-design/design-system.lib.pen TaPbW
-// v2/Chip/release-state/yours — ~/Projects/media-manager-2-design/design-system.lib.pen V84eV
+// Figma: ChipReleaseState — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-746
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { StatusDownloadCircle } from '@/components/ui/status-download-circle';
 import { cn } from '@/lib/utils';

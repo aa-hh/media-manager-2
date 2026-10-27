@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/Callout',
   component: Callout,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-629' } },
   args: {
     title: 'Settings could not be read',
     children: 'Check that media-manager-2 is running, then retry.',

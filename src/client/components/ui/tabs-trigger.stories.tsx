@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/TabsTrigger',
   component: TabsTrigger,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3545' } },
   // A trigger only works inside Tabs and TabsList; this is the Flagged screen's tab row, with "Needs you" chosen.
   decorators: [
     (Story) => (

@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/Kbd',
   component: Kbd,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-446' } },
   args: { children: 'Esc' },
 } satisfies Meta<typeof Kbd>;
 

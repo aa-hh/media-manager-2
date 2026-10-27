@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/ComboboxItem',
   component: ComboboxItem,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3548' } },
   // An item sits in the floating list surface the dropdown menu and select lists share.
   decorators: [
     (Story) => (

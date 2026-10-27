@@ -1,4 +1,5 @@
-// v2/Row/blocklist — ~/Projects/media-manager-2-design/design-system.lib.pen Dh5pL
+// Figma: RowBlocklist — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3473
+// Figma: RowBlocklistHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3461
 import type { ReactNode } from 'react';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

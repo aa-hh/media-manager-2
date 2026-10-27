@@ -1,4 +1,4 @@
-// v2/Row/import-file-group — ~/Projects/media-manager-2-design/design-system.lib.pen N2L6Em
+// Figma: RowImportFileGroup — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-13564
 import { ChevronRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';

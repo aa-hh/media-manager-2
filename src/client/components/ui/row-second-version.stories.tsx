@@ -12,6 +12,7 @@ const meta = {
   title: 'UI/RowSecondVersion',
   component: RowSecondVersion,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7373' } },
   // The movie page renders the rows in its Versions table under this header; under an open episode both are inset.
   decorators: [
     (Story, { args }) => (

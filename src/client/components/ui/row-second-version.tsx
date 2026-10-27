@@ -1,4 +1,5 @@
-// v2/Row/second-version — ~/Projects/media-manager-2-design/design-system.lib.pen c49N0
+// Figma: RowSecondVersion — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7373
+// Figma: RowSecondVersionHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-6225
 import type { ReactNode } from 'react';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';

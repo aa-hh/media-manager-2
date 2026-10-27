@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/FieldNumber',
   component: FieldNumber,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-2001' } },
   args: { before: 'Up to', after: 'GB:', defaultValue: '20', onValueChange: fn() },
 } satisfies Meta<typeof FieldNumber>;
 

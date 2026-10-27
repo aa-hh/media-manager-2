@@ -10,6 +10,7 @@ const meta = {
   title: 'UI/HeaderPage',
   component: HeaderPage,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-9197' } },
   args: { title: 'Settings' },
 } satisfies Meta<typeof HeaderPage>;
 

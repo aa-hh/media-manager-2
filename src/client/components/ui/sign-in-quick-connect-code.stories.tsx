@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/SignInQuickConnectCode',
   component: SignInQuickConnectCode,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-6084' } },
   // Its text colours are for the dark sign-in page; this is that page's ground and column width.
   decorators: [
     (Story) => (

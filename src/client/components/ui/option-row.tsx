@@ -1,6 +1,5 @@
-// v2/Option row — ~/Projects/media-manager-2-design/design-system.lib.pen qq4VX
-// v2/Option row/bordered — ~/Projects/media-manager-2-design/design-system.lib.pen zDrOf (the `bordered` prop)
-// v2/Option row/bordered/service — ~/Projects/media-manager-2-design/design-system.lib.pen UhcoW (OptionRowService)
+// Figma: OptionRow — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4303
+// Figma: OptionRowService — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4324
 import { ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';

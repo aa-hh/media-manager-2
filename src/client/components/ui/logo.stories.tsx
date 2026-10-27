@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/Logo',
   component: Logo,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-449' } },
   args: { name: 'sonarr' },
 } satisfies Meta<typeof Logo>;
 

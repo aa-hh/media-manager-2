@@ -9,6 +9,7 @@ const meta = {
   title: 'UI/SheetPhone',
   component: SheetPhone,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7991' } },
   // A phone-width screen with the sheet pinned to its bottom edge.
   decorators: [
     (Story) => (

@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/FieldLabelledOptional',
   component: FieldLabelledOptional,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1940' } },
   // The field fills its container; this is one column of the tracker editor's ratio grid.
   decorators: [(Story) => <div className="w-80"><Story /></div>],
   args: {

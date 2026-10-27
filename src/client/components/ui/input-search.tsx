@@ -1,5 +1,5 @@
-// v2/Input/Search — ~/Projects/media-manager-2-design/design-system.lib.pen tY5yB
-// The field and field-on-dark looks are the Input inside v2/Field/labelled (N61zp) and v2/Field/labelled/on-dark (z5mBu); an empty field shows the placeholder as in v2/Field/labelled/empty (SAhSg).
+// Figma: InputSearch — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-958
+// The field and field-on-dark looks are the Input inside FieldLabelled in Figma, its on-dark and empty looks included: https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1769
 import { Input } from '@base-ui/react/input';
 import { Search, X } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';

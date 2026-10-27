@@ -39,7 +39,7 @@ const meta = {
   title: 'UI/DownloadsLiveBar',
   component: DownloadsLiveBar,
   tags: ['autodocs'],
-  parameters: { layout: 'fullscreen' },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5766' }, layout: 'fullscreen' },
   // The bar is fixed to the bottom of the window; the full-height wrapper gives the canvas room for it and its panel.
   decorators: [(Story) => <div className="min-h-screen"><Story /></div>],
   args: {

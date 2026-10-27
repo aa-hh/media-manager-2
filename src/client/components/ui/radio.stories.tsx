@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/Radio',
   component: Radio,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-648' } },
   // A radio only works inside a RadioGroup; this is the Backup editor's choice of destination, chosen "folder".
   decorators: [
     (Story) => (

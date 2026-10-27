@@ -48,6 +48,7 @@ const meta = {
   title: 'UI/Table',
   component: Table,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1228' } },
   args: { 'aria-label': 'Tracker accounts' },
   render: (args) => <TrackerAccounts {...args} />,
 } satisfies Meta<typeof Table>;

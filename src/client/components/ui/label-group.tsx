@@ -1,4 +1,4 @@
-// v2/Label/group — ~/Projects/media-manager-2-design/design-system.lib.pen mk4uT
+// Figma: LabelGroup — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2308
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

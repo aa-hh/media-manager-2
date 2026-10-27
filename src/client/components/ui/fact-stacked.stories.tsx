@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/FactStacked',
   component: FactStacked,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1256' } },
   // The title page puts each row of three facts in a <dl> grid.
   decorators: [(Story) => <dl className="m-0 grid w-180 grid-cols-3 gap-6"><Story /></dl>],
   args: { label: 'Studio', children: 'Legendary Pictures', className: '[overflow-wrap:anywhere]' },

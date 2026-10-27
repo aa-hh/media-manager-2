@@ -9,6 +9,7 @@ const meta = {
   title: 'UI/OptionRow',
   component: OptionRow,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4303' } },
   // Radio controls only work inside a RadioGroup; this is the Backup editor's destination choice, with "A folder" chosen.
   decorators: [
     (Story) => (

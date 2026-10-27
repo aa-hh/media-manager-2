@@ -1,4 +1,4 @@
-// v2/Navigation/Phone — ~/Projects/media-manager-2-design/design-system.lib.pen FCUUC
+// Figma: NavigationPhone — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-5947
 import { ChevronLeft, Ellipsis } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';

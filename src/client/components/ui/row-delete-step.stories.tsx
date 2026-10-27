@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/RowDeleteStep',
   component: RowDeleteStep,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8538' } },
   // The delete results dialog stacks the steps in this column; w-128 is the dialog's 560 px less its 24 px padding.
   decorators: [
     (Story) => (

@@ -1,4 +1,4 @@
-// v2/Checkbox — ~/Projects/media-manager-2-design/design-system.lib.pen lm8WQ
+// Figma: Checkbox — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3454
 import { Checkbox as CheckboxPrimitive } from '@base-ui/react/checkbox';
 import { Check, Minus } from 'lucide-react';
 import type { ComponentProps } from 'react';

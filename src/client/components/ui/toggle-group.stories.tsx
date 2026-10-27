@@ -15,6 +15,7 @@ const meta = {
   title: 'UI/ToggleGroup',
   component: ToggleGroup,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-414' } },
   args: { 'aria-label': 'Calendar view', value: 'week', onValueChange: fn(), children: views },
 } satisfies Meta<typeof ToggleGroup>;
 

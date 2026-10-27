@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/LabelGroup',
   component: LabelGroup,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2308' } },
   args: { count: 2, children: 'Downloading' },
 } satisfies Meta<typeof LabelGroup>;
 

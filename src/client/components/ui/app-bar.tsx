@@ -1,6 +1,5 @@
-// v2/AppBar/Nav item — ~/Projects/media-manager-2-design/design-system.lib.pen ACA2W
-// v2/AppBar/Desktop — ~/Projects/media-manager-2-design/design-system.lib.pen F5qou
-// v2/AppBar/Desktop/setup — ~/Projects/media-manager-2-design/design-system.lib.pen uWAN1 (no search or nav; a ghost Sign out with the log-out icon in actions)
+// Figma: AppBarDesktop — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-240
+// Figma: AppBarNavItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8353
 import type { ComponentProps, ReactNode } from 'react';
 import logo from '@/assets/logos/media-manager-2.png';
 import { cn } from '@/lib/utils';

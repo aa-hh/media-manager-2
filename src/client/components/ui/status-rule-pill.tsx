@@ -1,4 +1,4 @@
-// v2/Status/rule pill — ~/Projects/media-manager-2-design/design-system.lib.pen ir39A
+// Figma: StatusRulePill — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1248
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

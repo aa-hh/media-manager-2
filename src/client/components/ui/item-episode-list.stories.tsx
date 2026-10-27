@@ -7,6 +7,7 @@ const meta = {
   title: 'UI/ItemEpisodeList',
   component: ItemEpisodeList,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7612' } },
   // The item is an option in a compact episode listbox, outside a table.
   decorators: [
     (Story) => (

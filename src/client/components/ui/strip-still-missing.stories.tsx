@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/StripStillMissing',
   component: StripStillMissing,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1228' } },
   args: {
     lead: 'Aired, still missing',
     children: 'Severance S02E03 · The Bear S03E01 · Slow Horses S04E02',

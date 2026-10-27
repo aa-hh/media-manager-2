@@ -481,9 +481,6 @@ type PiecesStripProps = {
   watch?: { logo: LogoName; name: string; state: ServiceState; text: string };
 };
 
-// v2/Strip/connection map — ~/Projects/media-manager-2-design/design-system.lib.pen jOF0R
-// v2/Strip/connection map/column — ~/Projects/media-manager-2-design/design-system.lib.pen tCtqz
-// v2/Strip/connection map/link — ~/Projects/media-manager-2-design/design-system.lib.pen yfHN6
 /** The "How the pieces connect" strip: each service column with the links between them. Pills in a column share the widest one's width. */
 export function PiecesStrip({ checks, editedOf, folders, look = 'plain', watch }: PiecesStripProps) {
   const done = look === 'done';

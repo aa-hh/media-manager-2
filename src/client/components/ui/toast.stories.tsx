@@ -21,6 +21,7 @@ const meta = {
   title: 'UI/Toast',
   component: ToastProvider,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-838' } },
   args: { children: <AddToast title="Folders saved" /> },
 } satisfies Meta<typeof ToastProvider>;
 

@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/Scrim',
   component: Scrim,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5349' } },
   // A page behind the scrim, so the dimming shows.
   decorators: [
     (Story) => (

@@ -11,6 +11,7 @@ const meta = {
   title: 'UI/RowImportFileGroup',
   component: RowImportFileGroup,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-13564' } },
   // The Import by hand panel puts the group row under the file table's header, above its file rows.
   decorators: [
     (Story) => (

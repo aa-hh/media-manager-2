@@ -16,6 +16,7 @@ const meta = {
   title: 'UI/RowHealthProblem',
   component: RowHealthProblem,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4453' } },
   // The Health screen's Problems table and its header, whose columns the row's cells are sized to.
   decorators: [
     (Story) => (

@@ -19,7 +19,7 @@ const meta = {
   title: 'UI/HeaderTitle',
   component: HeaderTitle,
   tags: ['autodocs'],
-  parameters: { layout: 'fullscreen' },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=12-4118' }, layout: 'fullscreen' },
   args: {
     title: 'Severance',
     posterUrl,

@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/CollapsibleTrigger',
   component: CollapsibleTrigger,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8759' } },
   // The trigger reads open and disabled from its Collapsible; stories set them through parameters.
   decorators: [
     (Story, { parameters }) => (

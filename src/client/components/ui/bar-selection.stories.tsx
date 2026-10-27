@@ -15,6 +15,7 @@ const meta = {
   title: 'UI/BarSelection',
   component: BarSelection,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8764' } },
   // The bar is fixed to the bottom of the window; the full-height wrapper gives the canvas room to show it.
   decorators: [(Story) => <div className="min-h-[calc(100vh-2rem)]"><Story /></div>],
   args: {

@@ -41,7 +41,7 @@
   font-display: swap;
 }
 
-/* Names and values come from the variables in ~/Projects/media-manager-2-design/design-system.lib.pen (light mode only). */
+/* The Figma library's variables carry the same names and values (light mode only): https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5787 */
 :root {
   color-scheme: light;
 
@@ -69,7 +69,7 @@
   --primary-hover: #2e2e2c;
   --primary-pressed: #000000;
   --primary-foreground: #ffffff;
-  /* The main action button's fill — ~/Projects/media-manager-2-design/design-system.lib.pen $action. */
+  /* The main action button's fill — the Figma variable action. */
   --action: #9ecae1;
   --action-hover: #8bbfdb;
   --action-pressed: #76b2d2;
@@ -459,7 +459,7 @@
   font-feature-settings: "tnum";
 }
 
-/* v2/Focus ring — ~/Projects/media-manager-2-design/design-system.lib.pen v1tSkC */
+/* Focus ring */
 /* 2px ring with a 2px gap (DESIGN.md "Focus"). The Kbd and bars use the white ring. */
 @utility focus-ring {
   &:focus-visible {

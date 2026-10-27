@@ -1,25 +1,6 @@
-// v2/Row/release — ~/Projects/media-manager-2-design/design-system.lib.pen NXfpc
-// v2/Row/release/best — ~/Projects/media-manager-2-design/design-system.lib.pen qfXmm
-// v2/Row/release/rejected — ~/Projects/media-manager-2-design/design-system.lib.pen B5OQ0G
-// v2/Row/release/cooldown — ~/Projects/media-manager-2-design/design-system.lib.pen So9dQ
-// v2/Row/release/yours — ~/Projects/media-manager-2-design/design-system.lib.pen R2TgoO
-// v2/Row/release/grabbed — ~/Projects/media-manager-2-design/design-system.lib.pen TzXh1
-// v2/Row/release/movie — ~/Projects/media-manager-2-design/design-system.lib.pen qTBZf
-// v2/Table/Header/releases — ~/Projects/media-manager-2-design/design-system.lib.pen wQU07
-// v2/Table/Header/releases/movie — ~/Projects/media-manager-2-design/design-system.lib.pen tQZov
-// v2/Cell/release-name — ~/Projects/media-manager-2-design/design-system.lib.pen M8bEk (a cell of RowRelease)
-// v2/Cell/audio-hdr — ~/Projects/media-manager-2-design/design-system.lib.pen pdjRt (a cell of RowRelease)
-// v2/Cell/seeders — ~/Projects/media-manager-2-design/design-system.lib.pen SfCL1 (a cell of RowRelease)
-// v2/Cell/seeders/low — ~/Projects/media-manager-2-design/design-system.lib.pen UITl8 (a cell of RowRelease)
-// v2/Cell/seeders/none — ~/Projects/media-manager-2-design/design-system.lib.pen gexgG (a cell of RowRelease)
-// v2/Cell/seeders/unknown — ~/Projects/media-manager-2-design/design-system.lib.pen xZr3s (a cell of RowRelease)
-// v2/Cell/tracker — ~/Projects/media-manager-2-design/design-system.lib.pen XMo1g (a cell of RowRelease)
-// v2/Cell/fit — ~/Projects/media-manager-2-design/design-system.lib.pen lz4zk (a cell of RowRelease)
-// v2/Cell/quality — ~/Projects/media-manager-2-design/design-system.lib.pen Rka34 (a cell of RowRelease)
-// v2/Cell/size — ~/Projects/media-manager-2-design/design-system.lib.pen WcaA7 (a cell of RowRelease)
-// v2/Cell/release-action — ~/Projects/media-manager-2-design/design-system.lib.pen p1fiB7 (a cell of RowRelease)
-// v2/Cell/release-action/outline — ~/Projects/media-manager-2-design/design-system.lib.pen lXOk9 (a cell of RowRelease)
-// v2/Cell/release-action/state — ~/Projects/media-manager-2-design/design-system.lib.pen oSFS4 (a cell of RowRelease)
+// Figma: RowRelease — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3346
+// Figma: RowReleaseHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3905
+// Figma: RowReleaseSkeleton — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3922
 import type { ReactNode } from 'react';
 import { MarkFreeleech } from '@/components/ui/mark-freeleech';
 import { MarkHistory } from '@/components/ui/mark-history';

@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/SignInBlock',
   component: SignInBlock,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-6069' } },
   // The heading and line colours are for the dark sign-in page; this is that page's ground and column width.
   // The bottom padding leaves room for the line, which sits outside the block's flow.
   decorators: [

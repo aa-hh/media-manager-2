@@ -1,5 +1,5 @@
-// v2/Row/season — ~/Projects/media-manager-2-design/design-system.lib.pen C5GiQ
-// v2/Table/Header/season — ~/Projects/media-manager-2-design/design-system.lib.pen WvFSL
+// Figma: RowSeason — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5513
+// Figma: RowSeasonHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5281
 import { ChevronRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';

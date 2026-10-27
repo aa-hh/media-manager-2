@@ -1,4 +1,4 @@
-// v2/Field/labelled optional — ~/Projects/media-manager-2-design/design-system.lib.pen r4FA5
+// Figma: FieldLabelledOptional — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1940
 import type { ComponentProps } from 'react';
 import { FieldLabelled } from '@/components/ui/field-labelled';
 

@@ -1,4 +1,5 @@
-// v2/Row/import-file — ~/Projects/media-manager-2-design/design-system.lib.pen tm5WE
+// Figma: RowImportFile — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-11301
+// Figma: RowImportFileHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-11306
 import type { ReactNode } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';

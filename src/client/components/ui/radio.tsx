@@ -1,4 +1,4 @@
-// v2/Radio — ~/Projects/media-manager-2-design/design-system.lib.pen RhfKq
+// Figma: Radio — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-648
 import { Radio as RadioPrimitive } from '@base-ui/react/radio';
 import { RadioGroup } from '@base-ui/react/radio-group';
 import type { ComponentProps } from 'react';

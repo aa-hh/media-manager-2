@@ -83,6 +83,7 @@ const meta = {
   title: 'UI/RowEpisodeReleases',
   component: RowEpisodeReleases,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-18095' } },
   // Pick a release opens inside the Seasons table (or the movie's versions table), wrapped in its own Releases table role.
   decorators: [
     (Story) => (

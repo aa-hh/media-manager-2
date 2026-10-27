@@ -23,6 +23,7 @@ const meta = {
   title: 'UI/PanelInline',
   component: PanelInline,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7129' } },
   decorators: [(Story) => <div className="w-220"><Story /></div>],
   args: {
     open: true,

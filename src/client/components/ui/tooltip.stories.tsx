@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/Tooltip',
   component: Tooltip,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3507' } },
   // Room on every side for the tooltip.
   decorators: [
     (Story) => (

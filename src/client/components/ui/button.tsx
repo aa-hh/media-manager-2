@@ -1,7 +1,4 @@
-// v2/Button — ~/Projects/media-manager-2-design/design-system.lib.pen ht3RN
-// v2/Button/sm — ~/Projects/media-manager-2-design/design-system.lib.pen FU0kO (size="sm")
-// v2/Button/plex — ~/Projects/media-manager-2-design/design-system.lib.pen yb2vM (variant="plex" size="large")
-// v2/Button/jellyfin — ~/Projects/media-manager-2-design/design-system.lib.pen hi4Y1 (variant="jellyfin" size="large")
+// Figma: Button — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2887
 import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';

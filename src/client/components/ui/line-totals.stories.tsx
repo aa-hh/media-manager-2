@@ -15,6 +15,7 @@ const meta = {
   title: 'UI/LineTotals',
   component: LineTotals,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2311' } },
   args: { totals, link: { label: '7 titles missing files', href: '/flagged', onClick: fn() } },
 } satisfies Meta<typeof LineTotals>;
 

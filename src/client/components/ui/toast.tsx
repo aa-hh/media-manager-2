@@ -1,4 +1,4 @@
-// v2/Toast — ~/Projects/media-manager-2-design/design-system.lib.pen Dslj1
+// Figma: Toast — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-838
 import { Toast } from '@base-ui/react/toast';
 import { Check, Info, X } from 'lucide-react';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';

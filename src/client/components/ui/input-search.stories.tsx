@@ -7,6 +7,7 @@ const meta = {
   title: 'UI/InputSearch',
   component: InputSearch,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-958' } },
   // The search field fills the app bar's middle column; the form fields fill a settings column.
   decorators: [(Story) => <div className="w-130"><Story /></div>],
   args: {

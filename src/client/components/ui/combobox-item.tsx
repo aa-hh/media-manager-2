@@ -1,4 +1,4 @@
-// v2/Combobox item — ~/Projects/media-manager-2-design/design-system.lib.pen L7eQnT
+// Figma: ComboboxItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3548
 import { Check } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

@@ -20,6 +20,7 @@ const meta = {
   title: 'UI/RowDeleteTorrent',
   component: RowDeleteTorrent,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-10060' } },
   // The delete dialog lists these rows in a column; w-128 is the dialog's 560 px less its 24 px padding.
   decorators: [
     (Story) => (

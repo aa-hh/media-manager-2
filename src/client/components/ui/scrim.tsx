@@ -1,4 +1,4 @@
-// v2/Scrim — ~/Projects/media-manager-2-design/design-system.lib.pen y7vLCb
+// Figma: Scrim — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5349
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 

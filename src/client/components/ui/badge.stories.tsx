@@ -7,6 +7,7 @@ const meta = {
   title: 'UI/Badge',
   component: Badge,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-587' } },
   args: { children: 'Not in library' },
 } satisfies Meta<typeof Badge>;
 

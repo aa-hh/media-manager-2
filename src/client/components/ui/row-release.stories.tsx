@@ -16,6 +16,7 @@ const meta = {
   title: 'UI/RowRelease',
   component: RowRelease,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3346' } },
   // Pick a release renders its rows inside the releases inset (movie page: 16 px in), under the releases header. The
   // inset also sets --inset, which the cooldown bar reads to reach the table's left edge.
   decorators: [

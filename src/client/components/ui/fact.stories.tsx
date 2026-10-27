@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/Fact',
   component: Fact,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1251' } },
   // Fact and FactRow are dt/dd pairs; the screens place them inside a <dl>.
   decorators: [(Story) => <dl className="flex flex-wrap gap-x-8 gap-y-3 py-2"><Story /></dl>],
   args: { label: 'Ratio', children: '2.41' },
