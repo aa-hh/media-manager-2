@@ -14603,3 +14603,50 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
   ];
   for (const [caller, allowed] of callers) assert.equal(callerAllowed(caller), allowed, JSON.stringify(caller));
 });
+
+test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
+  const { fileEvent, playsOnOpen, subtitleAdd } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
+  // [the title asked for, the title whose file mpv last opened]
+  const same = (fields) => { const playing = title(fields); return [playing, playing]; };
+  const replaced = [title(), title()];
+  const ended = (reason) => ({ event: 'end-file', value: reason });
+  // Dropping the `loaded` comparison turns the replaced rows red: a file stopped before a new load, or replaced by it,
+  // would open, fail or finish into that load. Counting a stop as an ending turns the stop row red: every seek's reload
+  // would retry the title. Ignoring Plex's length turns the transcode rows (no mpv duration) red.
+  const events = [
+    [{ event: 'file-loaded' }, same(), 'opened'],
+    [{ event: 'file-loaded' }, replaced, null],
+    [ended('error'), replaced, null],
+    [ended('eof'), [null, null], null],
+    [ended('stop'), same(), null],
+    [ended('error'), same(), 'failed'],
+    [ended('error'), same({ unauthorized: true }), 'unauthorized'],
+    [ended('eof'), same({ position: 3590 }), 'finished'],
+    [ended('eof'), same(), 'failed'],
+    [ended('eof'), same({ duration: null, position: 3590 }), 'finished'],
+    [ended('eof'), same({ duration: null }), 'failed'],
+    [ended('eof'), same({ duration: null, reply: {} }), 'finished'],
+  ];
+  for (const [event, [playing, loaded], meaning] of events) {
+    assert.equal(fileEvent(event, playing, loaded), meaning, JSON.stringify([event, playing, playing === loaded]));
+  }
+
+  // Unpausing whenever a file opens turns the paused row red: a seek or a retry would start a title the owner paused.
+  // Leaving a new load paused turns the first row red.
+  assert.equal(playsOnOpen({ paused: false }), true);
+  assert.equal(playsOnOpen({ paused: true }), false);
+
+  // Dropping the title, or falling back to the file's address, turns the title column red: mpv would name the track
+  // after the address, token included. Keeping Plex's first connection turns the address column red.
+  const answered = 'https://5-6-7-8.abc.plex.direct:32400';
+  const url = 'https://1-2-3-4.abc.plex.direct:32400/library/streams/7?X-Plex-Token=transient-abc&encoding=utf-8';
+  const subtitles = [
+    [{ url, key: '/library/streams/7', title: 'English (SRT)', language: 'English' }, 'English (SRT)'],
+    [{ url, key: '/library/streams/7', title: null, language: 'English' }, 'English'],
+    [{ url, key: '/library/streams/7' }, '/library/streams/7'],
+  ];
+  for (const [track, name] of subtitles) {
+    assert.deepEqual(subtitleAdd(track, answered), ['sub-add', `${answered}/library/streams/7?X-Plex-Token=transient-abc&encoding=utf-8`, 'cached', name]);
+  }
+});
