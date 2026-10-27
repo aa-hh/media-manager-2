@@ -243,11 +243,13 @@ function OverviewBand({ subject, owned, library }: { subject: Subject; owned: bo
 
 type Sent = 'sending' | 'sent' | 'failed';
 
-export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
+export function TitleHeader({ subject, owned, badges, play, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
   subject: Subject;
   owned: boolean;
   /** Status Badges under the meta line. */
   badges?: ReactNode;
+  /** The Play line (TitlePlayLine) under the badges; with it, Search and Pick a release turn outline (title.pen NIjoo). */
+  play?: ReactNode;
   /** The library card's rows; Added and Folder follow when the title is in the library. */
   facts?: TitleFact[];
   monitored?: MonitoredState;
@@ -331,8 +333,9 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
         status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}
         meta={metaLine(subject)}
         badges={badges}
+        play={compact ? undefined : play}
         primary={owned ? (
-          <Button size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
+          <Button variant={play === undefined ? 'default' : 'outline'} size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
             Search automatically
           </Button>
         ) : addAction}

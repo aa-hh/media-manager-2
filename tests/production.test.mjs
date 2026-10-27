@@ -11614,6 +11614,67 @@ test('library filters, watch marks and the card Play follow Plex watch status', 
   });
 });
 
+test('title page Play follows Plex watch status', async (t) => {
+  // playLine.ts imports library/watch.ts at run time, so that import is pointed at watch.ts loaded the same way.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = async (path) => stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8'));
+  const asUrl = (code) => `data:text/javascript,${encodeURIComponent(code)}`;
+  const watchUrl = asUrl(await source('../src/client/library/watch.ts'));
+  const { titlePlayMode, nextEpisode, rowSecondLine, seriesPlayLine, moviePlayLine, defaultQuality } = await import(
+    asUrl((await source('../src/client/title/playLine.ts')).replace("'../library/watch'", JSON.stringify(watchUrl))));
+
+  const min = 60_000;
+  const playable = (rest = {}) => ({ ratingKey: 'k', mediaIndex: 0, partId: 1, versions: [{ mediaIndex: 0, partId: 1, file: '/media/a.mkv' }],
+    viewOffsetMs: null, durationMs: 52 * min, viewCount: 0, lastViewedAt: null, ...rest });
+  const episode = (id, seasonNumber, episodeNumber, rest = {}) => ({ id, seasonNumber, episodeNumber, title: `Episode ${id}`, hasFile: true, runtime: 50, ...rest });
+  const show = (episodes, rest = {}) => ({ kind: 'ok', machineIdentifier: 'm', ratingKey: 'S', leafCount: 3, viewedLeafCount: 0, nextEpisode: null, episodes, ...rest });
+
+  // Showing Play on Jellyfin, with Plex not answering, in a plain browser as the in-app player, or with nothing downloaded turns this red.
+  await t.test('which Play the page shows', () => {
+    const watch = show({ 1: playable() });
+    assert.equal(titlePlayMode('plex', true, watch, true), 'desktop');
+    assert.equal(titlePlayMode('plex', false, watch, true), 'plex-web');
+    assert.equal(titlePlayMode('jellyfin', true, watch, true), 'none');
+    assert.equal(titlePlayMode('plex', true, { kind: 'unavailable' }, true), 'none');
+    assert.equal(titlePlayMode('plex', true, null, true), 'none');
+    assert.equal(titlePlayMode('plex', true, watch, false), 'none');
+  });
+
+  // Picking an episode Plex does not have, one without a Sonarr file, or a special before season 1 turns this red.
+  await t.test('which episode is next', () => {
+    const episodes = [episode(10, 0, 1), episode(11, 1, 1), episode(12, 1, 2), episode(13, 1, 3, { hasFile: false })];
+    const watch = show({ 10: playable(), 11: playable(), 12: playable(), 13: playable() });
+    assert.equal(nextEpisode(episodes, { ...watch, nextEpisode: { seasonNumber: 1, episodeNumber: 2 } })?.id, 12);
+    assert.equal(nextEpisode(episodes, watch)?.id, 11);
+    assert.equal(nextEpisode(episodes, { ...watch, nextEpisode: { seasonNumber: 1, episodeNumber: 3 } }), undefined);
+    assert.equal(nextEpisode(episodes, { kind: 'off' }), undefined);
+  });
+
+  // Counting the time left from the start, dropping the Played word, or ignoring Sonarr's runtime when Plex has none turns this red.
+  await t.test('the episode row\'s second line', () => {
+    assert.equal(rowSecondLine(episode(1, 2, 4), playable({ viewOffsetMs: 21 * min })), '31 min left');
+    assert.equal(rowSecondLine(episode(1, 2, 4), playable({ viewCount: 1 })), 'Played');
+    assert.equal(rowSecondLine(episode(1, 2, 4), playable()), '52 min');
+    assert.equal(rowSecondLine(episode(1, 2, 4, { runtime: 51 }), undefined), '51 min');
+    assert.equal(rowSecondLine(episode(1, 2, 4, { runtime: null }), undefined), null);
+  });
+
+  // Changing the W3 wording of the header Play line, or offering resume without a saved position, turns this red.
+  await t.test('the header Play line wording', () => {
+    const hollow = episode(4, 2, 4, { title: 'Woe’s Hollow' });
+    assert.deepEqual(seriesPlayLine(hollow, playable({ viewOffsetMs: 21 * min })),
+      { label: 'Resume S2 E4', line1: 'Stopped at 21:00 · S2 E4 · Woe’s Hollow', line2: '31 min left of 52 min', resumeAtMs: 21 * min });
+    assert.deepEqual(seriesPlayLine(episode(5, 3, 5, { title: 'Attila' }), playable({ durationMs: 56 * min })),
+      { label: 'Play S3 E5', line1: 'S3 E5 · Attila', line2: '56 min', resumeAtMs: null });
+    const film = playable({ durationMs: 166 * min, versions: [{ mediaIndex: 0, partId: 1, file: '/media/Dune 2160p.mkv' }, { mediaIndex: 1, partId: 2, file: '/media/Dune 1080p.mkv' }] });
+    const quality = defaultQuality({ file: { relativePath: 'Dune 2160p.mkv', quality: '2160p WEB-DL' }, secondVersions: [{ state: 'imported', path: '/data/Dune 1080p.mkv', quality: '1080p WEB-DL' }] }, film);
+    assert.deepEqual(moviePlayLine(film, 166, quality),
+      { label: 'Play', line1: '2 h 46 min · plays 2160p WEB-DL', line2: 'Highest quality of 2 versions', resumeAtMs: null });
+    assert.deepEqual(moviePlayLine({ ...film, viewOffsetMs: 3_909_000 }, 166, quality),
+      { label: 'Resume', line1: 'Stopped at 1:05:09', line2: '1 h 41 min left of 2 h 46 min', resumeAtMs: 3_909_000 });
+  });
+});
+
 test('title pages mark episodes and select ranges of episodes only', async (t) => {
   // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');

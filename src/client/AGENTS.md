@@ -23,7 +23,7 @@ React client for a server that grabs releases and deletes files; a click here ha
 - `PickRelease.tsx`, `releaseView.ts` → Pick a release screen.
 - `navigation.ts`, `plexPopup.ts`, `desktopBridge.ts` → navigation, Plex sign-in, desktop app.
 - `downloads/` → queue snapshot, event stream, import panel.
-- `title/` → movie and series pages.
+- `title/` → title pages, Play included.
 - `library/` → grid, filters, progress, watch status.
 - `discover/` → Discover home, grids.
 - `settings/` → service connections and tracker rules.

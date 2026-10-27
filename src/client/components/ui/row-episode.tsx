@@ -1,5 +1,6 @@
 // Figma: RowEpisode — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4854
 // Figma: RowEpisodeHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4458
+// With a still: ~/Projects/media-manager-2-design/title.pen NIjoo (Rows B1 refined, 56 px). Not in Figma yet.
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
@@ -29,6 +30,10 @@ type RowEpisodeProps = Omit<TableRowProps, 'progress' | 'title'> & {
   bookmark: ReactNode;
   number: ReactNode;
   title: ReactNode;
+  /** A StillEpisode before the title; the row grows to 56 px and the title takes two lines. */
+  still?: ReactNode;
+  /** The title's second line under it, such as "31 min left", "Played" or the runtime. */
+  secondLine?: ReactNode;
   aired: ReactNode;
   /** One Badge, or nothing when normal. */
   status?: ReactNode;
@@ -46,13 +51,14 @@ type RowEpisodeProps = Omit<TableRowProps, 'progress' | 'title'> & {
 };
 
 /** Episode row inside a season. Use marker "warning" for missing and "risk" for stalled. */
-function RowEpisode({ bookmark, number, title, aired, status, quality, size, actions, monitored = true, upcoming = false, open = false, selected, line = 'episode', className, ...props }: RowEpisodeProps) {
+function RowEpisode({ bookmark, number, title, still, secondLine, aired, status, quality, size, actions, monitored = true, upcoming = false, open = false, selected, line = 'episode', className, ...props }: RowEpisodeProps) {
   return (
     <TableRow
       selected={selected}
       line={line}
       className={cn(
         'pl-13',
+        still !== undefined && 'h-(--row-two-line)',
         // The open tint paints above the row's own fill, so it steps aside for the selected tint.
         open && !selected && 'isolate before:absolute before:inset-y-0 before:right-4 before:left-24 before:-z-10 before:bg-accent hover:before:bg-surface-pressed',
         className,
@@ -61,8 +67,14 @@ function RowEpisode({ bookmark, number, title, aired, status, quality, size, act
     >
       <TableCell className={w.bookmark}>{bookmark}</TableCell>
       <TableCell className={cn(w.number, 'font-medium text-muted-foreground')}>{number}</TableCell>
-      <TableCell fill className={cn('font-ui font-medium', !monitored && 'text-muted-foreground')}>
-        <span className="truncate">{title}</span>
+      <TableCell fill className={cn('gap-3 font-ui font-medium', !monitored && 'text-muted-foreground')}>
+        {still}
+        {still === undefined && secondLine === undefined ? <span className="truncate">{title}</span> : (
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate">{title}</span>
+            {secondLine !== undefined && <span className="truncate font-data text-xs font-normal text-muted-foreground">{secondLine}</span>}
+          </span>
+        )}
       </TableCell>
       <TableCell className={cn(w.aired, !upcoming && 'text-muted-foreground')}>{aired}</TableCell>
       <TableCell className={cn(w.status, 'min-w-0')}>{status}</TableCell>
