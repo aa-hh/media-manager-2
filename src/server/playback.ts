@@ -169,6 +169,19 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
       default: stream.default === true,
     });
     const mediaHeight = numberOrNull(media.height);
+    const video = streams.find((stream) => stream.streamType === 1);
+    const dynamicRange = video === undefined ? null
+      : video.DOVIPresent === true ? 'dolby_vision'
+        : video.colorTrc === 'smpte2084' ? 'hdr10'
+          : video.colorTrc === 'arib-std-b67' ? 'hlg' : 'sdr';
+    const file = {
+      width: numberOrNull(media.width),
+      height: mediaHeight,
+      videoCodec: stringOrNull(media.videoCodec),
+      bitrateKbps: fileKbps,
+      dynamicRange,
+      dolbyVisionProfile: dynamicRange === 'dolby_vision' ? numberOrNull(video?.DOVIProfile) : null,
+    };
     const qualitySteps = QUALITY_STEPS.filter((step) => (mediaHeight === null || step.height <= mediaHeight)
       && (maxUploadBitrate === null || step.kbps <= maxUploadBitrate));
 
@@ -210,6 +223,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
               ...track(stream, index),
               external: isExternal,
               key: stringOrNull(stream.key),
+              offsetMs: numberOrNull(stream.offset),
               ...(desktop && isExternal ? { url: subtitleUrl(stream) } : {}),
             };
           }),
@@ -225,6 +239,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
           startTimeOffset: numberOrNull(chapter.startTimeOffset),
           endTimeOffset: numberOrNull(chapter.endTimeOffset),
         })),
+        file,
         qualitySteps,
         ...(desktop ? { streamAddresses } : {}),
       },
