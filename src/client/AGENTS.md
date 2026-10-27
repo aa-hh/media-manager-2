@@ -21,11 +21,11 @@ React client for a server that grabs releases and deletes files; a click here ha
 - `main.tsx`, `metrics.ts` → session check, routing, page-speed log.
 - `Home.tsx`, `Search.tsx`, `SignIn.tsx` → those screens.
 - `PickRelease.tsx`, `releaseView.ts` → Pick a release screen.
-- `navigation.ts`, `plexPopup.ts` → navigation; Plex sign-in popup.
+- `navigation.ts`, `plexPopup.ts`, `desktopBridge.ts` → navigation, Plex sign-in, desktop app.
 - `downloads/` → queue snapshot, event stream, import panel.
 - `title/` → movie and series pages.
-- `library/` → library grid, live progress, request helpers.
-- `discover/` → Discover home and grids.
+- `library/` → grid, filters, progress, watch status.
+- `discover/` → Discover home, grids.
 - `settings/` → service connections and tracker rules.
 - `calendar/`, `flagged/`, `health/`, `history/` → those screens.
 - `components/ui/` → presentational components.

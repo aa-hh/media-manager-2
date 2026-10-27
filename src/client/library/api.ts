@@ -17,7 +17,51 @@ export type LibraryTitle = {
   sizeOnDisk: number;
   tv: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; seasonCount: number } | null;
   movie: { hasFile: boolean; isAvailable: boolean } | null;
+  /** Plex watch marks; null when unmatched or when Plex is off or not answering. */
+  watch: TitleWatch;
 };
+
+// Watch status from Plex; src/server/watchStatus.ts is the source of truth.
+export type TitleWatch =
+  | { kind: 'movie'; ratingKey: string; viewOffsetMs: number | null; durationMs: number | null; viewCount: number; lastViewedAt: number | null }
+  | { kind: 'show'; ratingKey: string; leafCount: number; viewedLeafCount: number; lastViewedAt: number | null }
+  | null;
+
+export type ContinueWatchingItem = {
+  service: Service;
+  id: number;
+  viewOffsetMs: number | null;
+  durationMs: number | null;
+  lastViewedAt: number | null;
+  episode: { seasonNumber: number; episodeNumber: number; title: string | null } | null;
+};
+
+/** `unavailable`: Plex did not answer; `off`: a Jellyfin owner or no Plex set up. */
+export type LibraryWatch = { kind: 'ok'; machineIdentifier: string; continueWatching: ContinueWatchingItem[] } | { kind: 'unavailable' } | { kind: 'off' };
+
+export type Playable = {
+  ratingKey: string;
+  mediaIndex: number;
+  partId: number;
+  versions: Array<{ mediaIndex: number; partId: number; file: string }>;
+  viewOffsetMs: number | null;
+  durationMs: number | null;
+  viewCount: number;
+  lastViewedAt: number | null;
+};
+
+type WatchOff = { kind: 'unavailable' } | { kind: 'off' };
+/** Episodes are keyed by Sonarr episode id. */
+export type SeriesWatch = {
+  kind: 'ok';
+  machineIdentifier: string;
+  ratingKey: string;
+  leafCount: number;
+  viewedLeafCount: number;
+  nextEpisode: { seasonNumber: number; episodeNumber: number } | null;
+  episodes: Record<string, Playable>;
+} | null | WatchOff;
+export type MovieWatch = ({ kind: 'ok'; machineIdentifier: string } & Playable) | null | WatchOff;
 
 export type FileDetail = {
   id: number;
