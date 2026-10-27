@@ -1,5 +1,4 @@
 // Figma: LibraryPosterCard — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-2830
-// Watch marks, watch bar and the Play or Resume slot are not in Figma yet: ~/Projects/media-manager-2-design/design-system.lib.pen Z0OVp (j6NEK5, YXJyK, H3Cw0, pYAeB, PihnU).
 import { ArrowRight, Check, Clapperboard, ImageOff, Tv } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useState } from 'react';
 import { cn } from '@/lib/utils';
