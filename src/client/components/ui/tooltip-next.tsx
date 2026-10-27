@@ -1,5 +1,4 @@
-// Next tooltip — ~/Projects/media-manager-2-design/player.pen Km5Qc (a plain frame in GrqIz state 12)
-// Not in Figma yet.
+// Figma: TooltipNext — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=109-295
 import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip';
 import type { ReactElement, ReactNode } from 'react';
 

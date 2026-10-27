@@ -1,6 +1,4 @@
 // Figma: Button — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2887
-// v2/Button/on-dark — ~/Projects/media-manager-2-design/player.pen MW9IF; outline-on-dark and on-video are its instance overrides in player.pen GrqIz (Close player o98tyf, Skip intro AZemF).
-// The on-dark, outline-on-dark and on-video looks are not in Figma yet.
 import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { ChevronDown } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';

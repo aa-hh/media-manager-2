@@ -1,5 +1,4 @@
-// Error block — ~/Projects/media-manager-2-design/player.pen pt3DH and sTAGM (plain frames in GrqIz states 13 and 14)
-// Not in Figma yet.
+// Figma: PlayerError — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=111-358
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

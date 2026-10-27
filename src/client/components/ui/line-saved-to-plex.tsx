@@ -1,5 +1,4 @@
-// Saved to Plex line — ~/Projects/media-manager-2-design/player.pen EdZDR (a plain frame in GrqIz states 5, 6 and 7)
-// Not in Figma yet.
+// Figma: LineSavedToPlex — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-1122
 import type { ReactNode } from 'react';
 import { Logo } from '@/components/ui/logo';
 import { cn } from '@/lib/utils';

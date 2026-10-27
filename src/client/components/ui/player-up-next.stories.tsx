@@ -10,7 +10,7 @@ const meta = {
   title: 'Overlays & bars/PlayerUpNext',
   component: PlayerUpNext,
   tags: ['autodocs'],
-  parameters: { layout: 'fullscreen' },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=113-516' }, layout: 'fullscreen' },
   decorators: [(Story) => <div className="bg-black p-12"><Story /></div>],
   args: {
     heading: 'Next episode',

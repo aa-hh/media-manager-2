@@ -83,7 +83,7 @@ const meta = {
   title: 'Overlays & bars/PlayerStage',
   component: PlayerStage,
   tags: ['autodocs'],
-  parameters: { layout: 'fullscreen' },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=114-725' }, layout: 'fullscreen' },
   decorators: [(Story) => <div className="h-180 w-320"><Story /></div>],
   args: {
     picture: <img src={arrival} alt="" />,

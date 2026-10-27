@@ -8,6 +8,7 @@ import { MenuResume } from '@/components/ui/menu-resume';
 const meta = {
   title: 'Actions & inputs/MenuResume',
   component: MenuResume,
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-825' } },
   tags: ['autodocs'],
   // Opened from the header's Resume button, with room under it for the menu.
   decorators: [

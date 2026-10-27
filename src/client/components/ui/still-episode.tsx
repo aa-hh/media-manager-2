@@ -1,5 +1,4 @@
-// v2/Still/episode — ~/Projects/media-manager-2-design/title.pen jsZpS
-// Not in Figma yet.
+// Figma: StillEpisode — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=117-4144
 import { Check, Play } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';

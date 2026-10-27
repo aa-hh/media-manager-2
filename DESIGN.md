@@ -331,7 +331,7 @@ Icon-only buttons are squares at the same heights, and badges follow the same he
 
 ### Player and playing
 
-From `player.pen` v96V7 and `title.pen` CaPVj (approved 27 Oct 2026); not in Figma yet.
+From `player.pen` v96V7 and `title.pen` CaPVj (approved 27 Oct 2026). Redrawn in the Figma library on 28 Oct 2026.
 
 - **v2/Player/Stage** (`player-stage.tsx`): the player filling the window, drawn at 1280 by 720. Top bar 24 in and 20 down: an on-dark Back, the title 16/700 over a 13 line, and the format line (12/500, HDR and Dolby Vision only) at the right. Controls 24 in, 49 up: the timeline (time 14/500 data, a 4 high line in `input-on-dark` with the played part in `foreground-on-dark`, what has loaded ahead in white 45%, a 14px white dot, 3px black gaps at chapter starts, 2px `mark-on-video` lines above for the intro and credits) and the buttons row (Previous and Next only with a play queue; Back 10 s, Forward 30 s; Subtitles, Audio and Quality labelled with the current choice). Black scrims fade in 160 high from the top and 280 from the bottom. Hidden controls leave only the picture; opening and buffering dim the picture (55%, 35%) under a 40px spinner with one or two lines.
 - **v2/Button/on-dark** (`variant="on-dark"`): no fill or edge, `foreground-on-dark` 20px icon and 14/600 label, 10 padding; white 12% on hover and while its menu is open. `outline-on-dark` adds a 1.5px `input-on-dark` edge (Close player, Back to library). `on-video` is Skip intro and Skip credits: 44 high, `surface-on-video` fill, the same edge, a 16px icon and the S key, 24 in from the bottom right.
