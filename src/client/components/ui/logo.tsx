@@ -49,7 +49,7 @@ const logos: Record<LogoName, { src: string; alt: string }> = {
   trakt: { src: trakt, alt: 'Trakt' },
 };
 
-/** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on the black button; Jellyfin black only on the Jellyfin button. */
+/** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on dark grounds (the black button, the dark first-run pick, the setup strip's connected pill); Jellyfin black only on the Jellyfin button. */
 function Logo({ name, alt, className, ...props }: Omit<ComponentProps<'img'>, 'src'> & { name: LogoName }) {
   const logo = logos[name];
   return <img src={logo.src} alt={alt ?? logo.alt} width={20} height={20} className={cn('size-5 shrink-0 object-contain', className)} {...props} />;
