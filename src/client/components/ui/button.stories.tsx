@@ -1,5 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { RefreshCw, Settings } from 'lucide-react';
+import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
+import { Captions, RefreshCw, Settings, SkipForward } from 'lucide-react';
 import { fn } from 'storybook/test';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';
@@ -72,3 +72,15 @@ export const WithIconLoading: Story = { args: { variant: 'ghost', icon: <Refresh
 export const WithKbd: Story = { args: { variant: 'outline', kbd: 'Esc', children: 'Collapse' } };
 
 export const IconOnly: Story = { args: { variant: 'ghost', iconOnly: true, icon: <Settings />, 'aria-label': 'Settings', children: undefined } };
+
+// The player's looks over the picture (player.pen MW9IF and its overrides), shown on black so their light text reads.
+const onBlack: Decorator[] = [(Story) => <div className="bg-black p-6"><Story /></div>];
+
+export const OnDark: Story = { decorators: onBlack, args: { variant: 'on-dark', icon: <Captions />, children: 'English' } };
+
+export const OnDarkIconOnly: Story = { decorators: onBlack, args: { variant: 'on-dark', iconOnly: true, icon: <Settings />, 'aria-label': 'Settings', children: undefined } };
+
+export const OutlineOnDark: Story = { decorators: onBlack, args: { variant: 'outline-on-dark', children: 'Close player' } };
+
+// Skip intro (player.pen AZemF); Skip credits looks the same.
+export const OnVideoSkipIntro: Story = { decorators: onBlack, args: { variant: 'on-video', size: 'large', icon: <SkipForward />, kbd: 'S', children: 'Skip intro' } };

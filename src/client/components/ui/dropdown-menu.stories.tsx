@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Ellipsis, History, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { AudioLines, Ellipsis, History, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { fn } from 'storybook/test';
 import { Button } from '@/components/ui/button';
+import { LineSavedToPlex } from '@/components/ui/line-saved-to-plex';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -9,6 +10,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuGroupLabel,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -90,6 +93,28 @@ export const CheckboxItems: Story = {
           <DropdownMenuCheckboxItem checked={false} onCheckedChange={fn()}>Quality profile</DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem checked={false} onCheckedChange={fn()}>Date added</DropdownMenuCheckboxItem>
         </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ),
+};
+
+// The player's dark Audio menu (player.pen GrqIz state 5): a radio group of tracks and the Saved to Plex line.
+export const OnDark: Story = {
+  decorators: [(Story) => <div className="flex h-80 items-end justify-center bg-black p-4"><Story /></div>],
+  render: (args) => (
+    <DropdownMenu {...args}>
+      <DropdownMenuTrigger render={<Button variant="on-dark" icon={<AudioLines />} aria-label="Audio: Japanese 5.1">Japanese 5.1</Button>} />
+      <DropdownMenuContent onDark side="top" align="end" sideOffset={8} className="w-80">
+        <DropdownMenuGroup>
+          <DropdownMenuGroupLabel>Audio</DropdownMenuGroupLabel>
+          <DropdownMenuRadioGroup defaultValue="ja">
+            <DropdownMenuRadioItem value="ja">Japanese · Dolby Digital 5.1</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="en">English · Dolby Digital 5.1</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="ja-ad">Japanese · Audio description, stereo</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <LineSavedToPlex>Saved to Plex for this episode, so your other Plex apps play it the same way.</LineSavedToPlex>
       </DropdownMenuContent>
     </DropdownMenu>
   ),
