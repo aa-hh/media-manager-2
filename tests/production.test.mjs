@@ -3628,13 +3628,13 @@ test('watch status from Plex marks library titles, both title pages and Continue
     return body === undefined ? new Response('', { status: 404 }) : new Response(JSON.stringify({ MediaContainer: body }), { status: 200 });
   };
   const clock = { value: 1_800_000_000_000 };
-  const connect = ({ fetch = plexFetch, enabled = () => true } = {}) => {
+  const connect = ({ fetch = plexFetch, enabled = () => true, sleep = () => new Promise(() => {}) } = {}) => {
     const requests = [];
     const plex = createPlex(database, { fetch: async (url, init) => {
       requests.push(new URL(String(url)).pathname);
       return fetch(url, init);
     } });
-    const watchStatus = createWatchStatus({ plex, enabled, now: () => clock.value });
+    const watchStatus = createWatchStatus({ plex, enabled, now: () => clock.value, sleep });
     const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database), undefined, undefined, undefined, undefined, undefined, watchStatus));
     const get = async (path) => {
       const response = await routes.request(path);
@@ -3696,6 +3696,24 @@ test('watch status from Plex marks library titles, both title pages and Continue
     assert.ok(offBody.titles.every((title) => title.watch === null));
     assert.deepEqual((await off.get('/movie/9')).body.watch, { kind: 'off' });
     assert.deepEqual(off.requests, []);
+  });
+
+  // Awaiting the first Plex listing without the 1.5 s cap, or caching the timed-out wait as a failure, turns this red.
+  await t.test('a slow first Plex listing leaves the library unmarked, and the next load gets the marks', async () => {
+    let answer;
+    const held = new Promise((resolve) => { answer = resolve; });
+    let waits = 0;
+    const { get } = connect({
+      fetch: async (url, init) => (new URL(String(url)).pathname.endsWith('/all') ? held.then(() => plexFetch(url, init)) : plexFetch(url, init)),
+      sleep: () => ((waits += 1) === 1 ? Promise.resolve() : new Promise(() => {})),
+    });
+    const first = await get('/titles');
+    assert.equal(first.status, 200);
+    assert.deepEqual(first.body.watch, { kind: 'unavailable' });
+    answer();
+    const second = await get('/titles');
+    assert.equal(second.body.watch.kind, 'ok');
+    assert.equal(titleWatch(second.body.titles, 'Arrival').ratingKey, '200');
   });
 
   // Listing Plex on every library load instead of keeping the listing for 60 seconds turns this red.
@@ -3788,9 +3806,9 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
         default: return items[url.pathname] === undefined ? new Response('', { status: 404 }) : json({ MediaContainer: { Metadata: [items[url.pathname]] } });
       }
     };
-    const routes = createPlaybackRoutes(createPlayback({ plexPlayback: createPlexPlayback(database, { fetch }), enabled: () => true, now: () => 1_800_000_000_000 }));
+    const routes = createPlaybackRoutes(createPlayback({ plexPlayback: createPlexPlayback(database, { fetch }), enabled: () => true }));
     const decisions = () => requests.filter((url) => url.pathname === '/video/:/transcode/universal/decision');
-    return { routes, decisions };
+    return { routes, decisions, requests };
   };
   const ids = { clientId: 'desktop-client-0001', sessionIdentifier: 'player-session-0001' };
   const start = async (routes, extra = {}, { desktop = false } = {}) => {
@@ -3889,8 +3907,8 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.deepEqual(await steps('200'), [2, 3, 4, 5, 6]);
   });
 
-  // Dropping the retry with direct play off after Plex answers 1001, refusing on directPlayDecisionCode, or reusing the first
-  // transcode session for the retry turns this red.
+  // Dropping the retry with direct play off after Plex answers 1001, refusing on directPlayDecisionCode, reusing the first
+  // transcode session for the retry, or turning direct stream on for a retry the player sent with it off turns this red.
   await t.test('a 1001 answer with a refused direct play is retried once with direct play off in a new session', async () => {
     let calls = 0;
     const { routes, decisions } = connect({ decision: () => ((calls += 1) === 1
@@ -3904,6 +3922,9 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.notEqual(sent[1].searchParams.get('session'), sent[0].searchParams.get('session'));
     assert.equal(body.session, sent[1].searchParams.get('session'));
     assert.ok(body.streamAddresses[0].startsWith(`${direct}/video/:/transcode/universal/start?`));
+    calls = 0;
+    await start(routes, { directStream: false });
+    assert.equal(decisions()[3].searchParams.get('directStream'), '0');
   });
 
   // Moving X-Plex-Session-Identifier out of the decision parameters, which the transcode start address reuses, turns this red.
@@ -3917,9 +3938,21 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.equal(address.searchParams.get('X-Plex-Session-Identifier'), ids.sessionIdentifier);
   });
 
+  // Dropping the Sec-Fetch-Site check on the timeline route turns this red.
+  await t.test('a cross-site timeline report is refused before it reaches Plex', async () => {
+    const { routes, requests } = connect();
+    const query = new URLSearchParams({ ratingKey: '100', state: 'playing', time: '1000', duration: '9960000', playbackTime: '1000', ...ids });
+    const crossSite = await routes.request(`/timeline?${query}`, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+    assert.equal(crossSite.status, 403);
+    assert.deepEqual(await crossSite.json(), { error: 'forbidden' });
+    assert.equal(requests.length, 0);
+    assert.equal((await routes.request(`/timeline?${query}`, { headers: { 'Sec-Fetch-Site': 'same-origin' } })).status, 200);
+    assert.deepEqual(requests.map((url) => url.pathname), ['/:/timeline']);
+  });
+
   // Mounting the playback routes ahead of the sign-in check turns this red.
   await t.test('the app serves the playback routes only to a signed-in session', async () => {
-    const playback = createPlayback({ plexPlayback: createPlexPlayback(database), enabled: () => true, now: () => 1_800_000_000_000 });
+    const playback = createPlayback({ plexPlayback: createPlexPlayback(database), enabled: () => true });
     const { app } = await makeApp({ playback });
     assert.equal((await app.request('/api/playback/ping')).status, 401);
   });

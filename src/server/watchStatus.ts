@@ -62,6 +62,8 @@ type Snapshot = {
 };
 
 const CACHE_MS = 60_000;
+// A page waits this long for Plex before showing its titles unmarked; the rebuild carries on for the next load.
+const WATCH_WAIT_MS = 1500;
 
 const isRecord = (value: unknown): value is Item => typeof value === 'object' && value !== null && !Array.isArray(value);
 const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
@@ -98,11 +100,13 @@ const playable = (item: Item): Playable | null => {
 
 // Plex watch marks for library titles, from one in-memory listing of every Plex movie and show library, kept 60 seconds.
 // Never throws: a Plex that fails reads as unavailable, a Jellyfin owner or unset Plex as off.
-export const createWatchStatus = ({ plex, enabled, now }: {
+export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }) }: {
   plex: ReturnType<typeof createPlex>;
   enabled: () => boolean;
   now: () => number;
+  sleep?: (ms: number) => Promise<void>;
 }) => {
+  const capped = <T>(work: Promise<T>) => Promise.race([work, sleep(WATCH_WAIT_MS).then(() => undefined)]);
   const build = async (): Promise<Snapshot> => {
     const [identity, sections, continueWatching] = await Promise.all([plex.identity(), plex.sections(), plex.continueWatching()]);
     const lists = await Promise.all(sections.flatMap((section) => (section.type === 'movie'
@@ -143,6 +147,7 @@ export const createWatchStatus = ({ plex, enabled, now }: {
   };
 
   // One rebuild at a time; callers keep the old snapshot while it runs, and a failed rebuild is kept as unavailable.
+  // With no snapshot to keep, a caller waits at most WATCH_WAIT_MS; running out of time is not cached as a failure.
   let cached: { at: number; value: Snapshot | undefined } | undefined;
   let building: Promise<Snapshot | undefined> | undefined;
   const snapshot = async (): Promise<Snapshot | undefined> => {
@@ -152,7 +157,7 @@ export const createWatchStatus = ({ plex, enabled, now }: {
       building = undefined;
       return value;
     });
-    return cached === undefined ? building : cached.value;
+    return cached?.value ?? capped(building);
   };
 
   const matchMovie = (found: Snapshot, movie: Movie) => (
@@ -232,7 +237,7 @@ export const createWatchStatus = ({ plex, enabled, now }: {
       const show = matchShow(found, record);
       const showKey = show === undefined ? null : key(show.ratingKey);
       if (show === undefined || showKey === null) return null;
-      const next = await plex.onDeck(showKey).catch(() => undefined);
+      const next = await capped(plex.onDeck(showKey).catch(() => undefined));
       const nextSeason = next === undefined ? null : num(next.parentIndex);
       const nextEpisode = next === undefined ? null : num(next.index);
       return {

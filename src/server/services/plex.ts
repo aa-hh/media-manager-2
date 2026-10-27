@@ -6,6 +6,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
+const LISTING_TIMEOUT_MS = 60_000;
+
 export const createPlex = (database: DatabaseSync, options: ServiceOptions = {}) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
@@ -15,14 +17,14 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     return url === undefined || token === undefined ? undefined : { url, token };
   };
 
-  const request = async (path: string): Promise<{ status: number; body: unknown }> => {
+  const request = async (path: string, timeoutMs?: number): Promise<{ status: number; body: unknown }> => {
     const configuration = readConfiguration();
     if (configuration === undefined) throw new Error('Plex is not configured.');
     let response: Response;
     try {
       response = await requestWithTimeout(fetchImpl, configuration.url.replace(/\/+$/, '') + path, {
         headers: { 'X-Plex-Token': configuration.token, Accept: 'application/json' },
-      });
+      }, timeoutMs);
     } catch {
       throw new Error('Plex is unreachable.');
     }
@@ -68,8 +70,8 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
   };
 
   // Read-only listings for watch status; each throws when Plex is unset, unreachable or refuses.
-  const container = async (path: string, what: string): Promise<Record<string, unknown>> => {
-    const result = await request(path);
+  const container = async (path: string, what: string, timeoutMs?: number): Promise<Record<string, unknown>> => {
+    const result = await request(path, timeoutMs);
     if (result.status < 200 || result.status > 299) throw new Error(`Plex refused ${what}.`);
     const body = isRecord(result.body) ? result.body.MediaContainer : undefined;
     return isRecord(body) ? body : {};
@@ -93,8 +95,9 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     ));
   };
 
+  // One reply carries every item of a section, every episode for a show library, so it gets longer than the default 10 s.
   const listItems = async (sectionId: string, type: 1 | 2 | 4) => metadata(
-    await container(`/library/sections/${encodeURIComponent(sectionId)}/all?type=${type}&includeGuids=1`, 'the library listing'),
+    await container(`/library/sections/${encodeURIComponent(sectionId)}/all?type=${type}&includeGuids=1`, 'the library listing', LISTING_TIMEOUT_MS),
   );
 
   const continueWatching = async () => metadata(await container('/hubs/continueWatching/items', 'Continue Watching'));

@@ -46,7 +46,7 @@ type Plan = { directPlay: boolean; directStream: boolean; directStreamAudio: boo
 
 export type Playback = ReturnType<typeof createPlayback>;
 
-export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPlayback; enabled: () => boolean; now: () => number }) => {
+export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPlayback; enabled: () => boolean }) => {
   // Every Plex failure is 502; a thrown request is one too.
   const guarded = async (run: () => Promise<Reply>): Promise<Reply> => {
     try {
@@ -136,7 +136,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
       const refused = [codes.generalDecisionCode, codes.mdeDecisionCode, codes.transcodeDecisionCode].some((code) => code !== null && code >= 2000);
       if (refused) return { status: 409, body: { error: 'plex_refused', codes } };
       if (attempt > 0 || codes.generalDecisionCode !== 1001 || !plan.directPlay) break;
-      plan = { ...plan, directPlay: false, directStream: true };
+      plan = { ...plan, directPlay: false };
       session = randomUUID();
     }
 
@@ -360,6 +360,8 @@ export const createPlaybackRoutes = (playback: Playback) => {
 
   // A GET, so the last report when the window closes needs no X-Requested-With.
   routes.get('/timeline', async (context) => {
+    // A GET skips the app's origin check and the Lax session cookie rides a cross-site link, so another site could move the owner's progress.
+    if (context.req.header('Sec-Fetch-Site')?.toLowerCase() === 'cross-site') return context.json({ error: 'forbidden' }, 403);
     const query = context.req.query();
     const [time, duration, playbackTime] = [count(query.time), count(query.duration), count(query.playbackTime)];
     const playQueueItemID = count(query.playQueueItemID);

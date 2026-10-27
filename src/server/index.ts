@@ -106,7 +106,6 @@ if (database !== undefined) {
   const playback = createPlayback({
     plexPlayback,
     enabled: () => mediaServer().name === 'plex' && readSetting(openedDatabase, 'credentials', 'plex.token') !== undefined,
-    now: Date.now,
   });
   const versionImport = createVersionImport({ database, rtorrent, arr, mediaServer, problems });
   // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them,
