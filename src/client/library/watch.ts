@@ -82,17 +82,18 @@ export type StartFrom = 'resume' | 'start';
 // Direct play first; the desktop app steps down on its own when that fails (work order C1.5).
 const firstTry = { directPlay: true, directStream: true, directStreamAudio: true };
 
-const request = (playable: { ratingKey: string; mediaIndex: number; viewOffsetMs: number | null }, from: StartFrom): LoadRequest => ({
+// `mediaIndex`, when given, is a version picked on the title page; otherwise Plex's default version plays.
+const request = (playable: { ratingKey: string; mediaIndex: number; viewOffsetMs: number | null }, from: StartFrom, mediaIndex?: number): LoadRequest => ({
   ratingKey: playable.ratingKey,
-  mediaIndex: playable.mediaIndex,
+  mediaIndex: mediaIndex ?? playable.mediaIndex,
   partIndex: 0,
   offsetSeconds: from === 'resume' ? Math.floor((playable.viewOffsetMs ?? 0) / 1000) : 0,
   flags: firstTry,
 });
 
-/** What the desktop app loads for a movie: its default (highest-quality) version. Null when Plex has no match. */
-export const movieLoad = (watch: MovieWatch, from: StartFrom): LoadRequest | null =>
-  (watch === null || watch.kind !== 'ok' ? null : request(watch, from));
+/** What the desktop app loads for a movie: the picked version, else its default (highest-quality) one. Null when Plex has no match. */
+export const movieLoad = (watch: MovieWatch, from: StartFrom, mediaIndex?: number): LoadRequest | null =>
+  (watch === null || watch.kind !== 'ok' ? null : request(watch, from, mediaIndex));
 
 /**
  * What the desktop app loads for a show: the asked episode (from Continue Watching), else Plex's next episode,
@@ -102,6 +103,7 @@ export const episodeLoad = (
   detail: { episodes: Array<{ id: number; seasonNumber: number; episodeNumber: number }>; watch: SeriesWatch },
   wanted: { seasonNumber: number; episodeNumber: number } | null,
   from: StartFrom,
+  mediaIndex?: number,
 ): LoadRequest | null => {
   const { watch } = detail;
   if (watch === null || watch.kind !== 'ok') return null;
@@ -110,5 +112,5 @@ export const episodeLoad = (
   const episode = target === null
     ? [...inPlex].sort((a, b) => (a.seasonNumber === 0 ? 1 : 0) - (b.seasonNumber === 0 ? 1 : 0) || a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber)[0]
     : inPlex.find((candidate) => candidate.seasonNumber === target.seasonNumber && candidate.episodeNumber === target.episodeNumber);
-  return episode === undefined ? null : request(watch.episodes[String(episode.id)], from);
+  return episode === undefined ? null : request(watch.episodes[String(episode.id)], from, mediaIndex);
 };

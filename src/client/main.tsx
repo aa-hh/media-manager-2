@@ -21,6 +21,7 @@ import { useHealth } from './health/useHealth';
 import { HistoryScreen } from './history/History';
 import { useBlocklist, useHistory } from './history/useHistory';
 import { MediaServerContext } from './mediaServer';
+import { PlayerProvider } from './player/Player';
 import type { SetupStatus } from './settings/setup';
 import './globals.css';
 
@@ -366,6 +367,7 @@ function SignedIn(props: SignedInProps) {
   }, [barOpen]);
 
   return (
+    <PlayerProvider downloads={state} onUnauthenticated={props.onUnauthenticated}>
     <Home
       {...props}
       downloadsState={state}
@@ -435,6 +437,7 @@ function SignedIn(props: SignedInProps) {
         );
       }}
     />
+    </PlayerProvider>
   );
 }
 

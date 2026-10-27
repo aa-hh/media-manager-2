@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ChevronRight, DatabaseBackup, Eraser, Folder, Globe, Lock, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronRight, DatabaseBackup, Eraser, Folder, Globe, Lock, MonitorPlay, Plug, Plus, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
 import { Fragment, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -23,6 +23,8 @@ import {
   savedAddress, type SavedService, type ServiceInfo, type ServiceName, services,
 } from './model';
 import { BackupEditor } from './BackupEditor';
+import { PlaybackSettings } from './PlaybackSettings';
+import { inDesktopApp } from '../desktopBridge';
 import { FoldersEditor } from './FoldersEditor';
 import { backupPill, backupWords, type SetupStatus } from './setup';
 import { MediaServerContext } from '../mediaServer';
@@ -32,8 +34,8 @@ import { SwitchMediaServer } from './SwitchMediaServer';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
 
-// A service, a tracker as `tracker:<host>`, the add-a-tracker pane, Folders or Backup.
-type Selected = ServiceName | `tracker:${string}` | 'add' | 'folders' | 'backup';
+// A service, a tracker as `tracker:<host>`, the add-a-tracker pane, Folders, Backup or Playback (desktop app only).
+type Selected = ServiceName | `tracker:${string}` | 'add' | 'folders' | 'backup' | 'playback';
 const trackerKey = (host: string): Selected => `tracker:${host}`;
 
 const failed = (check: Check) => check.kind === 'unreachable' || check.kind === 'rejected' || check.kind === 'not_configured';
@@ -162,7 +164,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const discardWords = changedWords(info, saved[service], draftOf(service));
   const ruleDraftOf = (row: TrackerRow) => ruleDrafts[row.host] ?? draftFromRow(row);
   const adding = selected === 'add';
-  const storage = selected === 'folders' || selected === 'backup';
+  const storage = selected === 'folders' || selected === 'backup' || selected === 'playback';
   const storageConfigured = (setup.required.folders === 'done' ? 1 : 0) + (setup.backup.destination !== null ? 1 : 0);
   const backupState = backupPill(setup.backup);
   // The media server the owner signed in with, and the other one, whose editor offers the switch.
@@ -325,6 +327,19 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
             selected={selected === 'backup'}
             onClick={() => setSelected('backup')}
           />
+          {inDesktopApp() && (
+            <>
+              <LabelGroup>Playback</LabelGroup>
+              <TrackerListRow
+                host=""
+                title="Playback"
+                subline="Load ahead, on this computer"
+                icon={<MonitorPlay />}
+                selected={selected === 'playback'}
+                onClick={() => setSelected('playback')}
+              />
+            </>
+          )}
           <LabelGroup count={adding ? undefined : trackers.length}>Trackers</LabelGroup>
           {trackers.map(trackerRow)}
           {adding && (
@@ -372,6 +387,8 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
                 if (!softwareSaved) toasts.add({ title: `${trackerInfo(host).name} added as Other`, description: 'Its site software could not be saved. Remove it and add it again to pick the software.' });
               }}
             />
+          ) : selected === 'playback' ? (
+            <PlaybackSettings />
           ) : selected === 'folders' ? (
             <FoldersEditor
               key="folders"
