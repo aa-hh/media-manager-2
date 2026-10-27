@@ -6,9 +6,10 @@ import { cn } from '@/lib/utils';
 
 // A Button on the black bar: white label and icon, white 12% hover, white focus ring, white 35% when disabled.
 const onDark = cn(
-  'bg-transparent text-bar-foreground focus-visible:outline-focus-on-dark',
-  'not-data-disabled:hover:bg-bar-foreground/12 not-data-disabled:active:bg-bar-foreground/12',
-  'data-disabled:bg-transparent data-disabled:text-bar-foreground/35',
+  // The Button draws its fill on ::before, so the overrides target before: too.
+  'before:bg-transparent text-bar-foreground focus-visible:outline-focus-on-dark',
+  'not-data-disabled:hover:before:bg-bar-foreground/12 not-data-disabled:active:before:bg-bar-foreground/12',
+  'data-disabled:before:bg-transparent data-disabled:text-bar-foreground/35',
 );
 
 /** One action on the selection bar, such as Search automatically; keeps the Button's icon and kbd props. */

@@ -54,7 +54,7 @@ function ToastList() {
         {toast.type === 'error' ? <X /> : toast.type === 'info' ? <Info /> : <Check />}
       </span>
       <Toast.Content className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <Toast.Title className="font-ui text-sm font-semibold text-bar-foreground" />
+        <Toast.Title className="font-ui text-sm font-semibold text-bar-foreground wrap-anywhere" />
         <Toast.Description className="font-ui text-[13px] font-normal text-bar-muted-foreground" />
       </Toast.Content>
       {toast.actionProps !== undefined && (
