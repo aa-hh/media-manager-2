@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
 
+/* Only in the desktop app: its preload script sets data-desktop on <html>. */
+@custom-variant desktop (&:where([data-desktop], [data-desktop] *));
+
 @font-face {
   font-family: "Schibsted Grotesk";
   src: url("./assets/fonts/SchibstedGrotesk-VariableFont_wght.ttf") format("truetype");

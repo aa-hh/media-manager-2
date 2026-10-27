@@ -47,7 +47,7 @@ const loginFailure = (status: number, body: Record<string, unknown>, password: b
 
 const heading = 'font-ui text-2xl leading-[1.2] font-extrabold tracking-[-0.3px] text-[#ece9e1]';
 const body = 'font-ui text-[15px] leading-[22px] text-[#b8b9b6]';
-const errorText = 'font-ui text-sm leading-[21px] text-[#f2a097]';
+const errorText = 'font-ui text-sm leading-[21px] text-[#f2a097] select-text';
 const input = 'h-10 w-full rounded-xl border border-[#3a3b40] bg-[#121317] px-3 font-ui text-[15px] text-[#ece9e1] placeholder:text-[#6f716e] focus-ring-on-dark';
 const label = 'flex flex-col gap-1.5 font-ui text-sm font-semibold text-[#ece9e1]';
 const link = 'self-start font-ui text-sm font-semibold text-[#ece9e1] underline underline-offset-2 focus-ring-on-dark';

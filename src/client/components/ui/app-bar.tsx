@@ -58,10 +58,18 @@ type AppBarDesktopProps = ComponentProps<'header'> & {
   signedOut?: boolean;
 };
 
-/** Top bar, 64 px, white at 70% over a 24 px blur so what scrolls under it shows through, a line under, page-margin side padding. The 28 px logo is the small-size render, design/app-logo/small-on-light.png. */
+/** Top bar, 64 px, white at 70% over a 24 px blur so what scrolls under it shows through, a line under, page-margin side padding (80 px on the left in the desktop app). The 28 px logo is the small-size render, design/app-logo/small-on-light.png. */
 function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, signedOut = false, className, ...props }: AppBarDesktopProps) {
   return (
-    <header className={cn('flex h-(--topbar) w-full items-center gap-6 border-b border-border bg-card/70 px-(--page-margin) backdrop-blur-[24px]', className)} {...props}>
+    <header
+      className={cn(
+        'flex h-(--topbar) w-full items-center gap-6 border-b border-border bg-card/70 px-(--page-margin) backdrop-blur-[24px]',
+        // Desktop app: the logo starts clear of the macOS window buttons, and the bar drags the window.
+        'desktop:pl-20 desktop:[-webkit-app-region:drag] desktop:[&_:is(a,button,input,[role=button])]:[-webkit-app-region:no-drag]',
+        className,
+      )}
+      {...props}
+    >
       <div className="flex shrink-0 items-center gap-2.5 font-ui text-base font-extrabold tracking-[-0.2px] text-foreground">
         <img src={logo} alt="" width={28} height={28} className="size-7" />
         {productName}

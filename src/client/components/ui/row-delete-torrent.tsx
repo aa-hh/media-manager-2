@@ -38,7 +38,7 @@ function RowDeleteTorrent({ lead, name, size, holds, label, advice, action, lock
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex w-full items-center gap-2 [&>img]:size-4 [&>svg]:size-4 [&>svg]:shrink-0">
           {lead}
-          <span className="min-w-0 flex-1 truncate font-data text-sm text-foreground" title={name}>{name}</span>
+          <span className="min-w-0 flex-1 truncate font-data text-sm text-foreground select-text" title={name}>{name}</span>
           {size !== undefined && <span className="shrink-0 font-data text-sm text-muted-foreground">{size}</span>}
         </div>
         <div className={cn('flex w-full items-center gap-2 font-ui text-[13px] text-muted-foreground', indent)}>

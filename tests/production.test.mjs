@@ -14569,7 +14569,7 @@ test('the desktop app\'s first-launch address keeps only an http or https origin
 });
 
 test('the desktop app\'s page never gets a Plex token, and only the app page\'s main frame drives the player', async () => {
-  const { pageCopy, pageTrack, callerAllowed } = await import(new URL('../desktop/lib/page.js', import.meta.url));
+  const { pageCopy, pageTrack, callerAllowed, NO_SELECT_CSS } = await import(new URL('../desktop/lib/page.js', import.meta.url));
   const token = 'X-Plex-Token=transient-abc';
   const reply = {
     session: 'session-1',
@@ -14590,6 +14590,10 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
   // Passing an external track's title or language through turns this red: mpv makes both from the file's address.
   const external = pageTrack({ id: 3, type: 'sub', external: true, title: `7?${token}&encoding=utf-8`, lang: null, codec: 'subrip' });
   assert.equal(JSON.stringify(external).includes('X-Plex-Token'), false);
+
+  // Dropping the html rule, or the rule giving text fields selection back, turns this red: the frame would highlight, or fields could not be copied from.
+  assert.match(NO_SELECT_CSS, /html \{[^}]*user-select: none/);
+  assert.match(NO_SELECT_CSS, /input, textarea, \[contenteditable\], \[contenteditable\] \* \{[^}]*user-select: text/);
 
   // Dropping the window, main-frame or origin check turns its row red: that caller could start playback and drive mpv.
   const appOrigin = 'https://media.example.com';

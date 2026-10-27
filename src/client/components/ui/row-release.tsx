@@ -90,7 +90,7 @@ function RowRelease({
       {...props}
     >
       <TableCell fill className="pl-2.5">
-        <span className="flex min-w-0 items-center">
+        <span className="flex min-w-0 items-center select-text">
           <span className={cn('shrink-0 whitespace-pre text-muted-foreground', dim)}>{name.head}</span>
           <span className={cn('min-w-0 truncate whitespace-pre text-muted-foreground', dim)}>{name.middle}</span>
           {name.group !== undefined && <span className={cn('shrink-0 text-foreground', rejected ? 'font-medium' : 'font-bold', dim)}>{name.group}</span>}

@@ -42,7 +42,7 @@ function RowImportFileGroup({ open = false, checked, onCheckedChange, checkLabel
         />
       </TableCell>
       <TableCell fill className="font-ui font-semibold">
-        <span className="truncate">{folder}</span>
+        <span className="truncate select-text">{folder}</span>
       </TableCell>
       <TableCell className={cn(w.count, 'text-muted-foreground')}>{count}</TableCell>
       <TableCell align="end" className={w.size}>{size}</TableCell>

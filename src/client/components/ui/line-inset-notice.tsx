@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 function LineInsetNotice({ children, action, role = 'status' }: { children: ReactNode; action?: ReactNode; role?: 'status' | 'alert' }) {
   return (
     <div role={role} className="flex min-h-(--row) w-full shrink-0 items-center gap-4 border-b border-input bg-warning-soft pr-0 pl-2.5 [&>button]:before:border-input [&>button]:before:bg-transparent">
-      <p className="min-w-0 flex-1 pt-2.5 pb-[9px] font-ui text-[13px] leading-5 text-foreground">{children}</p>
+      <p className="min-w-0 flex-1 pt-2.5 pb-[9px] font-ui text-[13px] leading-5 text-foreground select-text">{children}</p>
       {action}
     </div>
   );
