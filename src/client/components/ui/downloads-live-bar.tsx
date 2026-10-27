@@ -48,7 +48,7 @@ function DownloadsLiveBar({ count, idle = false, speeds, items = [], problem, ex
         {!idle && items.slice(0, 3).map((item) => (
           <span key={item.key} className="flex min-w-0 items-center gap-2 font-data text-sm">
             <span className="truncate text-bar-foreground">{item.name}</span>
-            <Progress value={item.percent} tone="on-dark" className="w-12 shrink-0" />
+            <Progress aria-label="Download progress" value={item.percent} tone="on-dark" className="w-12 shrink-0" />
             <span className="text-bar-muted-foreground">{Math.round(item.percent)}%</span>
           </span>
         ))}

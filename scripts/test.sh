@@ -4,7 +4,8 @@
 #
 # Usage: sh scripts/test.sh [--full] [extra args passed to the test runner]
 #   (no flag)  the fast run Guard 4 uses at commit
-#   --full     the full suite; pre-push and CI run it
+#   --full     the full suite, plus every Storybook story in headless Chromium
+#              with its accessibility check; pre-push and CI run it
 #   --review-script  check the review script with macOS Bash, then the shell self-tests
 #   --production  check the already built production application
 set -eu
@@ -51,4 +52,9 @@ if [ "$full" = 1 ]; then
 fi
 
 sh scripts/build.sh
+if [ "$full" = 1 ]; then
+    # Every story renders and passes its accessibility check. Chromium comes
+    # from `sh scripts/setup.sh` locally and from the workflow in CI.
+    npx vitest run --project storybook
+fi
 exec node --test "$@" tests/production.test.mjs

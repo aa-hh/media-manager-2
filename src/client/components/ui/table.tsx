@@ -33,7 +33,8 @@ const cellLayout = (align: CellProps['align'], fill: boolean) => cn('flex h-full
 function TableHead({ align, fill = false, sorted = false, className, children, ...props }: CellProps & { sorted?: boolean }) {
   return (
     <div
-      role="columnheader"
+      // An empty head, such as over the actions, labels nothing; a columnheader must have text.
+      role={children === undefined ? 'cell' : 'columnheader'}
       aria-sort={sorted ? 'descending' : undefined}
       className={cn(cellLayout(align, fill), 'font-ui text-[11px] font-semibold tracking-[0.5px] whitespace-nowrap text-subtle-foreground uppercase', className)}
       {...props}

@@ -59,9 +59,9 @@ function RowEpisodeDetails({ selected = true, overview, stillUrl, details, versi
       {/* Full width, no card: the version rows keep the episode table's column edges from x 152. */}
       {versions !== undefined && (
         <div role="cell">
-          <section role="table" aria-label="Versions" className="flex flex-col">
+          <div role="table" aria-label="Versions" className="flex flex-col">
             {versions}
-          </section>
+          </div>
         </div>
       )}
       {(versionsEmpty !== undefined || hasHistory) && (
@@ -72,7 +72,7 @@ function RowEpisodeDetails({ selected = true, overview, stillUrl, details, versi
               <LabelGroup className="p-0" count={historyCount}>History</LabelGroup>
               <div role="table" className={cn(panel, 'flex flex-col *:last:border-b-0 *:last:after:hidden')}>
                 {history}
-                {historyEmpty !== undefined && <p className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground">{historyEmpty}</p>}
+                {historyEmpty !== undefined && <p role="row" className="m-0 flex h-(--row) items-center px-4 font-ui text-sm text-muted-foreground"><span role="cell">{historyEmpty}</span></p>}
               </div>
             </section>
           )}

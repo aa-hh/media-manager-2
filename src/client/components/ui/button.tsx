@@ -68,6 +68,7 @@ function Button({
   className,
   children,
   onClick,
+  'aria-label': ariaLabel,
   ...props
 }: ButtonProps) {
   const spinner = <Spinner className="text-current" />;
@@ -76,6 +77,8 @@ function Button({
     <ButtonPrimitive
       type={type}
       aria-busy={loading || undefined}
+      // A named button's visible text includes the key hint, so the name carries it too: "Close, Esc".
+      aria-label={ariaLabel !== undefined && typeof kbd === 'string' ? `${ariaLabel}, ${kbd}` : ariaLabel}
       // A loading submit button cancels its click, which also stops Enter's implicit form submission.
       onClick={loading ? (event) => event.preventDefault() : onClick}
       className={cn(
@@ -97,9 +100,10 @@ function Button({
       {...props}
     >
       {loading && icon ? spinner : icon}
-      {children !== undefined && <span className={cn(hideContent && 'invisible')}>{children}</span>}
+      {/* opacity, not visibility, so the hidden label still names the button while it loads. */}
+      {children !== undefined && <span className={cn(hideContent && 'opacity-0')}>{children}</span>}
       {kbd !== undefined && (
-        <Kbd onFill={variant === 'default' || variant === 'destructive'} className={cn('group-data-disabled:hidden group-aria-busy:hidden', hideContent && 'invisible')}>
+        <Kbd aria-hidden="true" onFill={variant === 'default' || variant === 'destructive'} className={cn('group-data-disabled:hidden group-aria-busy:hidden', hideContent && 'invisible')}>
           {kbd}
         </Kbd>
       )}
