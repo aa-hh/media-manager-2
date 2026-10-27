@@ -6,6 +6,7 @@ const meta = {
   title: 'UI/Checkbox',
   component: Checkbox,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3454' } },
   args: { 'aria-label': 'Select every item that can be searched', checked: false, onCheckedChange: fn() },
 } satisfies Meta<typeof Checkbox>;
 

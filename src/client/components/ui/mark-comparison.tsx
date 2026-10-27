@@ -1,4 +1,4 @@
-// v2/Mark/comparison — ~/Projects/media-manager-2-design/design-system.lib.pen poV94
+// Figma: MarkComparison — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-841
 import { ArrowUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 

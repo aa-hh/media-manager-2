@@ -1,5 +1,4 @@
-// v2/Badge — ~/Projects/media-manager-2-design/design-system.lib.pen zGBcp
-// v2/Badge/inline — ~/Projects/media-manager-2-design/design-system.lib.pen J92fI (variant="inline-value")
+// Figma: Badge — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-587
 import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { StatusDownloadCircle } from '@/components/ui/status-download-circle';
