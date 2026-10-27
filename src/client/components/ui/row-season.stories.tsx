@@ -28,6 +28,7 @@ const meta = {
   title: 'UI/RowSeason',
   component: RowSeason,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5513' } },
   // The row is a set of table cells sized to the header's columns; the series page renders it inside this table.
   decorators: [
     (Story) => (

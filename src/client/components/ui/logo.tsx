@@ -1,4 +1,4 @@
-// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold); iZPoX (Jellyfin) QZ1XQ (Jellyfin black) sVuiW (Jellyfin white) P9MlT s3gTgb E4joG (Jellyfin solid black, white, monochrome) b1EpMi mwYig (Jellyfin wordmark light, dark) nO7lC (Plex wordmark) J4Ci8U (Plex app icon) z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
+// Figma: Logos — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-449
 import type { ComponentProps } from 'react';
 import beyondHd from '@/assets/logos/beyondhd-logo.png';
 import blutopia from '@/assets/logos/blutopia-logo.svg';

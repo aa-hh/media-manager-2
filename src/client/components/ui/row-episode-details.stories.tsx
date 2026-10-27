@@ -67,6 +67,7 @@ const meta = {
   title: 'UI/RowEpisodeDetails',
   component: RowEpisodeDetails,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8045' } },
   // The band opens under an episode row in the Seasons table; its content starts at the episode header's Title column.
   decorators: [
     (Story) => (

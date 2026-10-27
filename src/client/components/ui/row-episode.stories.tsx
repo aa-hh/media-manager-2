@@ -43,6 +43,7 @@ const meta = {
   title: 'UI/RowEpisode',
   component: RowEpisode,
   tags: ['autodocs'],
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4854' } },
   // Episode rows sit in the Seasons table under the episode header that opens with each season.
   decorators: [
     (Story) => (

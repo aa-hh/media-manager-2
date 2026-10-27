@@ -1,4 +1,4 @@
-// v2/Sign-in/quick-connect code — ~/Projects/media-manager-2-design/design-system.lib.pen nSAWW
+// Figma: SignInQuickConnectCode — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-6084
 import { cn } from '@/lib/utils';
 
 type SignInQuickConnectCodeProps = {
