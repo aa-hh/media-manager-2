@@ -3729,6 +3729,45 @@ test('watch status from Plex marks library titles, both title pages and Continue
     assert.equal(listings(), 2);
   });
 
+  // Answering the first load after the 60 seconds from the old listing, so a title imported since shows no Play, turns this red.
+  await t.test('the first load after 60 seconds waits for the new Plex listing', async () => {
+    const file = '/movies/Dune (2021)/Dune.mkv';
+    const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
+    let inPlex = false;
+    const { get } = connect({ fetch: async (url, init) => (
+      inPlex && new URL(String(url)).pathname === '/library/sections/1/all'
+        ? new Response(JSON.stringify({ MediaContainer: { Metadata: [...movies, imported] } }), { status: 200 })
+        : plexFetch(url, init)
+    ) });
+    const saved = fake.radarr.state.movies;
+    fake.radarr.state.movies = [...saved, movieRecord({ id: 11, title: 'Dune', tmdbId: 438631, hasFile: true, movieFile: { id: 111, path: file } })];
+    const before = (await get('/movie/11')).body.watch;
+    inPlex = true;
+    clock.value += 60_001;
+    const after = (await get('/movie/11')).body.watch;
+    fake.radarr.state.movies = saved;
+    assert.equal(before, null);
+    assert.equal(after?.ratingKey, '400');
+  });
+
+  // Dropping the marks while a slow new listing runs past the 1.5 s cap turns this red.
+  await t.test('a slow new Plex listing keeps the old marks', async () => {
+    let release;
+    const slow = new Promise((resolve) => { release = resolve; });
+    let hold = false;
+    const { get } = connect({
+      fetch: async (url, init) => (hold && new URL(String(url)).pathname.endsWith('/all') ? slow.then(() => plexFetch(url, init)) : plexFetch(url, init)),
+      sleep: () => (hold ? Promise.resolve() : new Promise(() => {})),
+    });
+    await get('/titles');
+    hold = true;
+    clock.value += 60_001;
+    const { body } = await get('/titles');
+    release();
+    assert.equal(body.watch.kind, 'ok');
+    assert.equal(titleWatch(body.titles, 'Arrival').ratingKey, '200');
+  });
+
   // Keeping one Plex item per file, so the last episode in a shared file wins, turns this red.
   await t.test('a file holding two episodes gives each episode its own Plex item', async () => {
     const shared = '/tv/Severance/Severance.S01E04-E05.mkv';
