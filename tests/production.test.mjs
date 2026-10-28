@@ -3780,7 +3780,7 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
   const direct = 'https://1-2-3-4.abc.plex.direct:32400';
   const relay = 'https://5-6-7-8.abc.plex.direct:8443';
   const movie = (ratingKey, height, video = { id: 1000, streamType: 1, index: 0, codec: 'h264' }) => ({
-    ratingKey, type: 'movie', title: 'Dune: Part Two', librarySectionUUID: 'section-uuid-1', duration: 9960000,
+    ratingKey, type: 'movie', title: 'Dune: Part Two', duration: 9960000,
     Marker: [{ type: 'credits', startTimeOffset: 9600000, endTimeOffset: 9960000 }],
     Chapter: [{ index: 1, tag: 'Arrakis', startTimeOffset: 0, endTimeOffset: 600000 }],
     Media: [{
@@ -3844,7 +3844,8 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
         case '/hubs/metadata/100/postplay': return json({ MediaContainer: { Hub: [{
           hubIdentifier: 'tv.plex.hub.upnext', title: 'Up Next', Metadata: [{ ratingKey: '101', type: 'movie', title: 'Arrival', duration: 6960000, viewOffset: 0 }],
         }] } });
-        default: return items[url.pathname] === undefined ? new Response('', { status: 404 }) : json({ MediaContainer: { Metadata: [items[url.pathname]] } });
+        // As real Plex does, the library's UUID sits on the container; reading it only from the item turns every start into not_found.
+        default: return items[url.pathname] === undefined ? new Response('', { status: 404 }) : json({ MediaContainer: { librarySectionUUID: 'section-uuid-1', Metadata: [items[url.pathname]] } });
       }
     };
     const routes = createPlaybackRoutes(createPlayback({ plexPlayback: createPlexPlayback(database, { fetch }), enabled: () => true }));
