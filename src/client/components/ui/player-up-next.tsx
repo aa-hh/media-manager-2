@@ -65,7 +65,7 @@ function PlayerUpNext({ heading, countdown, waiting, still, show, episode, facts
         </div>
       )}
       <div className="flex items-center gap-6">
-        <div className="h-49.5 w-88 shrink-0 overflow-hidden rounded-lg bg-black">
+        <div className="h-49.5 w-88 shrink-0 overflow-hidden rounded-lg bg-card-on-dark">
           {still !== undefined && <img src={still} alt="" className="size-full object-cover" />}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">

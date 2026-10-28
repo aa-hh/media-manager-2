@@ -161,13 +161,13 @@ function HeaderTitle({
 }
 
 /** The header's Play line: a large default Play or Resume Button, then what it plays and how much is left. */
-function HeaderPlayLine({ action, line1, line2 }: { action: ReactNode; line1: ReactNode; line2: ReactNode }) {
+function HeaderPlayLine({ action, line1, line2 }: { action: ReactNode; line1: ReactNode; line2?: ReactNode }) {
   return (
     <div className="flex items-center gap-4 pt-2">
       {action}
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="font-ui text-sm font-semibold text-foreground">{line1}</span>
-        <span className="font-data text-sm text-muted-foreground">{line2}</span>
+        {line2 !== undefined && <span className="font-data text-sm text-muted-foreground">{line2}</span>}
       </div>
     </div>
   );

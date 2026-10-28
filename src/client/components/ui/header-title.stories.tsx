@@ -60,6 +60,7 @@ export const ActionsRight: Story = {
   args: { actionsRight: true },
 };
 
+// The scrolled header has no Play line, so Search stays the filled main button even on a title that can play.
 export const Compact: Story = {
   args: {
     compact: true,

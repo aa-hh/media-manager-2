@@ -48,6 +48,11 @@ export const Movie: Story = {
   args: { name: 'Dune: Part Two', play: { label: 'Play', line1: '2 h 46 min · plays 2160p WEB-DL', line2: 'Highest quality of 2 versions', resumeAtMs: null } },
 };
 
+/** A movie with one version: no second line, so the first sits level with Play. */
+export const MovieOneVersion: Story = {
+  args: { name: 'Dune: Part Two', play: { label: 'Play', line1: '2 h 46 min · plays 2160p WEB-DL', resumeAtMs: null } },
+};
+
 /** Plain browser with Plex: Play in Plex opens the item on app.plex.tv; no resume menu. */
 export const PlayInPlex: Story = { args: { mode: 'plex-web' } };
 
