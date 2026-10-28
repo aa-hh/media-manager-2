@@ -5,11 +5,16 @@
 # renderer draws through. Then signs every piece with the owner's Developer ID
 # (hardened runtime), notarises the app with notarytool and staples the ticket.
 #
-# Usage: bash scripts/desktop-build.sh [--unsigned]
+# Usage: bash scripts/desktop-build.sh [--unsigned | --no-notarise]
 #   --unsigned  bundle only, with ad-hoc signatures so it runs on this Mac;
 #               touches no certificate, keychain or Apple service
+#   --no-notarise  sign with the Developer ID but skip Apple's notary service; the
+#               app opens on a Mac it was built on or copied to without a download
+#               (no quarantine), and Gatekeeper refuses it anywhere else
 #
 # Needs Homebrew's mpv (0.41.0 tested) and the Xcode command line tools.
+# The app runs only on the macOS the build Mac's Homebrew targets or later, so
+# build on the oldest macOS it must run on (the mule, macOS 26, as of Oct 2026).
 # Notarising reads its Apple credentials from a notarytool keychain profile,
 # never from the repo. Make it once (it asks for an app-specific password):
 #   xcrun notarytool store-credentials media-manager-2-notary --apple-id <your Apple ID> --team-id TGT8D69RZ4
@@ -25,7 +30,9 @@ APP="$OUT/media-manager-2.app"
 FRAMEWORKS="$APP/Contents/Frameworks"
 RESOURCES="$APP/Contents/Resources"
 unsigned=0
+notarise=1
 [ "${1:-}" = --unsigned ] && unsigned=1
+[ "${1:-}" = --no-notarise ] && notarise=0
 
 echo "== Installing and building the addon"
 [ -d node_modules ] || npm ci
@@ -71,13 +78,19 @@ while [ -n "$queue" ]; do
     cp -L "$source" "$FRAMEWORKS/$name"
     chmod u+w "$FRAMEWORKS/$name"
     for dep in $(deps "$source"); do
-        is_brew "$dep" && queue="$queue $dep"
+        if is_brew "$dep"; then
+            queue="$queue $dep"
+        else
+            # Some formulas name their own siblings relatively (@rpath/ or @loader_path/), which bottles differ on
+            # between macOS versions; every one is also linked into $BREW/lib.
+            case "$dep" in @rpath/*|@loader_path/*) [ -e "$BREW/lib/$(basename "$dep")" ] && queue="$queue $BREW/lib/$(basename "$dep")" ;; esac
+        fi
     done
 done
 for lib in "$FRAMEWORKS"/*.dylib; do
     install_name_tool -id "@rpath/$(basename "$lib")" "$lib" 2>/dev/null
     for dep in $(deps "$lib"); do
-        is_brew "$dep" && install_name_tool -change "$dep" "@loader_path/$(basename "$dep")" "$lib" 2>/dev/null
+        case "$dep" in "$BREW"/*|/usr/local/*|@rpath/*) install_name_tool -change "$dep" "@loader_path/$(basename "$dep")" "$lib" 2>/dev/null ;; esac
     done
 done
 addon="$app/build/Release/mpvview.node"
@@ -101,6 +114,14 @@ if [ -n "$leftover" ]; then
     exit 1
 fi
 echo "bundled $(ls "$FRAMEWORKS"/*.dylib | wc -l | tr -d ' ') libraries"
+
+# Homebrew builds its libraries for the macOS of the Mac that installed them, so the app needs the newest macOS any of them
+# asks for. Info.plist says so, and macOS refuses to open the app on an older version instead of mpv failing at Play.
+min_macos=$(for file in "$FRAMEWORKS"/*.dylib "$addon" "$APP/Contents/MacOS/Electron"; do
+    otool -l "$file" | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }'
+done | sort -V | tail -1)
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $min_macos" "$plist"
+echo "needs macOS $min_macos or later (the newest any bundled library was built for)"
 
 # Every Mach-O file under Contents, bundle executables included, then the bundles
 # from the deepest out, then the app: codesign seals each bundle over what it holds.
@@ -149,6 +170,10 @@ sign() { target=$1; shift; codesign --force --timestamp --options runtime --sign
 sign_all
 codesign --verify --deep --strict --verbose=2 "$APP"
 check_load
+if [ "$notarise" = 0 ]; then
+    echo "Signed, not notarised: $APP"
+    exit 0
+fi
 
 echo "== Notarising (profile $NOTARY_PROFILE)"
 zip="$OUT/media-manager-2.zip"
