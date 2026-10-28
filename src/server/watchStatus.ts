@@ -147,8 +147,9 @@ export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Prom
     return snapshot;
   };
 
-  // One rebuild at a time; callers keep the old snapshot while it runs, and a failed rebuild is kept as unavailable.
-  // With no snapshot to keep, a caller waits at most WATCH_WAIT_MS; running out of time is not cached as a failure.
+  // One rebuild at a time, and a failed rebuild is kept as unavailable. A caller waits at most WATCH_WAIT_MS for it, so a
+  // title imported since the last listing gets its Play; running out of time answers from the old snapshot, if any, and
+  // is not cached as a failure.
   let cached: { at: number; value: Snapshot | undefined } | undefined;
   let building: Promise<Snapshot | undefined> | undefined;
   const snapshot = async (): Promise<Snapshot | undefined> => {
@@ -158,7 +159,7 @@ export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Prom
       building = undefined;
       return value;
     });
-    return cached?.value ?? capped(building);
+    return (await capped(building)) ?? cached?.value;
   };
 
   const matchMovie = (found: Snapshot, movie: Movie) => (
