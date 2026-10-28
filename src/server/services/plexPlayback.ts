@@ -139,7 +139,8 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
     const body = containerOf(result.body);
     if (!isOk(result.status) || body === undefined) throw new Error('Plex refused the item.');
     const first = Array.isArray(body.Metadata) ? body.Metadata[0] : undefined;
-    return isRecord(first) ? first : undefined;
+    // Plex puts the library's UUID on the container, not the item; the play queue needs it.
+    return isRecord(first) ? { librarySectionUUID: body.librarySectionUUID, ...first } : undefined;
   };
 
   // A timeout or network error is { kind: 'failed' }: the caller goes ahead with its own decision.
