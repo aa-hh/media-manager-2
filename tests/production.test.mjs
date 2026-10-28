@@ -3779,26 +3779,34 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
   setSetting(database, 'credentials', 'plex.token', ownerToken);
   const direct = 'https://1-2-3-4.abc.plex.direct:32400';
   const relay = 'https://5-6-7-8.abc.plex.direct:8443';
-  const movie = (ratingKey, height) => ({
+  const movie = (ratingKey, height, video = { id: 1000, streamType: 1, index: 0, codec: 'h264' }) => ({
     ratingKey, type: 'movie', title: 'Dune: Part Two', librarySectionUUID: 'section-uuid-1', duration: 9960000,
     Marker: [{ type: 'credits', startTimeOffset: 9600000, endTimeOffset: 9960000 }],
     Chapter: [{ index: 1, tag: 'Arrakis', startTimeOffset: 0, endTimeOffset: 600000 }],
     Media: [{
-      id: 11, container: 'mkv', bitrate: 8000, height,
+      id: 11, container: 'mkv', bitrate: 8000, height, width: 3840, videoCodec: 'hevc',
       Part: [{
         id: 111,
         key: '/library/parts/111/1700000000/file.mkv',
         Stream: [
-          { id: 1000, streamType: 1, index: 0, codec: 'h264' },
+          video,
           { id: 1001, streamType: 2, index: 1, codec: 'eac3', language: 'English', title: 'Surround 5.1', selected: true, default: true },
           { id: 1002, streamType: 2, index: 2, codec: 'aac', language: 'Japanese' },
           { id: 1003, streamType: 3, index: 4, codec: 'srt', language: 'English' },
-          { id: 1004, streamType: 3, codec: 'srt', language: 'French', key: '/library/streams/1004' },
+          { id: 1004, streamType: 3, codec: 'srt', language: 'French', key: '/library/streams/1004', offset: 500 },
         ],
       }],
     }],
   });
-  const items = { '/library/metadata/100': movie('100', 1080), '/library/metadata/200': movie('200', 720) };
+  const hevc = (extra) => ({ id: 1000, streamType: 1, index: 0, codec: 'hevc', ...extra });
+  const items = {
+    '/library/metadata/100': movie('100', 1080),
+    '/library/metadata/200': movie('200', 720),
+    '/library/metadata/300': movie('300', 2160, hevc({ DOVIPresent: true, DOVIProfile: 8, colorTrc: 'smpte2084' })),
+    '/library/metadata/400': movie('400', 2160, hevc({ colorTrc: 'smpte2084' })),
+    '/library/metadata/500': movie('500', 2160, hevc({ colorTrc: 'arib-std-b67' })),
+    '/library/metadata/600': movie('600', 2160, hevc({ colorTrc: 'bt709' })),
+  };
   const accepted = () => ({ generalDecisionCode: 1000, mdeDecisionCode: 1000, transcodeDecisionCode: 1000, directPlayDecisionCode: 1000 });
   const connect = ({ decision = accepted } = {}) => {
     const requests = [];
@@ -3910,6 +3918,20 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
       assert.equal(response.status, status, name);
       assert.ok(!(await response.text()).includes(ownerToken), name);
     }
+  });
+
+  // Dropping the file block or the subtitle offset from the start reply, or reading HDR from anything but DOVIPresent and colorTrc, turns this red.
+  await t.test('the start reply carries the file facts and each subtitle track\'s saved offset', async () => {
+    const { routes } = connect();
+    const file = async (ratingKey) => (await start(routes, { ratingKey })).body.file;
+    const base = { width: 3840, videoCodec: 'hevc', bitrateKbps: 8000 };
+    assert.deepEqual(await file('100'), { ...base, height: 1080, dynamicRange: 'sdr', dolbyVisionProfile: null });
+    assert.deepEqual(await file('300'), { ...base, height: 2160, dynamicRange: 'dolby_vision', dolbyVisionProfile: 8 });
+    assert.deepEqual(await file('400'), { ...base, height: 2160, dynamicRange: 'hdr10', dolbyVisionProfile: null });
+    assert.deepEqual(await file('500'), { ...base, height: 2160, dynamicRange: 'hlg', dolbyVisionProfile: null });
+    assert.deepEqual(await file('600'), { ...base, height: 2160, dynamicRange: 'sdr', dolbyVisionProfile: null });
+    const first = (await start(routes)).body;
+    assert.deepEqual(first.tracks.subtitle.map((track) => track.offsetMs), [null, 500]);
   });
 
   // Sending stream addresses or subtitle file addresses to the page without the desktop header turns this red.
@@ -14765,7 +14787,7 @@ test('the desktop app\'s first-launch address keeps only an http or https origin
 });
 
 test('the desktop app\'s page never gets a Plex token, and only the app page\'s main frame drives the player', async () => {
-  const { pageCopy, pageTrack, callerAllowed, NO_SELECT_CSS } = await import(new URL('../desktop/lib/page.js', import.meta.url));
+  const { pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = await import(new URL('../desktop/lib/page.js', import.meta.url));
   const token = 'X-Plex-Token=transient-abc';
   const reply = {
     session: 'session-1',
@@ -14794,6 +14816,14 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
   // Dropping the html rule, or the rule giving text fields selection back, turns this red: the frame would highlight, or fields could not be copied from.
   assert.match(NO_SELECT_CSS, /html \{[^}]*user-select: none/);
   assert.match(NO_SELECT_CSS, /input, textarea, \[contenteditable\], \[contenteditable\] \* \{[^}]*user-select: text/);
+
+  // Stopping on a same-document change, a subframe or another origin (or missing the app's own reload) turns a row red: mpv would die mid-playback, or outlive the page that controls it.
+  const nav = { url: 'https://mm.example.com/player', isMainFrame: true, isSameDocument: false, appOrigin: 'https://mm.example.com' };
+  assert.equal(stopsPlayerOnNavigation(nav), true);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, isSameDocument: true }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, isMainFrame: false }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, url: 'https://other.example.org/' }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, url: 'https://mm.example.com.evil.test/' }), false);
 
   // Dropping the window, main-frame or origin check turns its row red: that caller could start playback and drive mpv.
   const appOrigin = 'https://media.example.com';
