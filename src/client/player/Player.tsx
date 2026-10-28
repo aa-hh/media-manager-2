@@ -679,7 +679,8 @@ function useNow(active: boolean) {
   return now;
 }
 
-const CONTROLS_HIDE_MS = 3_000;
+// Plex's own player hides its controls 2 s after the last move, click or key (AudioVideoFullPlayer, Plex.app 4.160).
+const CONTROLS_HIDE_MS = 2_000;
 const SKIP_FADE_MS = 10_000;
 
 /** The player element; Home draws it beside the downloads bar. Nothing shows until a title plays. */
@@ -756,8 +757,11 @@ export function Player() {
     wasFull.current = layout === 'full';
   }, [context?.returnFocus, layout]);
 
-  // Controls hide after 3 s without the pointer moving, unless paused, a menu or the volume slider is open or the timeline is in use.
+  // Controls hide 2 s after the last move, click or key, unless paused, a menu or the volume slider is open, the timeline is
+  // in use or the pointer rests on a control bar (as Plex's do). Trap: the window-drag strip at the top (PlayerScreen) gets
+  // no mouse events, so a pointer there counts as idle.
   const keepControls = screen !== 'playing' || playback?.paused === true || openMenu !== undefined || volumeOpen || hoverAt !== undefined || dragAt !== undefined;
+  const overBar = useRef(false);
   useEffect(() => {
     if (keepControls) {
       setControlsShown(true);
@@ -767,18 +771,32 @@ export function Player() {
     // Moves only stamp the time; the timer looks again when it fires, so the pointer moving keeps the controls.
     let timer: number | undefined;
     const check = () => {
-      const left = lastMove.current + CONTROLS_HIDE_MS - Date.now();
+      const left = overBar.current ? CONTROLS_HIDE_MS : lastMove.current + CONTROLS_HIDE_MS - Date.now();
       if (left <= 0) setControlsShown(false);
       else timer = window.setTimeout(check, left);
     };
     check();
     return () => window.clearTimeout(timer);
   }, [keepControls, controlsShown]);
-  const onPointerMove = () => {
-    lastMove.current = Date.now();
-    skipShownUntil.current = Date.now() + SKIP_FADE_MS;
-    if (!controlsShown) setControlsShown(true);
-  };
+  useEffect(() => {
+    if (layout !== 'full') return undefined;
+    const onActivity = (event: Event) => {
+      // A key leaves the pointer where it was; the focused element is not under it.
+      if (event instanceof PointerEvent) overBar.current = event.target instanceof Element && event.target.closest('[data-player-bar]') !== null;
+      lastMove.current = Date.now();
+      skipShownUntil.current = Date.now() + SKIP_FADE_MS;
+      setControlsShown(true);
+    };
+    // Out of the window (or into the drag strip): the pointer no longer rests on a bar.
+    const onOut = (event: MouseEvent) => { if (event.relatedTarget === null) overBar.current = false; };
+    const names = ['pointermove', 'pointerdown', 'keyup'] as const;
+    for (const name of names) window.addEventListener(name, onActivity);
+    document.addEventListener('mouseout', onOut);
+    return () => {
+      for (const name of names) window.removeEventListener(name, onActivity);
+      document.removeEventListener('mouseout', onOut);
+    };
+  }, [layout]);
 
   // A marker the position has just entered shows Skip for 10 s even with the controls hidden (network §10.2).
   if ((marker?.key ?? null) !== markerKey.current) {
