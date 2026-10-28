@@ -3915,6 +3915,22 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.equal(body.streamAddresses.length, 2);
     assert.ok(body.streamAddresses[0].startsWith(`${direct}/library/parts/111/1700000000/file.mkv?`));
     assert.ok(body.streamAddresses[1].startsWith(`${relay}/library/parts/111/1700000000/file.mkv?`));
+    // Dropping these turns this red: the desktop app would test the relay alongside the direct address, and fetch the whole library for the id.
+    assert.equal(body.directAddressCount, 1);
+    assert.equal(body.machineIdentifier, 'plex-machine-1');
+  });
+
+  // Asking plex.tv on every call, or putting a token in the connections reply, turns this red.
+  await t.test('the connections route gives the addresses without a token, and plex.tv is asked once for both calls', async () => {
+    const { routes, requests } = connect();
+    const response = await routes.request(`/connections?clientId=${ids.clientId}`);
+    const text = await response.text();
+    assert.equal(response.status, 200);
+    assert.deepEqual(JSON.parse(text), { machineIdentifier: 'plex-machine-1', origins: [direct, relay], directCount: 1 });
+    assert.ok(!text.includes(ownerToken) && !text.includes('transient-'));
+    assert.equal((await start(routes, {}, { desktop: true })).status, 200);
+    assert.equal(requests.filter((url) => url.host === 'plex.tv').length, 1);
+    assert.equal((await routes.request('/connections?clientId=bad')).status, 400);
   });
 
   // Removing the 2 s decision timeout, or failing the start when the decision never answers, turns this red.
@@ -14746,7 +14762,7 @@ test('the add sentence picks the search fact from the choices and the title', as
   for (const [choices, title, fact] of cases) assert.deepEqual(searchFact(choices, title), fact, `${choices.monitor} ${JSON.stringify(title.movie?.status ?? title.airing?.seasons)}`);
 });
 
-test('the desktop app streams from the first Plex address in the server\'s order that is really this server', async () => {
+test('the desktop app streams from the first direct Plex address to answer as this server, and from a relay only when none does', async () => {
   const { chooseConnection, answerPasses } = await import(new URL('../desktop/lib/connection.js', import.meta.url));
   const deferred = () => {
     let resolve;
@@ -14756,20 +14772,27 @@ test('the desktop app streams from the first Plex address in the server\'s order
   };
   const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-  // Accepting the quickest answer instead of the first in order turns this red: a relay or later address would beat a direct one still being tested.
+  // Waiting for every earlier address to fail turns this red: a dead direct address would hold up a live one for its whole time limit.
   const pending = new Map(['https://direct-a', 'https://direct-b', 'https://relay'].map((origin) => [origin, deferred()]));
+  const probed = [];
   let chosen;
-  const choice = chooseConnection([...pending.keys()], (origin) => pending.get(origin).promise, 'server-1').then((value) => { chosen = value; });
-  pending.get('https://relay').resolve('server-1');
-  pending.get('https://direct-b').resolve('server-1');
+  const choice = chooseConnection([...pending.keys()], (origin) => {
+    probed.push(origin);
+    return pending.get(origin).promise;
+  }, 'server-1', 2).then((value) => { chosen = value; });
   await tick();
-  assert.equal(chosen, undefined, 'a later address won while the first was still being tested');
-  pending.get('https://direct-a').reject(new Error('timed out'));
+  // Testing a relay alongside the direct addresses turns this red: a quick relay would beat a slower direct address.
+  assert.deepEqual(probed, ['https://direct-a', 'https://direct-b']);
+  pending.get('https://direct-b').resolve('server-1');
   await choice;
   assert.equal(chosen, 'https://direct-b');
 
+  // The relay is tested once every direct address has failed.
+  const relayOnly = await chooseConnection(['https://direct-a', 'https://relay'], async (origin) => (origin === 'https://relay' ? 'server-1' : null), 'server-1', 1);
+  assert.equal(relayOnly, 'https://relay');
+
   // Dropping the machineIdentifier comparison turns this red: another Plex server on the owner's network would get the stream.
-  assert.equal(await chooseConnection(['http://192.168.1.20:32400', 'https://relay'], async (origin) => (origin.startsWith('http:') ? 'someone-else' : 'server-1'), 'server-1'), 'https://relay');
+  assert.equal(await chooseConnection(['http://192.168.1.20:32400', 'https://relay'], async (origin) => (origin.startsWith('http:') ? 'someone-else' : 'server-1'), 'server-1', 1), 'https://relay');
   assert.equal(await chooseConnection(['http://192.168.1.20:32400'], async () => 'someone-else', 'server-1'), null);
   assert.equal(await chooseConnection([], async () => 'server-1', 'server-1'), null);
 

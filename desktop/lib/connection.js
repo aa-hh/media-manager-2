@@ -22,47 +22,49 @@ const answerPasses = (origin, answeredId, expectedId) => {
   }
 };
 
-/**
- * Tests `origins` (in the server's order: direct first, relay last) at most
- * `limit` at once. `probe(origin)` resolves to the machineIdentifier that
- * answers there (or null) and applies its own time limit. Resolves to the
- * first origin in that order that passes once every origin before it has
- * failed, so a relay never wins while a direct address could; null when none
- * passes.
- */
-const chooseConnection = (origins, probe, expectedId, limit = PROBE_LIMIT) => new Promise((resolve) => {
-  const unique = [...new Set(origins)];
-  const results = new Array(unique.length);
+// The first of `origins` to pass, testing at most `limit` at once; null when none passes.
+const firstPassing = (origins, probe, expectedId, limit) => new Promise((resolve) => {
   let next = 0;
+  let failed = 0;
   let done = false;
-  const settle = () => {
-    if (done) return;
-    for (let index = 0; index < unique.length; index += 1) {
-      if (results[index] === undefined) return;
-      if (results[index]) {
-        done = true;
-        resolve(unique[index]);
-        return;
-      }
-    }
-    done = true;
-    resolve(null);
-  };
   const launch = () => {
-    if (done || next >= unique.length) return;
-    const index = next;
+    if (done || next >= origins.length) return;
+    const origin = origins[next];
     next += 1;
     Promise.resolve()
-      .then(() => probe(unique[index]))
-      .then((id) => answerPasses(unique[index], id, expectedId), () => false)
+      .then(() => probe(origin))
+      .then((id) => answerPasses(origin, id, expectedId), () => false)
       .then((passed) => {
-        results[index] = passed;
-        settle();
-        launch();
+        if (done) return;
+        if (passed) {
+          done = true;
+          resolve(origin);
+          return;
+        }
+        failed += 1;
+        if (failed === origins.length) {
+          done = true;
+          resolve(null);
+        } else launch();
       });
   };
-  if (unique.length === 0) resolve(null);
-  for (let started = 0; started < Math.min(limit, unique.length); started += 1) launch();
+  if (origins.length === 0) resolve(null);
+  for (let started = 0; started < Math.min(limit, origins.length); started += 1) launch();
 });
+
+/**
+ * Tests `origins` (in the server's order: the first `directCount` direct, the
+ * rest relay) at most `limit` at once. `probe(origin)` resolves to the
+ * machineIdentifier that answers there (or null) and applies its own time
+ * limit. As in Plex's own app, the first direct address to pass wins, so a dead
+ * one never holds up a live one; relay addresses are tested only once every
+ * direct one has failed. Unlike Plex, a better address answering later never
+ * replaces the winner: mpv would have to reopen the file.
+ */
+const chooseConnection = async (origins, probe, expectedId, directCount = origins.length, limit = PROBE_LIMIT) => {
+  const direct = [...new Set(origins.slice(0, directCount))];
+  const relay = [...new Set(origins.slice(directCount))].filter((origin) => !direct.includes(origin));
+  return (await firstPassing(direct, probe, expectedId, limit)) ?? firstPassing(relay, probe, expectedId, limit);
+};
 
 module.exports = { chooseConnection, answerPasses, PROBE_LIMIT, PROBE_TIMEOUT_MS };

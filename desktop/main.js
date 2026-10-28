@@ -101,6 +101,7 @@ function createWindow() {
   const contents = win.webContents;
   // As in native Mac apps, the app's frame is not selectable; fields and elements marked select-text still are.
   contents.on('dom-ready', () => { void contents.insertCSS(NO_SELECT_CSS); });
+  contents.on('did-finish-load', () => { if (originOf(contents.getURL()) === appOrigin) testEarly(); });
   // A reload or a full page load of the app ends the page that drove mpv: mpv stops, so it never outlives its controls.
   // The app's own address changes are same-document and pass; other origins are refused below and never load.
   contents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument }) => {
@@ -247,9 +248,33 @@ const probe = async (origin) => {
 };
 // Kept for the run; tested again before any retry (network recommendation 7).
 let keptOrigin = null;
-const pickOrigin = async (origins, retest) => {
+// The origins of the server's addresses and how many are direct; a server older than this app sends no count, so all count as direct.
+const originsOf = (addresses, directCount) => {
+  const count = Number.isSafeInteger(directCount) ? directCount : addresses.length;
+  const list = (part) => part.filter((value) => typeof value === 'string').map(originOf).filter((value) => value !== null);
+  const direct = list(addresses.slice(0, count));
+  return { origins: [...direct, ...list(addresses.slice(count))], directCount: direct.length };
+};
+// Plex's own app tests the server's addresses when it opens, not at Play (network §8.2). Each load of the app page does the
+// same, so the first Play finds an address already tested; a Play during the test waits for it.
+let testing = null;
+const testEarly = () => {
+  const origin = appOrigin;
+  const run = (async () => {
+    const { status, json } = await appRequest('GET', `/api/playback/connections?clientId=${clientId()}`);
+    if (status !== 200 || typeof json?.machineIdentifier !== 'string' || !Array.isArray(json.origins) || appOrigin !== origin) return;
+    serverId = json.machineIdentifier;
+    const { origins, directCount } = originsOf(json.origins, json.directCount);
+    const chosen = await chooseConnection(origins, probe, serverId, directCount);
+    if (appOrigin === origin) keptOrigin = chosen;
+  })().catch(() => {});
+  testing = run;
+  void run.finally(() => { if (testing === run) testing = null; });
+};
+const pickOrigin = async ({ origins, directCount }, retest) => {
+  if (testing !== null) await testing;
   if (!retest && keptOrigin !== null && origins.includes(keptOrigin)) return keptOrigin;
-  keptOrigin = await chooseConnection(origins, probe, await expectedServerId());
+  keptOrigin = await chooseConnection(origins, probe, await expectedServerId(), directCount);
   return keptOrigin;
 };
 
@@ -400,7 +425,9 @@ async function start(playing, offsetSeconds, retest) {
     throw new Error(typeof json?.error === 'string' ? json.error : `start failed (${status})`);
   }
   const addresses = json.streamAddresses.filter((address) => typeof address === 'string');
-  const origin = await pickOrigin(addresses.map(originOf).filter((value) => value !== null), retest);
+  // The server's id comes with the reply, so expectedServerId's library request runs only against an older server.
+  if (typeof json.machineIdentifier === 'string' && json.machineIdentifier !== '') serverId = json.machineIdentifier;
+  const origin = await pickOrigin(originsOf(json.streamAddresses, json.directAddressCount), retest);
   if (origin === null) throw new Error('plex_unreachable');
   if (current !== playing) throw new Error('replaced');
   playing.reply = json;

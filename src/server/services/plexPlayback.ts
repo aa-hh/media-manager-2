@@ -91,9 +91,13 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
     return body.token;
   };
 
+  // plex.tv's list is the slowest call of every start and rarely changes, so a reply is kept for a few minutes per token.
+  // razor: a changed server address waits out the 5 min. Upgrade path: drop the kept list when no address answers.
+  let kept: { token: string; until: number; list: unknown[] } | undefined;
   const resources = async (clientId: string): Promise<unknown[]> => {
     const configuration = readConfiguration();
     if (configuration === undefined) throw new Error('Plex is not configured.');
+    if (kept !== undefined && kept.token === configuration.token && Date.now() < kept.until) return kept.list;
     const response = await requestWithTimeout(fetchImpl, 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1', {
       headers: {
         'X-Plex-Token': configuration.token,
@@ -105,6 +109,7 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
     if (!isOk(response.status)) throw new Error('plex.tv refused the server list.');
     const body: unknown = await response.json();
     if (!Array.isArray(body)) throw new Error('plex.tv refused the server list.');
+    kept = { token: configuration.token, until: Date.now() + 5 * 60_000, list: body };
     return body;
   };
 

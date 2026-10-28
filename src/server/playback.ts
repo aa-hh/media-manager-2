@@ -26,6 +26,16 @@ const QUALITY_STEPS = [
 const DIRECT_PLAY_CONTAINERS = new Set(['3gpp', 'asf', 'avi', 'mkv', 'mov', 'mp4', 'mpeg', 'mpegts', 'rm', 'wtv']);
 const PICTURE_SUBTITLES = new Set(['pgs', 'vobsub', 'dvd_subtitle', 'idx']);
 
+/** The server's addresses from plex.tv's list, direct first and relay last, and how many are direct. */
+const addressesOf = (resources: unknown[], machineIdentifier: string) => {
+  const server = records(resources).find((resource) => resource.clientIdentifier === machineIdentifier);
+  const connections = records(server?.connections).filter((connection) => typeof connection.uri === 'string');
+  const direct = connections.filter((connection) => connection.relay !== true);
+  const uris = [...direct, ...connections.filter((connection) => connection.relay === true)]
+    .map((connection) => (connection.uri as string).replace(/\/+$/, ''));
+  return { uris, directCount: direct.length };
+};
+
 type Reply = { status: 200 | 404 | 409 | 502; body: unknown } | { status: 204 };
 const unavailable: Reply = { status: 502, body: { error: 'plex_unavailable' } };
 
@@ -74,10 +84,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
     if (record === undefined || media === undefined || part === undefined || typeof part.key !== 'string'
       || typeof record.librarySectionUUID !== 'string') return { status: 404, body: { error: 'not_found' } };
 
-    const server = records(resourcesResult.value).find((resource) => resource.clientIdentifier === machineIdentifier);
-    const connections = records(server?.connections).filter((connection) => typeof connection.uri === 'string');
-    const uris = [...connections.filter((connection) => connection.relay !== true), ...connections.filter((connection) => connection.relay === true)]
-      .map((connection) => (connection.uri as string).replace(/\/+$/, ''));
+    const { uris, directCount } = addressesOf(resourcesResult.value, machineIdentifier);
     if (uris.length === 0) return { status: 502, body: { error: 'plex_tv_unavailable' } };
 
     // The play queue is made after the item fetch, which gives its section UUID.
@@ -241,9 +248,18 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
         })),
         file,
         qualitySteps,
-        ...(desktop ? { streamAddresses } : {}),
+        // The server's id and the direct addresses' count let the desktop app test Plex's addresses without asking again.
+        ...(desktop ? { streamAddresses, directAddressCount: directCount, machineIdentifier } : {}),
       },
     };
+  };
+
+  // The server's addresses with no token, so the desktop app can test them when it opens rather than at Play.
+  const connections = async (clientId: string): Promise<Reply> => {
+    const [list, { machineIdentifier }] = await Promise.all([plexPlayback.resources(clientId), plexPlayback.identity()]);
+    const { uris, directCount } = addressesOf(list, machineIdentifier);
+    if (uris.length === 0) return { status: 502, body: { error: 'plex_tv_unavailable' } };
+    return { status: 200, body: { machineIdentifier, origins: uris, directCount } };
   };
 
   const timeline = async (input: {
@@ -309,6 +325,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
   return {
     enabled,
     start: (input: StartInput, desktop: boolean) => guarded(() => start(input, desktop)),
+    connections: (clientId: string) => guarded(() => connections(clientId)),
     timeline: (input: Parameters<typeof timeline>[0]) => guarded(() => timeline(input)),
     ping: (input: Parameters<typeof ping>[0]) => guarded(() => ping(input)),
     stop: (input: Parameters<typeof stop>[0]) => guarded(() => stop(input)),
@@ -371,6 +388,12 @@ export const createPlaybackRoutes = (playback: Playback) => {
       ...(maxVideoBitrate === undefined ? {} : { maxVideoBitrate }),
     };
     return send(context, await playback.start(input, context.req.header('X-Media-Manager-Desktop') === '1'));
+  });
+
+  routes.get('/connections', async (context) => {
+    const clientId = context.req.query('clientId');
+    if (!isId(clientId)) return context.json(invalid, 400);
+    return send(context, await playback.connections(clientId));
   });
 
   // A GET, so the last report when the window closes needs no X-Requested-With.
