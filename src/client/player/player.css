@@ -3,6 +3,8 @@
  * paints nothing. While the player is open the page drops its own background: full size hides the app around the player,
  * and the mini player cuts a hole, the mini player's size and corners, out of the app at the place it sits.
  */
+/* globals.css paints <html> too, so both drop their background. */
+html[data-player],
 html[data-player] body {
   background: transparent;
 }
