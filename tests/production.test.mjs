@@ -11754,7 +11754,7 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
   await t.test('the size row is off with no subtitle and greyed for picture subtitles', () => {
     const track = (codec) => ({ id: 1, index: 0, ffIndex: 1, codec, language: 'English', title: null, selected: true });
     const rows = [[undefined, 'off'], [track('pgs'), 'picture'], [track('hdmv_pgs_subtitle'), 'picture'], [track('dvd_subtitle'), 'picture'],
-      [track('VOBSUB'), 'picture'], [track('srt'), 'text'], [track('ass'), 'text'], [track(null), 'text']];
+      [track('VOBSUB'), 'picture'], [track('dvb_subtitle'), 'picture'], [track('xsub'), 'picture'], [track('srt'), 'text'], [track('ass'), 'text'], [track(null), 'text']];
     for (const [chosen, state] of rows) assert.equal(subtitleSizeState(chosen), state, chosen?.codec ?? 'none');
   });
 

@@ -202,9 +202,9 @@ export const SUBTITLE_SIZES = [
 export const subtitleScaleOf = (scale: unknown) => SUBTITLE_SIZES.find((size) => size.scale === scale)?.scale ?? 1;
 
 // Bitmap subtitles: mpv draws them as Plex sends them, so sub-scale does nothing to them.
-const PICTURE_CODECS = new Set(['pgs', 'hdmv_pgs_subtitle', 'dvd_subtitle', 'vobsub']);
+const PICTURE_CODECS = new Set(['pgs', 'hdmv_pgs_subtitle', 'dvd_subtitle', 'vobsub', 'dvb_subtitle', 'xsub']);
 
-/** Whether the size row works for the chosen subtitle: off with no subtitle, picture for PGS and VobSub, text otherwise. */
+/** Whether the size row works for the chosen subtitle: off with no subtitle, picture for PGS, VobSub, DVB and XSUB, text otherwise. */
 export const subtitleSizeState = (track: AudioTrack | undefined): 'off' | 'picture' | 'text' => {
   if (track === undefined) return 'off';
   return PICTURE_CODECS.has(track.codec?.toLowerCase() ?? '') ? 'picture' : 'text';
