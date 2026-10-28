@@ -44,6 +44,8 @@ plist="$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName media-manager-2" "$plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier io.github.aa-hh.media-manager-2" "$plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(node -p "require('./package.json').version")" "$plist"
+# The web app's planet icon in a Mac tile; Info.plist already names electron.icns.
+cp icon.icns "$RESOURCES/electron.icns"
 
 app="$RESOURCES/app"
 mkdir -p "$app/build/Release" "$app/address"
