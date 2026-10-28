@@ -1,6 +1,6 @@
 // Figma: RowEpisode — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4854
 // Figma: RowEpisodeHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4458
-// With a still: ~/Projects/media-manager-2-design/title.pen NIjoo (Rows B1 refined, 56 px). Not in Figma yet.
+// The still look (56 px, title over a second line) is the `still=true` variant of RowEpisode.
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
