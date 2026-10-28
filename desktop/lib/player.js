@@ -1,6 +1,6 @@
 'use strict';
-// Decisions the player makes about mpv's file events, pausing and subtitle
-// files. No Electron here, so tests/production.test.mjs can run it.
+// Decisions the player makes about mpv's file events, pausing, subtitle
+// files and the values it saves. No Electron here, so tests/production.test.mjs can run it.
 
 /**
  * What an mpv `file-loaded` or `end-file` event means for `playing`, the
@@ -50,4 +50,10 @@ const subtitleAdd = (track, origin) => ['sub-add', withOrigin(track.url, origin)
 /** A volume for mpv: a whole percent from 0 to 100, or null for anything that is not a number (refused, or a saved value ignored). */
 const volumePercent = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : null);
 
-module.exports = { fileEvent, playsOnOpen, subtitleAdd, volumePercent };
+/** The subtitle text sizes, as mpv's sub-scale: Plex's desktop app's Tiny, Small, Normal, Large and Huge. */
+const SUBTITLE_SCALES = [0.5, 0.75, 1, 1.25, 2];
+
+/** A sub-scale for mpv: one of SUBTITLE_SCALES, or null for anything else (refused, or a saved value ignored). */
+const subtitleScale = (value) => (SUBTITLE_SCALES.includes(value) ? value : null);
+
+module.exports = { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale };

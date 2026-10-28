@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { CircleAlert, HardDriveDownload, RefreshCw, RotateCcw, ServerOff, Settings, SkipForward, Timer, Type } from 'lucide-react';
+import { CircleAlert, HardDriveDownload, RefreshCw, RotateCcw, ServerOff, Settings, SkipForward, Timer } from 'lucide-react';
 import { fn } from 'storybook/test';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuSubmenu,
   DropdownMenuSubmenuTrigger,
+  DropdownMenuToggleGroup,
+  DropdownMenuToggleGroupItem,
 } from '@/components/ui/dropdown-menu';
 import { LineSavedToPlex } from '@/components/ui/line-saved-to-plex';
 import { PlayerError } from '@/components/ui/player-error';
@@ -56,7 +58,7 @@ const subtitleTracks = (
   </DropdownMenuGroup>
 );
 
-// The Timing row opens the timing submenu (state 7); the Text size submenu is not drawn, so it stays empty and closed.
+// The Timing row opens the timing submenu (state 7).
 const timing = (open: boolean) => (
   <DropdownMenuSubmenu defaultOpen={open}>
     <DropdownMenuSubmenuTrigger icon={<Timer />}>Timing · +0.5 s</DropdownMenuSubmenuTrigger>
@@ -72,11 +74,19 @@ const timing = (open: boolean) => (
     </DropdownMenuContent>
   </DropdownMenuSubmenu>
 );
+// Text size under Timing: five sizes as one dark segmented row (player file 5:251).
 const textSize = (
-  <DropdownMenuSubmenu>
-    <DropdownMenuSubmenuTrigger icon={<Type />}>Text size · Medium</DropdownMenuSubmenuTrigger>
-    <DropdownMenuContent onDark side="left" />
-  </DropdownMenuSubmenu>
+  <>
+    <DropdownMenuSeparator />
+    <DropdownMenuGroup>
+      <DropdownMenuGroupLabel>Text size</DropdownMenuGroupLabel>
+      <div className="px-2 pt-0.5 pb-1.5">
+        <DropdownMenuToggleGroup defaultValue="Large">
+          {['Tiny', 'Small', 'Normal', 'Large', 'Huge'].map((label) => <DropdownMenuToggleGroupItem key={label} value={label}>{label}</DropdownMenuToggleGroupItem>)}
+        </DropdownMenuToggleGroup>
+      </div>
+    </DropdownMenuGroup>
+  </>
 );
 
 const meta = {
@@ -101,7 +111,10 @@ const meta = {
     onPlayPause: fn(),
     onBack10: fn(),
     onForward30: fn(),
+    volume: 62,
+    muted: false,
     onVolume: fn(),
+    onVolumeChange: fn(),
     onMini: fn(),
     onFullscreen: fn(),
     onSeek: fn(),
@@ -113,6 +126,12 @@ type Story = StoryObj<typeof meta>;
 
 // 1 · Playing: controls shown, the grey part of the line past the dot is what has loaded ahead.
 export const Playing: Story = {};
+
+// Volume, pointer on the speaker: the upright slider pops up above it with the level (player file 7:717).
+export const Volume: Story = { args: { volumeOpen: true } };
+
+// Volume muted (a click on the speaker, or M): the crossed-out speaker, the slider greyed at the level it returns to.
+export const VolumeMuted: Story = { args: { volumeOpen: true, muted: true } };
 
 // 2 · Controls hidden: only the picture.
 export const ControlsHidden: Story = { args: { controls: 'none' } };
@@ -163,7 +182,7 @@ export const SubtitlesMenu: Story = {
     openMenu: 'subtitles',
     menus: {
       subtitles: (
-        <DropdownMenuContent {...menu} className="w-75">
+        <DropdownMenuContent {...menu} className="w-80">
           {subtitleTracks}
           <DropdownMenuSeparator />
           {timing(false)}
@@ -184,7 +203,7 @@ export const SubtitleTiming: Story = {
     openMenu: 'subtitles',
     menus: {
       subtitles: (
-        <DropdownMenuContent {...menu} className="w-75">
+        <DropdownMenuContent {...menu} className="w-80">
           {subtitleTracks}
           <DropdownMenuSeparator />
           {timing(true)}
@@ -248,7 +267,6 @@ export const LoadAhead: Story = {
                 <p className="flex gap-2 p-2 font-ui text-xs leading-[1.45] text-bar-muted-foreground"><Settings aria-hidden="true" className="size-4 shrink-0" />Also in Settings, Playback.</p>
               </DropdownMenuContent>
             </DropdownMenuSubmenu>
-            {textSize}
           </DropdownMenuGroup>
         </DropdownMenuContent>
       ),

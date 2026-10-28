@@ -12,6 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuSubmenu,
   DropdownMenuSubmenuTrigger,
+  DropdownMenuToggleGroup,
+  DropdownMenuToggleGroupItem,
 } from '@/components/ui/dropdown-menu';
 import { LineSavedToPlex } from '@/components/ui/line-saved-to-plex';
 import { PlayerError } from '@/components/ui/player-error';
@@ -21,7 +23,7 @@ import { PlayerUpNext, type UpNextStep } from '@/components/ui/player-up-next';
 import { StepperSubtitleTiming } from '@/components/ui/stepper-subtitle-timing';
 import { cn } from '@/lib/utils';
 import {
-  LOAD_AHEAD, durationWords, stepLabel, trackButtonLabel, trackRowLabel,
+  LOAD_AHEAD, SUBTITLE_SIZES, durationWords, stepLabel, subtitleSizeState, trackButtonLabel, trackRowLabel,
   type AudioTrack, type QualityStep, type Screen, type SubtitleTrack,
 } from './model';
 
@@ -60,7 +62,11 @@ export type PlayerScreenProps = {
   previous?: PlayerQueueItem;
   next?: PlayerQueueItem;
   audio: { tracks: AudioTrack[]; saved: boolean };
-  subtitles: { tracks: SubtitleTrack[]; saved: boolean; delay: number; delaySaved: boolean };
+  /** `size`: the subtitle text size as mpv's sub-scale; left out when the desktop app cannot set it, which hides the Text size row. */
+  subtitles: { tracks: SubtitleTrack[]; saved: boolean; delay: number; delaySaved: boolean; size?: number };
+  /** 0 to 100, and whether mpv is muted. */
+  volume: number;
+  muted: boolean;
   quality: { steps: QualityStep[]; kbps?: number; label: string };
   skip?: { kind: 'intro' | 'credits'; visible: boolean; raised: boolean };
   /** State 13: the sentence, and what was tried when the desktop app stepped down. */
@@ -74,7 +80,11 @@ export type PlayerScreenProps = {
   onPlayPause: () => void;
   onBack10: () => void;
   onForward30: () => void;
+  /** The Volume button's click, and M: mutes and unmutes. */
   onVolume: () => void;
+  onVolumeChange: (percent: number) => void;
+  onVolumeWheel: (deltaY: number) => void;
+  onVolumeOpenChange: (open: boolean) => void;
   onMini: () => void;
   onExpand: () => void;
   onFullscreen: () => void;
@@ -85,6 +95,8 @@ export type PlayerScreenProps = {
   onSubtitle: (track: SubtitleTrack | null) => void;
   /** 0.1 s steps; 'reset' goes back to 0. */
   onSubtitleDelay: (change: number | 'reset') => void;
+  /** One of SUBTITLE_SIZES' scales. */
+  onSubtitleSize: (scale: number) => void;
   /** undefined is Original. */
   onQuality: (kbps: number | undefined) => void;
   onLoadAhead: (value: string) => void;
@@ -114,6 +126,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
   const selectedAudio = audio.tracks.find((track) => track.selected);
   const selectedSubtitle = subtitles.tracks.find((track) => track.selected);
   const loadAheadLabel = LOAD_AHEAD.find((option) => option.value === loadAhead)?.label ?? '';
+  const sizeState = subtitleSizeState(selectedSubtitle);
 
   if (layout === 'mini') {
     return (
@@ -123,6 +136,8 @@ export function PlayerScreen(props: PlayerScreenProps) {
           time={`${formatTime(position)} / ${formatTime(duration)}`}
           progress={duration > 0 ? (position / duration) * 100 : 0}
           playing={playing}
+          muted={props.muted}
+          onMute={props.onVolume}
           onPlayPause={props.onPlayPause}
           onExpand={props.onExpand}
           onClose={props.onClose}
@@ -156,7 +171,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
       </DropdownMenuContent>
     ),
     subtitles: (
-      <DropdownMenuContent {...menu} className="w-75">
+      <DropdownMenuContent {...menu} className="w-80">
         <DropdownMenuGroup>
           <DropdownMenuGroupLabel>Subtitles</DropdownMenuGroupLabel>
           <DropdownMenuRadioGroup
@@ -187,6 +202,21 @@ export function PlayerScreen(props: PlayerScreenProps) {
             )}
           </DropdownMenuContent>
         </DropdownMenuSubmenu>
+        {subtitles.size !== undefined && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuGroupLabel>Text size</DropdownMenuGroupLabel>
+              {/* Picture subtitles (PGS, VobSub) ignore mpv's sub-scale, so the row stays at the saved size but greyed. */}
+              <div className="px-2 pt-0.5 pb-1.5">
+                <DropdownMenuToggleGroup value={subtitles.size} onValueChange={(value) => props.onSubtitleSize(Number(value))} disabled={sizeState !== 'text'}>
+                  {SUBTITLE_SIZES.map((size) => <DropdownMenuToggleGroupItem key={size.scale} value={size.scale}>{size.label}</DropdownMenuToggleGroupItem>)}
+                </DropdownMenuToggleGroup>
+              </div>
+              {sizeState === 'picture' && <p className="p-2 font-ui text-xs leading-[1.45] text-bar-muted-foreground">Picture subtitles have a fixed size.</p>}
+            </DropdownMenuGroup>
+          </>
+        )}
         {subtitles.saved && (
           <>
             <DropdownMenuSeparator />
@@ -269,7 +299,12 @@ export function PlayerScreen(props: PlayerScreenProps) {
         onPlayPause={props.onPlayPause}
         onBack10={props.onBack10}
         onForward30={props.onForward30}
+        volume={props.volume}
+        muted={props.muted}
         onVolume={props.onVolume}
+        onVolumeChange={props.onVolumeChange}
+        onVolumeWheel={props.onVolumeWheel}
+        onVolumeOpenChange={props.onVolumeOpenChange}
         onMini={props.onMini}
         onFullscreen={props.onFullscreen}
         onSeek={props.onSeek}

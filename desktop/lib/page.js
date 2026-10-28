@@ -14,8 +14,8 @@ const originOf = (url) => {
 /**
  * The start reply as the page gets it: no stream address, and an external subtitle's url is its tokenless stream key, which
  * setSubtitle takes back. `ids` are this install's clientId and sessionIdentifier (not secrets), so the page's reports to
- * Plex come from the same player as the stream. `sound` is the saved volume and mute mpv starts the file with: mpv sends no
- * event for a value it already had, so a reloaded page learns them only here.
+ * Plex come from the same player as the stream. `sound` is the saved volume, mute and subtitle size mpv starts the file
+ * with: mpv sends no event for a value it already had, so a reloaded page learns them only here.
  */
 const pageCopy = (reply, ids, sound) => {
   const { streamAddresses, ...rest } = reply;
@@ -25,6 +25,7 @@ const pageCopy = (reply, ids, sound) => {
     sessionIdentifier: ids.sessionIdentifier,
     volume: sound.volume,
     muted: sound.muted,
+    subtitleScale: sound.subtitleScale,
     tracks: {
       ...rest.tracks,
       subtitle: rest.tracks.subtitle.map((track) => ({ ...track, url: track.external ? track.key : null })),

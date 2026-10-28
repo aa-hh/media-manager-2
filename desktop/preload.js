@@ -31,6 +31,7 @@ if (window.location.protocol === 'file:') {
     setFullscreen: call('player:setFullscreen'),
     setVolume: call('player:setVolume'),
     setMuted: call('player:setMuted'),
+    setSubtitleScale: call('player:setSubtitleScale'),
     // Events: position, duration, paused, buffering, loadedAhead, endOfFile, error, tracks, started, volume, muted.
     on: (name, listener) => {
       if (!listeners.has(name)) listeners.set(name, new Set());

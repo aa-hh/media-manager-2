@@ -7,7 +7,7 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, subtitleAdd, volumePercent } = require('./lib/player');
+const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale } = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -22,7 +22,7 @@ if (app.isPackaged && fs.existsSync(driverFile)) {
   process.env.VK_ICD_FILENAMES = driverFile;
 }
 
-// --- Settings kept in userData: the address, the client id (network §1), Load ahead, volume and mute.
+// --- Settings kept in userData: the address, the client id (network §1), Load ahead, volume, mute and subtitle size.
 
 const settingsPath = () => path.join(app.getPath('userData'), 'desktop.json');
 const readSettings = () => {
@@ -52,6 +52,8 @@ const loadAheadBytes = () => {
 // The owner's last volume and mute, applied before every file so a new one does not reset them.
 const savedVolume = () => volumePercent(readSettings().volume) ?? 100;
 const savedMuted = () => readSettings().muted === true;
+// The subtitle text size, a setting of this app rather than of a title: never saved to Plex.
+const savedSubtitleScale = () => subtitleScale(readSettings().subtitleScale) ?? 1;
 // One per app run (network §1).
 const sessionIdentifier = randomUUID();
 
@@ -373,6 +375,7 @@ async function loadAddress(playing, address, startSeconds, directPlay) {
     ['network-timeout', '15'],
     ['volume', String(savedVolume())],
     ['mute', savedMuted() ? 'yes' : 'no'],
+    ['sub-scale', String(savedSubtitleScale())],
     ['demuxer-max-bytes', String(loadAheadBytes())],
     ['demuxer-max-back-bytes', String(50 * MiB)],
     ['stream-lavf-o', directPlay ? 'reconnect=1,reconnect_on_network_error=1,reconnect_delay_max=5' : ''],
@@ -405,7 +408,7 @@ async function start(playing, offsetSeconds, retest) {
     .filter((track) => track.external && typeof track.url === 'string')
     .map((track) => [track.key, subtitleAdd(track, origin)]));
   await loadAddress(playing, playing.address, offsetSeconds, json.decision.directPlay);
-  return pageCopy(json, { clientId: clientId(), sessionIdentifier }, { volume: savedVolume(), muted: savedMuted() });
+  return pageCopy(json, { clientId: clientId(), sessionIdentifier }, { volume: savedVolume(), muted: savedMuted(), subtitleScale: savedSubtitleScale() });
 }
 
 async function recover(failure, playing = current) {
@@ -578,6 +581,12 @@ handle('player:setVolume', (percent) => {
 handle('player:setMuted', (on) => {
   writeSettings({ muted: on === true });
   if (mpv) return mpv.setProperty('mute', on === true ? 'yes' : 'no');
+});
+handle('player:setSubtitleScale', (scale) => {
+  const value = subtitleScale(scale);
+  if (value === null) throw new Error('invalid_request');
+  writeSettings({ subtitleScale: value });
+  if (mpv) return mpv.setProperty('sub-scale', String(value));
 });
 handle('player:setLayout', (wanted) => {
   if (wanted !== 'full' && wanted !== 'mini') {

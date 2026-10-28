@@ -1,6 +1,8 @@
 // Figma: DropdownMenuContent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-673
 // Figma: DropdownMenuItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3626
 // Figma: DropdownMenuRadioItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-587
+// Figma: v2/ToggleGroup/on-dark (DropdownMenuToggleGroup) — https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=2-165
+// Figma: v2/ToggleGroupItem/on-dark (DropdownMenuToggleGroupItem) — https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=2-164
 import { Menu } from '@base-ui/react/menu';
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { Check, ChevronRight } from 'lucide-react';
@@ -120,6 +122,50 @@ function DropdownMenuRadioItem({ icon, kbd, className, children, ...props }: Com
   );
 }
 
+/**
+ * A toggle group inside a dark menu (v2/ToggleGroup/on-dark): a 36 px white 8% track, 3 px padding, the choices sharing the
+ * width. Its choices are menu radio items, not toggle buttons, because a menu may hold only menu items; Up and Down reach
+ * them like any row and Left and Right move along the group. Drawn only for `DropdownMenuContent onDark`.
+ */
+function DropdownMenuToggleGroup({ className, onKeyDown, ...props }: ComponentProps<typeof Menu.RadioGroup>) {
+  return (
+    <Menu.RadioGroup
+      className={cn('flex h-9 w-full gap-0.5 rounded-(--control-radius-default) bg-surface-hover-on-video p-0.75', className)}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"]:not([aria-disabled="true"])')];
+        const at = items.indexOf(event.target as HTMLElement);
+        const next = items[at + (event.key === 'ArrowRight' ? 1 : -1)];
+        if (at === -1 || next === undefined) return;
+        event.preventDefault();
+        event.stopPropagation();
+        next.focus();
+      }}
+      {...props}
+    />
+  );
+}
+
+/** One choice in a DropdownMenuToggleGroup: 13/600 `muted-foreground-on-dark`; chosen, a `foreground-on-dark` segment with a `bar` label. A click keeps the menu open. */
+function DropdownMenuToggleGroupItem({ className, ...props }: ComponentProps<typeof Menu.RadioItem>) {
+  return (
+    <Menu.RadioItem
+      closeOnClick={false}
+      className={cn(
+        'flex h-full min-w-0 flex-1 cursor-default items-center justify-center rounded-(--control-radius-row) px-1 font-ui text-[13px] font-semibold whitespace-nowrap select-none',
+        'text-muted-foreground-on-dark outline-hidden transition-colors duration-(--duration-fast) ease-out',
+        'data-highlighted:bg-surface-hover-on-video data-highlighted:text-foreground-on-dark',
+        // Chosen wins over highlighted; a highlighted chosen item shows a 2 px inner `bar` edge so the keyboard's place stays visible.
+        'data-checked:bg-foreground-on-dark data-checked:text-bar data-checked:data-highlighted:bg-foreground-on-dark data-checked:data-highlighted:text-bar',
+        'data-checked:data-highlighted:shadow-[inset_0_0_0_2px_var(--bar)] data-disabled:opacity-40',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 /** A menu row that opens a further menu; the chevron sits at the right. */
 function DropdownMenuSubmenuTrigger({ icon, kbd, className, children, ...props }: ComponentProps<typeof Menu.SubmenuTrigger> & ItemParts) {
   const onDark = use(OnDarkContext);
@@ -190,6 +236,8 @@ export {
   DropdownMenuSeparator,
   DropdownMenuSubmenu,
   DropdownMenuSubmenuTrigger,
+  DropdownMenuToggleGroup,
+  DropdownMenuToggleGroupItem,
   DropdownMenuTrigger,
   content as floatingSurface,
   SelectContent,

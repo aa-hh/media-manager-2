@@ -10,6 +10,8 @@ export type StartReply = {
   /** The desktop app's saved volume and mute, which mpv starts the file with; absent from builds older than the page. */
   volume?: number;
   muted?: boolean;
+  /** The desktop app's saved subtitle size (mpv's sub-scale); absent from builds older than the page. */
+  subtitleScale?: number;
   partId: number | null;
   startPositionSeconds: number;
   durationMs: number | null;
@@ -169,12 +171,49 @@ export const hasSoundCommands = (bridge: DesktopBridge | undefined): bridge is D
   typeof bridge?.setVolume === 'function' && typeof bridge.setMuted === 'function'
 );
 
+const WHEEL_GAP_MS = 100;
+/**
+ * The volume change for one wheel event over the Volume button or its slider: 5 % louder up, quieter down. None within
+ * 100 ms of the last step, so a trackpad swipe (dozens of events) moves it a few steps rather than to an end.
+ */
+export const wheelStep = (deltaY: number, now: number, lastStepAt: number) => (
+  deltaY === 0 || now - lastStepAt < WHEEL_GAP_MS ? 0 : deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP
+);
+
 /** What a key does to the sound: Up and Down change the volume 5 %, M mutes or unmutes; null for any other key. */
 export const volumeKey = (key: string): { kind: 'step'; by: number } | { kind: 'mute' } | null => {
   if (key === 'ArrowUp') return { kind: 'step', by: VOLUME_STEP };
   if (key === 'ArrowDown') return { kind: 'step', by: -VOLUME_STEP };
   return key === 'm' || key === 'M' ? { kind: 'mute' } : null;
 };
+
+// --- Subtitle text size
+
+/** Plex's own desktop app's five sizes, as mpv's sub-scale. A desktop app setting kept like volume, never saved to Plex. */
+export const SUBTITLE_SIZES = [
+  { label: 'Tiny', scale: 0.5 },
+  { label: 'Small', scale: 0.75 },
+  { label: 'Normal', scale: 1 },
+  { label: 'Large', scale: 1.25 },
+  { label: 'Huge', scale: 2 },
+] as const;
+
+/** The saved scale when it is one of the sizes, else Normal (a broken or missing value). */
+export const subtitleScaleOf = (scale: unknown) => SUBTITLE_SIZES.find((size) => size.scale === scale)?.scale ?? 1;
+
+// Bitmap subtitles: mpv draws them as Plex sends them, so sub-scale does nothing to them.
+const PICTURE_CODECS = new Set(['pgs', 'hdmv_pgs_subtitle', 'dvd_subtitle', 'vobsub', 'dvb_subtitle', 'xsub']);
+
+/** Whether the size row works for the chosen subtitle: off with no subtitle, picture for PGS, VobSub, DVB and XSUB, text otherwise. */
+export const subtitleSizeState = (track: AudioTrack | undefined): 'off' | 'picture' | 'text' => {
+  if (track === undefined) return 'off';
+  return PICTURE_CODECS.has(track.codec?.toLowerCase() ?? '') ? 'picture' : 'text';
+};
+
+/** Whether the desktop app takes the subtitle size: a build older than the page has no such command. */
+export const hasSubtitleScale = (bridge: DesktopBridge | undefined): bridge is DesktopBridge & Required<Pick<DesktopBridge, 'setSubtitleScale'>> => (
+  typeof bridge?.setSubtitleScale === 'function'
+);
 
 // --- Up Next (player.pen states 15 and 16)
 

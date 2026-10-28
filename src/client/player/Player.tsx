@@ -14,7 +14,7 @@ import { clockText, continueMeta, minutesText } from '../library/watch';
 import { navigate, replace, replaceScreen, useLocation } from '../navigation';
 import {
   BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, TIMELINE_EVERY_MS,
-  activeMarker, applyEvent, clampSeek, clampVolume, hasSoundCommands, volumeKey, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
+  activeMarker, applyEvent, clampSeek, clampVolume, hasSoundCommands, hasSubtitleScale, subtitleScaleOf, volumeKey, wheelStep, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
 } from './model';
@@ -65,9 +65,11 @@ type Controller = {
   setFullscreen: (on: boolean) => void;
   toggleMute: () => void;
   changeVolume: (by: number) => void;
+  setVolume: (percent: number) => void;
   chooseAudio: (track: AudioTrack) => void;
   chooseSubtitle: (track: SubtitleTrack | null) => void;
   changeSubtitleDelay: (change: number | 'reset') => void;
+  chooseSubtitleScale: (scale: number) => void;
   chooseQuality: (kbps: number | undefined) => void;
   readLoadAhead: () => void;
   chooseLoadAhead: (value: string) => void;
@@ -87,6 +89,10 @@ type PlayerContextValue = {
   qualityKbps: number | undefined;
   loadAheadBytes: number;
   fullscreen: boolean;
+  /** mpv's volume and mute; null when the desktop app has no volume commands (a build older than the page). */
+  sound: Sound | null;
+  /** The subtitle text size (mpv's sub-scale); null when the desktop app cannot set it. */
+  subtitleScale: number | null;
   downloads: DownloadsState;
   returnFocus: RefObject<HTMLElement | null>;
   controller: Controller;
@@ -99,7 +105,8 @@ const episodeCode = (season: number | null, episode: number | null) => (season =
 const isPlay = (pathname: string) => pathname.startsWith('/play/');
 // mpv sends no event when a load applies saved values it already had, so each start reply carries them; a desktop build
 // older than the page sends neither, and the page keeps what it had.
-const soundOf = (reply: StartReply, was: { volume: number; muted: boolean }) => ({ volume: reply.volume ?? was.volume, muted: reply.muted ?? was.muted });
+type Sound = { volume: number; muted: boolean };
+const soundOf = (reply: StartReply, was: Sound) => ({ volume: reply.volume ?? was.volume, muted: reply.muted ?? was.muted });
 
 const startFailure = (error: unknown, name: string) => {
   const text = error instanceof Error ? error.message : '';
@@ -122,8 +129,19 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   const qualityRef = useRef<number | undefined>(undefined);
   const [loadAheadBytes, setLoadAheadBytes] = useState(LOAD_AHEAD[2].bytes);
   const [fullscreen, setFullscreenState] = useState(false);
-  // mpv's sound, from the start reply and mpv's events. Nothing on screen shows it yet: PlayerStage's Volume button has one fixed icon.
-  const sound = useRef({ volume: 100, muted: false });
+  // mpv's sound, from the start reply and mpv's events. The ref is what handlers read between renders; the state draws the slider.
+  const [sound, setSoundState] = useState<Sound>({ volume: 100, muted: false });
+  const soundRef = useRef(sound);
+  const setSound = useCallback((next: Sound) => {
+    soundRef.current = next;
+    setSoundState(next);
+  }, []);
+  const [subtitleScale, setSubtitleScale] = useState(1);
+  // Each start reply carries the desktop app's saved size; a build older than the page sends none, and the page keeps what it had.
+  const takeSaved = useCallback((reply: StartReply) => {
+    setSound(soundOf(reply, soundRef.current));
+    if (reply.subtitleScale !== undefined) setSubtitleScale(subtitleScaleOf(reply.subtitleScale));
+  }, [setSound]);
   const fullscreenRef = useRef(false);
   const loads = useRef(0);
   const playedMs = useRef(0);
@@ -186,7 +204,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     try {
       const reply = await bridge.load(request) as unknown as StartReply;
       if (loads.current !== load) return false;
-      sound.current = soundOf(reply, sound.current);
+      takeSaved(reply);
       change((s) => ({ ...s, reply }));
       if (fresh) void bridge.setSubtitleDelay(0).catch(() => undefined);
       return true;
@@ -195,7 +213,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       change((s) => ({ ...s, playback: { ...s.playback, phase: 'failed', buffering: false, restarting: false, failure: { message: startFailure(error, title.name), tried: [] } } }));
       return false;
     }
-  }, [bridge, change, commit]);
+  }, [bridge, change, commit, takeSaved]);
 
   const setFullscreen = useCallback((on: boolean) => {
     fullscreenRef.current = on;
@@ -322,7 +340,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       if (event.type === 'position' && timelineState(s.playback) === 'playing') playedMs.current += playedBetween(s.playback.position, event.value) * 1000;
       const playback = applyEvent(s.playback, event);
       const started = event.type === 'started' ? event.value as unknown as StartReply : null;
-      if (started !== null) sound.current = soundOf(started, sound.current);
+      if (started !== null) takeSaved(started);
       const reply = started ?? s.reply;
       if (playback === s.playback && reply === s.reply) return;
       const next = { ...s, playback, reply };
@@ -337,15 +355,12 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     const offs = names.map((name) => bridge.on(name, (value: unknown) => onEvent({ type: name, value } as BridgeEvent)));
     offs.push(
       bridge.on('volume', (value) => {
-        if (!Number.isFinite(value)) return;
-        sound.current.volume = value;
+        if (Number.isFinite(value)) setSound({ ...soundRef.current, volume: value });
       }),
-      bridge.on('muted', (value) => {
-        sound.current.muted = value;
-      }),
+      bridge.on('muted', (value) => setSound({ ...soundRef.current, muted: value })),
     );
     return () => offs.forEach((off) => off());
-  }, [bridge, commit, endTitle, sendTimeline]);
+  }, [bridge, commit, endTitle, sendTimeline, setSound, takeSaved]);
 
   // Every 10 s a report in every state that plays (network §6.2); every 30 s a ping while a paused transcode waits (§2.6).
   useEffect(() => {
@@ -481,19 +496,21 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         if (s !== null) controller.seek(s.playback.position + seconds);
       },
       setFullscreen,
-      // No volume control is drawn (player.pen), so the Volume button mutes; Up and Down change the volume.
+      // The Volume button's click and M mute; Up, Down, the wheel and the slider change the volume and unmute.
       toggleMute: () => {
         if (!hasSoundCommands(bridge)) return;
-        const next = !sound.current.muted;
-        sound.current.muted = next;
+        const next = !soundRef.current.muted;
+        setSound({ ...soundRef.current, muted: next });
         void bridge.setMuted(next).catch(() => undefined);
       },
-      changeVolume: (by) => {
+      changeVolume: (by) => controller.setVolume(soundRef.current.volume + by),
+      setVolume: (percent) => {
         if (!hasSoundCommands(bridge)) return;
-        const next = clampVolume(sound.current.volume + by);
-        sound.current.volume = next;
+        const next = clampVolume(percent);
+        const wasMuted = soundRef.current.muted;
+        setSound({ ...soundRef.current, volume: next });
         void bridge.setVolume(next).catch(() => undefined);
-        if (sound.current.muted) controller.toggleMute();
+        if (wasMuted) controller.toggleMute();
       },
       // Original file: mpv switches at once and Plex saves it. Converted: Plex saves first, then the stream restarts (network §5.2).
       chooseAudio: async (track) => {
@@ -533,6 +550,13 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
           void post('/api/playback/subtitle-offset', { streamKey: key, offsetMs: Math.round(delay * 1000), clientId: idsOf(s.reply).clientId })
             .then((response) => { if (response.ok) change((current) => ({ ...current, saved: { ...current.saved, delay: true } })); }, () => undefined);
         }, 600);
+      },
+      // A desktop app setting, kept for every file and never saved to Plex.
+      chooseSubtitleScale: (scale) => {
+        if (!hasSubtitleScale(bridge)) return;
+        const next = subtitleScaleOf(scale);
+        setSubtitleScale(next);
+        void bridge.setSubtitleScale(next).catch(() => undefined);
       },
       // A quality step lasts until the player closes; each change is a new load at the current second (network §3.4).
       chooseQuality: (kbps) => {
@@ -580,11 +604,13 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         if (s !== null && state !== null) sendTimeline(s, state);
       },
     };
-  }, [bridge, change, close, endTitle, playItem, post, readLoadAhead, restartAt, saveTrack, sendTimeline, setFullscreen, startLoad]);
+  }, [bridge, change, close, endTitle, playItem, post, readLoadAhead, restartAt, saveTrack, sendTimeline, setFullscreen, setSound, startLoad]);
 
+  const soundShown = hasSoundCommands(bridge) ? sound : null;
+  const scaleShown = hasSubtitleScale(bridge) ? subtitleScale : null;
   const value = useMemo<PlayerContextValue>(() => ({
-    session, series, plexDownSince, nextReportAt, qualityKbps, loadAheadBytes, fullscreen, downloads, returnFocus, controller,
-  }), [session, series, plexDownSince, nextReportAt, qualityKbps, loadAheadBytes, fullscreen, downloads, controller]);
+    session, series, plexDownSince, nextReportAt, qualityKbps, loadAheadBytes, fullscreen, sound: soundShown, subtitleScale: scaleShown, downloads, returnFocus, controller,
+  }), [session, series, plexDownSince, nextReportAt, qualityKbps, loadAheadBytes, fullscreen, soundShown, scaleShown, downloads, controller]);
 
   return <PlayerContext value={value}>{children}</PlayerContext>;
 }
@@ -659,6 +685,8 @@ export function Player() {
     setDragAtState(at);
   };
   const pointerDown = useRef(false);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const lastWheelStep = useRef(0);
   const lastMove = useRef(Date.now());
   const skipShownUntil = useRef(0);
   const markerKey = useRef<string | null>(null);
@@ -716,8 +744,8 @@ export function Player() {
     wasFull.current = layout === 'full';
   }, [context?.returnFocus, layout]);
 
-  // Controls hide after 3 s without the pointer moving, unless paused, a menu is open or the timeline is in use.
-  const keepControls = screen !== 'playing' || playback?.paused === true || openMenu !== undefined || hoverAt !== undefined || dragAt !== undefined;
+  // Controls hide after 3 s without the pointer moving, unless paused, a menu or the volume slider is open or the timeline is in use.
+  const keepControls = screen !== 'playing' || playback?.paused === true || openMenu !== undefined || volumeOpen || hoverAt !== undefined || dragAt !== undefined;
   useEffect(() => {
     if (keepControls) {
       setControlsShown(true);
@@ -876,7 +904,12 @@ export function Player() {
       previous={queueButton(neighbours.previous, 'Previous')}
       next={queueButton(neighbours.next, 'Next')}
       audio={{ tracks: reply?.tracks.audio ?? [], saved: session.saved.audio }}
-      subtitles={{ tracks: reply?.tracks.subtitle ?? [], saved: session.saved.subtitles, delay: session.subtitleDelay, delaySaved: session.saved.delay }}
+      subtitles={{
+        tracks: reply?.tracks.subtitle ?? [], saved: session.saved.subtitles, delay: session.subtitleDelay, delaySaved: session.saved.delay,
+        size: context.subtitleScale ?? undefined,
+      }}
+      volume={context.sound?.volume ?? 100}
+      muted={context.sound?.muted ?? false}
       quality={{ steps: reply?.qualitySteps ?? [], kbps: context.qualityKbps, label: reply === null ? 'Original' : qualityLabel(reply.decision, reply.qualitySteps) }}
       skip={marker === null ? undefined : { kind: marker.kind, visible: skipVisible, raised: controlsShown }}
       failure={playback.failure === undefined ? undefined : {
@@ -899,6 +932,14 @@ export function Player() {
       onBack10={() => controller.seekBy(-BACK_SECONDS)}
       onForward30={() => controller.seekBy(FORWARD_SECONDS)}
       onVolume={controller.toggleMute}
+      onVolumeChange={controller.setVolume}
+      onVolumeWheel={(deltaY) => {
+        const by = wheelStep(deltaY, Date.now(), lastWheelStep.current);
+        if (by === 0) return;
+        lastWheelStep.current = Date.now();
+        controller.changeVolume(by);
+      }}
+      onVolumeOpenChange={setVolumeOpen}
       onMini={() => window.history.back()}
       onExpand={() => navigate(`/play/${request.ratingKey}`)}
       onFullscreen={() => controller.setFullscreen(!context.fullscreen)}
@@ -907,6 +948,7 @@ export function Player() {
       onAudio={controller.chooseAudio}
       onSubtitle={controller.chooseSubtitle}
       onSubtitleDelay={controller.changeSubtitleDelay}
+      onSubtitleSize={controller.chooseSubtitleScale}
       onQuality={controller.chooseQuality}
       onLoadAhead={controller.chooseLoadAhead}
       onSkip={() => { if (marker !== null) controller.skipMarker(marker.kind, marker.endSeconds); }}

@@ -23,5 +23,5 @@ The Mac desktop app: Electron loading the owner's media-manager-2 address, mpv p
 - `lib/retry.js` → reload or step down after mpv fails.
 - `lib/address.js` → checks the first-launch address.
 - `lib/page.js` → what the page sees; who may call the player.
-- `lib/player.js` → which mpv file events count, unpausing, subtitle files, volume.
+- `lib/player.js` → which mpv file events count, unpausing, subtitles, volume.
 - `address/index.html` → first-launch address screen.

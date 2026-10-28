@@ -11653,7 +11653,8 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
   const {
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
-    activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands,
+    activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands, wheelStep,
+    SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
 
@@ -11734,6 +11735,28 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     const command = async () => {};
     const bridges = [[{ setVolume: command, setMuted: command }, true], [{ setVolume: command }, false], [{ setMuted: command }, false], [{}, false], [undefined, false]];
     for (const [bridge, takes] of bridges) assert.equal(hasSoundCommands(bridge), takes, JSON.stringify(Object.keys(bridge ?? {})));
+  });
+
+  // Reversing the direction, a step other than 5 %, or dropping the 100 ms gap turns its row red: the last would carry a trackpad swipe to 0 or 100.
+  await t.test('the wheel moves the volume 5 % a step, up louder, at most one step per 100 ms', () => {
+    const rows = [[-120, 1000, 0, 5], [3, 1000, 0, -5], [0, 1000, 0, 0], [-4, 1050, 1000, 0], [-4, 1100, 1000, 5]];
+    for (const [deltaY, now, last, by] of rows) assert.equal(wheelStep(deltaY, now, last), by, JSON.stringify([deltaY, now, last]));
+  });
+
+  // Changing a label or scale turns the first assertion red (they match Plex's desktop app); a saved value outside the list reaching the row turns the second red.
+  await t.test('subtitle text sizes are Plex\'s five, and anything else reads as Normal', () => {
+    assert.deepEqual(SUBTITLE_SIZES.map((size) => `${size.label} ${size.scale}`), ['Tiny 0.5', 'Small 0.75', 'Normal 1', 'Large 1.25', 'Huge 2']);
+    assert.deepEqual([0.75, 2, 1.5, '1.25', undefined].map(subtitleScaleOf), [0.75, 2, 1, 1, 1]);
+    const command = async () => {};
+    assert.deepEqual([{ setSubtitleScale: command }, {}, undefined].map(hasSubtitleScale), [true, false, false]);
+  });
+
+  // Dropping a picture codec turns its row red: the size row would offer sizes mpv's sub-scale cannot apply to that track.
+  await t.test('the size row is off with no subtitle and greyed for picture subtitles', () => {
+    const track = (codec) => ({ id: 1, index: 0, ffIndex: 1, codec, language: 'English', title: null, selected: true });
+    const rows = [[undefined, 'off'], [track('pgs'), 'picture'], [track('hdmv_pgs_subtitle'), 'picture'], [track('dvd_subtitle'), 'picture'],
+      [track('VOBSUB'), 'picture'], [track('dvb_subtitle'), 'picture'], [track('xsub'), 'picture'], [track('srt'), 'text'], [track('ass'), 'text'], [track(null), 'text']];
+    for (const [chosen, state] of rows) assert.equal(subtitleSizeState(chosen), state, chosen?.codec ?? 'none');
   });
 
   // Mapping the desktop app's 512 MiB default to anything but 2 min, losing the quality cap on a step, or labelling a step-down Original turns this red.
@@ -14780,13 +14803,13 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
     streamAddresses: [`https://1-2-3-4.abc.plex.direct:32400/library/parts/5/file.mkv?${token}`],
   };
   // Keeping streamAddresses or a subtitle's url in the page's copy turns this red: the page would hold the transient token.
-  const copy = pageCopy(reply, { clientId: 'client-24-characters-long', sessionIdentifier: 'run-1' }, { volume: 35, muted: true });
+  const copy = pageCopy(reply, { clientId: 'client-24-characters-long', sessionIdentifier: 'run-1' }, { volume: 35, muted: true, subtitleScale: 1.25 });
   assert.equal(JSON.stringify(copy).includes('X-Plex-Token'), false);
   assert.deepEqual(copy.tracks.subtitle.map((track) => track.url), ['/library/streams/7', null]);
   // Leaving the install's ids out of the page's copy turns this red: the page's timeline reports would reach Plex as a second player.
   assert.deepEqual([copy.clientId, copy.sessionIdentifier], ['client-24-characters-long', 'run-1']);
-  // Leaving the saved volume or mute out turns this red: after a reload the page would start at 100 % unmuted while mpv keeps them.
-  assert.deepEqual([copy.volume, copy.muted], [35, true]);
+  // Leaving the saved volume, mute or subtitle size out turns this red: after a reload the page would show 100 %, unmuted and Normal while mpv keeps them.
+  assert.deepEqual([copy.volume, copy.muted, copy.subtitleScale], [35, true, 1.25]);
   // Passing an external track's title or language through turns this red: mpv makes both from the file's address.
   const external = pageTrack({ id: 3, type: 'sub', external: true, title: `7?${token}&encoding=utf-8`, lang: null, codec: 'subrip' });
   assert.equal(JSON.stringify(external).includes('X-Plex-Token'), false);
@@ -14817,7 +14840,7 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, subtitleAdd, volumePercent } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -14851,6 +14874,8 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
 
   // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);
+  // Taking a value outside the five sizes turns this red: a broken settings file or a bad call would set any sub-scale on mpv.
+  assert.deepEqual([0.5, 0.75, 1, 1.25, 2, 1.5, 3, '1', null].map(subtitleScale), [0.5, 0.75, 1, 1.25, 2, null, null, null, null]);
 
   // Dropping the title, or falling back to the file's address, turns the title column red: mpv would name the track
   // after the address, token included. Keeping Plex's first connection turns the address column red.
