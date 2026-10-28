@@ -10,6 +10,7 @@ import { inScreenChange, navigate, replace, routeFor, useLocation } from './navi
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
 import { lazyScreen, ScreenLoading } from './lazyScreen';
 import { cn } from './lib/utils';
+import { Player } from './player/Player';
 import { Overview } from './title/Overview';
 
 const Settings = lazyScreen(() => import('./settings/Settings').then((module) => module.Settings));
@@ -91,7 +92,9 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const view = pathname === '/search' || query.trim() !== '' ? 'search'
+  // /play/<ratingKey> only shows the player full size over an empty page; the player itself lives outside the keyed view.
+  const view = pathname.startsWith('/play/') ? 'play'
+    : pathname === '/search' || query.trim() !== '' ? 'search'
     : pathname === '/downloads' ? 'downloads'
       : pathname === '/flagged' ? 'flagged'
       : pathname === '/history' ? 'history'
@@ -110,7 +113,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
   };
 
   return (
-    <div className="min-h-screen">
+    <div data-app className="min-h-screen">
       <AppBarDesktop
         className="sticky top-0 z-10"
         productName={<h1 ref={headingRef} tabIndex={-1}>media-manager-2</h1>}
@@ -193,7 +196,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         <div key={view === 'title' ? pathname : view} className={cn(!inScreenChange() && 'transition-opacity duration-(--duration-fast) ease-out starting:opacity-0')}>
         {/* Inside the keyed view, so a screen still loading its chunk blanks only itself, never the bar or a mounted screen. */}
         <Suspense fallback={<ScreenLoading />}>
-        {view === 'search'
+        {view === 'play' ? null
+          : view === 'search'
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'
             ? downloads
@@ -212,6 +216,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         </Suspense>
         </div>
       </main>
+      {/* Beside the downloads bar and outside the keyed view, so moving between screens never unmounts it. */}
+      <Player />
       {renderBar?.(() => {
         setQuery('');
         navigate('/downloads');

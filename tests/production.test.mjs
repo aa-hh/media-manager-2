@@ -11612,6 +11612,118 @@ test('library filters, watch marks and the card Play follow Plex watch status', 
       { ratingKey: 'm1', mediaIndex: 1, partIndex: 0, offsetSeconds: 61, flags });
     assert.equal(movieLoad(null, 'start'), null);
   });
+
+  // Ignoring the version picked on the title page, or dropping Plex's default when none is picked, turns this red.
+  await t.test('a picked version replaces Plex\'s default version in the load', () => {
+    const watch = { kind: 'ok', machineIdentifier: 'm', ratingKey: 'm1', mediaIndex: 0, partId: 9, versions: [], viewOffsetMs: null, durationMs: 1, viewCount: 0, lastViewedAt: null };
+    assert.equal(movieLoad(watch, 'start', 1).mediaIndex, 1);
+    assert.equal(movieLoad(watch, 'start').mediaIndex, 0);
+    const episodes = [{ id: 11, seasonNumber: 1, episodeNumber: 1 }];
+    const series = { kind: 'ok', machineIdentifier: 'm', ratingKey: 'S', leafCount: 1, viewedLeafCount: 0, nextEpisode: null, episodes: { 11: { ...watch, ratingKey: 'e11' } } };
+    assert.equal(episodeLoad({ episodes, watch: series }, null, 'start', 1).mediaIndex, 1);
+  });
+});
+
+test('the in-app player seeks, reports to Plex and picks what plays next by Plex\'s rules', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const {
+    clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
+    activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands,
+  } = await load('../src/client/player/model.ts');
+  const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
+
+  // Letting a seek pass 5 s before the end, or go below zero, turns this red.
+  await t.test('seeks stop 5 s before the end and never go below zero', () => {
+    assert.equal(clampSeek(3600, 3600), 3595);
+    assert.equal(clampSeek(-10, 3600), 0);
+    assert.equal(clampSeek(1200, 3600), 1200);
+    assert.equal(clampSeek(500, 0), 500);
+  });
+
+  // Leaving the opening state before the first position, hiding the error behind buffering, or reading every stall as Plex being down turns this red.
+  await t.test('the bridge\'s events choose the state on screen', () => {
+    assert.equal(screenFor(run([['paused', false], ['duration', 3600]]), false), 'opening');
+    const playing = run([['duration', 3600], ['position', 12]]);
+    assert.equal(screenFor(playing, false), 'playing');
+    assert.equal(screenFor(run([['buffering', true]], playing), false), 'buffering');
+    assert.equal(screenFor(run([['buffering', true]], playing), true), 'unreachable');
+    assert.equal(screenFor(run([['started', {}]], playing), false), 'buffering');
+    assert.equal(screenFor(run([['started', {}], ['position', 13]], playing), false), 'playing');
+    assert.equal(screenFor(run([['buffering', true], ['error', { message: 'x', tried: ['Direct play'] }]], playing), true), 'error');
+    assert.equal(screenFor(run([['endOfFile', undefined], ['position', 3599]], playing), false), 'up-next');
+  });
+
+  // Reporting during opening, missing the first-position, pause, buffering, error or duration report, or reporting periodically after a stop turns this red.
+  await t.test('timeline reports go out at once on each change and every 10 s while playing', () => {
+    const opening = openingAt(0);
+    const playing = run([['duration', 3600], ['position', 1]]);
+    assert.equal(timelineState(opening), null);
+    assert.equal(reportNow(opening, run([['duration', 3600]])), false);
+    assert.equal(reportNow(opening, playing), true);
+    assert.equal(reportNow(playing, run([['position', 11]], playing)), false);
+    assert.equal(reportNow(playing, run([['paused', true]], playing)), true);
+    assert.equal(timelineState(run([['paused', true]], playing)), 'paused');
+    assert.equal(reportNow(playing, run([['buffering', true]], playing)), true);
+    assert.equal(timelineState(run([['buffering', true]], playing)), 'buffering');
+    assert.equal(reportNow(playing, run([['duration', 3700]], playing)), true);
+    const failed = run([['error', { message: 'x', tried: [] }]], playing);
+    assert.equal(reportNow(playing, failed), true);
+    assert.equal(timelineState(failed), 'stopped');
+    assert.equal(reportsPeriodically(run([['paused', true]], playing)), true);
+    assert.equal(reportsPeriodically(failed), false);
+    assert.equal(reportsPeriodically(run([['endOfFile', undefined]], playing)), false);
+    assert.deepEqual(timelineQuery({ ratingKey: '7', state: 'stopped', position: 61.4, duration: 3600, playedMs: 59_900.6, playQueueItemID: 3, continuing: true, clientId: 'c', sessionIdentifier: 's' }),
+      { ratingKey: '7', state: 'stopped', time: '61400', duration: '3600000', playbackTime: '59901', playQueueItemID: '3', continuing: '1', clientId: 'c', sessionIdentifier: 's' });
+  });
+
+  // Counting down after a short video, skipping a next episode still on its way, or preferring Continue Watching over the next episode turns this red.
+  await t.test('Up Next counts down to the next episode, waits for one on its way, then falls back to Continue Watching', () => {
+    assert.deepEqual(upNextChoice({ next: 'e2', nextOnItsWay: false, continueWatching: 'cw', durationSeconds: 3000 }), { kind: 'countdown', item: 'e2', seconds: 10 });
+    assert.deepEqual(upNextChoice({ next: 'e2', nextOnItsWay: false, continueWatching: null, durationSeconds: 120 }), { kind: 'play', item: 'e2' });
+    assert.deepEqual(upNextChoice({ next: null, nextOnItsWay: true, continueWatching: 'cw', durationSeconds: 3000 }), { kind: 'waiting' });
+    assert.deepEqual(upNextChoice({ next: null, nextOnItsWay: false, continueWatching: 'cw', durationSeconds: 3000 }), { kind: 'countdown', item: 'cw', seconds: 10 });
+    assert.deepEqual(upNextChoice({ next: null, nextOnItsWay: false, continueWatching: null, durationSeconds: 3000 }), { kind: 'none' });
+    const episodes = [{ seasonNumber: 0, episodeNumber: 1 }, { seasonNumber: 1, episodeNumber: 2 }, { seasonNumber: 2, episodeNumber: 1 }, { seasonNumber: 1, episodeNumber: 3 }];
+    assert.deepEqual(nextEpisode(episodes, { seasonNumber: 1, episodeNumber: 2 }), { seasonNumber: 1, episodeNumber: 3 });
+    assert.deepEqual(nextEpisode(episodes, { seasonNumber: 1, episodeNumber: 3 }), { seasonNumber: 2, episodeNumber: 1 });
+    assert.equal(nextEpisode(episodes, { seasonNumber: 2, episodeNumber: 1 }), null);
+  });
+
+  // Showing Skip outside its marker, or jumping to the marker's end unrounded, turns this red.
+  await t.test('Skip shows only inside an intro or credits marker and lands on its end', () => {
+    const markers = [{ type: 'commercial', startTimeOffset: 0, endTimeOffset: 9000 }, { type: 'intro', startTimeOffset: 5000, endTimeOffset: 65_600 }];
+    assert.deepEqual(activeMarker(markers, 30), { kind: 'intro', key: 'intro:5000:65600', endSeconds: 66 });
+    assert.equal(activeMarker(markers, 65.6), null);
+    assert.equal(activeMarker(markers, 4), null);
+  });
+
+  // Taking Left or Right for volume (they seek), a step other than 5 %, or a volume outside 0 to 100 turns this red.
+  await t.test('Up and Down change the volume 5 %, M mutes, and the volume stays within 0 to 100', () => {
+    assert.deepEqual(['ArrowUp', 'ArrowDown', 'm', 'M', 'ArrowLeft', 'ArrowRight', ' '].map(volumeKey),
+      [{ kind: 'step', by: 5 }, { kind: 'step', by: -5 }, { kind: 'mute' }, { kind: 'mute' }, null, null, null]);
+    assert.deepEqual([102, -4, 47.4].map(clampVolume), [100, 0, 47]);
+  });
+
+  // Checking one command, or neither, turns a row red: on a desktop build older than the page, Volume, Up, Down and M would throw.
+  await t.test('volume and mute work only when the desktop app has both commands', () => {
+    const command = async () => {};
+    const bridges = [[{ setVolume: command, setMuted: command }, true], [{ setVolume: command }, false], [{ setMuted: command }, false], [{}, false], [undefined, false]];
+    for (const [bridge, takes] of bridges) assert.equal(hasSoundCommands(bridge), takes, JSON.stringify(Object.keys(bridge ?? {})));
+  });
+
+  // Mapping the desktop app's 512 MiB default to anything but 2 min, losing the quality cap on a step, or labelling a step-down Original turns this red.
+  await t.test('Load ahead, quality flags and the Quality label', () => {
+    assert.equal(loadAheadChoice(512 * 1024 * 1024).label, '2 min');
+    assert.equal(loadAheadChoice(LOAD_AHEAD[4].bytes).label, '10 min');
+    assert.deepEqual(flagsFor(4000), { directPlay: false, directStream: true, directStreamAudio: true, maxVideoBitrate: 4000 });
+    assert.equal(flagsFor(undefined).directPlay, true);
+    const steps = [{ index: 6, kbps: 4000, height: 720 }];
+    assert.equal(qualityLabel({ directPlay: true, directStream: true, directStreamAudio: true, maxVideoBitrate: null }, steps), 'Original');
+    assert.equal(qualityLabel({ directPlay: false, directStream: false, directStreamAudio: true, maxVideoBitrate: null }, steps), 'Converted');
+    assert.equal(qualityLabel({ directPlay: false, directStream: true, directStreamAudio: true, maxVideoBitrate: 4000 }, steps), '720p');
+  });
 });
 
 test('title page Play follows Plex watch status', async (t) => {
@@ -14645,9 +14757,13 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
     streamAddresses: [`https://1-2-3-4.abc.plex.direct:32400/library/parts/5/file.mkv?${token}`],
   };
   // Keeping streamAddresses or a subtitle's url in the page's copy turns this red: the page would hold the transient token.
-  const copy = pageCopy(reply);
+  const copy = pageCopy(reply, { clientId: 'client-24-characters-long', sessionIdentifier: 'run-1' }, { volume: 35, muted: true });
   assert.equal(JSON.stringify(copy).includes('X-Plex-Token'), false);
   assert.deepEqual(copy.tracks.subtitle.map((track) => track.url), ['/library/streams/7', null]);
+  // Leaving the install's ids out of the page's copy turns this red: the page's timeline reports would reach Plex as a second player.
+  assert.deepEqual([copy.clientId, copy.sessionIdentifier], ['client-24-characters-long', 'run-1']);
+  // Leaving the saved volume or mute out turns this red: after a reload the page would start at 100 % unmuted while mpv keeps them.
+  assert.deepEqual([copy.volume, copy.muted], [35, true]);
   // Passing an external track's title or language through turns this red: mpv makes both from the file's address.
   const external = pageTrack({ id: 3, type: 'sub', external: true, title: `7?${token}&encoding=utf-8`, lang: null, codec: 'subrip' });
   assert.equal(JSON.stringify(external).includes('X-Plex-Token'), false);
@@ -14670,7 +14786,7 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, subtitleAdd } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const { fileEvent, playsOnOpen, subtitleAdd, volumePercent } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -14701,6 +14817,9 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   // Leaving a new load paused turns the first row red.
   assert.equal(playsOnOpen({ paused: false }), true);
   assert.equal(playsOnOpen({ paused: true }), false);
+
+  // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
+  assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);
 
   // Dropping the title, or falling back to the file's address, turns the title column red: mpv would name the track
   // after the address, token included. Keeping Plex's first connection turns the address column red.

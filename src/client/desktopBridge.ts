@@ -20,10 +20,18 @@ export type LoadRequest = {
 };
 
 /**
- * POST /api/playback/start's reply as the page sees it: the desktop's main process keeps the stream addresses,
- * so this is that reply with them removed (src/server/playback.ts is the source of truth for the rest).
+ * POST /api/playback/start's reply as the page sees it: the desktop's main process keeps the stream addresses, so this is
+ * that reply with the stream addresses removed and the install's player ids (and saved volume and mute) added
+ * (src/server/playback.ts is the source of truth for the rest).
  */
-export type LoadReply = Record<string, unknown> & { startPositionSeconds: number };
+export type LoadReply = Record<string, unknown> & {
+  startPositionSeconds: number;
+  /** The desktop install's player ids; the page's calls to Plex during playback carry the same ones. */
+  clientId: string;
+  sessionIdentifier: string;
+  volume: number;
+  muted: boolean;
+};
 
 /** The picture's place inside the window, in the page's CSS pixels. */
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -43,6 +51,9 @@ export type DesktopEvents = {
   tracks: Array<Record<string, unknown>>;
   /** After an automatic retry: a fresh copy of the start reply, with a new `session`. */
   started: LoadReply;
+  /** mpv's volume, 0 to 100. */
+  volume: number;
+  muted: boolean;
 };
 
 export type DesktopBridge = {
@@ -65,6 +76,9 @@ export type DesktopBridge = {
   /** Places the picture inside mpv's window; never moves a window. */
   setLayout(layout: 'full' | 'mini' | Rect): Promise<void>;
   setFullscreen(on: boolean): Promise<void>;
+  /** 0 to 100; kept by the desktop app and applied to every file, like mute. Both are missing from builds older than the page. */
+  setVolume?(percent: number): Promise<void>;
+  setMuted?(on: boolean): Promise<void>;
   stop(): Promise<void>;
   /** Subscribes to one event; the returned function unsubscribes. */
   on<E extends keyof DesktopEvents>(event: E, listener: (value: DesktopEvents[E]) => void): () => void;

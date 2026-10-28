@@ -29,7 +29,9 @@ if (window.location.protocol === 'file:') {
     getLoadAhead: call('player:getLoadAhead'),
     setLayout: call('player:setLayout'),
     setFullscreen: call('player:setFullscreen'),
-    // Events: position, duration, paused, buffering, loadedAhead, endOfFile, error, tracks, started.
+    setVolume: call('player:setVolume'),
+    setMuted: call('player:setMuted'),
+    // Events: position, duration, paused, buffering, loadedAhead, endOfFile, error, tracks, started, volume, muted.
     on: (name, listener) => {
       if (!listeners.has(name)) listeners.set(name, new Set());
       listeners.get(name).add(listener);
