@@ -2,8 +2,11 @@
 // registers itself here, so callers need no context and no import of the player's React code.
 import type { LoadRequest } from '../desktopBridge';
 
-/** What the player shows before Plex's reply: the title's name, its year or episode, and the Sonarr show behind it for Up Next. */
-export type PlayerTitle = { name: string; year: number | null; seriesId: number | null };
+/**
+ * What the player shows before Plex's reply: the title's name, its year or episode, the Sonarr show behind it for Up Next,
+ * and the backdrop drawn while it opens (a show's for an episode).
+ */
+export type PlayerTitle = { name: string; year: number | null; seriesId: number | null; backdropUrl: string | null };
 
 export type OpenRequest = { request: LoadRequest; title: PlayerTitle };
 

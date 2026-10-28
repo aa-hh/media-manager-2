@@ -10,8 +10,8 @@ const audio = [
   { id: 2, index: 1, ffIndex: 2, codec: 'ac3', language: 'English', title: null, selected: false },
 ];
 const subtitles = [
-  { id: 3, index: 0, ffIndex: 3, codec: 'srt', language: 'English', title: null, selected: true, external: false, key: null, url: null },
-  { id: 4, index: 0, ffIndex: null, codec: 'pgs', language: 'English', title: 'SDH', selected: false, external: true, key: '/library/streams/4', url: '/library/streams/4' },
+  { id: 3, index: 0, ffIndex: 3, codec: 'srt', language: 'English', title: null, selected: true, external: false, key: null, url: null, offsetMs: null },
+  { id: 4, index: 0, ffIndex: null, codec: 'pgs', language: 'English', title: 'SDH', selected: false, external: true, key: '/library/streams/4', url: '/library/streams/4', offsetMs: null },
 ];
 
 const meta = {
