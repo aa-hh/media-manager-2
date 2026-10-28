@@ -14764,7 +14764,7 @@ test('the desktop app\'s first-launch address keeps only an http or https origin
 });
 
 test('the desktop app\'s page never gets a Plex token, and only the app page\'s main frame drives the player', async () => {
-  const { pageCopy, pageTrack, callerAllowed, NO_SELECT_CSS } = await import(new URL('../desktop/lib/page.js', import.meta.url));
+  const { pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = await import(new URL('../desktop/lib/page.js', import.meta.url));
   const token = 'X-Plex-Token=transient-abc';
   const reply = {
     session: 'session-1',
@@ -14793,6 +14793,14 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
   // Dropping the html rule, or the rule giving text fields selection back, turns this red: the frame would highlight, or fields could not be copied from.
   assert.match(NO_SELECT_CSS, /html \{[^}]*user-select: none/);
   assert.match(NO_SELECT_CSS, /input, textarea, \[contenteditable\], \[contenteditable\] \* \{[^}]*user-select: text/);
+
+  // Stopping on a same-document change, a subframe or another origin (or missing the app's own reload) turns a row red: mpv would die mid-playback, or outlive the page that controls it.
+  const nav = { url: 'https://mm.example.com/player', isMainFrame: true, isSameDocument: false, appOrigin: 'https://mm.example.com' };
+  assert.equal(stopsPlayerOnNavigation(nav), true);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, isSameDocument: true }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, isMainFrame: false }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, url: 'https://other.example.org/' }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, url: 'https://mm.example.com.evil.test/' }), false);
 
   // Dropping the window, main-frame or origin check turns its row red: that caller could start playback and drive mpv.
   const appOrigin = 'https://media.example.com';

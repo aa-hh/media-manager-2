@@ -6,7 +6,7 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
-const { originOf, pageCopy, pageTrack, callerAllowed, NO_SELECT_CSS } = require('./lib/page');
+const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
 const { fileEvent, playsOnOpen, subtitleAdd, volumePercent } = require('./lib/player');
 
 const MiB = 1024 * 1024;
@@ -100,7 +100,7 @@ function createWindow() {
   // A reload or a full page load of the app ends the page that drove mpv: mpv stops, so it never outlives its controls.
   // The app's own address changes are same-document and pass; other origins are refused below and never load.
   contents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument }) => {
-    if (isMainFrame && !isSameDocument && originOf(url) === appOrigin) stopPlayer();
+    if (stopsPlayerOnNavigation({ url, isMainFrame, isSameDocument, appOrigin })) stopPlayer();
   });
   contents.on('will-navigate', (event, url) => {
     if (originOf(url) === appOrigin || isAddressPage(url)) return;
