@@ -5,7 +5,7 @@ import { VolumeButton, VolumePopover } from '@/components/ui/volume-popover';
 const meta = {
   title: 'Overlays & bars/VolumePopover',
   component: VolumePopover,
-  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=7-643' } },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=135-1668' } },
   tags: ['autodocs'],
   decorators: [(Story) => <div className="bg-black p-6"><Story /></div>],
   args: { value: 62, onValueChange: fn() },

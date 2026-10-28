@@ -1,5 +1,4 @@
 // Figma: PlayerMini — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=112-396
-// Figma: PlayerMini with the mute button — https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=7-904
 import { Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';

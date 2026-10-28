@@ -140,7 +140,7 @@ const textSizeMenu = (disabled: boolean) => (args: Story['args']) => (
 
 // The toggle group in a dark menu: the Subtitles menu's Text size row, Large chosen (player file 5:251).
 export const ToggleGroupOnDark: Story = {
-  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=2-165' } },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=135-1642' } },
   decorators: [(Story) => <div className="flex h-40 items-end justify-center bg-black p-4"><Story /></div>],
   render: textSizeMenu(false),
 };
