@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomBytes, randomUUID } = require('node:crypto');
 const { normaliseAddress, isMediaManager } = require('./lib/address');
-const { chooseConnection, PROBE_TIMEOUT_MS } = require('./lib/connection');
+const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
 const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale } = require('./lib/player');
@@ -76,7 +76,7 @@ const showApp = (origin) => {
   appOrigin = origin;
   // Another address can mean another Plex server: its id and address are found again.
   serverId = undefined;
-  keptOrigin = null;
+  plexAddresses.forget();
   void win.loadURL(origin);
 };
 
@@ -101,6 +101,7 @@ function createWindow() {
   const contents = win.webContents;
   // As in native Mac apps, the app's frame is not selectable; fields and elements marked select-text still are.
   contents.on('dom-ready', () => { void contents.insertCSS(NO_SELECT_CSS); });
+  contents.on('did-finish-load', () => { if (originOf(contents.getURL()) === appOrigin) testEarly(); });
   // A reload or a full page load of the app ends the page that drove mpv: mpv stops, so it never outlives its controls.
   // The app's own address changes are same-document and pass; other origins are refused below and never load.
   contents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument }) => {
@@ -218,7 +219,8 @@ const appRequest = async (method, pathname, body) => {
   return win.webContents.executeJavaScriptInIsolatedWorld(PRIVATE_WORLD, [{ code }]);
 };
 
-// The Plex server's id, from the library reply's watch status (src/server/watchStatus.ts); null when Plex is down.
+// The Plex server's id: from the connections or start reply, else (a server older than this app) from the library reply's
+// watch status (src/server/watchStatus.ts); null when Plex is down.
 let serverId;
 const expectedServerId = async () => {
   if (typeof serverId === 'string') return serverId;
@@ -245,12 +247,16 @@ const probe = async (origin) => {
   const body = await response.json();
   return body?.MediaContainer?.machineIdentifier ?? null;
 };
-// Kept for the run; tested again before any retry (network recommendation 7).
-let keptOrigin = null;
-const pickOrigin = async (origins, retest) => {
-  if (!retest && keptOrigin !== null && origins.includes(keptOrigin)) return keptOrigin;
-  keptOrigin = await chooseConnection(origins, probe, await expectedServerId());
-  return keptOrigin;
+const plexAddresses = createAddressKeeper(async (origins, directCount) => chooseConnection(origins, probe, await expectedServerId(), directCount));
+// Each load of the app page tests Plex's addresses, so the first Play finds one already tested.
+const testEarly = () => {
+  const origin = appOrigin;
+  void plexAddresses.testEarly(async () => {
+    const { status, json } = await appRequest('GET', `/api/playback/connections?clientId=${clientId()}`);
+    if (status !== 200 || typeof json?.machineIdentifier !== 'string' || !Array.isArray(json.origins) || appOrigin !== origin) return null;
+    serverId = json.machineIdentifier;
+    return originsOf(json.origins, json.directCount);
+  });
 };
 
 // --- mpv (C1.3)
@@ -400,7 +406,9 @@ async function start(playing, offsetSeconds, retest) {
     throw new Error(typeof json?.error === 'string' ? json.error : `start failed (${status})`);
   }
   const addresses = json.streamAddresses.filter((address) => typeof address === 'string');
-  const origin = await pickOrigin(addresses.map(originOf).filter((value) => value !== null), retest);
+  // The server's id comes with the reply, so expectedServerId's library request runs only against an older server.
+  if (typeof json.machineIdentifier === 'string' && json.machineIdentifier !== '') serverId = json.machineIdentifier;
+  const origin = await plexAddresses.pick(originsOf(json.streamAddresses, json.directAddressCount), retest);
   if (origin === null) throw new Error('plex_unreachable');
   if (current !== playing) throw new Error('replaced');
   playing.reply = json;
