@@ -141,7 +141,7 @@ function PlayerStage({
         <>
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-linear-to-b from-[#000000a6] to-transparent" />
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-70 bg-linear-to-b from-transparent to-[#000000d9]" />
-          <div className="absolute inset-x-6 top-5 flex items-center justify-between gap-4">
+          <div data-player-bar className="absolute inset-x-6 top-5 flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-2">
               <Button variant="on-dark" iconOnly icon={<ChevronLeft />} aria-label="Back" onClick={onBack} className="w-9" />
               <div className="flex min-w-0 flex-col gap-0.5">
@@ -154,7 +154,7 @@ function PlayerStage({
         </>
       )}
       {controls === 'all' && (
-        <div className="absolute inset-x-6 bottom-12.25 flex flex-col gap-1.5">
+        <div data-player-bar className="absolute inset-x-6 bottom-12.25 flex flex-col gap-1.5">
           <div className="flex items-center gap-3 px-2.5">
             <span className="font-data text-sm font-medium text-foreground-on-dark">{formatTime(position)}</span>
             <Slider.Root value={position} min={0} max={span} step={1} onValueChange={(value) => onSeek(value)} className="flex-1">
