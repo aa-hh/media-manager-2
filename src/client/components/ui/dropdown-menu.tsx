@@ -1,8 +1,8 @@
 // Figma: DropdownMenuContent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-673
 // Figma: DropdownMenuItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3626
 // Figma: DropdownMenuRadioItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=106-587
-// Figma: v2/ToggleGroup/on-dark (DropdownMenuToggleGroup) — https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=2-165
-// Figma: v2/ToggleGroupItem/on-dark (DropdownMenuToggleGroupItem) — https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=2-164
+// Figma: v2/ToggleGroup/on-dark (DropdownMenuToggleGroup) — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=135-1642
+// Figma: v2/ToggleGroupItem/on-dark (DropdownMenuToggleGroupItem) — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=135-1617
 import { Menu } from '@base-ui/react/menu';
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { Check, ChevronRight } from 'lucide-react';

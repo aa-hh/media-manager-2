@@ -1,6 +1,6 @@
-// Figma: v2/Slider/on-dark — https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=2-198
-// Figma: v2/VolumePopover/vertical — https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=7-643
-// Figma: v2/Icon/VolumeX — https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=2-179
+// Figma: v2/Slider/on-dark (SliderOnDark) — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=135-1653
+// Figma: v2/VolumePopover/vertical (VolumePopover) — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=135-1668
+// Figma: v2/Icon/VolumeX (Icon/VolumeX) — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=135-1601
 import { Slider } from '@base-ui/react/slider';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
