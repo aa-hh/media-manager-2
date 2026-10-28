@@ -15,9 +15,11 @@ const ADDRESS_PAGE = path.join(__dirname, 'address', 'index.html');
 // A world of its own in the app window: the page's scripts cannot reach it, so a reply read there never reaches the page.
 const PRIVATE_WORLD = 1001;
 
-// The packaged app carries MoltenVK; the Vulkan loader finds it through this driver file, never through Homebrew.
+// The packaged app carries MoltenVK; the Vulkan loader finds it through this driver file, never through Homebrew, whose
+// MoltenVK macOS will not load into the signed app (mpv then plays sound with no picture). The file's presence is the
+// test: app.isPackaged is false here because the bundle keeps Electron's executable name, and `npm start` has no file.
 const driverFile = path.join(process.resourcesPath, 'vulkan', 'MoltenVK_icd.json');
-if (app.isPackaged && fs.existsSync(driverFile)) {
+if (fs.existsSync(driverFile)) {
   process.env.VK_DRIVER_FILES = driverFile;
   process.env.VK_ICD_FILENAMES = driverFile;
 }
