@@ -21,7 +21,7 @@ export type LoadRequest = {
 
 /**
  * POST /api/playback/start's reply as the page sees it: the desktop's main process keeps the stream addresses, so this is
- * that reply with the stream addresses removed and the install's player ids (and saved volume and mute) added
+ * that reply with the stream addresses removed and the install's player ids (and saved volume, mute and subtitle size) added
  * (src/server/playback.ts is the source of truth for the rest).
  */
 export type LoadReply = Record<string, unknown> & {
@@ -31,6 +31,8 @@ export type LoadReply = Record<string, unknown> & {
   sessionIdentifier: string;
   volume: number;
   muted: boolean;
+  /** mpv's sub-scale; missing from builds older than the page. */
+  subtitleScale?: number;
 };
 
 /** The picture's place inside the window, in the page's CSS pixels. */
@@ -79,6 +81,8 @@ export type DesktopBridge = {
   /** 0 to 100; kept by the desktop app and applied to every file, like mute. Both are missing from builds older than the page. */
   setVolume?(percent: number): Promise<void>;
   setMuted?(on: boolean): Promise<void>;
+  /** mpv's sub-scale, one of 0.5, 0.75, 1, 1.25 or 2; kept by the desktop app for every file, never saved to Plex. Missing from builds older than the page. */
+  setSubtitleScale?(scale: number): Promise<void>;
   stop(): Promise<void>;
   /** Subscribes to one event; the returned function unsubscribes. */
   on<E extends keyof DesktopEvents>(event: E, listener: (value: DesktopEvents[E]) => void): () => void;

@@ -18,6 +18,8 @@ const meta = {
     time: '47:12 / 1:56:00',
     progress: 41,
     playing: true,
+    muted: false,
+    onMute: fn(),
     onPlayPause: fn(),
     onExpand: fn(),
     onClose: fn(),
@@ -30,9 +32,17 @@ type Story = StoryObj<typeof meta>;
 // At rest: only the picture.
 export const Default: Story = {};
 
-// player.pen state 17, the pointer over it: play or pause in the middle, back to full size and close at the top.
+// player.pen state 17, the pointer over it: play or pause in the middle, mute at the top left, back to full size and close at the top right.
 export const Hovered: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.hover(canvas.getByRole('button', { name: 'Pause' }));
+  },
+};
+
+// Muted, the pointer over it: the crossed-out speaker at the top left unmutes (player file 7:904).
+export const HoveredMuted: Story = {
+  args: { muted: true },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.hover(canvas.getByRole('button', { name: 'Unmute' }));
   },
 };

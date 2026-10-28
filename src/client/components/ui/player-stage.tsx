@@ -1,7 +1,7 @@
 // Figma: PlayerStage — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=114-725
 import { Slider } from '@base-ui/react/slider';
 import {
-  AudioLines, Captions, ChevronLeft, Gauge, Maximize, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Settings, SkipBack, SkipForward, Volume2,
+  AudioLines, Captions, ChevronLeft, Gauge, Maximize, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Settings, SkipBack, SkipForward,
 } from 'lucide-react';
 import type { ReactElement, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu
 import { PlayerScrubPreview } from '@/components/ui/player-scrub-preview';
 import { Spinner } from '@/components/ui/spinner';
 import { TooltipNext } from '@/components/ui/tooltip-next';
+import { VolumeButton } from '@/components/ui/volume-popover';
 import { cn } from '@/lib/utils';
 
 type PlayerMenu = 'subtitles' | 'audio' | 'quality' | 'settings';
@@ -65,7 +66,18 @@ type PlayerStageProps = {
   onPlayPause: () => void;
   onBack10: () => void;
   onForward30: () => void;
+  /** 0 to 100, and whether mpv is muted: the slider, its readout and the speaker (crossed out while muted). */
+  volume: number;
+  muted: boolean;
+  /** The Volume button's click: mutes and unmutes. */
   onVolume: () => void;
+  onVolumeChange: (percent: number) => void;
+  /** The mouse wheel over the Volume button or its slider, as the event's deltaY. */
+  onVolumeWheel?: (deltaY: number) => void;
+  /** Whether the volume slider shows, so the controls stay up meanwhile. */
+  onVolumeOpenChange?: (open: boolean) => void;
+  /** Open the volume slider at first (stories). */
+  volumeOpen?: boolean;
   onMini: () => void;
   onFullscreen: () => void;
   onSeek: (seconds: number) => void;
@@ -94,7 +106,8 @@ function formatTime(seconds: number) {
 function PlayerStage({
   picture, dim, controls = 'all', title, subtitle, format, centre, position, duration, loadedAhead = 0, chapters, markers, scrubAt, scrubImage,
   playing, previous, next, subtitlesLabel, audioLabel, qualityLabel, menus, openMenu, onOpenMenuChange,
-  onBack, onPlayPause, onBack10, onForward30, onVolume, onMini, onFullscreen, onSeek, onScrub, children, className,
+  onBack, onPlayPause, onBack10, onForward30, volume, muted, onVolume, onVolumeChange, onVolumeWheel, onVolumeOpenChange, volumeOpen,
+  onMini, onFullscreen, onSeek, onScrub, children, className,
 }: PlayerStageProps) {
   const span = Math.max(1, duration);
   const at = (seconds: number) => `${(Math.min(span, Math.max(0, seconds)) / span) * 100}%`;
@@ -191,7 +204,15 @@ function PlayerStage({
               {next !== undefined && queueButton(next, <SkipForward />, 'Next')}
               <Button variant="on-dark" iconOnly icon={<RotateCcw />} aria-label="Back 10 seconds" onClick={onBack10} />
               <Button variant="on-dark" iconOnly icon={<RotateCw />} aria-label="Forward 30 seconds" onClick={onForward30} />
-              <Button variant="on-dark" iconOnly icon={<Volume2 />} aria-label="Volume" onClick={onVolume} />
+              <VolumeButton
+                volume={volume}
+                muted={muted}
+                onMute={onVolume}
+                onVolumeChange={onVolumeChange}
+                onWheel={onVolumeWheel}
+                onOpenChange={onVolumeOpenChange}
+                defaultOpen={volumeOpen}
+              />
             </div>
             <div className="flex items-center gap-0.5">
               {withMenu('subtitles', <Button variant="on-dark" icon={<Captions />} aria-label={`Subtitles: ${subtitlesLabel}`}>{subtitlesLabel}</Button>)}

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { AudioLines, Ellipsis, History, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { AudioLines, Captions, Ellipsis, History, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { fn } from 'storybook/test';
 import { Button } from '@/components/ui/button';
 import { LineSavedToPlex } from '@/components/ui/line-saved-to-plex';
@@ -13,6 +13,8 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuToggleGroup,
+  DropdownMenuToggleGroupItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -118,4 +120,34 @@ export const OnDark: Story = {
       </DropdownMenuContent>
     </DropdownMenu>
   ),
+};
+
+const textSizeMenu = (disabled: boolean) => (args: Story['args']) => (
+  <DropdownMenu {...args}>
+    <DropdownMenuTrigger render={<Button variant="on-dark" icon={<Captions />} aria-label="Subtitles: English">English</Button>} />
+    <DropdownMenuContent onDark side="top" align="end" sideOffset={8} className="w-80">
+      <DropdownMenuGroup>
+        <DropdownMenuGroupLabel>Text size</DropdownMenuGroupLabel>
+        <div className="px-2 pt-0.5 pb-1.5">
+          <DropdownMenuToggleGroup defaultValue="Large" disabled={disabled}>
+            {['Tiny', 'Small', 'Normal', 'Large', 'Huge'].map((label) => <DropdownMenuToggleGroupItem key={label} value={label}>{label}</DropdownMenuToggleGroupItem>)}
+          </DropdownMenuToggleGroup>
+        </div>
+      </DropdownMenuGroup>
+    </DropdownMenuContent>
+  </DropdownMenu>
+);
+
+// The toggle group in a dark menu: the Subtitles menu's Text size row, Large chosen (player file 5:251).
+export const ToggleGroupOnDark: Story = {
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/5XDOiiHT4DNqDRgYkgbe5y/media-manager-2----player?node-id=2-165' } },
+  decorators: [(Story) => <div className="flex h-40 items-end justify-center bg-black p-4"><Story /></div>],
+  render: textSizeMenu(false),
+};
+
+// Disabled, as with subtitles Off or a picture subtitle: the row at 40 %, the saved size still marked.
+export const ToggleGroupOnDarkDisabled: Story = {
+  parameters: ToggleGroupOnDark.parameters,
+  decorators: ToggleGroupOnDark.decorators,
+  render: textSizeMenu(true),
 };

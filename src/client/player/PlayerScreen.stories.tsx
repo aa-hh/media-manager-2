@@ -36,7 +36,9 @@ const meta = {
     previous: { label: 'Previous · S1 E3', title: 'Tomorrow Is Tomorrow', onSelect: fn() },
     next: { label: 'Next · S1 E5', title: 'Broken to the Fist', onSelect: fn() },
     audio: { tracks: audio, saved: false },
-    subtitles: { tracks: subtitles, saved: false, delay: 0, delaySaved: false },
+    subtitles: { tracks: subtitles, saved: false, delay: 0, delaySaved: false, size: 1 },
+    volume: 62,
+    muted: false,
     quality: { steps: [{ index: 6, kbps: 4000, height: 720 }, { index: 10, kbps: 20000, height: 1080 }], label: 'Original' },
     onOpenMenuChange: fn(),
     onBack: fn(),
@@ -44,6 +46,9 @@ const meta = {
     onBack10: fn(),
     onForward30: fn(),
     onVolume: fn(),
+    onVolumeChange: fn(),
+    onVolumeWheel: fn(),
+    onVolumeOpenChange: fn(),
     onMini: fn(),
     onExpand: fn(),
     onFullscreen: fn(),
@@ -52,6 +57,7 @@ const meta = {
     onAudio: fn(),
     onSubtitle: fn(),
     onSubtitleDelay: fn(),
+    onSubtitleSize: fn(),
     onQuality: fn(),
     onLoadAhead: fn(),
     onSkip: fn(),
@@ -75,7 +81,17 @@ export const Opening: Story = { args: { screen: 'opening', subtitle: 'S1 E4 · f
 export const Buffering: Story = { args: { screen: 'buffering', playing: false, loadedAhead: 2 } };
 
 // 6 · Subtitles menu after a change was saved to Plex.
-export const SubtitlesSaved: Story = { args: { openMenu: 'subtitles', subtitles: { tracks: subtitles, saved: true, delay: 0.5, delaySaved: false } } };
+export const SubtitlesSaved: Story = { args: { openMenu: 'subtitles', subtitles: { tracks: subtitles, saved: true, delay: 0.5, delaySaved: false, size: 1.25 } } };
+
+// Text size with a picture subtitle (PGS) chosen: the row greyed at the saved size, and why (player file 5:251).
+export const SubtitleSizePicture: Story = {
+  args: { openMenu: 'subtitles', subtitles: { tracks: subtitles.map((track) => ({ ...track, selected: track.codec === 'pgs' })), saved: false, delay: 0, delaySaved: false, size: 1.25 } },
+};
+
+// Subtitles off: the Text size row greyed.
+export const SubtitleSizeOff: Story = {
+  args: { openMenu: 'subtitles', subtitles: { tracks: subtitles.map((track) => ({ ...track, selected: false })), saved: false, delay: 0, delaySaved: false, size: 1 } },
+};
 
 // 10 · Skip intro with the controls hidden.
 export const SkipIntro: Story = { args: { controls: 'none', position: 90, skip: { kind: 'intro', visible: true, raised: false } } };
