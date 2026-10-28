@@ -390,6 +390,7 @@ export const createPlaybackRoutes = (playback: Playback) => {
     return send(context, await playback.start(input, context.req.header('X-Media-Manager-Desktop') === '1'));
   });
 
+  // Bare origins with no token, unlike the start reply's addresses, so this needs no desktop header: the page may see them.
   routes.get('/connections', async (context) => {
     const clientId = context.req.query('clientId');
     if (!isId(clientId)) return context.json(invalid, 400);

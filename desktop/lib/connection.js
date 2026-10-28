@@ -2,6 +2,8 @@
 // Which Plex address mpv streams from (network §8.2, simplified). No Electron
 // here, so tests/production.test.mjs can run it.
 
+const { originOf } = require('./page');
+
 const PROBE_LIMIT = 5;
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -67,4 +69,56 @@ const chooseConnection = async (origins, probe, expectedId, directCount = origin
   return (await firstPassing(direct, probe, expectedId, limit)) ?? firstPassing(relay, probe, expectedId, limit);
 };
 
-module.exports = { chooseConnection, answerPasses, PROBE_LIMIT, PROBE_TIMEOUT_MS };
+/**
+ * The origins of the server's addresses (direct first) and how many are direct. A server older than this app sends no
+ * count, so all count as direct; an entry that is not an address is dropped from its own group.
+ */
+const originsOf = (addresses, directCount) => {
+  const count = Number.isSafeInteger(directCount) && directCount >= 0 ? directCount : addresses.length;
+  const list = (part) => part.filter((value) => typeof value === 'string').map(originOf).filter((value) => value !== null);
+  const direct = list(addresses.slice(0, count));
+  return { origins: [...direct, ...list(addresses.slice(count))], directCount: direct.length };
+};
+
+/**
+ * The address kept for the run (network recommendation 7). `choose(origins, directCount)` tests addresses.
+ * - `testEarly(load)`: Plex's own app tests the server's addresses when it opens, not at Play (network §8.2); `load`
+ *   resolves to originsOf's answer, or null when there is nothing to test.
+ * - `pick(found, retest)`: waits for an early test still running, then reuses the kept address while the start reply
+ *   still lists it, unless asked to test again (a retry).
+ * - `forget()`: another server address; a test still running for the old one keeps nothing.
+ */
+const createAddressKeeper = (choose) => {
+  let kept = null;
+  let testing = null;
+  let round = 0;
+  const keep = async (at, origins, directCount) => {
+    const chosen = await choose(origins, directCount);
+    if (at === round) kept = chosen;
+    return chosen;
+  };
+  return {
+    testEarly(load) {
+      const at = round;
+      const run = (async () => {
+        const found = await load();
+        if (found !== null && at === round) await keep(at, found.origins, found.directCount);
+      })().catch(() => {});
+      testing = run;
+      void run.finally(() => { if (testing === run) testing = null; });
+      return run;
+    },
+    async pick({ origins, directCount }, retest) {
+      if (testing !== null) await testing;
+      if (!retest && kept !== null && origins.includes(kept)) return kept;
+      return keep(round, origins, directCount);
+    },
+    forget() {
+      round += 1;
+      kept = null;
+      testing = null;
+    },
+  };
+};
+
+module.exports = { chooseConnection, answerPasses, originsOf, createAddressKeeper, PROBE_LIMIT, PROBE_TIMEOUT_MS };

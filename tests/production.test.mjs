@@ -14763,7 +14763,7 @@ test('the add sentence picks the search fact from the choices and the title', as
 });
 
 test('the desktop app streams from the first direct Plex address to answer as this server, and from a relay only when none does', async () => {
-  const { chooseConnection, answerPasses } = await import(new URL('../desktop/lib/connection.js', import.meta.url));
+  const { chooseConnection, answerPasses, originsOf } = await import(new URL('../desktop/lib/connection.js', import.meta.url));
   const deferred = () => {
     let resolve;
     let reject;
@@ -14817,6 +14817,90 @@ test('the desktop app streams from the first direct Plex address to answer as th
     ['https://1-2-3-4.abc.plex.direct:32400', null, false],
   ];
   for (const [origin, answered, passes] of unknownId) assert.equal(answerPasses(origin, answered, null), passes, origin);
+
+  // Each row: addresses, the server's direct count, expected origins and direct count. Counting past an entry that is not an
+  // address turns a row red: a relay would join the direct group and race the direct addresses.
+  const groups = [
+    [['https://a:1/x?t=1', 'https://r:2/y'], undefined, ['https://a:1', 'https://r:2'], 2], // an older server: all direct
+    [['nonsense', 'https://a:1/x', 'https://r:2/y'], 2, ['https://a:1', 'https://r:2'], 1],
+    [[42, 'https://r:2/y'], 1, ['https://r:2'], 0],
+    [['https://a:1/x'], 5, ['https://a:1'], 1],
+    [['https://a:1/x', 'https://r:2/y'], -1, ['https://a:1', 'https://r:2'], 2],
+  ];
+  for (const [addresses, count, origins, directCount] of groups) {
+    assert.deepEqual(originsOf(addresses, count), { origins, directCount }, JSON.stringify(addresses));
+  }
+});
+
+test('the desktop app tests Plex\'s addresses early, and Play reuses that answer unless retrying', async () => {
+  const { createAddressKeeper } = await import(new URL('../desktop/lib/connection.js', import.meta.url));
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((yes) => { resolve = yes; });
+    return { promise, resolve };
+  };
+  const found = { origins: ['https://direct-a', 'https://relay'], directCount: 1 };
+  let tests = 0;
+  const keeper = createAddressKeeper(async () => {
+    tests += 1;
+    return 'https://direct-a';
+  });
+
+  // Not waiting for the early test turns this red: a Play during it would test every address a second time.
+  const loaded = deferred();
+  const early = keeper.testEarly(() => loaded.promise);
+  let picked;
+  const pick = keeper.pick(found, false).then((value) => { picked = value; });
+  await tick();
+  assert.equal(picked, undefined, 'Play went ahead while the early test was running');
+  loaded.resolve(found);
+  await early;
+  await pick;
+  assert.equal(picked, 'https://direct-a');
+  assert.equal(tests, 1);
+
+  // A retry tests again; a start reply that no longer lists the kept address tests again too.
+  assert.equal(await keeper.pick(found, true), 'https://direct-a');
+  assert.equal(tests, 2);
+  await keeper.pick({ origins: ['https://direct-b'], directCount: 1 }, false);
+  assert.equal(tests, 3);
+
+  // A failed early test (signed out, an older server) leaves Play to test for itself.
+  const failing = createAddressKeeper(async () => 'https://direct-a');
+  await failing.testEarly(() => Promise.reject(new Error('401')));
+  assert.equal(await failing.pick(found, false), 'https://direct-a');
+
+  // Keeping a test's answer across forget() turns this red: Play would stream from the old server's address.
+  let fresh = 0;
+  const moved = createAddressKeeper(async () => {
+    fresh += 1;
+    return 'https://direct-a';
+  });
+  const slow = deferred();
+  const stale = moved.testEarly(() => slow.promise);
+  moved.forget();
+  slow.resolve(found);
+  await stale;
+  assert.equal(fresh, 0);
+  await moved.pick(found, false);
+  assert.equal(fresh, 1);
+
+  // The same when the address changes while the addresses are being tested, after the load.
+  const gate = deferred();
+  let tried = 0;
+  const midway = createAddressKeeper(async () => {
+    tried += 1;
+    if (tried === 1) await gate.promise;
+    return 'https://direct-a';
+  });
+  const testingNow = midway.testEarly(async () => found);
+  await tick();
+  midway.forget();
+  gate.resolve();
+  await testingNow;
+  await midway.pick(found, false);
+  assert.equal(tried, 2, 'the old server\'s answer was kept after forget()');
 });
 
 test('the desktop app retries a failed stream with a fresh load first and steps down from direct play only when the plan never worked', async () => {

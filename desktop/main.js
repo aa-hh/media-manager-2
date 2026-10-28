@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomBytes, randomUUID } = require('node:crypto');
 const { normaliseAddress, isMediaManager } = require('./lib/address');
-const { chooseConnection, PROBE_TIMEOUT_MS } = require('./lib/connection');
+const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
 const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale } = require('./lib/player');
@@ -76,7 +76,7 @@ const showApp = (origin) => {
   appOrigin = origin;
   // Another address can mean another Plex server: its id and address are found again.
   serverId = undefined;
-  keptOrigin = null;
+  plexAddresses.forget();
   void win.loadURL(origin);
 };
 
@@ -219,7 +219,8 @@ const appRequest = async (method, pathname, body) => {
   return win.webContents.executeJavaScriptInIsolatedWorld(PRIVATE_WORLD, [{ code }]);
 };
 
-// The Plex server's id, from the library reply's watch status (src/server/watchStatus.ts); null when Plex is down.
+// The Plex server's id: from the connections or start reply, else (a server older than this app) from the library reply's
+// watch status (src/server/watchStatus.ts); null when Plex is down.
 let serverId;
 const expectedServerId = async () => {
   if (typeof serverId === 'string') return serverId;
@@ -246,36 +247,16 @@ const probe = async (origin) => {
   const body = await response.json();
   return body?.MediaContainer?.machineIdentifier ?? null;
 };
-// Kept for the run; tested again before any retry (network recommendation 7).
-let keptOrigin = null;
-// The origins of the server's addresses and how many are direct; a server older than this app sends no count, so all count as direct.
-const originsOf = (addresses, directCount) => {
-  const count = Number.isSafeInteger(directCount) ? directCount : addresses.length;
-  const list = (part) => part.filter((value) => typeof value === 'string').map(originOf).filter((value) => value !== null);
-  const direct = list(addresses.slice(0, count));
-  return { origins: [...direct, ...list(addresses.slice(count))], directCount: direct.length };
-};
-// Plex's own app tests the server's addresses when it opens, not at Play (network §8.2). Each load of the app page does the
-// same, so the first Play finds an address already tested; a Play during the test waits for it.
-let testing = null;
+const plexAddresses = createAddressKeeper(async (origins, directCount) => chooseConnection(origins, probe, await expectedServerId(), directCount));
+// Each load of the app page tests Plex's addresses, so the first Play finds one already tested.
 const testEarly = () => {
   const origin = appOrigin;
-  const run = (async () => {
+  void plexAddresses.testEarly(async () => {
     const { status, json } = await appRequest('GET', `/api/playback/connections?clientId=${clientId()}`);
-    if (status !== 200 || typeof json?.machineIdentifier !== 'string' || !Array.isArray(json.origins) || appOrigin !== origin) return;
+    if (status !== 200 || typeof json?.machineIdentifier !== 'string' || !Array.isArray(json.origins) || appOrigin !== origin) return null;
     serverId = json.machineIdentifier;
-    const { origins, directCount } = originsOf(json.origins, json.directCount);
-    const chosen = await chooseConnection(origins, probe, serverId, directCount);
-    if (appOrigin === origin) keptOrigin = chosen;
-  })().catch(() => {});
-  testing = run;
-  void run.finally(() => { if (testing === run) testing = null; });
-};
-const pickOrigin = async ({ origins, directCount }, retest) => {
-  if (testing !== null) await testing;
-  if (!retest && keptOrigin !== null && origins.includes(keptOrigin)) return keptOrigin;
-  keptOrigin = await chooseConnection(origins, probe, await expectedServerId(), directCount);
-  return keptOrigin;
+    return originsOf(json.origins, json.directCount);
+  });
 };
 
 // --- mpv (C1.3)
@@ -427,7 +408,7 @@ async function start(playing, offsetSeconds, retest) {
   const addresses = json.streamAddresses.filter((address) => typeof address === 'string');
   // The server's id comes with the reply, so expectedServerId's library request runs only against an older server.
   if (typeof json.machineIdentifier === 'string' && json.machineIdentifier !== '') serverId = json.machineIdentifier;
-  const origin = await pickOrigin(originsOf(json.streamAddresses, json.directAddressCount), retest);
+  const origin = await plexAddresses.pick(originsOf(json.streamAddresses, json.directAddressCount), retest);
   if (origin === null) throw new Error('plex_unreachable');
   if (current !== playing) throw new Error('replaced');
   playing.reply = json;
