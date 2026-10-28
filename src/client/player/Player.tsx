@@ -14,7 +14,7 @@ import { clockText, continueMeta, minutesText } from '../library/watch';
 import { navigate, replace, replaceScreen, useLocation } from '../navigation';
 import {
   BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, TIMELINE_EVERY_MS,
-  activeMarker, applyEvent, clampSeek, clampVolume, hasSoundCommands, hasSubtitleScale, subtitleScaleOf, volumeKey, wheelStep, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
+  activeMarker, applyEvent, clampSeek, clampVolume, formatLine, originalLabel, hasSoundCommands, hasSubtitleScale, subtitleScaleOf, volumeKey, wheelStep, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
 } from './model';
@@ -107,6 +107,8 @@ const isPlay = (pathname: string) => pathname.startsWith('/play/');
 // older than the page sends neither, and the page keeps what it had.
 type Sound = { volume: number; muted: boolean };
 const soundOf = (reply: StartReply, was: Sound) => ({ volume: reply.volume ?? was.volume, muted: reply.muted ?? was.muted });
+/** The subtitle delay in seconds that Plex saved for a track; 0 for Off or a track with none. */
+const savedDelay = (track: SubtitleTrack | null | undefined) => (track?.offsetMs ?? 0) / 1000;
 
 const startFailure = (error: unknown, name: string) => {
   const text = error instanceof Error ? error.message : '';
@@ -205,8 +207,10 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       const reply = await bridge.load(request) as unknown as StartReply;
       if (loads.current !== load) return false;
       takeSaved(reply);
-      change((s) => ({ ...s, reply }));
-      if (fresh) void bridge.setSubtitleDelay(0).catch(() => undefined);
+      // A new title starts at the chosen subtitle's offset saved in Plex; a reload of the same title keeps the delay it had.
+      const delay = fresh ? savedDelay(reply.tracks.subtitle.find((track) => track.selected)) : null;
+      change((s) => ({ ...s, reply, subtitleDelay: delay ?? s.subtitleDelay }));
+      if (delay !== null) void bridge.setSubtitleDelay(delay).catch(() => undefined);
       return true;
     } catch (error) {
       if (loads.current !== load) return false;
@@ -527,7 +531,15 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         const s = sessionRef.current;
         if (s?.reply == null || bridge === undefined) return;
         const reply = s.reply;
-        change((current) => ({ ...current, reply: { ...reply, tracks: { ...reply.tracks, subtitle: selectTrack(reply.tracks.subtitle, track) } } }));
+        // The new track brings the offset Plex saved for it; Off goes back to 0.
+        const delay = savedDelay(track);
+        change((current) => ({
+          ...current,
+          reply: { ...reply, tracks: { ...reply.tracks, subtitle: selectTrack(reply.tracks.subtitle, track) } },
+          subtitleDelay: delay,
+          saved: { ...current.saved, delay: false },
+        }));
+        void bridge.setSubtitleDelay(delay).catch(() => undefined);
         if (reply.decision.directPlay) {
           void bridge.setSubtitle(track === null ? { index: -1, url: null, ffIndex: null } : { index: track.index, url: track.url ?? null, ffIndex: track.ffIndex }).catch(() => undefined);
         }
@@ -627,12 +639,12 @@ async function continueWatchingItem(current: PlayerTitle, onUnauthenticated: () 
   const item = watch.continueWatching.find((entry) => !isCurrent(entry));
   const title = item === undefined ? undefined : titles.find((entry) => entry.service === item.service && entry.id === item.id);
   if (item === undefined || title === undefined) return null;
-  const request = await loadRequestFor(title, item, 'resume', onUnauthenticated, new AbortController().signal);
-  if (request === null) return null;
+  const loaded = await loadRequestFor(title, item, 'resume', onUnauthenticated, new AbortController().signal);
+  if (loaded === null) return null;
   const code = item.episode === null ? null : episodeCode(item.episode.seasonNumber, item.episode.episodeNumber);
   return {
-    request,
-    title: { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id },
+    request: loaded.request,
+    title: { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id, backdropUrl: loaded.backdropUrl },
     view: {
       still: title.posterUrl ?? undefined,
       show: title.title,
@@ -888,6 +900,8 @@ export function Player() {
       rootRef={rootRef}
       name={title.name}
       subtitle={subtitle}
+      format={reply === null ? undefined : formatLine(reply.file)}
+      backdropUrl={title.backdropUrl ?? undefined}
       position={dragAt ?? playback.position}
       duration={duration}
       loadedAhead={playback.loadedAhead}
@@ -910,7 +924,10 @@ export function Player() {
       }}
       volume={context.sound?.volume ?? 100}
       muted={context.sound?.muted ?? false}
-      quality={{ steps: reply?.qualitySteps ?? [], kbps: context.qualityKbps, label: reply === null ? 'Original' : qualityLabel(reply.decision, reply.qualitySteps) }}
+      quality={{
+        steps: reply?.qualitySteps ?? [], kbps: context.qualityKbps, label: reply === null ? 'Original' : qualityLabel(reply.decision, reply.qualitySteps),
+        original: reply === null ? undefined : originalLabel(reply.file),
+      }}
       skip={marker === null ? undefined : { kind: marker.kind, visible: skipVisible, raised: controlsShown }}
       failure={playback.failure === undefined ? undefined : {
         body: playback.failure.tried.length > 0 ? `Plex stopped sending ${title.name} and every way of playing it failed. Your place is saved.` : playback.failure.message,

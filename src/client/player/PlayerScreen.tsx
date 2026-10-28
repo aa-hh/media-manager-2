@@ -45,6 +45,10 @@ export type PlayerScreenProps = {
   rootRef?: Ref<HTMLDivElement>;
   name: string;
   subtitle?: string;
+  /** The top bar's line for an HDR or Dolby Vision file. */
+  format?: string;
+  /** The title's backdrop, drawn behind the opening state only. */
+  backdropUrl?: string;
   position: number;
   duration: number;
   loadedAhead: number;
@@ -67,7 +71,8 @@ export type PlayerScreenProps = {
   /** 0 to 100, and whether mpv is muted. */
   volume: number;
   muted: boolean;
-  quality: { steps: QualityStep[]; kbps?: number; label: string };
+  /** `original`: the Original row with the file's facts; left out, the row reads Original. */
+  quality: { steps: QualityStep[]; kbps?: number; label: string; original?: string };
   skip?: { kind: 'intro' | 'credits'; visible: boolean; raised: boolean };
   /** State 13: the sentence, and what was tried when the desktop app stepped down. */
   failure?: { body: string; detail?: string };
@@ -233,7 +238,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
             value={quality.kbps === undefined ? ORIGINAL : String(quality.kbps)}
             onValueChange={(value) => props.onQuality(value === ORIGINAL ? undefined : Number(value))}
           >
-            <DropdownMenuRadioItem value={ORIGINAL}>Original</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value={ORIGINAL}>{quality.original ?? 'Original'}</DropdownMenuRadioItem>
             {[...quality.steps].reverse().map((step) => <DropdownMenuRadioItem key={step.kbps} value={String(step.kbps)}>{stepLabel(step)}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
@@ -272,8 +277,10 @@ export function PlayerScreen(props: PlayerScreenProps) {
         className={seeThrough ? 'bg-transparent' : undefined}
         dim={screen === 'opening' ? 0.55 : screen === 'buffering' ? 0.35 : screen === 'error' || screen === 'unreachable' ? 0.7 : undefined}
         controls={screen === 'opening' || screen === 'up-next' ? 'top' : controls}
+        picture={screen === 'opening' && props.backdropUrl !== undefined ? <img src={props.backdropUrl} alt="" /> : undefined}
         title={name}
         subtitle={subtitle}
+        format={props.format}
         centre={screen === 'opening'
           ? { text: opening.text, detail: opening.slow ? <span className="font-ui">Plex is slow to answer. Still trying.</span> : undefined }
           : screen === 'buffering'

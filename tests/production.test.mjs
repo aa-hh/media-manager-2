@@ -11654,7 +11654,7 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
   const {
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
     activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands, wheelStep,
-    SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale,
+    SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale, formatLine, originalLabel,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
 
@@ -11769,6 +11769,29 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     assert.equal(qualityLabel({ directPlay: true, directStream: true, directStreamAudio: true, maxVideoBitrate: null }, steps), 'Original');
     assert.equal(qualityLabel({ directPlay: false, directStream: false, directStreamAudio: true, maxVideoBitrate: null }, steps), 'Converted');
     assert.equal(qualityLabel({ directPlay: false, directStream: true, directStreamAudio: true, maxVideoBitrate: 4000 }, steps), '720p');
+  });
+
+  // Changing the dynamic-range words, dropping the profile, or mis-rounding the Original row's bitrate turns this red.
+  await t.test('the format line names HDR and Dolby Vision, and the Original row the file', () => {
+    const file = (rest) => ({ width: 3840, height: 2160, videoCodec: 'hevc', bitrateKbps: 57_600, dynamicRange: 'sdr', dolbyVisionProfile: null, ...rest });
+    const lines = [
+      [{ dynamicRange: 'dolby_vision', dolbyVisionProfile: 8 }, 'Dolby Vision profile 8, colours adjusted for this screen'],
+      [{ dynamicRange: 'dolby_vision' }, 'Dolby Vision, colours adjusted for this screen'],
+      [{ dynamicRange: 'hdr10' }, 'HDR10, colours adjusted for this screen'],
+      [{ dynamicRange: 'hlg' }, 'HLG, colours adjusted for this screen'],
+      [{}, undefined],
+      [{ dynamicRange: null }, undefined],
+    ];
+    for (const [rest, line] of lines) assert.equal(formatLine(file(rest)), line, JSON.stringify(rest));
+    const rows = [
+      [{}, 'Original · 2160p HEVC, 58 Mbps'],
+      [{ bitrateKbps: 800 }, 'Original · 2160p HEVC, 800 kbps'],
+      [{ videoCodec: null }, 'Original · 2160p, 58 Mbps'],
+      [{ height: null, videoCodec: null }, 'Original · 58 Mbps'],
+      [{ bitrateKbps: null }, 'Original · 2160p HEVC'],
+      [{ height: null, videoCodec: null, bitrateKbps: null }, 'Original'],
+    ];
+    for (const [rest, label] of rows) assert.equal(originalLabel(file(rest)), label, JSON.stringify(rest));
   });
 });
 

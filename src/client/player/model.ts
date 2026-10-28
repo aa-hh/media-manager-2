@@ -20,7 +20,18 @@ export type StartReply = {
   tracks: { audio: AudioTrack[]; subtitle: SubtitleTrack[] };
   markers: Array<{ type: string | null; startTimeOffset: number | null; endTimeOffset: number | null }>;
   chapters: Array<{ index: number | null; title: string | null; startTimeOffset: number | null; endTimeOffset: number | null }>;
+  file: FileFacts;
   qualitySteps: QualityStep[];
+};
+/** The chosen file's picture as Plex describes it; any value Plex left out is null. */
+export type FileFacts = {
+  width: number | null;
+  height: number | null;
+  videoCodec: string | null;
+  bitrateKbps: number | null;
+  /** null when the file has no video stream. */
+  dynamicRange: 'dolby_vision' | 'hdr10' | 'hlg' | 'sdr' | null;
+  dolbyVisionProfile: number | null;
 };
 export type QueueItem = {
   playQueueItemID: number | null;
@@ -33,8 +44,11 @@ export type QueueItem = {
   duration: number | null;
 };
 export type AudioTrack = { id: number | null; index: number; ffIndex: number | null; codec: string | null; language: string | null; title: string | null; selected: boolean };
-/** `url` is the tokenless stream key for a file beside the video, null for one inside it; setSubtitle takes both back. */
-export type SubtitleTrack = AudioTrack & { external: boolean; key: string | null; url?: string | null };
+/**
+ * `url` is the tokenless stream key for a file beside the video, null for one inside it; setSubtitle takes both back.
+ * `offsetMs` is the timing offset saved in Plex for this track.
+ */
+export type SubtitleTrack = AudioTrack & { external: boolean; key: string | null; url?: string | null; offsetMs: number | null };
 export type QualityStep = { index: number; kbps: number; height: number };
 
 // --- Seeking (network §4)
@@ -288,6 +302,22 @@ export const reloadAt = (request: LoadRequest, seconds: number, qualityKbps: num
 );
 
 export const stepLabel = (step: QualityStep) => `${step.height}p · ${step.kbps >= 1000 ? `${step.kbps / 1000} Mbps` : `${step.kbps} kbps`}`;
+
+const DYNAMIC_RANGE_WORDS = { hdr10: 'HDR10', hlg: 'HLG', dolby_vision: 'Dolby Vision' } as const;
+/** The top bar's format line for an HDR or Dolby Vision file; undefined for SDR or an unknown picture. */
+export const formatLine = (file: FileFacts) => {
+  if (file.dynamicRange === null || file.dynamicRange === 'sdr') return undefined;
+  const profile = file.dynamicRange === 'dolby_vision' && file.dolbyVisionProfile !== null ? ` profile ${file.dolbyVisionProfile}` : '';
+  return `${DYNAMIC_RANGE_WORDS[file.dynamicRange]}${profile}, colours adjusted for this screen`;
+};
+
+/** The Quality menu's Original row: "Original · 2160p HEVC, 58 Mbps", leaving out what Plex did not say. */
+export const originalLabel = (file: FileFacts) => {
+  const picture = [file.height === null ? null : `${file.height}p`, file.videoCodec?.toUpperCase() ?? null].filter((part) => part !== null).join(' ');
+  const rate = file.bitrateKbps === null ? null : file.bitrateKbps >= 1000 ? `${Math.round(file.bitrateKbps / 1000)} Mbps` : `${file.bitrateKbps} kbps`;
+  const facts = [picture === '' ? null : picture, rate].filter((part) => part !== null).join(', ');
+  return facts === '' ? 'Original' : `Original · ${facts}`;
+};
 
 /** The Quality button: Original, the picked step, or Converted once the player stepped down by itself. */
 export const qualityLabel = (decision: StartReply['decision'], steps: QualityStep[]) => {
