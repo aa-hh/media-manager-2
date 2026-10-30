@@ -121,7 +121,7 @@ const startFailure = (error: unknown, name: string) => {
 /** Holds the player for the signed-in app; inside the desktop app it takes every Play (src/client/player/open.ts). */
 export function PlayerProvider({ downloads, onUnauthenticated, children }: { downloads: DownloadsState; onUnauthenticated: () => void; children: ReactNode }) {
   const bridge = desktopBridge();
-  const { pathname } = useLocation();
+  const { pathname } = useLocation({ includePlay: true });
   const [session, setSession] = useState<Session | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const [series, setSeries] = useState<SeriesReply | null>(null);
@@ -686,7 +686,7 @@ const SKIP_FADE_MS = 10_000;
 /** The player element; Home draws it beside the downloads bar. Nothing shows until a title plays. */
 export function Player() {
   const context = use(PlayerContext);
-  const { pathname } = useLocation();
+  const { pathname } = useLocation({ includePlay: true });
   const rootRef = useRef<HTMLDivElement>(null);
   const [openMenu, setOpenMenu] = useState<PlayerMenu | undefined>(undefined);
   const [controlsShown, setControlsShown] = useState(true);

@@ -13,6 +13,11 @@ html[data-player='full'] [data-app] {
   visibility: hidden;
 }
 
+/* The page stays mounted under the full-size player (navigation.ts useLocation); it keeps its scroll for the way back. */
+html[data-player='full'] {
+  overflow: hidden;
+}
+
 /* The hole follows the mini player as the app scrolls under it; Player.tsx keeps the two variables current. */
 html[data-player='mini'] [data-app] {
   background-color: var(--background);

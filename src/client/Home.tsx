@@ -92,7 +92,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // /play/<ratingKey> only shows the player full size over an empty page; the player itself lives outside the keyed view.
+  // The player lives outside the keyed view. useLocation keeps the page under it while the address is /play/<ratingKey>, so
+  // 'play' is only a fresh load at that address, which the player corrects.
   const view = pathname.startsWith('/play/') ? 'play'
     : pathname === '/search' || query.trim() !== '' ? 'search'
     : pathname === '/downloads' ? 'downloads'

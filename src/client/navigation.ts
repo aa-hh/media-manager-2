@@ -73,7 +73,16 @@ const loadImagesInView = (maxWaitMs: number) => {
   ]);
 };
 
+// The player's full-size address, /play/<ratingKey>. It shows the player over the page that was on screen, which stays mounted.
+const isPlayAddress = (path: string) => path.startsWith('/play/');
+
 const changeScreen = (update: () => void, scrollTop: number, morph?: HTMLElement) => {
+  // Into or out of /play only the player changes size: the page under it keeps its scroll, and holding the old screen for
+  // the page's data would leave mpv's resized picture behind a frozen frame.
+  if (isPlayAddress(shownAddress) || isPlayAddress(address())) {
+    update();
+    return;
+  }
   pendingScroll = scrollTop;
   const run = async () => {
     // The old screen is captured; only the new screen may carry the poster's name now.
@@ -216,13 +225,20 @@ type Location = { pathname: string; search: string; state: unknown };
 
 const read = (): Location => ({ pathname: window.location.pathname, search: window.location.search, state: window.history.state });
 
-export function useLocation(): Location {
+/**
+ * The address. A /play address leaves it unchanged, so the page under the full-size player is never remounted or re-fetched
+ * by Play and Back; the player passes includePlay to see it. A fresh load at /play still reads it (Home shows no page).
+ */
+export function useLocation({ includePlay = false } = {}): Location {
   const [location, setLocation] = useState(read);
   useEffect(() => {
-    const onChange = () => setLocation(read());
+    const onChange = () => {
+      const next = read();
+      if (includePlay || !isPlayAddress(next.pathname)) setLocation(next);
+    };
     window.addEventListener('popstate', onChange);
     return () => window.removeEventListener('popstate', onChange);
-  }, []);
+  }, [includePlay]);
   return location;
 }
 
