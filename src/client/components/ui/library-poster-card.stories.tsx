@@ -124,6 +124,17 @@ export const PlayOnHover: Story = {
   args: { ...show, watchMark: 8, action: <Button icon={<Play aria-hidden="true" />} onClick={fn()}>Play S3 E5</Button> },
 };
 
+// A badge and the watch bar together: the badge sits above the bar, and gives way to Resume on hover or focus.
+export const MissingStoppedPartway: Story = {
+  args: {
+    ...show,
+    meta: ['2022', progressText(16, 0, 19), formatBytes(35_400_000_000)].join(' · '),
+    status: <Badge variant="warning">Missing 3 episodes</Badge>,
+    watched: 40,
+    action: <Button icon={<Play aria-hidden="true" />} onClick={fn()}>Resume</Button>,
+  },
+};
+
 export const DownloadingOnTop: Story = {
   args: {
     ...show,

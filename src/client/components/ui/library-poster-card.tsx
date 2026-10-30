@@ -9,7 +9,7 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
   poster?: string;
   title: ReactNode;
   meta?: ReactNode;
-  /** One Badge on the poster's bottom-left corner, or nothing when normal; hidden while imported. */
+  /** One Badge on the poster's bottom-left corner, or nothing when normal; hidden while imported. Sits above the watch bar when one shows, and hides while `action` shows. */
   status?: ReactNode;
   /** Puts `status` on the top row, level with the watch mark, as Library does for Downloading. */
   statusOnTop?: boolean;
@@ -92,7 +92,18 @@ function LibraryPosterCard({
             <span className="font-ui text-xs text-muted-foreground">No poster yet</span>
           </span>
         )}
-        {status !== undefined && !imported && <span className={cn('absolute left-2 flex', statusOnTop ? 'top-4' : 'bottom-2')}>{status}</span>}
+        {status !== undefined && !imported && !(actionAlwaysVisible && action !== undefined && !statusOnTop) && (
+          <span
+            className={cn(
+              'absolute left-2 flex',
+              statusOnTop ? 'top-4' : watched === undefined ? 'bottom-2' : 'bottom-6',
+              // The Play button shows over the same corner, so the badge gives way to it.
+              !statusOnTop && action !== undefined && 'transition-[opacity,visibility] duration-(--duration-fast) ease-out group-focus-within/card:invisible group-focus-within/card:opacity-0 group-hover/card:invisible group-hover/card:opacity-0',
+            )}
+          >
+            {status}
+          </span>
+        )}
         {watchMark !== undefined && watched === undefined && (
           <span className="absolute top-2 right-2 flex">
             {watchMark === 'played' ? (

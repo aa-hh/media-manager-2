@@ -248,7 +248,7 @@ export function TitleHeader({ subject, owned, badges, play, facts, monitored, on
   owned: boolean;
   /** Status Badges under the meta line. */
   badges?: ReactNode;
-  /** The Play line (TitlePlayLine) under the badges; with it, Search and Pick a release turn outline (title.pen NIjoo). */
+  /** The Play line (TitlePlayLine) under the badges; with it, Search turns outline (title.pen NIjoo), except in the compact header, which hides the Play line. */
   play?: ReactNode;
   /** The library card's rows; Added and Folder follow when the title is in the library. */
   facts?: TitleFact[];
@@ -335,7 +335,7 @@ export function TitleHeader({ subject, owned, badges, play, facts, monitored, on
         badges={badges}
         play={compact ? undefined : play}
         primary={owned ? (
-          <Button variant={play === undefined ? 'default' : 'outline'} size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
+          <Button variant={compact || play === undefined ? 'default' : 'outline'} size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
             Search automatically
           </Button>
         ) : addAction}

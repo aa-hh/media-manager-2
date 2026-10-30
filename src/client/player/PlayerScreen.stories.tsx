@@ -77,6 +77,15 @@ export const Playing: Story = {};
 // 3 · Opening, 3 s in without an answer: black until the first frame, the second line shows.
 export const Opening: Story = { args: { screen: 'opening', subtitle: 'S1 E4 · from 18:40', opening: { text: 'Starting the original file from Plex', slow: true } } };
 
+// Opening with the title's backdrop: the backdrop shows dimmed 55% under the opening line.
+export const OpeningBackdrop: Story = {
+  args: {
+    ...Opening.args,
+    opening: { text: 'Starting the original file from Plex', slow: false },
+    backdropUrl: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="#c8873a"/><stop offset="1" stop-color="#3b2312"/></linearGradient></defs><rect width="1280" height="720" fill="url(#g)"/></svg>')}`,
+  },
+};
+
 // 4 · Buffering over the last frame.
 export const Buffering: Story = { args: { screen: 'buffering', playing: false, loadedAhead: 2 } };
 

@@ -30,6 +30,9 @@ type Story = StoryObj<typeof meta>;
 // player.pen state 15: counts down from 10 s; Play now has focus.
 export const Countdown: Story = { args: { countdown: { seconds: 8, fraction: 0.8 }, onPlayNow: fn() } };
 
+// Plex has no still for the episode: the box keeps its place as a faint white block on the black.
+export const NoStill: Story = { args: { ...Countdown.args, still: undefined } };
+
 // State 16: the next episode is still downloading.
 export const Downloading: Story = {
   args: {
