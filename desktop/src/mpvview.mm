@@ -1,16 +1,17 @@
 // The desktop app's mpv addon (from the C0 test app, candidate 3): mpv draws with vo=gpu-next (libplacebo, Vulkan
-// through MoltenVK) in its own borderless window, and the Electron window is
-// attached to that window as a child, ordered above it, so the transparent
-// page sits over the picture. mpv v0.41.0 never reads --wid on macOS (only the
-// X11, win32 and Android code does), so the picture cannot go into our own view.
+// through MoltenVK) in its own borderless window, attached to the Electron
+// window as a child ordered below it, so the transparent page sits over the
+// picture. mpv v0.41.0 never reads --wid on macOS (only the X11, win32 and
+// Android code does), so the picture cannot go into our own view.
 //
-// Both windows always have the same frame. mpv's window leads: it is sized to
-// the Electron window once when it appears, after that only mpv changes it
-// (fullscreen on and off, through mpv's own fullscreen with native-fs=no), and
-// the Electron window follows. When the user moves or resizes the Electron
-// window, main.js calls matchFrame() once the gesture ends. The player layouts
-// (full, mini, a page rectangle) are mpv's video-margin-ratio-* properties,
-// set from main.js, so no window moves for them.
+// Both windows always have the same frame. macOS moves a child with its
+// parent, so a drag of the Electron window moves mpv's window with no code
+// here. A child keeps its size when its parent resizes, so mpv's window takes
+// the Electron window's frame once a resize ends (each new size makes
+// libplacebo rebuild its shaders). mpv itself only resizes its window for its
+// own fullscreen (native-fs=no, auto-window-resize=no), and the Electron window
+// follows. The player layouts (full, mini, a page rectangle) are mpv's
+// video-margin-ratio-* properties, set from main.js, so no window moves for them.
 //
 // Main-thread rule: mpv's macOS window code (video/out/mac_common.swift) runs
 // DispatchQueue.main.sync on the video thread while the player core waits for
@@ -53,7 +54,6 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
         InstanceMethod("observe", &MpvView::Observe),
         InstanceMethod("onEvent", &MpvView::OnEvent),
         InstanceMethod("setFullscreen", &MpvView::SetFullscreen),
-        InstanceMethod("matchFrame", &MpvView::MatchFrame),
         InstanceMethod("destroy", &MpvView::Destroy),
     });
     exports.Set("MpvView", fn);
@@ -104,8 +104,8 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
 
  private:
   NSWindow *win_ = nil;    // Electron's window
-  NSWindow *video_ = nil;  // mpv's window, parent of win_ once attached
-  NSMutableArray *videoObservers_ = [NSMutableArray array];
+  NSWindow *video_ = nil;  // mpv's window, child of win_ once attached
+  NSMutableArray *observers_ = [NSMutableArray array];
   mpv_handle *mpv_ = nullptr;
   uint64_t nextId_ = 1000;
   std::map<uint64_t, Napi::Promise::Deferred> replies_;
@@ -151,21 +151,15 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     if (s != napi_ok) delete d;
   }
 
-  void Watch(NSWindow *w, NSArray<NSNotificationName> *names, std::string who, bool follow, NSMutableArray *into) {
-    MpvView *self = this;
-    for (NSNotificationName name in names) {
-      std::string what = who + " " + [name UTF8String];
-      [into addObject:[[NSNotificationCenter defaultCenter] addObserverForName:name object:w queue:nil
-                                                                    usingBlock:^(NSNotification *n) {
-        self->Emit(what, Describe((NSWindow *)n.object));
-        if (follow) self->Follow();
-      }]];
-    }
+  // Runs `run` each time `w` posts `name`, until Unwatch().
+  void On(NSWindow *w, NSNotificationName name, void (^run)(void)) {
+    [observers_ addObject:[[NSNotificationCenter defaultCenter] addObserverForName:name object:w queue:nil
+                                                                         usingBlock:^(NSNotification *) { run(); }]];
   }
 
-  static void Unwatch(NSMutableArray *list) {
-    for (id o in list) [[NSNotificationCenter defaultCenter] removeObserver:o];
-    [list removeAllObjects];
+  void Unwatch() {
+    for (id o in observers_) [[NSNotificationCenter defaultCenter] removeObserver:o];
+    [observers_ removeAllObjects];
   }
 
   Napi::Value SetOption(const Napi::CallbackInfo &info) {
@@ -305,7 +299,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
   }
 
   // mpv's window appeared (or was replaced): give it the Electron window's frame
-  // once, then make it the Electron window's parent.
+  // once, then make it the Electron window's child, below it.
   void Attach(NSWindow *w) {
     if (!w || w == video_) return;
     Detach();
@@ -314,45 +308,41 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     // (video/out/mac/title_bar.swift); borderless drops its rounded corners and shadow.
     video_.styleMask = NSWindowStyleMaskBorderless;
     video_.hasShadow = NO;
-    // While not attached, so the move does not drag the Electron window. mpv's
-    // windowDidResize records this as its normal-size frame (window.swift:554-558),
-    // which is where fullscreen-off returns to.
+    // mpv's windowDidResize records this as its normal-size frame (window.swift:554-558);
+    // going fullscreen records the frame it leaves (window.swift:133), which is where fullscreen-off returns to.
     [video_ setFrame:win_.frame display:YES];
-    [video_ addChildWindow:win_ ordered:NSWindowAbove];
-    Watch(video_, @[NSWindowDidResizeNotification, NSWindowDidMoveNotification,
-                    NSWindowDidChangeBackingPropertiesNotification, NSWindowDidChangeOcclusionStateNotification],
-          "mpv", true, videoObservers_);
+    [win_ addChildWindow:video_ ordered:NSWindowBelow];
     MpvView *self = this;
-    [videoObservers_ addObject:[[NSNotificationCenter defaultCenter] addObserverForName:NSWindowWillCloseNotification object:video_
-                                                                                  queue:nil usingBlock:^(NSNotification *) { self->Detach(); }]];
+    // A drag moves mpv's window with its parent, so only resizes need matching.
+    On(video_, NSWindowDidResizeNotification, ^{ self->Follow(); });
+    On(video_, NSWindowWillCloseNotification, ^{ self->Detach(); });
+    On(win_, NSWindowDidEndLiveResizeNotification, ^{ self->Match(); });
+    On(win_, NSWindowDidResizeNotification, ^{ if (!self->win_.inLiveResize) self->Match(); });
     [win_ makeKeyAndOrderFront:nil];  // mpv makes its own window key when it opens it
     Emit("attached", "mpv " + Describe(video_) + " | electron " + Describe(win_));
   }
 
   void Detach() {
     if (!video_) return;
-    Unwatch(videoObservers_);
-    [video_ removeChildWindow:win_];
+    Unwatch();
+    [win_ removeChildWindow:video_];
     video_ = nil;
   }
 
-  // mpv's window moved or resized (fullscreen on or off): the Electron window
-  // takes the same frame. Moving a child window never moves its parent.
+  // mpv resized its window (fullscreen on or off): the Electron window takes the
+  // same frame. Detached while it moves, because moving a parent drags its child along.
+  // Nothing happens when the frames already match (Match's own resizes end here too).
   void Follow() {
-    if (!video_ || !win_) return;
-    if (!NSEqualRects(win_.frame, video_.frame)) [win_ setFrame:video_.frame display:YES];
+    if (!video_ || !win_ || NSEqualRects(win_.frame, video_.frame)) return;
+    [win_ removeChildWindow:video_];
+    [win_ setFrame:video_.frame display:YES];
+    [win_ addChildWindow:video_ ordered:NSWindowBelow];
   }
 
-  // The user moved or resized the Electron window: mpv's window takes its frame.
-  // Detached while it moves, because moving a parent drags its child window along.
-  // Nothing happens when the frames already match (Follow's own moves end here too).
-  Napi::Value MatchFrame(const Napi::CallbackInfo &info) {
-    if (video_ && win_ && !NSEqualRects(win_.frame, video_.frame)) {
-      [video_ removeChildWindow:win_];
-      [video_ setFrame:win_.frame display:YES];
-      [video_ addChildWindow:win_ ordered:NSWindowAbove];
-    }
-    return info.Env().Undefined();
+  // The user resized the Electron window: mpv's window takes its frame once the
+  // gesture ends. Setting a child's frame never moves its parent.
+  void Match() {
+    if (video_ && win_ && !NSEqualRects(win_.frame, video_.frame)) [video_ setFrame:win_.frame display:YES];
   }
 
   // mpv's own fullscreen (native-fs=no): mpv resizes its window to the screen

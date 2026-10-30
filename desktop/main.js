@@ -129,9 +129,6 @@ function createWindow() {
     showAddressPage({ address: appOrigin, error: 'no_answer' });
   });
 
-  // Trap: Electron 45 documents 'moved' as an alias of 'move' on macOS, so the name alone does not make this once per drag.
-  win.on('moved', () => mpv?.matchFrame());
-  win.on('resized', () => mpv?.matchFrame());
   let layoutTimer;
   win.on('resize', () => {
     clearTimeout(layoutTimer);
