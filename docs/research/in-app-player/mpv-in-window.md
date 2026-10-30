@@ -38,10 +38,12 @@ Not yet rerun on candidate 3: Hereditary, Conclave, and a long Arrival run. Cand
 - **The mini player moves no window:** it shrinks the picture inside mpv's window with the `video-margin-ratio-left/right/top/bottom` properties, and the page draws the rest of the screen over it. mpv's window only changes size when the whole app window does.
 - **Every call into mpv is asynchronous.** mpv's macOS window code waits on the main thread while mpv's core waits for it, and Electron's JavaScript runs on the main thread, so a blocking call while a file opens or at quit freezes the app.
 - **Bundling (C1.6):** besides libmpv and its libraries, the app must carry MoltenVK and the Vulkan loader, since `gpu-next` draws through Vulkan.
+- **Which window is the parent (changed 30 Oct, PR #258):** the test apps attached the Electron window above mpv's as its child. Dragging the Electron window then had to move mpv's window by hand on every step, one step behind, which made the app jitter. The app now attaches mpv's window as the Electron window's child, ordered below (`addChildWindow:ordered:NSWindowBelow`), so macOS moves both together. mpv's renderer and options are unchanged.
 
 ## Still open
 
 - Hereditary and Conclave on candidate 3, and a 10-minute Arrival run.
+- Arrival's Dolby Vision colours and the fullscreen frame drops, rerun with mpv's window as the child.
 - A dark rectangle may flash on the first Load before mpv's window moves under the page.
 - The Dock icon may switch to mpv's.
 - macOS's own fullscreen (the green button) is untested; the app should keep its own Fullscreen button.
