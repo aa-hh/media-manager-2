@@ -141,7 +141,8 @@ function PlayerStage({
         <>
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-linear-to-b from-[#000000a6] to-transparent" />
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-70 bg-linear-to-b from-transparent to-[#000000d9]" />
-          <div data-player-bar className="absolute inset-x-6 top-5 flex items-center justify-between gap-4">
+          {/* In the desktop app the window buttons sit over the top-left corner, as on the app bar (desktop:pl-20 there). */}
+          <div data-player-bar className="absolute inset-x-6 top-5 flex items-center justify-between gap-4 desktop:pl-14">
             <div className="flex min-w-0 items-center gap-2">
               <Button variant="on-dark" iconOnly icon={<ChevronLeft />} aria-label="Back" onClick={onBack} className="w-9" />
               <div className="flex min-w-0 flex-col gap-0.5">
