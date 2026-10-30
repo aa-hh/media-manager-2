@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { isPlayAddress, onlyPlayerMoves } from './player/model';
 import type { SearchResult } from './Search';
 
 /*
@@ -10,7 +11,9 @@ import type { SearchResult } from './Search';
  * (useScreenReady), until that data is in or HOLD_MS passes; then the two crossfade and a poster card's poster morphs into
  * the title page's poster (timing in globals.css). A fast load therefore never shows a skeleton, and there is never a second
  * whole-page transition when data arrives: content that comes later crossfades over its skeleton (Arrival). Reduced motion,
- * a hidden tab or a browser without view transitions change at once but keep the same hold and scroll rules.
+ * a hidden tab or a browser without view transitions change at once but keep the same hold and scroll rules. The exception
+ * is the player's /play address: going into it, or out of it back to the page under the player, changes at once with no hold,
+ * crossfade or scroll, because that page stays mounted (useLocation).
  */
 
 // razor: one fixed wait for every screen; the new screen shows its skeleton after it. Upgrade path is a per-screen budget.
@@ -25,6 +28,8 @@ const scrollByAddress = new Map<string, number>();
 const address = () => `${window.location.pathname}${window.location.search}`;
 // The address of the screen on show; on back and forward the address has already changed when the event arrives.
 let shownAddress = address();
+// The address of the page on show, which stays mounted under the full-size player (useLocation).
+let pageAddress = shownAddress;
 
 let announcing = false;
 const announce = () => {
@@ -34,6 +39,7 @@ const announce = () => {
   } finally {
     announcing = false;
     shownAddress = address();
+    if (!isPlayAddress(shownAddress)) pageAddress = shownAddress;
   }
 };
 
@@ -74,6 +80,12 @@ const loadImagesInView = (maxWaitMs: number) => {
 };
 
 const changeScreen = (update: () => void, scrollTop: number, morph?: HTMLElement) => {
+  // Only the player changes size: the page under it keeps its scroll, and holding the old screen for the page's data would
+  // leave mpv's resized picture behind a frozen frame.
+  if (onlyPlayerMoves(shownAddress, address(), pageAddress)) {
+    update();
+    return;
+  }
   pendingScroll = scrollTop;
   const run = async () => {
     // The old screen is captured; only the new screen may carry the poster's name now.
@@ -216,13 +228,20 @@ type Location = { pathname: string; search: string; state: unknown };
 
 const read = (): Location => ({ pathname: window.location.pathname, search: window.location.search, state: window.history.state });
 
-export function useLocation(): Location {
+/**
+ * The address. A /play address leaves it unchanged, so the page under the full-size player is never remounted or re-fetched
+ * by Play and Back; the player passes includePlay to see it. A fresh load at /play still reads it (Home shows no page).
+ */
+export function useLocation({ includePlay = false } = {}): Location {
   const [location, setLocation] = useState(read);
   useEffect(() => {
-    const onChange = () => setLocation(read());
+    const onChange = () => {
+      const next = read();
+      if (includePlay || !isPlayAddress(next.pathname)) setLocation(next);
+    };
     window.addEventListener('popstate', onChange);
     return () => window.removeEventListener('popstate', onChange);
-  }, []);
+  }, [includePlay]);
   return location;
 }
 

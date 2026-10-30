@@ -98,6 +98,14 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
   });
 
+  // macOS leaves a transparent window's corners square, so the addon clips them to the system's radius. An addon that does
+  // not load (not rebuilt, or libmpv moved) leaves them square and fails only playback, as before.
+  try {
+    require('./build/Release/mpvview.node').roundCorners(win.getNativeWindowHandle());
+  } catch (error) {
+    console.error('desktop: corners stay square:', error);
+  }
+
   const contents = win.webContents;
   // As in native Mac apps, the app's frame is not selectable; fields and elements marked select-text still are.
   contents.on('dom-ready', () => { void contents.insertCSS(NO_SELECT_CSS); });
