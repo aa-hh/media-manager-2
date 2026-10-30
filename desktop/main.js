@@ -605,5 +605,11 @@ handle('player:setLayout', (wanted) => {
 });
 handle('player:setFullscreen', (on) => setFullscreen(on === true));
 
-app.whenReady().then(createWindow);
+// `npm start` runs Electron's own app, which shows the Electron logo in the Dock. The built app has the planet icon from
+// icon.icns and leaves icon.png out, so only `npm start` finds the file.
+const DEV_ICON = path.join(__dirname, 'icon.png');
+app.whenReady().then(() => {
+  if (fs.existsSync(DEV_ICON)) app.dock.setIcon(DEV_ICON);
+  createWindow();
+});
 app.on('window-all-closed', () => app.quit());
