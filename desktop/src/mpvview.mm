@@ -23,6 +23,7 @@
 
 #include <napi.h>
 #import <Cocoa/Cocoa.h>
+#import <QuartzCore/QuartzCore.h>
 #include <mpv/client.h>
 #include <atomic>
 #include <cstdlib>
@@ -43,6 +44,40 @@ static std::string Describe(NSWindow *w) {
                                      NSStringFromRect(w.screen.frame)] UTF8String];
 }
 
+// The window behind the Buffer from Electron's getNativeWindowHandle(), or nil with a JavaScript exception pending.
+static NSWindow *WindowOf(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (!info[0].IsBuffer() || info[0].As<Napi::Buffer<uint8_t>>().Length() < sizeof(void *)) {
+    Napi::TypeError::New(env, "expected the Buffer from getNativeWindowHandle()").ThrowAsJavaScriptException();
+    return nil;
+  }
+  NSView *handle = (__bridge NSView *)*reinterpret_cast<void **>(info[0].As<Napi::Buffer<uint8_t>>().Data());
+  if (!handle.window) Napi::Error::New(env, "the Electron view has no window yet").ThrowAsJavaScriptException();
+  return handle.window;
+}
+
+// macOS rounds only an opaque window's corners, so the transparent Electron window and mpv's borderless one clip their
+// own content to the radius macOS gives a titled window on this version: the private _cornerRadius (16 pt on macOS 27),
+// else 16 from macOS 26 and 10 before.
+static CGFloat SystemRadius(NSWindow *titled) {
+  if ([titled respondsToSelector:NSSelectorFromString(@"_cornerRadius")]) return [[titled valueForKey:@"_cornerRadius"] doubleValue];
+  return [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:{26, 0, 0}] ? 16 : 10;
+}
+
+static void Round(NSWindow *w, CGFloat radius) {
+  NSView *v = w.contentView;
+  v.wantsLayer = YES;
+  v.layer.cornerRadius = radius;
+  v.layer.cornerCurve = kCACornerCurveContinuous;
+  v.layer.masksToBounds = YES;
+}
+
+// roundCorners(handle): gives the Electron window macOS's corners from its first frame, before mpv exists.
+static Napi::Value RoundCorners(const Napi::CallbackInfo &info) {
+  if (NSWindow *w = WindowOf(info)) Round(w, SystemRadius(w));
+  return info.Env().Undefined();
+}
+
 class MpvView : public Napi::ObjectWrap<MpvView> {
  public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -57,21 +92,15 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
         InstanceMethod("destroy", &MpvView::Destroy),
     });
     exports.Set("MpvView", fn);
+    exports.Set("roundCorners", Napi::Function::New(env, RoundCorners));
     return exports;
   }
 
   MpvView(const Napi::CallbackInfo &info) : Napi::ObjectWrap<MpvView>(info) {
     Napi::Env env = info.Env();
-    if (!info[0].IsBuffer() || info[0].As<Napi::Buffer<uint8_t>>().Length() < sizeof(void *)) {
-      Napi::TypeError::New(env, "expected the Buffer from getNativeWindowHandle()").ThrowAsJavaScriptException();
-      return;
-    }
-    NSView *handle = (__bridge NSView *)*reinterpret_cast<void **>(info[0].As<Napi::Buffer<uint8_t>>().Data());
-    win_ = handle.window;
-    if (!win_) {
-      Napi::Error::New(env, "the Electron view has no window yet").ThrowAsJavaScriptException();
-      return;
-    }
+    win_ = WindowOf(info);
+    if (!win_) return;
+    radius_ = SystemRadius(win_);
 
     mpv_ = mpv_create();
     if (!mpv_) {
@@ -105,6 +134,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
  private:
   NSWindow *win_ = nil;    // Electron's window
   NSWindow *video_ = nil;  // mpv's window, child of win_ once attached
+  CGFloat radius_ = 0;     // macOS's window corner radius
   NSMutableArray *observers_ = [NSMutableArray array];
   mpv_handle *mpv_ = nullptr;
   uint64_t nextId_ = 1000;
@@ -308,10 +338,14 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     // (video/out/mac/title_bar.swift); borderless drops its rounded corners and shadow.
     video_.styleMask = NSWindowStyleMaskBorderless;
     video_.hasShadow = NO;
+    // Clear, so its clipped corners show what is behind the app rather than mpv's window background.
+    video_.opaque = NO;
+    video_.backgroundColor = NSColor.clearColor;
     // mpv's windowDidResize records this as its normal-size frame (window.swift:554-558);
     // going fullscreen records the frame it leaves (window.swift:133), which is where fullscreen-off returns to.
     [video_ setFrame:win_.frame display:YES];
     [win_ addChildWindow:video_ ordered:NSWindowBelow];
+    Corners();
     MpvView *self = this;
     // A drag moves mpv's window with its parent, so only resizes need matching.
     On(video_, NSWindowDidResizeNotification, ^{ self->Follow(); });
@@ -327,6 +361,14 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     Unwatch();
     [win_ removeChildWindow:video_];
     video_ = nil;
+    Corners();
+  }
+
+  // Square while mpv's fullscreen fills the screen, macOS's corners otherwise.
+  void Corners() {
+    CGFloat radius = video_ && NSEqualRects(video_.frame, video_.screen.frame) ? 0 : radius_;
+    Round(win_, radius);
+    if (video_) Round(video_, radius);
   }
 
   // mpv resized its window (fullscreen on or off): the Electron window takes the
@@ -337,6 +379,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     [win_ removeChildWindow:video_];
     [win_ setFrame:video_.frame display:YES];
     [win_ addChildWindow:video_ ordered:NSWindowBelow];
+    Corners();
   }
 
   // The user resized the Electron window: mpv's window takes its frame once the
