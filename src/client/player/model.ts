@@ -57,6 +57,15 @@ export const BACK_SECONDS = 10;
 export const FORWARD_SECONDS = 30;
 const END_GAP_SECONDS = 5;
 
+/** The player's full-size address, /play/<ratingKey>. The page that was on screen stays mounted under it. */
+export const isPlayAddress = (path: string) => path.startsWith('/play/');
+
+/**
+ * Whether moving between two addresses only resizes the player: into /play, or out of it back to `under`, the address of the
+ * page still mounted under it. Any other move is a screen change, with its hold, crossfade and scroll.
+ */
+export const onlyPlayerMoves = (from: string, to: string, under: string) => isPlayAddress(to) || (isPlayAddress(from) && to === under);
+
 /** Where a seek lands: never before the start, never closer than 5 s to the end (Plex's own rule). */
 export const clampSeek = (target: number, duration: number) => {
   const latest = duration > 0 ? Math.max(0, duration - END_GAP_SECONDS) : Number.POSITIVE_INFINITY;

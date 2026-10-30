@@ -14,7 +14,7 @@ import { clockText, continueMeta, minutesText } from '../library/watch';
 import { navigate, replace, replaceScreen, useLocation } from '../navigation';
 import {
   BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, TIMELINE_EVERY_MS,
-  activeMarker, applyEvent, clampSeek, clampVolume, formatLine, originalLabel, hasSoundCommands, hasSubtitleScale, subtitleScaleOf, volumeKey, wheelStep, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
+  activeMarker, applyEvent, clampSeek, isPlayAddress, clampVolume, formatLine, originalLabel, hasSoundCommands, hasSubtitleScale, subtitleScaleOf, volumeKey, wheelStep, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
 } from './model';
@@ -102,7 +102,6 @@ const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 const okWatch = (watch: SeriesWatch) => (watch !== null && watch.kind === 'ok' ? watch : null);
 const episodeCode = (season: number | null, episode: number | null) => (season === null || episode === null ? null : `S${season} E${episode}`);
-const isPlay = (pathname: string) => pathname.startsWith('/play/');
 // mpv sends no event when a load applies saved values it already had, so each start reply carries them; a desktop build
 // older than the page sends neither, and the page keeps what it had.
 type Sound = { volume: number; muted: boolean };
@@ -238,9 +237,9 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     setQualityKbps(undefined);
     setPlexDownSince(null);
     if (to !== undefined) {
-      if (isPlay(window.location.pathname)) replaceScreen(to);
+      if (isPlayAddress(window.location.pathname)) replaceScreen(to);
       else navigate(to);
-    } else if (isPlay(window.location.pathname)) {
+    } else if (isPlayAddress(window.location.pathname)) {
       window.history.back();
     }
     const focus = returnFocus.current;
@@ -254,7 +253,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest('[data-player-root]') === null) returnFocus.current = active;
     const path = `/play/${request.ratingKey}`;
-    if (isPlay(window.location.pathname)) replace(path);
+    if (isPlayAddress(window.location.pathname)) replace(path);
     else navigate(path);
     return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, title, true);
   }, [sendTimeline, startLoad]);
@@ -458,7 +457,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   // screen change, because this runs inside the screen change that brought the address (navigation.ts).
   const playing = session !== null;
   useEffect(() => {
-    if (isPlay(pathname) && !playing) replace('/');
+    if (isPlayAddress(pathname) && !playing) replace('/');
   }, [pathname, playing]);
 
   useEffect(() => {
@@ -705,7 +704,7 @@ export function Player() {
   const markerKey = useRef<string | null>(null);
 
   const session = context?.session ?? null;
-  const layout = session === null ? null : isPlay(pathname) ? 'full' : 'mini';
+  const layout = session === null ? null : isPlayAddress(pathname) ? 'full' : 'mini';
   const playback = session?.playback;
   const screen = playback === undefined ? 'opening' : screenFor(playback, context?.plexDownSince != null);
   const marker = session?.reply == null || playback === undefined ? null : activeMarker(session.reply.markers, playback.position);

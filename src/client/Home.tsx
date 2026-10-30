@@ -10,6 +10,7 @@ import { inScreenChange, navigate, replace, routeFor, useLocation } from './navi
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
 import { lazyScreen, ScreenLoading } from './lazyScreen';
 import { cn } from './lib/utils';
+import { isPlayAddress } from './player/model';
 import { Player } from './player/Player';
 import { Overview } from './title/Overview';
 
@@ -74,7 +75,10 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
 
   useEffect(() => {
     // Replacing the address while typing also fires this; keep the typed text unless the address differs from it.
-    const onPopState = () => setQuery((current) => (current.trim() === readSearchQuery() ? current : readSearchQuery()));
+    // A /play address carries no query: the search under the full-size player keeps its own.
+    const onPopState = () => {
+      if (!isPlayAddress(window.location.pathname)) setQuery((current) => (current.trim() === readSearchQuery() ? current : readSearchQuery()));
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);

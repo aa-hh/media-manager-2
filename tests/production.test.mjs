@@ -11709,9 +11709,22 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
   const {
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
     activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands, wheelStep,
-    SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale, formatLine, originalLabel,
+    SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale, formatLine, originalLabel, isPlayAddress, onlyPlayerMoves,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
+
+  // Treating every move out of /play as player-only turns this red: Up Next closing to the Library would keep the title
+  // page's scroll. Treating a move into /play as a screen change brings back the held frame over mpv's resized picture.
+  await t.test('only moves into /play, or back to the page under the player, skip the screen change', () => {
+    assert.equal(isPlayAddress('/play/34613'), true);
+    assert.equal(isPlayAddress('/player'), false);
+    assert.equal(onlyPlayerMoves('/movie/95', '/play/34613', '/movie/95'), true);
+    assert.equal(onlyPlayerMoves('/play/34613', '/play/40000', '/movie/95'), true);
+    assert.equal(onlyPlayerMoves('/play/34613', '/movie/95', '/movie/95'), true);
+    assert.equal(onlyPlayerMoves('/play/34613', '/search?q=lobster', '/search?q=lobster'), true);
+    assert.equal(onlyPlayerMoves('/play/34613', '/', '/movie/95'), false);
+    assert.equal(onlyPlayerMoves('/movie/95', '/', '/movie/95'), false);
+  });
 
   // Letting a seek pass 5 s before the end, or go below zero, turns this red.
   await t.test('seeks stop 5 s before the end and never go below zero', () => {

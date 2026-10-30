@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isPlayAddress } from '../player/model';
 
 // The server types in src/server/history.ts and src/server/blocklist.ts are the source of truth.
 export type Service = 'sonarr' | 'radarr';
@@ -143,6 +144,8 @@ export const useHistory = (onUnauthorized: () => void, active: boolean) => {
   useEffect(() => {
     if (!active) return;
     const onPopState = () => {
+      // Expanding the mini player keeps this page mounted under it (navigation.ts useLocation), with its link.
+      if (isPlayAddress(window.location.pathname)) return;
       const next = readLink();
       setLink((current) => (JSON.stringify(current) === JSON.stringify(next.link) ? current : next.link));
       setService(next.service);
