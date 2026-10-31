@@ -16,7 +16,9 @@ sealed interface LinkOutcome {
 
 /**
  * Signs the TV in with a Plex link code: starts an attempt, hands the code to [showCode], then asks every 2 s until the
- * code's `expiresAt`. A short network or Plex outage while waiting is waited out. Cancelling the coroutine (Back on the
+ * server says the code ran out (`flow_expired`). A short network or Plex outage while waiting is waited out. The TV's
+ * clock is never compared with the server's `expiresAt`, since a TV clock can be minutes out; a local cap of
+ * [MAX_WAIT_MS] from when the code arrived only stops a loop the server never ends. Cancelling the coroutine (Back on the
  * code screen) tells the server to drop the attempt.
  */
 class LinkSignIn(
@@ -32,8 +34,9 @@ class LinkSignIn(
             is ApiResult.Failed -> return LinkOutcome.Refused(null, null)
         }
         showCode(code)
+        val giveUpAt = now() + MAX_WAIT_MS
         try {
-            while (now() < code.expiresAt) {
+            while (now() < giveUpAt) {
                 pause(POLL_MS)
                 when (val progress = auth.linkComplete()) {
                     is ApiResult.Ok -> if (progress.status == 200) {
@@ -57,5 +60,8 @@ class LinkSignIn(
 
     companion object {
         const val POLL_MS = 2_000L
+
+        /** An attempt lives at most 10 minutes on the server (`auth.ts` link attempts); one more for slow replies. */
+        const val MAX_WAIT_MS = 11 * 60_000L
     }
 }

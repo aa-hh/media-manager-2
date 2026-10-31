@@ -135,18 +135,37 @@ class ServerClientTest {
         assertEquals(1, store.saved.size)
     }
 
-    // A code nobody enters runs out; asking forever turns this red.
+    // A code nobody enters runs out when the server says so; asking forever turns this red.
     @Test
-    fun linkSignInStopsWhenTheCodeRunsOut() = runTest {
+    fun linkSignInStopsWhenTheServerSaysTheCodeRanOut() = runTest {
         server.enqueue(MockResponse().setResponseCode(201).setBody("""{"code":"K7Q2","expiresAt":5000}"""))
-        repeat(3) { server.enqueue(MockResponse().setResponseCode(202).setBody("""{"status":"pending"}""")) }
-        var clock = 0L
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"status":"pending"}"""))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"flow_expired"}"""))
         val client = newClient()
 
-        val outcome = LinkSignIn(AuthApi(client), client, now = { clock }, pause = { clock += it }).signIn("Lounge TV") {}
+        val outcome = LinkSignIn(AuthApi(client), client, now = { 0L }, pause = {}).signIn("Lounge TV") {}
 
         assertEquals(LinkOutcome.Expired, outcome)
-        assertEquals(4, server.requestCount)
+        assertEquals(3, server.requestCount)
+    }
+
+    // A TV clock far ahead of the server's must not end sign-in before the first ask; comparing the TV clock with the
+    // server's expiresAt turns this red. The local cap still stops a server that never answers flow_expired.
+    @Test
+    fun aSkewedTvClockDoesNotEndSignInEarly() = runTest {
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"code":"K7Q2","expiresAt":1000}"""))
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"status":"pending"}"""))
+        server.enqueue(MockResponse().setBody("""{"expiresAt":99}""").addHeader("Set-Cookie", "mm_session=abc123; Max-Age=7776000; Path=/"))
+        val client = newClient()
+        val tenMinutesFast = 1000L + 600_000L
+        assertEquals(LinkOutcome.SignedIn, LinkSignIn(AuthApi(client), client, now = { tenMinutesFast }, pause = {}).signIn("Lounge TV") {})
+
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"code":"K7Q3","expiresAt":1000}"""))
+        repeat(3) { server.enqueue(MockResponse().setResponseCode(202).setBody("""{"status":"pending"}""")) }
+        var clock = 0L
+        val capped = LinkSignIn(AuthApi(client), client, now = { clock }, pause = { clock += LinkSignIn.MAX_WAIT_MS / 3 })
+        assertEquals(LinkOutcome.Expired, capped.signIn("Lounge TV") {})
+        assertEquals(7, server.requestCount)
     }
 
     // Back on the code screen drops the attempt on the server; leaving it running turns this red.
