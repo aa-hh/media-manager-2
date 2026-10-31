@@ -55,12 +55,22 @@ type AppBarDesktopProps = ComponentProps<'header'> & {
   navLabel?: string;
   /** Right end: the ghost Sign out button and its problem text. */
   actions?: ReactNode;
+  /** Link props that turn the logo and product name into a link home; left out during setup, which has no page to go back to. */
+  home?: ComponentProps<'a'>;
   /** Signed out: the product name only. */
   signedOut?: boolean;
 };
 
 /** Top bar, 64 px, card at 70% over a 24 px blur so what scrolls under it shows through, a line under, page-margin side padding (80 px on the left in the desktop app). The 28 px logo is the small-size render, design/app-logo/small-on-light.png, or small-on-dark.png in dark mode. */
-function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, signedOut = false, className, ...props }: AppBarDesktopProps) {
+function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, signedOut = false, home, className, ...props }: AppBarDesktopProps) {
+  const brand = 'flex shrink-0 items-center gap-2.5 font-ui text-base font-extrabold tracking-[-0.2px] text-foreground';
+  const mark = (
+    <>
+      <img src={logo} alt="" width={28} height={28} className="size-7 dark:hidden" />
+      <img src={logoOnDark} alt="" width={28} height={28} className="hidden size-7 dark:block" />
+      {productName}
+    </>
+  );
   return (
     <header
       className={cn(
@@ -71,11 +81,11 @@ function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, s
       )}
       {...props}
     >
-      <div className="flex shrink-0 items-center gap-2.5 font-ui text-base font-extrabold tracking-[-0.2px] text-foreground">
-        <img src={logo} alt="" width={28} height={28} className="size-7 dark:hidden" />
-        <img src={logoOnDark} alt="" width={28} height={28} className="hidden size-7 dark:block" />
-        {productName}
-      </div>
+      {home === undefined ? (
+        <div className={brand}>{mark}</div>
+      ) : (
+        <a {...home} className={cn(brand, 'rounded-xs focus-ring', home.className)}>{mark}</a>
+      )}
       {!signedOut && (
         <>
           <div className="flex min-w-0 flex-1">{search}</div>
