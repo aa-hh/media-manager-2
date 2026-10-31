@@ -269,6 +269,13 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     if (ev->event_id != MPV_EVENT_COMMAND_REPLY && ev->event_id != MPV_EVENT_SET_PROPERTY_REPLY &&
         ev->event_id != MPV_EVENT_GET_PROPERTY_REPLY)
       return false;
+    // Drain's own ask for window-id, after the observer missed mpv's window.
+    if (ev->event_id == MPV_EVENT_GET_PROPERTY_REPLY && ev->reply_userdata == kWindowId) {
+      auto *p = static_cast<mpv_event_property *>(ev->data);
+      if (ev->error >= 0 && p->format == MPV_FORMAT_STRING && p->data)
+        Attach((__bridge NSWindow *)(void *)(intptr_t)strtoll(*static_cast<char **>(p->data), nullptr, 10));
+      return true;
+    }
     auto it = replies_.find(ev->reply_userdata);
     if (it == replies_.end()) return true;
     Napi::Promise::Deferred d = it->second;
@@ -323,6 +330,11 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
         }
         o.Set("value", reason);
       }
+      // mpv makes its window on the main thread after the video reconfig, so the observer can read window-id before the
+      // window exists and then hear no later change: the picture then sits in mpv's own unattached window, off the app's
+      // frame. Once a frame is drawn the window exists, so ask again.
+      if (!video_ && ev->event_id == MPV_EVENT_PLAYBACK_RESTART)
+        mpv_get_property_async(mpv_, kWindowId, "window-id", MPV_FORMAT_STRING);
       if (!callback_.IsEmpty()) callback_.Call({o});
       if (env.IsExceptionPending()) return;
     }
@@ -337,7 +349,11 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     // mpv's border=no keeps a titled window with a hidden title bar
     // (video/out/mac/title_bar.swift); borderless drops its rounded corners and shadow.
     video_.styleMask = NSWindowStyleMaskBorderless;
-    video_.hasShadow = NO;
+    // macOS draws a transparent window's shadow around every edge of what it draws, so the Electron window's shadow
+    // traced the player's scrims as lines across the picture. mpv's window covers the same frame and is filled edge to
+    // edge, so it carries the shadow while attached.
+    video_.hasShadow = YES;
+    win_.hasShadow = NO;
     // Clear, so its clipped corners show what is behind the app rather than mpv's window background.
     video_.opaque = NO;
     video_.backgroundColor = NSColor.clearColor;
@@ -360,6 +376,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     if (!video_) return;
     Unwatch();
     [win_ removeChildWindow:video_];
+    win_.hasShadow = YES;
     video_ = nil;
     Corners();
   }

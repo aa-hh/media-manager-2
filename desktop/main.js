@@ -292,6 +292,11 @@ const ensureMpv = () => {
   mpv = new MpvView(win.getNativeWindowHandle());
   // Plex addresses must never go to youtube-dl or yt-dlp.
   void mpv.setOption('ytdl', 'no');
+  // libmpv finds no cache folder of its own, so every new picture setup compiled its shaders again (the first Play of a
+  // launch waited 3.5 s for its first frame). Kept beside desktop.json, compiled shaders carry over between launches.
+  const shaderCache = path.join(app.getPath('userData'), 'mpv-shader-cache');
+  fs.mkdirSync(shaderCache, { recursive: true });
+  void mpv.setOption('gpu-shader-cache-dir', shaderCache);
   for (const name of OBSERVED) mpv.observe(name);
   mpv.onEvent(onMpvEvent);
   return mpv;
@@ -444,7 +449,9 @@ async function loadAddress(playing, address, startSeconds, directPlay) {
     ['sub-scale', String(savedSubtitleScale())],
     ['demuxer-max-bytes', String(loadAheadBytes())],
     ['demuxer-max-back-bytes', String(50 * MiB)],
-    ['stream-lavf-o', directPlay ? 'reconnect=1,reconnect_on_network_error=1,reconnect_delay_max=5' : ''],
+    // multiple_requests: FFmpeg reuses one connection for each jump within the file instead of a new one (0.2-0.3 s to
+    // Plex from here); opening a direct-play file jumped several times and took 2 s.
+    ['stream-lavf-o', directPlay ? 'reconnect=1,reconnect_on_network_error=1,reconnect_delay_max=5,multiple_requests=1' : ''],
     // A transcode already starts at its offset (copyts=1 keeps the file's times), so only direct play seeks.
     ['start', directPlay ? `+${startSeconds}` : 'none'],
   ];
