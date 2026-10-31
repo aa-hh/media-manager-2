@@ -149,6 +149,16 @@ class ServerClientTest {
         assertEquals(3, server.requestCount)
     }
 
+    // The server prunes a run-out attempt when another sign-in starts, so a late ask gets invalid_flow; showing that as
+    // a refusal instead of offering a new code turns this red.
+    @Test
+    fun aPrunedAttemptCountsAsRunOut() = runTest {
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"code":"K7Q2","expiresAt":5000}"""))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"invalid_flow"}"""))
+        val client = newClient()
+        assertEquals(LinkOutcome.Expired, LinkSignIn(AuthApi(client), client, now = { 0L }, pause = {}).signIn("Lounge TV") {})
+    }
+
     // A TV clock far ahead of the server's must not end sign-in before the first ask; comparing the TV clock with the
     // server's expiresAt turns this red. The local cap still stops a server that never answers flow_expired.
     @Test

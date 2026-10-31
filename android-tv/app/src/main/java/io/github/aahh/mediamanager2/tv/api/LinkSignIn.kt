@@ -44,7 +44,8 @@ class LinkSignIn(
                         return LinkOutcome.SignedIn
                     }
                     is ApiResult.Error -> when {
-                        progress.code == "flow_expired" -> return LinkOutcome.Expired
+                        // The server prunes a run-out attempt when anyone starts a sign-in, so a late ask can get invalid_flow.
+                        progress.code == "flow_expired" || progress.code == "invalid_flow" -> return LinkOutcome.Expired
                         progress.code == "in_progress" || progress.status >= 500 -> Unit
                         else -> return LinkOutcome.Refused(progress.status, progress.code)
                     }
