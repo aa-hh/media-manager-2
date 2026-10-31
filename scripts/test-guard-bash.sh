@@ -31,12 +31,17 @@ denied 'android-tv/gradlew assembleDebug'
 denied 'sh android-tv/gradlew test'
 denied 'cd android-tv && ./gradlew test'
 denied 'env JAVA_HOME=x ./gradlew test'
+denied 'JAVA_HOME=x ./gradlew test'
+denied 'A=1 B=2 gradle build'
+denied 'cd android-tv && GRADLE_OPTS=-Xmx2g ./gradlew test'
 denied 'npm test'
 
 allowed 'sh scripts/android-tv.sh test'
 allowed 'git log -- android-tv/gradlew'
 allowed 'cat android-tv/gradle/libs.versions.toml'
 allowed 'sh scripts/test.sh'
+allowed 'ANDROID_TV_DEVICE=tv sh scripts/android-tv.sh install'
+allowed 'DEPLOY_HOST=shenzhou sh scripts/deploy.sh'
 
 if [ "$FAILURES" -ne 0 ]; then
     echo "guard-bash: $FAILURES case(s) failed" >&2
