@@ -6,7 +6,7 @@ const meta = {
   title: 'Rows — activity & settings/RowSignedInTv',
   component: RowSignedInTv,
   tags: ['autodocs'],
-  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/dFQMjELOx6ObLS0qOG3NCF?node-id=23-1657' } },
+  parameters: { design: { type: 'figma', url: 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=154-1621' } },
   // Settings lists the rows in this 420 px column.
   decorators: [
     (Story) => (
