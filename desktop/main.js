@@ -320,8 +320,14 @@ const mark = (playing, step) => {
 const writeMarks = (playing) => {
   if (!playing?.marks || playing.marksWritten) return;
   playing.marksWritten = true;
-  const line = { at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, ...playing.marks };
-  fs.appendFile(path.join(app.getPath('userData'), 'play-timings.log'), `${JSON.stringify(line)}\n`, () => {});
+  // Written 3 s later, so the addon's window notes from the first frame make it into the line.
+  setTimeout(() => {
+    const line = {
+      at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, ...playing.marks,
+      ...(playing.windowNotes ? { windowNotes: playing.windowNotes } : {}),
+    };
+    fs.appendFile(path.join(app.getPath('userData'), 'play-timings.log'), `${JSON.stringify(line)}\n`, () => {});
+  }, 3_000);
 };
 // Sends the position held back while the load opened, once showsPosition lets it through.
 const release = (playing) => {
@@ -388,7 +394,9 @@ function onMpvEvent(event) {
       current = null;
       send('endOfFile');
     } else if (meaning !== null) void recover(meaning);
-  } else if (event.event === 'window' && event.name === 'attached') {
+  } else if (event.event === 'window') {
+    if (current?.marks) (current.windowNotes ??= []).push(`${Date.now() - current.askedAt} ${event.name}: ${event.value}`);
+    if (event.name !== 'attached') return;
     mark(current, 'window');
     applyLayout();
   }

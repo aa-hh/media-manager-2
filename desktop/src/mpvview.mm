@@ -272,8 +272,9 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     // Drain's own ask for window-id, after the observer missed mpv's window.
     if (ev->event_id == MPV_EVENT_GET_PROPERTY_REPLY && ev->reply_userdata == kWindowId) {
       auto *p = static_cast<mpv_event_property *>(ev->data);
-      if (ev->error >= 0 && p->format == MPV_FORMAT_STRING && p->data)
-        Attach((__bridge NSWindow *)(void *)(intptr_t)strtoll(*static_cast<char **>(p->data), nullptr, 10));
+      bool has = ev->error >= 0 && p->format == MPV_FORMAT_STRING && p->data;
+      Emit("asked", has ? *static_cast<char **>(p->data) : std::string("none: ") + mpv_error_string(ev->error));
+      if (has) Attach((__bridge NSWindow *)(void *)(intptr_t)strtoll(*static_cast<char **>(p->data), nullptr, 10));
       return true;
     }
     auto it = replies_.find(ev->reply_userdata);
@@ -312,6 +313,9 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
           o.Set("value", *static_cast<char **>(p->data));
         else
           o.Set("value", env.Null());
+        // razor: diagnostic notes for play-timings.log while the missed attach is tracked down; remove with them.
+        if (ev->reply_userdata == kWindowId)
+          Emit("seen", std::string(has ? *static_cast<char **>(p->data) : "none") + (video_ ? " (attached)" : " (unattached)"));
         if (ev->reply_userdata == kWindowId && has)
           Attach((__bridge NSWindow *)(void *)(intptr_t)strtoll(*static_cast<char **>(p->data), nullptr, 10));
       } else if (ev->event_id == MPV_EVENT_LOG_MESSAGE) {
@@ -333,6 +337,11 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
       // mpv makes its window on the main thread after the video reconfig, so the observer can read window-id before the
       // window exists and then hear no later change: the picture then sits in mpv's own unattached window, off the app's
       // frame. Once a frame is drawn the window exists, so ask again.
+      if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART) {
+        std::string all;
+        for (NSWindow *w in NSApp.windows) all += " [" + std::to_string((intptr_t)(__bridge void *)w) + " " + Describe(w) + "]";
+        Emit("restart", std::string(video_ ? "attached" : "unattached") + " | app " + std::to_string((intptr_t)(__bridge void *)win_) + " | windows" + all);
+      }
       if (!video_ && ev->event_id == MPV_EVENT_PLAYBACK_RESTART)
         mpv_get_property_async(mpv_, kWindowId, "window-id", MPV_FORMAT_STRING);
       if (!callback_.IsEmpty()) callback_.Call({o});
