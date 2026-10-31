@@ -81,8 +81,9 @@ is_risk_path() {
     src/server/services/arr/queue.ts|src/server/services/arr/commands.ts) return 0 ;;
     # The desktop app holds the stream-address and Plex-token boundary.
     desktop/main.js|desktop/preload.js|desktop/lib/*) return 0 ;;
-    # The TV app holds the same boundary, plus its build and self-update.
-    android-tv/app/build.gradle.kts) return 0 ;;
+    # The TV app holds the same boundary, plus its build, permissions and self-update.
+    android-tv/gradle/*|android-tv/settings.gradle.kts|android-tv/build.gradle.kts|android-tv/app/build.gradle.kts) return 0 ;;
+    android-tv/app/src/main/AndroidManifest.xml|android-tv/app/src/main/res/xml/network_security_config.xml) return 0 ;;
     android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/api/*|android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/player/*|android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/update/*) return 0 ;;
     # settings.json registers the hooks, so it is as dangerous as the hooks themselves.
     .githooks/*|scripts/*|.github/*|.claude/hooks/*|.claude/settings.json) return 0 ;;
