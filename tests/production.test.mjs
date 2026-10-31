@@ -1594,8 +1594,8 @@ test('a TV signs in with a Plex link code and keeps a named 90-day session', asy
     assert.deepEqual(await tvExpired.json(), { error: 'session_expired' });
   });
 
-  // Listing a browser's session or an expired TV, signing out a browser by its row id, leaving the TV's session working
-  // after sign-out, or skipping the browser headers on sign-out turns this red.
+  // Listing a browser's session or an expired TV, leaving the TV's session working after sign-out, skipping the browser
+  // headers on sign-out, or naming a TV by an id a later TV can reuse (such as SQLite's rowid) turns this red.
   await t.test('Settings lists signed-in TVs and signs one out', async () => {
     const { app, clock, database } = await makeApp();
     const web = await signIn(app);
@@ -1603,19 +1603,18 @@ test('a TV signs in with a Plex link code and keeps a named 90-day session', asy
     const livingRoomAt = clock.value;
     clock.value += 60_000;
     const den = await signInTv(app, 'Den TV');
-    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at, device_name, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run('old', '42', clock.value, 'Old TV', 1);
+    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at, device_name, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('old', '42', clock.value, 'Old TV', 'o'.repeat(22), 1);
     const listed = await (await app.request('/api/devices', { headers: { Cookie: web.session } })).json();
     assert.deepEqual(listed.devices.map(({ name, signedInAt, expiresAt }) => ({ name, signedInAt, expiresAt })), [
       { name: 'Living room TV', signedInAt: livingRoomAt, expiresAt: livingRoomAt + 90 * DAY },
       { name: 'Den TV', signedInAt: clock.value, expiresAt: clock.value + 90 * DAY },
     ]);
     const [livingRoomId] = listed.devices.map(({ id }) => id);
-    assert.ok(Number.isInteger(livingRoomId));
+    assert.match(livingRoomId, /^[A-Za-z0-9_-]{22}$/);
     const unsafe = await app.request(`/api/devices/${livingRoomId}/sign-out`, { method: 'POST', headers: { Cookie: web.session } });
     assert.equal(unsafe.status, 403);
-    const webId = database.prepare('SELECT rowid AS id FROM sessions WHERE device_name IS NULL').get().id;
-    for (const id of [webId, 999]) {
+    for (const id of ['1', 'x'.repeat(22)]) {
       const missing = await post(app, `/api/devices/${id}/sign-out`, {}, web.session);
       assert.equal(missing.status, 404, String(id));
       assert.deepEqual(await missing.json(), { error: 'not_found' });
@@ -1626,6 +1625,16 @@ test('a TV signs in with a Plex link code and keeps a named 90-day session', asy
     for (const session of [den.session, web.session]) assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
     const after = await (await app.request('/api/devices', { headers: { Cookie: web.session } })).json();
     assert.deepEqual(after.devices.map(({ name }) => name), ['Den TV']);
+
+    // TV A holds the newest row, so once it is signed out TV B takes the same rowid; A's id from a stale list must miss B.
+    const tvA = await signInTv(app, 'TV A');
+    const tvAId = (await (await app.request('/api/devices', { headers: { Cookie: web.session } })).json()).devices.at(-1).id;
+    assert.equal((await post(app, `/api/devices/${tvAId}/sign-out`, {}, web.session)).status, 204);
+    assert.equal((await app.request('/api/session', { headers: { Cookie: tvA.session } })).status, 401);
+    const tvB = await signInTv(app, 'TV B');
+    const stale = await post(app, `/api/devices/${tvAId}/sign-out`, {}, web.session);
+    assert.equal(stale.status, 404);
+    assert.equal((await app.request('/api/session', { headers: { Cookie: tvB.session } })).status, 200);
   });
 });
 
@@ -5415,8 +5424,8 @@ test('the sessions device columns leave existing browser sessions as they were',
   migrateDatabase(database, applicationMigrations.slice(0, deviceColumns));
   database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('web', '42', 1);
   migrateDatabase(database, applicationMigrations);
-  assert.deepEqual({ ...database.prepare('SELECT token_hash, owner_id, expires_at, device_name, created_at FROM sessions').get() },
-    { token_hash: 'web', owner_id: '42', expires_at: 1, device_name: null, created_at: null });
+  assert.deepEqual({ ...database.prepare('SELECT token_hash, owner_id, expires_at, device_name, device_id, created_at FROM sessions').get() },
+    { token_hash: 'web', owner_id: '42', expires_at: 1, device_name: null, device_id: null, created_at: null });
   database.close();
 });
 

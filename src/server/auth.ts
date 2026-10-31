@@ -237,8 +237,9 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     if (count >= MAX_SESSIONS) return { kind: 'unavailable' as const };
     const session = randomBytes(32).toString('base64url');
     const expiresAt = options.now() + (deviceName === undefined ? SESSION_LIFETIME_MS : DEVICE_SESSION_LIFETIME_MS);
-    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at, device_name, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(hash(session), ownerUserId, expiresAt, deviceName ?? null, options.now());
+    // A TV gets a random id for Settings' sign-out; the row's rowid would be reused once its row is deleted.
+    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at, device_name, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(hash(session), ownerUserId, expiresAt, deviceName ?? null, deviceName === undefined ? null : randomBytes(16).toString('base64url'), options.now());
     return { kind: 'success' as const, session, expiresAt };
   };
 
@@ -725,13 +726,13 @@ export const createAuthentication = (options: AuthenticationOptions) => {
   };
 
   // Signed-in TVs for Settings. A browser's session is never listed here or signed out by id.
-  const devices = () => (database.prepare(`SELECT rowid AS id, device_name AS name, created_at AS signedInAt, expires_at AS expiresAt
-    FROM sessions WHERE device_name IS NOT NULL AND expires_at > ? ORDER BY rowid`).all(options.now()) as Array<{
-    id: number; name: string; signedInAt: number; expiresAt: number;
+  const devices = () => (database.prepare(`SELECT device_id AS id, device_name AS name, created_at AS signedInAt, expires_at AS expiresAt
+    FROM sessions WHERE device_name IS NOT NULL AND device_id IS NOT NULL AND expires_at > ? ORDER BY created_at, rowid`).all(options.now()) as Array<{
+    id: string; name: string; signedInAt: number; expiresAt: number;
   }>).map((row) => ({ ...row }));
 
-  const signOutDevice = (id: number) => {
-    const removed = database.prepare('DELETE FROM sessions WHERE rowid = ? AND device_name IS NOT NULL RETURNING token_hash')
+  const signOutDevice = (id: string) => {
+    const removed = database.prepare('DELETE FROM sessions WHERE device_id = ? AND device_name IS NOT NULL RETURNING token_hash')
       .get(id) as { token_hash: string } | undefined;
     if (removed !== undefined) plexTokens.delete(removed.token_hash);
     return removed !== undefined;

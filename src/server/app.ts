@@ -607,8 +607,9 @@ export const createApp = (options: CreateAppOptions) => {
     mediaServer: effectiveOwner(options.database, options.ownerPlexId)?.provider ?? 'plex',
   }));
   app.get('/api/devices', (context) => context.json({ devices: authentication.devices() }));
-  app.post('/api/devices/:id{[0-9]{1,15}}/sign-out', (context) => (
-    authentication.signOutDevice(Number(context.req.param('id')))
+  // A device id is 16 random bytes in base64url; any other shape falls through to the 404 below without a query.
+  app.post('/api/devices/:id{[A-Za-z0-9_-]{22}}/sign-out', (context) => (
+    authentication.signOutDevice(context.req.param('id'))
       ? context.body(null, 204)
       : context.json({ error: 'not_found' }, 404)
   ));
