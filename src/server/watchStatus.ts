@@ -1,3 +1,4 @@
+import type { EventHub } from './events.js';
 import type { Episode, Movie, Series } from './services/arr.js';
 import { isInsideFolder } from './services/connection.js';
 import type { createPlex } from './services/plex.js';
@@ -63,6 +64,9 @@ type Snapshot = {
 };
 
 const CACHE_MS = 60_000;
+// Plex webhook events that change what the app shows: a saved position (pause, stop), a watched mark (scrobble), and the
+// top of Continue Watching (play). Resume changes nothing a pause did not.
+const WATCH_EVENTS = new Set(['media.play', 'media.pause', 'media.stop', 'media.scrobble']);
 // A listing this old no longer answers at once, and a failed rebuild no longer keeps it.
 const OLD_LISTING_MS = 300_000;
 // With no listing, or one OLD_LISTING_MS old, a load holds a page up to this long for the rebuild before falling back to
@@ -102,13 +106,17 @@ const playable = (item: Item): Playable | null => {
   };
 };
 
-// Plex watch marks for library titles, from one in-memory listing of every Plex movie and show library, kept 60 seconds.
-// Never throws: a Plex that fails with no listing under 5 minutes old reads as unavailable, a Jellyfin owner or unset
-// Plex as off.
-export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }) }: {
+// Plex watch marks for library titles, from one in-memory listing of every Plex movie and show library, kept 60 seconds
+// or until Plex's webhook says something was played, paused, stopped or watched.
+// Its reads never throw: a Plex that fails with no listing under 5 minutes old reads as unavailable, a Jellyfin owner or
+// unset Plex as off. ensureWebhook throws when plex.tv refuses.
+export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, sleep = (ms) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }) }: {
   plex: ReturnType<typeof createPlex>;
   enabled: () => boolean;
   now: () => number;
+  events: Pick<EventHub, 'publish'>;
+  /** This server's Plex webhook address; undefined until the address and webhook secret are saved. */
+  webhookUrl: () => string | undefined;
   sleep?: (ms: number) => Promise<void>;
 }) => {
   const capped = <T>(work: Promise<T>) => Promise.race([work, sleep(WATCH_WAIT_MS).then(() => undefined)]);
@@ -152,7 +160,7 @@ export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Prom
   };
 
   // One rebuild at a time, and every attempt, failed or not, restarts the 60 seconds, so Plex is asked at most once per
-  // CACHE_MS. A listing under OLD_LISTING_MS old, counted from when it was built, answers at once while the next one
+  // CACHE_MS besides the rebuilds Plex's webhook asks for. A listing under OLD_LISTING_MS old, counted from when it was built, answers at once while the next one
   // builds in the background; on purpose, a Resume or the first title page after an import within 5 minutes of the last
   // listing can still use that listing. With no listing, or one OLD_LISTING_MS old, a load waits up to WATCH_WAIT_MS for
   // the rebuild and falls back to the old listing only when that wait runs out, which is not cached as a failure. A
@@ -160,15 +168,16 @@ export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Prom
   let cached: { at: number; builtAt: number; value: Snapshot | undefined } | undefined;
   let building: Promise<Snapshot | undefined> | undefined;
   const recent = () => (cached !== undefined && now() - cached.builtAt < OLD_LISTING_MS ? cached.value : undefined);
+  const rebuild = () => (building ??= build().catch(() => undefined).then((value) => {
+    const at = now();
+    cached = value === undefined ? { at, builtAt: cached?.builtAt ?? at, value: recent() } : { at, builtAt: at, value };
+    building = undefined;
+    return value;
+  }));
   const snapshot = async (): Promise<Snapshot | undefined> => {
     if (cached !== undefined && now() - cached.at < CACHE_MS) return recent();
-    building ??= build().catch(() => undefined).then((value) => {
-      const at = now();
-      cached = value === undefined ? { at, builtAt: cached?.builtAt ?? at, value: recent() } : { at, builtAt: at, value };
-      building = undefined;
-      return value;
-    });
-    return recent() ?? (await capped(building)) ?? cached?.value;
+    const pending = rebuild();
+    return recent() ?? (await capped(pending)) ?? cached?.value;
   };
 
   const matchMovie = (found: Snapshot, movie: Movie) => (
@@ -199,6 +208,38 @@ export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Prom
   const isOff = (value: Off | Snapshot): value is Off => 'kind' in value;
 
   return {
+    /**
+     * Plex's webhook, from any device. For an event in WATCH_EVENTS the listing is read again, then open pages hear the
+     * show's or movie's ratingKey in a 'watch' event and read their watch status again.
+     */
+    receiveWebhook(payload: unknown): 'ok' | 'ignored' | 'invalid' {
+      if (!isRecord(payload) || typeof payload.event !== 'string') return 'invalid';
+      if (!WATCH_EVENTS.has(payload.event)) return 'ignored';
+      const item = isRecord(payload.Metadata) ? payload.Metadata : undefined;
+      const ratingKey = key(item?.type === 'episode' ? item.grandparentRatingKey : item?.type === 'movie' ? item.ratingKey : undefined);
+      if (ratingKey === null || !enabled()) return 'ignored';
+      // A listing already under way may predate the change, so a new one follows it, uncapped: pages read only once it is
+      // in. A failed listing tells no page, so none swaps its marks for the failure.
+      void Promise.resolve(building).then(rebuild).then((value) => {
+        if (value !== undefined) events.publish('watch', { ratingKey });
+      });
+      return 'ok';
+    },
+
+    /**
+     * Keeps this server's webhook on the owner's plex.tv list, replacing an older one of ours at the same address (a new
+     * secret); webhooks other apps added stay. False while the address or secret is unsaved, or Plex is off.
+     */
+    async ensureWebhook() {
+      const url = webhookUrl();
+      if (url === undefined || !enabled()) return false;
+      const ours = url.slice(0, url.lastIndexOf('/') + 1);
+      const listed = await plex.webhooks();
+      const mine = listed.filter((entry) => entry.startsWith(ours));
+      if (mine.length !== 1 || mine[0] !== url) await plex.setWebhooks([...listed.filter((entry) => !entry.startsWith(ours)), url]);
+      return true;
+    },
+
     async forLibrary(records: Array<{ service: Service; record: Series | Movie }>): Promise<{ watch: LibraryWatch; byTitle: Map<string, TitleWatch> }> {
       const byTitle = new Map<string, TitleWatch>();
       const found = await start();

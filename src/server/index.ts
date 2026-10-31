@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { createAdd } from './add.js';
 import { createApiRoutes } from './api.js';
-import { createApp } from './app.js';
+import { createApp, plexWebhookCode } from './app.js';
 import { createBlocklist } from './blocklist.js';
 import { createBackup } from './backup.js';
 import { createBackupStore, readBackupDestination } from './backupDestination.js';
@@ -102,6 +102,12 @@ if (database !== undefined) {
     plex,
     enabled: () => mediaServer().name === 'plex' && readSetting(openedDatabase, 'credentials', 'plex.token') !== undefined,
     now: Date.now,
+    events,
+    webhookUrl: () => {
+      const base = readSetting(openedDatabase, 'serviceAddresses', 'mediaManager.hookUrl');
+      const secret = readSetting(openedDatabase, 'credentials', 'webhook.secret');
+      return base === undefined || secret === undefined ? undefined : `${base.replace(/\/+$/, '')}/webhooks/plex/${plexWebhookCode(secret)}`;
+    },
   });
   const plexPlayback = createPlexPlayback(database);
   const playback = createPlayback({
@@ -163,7 +169,7 @@ if (database !== undefined) {
   const searches = createSearchScheduler({ database, arr, problems, isManualDownload: protection.isProtected });
   runner.register('search-schedule', 2 * 60_000, searches.check);
   runner.register('manual-download-protection', 10 * 60_000, async () => {
-    await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr')]);
+    await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr'), watchStatus.ensureWebhook()]);
     await protection.reconcile();
   });
   const trackerAccounts = createTrackerAccounts(database);
@@ -247,10 +253,11 @@ if (database !== undefined) {
     cache: createCacheRoutes(database, imageDirectory, titles.reconcile),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
-      // One receiver for both: live downloads record every event, a Grab of a manual download is vetoed,
-      // the title cache refreshes or drops the title an event names, and a rename or download of a tracked file
-      // gets its second versions merged again in Jellyfin.
+      // Plex's events go to watch status. One receiver for Sonarr and Radarr: live downloads record every event,
+      // a Grab of a manual download is vetoed, the title cache refreshes or drops the title an event names, and a
+      // rename or download of a tracked file gets its second versions merged again in Jellyfin.
       receive: (service, payload) => {
+        if (service === 'plex') return watchStatus.receiveWebhook(payload);
         versionImport.trackedFileChanged(service, payload);
         const grabs = torrentGrabs.receiveWebhook(service, payload);
         const title = titles.receiveWebhook(service, payload);

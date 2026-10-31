@@ -111,5 +111,33 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     return isRecord(next) ? next : undefined;
   };
 
-  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck };
+  // The owner's webhook list on plex.tv. Plex documents no API for it; this is the one Plex Web's settings page uses, and
+  // a POST replaces the whole list.
+  const plexTv = async (init: RequestInit = {}) => {
+    const configuration = readConfiguration();
+    if (configuration === undefined) throw new Error('Plex is not configured.');
+    const response = await requestWithTimeout(fetchImpl, 'https://plex.tv/api/v2/user/webhooks', {
+      ...init,
+      headers: { 'X-Plex-Token': configuration.token, 'X-Plex-Client-Identifier': 'media-manager-2', 'X-Plex-Product': 'media-manager-2', Accept: 'application/json', ...init.headers },
+    });
+    if (response.status < 200 || response.status > 299) throw new Error('plex.tv refused the webhook list.');
+    return response;
+  };
+  const webhooks = async (): Promise<string[]> => {
+    const body: unknown = await (await plexTv()).json().catch(() => undefined);
+    // An entry read wrongly would be dropped from the list posted back, so any unexpected one refuses the whole list.
+    if (!Array.isArray(body) || !body.every((item): item is { url: string } => isRecord(item) && typeof item.url === 'string')) {
+      throw new Error('plex.tv sent an unreadable webhook list.');
+    }
+    return body.map((item) => item.url);
+  };
+  const setWebhooks = async (urls: string[]) => {
+    await plexTv({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(urls.map((url): [string, string] => ['urls[]', url])).toString(),
+    });
+  };
+
+  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, webhooks, setWebhooks };
 };

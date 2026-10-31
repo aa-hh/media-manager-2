@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { extname, isAbsolute } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { getConnInfo } from '@hono/node-server/conninfo';
@@ -58,7 +58,7 @@ export type CreateAppOptions = {
   cache?: Hono;
   webhooks?: {
     secret(): string | undefined;
-    receive(service: 'sonarr' | 'radarr', payload: unknown): 'ok' | 'ignored' | 'invalid';
+    receive(service: 'sonarr' | 'radarr' | 'plex', payload: unknown): 'ok' | 'ignored' | 'invalid';
   };
 };
 
@@ -94,6 +94,17 @@ const readCookie = (header: string | undefined, name: string): CookieRead => {
 };
 
 const WEBHOOK_BODY_LIMIT = 512 * 1024;
+// Plex attaches the item's poster to some events.
+const PLEX_WEBHOOK_BODY_LIMIT = 4 * 1024 * 1024;
+
+// What Plex's webhook address carries in place of the webhook secret. plex.tv stores that address, so a copy read from
+// there must not sign Sonarr or Radarr events.
+export const plexWebhookCode = (secret: string) => createHmac('sha256', secret).update('plex').digest('hex');
+
+const secretMatches = (given: string, secret: string) => {
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(given), digest(secret));
+};
 
 // Sonarr and Radarr send their webhook username and password as Basic auth; only the password is checked.
 const webhookPasswordMatches = (header: string | undefined, secret: string) => {
@@ -102,8 +113,7 @@ const webhookPasswordMatches = (header: string | undefined, secret: string) => {
   const decoded = Buffer.from(match[1], 'base64').toString('utf8');
   const separator = decoded.indexOf(':');
   if (separator === -1) return false;
-  const digest = (value: string) => createHash('sha256').update(value).digest();
-  return timingSafeEqual(digest(decoded.slice(separator + 1)), digest(secret));
+  return secretMatches(decoded.slice(separator + 1), secret);
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
@@ -485,6 +495,25 @@ export const createApp = (options: CreateAppOptions) => {
     }
     const result = options.webhooks.receive(context.req.param('service') as 'sonarr' | 'radarr', payload);
     if (result === 'invalid') return context.json({ error: 'invalid_request' }, 400);
+    return context.body(null, 204);
+  });
+  // Plex sends no password, so its webhook address carries plexWebhookCode; the event is JSON in the form field `payload`.
+  const plexWebhookLimit = bodyLimit({
+    maxSize: PLEX_WEBHOOK_BODY_LIMIT,
+    onError: (context) => context.json({ error: 'request_too_large' }, 413),
+  });
+  app.post('/webhooks/plex/:secret', plexWebhookLimit, async (context) => {
+    const secret = options.webhooks?.secret();
+    if (options.webhooks === undefined || secret === undefined) return context.json({ error: 'not_configured' }, 503);
+    if (!secretMatches(context.req.param('secret'), plexWebhookCode(secret))) return context.json({ error: 'unauthenticated' }, 401);
+    let payload: unknown;
+    try {
+      const form = await context.req.parseBody();
+      payload = typeof form.payload === 'string' ? JSON.parse(form.payload) : undefined;
+    } catch {
+      payload = undefined;
+    }
+    if (payload === undefined || options.webhooks.receive('plex', payload) === 'invalid') return context.json({ error: 'invalid_request' }, 400);
     return context.body(null, 204);
   });
   app.all('/webhooks/*', (context) => context.json({ error: 'not_found' }, 404));

@@ -203,8 +203,8 @@ on disk, through these saved settings:
 | `credentials` | `rtorrent.username` | rTorrent HTTP basic auth username |
 | `credentials` | `rtorrent.password` | rTorrent HTTP basic auth password |
 | `credentials` | `plex.token` | Plex Media Server token |
-| `serviceAddresses` | `mediaManager.hookUrl` | The address Sonarr and Radarr can reach this app at, such as `http://127.0.0.1:3000`. With `webhook.secret`, the server adds its own webhook to both and keeps it up to date |
-| `credentials` | `webhook.secret` | A long random password Sonarr and Radarr send with each webhook call |
+| `serviceAddresses` | `mediaManager.hookUrl` | The address Sonarr, Radarr and Plex Media Server can reach this app at, such as `http://127.0.0.1:3000` when all run on one machine. With `webhook.secret`, the server adds its own webhook to Sonarr, Radarr and the Plex owner's plex.tv webhook list (Plex Pass only), and keeps them up to date |
+| `credentials` | `webhook.secret` | A long random password Sonarr and Radarr send with each webhook call. Plex can send no password, so its webhook address ends in a code made from it, and plex.tv stores that address |
 | `hostPaths` | `downloads.sonarr` | Absolute folder rTorrent downloads Sonarr's torrents into, such as `/home/<user>/files/Sonarr`. TV second versions download here too |
 | `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into. Movie second versions download here too |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |

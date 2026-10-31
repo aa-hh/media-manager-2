@@ -1,5 +1,5 @@
 import { BookmarkX, Library as LibraryIcon } from 'lucide-react';
-import { memo, use, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { memo, use, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -22,7 +22,7 @@ import { SkeletonPosterCard } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs-trigger';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { buildRows, formatBytes } from '../downloads/model';
-import type { DownloadsState } from '../downloads/useDownloads';
+import { useWatchChange, type DownloadsState } from '../downloads/useDownloads';
 import { Arrival } from '../Arrival';
 import { inDesktopApp } from '../desktopBridge';
 import { MediaServerContext } from '../mediaServer';
@@ -172,17 +172,34 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
   const mediaServer = use(MediaServerContext).name;
   const [fields, setFields] = useState<Field[]>(readFields);
   const [attempt, setAttempt] = useState(0);
+  // The read on screen, which a re-read for Plex's webhook waits for and is dropped with; lastLoaded alone may predate it.
+  const [reading, setReading] = useState(true);
+  const read = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
+    read.current = controller;
+    setReading(true);
     if (lastLoaded === undefined) setState({ kind: 'loading' });
     getJson<Loaded>('/api/library/titles', onUnauthenticated, controller.signal)
       .then((data) => {
         if (!controller.signal.aborted) { lastLoaded = data; setState({ kind: 'ready', data }); }
       })
-      .catch(() => { if (!controller.signal.aborted && lastLoaded === undefined) setState({ kind: 'failed' }); });
+      .catch(() => { if (!controller.signal.aborted && lastLoaded === undefined) setState({ kind: 'failed' }); })
+      .finally(() => { if (!controller.signal.aborted) setReading(false); });
     return () => controller.abort();
   }, [attempt, onUnauthenticated]);
+  // Plex's webhook says something was played, paused, stopped or watched: the marks and Continue Watching are read again.
+  useWatchChange(!reading, () => true, () => {
+    const signal = read.current?.signal;
+    getJson<Loaded>('/api/library/titles', onUnauthenticated, signal)
+      .then((data) => {
+        if (signal?.aborted) return;
+        lastLoaded = data;
+        setState({ kind: 'ready', data });
+      })
+      .catch(() => undefined);
+  });
   useScreenReady(state.kind !== 'loading');
 
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
