@@ -66,6 +66,8 @@ export type DesktopEvents = {
 };
 
 export type DesktopBridge = {
+  /** True when `load` takes a request with no `mediaIndex` (the server picks the version); builds older than the page refuse one. */
+  picksVersion?: boolean;
   /**
    * The only call that touches the token: the main process starts playback itself and keeps the stream address.
    * Playback unpauses by itself once the tracks are picked.

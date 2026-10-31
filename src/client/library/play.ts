@@ -1,6 +1,7 @@
 // Starts playback in the desktop app from a library card or title page: the player (src/client/player/) opens first and
 // works out the load request behind its opening screen.
-import { inDesktopApp } from '../desktopBridge';
+import { desktopBridge, inDesktopApp } from '../desktopBridge';
+import { desktopPicksVersion } from '../player/model';
 import { openPlayer, type Loaded, type PlayerSeries } from '../player/open';
 import { getJson, type ContinueWatchingItem, type LibraryTitle, type MovieWatch } from './api';
 import { cardMovieLoad, episodeLoad, movieLoad, type StartFrom } from './watch';
@@ -41,7 +42,8 @@ export async function loadRequestFor(
  * cancels a load still opening; the signal does not, because opening the player unmounts the Play button.
  * `options.reply` (the title page's copy of the detail reply) or a movie card's watch entry is used as is, with no fetch.
  * The saved position in them may be stale once something plays, so the request carries `resume` and the server reads
- * Plex's. A movie card sends no version, so the server picks the default one. Show cards still fetch the detail reply.
+ * Plex's. A movie card sends no version, so the server picks the default one; a desktop build older than the page refuses
+ * that, so there a movie card fetches the detail reply as a show card does.
  * `options.mediaIndex` plays a version picked on the title page; left out, Plex's default version plays.
  */
 export async function playInDesktop(
@@ -62,7 +64,7 @@ export async function playInDesktop(
       ...(title.tv === null ? {} : { series: Promise.resolve(given) as Promise<SeriesReply> }),
     });
   }
-  const card = title.tv === null ? cardMovieLoad(title.watch, item, from) : null;
+  const card = title.tv === null && desktopPicksVersion(desktopBridge()) ? cardMovieLoad(title.watch, item, from) : null;
   // The opening screen has no backdrop here: only the detail reply has it.
   if (card !== null) return openPlayer({ title: playerTitle, load: async () => ({ request: card, backdropUrl: null }) });
   // On a card one fetch serves both the load request and, for a show, the player's episode names; a Retry fetches again.

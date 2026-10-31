@@ -17,6 +17,8 @@ if (window.location.protocol === 'file:') {
     for (const listener of listeners.get(name) ?? []) listener(value);
   });
   contextBridge.exposeInMainWorld('mediaManagerDesktop', {
+    // This build takes a load with no mediaIndex (the server picks the version); older builds refuse one.
+    picksVersion: true,
     load: call('player:load'),
     play: call('player:play'),
     pause: call('player:pause'),

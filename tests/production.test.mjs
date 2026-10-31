@@ -11759,7 +11759,7 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
     activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands, wheelStep,
     SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale, formatLine, originalLabel, isPlayAddress, onlyPlayerMoves,
-    OPENING_REQUEST, openOutcome, retryStep, reloadAt,
+    OPENING_REQUEST, openOutcome, retryStep, reloadAt, retryRequest, desktopPicksVersion,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
 
@@ -11791,6 +11791,19 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     assert.equal(reloadAt({ ...OPENING_REQUEST, ratingKey: '7', resume: true }, 30, undefined).resume, undefined);
     // Keeping openedAt on a reload makes that reload's timing line count from the original click.
     assert.equal(reloadAt({ ...OPENING_REQUEST, ratingKey: '7', openedAt: 1 }, 30, undefined).openedAt, undefined);
+    // Retrying through reloadAt when the start never answered turns the first row red (Retry would drop resume and play from
+    // the page's stale guess), and keeping resume or openedAt on any other Retry turns the last two red.
+    const asked = { ratingKey: '7', partIndex: 0, offsetSeconds: 12, flags: flagsFor(4000), resume: true, openedAt: 1 };
+    const { resume: _resume, ...unresumed } = asked;
+    const fresh = { ratingKey: '7', partIndex: 0, flags: flagsFor(undefined) };
+    const retries = [
+      [asked, false, { ...fresh, offsetSeconds: 12, resume: true }],
+      [asked, true, { ...fresh, offsetSeconds: 30 }],
+      [unresumed, false, { ...fresh, offsetSeconds: 30 }],
+    ];
+    for (const [request, replied, expected] of retries) {
+      assert.deepEqual(retryRequest(request, replied, 30, undefined), expected, JSON.stringify([request.resume, replied]));
+    }
   });
 
   // Letting a seek pass 5 s before the end, or go below zero, turns this red.
@@ -11870,6 +11883,12 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     const command = async () => {};
     const bridges = [[{ setVolume: command, setMuted: command }, true], [{ setVolume: command }, false], [{ setMuted: command }, false], [{}, false], [undefined, false]];
     for (const [bridge, takes] of bridges) assert.equal(hasSoundCommands(bridge), takes, JSON.stringify(Object.keys(bridge ?? {})));
+  });
+
+  // Skipping the title fetch for a movie card without the marker turns the last rows red: a desktop build older than the
+  // page refuses a load with no version, so every movie card's Play would fail there.
+  await t.test('a movie card leaves the version to the server only on a desktop build that says it takes that', () => {
+    assert.deepEqual([{ picksVersion: true }, { picksVersion: 'yes' }, {}, undefined].map(desktopPicksVersion), [true, false, false, false]);
   });
 
   // Reversing the direction, a step other than 5 %, or dropping the 100 ms gap turns its row red: the last would carry a trackpad swipe to 0 or 100.
@@ -15089,7 +15108,9 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const {
+    fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions,
+  } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -15159,6 +15180,23 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
     [clickNow + 1, undefined],
   ];
   for (const [value, expected] of clicks) assert.equal(clickTime(value, clickNow), expected, String(value));
+
+  // Starting at the asked offset when the reply has a usable start turns the first two rows red (a resume would start at
+  // the page's stale guess); passing a negative, non-number or missing reply value to mpv turns the rest red.
+  assert.deepEqual([61, 0, -1, Number.NaN, '61', undefined].map((replied) => startSecondsFor(replied, 30)), [61, 0, 30, 30, 30, 30]);
+
+  // Requiring mediaIndex again turns the versionless row red (every movie card's Play fails); taking a version that is not a
+  // whole number from 0 turns the throwing rows red; treating anything but true as resume turns the resume row red.
+  const flags = { directPlay: true, directStream: true, directStreamAudio: true };
+  const ask = { ratingKey: '123', mediaIndex: 1, partIndex: 0, offsetSeconds: 61.5, flags, openedAt: clickNow - 500 };
+  assert.deepEqual(readAsk(ask, clickNow), {
+    ask: { ratingKey: '123', mediaIndex: 1, partIndex: 0 }, offsetSeconds: 61.5, resume: false, openedAt: clickNow - 500, flags,
+  });
+  const { mediaIndex: _mediaIndex, ...versionless } = ask;
+  assert.ok(!('mediaIndex' in readAsk(versionless, clickNow).ask));
+  assert.equal(readAsk({ ...ask, mediaIndex: 0 }, clickNow).ask.mediaIndex, 0);
+  for (const mediaIndex of [-1, '0', 1.5]) assert.throws(() => readAsk({ ...ask, mediaIndex }, clickNow), /invalid_request/, String(mediaIndex));
+  assert.deepEqual([true, 'yes', 1, undefined].map((resume) => readAsk({ ...ask, resume }, clickNow).resume), [true, false, false, false]);
 
   // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);

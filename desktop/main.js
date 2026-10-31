@@ -7,7 +7,9 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions } = require('./lib/player');
+const {
+  fileEvent, playsOnOpen, showsPosition, sendsPosition, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions,
+} = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -494,10 +496,7 @@ async function start(playing, offsetSeconds, retest, resume = false) {
   playing.subtitles = new Map(json.tracks.subtitle
     .filter((track) => track.external && typeof track.url === 'string')
     .map((track) => [track.key, subtitleAdd(track, origin)]));
-  // The reply's start wins: with `resume` the server read it from Plex, and the asked offset was the page's guess.
-  const startSeconds = typeof json.startPositionSeconds === 'number' && Number.isFinite(json.startPositionSeconds) && json.startPositionSeconds >= 0
-    ? json.startPositionSeconds : offsetSeconds;
-  await loadAddress(playing, playing.address, startSeconds, json.decision.directPlay);
+  await loadAddress(playing, playing.address, startSecondsFor(json.startPositionSeconds, offsetSeconds), json.decision.directPlay);
   return pageCopy(json, { clientId: clientId(), sessionIdentifier }, { volume: savedVolume(), muted: savedMuted(), subtitleScale: savedSubtitleScale() });
 }
 
@@ -525,29 +524,6 @@ async function recover(failure, playing = current) {
     if (current === playing) setTimeout(() => void recover('failed', playing), 5_000);
   }
 }
-
-const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
-const readAsk = (ask) => {
-  const flags = ask?.flags;
-  if (typeof ask?.ratingKey !== 'string' || !/^\d+$/.test(ask.ratingKey) || (ask.mediaIndex !== undefined && !isCount(ask.mediaIndex))
-    || !isCount(ask.partIndex)
-    || typeof ask.offsetSeconds !== 'number' || !Number.isFinite(ask.offsetSeconds) || ask.offsetSeconds < 0
-    || typeof flags?.directPlay !== 'boolean' || typeof flags.directStream !== 'boolean' || typeof flags.directStreamAudio !== 'boolean'
-    || (flags.maxVideoBitrate !== undefined && !isCount(flags.maxVideoBitrate))) throw new Error('invalid_request');
-  return {
-    ask: { ratingKey: ask.ratingKey, mediaIndex: ask.mediaIndex, partIndex: ask.partIndex },
-    offsetSeconds: ask.offsetSeconds,
-    // Anything but true is ignored.
-    resume: ask.resume === true,
-    openedAt: clickTime(ask.openedAt, Date.now()),
-    flags: {
-      directPlay: flags.directPlay,
-      directStream: flags.directStream,
-      directStreamAudio: flags.directStreamAudio,
-      ...(flags.maxVideoBitrate === undefined ? {} : { maxVideoBitrate: flags.maxVideoBitrate }),
-    },
-  };
-};
 
 function stopPlayer() {
   current = null;
@@ -603,7 +579,7 @@ const finite = (value) => {
 };
 
 handle('player:load', async (ask) => {
-  const { ask: wanted, offsetSeconds, resume, flags, openedAt } = readAsk(ask);
+  const { ask: wanted, offsetSeconds, resume, flags, openedAt } = readAsk(ask, Date.now());
   current = {
     ask: wanted, flags, tried: [planLabel(flags)], tries: { token: 0, same: 0 }, played: false, paused: false, position: offsetSeconds, duration: null,
     askedAt: openedAt ?? Date.now(), marks: {},

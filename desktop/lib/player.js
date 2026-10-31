@@ -61,6 +61,40 @@ const sendsPosition = (last, position, now) => last === null || last === undefin
  */
 const clickTime = (value, now) => (Number.isFinite(value) && value >= now - 60_000 && value <= now ? value : undefined);
 
+const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
+
+/**
+ * The page's load ask, checked and copied field by field, so nothing else it sent reaches the start request; throws
+ * invalid_request for a bad one. `mediaIndex` may be left out (the server picks the default version) and stays out;
+ * `resume` is true only when the page sent true. `now` (ms) bounds the click time.
+ */
+const readAsk = (ask, now) => {
+  const flags = ask?.flags;
+  if (typeof ask?.ratingKey !== 'string' || !/^\d+$/.test(ask.ratingKey) || (ask.mediaIndex !== undefined && !isCount(ask.mediaIndex))
+    || !isCount(ask.partIndex)
+    || typeof ask.offsetSeconds !== 'number' || !Number.isFinite(ask.offsetSeconds) || ask.offsetSeconds < 0
+    || typeof flags?.directPlay !== 'boolean' || typeof flags.directStream !== 'boolean' || typeof flags.directStreamAudio !== 'boolean'
+    || (flags.maxVideoBitrate !== undefined && !isCount(flags.maxVideoBitrate))) throw new Error('invalid_request');
+  return {
+    ask: { ratingKey: ask.ratingKey, ...(ask.mediaIndex === undefined ? {} : { mediaIndex: ask.mediaIndex }), partIndex: ask.partIndex },
+    offsetSeconds: ask.offsetSeconds,
+    resume: ask.resume === true,
+    openedAt: clickTime(ask.openedAt, now),
+    flags: {
+      directPlay: flags.directPlay,
+      directStream: flags.directStream,
+      directStreamAudio: flags.directStreamAudio,
+      ...(flags.maxVideoBitrate === undefined ? {} : { maxVideoBitrate: flags.maxVideoBitrate }),
+    },
+  };
+};
+
+/**
+ * Where mpv starts the file: the start reply's `startPositionSeconds` (`replied`) when it is a finite number from 0 (with
+ * `resume` the server read it from Plex, and `asked`, the offset sent, was the page's guess), else `asked`.
+ */
+const startSecondsFor = (replied, asked) => (Number.isFinite(replied) && replied >= 0 ? replied : asked);
+
 /** `address` with the scheme, host and port of `origin`. */
 const withOrigin = (address, origin) => {
   const url = new URL(address);
@@ -110,5 +144,6 @@ const mpvStartOptions = (env, userData) => ({
 });
 
 module.exports = {
-  fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions,
+  fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource,
+  mpvStartOptions,
 };

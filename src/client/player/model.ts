@@ -240,6 +240,9 @@ export const hasSubtitleScale = (bridge: DesktopBridge | undefined): bridge is D
   typeof bridge?.setSubtitleScale === 'function'
 );
 
+/** Whether the desktop app takes a load with no version: a build older than the page refuses one, so a movie card fetches the title first. */
+export const desktopPicksVersion = (bridge: DesktopBridge | undefined) => bridge?.picksVersion === true;
+
 // --- Up Next (player.pen states 15 and 16)
 
 export const UP_NEXT_SECONDS = 10;
@@ -404,3 +407,14 @@ export const openOutcome = ({ current, load, failed, found }: { current: number;
 
 /** What Retry does: a Play that failed before it knew what it plays asks again; any other reloads where it was. */
 export const retryStep = (request: LoadRequest) => (request === OPENING_REQUEST ? 'reopen' : 'reload');
+
+/**
+ * What Retry loads. A Play whose start never answered (`replied` false) and that asked for Plex's saved position asks for it
+ * again: `seconds` is still the page's guess then. It gets fresh flags and loses the click's `openedAt`, as `reloadAt` gives.
+ * Any other request reloads at `seconds`.
+ */
+export const retryRequest = (request: LoadRequest, replied: boolean, seconds: number, qualityKbps: number | undefined): LoadRequest => {
+  if (replied || request.resume !== true) return reloadAt(request, seconds, qualityKbps);
+  const { openedAt: _openedAt, ...rest } = request;
+  return { ...rest, flags: flagsFor(qualityKbps) };
+};
