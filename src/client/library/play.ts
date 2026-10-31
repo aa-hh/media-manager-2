@@ -1,4 +1,5 @@
-// Starts playback in the desktop app from a library card; the player (src/client/player/) takes it from the load request on.
+// Starts playback in the desktop app from a library card or title page: the player (src/client/player/) opens first and
+// works out the load request behind its opening screen.
 import { inDesktopApp } from '../desktopBridge';
 import { openPlayer, type Loaded, type PlayerSeries } from '../player/open';
 import { getJson, type ContinueWatchingItem, type LibraryTitle, type MovieWatch } from './api';

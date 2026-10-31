@@ -1,5 +1,6 @@
 // The in-app player: state above Home (PlayerProvider in SignedIn) and one element drawn by Home outside its keyed screen
-// (Player), so navigation never unmounts it. /play/<ratingKey> shows it full size, any other address as the mini player.
+// (Player), so navigation never unmounts it. /play/<ratingKey> shows it full size (the key is empty while the opening screen works out
+// what to play), any other address as the mini player.
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { PlayerMenu, PlayerQueueItem } from '@/components/ui/player-stage';
@@ -13,7 +14,7 @@ import { subjectProgress } from '../library/progress';
 import { clockText, continueMeta, minutesText } from '../library/watch';
 import { navigate, replace, replaceScreen, useLocation } from '../navigation';
 import {
-  BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, TIMELINE_EVERY_MS,
+  BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, OPENING_REQUEST, TIMELINE_EVERY_MS, openOutcome, retryStep,
   activeMarker, applyEvent, clampSeek, isPlayAddress, clampVolume, formatLine, originalLabel, hasSoundCommands, hasSubtitleScale, subtitleScaleOf, volumeKey, wheelStep, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
@@ -108,8 +109,6 @@ type Sound = { volume: number; muted: boolean };
 const soundOf = (reply: StartReply, was: Sound) => ({ volume: reply.volume ?? was.volume, muted: reply.muted ?? was.muted });
 /** The subtitle delay in seconds that Plex saved for a track; 0 for Off or a track with none. */
 const savedDelay = (track: SubtitleTrack | null | undefined) => (track?.offsetMs ?? 0) / 1000;
-// Stands in while a Play works out what it plays: only the opening screen reads it, and it never reaches the desktop app.
-const OPENING_REQUEST: LoadRequest = { ratingKey: '', mediaIndex: 0, partIndex: 0, offsetSeconds: 0, flags: { directPlay: true, directStream: true, directStreamAudio: true } };
 
 const startFailure = (error: unknown, name: string) => {
   const text = error instanceof Error ? error.message : '';
@@ -258,10 +257,9 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     const { title, load: findLoad, series } = asked;
     lastOpen.current = asked;
     const s = sessionRef.current;
-    if (s?.reply != null) {
-      sendTimeline(s, 'stopped');
-      void bridge?.stop().catch(() => undefined);
-    }
+    if (s?.reply != null) sendTimeline(s, 'stopped');
+    // Also a title still opening: its first frame would otherwise end this one's opening screen.
+    if (s !== null) void bridge?.stop().catch(() => undefined);
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest('[data-player-root]') === null) returnFocus.current = active;
     const load = ++loads.current;
@@ -271,18 +269,17 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       saved: { audio: false, subtitles: false, delay: false }, subtitleDelay: 0, upNext: null,
     });
     if (!isPlayAddress(window.location.pathname)) navigate('/play/');
-    let found: Loaded;
+    let found: Loaded = null;
+    let failure: unknown;
     try {
       found = await findLoad();
     } catch (error) {
-      if (loads.current === load) change((current) => ({ ...current, playback: { ...current.playback, phase: 'failed', failure: { message: startFailure(error, title.name), tried: [] } } }));
-      return false;
+      failure = error ?? new Error('failed');
     }
-    if (loads.current !== load) return false;
-    if (found === null) {
-      close();
-      return false;
-    }
+    const outcome = openOutcome({ current: loads.current, load, failed: failure !== undefined, found });
+    if (outcome === 'fail') change((current) => ({ ...current, playback: { ...current.playback, phase: 'failed', failure: { message: startFailure(failure, title.name), tried: [] } } }));
+    if (outcome === 'close') close();
+    if (outcome !== 'play' || found === null) return false;
     const { request } = found;
     if (isPlayAddress(window.location.pathname)) replace(`/play/${request.ratingKey}`);
     return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, { ...title, backdropUrl: found.backdropUrl }, true);
@@ -642,7 +639,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         const s = sessionRef.current;
         if (s === null) return;
         // A Play that failed before it knew what it plays asks again; the stand-in request never goes to the desktop app.
-        if (s.request === OPENING_REQUEST) {
+        if (retryStep(s.request) === 'reopen') {
           if (lastOpen.current !== null) void open({ ...lastOpen.current, series: undefined });
           return;
         }

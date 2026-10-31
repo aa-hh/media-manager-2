@@ -11710,6 +11710,7 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
     activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands, wheelStep,
     SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale, formatLine, originalLabel, isPlayAddress, onlyPlayerMoves,
+    OPENING_REQUEST, openOutcome, retryStep,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
 
@@ -11724,6 +11725,19 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     assert.equal(onlyPlayerMoves('/play/34613', '/search?q=lobster', '/search?q=lobster'), true);
     assert.equal(onlyPlayerMoves('/play/34613', '/', '/movie/95'), false);
     assert.equal(onlyPlayerMoves('/movie/95', '/', '/movie/95'), false);
+  });
+
+  // Playing a Play that a newer Play or a close replaced turns the first row red: two titles would load at once. Retrying
+  // the stand-in request turns the last rows red: the desktop app refuses its empty ratingKey on every Retry.
+  await t.test('a Play opened before it knows what it plays drops, fails, closes or plays, and Retry asks again', () => {
+    const found = { request: { ratingKey: '7' }, backdropUrl: null };
+    assert.equal(openOutcome({ current: 3, load: 2, failed: false, found }), 'drop');
+    assert.equal(openOutcome({ current: 3, load: 2, failed: true, found: null }), 'drop');
+    assert.equal(openOutcome({ current: 2, load: 2, failed: true, found: null }), 'fail');
+    assert.equal(openOutcome({ current: 2, load: 2, failed: false, found: null }), 'close');
+    assert.equal(openOutcome({ current: 2, load: 2, failed: false, found }), 'play');
+    assert.equal(retryStep(OPENING_REQUEST), 'reopen');
+    assert.equal(retryStep({ ...OPENING_REQUEST }), 'reload');
   });
 
   // Letting a seek pass 5 s before the end, or go below zero, turns this red.
