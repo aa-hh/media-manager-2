@@ -72,7 +72,7 @@ class LibraryPlaybackTest {
         val show = (library.series(7) as ApiResult.Ok).value
         assertEquals("/api/library/series/7", server.takeRequest().path)
         assertEquals("56", show.watch!!.episodes["101"]!!.ratingKey)
-        assertEquals(EpisodeRef(1, 1), show.watch!!.nextEpisode)
+        assertEquals(EpisodeRef(1, 1), show.watch.nextEpisode)
         assertEquals(FileSummary(1234, "WEBDL-1080p"), show.episodes.single().file)
     }
 
