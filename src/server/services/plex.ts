@@ -17,12 +17,13 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     return url === undefined || token === undefined ? undefined : { url, token };
   };
 
-  const request = async (path: string, timeoutMs?: number): Promise<{ status: number; body: unknown }> => {
+  const request = async (path: string, timeoutMs?: number, method: 'GET' | 'PUT' = 'GET'): Promise<{ status: number; body: unknown }> => {
     const configuration = readConfiguration();
     if (configuration === undefined) throw new Error('Plex is not configured.');
     let response: Response;
     try {
       response = await requestWithTimeout(fetchImpl, configuration.url.replace(/\/+$/, '') + path, {
+        method,
         headers: { 'X-Plex-Token': configuration.token, Accept: 'application/json' },
       }, timeoutMs);
     } catch {
@@ -111,6 +112,29 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     return isRecord(next) ? next : undefined;
   };
 
+  // Watch-state writes; each throws when Plex is unset, unreachable or refuses. Marking by hand sets played or unplayed
+  // without adding to Plex's watch history, and works on a show to mark every episode.
+  const write = async (path: string, what: string) => {
+    const result = await request(path, undefined, 'PUT');
+    if (result.status < 200 || result.status > 299) throw new Error(`Plex refused ${what}.`);
+  };
+  const markWatched = (ratingKey: string, watched: boolean) => write(
+    `/:/${watched ? 'scrobble' : 'unscrobble'}?${new URLSearchParams({ identifier: 'com.plexapp.plugins.library', key: ratingKey })}`,
+    watched ? 'the watched mark' : 'the unwatched mark',
+  );
+  // Plex documents no address for this; its library provider advertises one under its actions, read at each call so a
+  // Plex update that moves it keeps working. A Plex that advertises none refuses.
+  const removeFromContinueWatching = async (ratingKeys: string[]) => {
+    const body = await container('/media/providers', 'the provider list');
+    const providers = Array.isArray(body.MediaProvider) ? body.MediaProvider.filter(isRecord) : [];
+    const features = providers.find((provider) => provider.identifier === 'com.plexapp.plugins.library')?.Feature;
+    const path = (Array.isArray(features) ? features.filter(isRecord) : [])
+      .flatMap((feature) => (Array.isArray(feature.Action) ? feature.Action.filter(isRecord) : []))
+      .find((action) => action.id === 'removeFromContinueWatching')?.key;
+    if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')) throw new Error('Plex advertises no Continue Watching removal.');
+    for (const ratingKey of ratingKeys) await write(`${path}?${new URLSearchParams({ ratingKey })}`, 'the Continue Watching removal');
+  };
+
   // The owner's webhook list on plex.tv. Plex documents no API for it; this is the one Plex Web's settings page uses, and
   // a POST replaces the whole list.
   const plexTv = async (init: RequestInit = {}) => {
@@ -139,5 +163,5 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     });
   };
 
-  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, webhooks, setWebhooks };
+  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, markWatched, removeFromContinueWatching, webhooks, setWebhooks };
 };

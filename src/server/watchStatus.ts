@@ -48,6 +48,8 @@ export type MovieWatch = ({ kind: 'ok'; machineIdentifier: string } & Playable) 
 
 export type WatchStatus = ReturnType<typeof createWatchStatus>;
 
+export type WatchAction = 'ok' | 'not_found' | 'unavailable' | 'off';
+
 type Snapshot = {
   machineIdentifier: string;
   maxUploadBitrate: number | null;
@@ -207,6 +209,34 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
   };
   const isOff = (value: Off | Snapshot): value is Off => 'kind' in value;
 
+  // A listing already under way may predate the change, so a new one follows it, uncapped: pages read only once it is
+  // in. A failed listing tells no page, so none swaps its marks for the failure.
+  const relist = (ratingKey: string) => {
+    void Promise.resolve(building).then(rebuild).then((value) => {
+      if (value !== undefined) events.publish('watch', { ratingKey });
+    });
+  };
+
+  // A write waits for a listing however long it takes, rather than failing while the first one builds.
+  const act = async (
+    title: { service: 'sonarr'; record: Series } | { service: 'radarr'; record: Movie },
+    write: (found: Snapshot, item: Item, ratingKey: string) => Promise<boolean>,
+  ): Promise<WatchAction> => {
+    if (!enabled()) return 'off';
+    const found = recent() ?? await rebuild();
+    if (found === undefined) return 'unavailable';
+    const item = title.service === 'sonarr' ? matchShow(found, title.record) : matchMovie(found, title.record);
+    const ratingKey = item === undefined ? null : key(item.ratingKey);
+    if (item === undefined || ratingKey === null) return 'not_found';
+    try {
+      if (!(await write(found, item, ratingKey))) return 'not_found';
+    } catch {
+      return 'unavailable';
+    }
+    relist(ratingKey);
+    return 'ok';
+  };
+
   return {
     /**
      * Plex's webhook, from any device. For an event in WATCH_EVENTS the listing is read again, then open pages hear the
@@ -218,11 +248,7 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
       const item = isRecord(payload.Metadata) ? payload.Metadata : undefined;
       const ratingKey = key(item?.type === 'episode' ? item.grandparentRatingKey : item?.type === 'movie' ? item.ratingKey : undefined);
       if (ratingKey === null || !enabled()) return 'ignored';
-      // A listing already under way may predate the change, so a new one follows it, uncapped: pages read only once it is
-      // in. A failed listing tells no page, so none swaps its marks for the failure.
-      void Promise.resolve(building).then(rebuild).then((value) => {
-        if (value !== undefined) events.publish('watch', { ratingKey });
-      });
+      relist(ratingKey);
       return 'ok';
     },
 
@@ -238,6 +264,33 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
       const mine = listed.filter((entry) => entry.startsWith(ours));
       if (mine.length !== 1 || mine[0] !== url) await plex.setWebhooks([...listed.filter((entry) => !entry.startsWith(ours)), url]);
       return true;
+    },
+
+    /** Marks the matched Plex movie or show, every episode of a show, played or unplayed. */
+    markWatched(title: { service: 'sonarr'; record: Series } | { service: 'radarr'; record: Movie }, watched: boolean) {
+      return act(title, async (_found, _item, ratingKey) => {
+        await plex.markWatched(ratingKey, watched);
+        return true;
+      });
+    },
+
+    /**
+     * Takes the title off Plex's Continue Watching: the movie, or each of the show's episodes listed there. Not found
+     * when the title is not in the row, so nothing is written.
+     */
+    removeFromContinueWatching(title: { service: 'sonarr'; record: Series } | { service: 'radarr'; record: Movie }) {
+      return act(title, async (found, _item, ratingKey) => {
+        const listed = found.continueWatching.flatMap((entry) => {
+          const owner = title.service === 'sonarr'
+            ? (entry.type === 'episode' ? key(entry.grandparentRatingKey) : null)
+            : (entry.type === 'movie' ? key(entry.ratingKey) : null);
+          const entryKey = key(entry.ratingKey);
+          return owner === ratingKey && entryKey !== null ? [entryKey] : [];
+        });
+        if (listed.length === 0) return false;
+        await plex.removeFromContinueWatching(listed);
+        return true;
+      });
     },
 
     async forLibrary(records: Array<{ service: Service; record: Series | Movie }>): Promise<{ watch: LibraryWatch; byTitle: Map<string, TitleWatch> }> {
