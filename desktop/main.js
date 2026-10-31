@@ -7,7 +7,7 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, showsPosition, sendsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
+const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -295,13 +295,14 @@ const ensureMpv = () => {
   // it is made, so a set that lands later is ignored.
   const shaderCache = path.join(app.getPath('userData'), 'mpv-shader-cache');
   fs.mkdirSync(shaderCache, { recursive: true });
-  // mpv's own log beside desktop.json, set before init: log-file is read before mpv starts, and only a file opened then
-  // holds libmpv's start-up and video-output lines, where the time to the first frame goes. mpv empties the file each
-  // time it opens it, so it holds one launch and never grows past it.
-  mpv = new MpvView(win.getNativeWindowHandle(), {
-    'log-file': path.join(app.getPath('userData'), 'mpv.log'),
-    'gpu-shader-cache-dir': shaderCache,
-  });
+  // mpv's own log, userData/mpv.log beside desktop.json, is written only when MM2_MPV_LOG=1 asks for it: mpv writes it at
+  // debug level, and it holds every stream and subtitle address, each with Plex's transient token. Set before init:
+  // log-file is read before mpv starts, and only a file opened then holds libmpv's start-up and video-output lines, where
+  // the time to the first frame goes. mpv empties the file each time it opens it, so it holds one launch.
+  const log = process.env.MM2_MPV_LOG === '1' ? { 'log-file': path.join(app.getPath('userData'), 'mpv.log') } : {};
+  mpv = new MpvView(win.getNativeWindowHandle(), { ...log, 'gpu-shader-cache-dir': shaderCache });
+  // Repeats the addon's pre-init ytdl=no: an addon built before that list (npm start does not rebuild it) still never sends Plex addresses to youtube-dl or yt-dlp.
+  void mpv.setOption('ytdl', 'no');
   for (const name of OBSERVED) mpv.observe(name);
   mpv.onEvent(onMpvEvent);
   return mpv;
@@ -541,16 +542,12 @@ const readAsk = (ask) => {
     || typeof ask.offsetSeconds !== 'number' || !Number.isFinite(ask.offsetSeconds) || ask.offsetSeconds < 0
     || typeof flags?.directPlay !== 'boolean' || typeof flags.directStream !== 'boolean' || typeof flags.directStreamAudio !== 'boolean'
     || (flags.maxVideoBitrate !== undefined && !isCount(flags.maxVideoBitrate))) throw new Error('invalid_request');
-  // The page's click time, kept only when it is from the last minute; play-timings.log starts there.
-  const now = Date.now();
-  const openedAt = typeof ask.openedAt === 'number' && Number.isFinite(ask.openedAt) && ask.openedAt >= now - 60_000 && ask.openedAt <= now
-    ? ask.openedAt : undefined;
   return {
     ask: { ratingKey: ask.ratingKey, mediaIndex: ask.mediaIndex, partIndex: ask.partIndex },
     offsetSeconds: ask.offsetSeconds,
     // Anything but true is ignored.
     resume: ask.resume === true,
-    openedAt,
+    openedAt: clickTime(ask.openedAt, Date.now()),
     flags: {
       directPlay: flags.directPlay,
       directStream: flags.directStream,
