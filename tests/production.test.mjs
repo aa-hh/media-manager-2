@@ -4462,7 +4462,15 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
       switch (url.pathname) {
         case '/': return json({ MediaContainer: { machineIdentifier: 'plex-machine-1', version: '1.41.0' } });
         case '/security/token': return json({ MediaContainer: { token: 'transient-fixture-token' } });
-        case '/playQueues': return json({ MediaContainer: {
+        // A Plex list's queue: Weekend holds 200 then 100; Plex's shuffled order puts 700 first.
+        case '/playQueues': if (url.searchParams.has('playlistID')) {
+          const shuffled = url.searchParams.get('shuffle') === '1';
+          const order = shuffled ? ['700', '200', '100'] : ['200', '100', '700'];
+          return json({ MediaContainer: {
+            playQueueID: 6, playQueueSelectedItemID: 61, playQueueTotalCount: 3, playQueueVersion: 1, playQueueShuffled: shuffled,
+            Metadata: order.map((ratingKey, position) => ({ playQueueItemID: 61 + position, ratingKey, type: 'movie', title: `Film ${ratingKey}` })),
+          } });
+        } else return json({ MediaContainer: {
           playQueueID: 5, playQueueSelectedItemID: 51, playQueueSelectedItemOffset: 0, playQueueTotalCount: 1, playQueueVersion: 1,
           playQueueShuffled: false, allowShuffle: true, playQueueSourceURI: 'library://section-uuid-1/item/%2Flibrary%2Fmetadata%2F100',
           playQueueLastAddedItemID: 51, Metadata: [{ playQueueItemID: 51, ratingKey: '100', type: 'movie', title: 'Dune: Part Two', duration: 9960000 }],
@@ -4478,6 +4486,7 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
         case '/hubs/metadata/100/postplay': return json({ MediaContainer: { Hub: [{
           hubIdentifier: 'tv.plex.hub.upnext', title: 'Up Next', Metadata: [{ ratingKey: '101', type: 'movie', title: 'Arrival', duration: 6960000, viewOffset: 0 }],
         }] } });
+        case '/playlists/900': return json({ MediaContainer: { Metadata: [{ ratingKey: '900', title: 'Weekend', playlistType: 'video' }] } });
         // As real Plex does, the library's UUID sits on the container; reading it only from the item turns every start into not_found.
         default: return items[url.pathname] === undefined ? new Response('', { status: 404 }) : json({ MediaContainer: { librarySectionUUID: 'section-uuid-1', Metadata: [items[url.pathname]] } });
       }
@@ -4639,6 +4648,56 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.deepEqual(await file('600'), { ...base, height: 2160, dynamicRange: 'sdr', dolbyVisionProfile: null });
     const first = (await start(routes)).body;
     assert.deepEqual(first.tracks.subtitle.map((track) => track.offsetMs), [null, 500]);
+  });
+
+  // Building a list's queue from a title, losing shuffle on the way to Plex, playing anything but the queue's selected item,
+  // making a second queue, answering an unknown list with anything but 404, taking shuffle without a list, or changing
+  // the queue a title start asks for turns this red.
+  await t.test('a start with a Plex list plays the list\'s queue from its first item, in Plex\'s shuffled order when asked', async () => {
+    const { routes, requests, decisions } = connect();
+    const queues = () => requests.filter((url) => url.pathname === '/playQueues');
+    const list = await start(routes, { ratingKey: undefined, playlistId: '900' }, { desktop: true });
+    assert.equal(list.status, 200);
+    assert.equal(list.body.ratingKey, '200');
+    assert.deepEqual(list.body.playQueue.items.map(({ ratingKey }) => ratingKey), ['200', '100', '700']);
+    assert.equal(list.body.playQueue.playQueueSelectedItemID, 61);
+    assert.equal(queues().length, 1);
+    const [listQueue] = queues();
+    assert.equal(listQueue.searchParams.get('playlistID'), '900');
+    assert.equal(listQueue.searchParams.get('shuffle'), '0');
+    assert.equal(listQueue.searchParams.get('type'), 'video');
+    assert.equal(listQueue.searchParams.has('uri'), false);
+    assert.equal(decisions()[0].searchParams.get('path'), '/library/metadata/200');
+    assert.ok(list.body.streamAddresses[0].includes('/library/parts/111/'));
+
+    const shuffled = await start(routes, { ratingKey: undefined, playlistId: '900', shuffle: true });
+    assert.equal(shuffled.status, 200);
+    assert.equal(shuffled.body.ratingKey, '700');
+    assert.equal(shuffled.body.playQueue.playQueueShuffled, true);
+    assert.equal(queues().at(-1).searchParams.get('shuffle'), '1');
+
+    const before = requests.length;
+    assert.deepEqual(await start(routes, { ratingKey: undefined, playlistId: '999' }), { status: 404, text: '{"error":"not_found"}', body: { error: 'not_found' } });
+    assert.equal(requests.slice(before).some((url) => url.pathname === '/video/:/transcode/universal/decision'), false);
+    for (const extra of [
+      { shuffle: true },
+      { shuffle: false },
+      { playlistId: '900' },
+      { ratingKey: undefined, playlistId: 900 },
+      { ratingKey: undefined, playlistId: 'abc' },
+      { ratingKey: undefined, playlistId: '1234567890123' },
+      { ratingKey: undefined, playlistId: '900', shuffle: 'yes' },
+      { ratingKey: undefined },
+    ]) assert.equal((await start(routes, extra)).status, 400, JSON.stringify(extra));
+
+    // A title start asks Plex for exactly the queue it always has.
+    const title = await start(routes, {}, { desktop: true });
+    assert.equal(title.status, 200);
+    assert.equal(title.body.ratingKey, '100');
+    assert.deepEqual(Object.fromEntries([...queues().at(-1).searchParams].filter(([name]) => !name.startsWith('X-Plex-'))), {
+      type: 'video', uri: 'library://section-uuid-1/item/%2Flibrary%2Fmetadata%2F100', repeat: '0', own: '1',
+      includeChapters: '1', includeMarkers: '1', includeGeolocation: '1', includeExternalMedia: '1',
+    });
   });
 
   // Sending stream addresses or subtitle file addresses to the page without the desktop header turns this red.
@@ -7000,6 +7059,70 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
     const names = database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table'").all().map(({ name }) => name);
     for (const name of ['titles', 'episodes', 'title_images']) assert.ok(names.includes(name), name);
   });
+});
+
+// Sending the Plex token to the page, fetching the collage again while the list is unchanged, keeping an old picture after
+// the list changes, or answering a missing list, a list with no picture, Plex off or Plex down with the wrong status turns this red.
+test('a Plex list\'s collage comes through our server without the token, once per version of the list', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createPlex } = await import(plexModuleUrl);
+  const { createImageRoutes } = await import(titlesModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-plex-collage-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const token = `plex-collage-token-${process.pid}`;
+  const remote = { version: 1700000000, reachable: true, pictures: [] };
+  const plex = createPlex(database, { fetch: async (input, init) => {
+    const url = new URL(String(input));
+    assert.equal(init.headers['X-Plex-Token'], token);
+    assert.ok(!String(input).includes(token));
+    if (!remote.reachable) throw new TypeError('fetch failed');
+    const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (url.pathname === '/playlists/900') return json({ MediaContainer: { Metadata: [{ ratingKey: '900', composite: `/playlists/900/composite/${remote.version}` }] } });
+    if (url.pathname === '/playlists/901') return json({ MediaContainer: { Metadata: [{ ratingKey: '901' }] } });
+    if (url.pathname.startsWith('/playlists/900/composite/')) {
+      remote.pictures.push(`${url.pathname}?${url.searchParams}`);
+      return new Response(new Uint8Array([0xff, 0xd8, remote.version % 256]), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+    }
+    return new Response('', { status: 404 });
+  } });
+  const { app } = await makeApp({ images: createImageRoutes({ image: () => undefined }, undefined, plex.playlistCollage) });
+  const { session } = await signIn(app);
+  const get = (path) => app.request(path, { headers: { Cookie: session } });
+
+  const off = await get('/api/images/plex/playlist/900');
+  assert.equal(off.status, 503);
+  assert.deepEqual(await off.json(), { error: 'not_configured' });
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', token);
+
+  const first = await get('/api/images/plex/playlist/900');
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get('Content-Type'), 'image/jpeg');
+  assert.equal(first.headers.get('Cache-Control'), 'private, max-age=300');
+  assert.ok(![...first.headers.values()].some((value) => value.includes(token)));
+  assert.deepEqual([...new Uint8Array(await first.arrayBuffer())], [0xff, 0xd8, 1700000000 % 256]);
+  assert.deepEqual(remote.pictures, ['/playlists/900/composite/1700000000?width=600&height=600']);
+  assert.equal((await get('/api/images/plex/playlist/900')).status, 200);
+  assert.equal(remote.pictures.length, 1);
+  remote.version += 1;
+  assert.deepEqual([...new Uint8Array(await (await get('/api/images/plex/playlist/900')).arrayBuffer())], [0xff, 0xd8, remote.version % 256]);
+  assert.equal(remote.pictures.length, 2);
+
+  for (const id of ['901', '999']) {
+    const missing = await get(`/api/images/plex/playlist/${id}`);
+    assert.equal(missing.status, 404, id);
+    assert.deepEqual(await missing.json(), { error: 'not_found' });
+  }
+  assert.equal((await get('/api/images/plex/playlist/abc')).status, 404);
+  remote.reachable = false;
+  const down = await get('/api/images/plex/playlist/900');
+  assert.equal(down.status, 502);
+  assert.deepEqual(await down.json(), { error: 'plex_unavailable' });
 });
 
 test('TMDB posters and backdrops are copied to our server on first request', async (t) => {

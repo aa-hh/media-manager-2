@@ -186,6 +186,32 @@ const build = (database: DatabaseSync, options: Options, who: PlexIdentity, shar
     sessionIdentifier: input.sessionIdentifier,
   }, input.clientId, 'the play queue');
 
+  // A Plex list's play queue, in list order or Plex's shuffled order. Plex's own clients start a list this way.
+  const createPlaylistQueue = async (input: { clientId: string; sessionIdentifier: string; playlistId: string; shuffle: boolean }) => container({
+    method: 'POST',
+    path: '/playQueues',
+    query: {
+      type: 'video',
+      playlistID: input.playlistId,
+      shuffle: input.shuffle ? '1' : '0',
+      repeat: '0',
+      own: '1',
+      includeChapters: '1',
+      includeMarkers: '1',
+      includeGeolocation: '1',
+      includeExternalMedia: '1',
+    },
+    sessionIdentifier: input.sessionIdentifier,
+  }, input.clientId, 'the play queue');
+
+  // False when Plex has no such list; throws when Plex refuses or is unreachable.
+  const playlistExists = async ({ clientId, playlistId }: { clientId: string; playlistId: string }) => {
+    const result = await json({ path: `/playlists/${encodeURIComponent(playlistId)}` }, clientId);
+    if (result.status === 404) return false;
+    if (!isOk(result.status) || containerOf(result.body) === undefined) throw new Error('Plex refused the playlist.');
+    return true;
+  };
+
   // Undefined when Plex has no such item.
   const item = async ({ clientId, ratingKey }: { clientId: string; ratingKey: string }): Promise<Record<string, unknown> | undefined> => {
     const result = await json({
@@ -269,7 +295,7 @@ const build = (database: DatabaseSync, options: Options, who: PlexIdentity, shar
     'the post-play hubs',
   );
 
-  return { identity, transientToken, resources, createPlayQueue, item, decision, timeline, ping, stop, setTrack, subtitleOffset, scrobble, preview, postplay };
+  return { identity, transientToken, resources, createPlayQueue, createPlaylistQueue, playlistExists, item, decision, timeline, ping, stop, setTrack, subtitleOffset, scrobble, preview, postplay };
 };
 
 // The desktop identity's calls, and as() for the same calls under another identity, sharing the kept server identity and

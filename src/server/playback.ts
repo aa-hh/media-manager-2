@@ -50,7 +50,9 @@ type Reply = { status: 200 | 404 | 409 | 502; body: unknown } | { status: 204 };
 const unavailable: Reply = { status: 502, body: { error: 'plex_unavailable' } };
 
 export type StartInput = {
-  ratingKey: string;
+  /** The title to play; left out when `playlist` names a Plex list, whose first queued item plays. */
+  ratingKey?: string;
+  playlist?: { id: string; shuffle: boolean };
   /** Left out, the default version plays and the reply's `mediaIndex` names it. */
   mediaIndex?: number;
   partIndex: number;
@@ -80,7 +82,25 @@ const buildPlayback = (plexPlayback: PlexPlaybackCalls, enabled: () => boolean, 
   };
 
   const start = async (input: StartInput, desktop: boolean): Promise<Reply> => {
-    const { clientId, sessionIdentifier, ratingKey, maxVideoBitrate } = input;
+    const { clientId, sessionIdentifier, maxVideoBitrate } = input;
+    // A Plex list plays from its own play queue, made first because it names the item to play (the first in list order,
+    // or in Plex's shuffled order); a title's queue is made beside the decision below.
+    let listQueue: Record<string, unknown> | undefined;
+    let ratingKey = input.ratingKey;
+    if (input.playlist !== undefined) {
+      const { id: playlistId, shuffle } = input.playlist;
+      const [exists, made] = await Promise.allSettled([
+        plexPlayback.playlistExists({ clientId, playlistId }),
+        plexPlayback.createPlaylistQueue({ clientId, sessionIdentifier, playlistId, shuffle }),
+      ]);
+      if (exists.status === 'fulfilled' && !exists.value) return { status: 404, body: { error: 'not_found' } };
+      if (exists.status === 'rejected' || made.status === 'rejected') return unavailable;
+      listQueue = made.value;
+      const queued = records(listQueue.Metadata);
+      const selected = queued.find((entry) => entry.playQueueItemID === listQueue?.playQueueSelectedItemID) ?? queued[0];
+      ratingKey = typeof selected?.ratingKey === 'string' && /^\d+$/.test(selected.ratingKey) ? selected.ratingKey : undefined;
+    }
+    if (ratingKey === undefined) return { status: 404, body: { error: 'not_found' } };
     const [itemResult, tokenResult, resourcesResult, identityResult] = await Promise.allSettled([
       plexPlayback.item({ clientId, ratingKey }),
       plexPlayback.transientToken(clientId),
@@ -106,7 +126,7 @@ const buildPlayback = (plexPlayback: PlexPlaybackCalls, enabled: () => boolean, 
 
     // The play queue is made after the item fetch, which gives its section UUID. Only the reply needs it, so it runs beside
     // the decision; the catch keeps a failure from going unhandled when the decision returns first.
-    const queueRequest = plexPlayback.createPlayQueue({
+    const queueRequest = listQueue !== undefined ? Promise.resolve(listQueue) : plexPlayback.createPlayQueue({
       clientId, sessionIdentifier, sectionUuid: record.librarySectionUUID, ratingKey, continuous: record.type === 'episode',
     });
     queueRequest.catch(() => {});
@@ -216,6 +236,7 @@ const buildPlayback = (plexPlayback: PlexPlaybackCalls, enabled: () => boolean, 
       status: 200,
       body: {
         session,
+        ratingKey,
         partId: numberOrNull(part.id),
         mediaIndex,
         startPositionSeconds: startSeconds,
@@ -419,20 +440,26 @@ export const createPlaybackRoutes = (playback: Playback) => {
   // keeps addresses out of the page's ordinary replies (state, devtools, logs) rather than defending against the page.
   routes.post('/start', async (context) => {
     const body = await readBody(context, [
-      'ratingKey', 'partIndex', 'offsetSeconds', 'directPlay', 'directStream', 'directStreamAudio', 'clientId', 'sessionIdentifier',
-    ], ['maxVideoBitrate', 'mediaIndex', 'resume']);
+      'partIndex', 'offsetSeconds', 'directPlay', 'directStream', 'directStreamAudio', 'clientId', 'sessionIdentifier',
+    ], ['ratingKey', 'maxVideoBitrate', 'mediaIndex', 'resume', 'playlistId', 'shuffle']);
     if (body === undefined) return context.json(invalid, 400);
     const {
       ratingKey, mediaIndex, partIndex, offsetSeconds, resume, directPlay, directStream, directStreamAudio, maxVideoBitrate, clientId, sessionIdentifier,
+      playlistId, shuffle,
     } = body;
-    if (!isRatingKey(ratingKey) || (mediaIndex !== undefined && !isCount(mediaIndex)) || !isCount(partIndex)
+    // A list start names the list instead of a title; shuffle only goes with a list.
+    const listStart = playlistId !== undefined;
+    if ((listStart ? ratingKey !== undefined || typeof playlistId !== 'string' || !/^\d{1,12}$/.test(playlistId) : !isRatingKey(ratingKey))
+      || (shuffle !== undefined && (!listStart || !isBoolean(shuffle)))
+      || (mediaIndex !== undefined && !isCount(mediaIndex)) || !isCount(partIndex)
       || typeof offsetSeconds !== 'number' || !Number.isFinite(offsetSeconds) || offsetSeconds < 0
       || (resume !== undefined && !isBoolean(resume))
       || !isBoolean(directPlay) || !isBoolean(directStream) || !isBoolean(directStreamAudio)
       || (maxVideoBitrate !== undefined && (typeof maxVideoBitrate !== 'number' || !QUALITY_KBPS.has(maxVideoBitrate)))
       || !isId(clientId) || !isId(sessionIdentifier)) return context.json(invalid, 400);
     const input: StartInput = {
-      ratingKey, partIndex, offsetSeconds, directPlay, directStream, directStreamAudio, clientId, sessionIdentifier,
+      ...(listStart ? { playlist: { id: playlistId as string, shuffle: shuffle === true } } : { ratingKey: ratingKey as string }),
+      partIndex, offsetSeconds, directPlay, directStream, directStreamAudio, clientId, sessionIdentifier,
       ...(mediaIndex === undefined ? {} : { mediaIndex }),
       ...(resume === undefined ? {} : { resume }),
       ...(maxVideoBitrate === undefined ? {} : { maxVideoBitrate }),
