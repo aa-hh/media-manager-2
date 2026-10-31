@@ -4650,7 +4650,6 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.deepEqual(first.tracks.subtitle.map((track) => track.offsetMs), [null, 500]);
   });
 
-  // Sending stream addresses or subtitle file addresses to the page without the desktop header turns this red.
   // Building a list's queue from a title, losing shuffle on the way to Plex, playing anything but the queue's selected item,
   // making a second queue, answering an unknown list with anything but 404, taking shuffle without a list, or changing
   // the queue a title start asks for turns this red.
@@ -4701,6 +4700,7 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     });
   });
 
+  // Sending stream addresses or subtitle file addresses to the page without the desktop header turns this red.
   await t.test('only the desktop header adds stream and subtitle addresses', async () => {
     const { routes } = connect();
     const page = (await start(routes)).body;
