@@ -13889,6 +13889,30 @@ test('the settings screen sends only changed fields and ranks each service state
   });
 });
 
+test('a signed-in TV shows when it signed in and when it was last used', async () => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = await readFile(new URL('../src/client/settings/devices.ts', import.meta.url), 'utf8');
+  const { tvDates } = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`);
+  const day = 24 * 60 * 60_000;
+  // Local times, so the rows hold in any time zone the suite runs in.
+  const signedInAt = new Date(2026, 8, 3, 21, 0).getTime();
+  const now = new Date(2026, 9, 31, 9, 0).getTime();
+  // Reading last used as anything but the expiry less 90 days, or "today" by elapsed hours rather than the calendar
+  // day, turns a row red.
+  const cases = [
+    [new Date(2026, 9, 18, 22, 30).getTime() + 90 * day, 'Signed in 3 Sep 2026 · Last used 18 Oct 2026'],
+    [new Date(2026, 9, 31, 0, 5).getTime() + 90 * day, 'Signed in 3 Sep 2026 · Last used today'],
+    [new Date(2026, 9, 30, 23, 55).getTime() + 90 * day, 'Signed in 3 Sep 2026 · Last used 30 Oct 2026'],
+    // A TV never used since it signed in: its expiry is the sign-in plus 90 days, and last used never falls before it.
+    [signedInAt + 90 * day, 'Signed in 3 Sep 2026 · Last used 3 Sep 2026'],
+    [signedInAt + 89 * day, 'Signed in 3 Sep 2026 · Last used 3 Sep 2026'],
+  ];
+  for (const [expiresAt, expected] of cases) {
+    // en-GB writes September as "Sept" in newer ICU data; either spelling is the same date.
+    assert.equal(tvDates({ id: 'a', name: 'Bedroom TV', signedInAt, expiresAt }, now).replaceAll('Sept', 'Sep'), expected);
+  }
+});
+
 test('the tracker rule form sends the saved rule back unchanged and converts percentages and days', async () => {
   // Sending percentages or days as typed, dropping the kept curve row, writing margins nobody changed, or sending
   // typed text as a blank turns this red.
