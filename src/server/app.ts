@@ -8,7 +8,14 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { compress } from 'hono/compress';
 import { streamSSE } from 'hono/streaming';
-import { createAuthentication, isLoopback, type JellyfinQuickConnectStartResult, type JellyfinSignInResult } from './auth.js';
+import {
+  type CompleteResult,
+  createAuthentication,
+  DEVICE_SESSION_LIFETIME_MS,
+  isLoopback,
+  type JellyfinQuickConnectStartResult,
+  type JellyfinSignInResult,
+} from './auth.js';
 import { createDiscoverRoutes, type Discover } from './discover/index.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
@@ -78,6 +85,7 @@ type CookieRead =
   | { kind: 'value'; value: string };
 
 const SESSION_LIFETIME_SECONDS = 24 * 60 * 60;
+const DEVICE_SESSION_LIFETIME_SECONDS = DEVICE_SESSION_LIFETIME_MS / 1000;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 const readCookie = (header: string | undefined, name: string): CookieRead => {
@@ -322,6 +330,11 @@ export const createApp = (options: CreateAppOptions) => {
       body.state,
       session.kind === 'value' ? session.value : undefined,
     );
+    return plexCompleteReply(context, result, SESSION_LIFETIME_SECONDS);
+  });
+
+  // The answers the browser's and the TV's Plex sign-ins share once Plex has been asked.
+  const plexCompleteReply = (context: Context, result: CompleteResult, maxAge: number) => {
     if (result.kind === 'pending') return context.json({ status: 'pending' }, 202);
     if (result.kind === 'in_progress') return context.json({ error: 'in_progress' }, 409);
     if (result.kind === 'invalid_flow') return context.json({ error: 'invalid_flow' }, 401);
@@ -332,8 +345,51 @@ export const createApp = (options: CreateAppOptions) => {
     clearBindingCookie(context);
     if (result.kind === 'owner_only') return context.json({ error: 'owner_only' }, 403);
     if (result.kind === 'unavailable') return context.json({ error: 'plex_unavailable' }, 503);
-    setCookie(context, sessionCookieName, result.session, { ...cookieOptions, maxAge: SESSION_LIFETIME_SECONDS });
+    setCookie(context, sessionCookieName, result.session, { ...cookieOptions, maxAge });
     return context.json({ expiresAt: result.expiresAt });
+  };
+
+  // A TV signs in with a Plex link code and keeps a 90-day session; it sends the browser headers itself.
+  app.post('/auth/link/start', requireBrowserPost, async (context) => {
+    const body = await readExactJson(context, ['deviceName']);
+    const deviceName = typeof body?.deviceName === 'string' ? body.deviceName.trim() : '';
+    if (deviceName === '' || [...deviceName].length > 64 || /\p{Cc}/u.test(deviceName)) {
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    const binding = readCookie(context.req.header('Cookie'), bindingCookieName);
+    if (binding.kind === 'duplicate' || binding.kind === 'invalid') {
+      clearBindingCookie(context);
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    const result = await authentication.linkStart(binding.kind === 'value' ? binding.value : undefined, clientOf(context), deviceName);
+    if (result.kind === 'not_configured') return context.json({ error: 'not_configured' }, 503);
+    if (result.kind === 'unavailable') return context.json({ error: 'plex_unavailable' }, 503);
+    if (result.kind === 'setup_required') return context.json({ error: 'setup_required' }, 409);
+    if (result.kind === 'rate_limited') {
+      context.header('Retry-After', String(result.retryAfter));
+      return context.json({ error: 'rate_limited' }, 429);
+    }
+    setCookie(context, bindingCookieName, result.binding, {
+      ...cookieOptions,
+      maxAge: Math.max(1, Math.ceil((result.expiresAt - now()) / 1000)),
+    });
+    return context.json({ code: result.code, expiresAt: result.expiresAt }, 201);
+  });
+
+  app.post('/auth/link/complete', requireBrowserPost, async (context) => {
+    if (await readExactJson(context, []) === undefined) return context.json({ error: 'invalid_request' }, 400);
+    const binding = readCookie(context.req.header('Cookie'), bindingCookieName);
+    if (binding.kind !== 'value') {
+      clearBindingCookie(context);
+      return context.json({ error: 'invalid_flow' }, 401);
+    }
+    const session = readCookie(context.req.header('Cookie'), sessionCookieName);
+    if (session.kind === 'duplicate' || session.kind === 'invalid') {
+      clearSessionCookie(context);
+      return context.json({ error: 'invalid_flow' }, 401);
+    }
+    const result = await authentication.linkComplete(binding.value, session.kind === 'value' ? session.value : undefined);
+    return plexCompleteReply(context, result, DEVICE_SESSION_LIFETIME_SECONDS);
   });
 
   app.post('/auth/cancel', requireBrowserPost, async (context) => {
@@ -468,7 +524,7 @@ export const createApp = (options: CreateAppOptions) => {
   });
 
   for (const path of [
-    '/auth/status', '/auth/start', '/auth/callback', '/auth/complete', '/auth/cancel', '/auth/logout',
+    '/auth/status', '/auth/start', '/auth/callback', '/auth/complete', '/auth/cancel', '/auth/logout', '/auth/link/start', '/auth/link/complete',
     '/auth/jellyfin/check', '/auth/jellyfin/password', '/auth/jellyfin/quick-connect', '/auth/jellyfin/quick-connect/complete',
   ]) {
     app.all(path, (context) => context.json({ error: 'method_not_allowed' }, 405));
@@ -524,11 +580,12 @@ export const createApp = (options: CreateAppOptions) => {
       clearSessionCookie(context);
       return context.json({ error: 'unauthenticated' }, 401);
     }
-    const validated = authentication.validateSession(session.value);
+    const validated = authentication.validateSession(session.value, true);
     if (validated.kind !== 'success') {
       clearSessionCookie(context);
       return context.json({ error: validated.kind === 'expired' ? 'session_expired' : 'unauthenticated' }, 401);
     }
+    if (validated.renewed) setCookie(context, sessionCookieName, session.value, { ...cookieOptions, maxAge: DEVICE_SESSION_LIFETIME_SECONDS });
     context.set('sessionExpiresAt', validated.expiresAt);
     context.set('sessionToken', session.value);
     context.set('plexSignInToken', authentication.plexToken(session.value));
@@ -549,6 +606,12 @@ export const createApp = (options: CreateAppOptions) => {
     serverNow: now(),
     mediaServer: effectiveOwner(options.database, options.ownerPlexId)?.provider ?? 'plex',
   }));
+  app.get('/api/devices', (context) => context.json({ devices: authentication.devices() }));
+  app.post('/api/devices/:id{[0-9]{1,15}}/sign-out', (context) => (
+    authentication.signOutDevice(Number(context.req.param('id')))
+      ? context.body(null, 204)
+      : context.json({ error: 'not_found' }, 404)
+  ));
   let openStreams = 0;
   app.get('/api/events', (context) => {
     if (context.req.method !== 'GET') return context.json({ error: 'method_not_allowed' }, 405);
