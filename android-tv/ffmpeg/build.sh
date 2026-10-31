@@ -32,7 +32,11 @@ script=$FFMPEG_MODULE_PATH/jni/build_ffmpeg.sh
 awk '/^\.\/configure/ { held = $0; next }
      held != "" { if ($0 ~ /--libdir=android-libs\/x86/) exit; print held; held = "" }
      { print }' "$script" > "$script.arm"
-grep -q 'android-libs/arm64-v8a' "$script.arm" || { echo "ffmpeg: build_ffmpeg.sh changed shape" >&2; exit 1; }
+# At API 28 FFmpeg finds iconv in libc, but the module's JNI library links against an older API without it, so the
+# link fails; only subtitle decoding uses iconv.
+perl -pi -e 's/^(\s*)--disable-vulkan$/$1--disable-vulkan\n$1--disable-iconv/' "$script.arm"
+grep -q 'android-libs/arm64-v8a' "$script.arm" && grep -q -- '--disable-iconv' "$script.arm" \
+    || { echo "ffmpeg: build_ffmpeg.sh changed shape" >&2; exit 1; }
 chmod +x "$script.arm"
 (cd "$FFMPEG_MODULE_PATH/jni" && ./build_ffmpeg.sh.arm "$FFMPEG_MODULE_PATH" "$NDK_PATH" "$HOST_PLATFORM" "$ANDROID_ABI" "${DECODERS[@]}")
 
@@ -41,6 +45,9 @@ module=$(grep -rh -B3 '"libraries/decoder_ffmpeg"' out/src/build-logic-settings 
 [ -n "$module" ] || { echo "ffmpeg: no Gradle module for libraries/decoder_ffmpeg" >&2; exit 1; }
 
 printf 'sdk.dir=%s\n' "$ANDROID_HOME" > out/src/local.properties
+# The JNI library only for the ABIs FFmpeg was built for above.
+printf '\nandroid.defaultConfig.ndk.abiFilters += listOf("armeabi-v7a", "arm64-v8a")\n' \
+    >> out/src/libraries/decoder_ffmpeg/build.gradle.kts
 (cd out/src && ./gradlew --console=plain ":$module:assembleRelease")
 aar=$(find out/src/libraries/decoder_ffmpeg -path '*outputs/aar/*-release.aar' | head -1)
 [ -n "$aar" ] || { echo "ffmpeg: Gradle made no release AAR" >&2; exit 1; }
