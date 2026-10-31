@@ -55,7 +55,7 @@ export type PlayerScreenProps = {
   playing: boolean;
   /** all, top (opening and Up Next) or none (hidden after 3 s still). */
   controls: 'all' | 'top' | 'none';
-  /** The opening line, and whether 3 s have passed without the first frame. */
+  /** The opening line (for screen readers), and whether 8 s have passed without the first frame. */
   opening: { text: string; slow: boolean };
   /** The Load ahead choice's value from LOAD_AHEAD. */
   loadAhead: string;
@@ -283,7 +283,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
         format={props.format}
         centre={screen === 'opening'
           // The spinner alone on screen (owner, 31 Oct); the line still names it for screen readers.
-          ? { text: <span className="sr-only">{opening.text}</span>, detail: opening.slow ? <span className="font-ui">Plex is slow to answer. Still trying.</span> : undefined }
+          ? { text: <span className="sr-only">{opening.text}</span>, detail: opening.slow ? <span className="font-ui">Establishing connection…</span> : undefined }
           : screen === 'buffering'
             ? { text: 'Loading from Plex', detail: `${durationWords(loadedAhead)} ready of ${loadAheadLabel}` }
             : undefined}
