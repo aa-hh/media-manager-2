@@ -11885,8 +11885,8 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     for (const [bridge, takes] of bridges) assert.equal(hasSoundCommands(bridge), takes, JSON.stringify(Object.keys(bridge ?? {})));
   });
 
-  // Skipping the title fetch for a movie card without the marker turns the last rows red: a desktop build older than the
-  // page refuses a load with no version, so every movie card's Play would fail there.
+  // Treating a missing or non-true `picksVersion` as taking a load with no version turns the last three rows red: a desktop
+  // build older than the page refuses one, so every movie card's Play would fail there.
   await t.test('a movie card leaves the version to the server only on a desktop build that says it takes that', () => {
     assert.deepEqual([{ picksVersion: true }, { picksVersion: 'yes' }, {}, undefined].map(desktopPicksVersion), [true, false, false, false]);
   });
@@ -15197,6 +15197,20 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   assert.equal(readAsk({ ...ask, mediaIndex: 0 }, clickNow).ask.mediaIndex, 0);
   for (const mediaIndex of [-1, '0', 1.5]) assert.throws(() => readAsk({ ...ask, mediaIndex }, clickNow), /invalid_request/, String(mediaIndex));
   assert.deepEqual([true, 'yes', 1, undefined].map((resume) => readAsk({ ...ask, resume }, clickNow).resume), [true, false, false, false]);
+  // Dropping readAsk's check on ratingKey, partIndex, offsetSeconds, a flag or maxVideoBitrate turns that field's rows red: a
+  // malformed value from the page would reach the start request or mpv.
+  const badFields = [
+    ['ratingKey', '12a'], ['ratingKey', 123], ['partIndex', -1], ['partIndex', 1.5], ['partIndex', '0'],
+    ['offsetSeconds', -1], ['offsetSeconds', Number.NaN], ['offsetSeconds', Number.POSITIVE_INFINITY],
+  ];
+  for (const [name, value] of badFields) assert.throws(() => readAsk({ ...ask, [name]: value }, clickNow), /invalid_request/, `${name} ${String(value)}`);
+  const badFlags = [
+    ['directPlay', 'true'], ['directStream', 1], ['directStreamAudio', undefined],
+    ['maxVideoBitrate', -1], ['maxVideoBitrate', 1.5], ['maxVideoBitrate', '8000'],
+  ];
+  for (const [name, value] of badFlags) {
+    assert.throws(() => readAsk({ ...ask, flags: { ...flags, [name]: value } }, clickNow), /invalid_request/, `${name} ${String(value)}`);
+  }
 
   // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);
