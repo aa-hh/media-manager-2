@@ -738,6 +738,10 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return removed !== undefined;
   };
 
+  // The name a TV signed in with, or null for a browser's session; a signed-out session has no row and gives undefined.
+  const deviceNameOf = (session: string) => (database.prepare('SELECT device_name FROM sessions WHERE token_hash = ?')
+    .get(hash(session)) as { device_name: string | null } | undefined)?.device_name;
+
   // Lets setup connect Plex without a pasted token; never leaves the server.
   const plexToken = (session?: string): string | undefined => (
     validateSession(session).kind === 'success' ? plexTokens.get(hash(session as string)) : undefined
@@ -762,5 +766,6 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     plexToken,
     devices,
     signOutDevice,
+    deviceNameOf,
   };
 };

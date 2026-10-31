@@ -16,6 +16,7 @@ import {
   type JellyfinQuickConnectStartResult,
   type JellyfinSignInResult,
 } from './auth.js';
+import { createDeviceLogs, MAX_DEVICE_LOG_CHARACTERS, REFERENCE_PATTERN } from './deviceLogs.js';
 import { createDiscoverRoutes, type Discover } from './discover/index.js';
 import { createEventHub, type EventHub } from './events.js';
 import { globalTimers, type Timers } from './jobs.js';
@@ -257,6 +258,12 @@ export const createApp = (options: CreateAppOptions) => {
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
   });
 
+  // A TV's recent app log is up to 256 K characters, which JSON escaping and UTF-8 can make several times as many bytes.
+  const deviceLogRequestLimit = bodyLimit({
+    maxSize: 2 * 1_024 * 1_024,
+    onError: (context) => context.json({ error: 'request_too_large' }, 413),
+  });
+
   const requireBrowserPost: MiddlewareHandler<AppEnvironment> = async (context, next) => {
     const origin = context.req.header('Origin');
     const contentType = context.req.header('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
@@ -273,6 +280,7 @@ export const createApp = (options: CreateAppOptions) => {
     // A batch of browser timings holds up to 50 items, so it gets the same room as a grab. So do the six folder paths, which can be 170 characters each.
     if (context.req.path === '/api/grabs' || context.req.path === '/api/second-versions' || context.req.path === '/api/metrics' || context.req.path === '/api/setup/folders') return grabRequestLimit(context, next);
     // A movie or show delete lists every torrent and second version chosen, which for a long show is many.
+    if (context.req.path === '/api/device-logs') return deviceLogRequestLimit(context, next);
     if (context.req.path.startsWith('/api/imports/') || /^\/api\/library\/(movie|series)\/\d+\/delete$/.test(context.req.path)) return importRequestLimit(context, next);
     return requestLimit(context, next);
   };
@@ -613,6 +621,27 @@ export const createApp = (options: CreateAppOptions) => {
       ? context.body(null, 204)
       : context.json({ error: 'not_found' }, 404)
   ));
+  // A TV's Settings page sends its recent app log and shows the reference it gets back; the owner reads it by that.
+  const deviceLogs = createDeviceLogs(options.database, now);
+  app.post('/api/device-logs', async (context) => {
+    const body = await readExactJson(context, ['appVersion', 'log']);
+    if (body === undefined
+      || typeof body.appVersion !== 'string' || !/^[0-9A-Za-z._+-]{1,40}$/.test(body.appVersion)
+      || typeof body.log !== 'string' || body.log.length === 0 || body.log.length > MAX_DEVICE_LOG_CHARACTERS) {
+      return context.json({ error: 'invalid_request' }, 400);
+    }
+    const deviceName = authentication.deviceNameOf(context.get('sessionToken'));
+    if (deviceName === undefined) return context.json({ error: 'unauthenticated' }, 401);
+    return context.json({ reference: deviceLogs.save(deviceName, body.appVersion, body.log) }, 201);
+  });
+  app.get('/api/device-logs', (context) => context.json({ logs: deviceLogs.list() }));
+  // Plain text so a browser shows it as written; nosniff (set above) keeps a log from ever running as a page.
+  app.get(`/api/device-logs/:reference{${REFERENCE_PATTERN}}`, (context) => {
+    const found = deviceLogs.read(context.req.param('reference'));
+    if (found === undefined) return context.json({ error: 'not_found' }, 404);
+    const heading = `${found.deviceName ?? 'Browser'} · app ${found.appVersion} · received ${new Date(found.receivedAt).toISOString()}`;
+    return context.text(`${heading}\n\n${found.log}`, 200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  });
   let openStreams = 0;
   app.get('/api/events', (context) => {
     if (context.req.method !== 'GET') return context.json({ error: 'method_not_allowed' }, 405);

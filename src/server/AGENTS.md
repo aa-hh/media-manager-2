@@ -18,7 +18,7 @@ Routes, jobs and SQLite storage behind `services/`. Never move or delete a file 
 
 ## Map
 
-- `index.ts`, `app.ts`, `cli.ts`, `auth.ts`, `events.ts`, `jobs.ts` → startup, routes, sign-in, jobs.
+- `index.ts`, `app.ts`, `cli.ts`, `auth.ts`, `deviceLogs.ts`, `events.ts`, `jobs.ts` → startup, routes, sign-in, TV logs, jobs.
 - `database.ts`, `settings.ts`, `preferences.ts`, `owner.ts`, `dependencies.ts`, `backup.ts`, `backupDestination.ts` → storage, backups.
 - `setup.ts`, `connections.ts`, `trackerSettings.ts`, `playback.ts` → setup, settings, playback routes.
 - `grabs.ts`, `replace.ts`, `protection.ts`, `releases.ts`, `releaseDetails.ts`, `searches.ts` → searching, grabbing, replace, protection.
