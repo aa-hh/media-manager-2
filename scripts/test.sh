@@ -4,6 +4,7 @@
 #
 # Usage: sh scripts/test.sh [--full] [extra args passed to the test runner]
 #   (no flag)  the fast run Guard 4 uses at commit
+#   Both runs add the TV app's unit tests when the branch touches android-tv/.
 #   --full     the full suite, plus the Storybook stories this branch changes,
 #              in headless Chromium with their accessibility check; pre-push
 #              and CI run it
@@ -40,6 +41,7 @@ if [ "${1:-}" = --review-script ]; then
     /bin/bash scripts/test-screenshots.sh
     /bin/bash scripts/test-story-args.sh
     /bin/bash scripts/test-housekeeping.sh
+    /bin/bash scripts/test-guard-bash.sh
     exit 0
 fi
 
@@ -70,6 +72,23 @@ full=0
 
 if [ "$full" = 1 ]; then
     sh scripts/test.sh --review-script
+fi
+
+# The TV app's unit tests, when this branch (working tree included) touches it;
+# the base is the one --story-args uses. No main to compare with runs them.
+# A machine without the Android SDK (exit 97) skips them, except in CI.
+android_base=
+if android_base=$(git merge-base HEAD origin/main 2>/dev/null); then
+    if [ "$android_base" = "$(git rev-parse HEAD)" ]; then
+        android_base=$(git rev-parse -q --verify HEAD~1) || android_base=
+    fi
+fi
+if [ -z "$android_base" ] || git diff --name-only "$android_base" -- android-tv scripts/android-tv.sh | grep -q .; then
+    if sh scripts/android-tv.sh test; then :; else
+        status=$?
+        if [ "$status" -ne 97 ] || [ -n "${CI:-}" ]; then exit "$status"; fi
+        echo "test.sh: skipped the TV app's tests: no Android SDK on this machine" >&2
+    fi
 fi
 
 sh scripts/build.sh

@@ -203,6 +203,19 @@ run_review
 case "$OUT" in *"Review level: full (61 product lines, risk: desktop/lib/connection.js), round 1"*) ok "desktop addon lines count and desktop/lib/ is a risk path" ;;
   *) fail "desktop: wanted 61 product lines and desktop/lib/connection.js as a risk path, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
 
+# TV build: a pull request that touches only the Gradle wrapper and its
+# properties gets a full review, although neither file counts as product lines.
+# Breaks if android-tv/gradlew or android-tv/gradle.properties leaves is_risk_path.
+setup
+: > "$STUB/comments"
+mkdir -p "$W/android-tv"
+printf '#!/bin/sh\nexit 0\n' > "$W/android-tv/gradlew"
+printf 'org.gradle.jvmargs=-Xmx2g\n' > "$W/android-tv/gradle.properties"
+g add -A; g commit -qm tv-wrapper
+run_review
+case "$OUT" in *"Review level: full ("*"risk: android-tv/gradle.properties, android-tv/gradlew), round 1"*) ok "the TV Gradle wrapper and its properties are risk paths" ;;
+  *) fail "tv wrapper: wanted a full review with both files as risk paths, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
+
 # A commit of the branch's own after round 2 still refuses.
 setup
 on_main b.txt 'b2\n' main-change

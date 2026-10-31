@@ -49,6 +49,7 @@ symbol you cannot find in source, believe the source and fix the doc.
 - `src/client/` → the React app the browser runs. Has AGENTS.md.
 - `tests/` → the test suite and the fakes of outside services. Has AGENTS.md.
 - `desktop/` → the Mac desktop app: Electron around the web app, mpv for playback. Has AGENTS.md.
+- `android-tv/` → the Google TV app: Kotlin, Compose for TV, Media3. Has AGENTS.md.
 - `scripts/` → the only sanctioned way to build, test, review, land and deploy. Has AGENTS.md.
 - `.githooks/` → commit and push guards; settings in `project.conf`.
 - `.github/` → the CI workflow and the pull request template.
@@ -64,6 +65,9 @@ symbol you cannot find in source, believe the source and fix the doc.
 - **Build and test only through `scripts/build.sh` and `scripts/test.sh`.**
   They are the one place that knows how this repo builds; a Claude hook denies
   the bare commands.
+- **Build and test the TV app only through `scripts/android-tv.sh`**, run as
+  `AUDIOUT_REMOTE_LOCAL=1 ~/.claude/scripts/remote-run sh scripts/android-tv.sh <cmd>`:
+  the mule has no Android SDK. The hook denies bare `gradle` and `gradlew`.
 - **"Does this code exist anywhere?" needs more than `git grep`.** Unreachable
   commits and other worktrees' uncommitted work are invisible to it. Also
   check `git stash list`, the reflog, `git fsck --unreachable` and the other
@@ -100,13 +104,13 @@ symbol you cannot find in source, believe the source and fix the doc.
   caller skips all three. Four exceptions exist: Plex sign-in in
   `src/server/auth.ts`, .torrent downloads from indexers in
   `src/server/secondVersions.ts`, TMDB image downloads in
-  `src/server/titles.ts`, and the desktop app's mpv fetching video straight
-  from Plex, with the unauthenticated `/identity` check that picks Plex's
-  address (`desktop/`). The first three cap their own requests the same way
-  (time limit, redirects); keep those caps when editing them. mpv's cap is
-  that its addresses come from `/api/playback/start` and carry only a
-  transient token, never the owner's Plex token, and that the page never
-  sees them.
+  `src/server/titles.ts`, and the desktop app's mpv and the TV app's Media3
+  player fetching video straight from Plex, with the unauthenticated
+  `/identity` check that picks Plex's address (`desktop/`, `android-tv/`).
+  The first three cap their own requests the same way (time limit,
+  redirects); keep those caps when editing them. The players' cap is that
+  their addresses come from `/api/playback/start` and carry only a transient
+  token, never the owner's Plex token; on desktop, the page never sees them.
 
 ## Tests
 
