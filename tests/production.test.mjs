@@ -3916,6 +3916,10 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     }],
   });
   const hevc = (extra) => ({ id: 1000, streamType: 1, index: 0, codec: 'hevc', ...extra });
+  // Two versions with movie()'s streams: the 720 one first, the 1080 one second.
+  const twoVersions = (base) => ({ ...base, Media: [[720, 4000, 811, 'file-720.mkv'], [1080, 8000, 812, 'file-1080.mkv']].map(([height, bitrate, id, file]) => ({
+    ...base.Media[0], height, bitrate, Part: [{ ...base.Media[0].Part[0], id, key: `/library/parts/${id}/1700000000/${file}` }],
+  })) });
   const items = {
     '/library/metadata/100': movie('100', 1080),
     '/library/metadata/200': movie('200', 720),
@@ -3923,6 +3927,8 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     '/library/metadata/400': movie('400', 2160, hevc({ colorTrc: 'smpte2084' })),
     '/library/metadata/500': movie('500', 2160, hevc({ colorTrc: 'arib-std-b67' })),
     '/library/metadata/600': movie('600', 2160, hevc({ colorTrc: 'bt709' })),
+    '/library/metadata/700': { ...movie('700', 1080), viewOffset: 61_500 },
+    '/library/metadata/800': twoVersions(movie('800', 720)),
   };
   const accepted = () => ({ generalDecisionCode: 1000, mdeDecisionCode: 1000, transcodeDecisionCode: 1000, directPlayDecisionCode: 1000 });
   const connect = ({ decision = accepted, now } = {}) => {
@@ -4135,6 +4141,27 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     const address = new URL(body.streamAddresses[0]);
     assert.equal(address.pathname, '/video/:/transcode/universal/start');
     assert.equal(address.searchParams.get('X-Plex-Session-Identifier'), ids.sessionIdentifier);
+  });
+
+  // Picking the first version instead of the tallest, dropping mediaIndex from the reply, taking the page's stale
+  // offsetSeconds when resume is set, or keeping Plex's viewOffset in ms turns this red.
+  await t.test('a start without a version plays the tallest one, and resume starts from Plex\'s saved position', async () => {
+    const { routes, decisions } = connect();
+    const last = () => decisions().at(-1).searchParams;
+    const picked = await start(routes, { ratingKey: '800', mediaIndex: undefined }, { desktop: true });
+    assert.equal(picked.status, 200);
+    assert.deepEqual([picked.body.mediaIndex, picked.body.partId], [1, 812]);
+    assert.ok(picked.body.streamAddresses.every((address) => address.includes('/library/parts/812/')));
+    assert.equal(last().get('mediaIndex'), '1');
+    const asked = await start(routes, { ratingKey: '800', mediaIndex: 0 }, { desktop: true });
+    assert.equal(asked.body.mediaIndex, 0);
+    assert.ok(asked.body.streamAddresses.every((address) => address.includes('/library/parts/811/')));
+    assert.equal((await start(routes, { mediaIndex: 'x' })).status, 400);
+    const resumed = await start(routes, { ratingKey: '700', resume: true, offsetSeconds: 30 });
+    assert.equal(resumed.body.startPositionSeconds, 61);
+    assert.equal(last().get('offset'), '61');
+    assert.equal((await start(routes, { ratingKey: '100', resume: true, offsetSeconds: 30 })).body.startPositionSeconds, 0);
+    assert.equal((await start(routes, { resume: 'yes' })).status, 400);
   });
 
   // Dropping the Sec-Fetch-Site check on the timeline route turns this red.
@@ -11756,7 +11783,7 @@ test('library filters, watch marks and the card Play follow Plex watch status', 
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
   const { filterTitles, filterCounts, segmentsFor } = await load('../src/client/library/grid.ts');
-  const { watchMarks, continueMeta, playLabel, playMode, plexWebUrl, movieLoad, episodeLoad, clockText } = await load('../src/client/library/watch.ts');
+  const { watchMarks, continueMeta, playLabel, playMode, plexWebUrl, movieLoad, episodeLoad, cardMovieLoad, clockText } = await load('../src/client/library/watch.ts');
 
   const show = (id, { files = 10, episodes = 10, watch = null } = {}) => ({ type: 'tv', service: 'sonarr', id, status: 'continuing', monitored: true,
     tv: { episodeFileCount: files, episodeCount: episodes, totalEpisodeCount: episodes, seasonCount: 1 }, movie: null, watch });
@@ -11852,15 +11879,27 @@ test('library filters, watch marks and the card Play follow Plex watch status', 
       episodes: { 10: playable('e10'), 11: playable('e11'), 12: playable('e12', 90_500) } };
     const flags = { directPlay: true, directStream: true, directStreamAudio: true };
     assert.deepEqual(episodeLoad({ episodes, watch }, { seasonNumber: 1, episodeNumber: 2 }, 'resume'),
-      { ratingKey: 'e12', mediaIndex: 1, partIndex: 0, offsetSeconds: 90, flags });
+      { ratingKey: 'e12', mediaIndex: 1, partIndex: 0, offsetSeconds: 90, flags, resume: true });
     assert.equal(episodeLoad({ episodes, watch }, { seasonNumber: 1, episodeNumber: 2 }, 'start').offsetSeconds, 0);
     assert.equal(episodeLoad({ episodes, watch: { ...watch, nextEpisode: { seasonNumber: 1, episodeNumber: 2 } } }, null, 'start').ratingKey, 'e12');
     assert.equal(episodeLoad({ episodes, watch }, null, 'start').ratingKey, 'e11');
     assert.equal(episodeLoad({ episodes, watch }, { seasonNumber: 4, episodeNumber: 1 }, 'start'), null);
     assert.equal(episodeLoad({ episodes, watch: { kind: 'unavailable' } }, null, 'start'), null);
     assert.deepEqual(movieLoad({ kind: 'ok', machineIdentifier: 'm', ...playable('m1', 61_000) }, 'resume'),
-      { ratingKey: 'm1', mediaIndex: 1, partIndex: 0, offsetSeconds: 61, flags });
+      { ratingKey: 'm1', mediaIndex: 1, partIndex: 0, offsetSeconds: 61, flags, resume: true });
     assert.equal(movieLoad(null, 'start'), null);
+    // Sending a mediaIndex from a card (the card never knows the version), preferring the title's saved position over the
+    // Continue Watching item's, or dropping resume turns these rows red.
+    const cardWatch = film({ viewOffsetMs: 61_000 });
+    const card = cardMovieLoad(cardWatch, undefined, 'resume');
+    assert.deepEqual(card, { ratingKey: 'M', partIndex: 0, offsetSeconds: 61, flags, resume: true });
+    assert.ok(!('mediaIndex' in card));
+    assert.equal(cardMovieLoad(cardWatch, item('radarr', 5, { viewOffsetMs: 30_000 }), 'resume').offsetSeconds, 30);
+    const fromStart = cardMovieLoad(cardWatch, undefined, 'start');
+    assert.equal(fromStart.offsetSeconds, 0);
+    assert.ok(!('resume' in fromStart));
+    assert.equal(cardMovieLoad(shown({}), undefined, 'resume'), null);
+    assert.equal(cardMovieLoad(null, undefined, 'resume'), null);
   });
 
   // Ignoring the version picked on the title page, or dropping Plex's default when none is picked, turns this red.
@@ -11882,7 +11921,7 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
     activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands, wheelStep,
     SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale, formatLine, originalLabel, isPlayAddress, onlyPlayerMoves,
-    OPENING_REQUEST, openOutcome, retryStep,
+    OPENING_REQUEST, openOutcome, retryStep, reloadAt, retryRequest, desktopPicksVersion,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
 
@@ -11910,6 +11949,23 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     assert.equal(openOutcome({ current: 2, load: 2, failed: false, found }), 'play');
     assert.equal(retryStep(OPENING_REQUEST), 'reopen');
     assert.equal(retryStep({ ...OPENING_REQUEST }), 'reload');
+    // Keeping resume on a reload sends the title back to Plex's saved position on every retry.
+    assert.equal(reloadAt({ ...OPENING_REQUEST, ratingKey: '7', resume: true }, 30, undefined).resume, undefined);
+    // Keeping openedAt on a reload makes that reload's timing line count from the original click.
+    assert.equal(reloadAt({ ...OPENING_REQUEST, ratingKey: '7', openedAt: 1 }, 30, undefined).openedAt, undefined);
+    // Retrying through reloadAt when the start never answered turns the first row red (Retry would drop resume and play from
+    // the page's stale guess), and keeping resume or openedAt on any other Retry turns the last two red.
+    const asked = { ratingKey: '7', partIndex: 0, offsetSeconds: 12, flags: flagsFor(4000), resume: true, openedAt: 1 };
+    const { resume: _resume, ...unresumed } = asked;
+    const fresh = { ratingKey: '7', partIndex: 0, flags: flagsFor(undefined) };
+    const retries = [
+      [asked, false, { ...fresh, offsetSeconds: 12, resume: true }],
+      [asked, true, { ...fresh, offsetSeconds: 30 }],
+      [unresumed, false, { ...fresh, offsetSeconds: 30 }],
+    ];
+    for (const [request, replied, expected] of retries) {
+      assert.deepEqual(retryRequest(request, replied, 30, undefined), expected, JSON.stringify([request.resume, replied]));
+    }
   });
 
   // Letting a seek pass 5 s before the end, or go below zero, turns this red.
@@ -11989,6 +12045,12 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     const command = async () => {};
     const bridges = [[{ setVolume: command, setMuted: command }, true], [{ setVolume: command }, false], [{ setMuted: command }, false], [{}, false], [undefined, false]];
     for (const [bridge, takes] of bridges) assert.equal(hasSoundCommands(bridge), takes, JSON.stringify(Object.keys(bridge ?? {})));
+  });
+
+  // Skipping the title fetch for a movie card without the marker turns the last rows red: a desktop build older than the
+  // page refuses a load with no version, so every movie card's Play would fail there.
+  await t.test('a movie card leaves the version to the server only on a desktop build that says it takes that', () => {
+    assert.deepEqual([{ picksVersion: true }, { picksVersion: 'yes' }, {}, undefined].map(desktopPicksVersion), [true, false, false, false]);
   });
 
   // Reversing the direction, a step other than 5 %, or dropping the 100 ms gap turns its row red: the last would carry a trackpad swipe to 0 or 100.
@@ -15234,7 +15296,9 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const {
+    fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions,
+  } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -15305,12 +15369,44 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   ];
   for (const [value, expected] of clicks) assert.equal(clickTime(value, clickNow), expected, String(value));
 
+  // Starting at the asked offset when the reply has a usable start turns the first two rows red (a resume would start at
+  // the page's stale guess); passing a negative, non-number or missing reply value to mpv turns the rest red.
+  assert.deepEqual([61, 0, -1, Number.NaN, '61', undefined].map((replied) => startSecondsFor(replied, 30)), [61, 0, 30, 30, 30, 30]);
+
+  // Requiring mediaIndex again turns the versionless row red (every movie card's Play fails); taking a version that is not a
+  // whole number from 0 turns the throwing rows red; treating anything but true as resume turns the resume row red.
+  const flags = { directPlay: true, directStream: true, directStreamAudio: true };
+  const ask = { ratingKey: '123', mediaIndex: 1, partIndex: 0, offsetSeconds: 61.5, flags, openedAt: clickNow - 500 };
+  assert.deepEqual(readAsk(ask, clickNow), {
+    ask: { ratingKey: '123', mediaIndex: 1, partIndex: 0 }, offsetSeconds: 61.5, resume: false, openedAt: clickNow - 500, flags,
+  });
+  const { mediaIndex: _mediaIndex, ...versionless } = ask;
+  assert.ok(!('mediaIndex' in readAsk(versionless, clickNow).ask));
+  assert.equal(readAsk({ ...ask, mediaIndex: 0 }, clickNow).ask.mediaIndex, 0);
+  for (const mediaIndex of [-1, '0', 1.5]) assert.throws(() => readAsk({ ...ask, mediaIndex }, clickNow), /invalid_request/, String(mediaIndex));
+  assert.deepEqual([true, 'yes', 1, undefined].map((resume) => readAsk({ ...ask, resume }, clickNow).resume), [true, false, false, false]);
+
   // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);
   // Taking a value outside the five sizes turns this red: a broken settings file or a bad call would set any sub-scale on mpv.
   assert.deepEqual([0.5, 0.75, 1, 1.25, 2, 1.5, 3, '1', null].map(subtitleScale), [0.5, 0.75, 1, 1.25, 2, null, null, null, null]);
   // Taking any other value turns this red: Electron throws on an unknown themeSource, and a broken settings file would stop the launch.
   assert.deepEqual(['light', 'dark', 'system', 'Dark', '', null].map(themeSource), ['light', 'dark', 'system', null, null, null]);
+
+  // Writing mpv.log without MM2_MPV_LOG=1 asking for it turns the first three rows red: the log holds Plex's transient
+  // token in every stream address.
+  const userData = '/Users/owner/Library/Application Support/media-manager-2';
+  const starts = [
+    [{}, null],
+    [{ MM2_MPV_LOG: '0' }, null],
+    [{ MM2_MPV_LOG: 'true' }, null],
+    [{ MM2_MPV_LOG: '1' }, `${userData}/mpv.log`],
+  ];
+  for (const [env, logFile] of starts) {
+    const options = mpvStartOptions(env, userData);
+    assert.equal(Object.hasOwn(options, 'log-file') ? options['log-file'] : null, logFile, JSON.stringify(env));
+  }
+  assert.equal(mpvStartOptions({}, userData)['gpu-shader-cache-dir'], `${userData}/mpv-shader-cache`);
 
   // Dropping the title, or falling back to the file's address, turns the title column red: mpv would name the track
   // after the address, token included. Keeping Plex's first connection turns the address column red.

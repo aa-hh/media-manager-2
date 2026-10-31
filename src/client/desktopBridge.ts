@@ -13,10 +13,13 @@ export type PlaybackFlags = {
 
 export type LoadRequest = {
   ratingKey: string;
-  mediaIndex: number;
+  /** Left out, the server plays the default version and the reply's `mediaIndex` names it. */
+  mediaIndex?: number;
   partIndex: number;
   offsetSeconds: number;
   flags: PlaybackFlags;
+  /** When true the server starts from Plex's saved position, and `offsetSeconds` is only the page's best guess for its opening screen. */
+  resume?: boolean;
   /** The page's Date.now() at the click, so the desktop app's timings start there. */
   openedAt?: number;
 };
@@ -28,6 +31,8 @@ export type LoadRequest = {
  */
 export type LoadReply = Record<string, unknown> & {
   startPositionSeconds: number;
+  /** The version playing, which the server picks when the request left it out. */
+  mediaIndex: number;
   /** The desktop install's player ids; the page's calls to Plex during playback carry the same ones. */
   clientId: string;
   sessionIdentifier: string;
@@ -61,6 +66,8 @@ export type DesktopEvents = {
 };
 
 export type DesktopBridge = {
+  /** True when `load` takes a request with no `mediaIndex` (the server picks the version); builds older than the page refuse one. */
+  picksVersion?: boolean;
   /**
    * The only call that touches the token: the main process starts playback itself and keeps the stream address.
    * Playback unpauses by itself once the tracks are picked.

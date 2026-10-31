@@ -14,7 +14,7 @@ import { subjectProgress } from '../library/progress';
 import { clockText, continueMeta, minutesText } from '../library/watch';
 import { navigate, replace, replaceScreen, useLocation } from '../navigation';
 import {
-  BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, OPENING_REQUEST, TIMELINE_EVERY_MS, openOutcome, retryStep,
+  BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, OPENING_REQUEST, TIMELINE_EVERY_MS, openOutcome, retryRequest, retryStep,
   activeMarker, applyEvent, clampSeek, isPlayAddress, clampVolume, formatLine, originalLabel, hasSoundCommands, hasSubtitleScale, subtitleScaleOf, volumeKey, wheelStep, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
@@ -212,7 +212,15 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       takeSaved(reply);
       // A new title starts at the chosen subtitle's offset saved in Plex; a reload of the same title keeps the delay it had.
       const delay = fresh ? savedDelay(reply.tracks.subtitle.find((track) => track.selected)) : null;
-      change((s) => ({ ...s, reply, subtitleDelay: delay ?? s.subtitleDelay }));
+      // A request without a version takes the one the server picked, so later reloads of this title ask for the same one.
+      const picked = request.mediaIndex === undefined && typeof reply.mediaIndex === 'number' ? reply.mediaIndex : undefined;
+      // A new title is where the server started it (Plex's saved position on resume), not the page's guess, so a stop or
+      // a failure before its first frame reports that second to Plex.
+      change((s) => ({
+        ...s, reply, subtitleDelay: delay ?? s.subtitleDelay,
+        ...(fresh ? { playback: { ...s.playback, position: reply.startPositionSeconds } } : {}),
+        ...(picked === undefined ? {} : { request: { ...s.request, mediaIndex: picked } }),
+      }));
       if (delay !== null) void bridge.setSubtitleDelay(delay).catch(() => undefined);
       return true;
     } catch (error) {
@@ -644,7 +652,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
           if (lastOpen.current !== null) void open({ ...lastOpen.current, series: undefined });
           return;
         }
-        void startLoad(reloadAt(s.request, s.playback.position, qualityRef.current), s.title, true);
+        void startLoad(retryRequest(s.request, s.reply !== null, s.playback.position, qualityRef.current), s.title, true);
       },
       reportNow: () => {
         const s = sessionRef.current;

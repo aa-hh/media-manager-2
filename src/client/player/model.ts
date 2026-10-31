@@ -13,6 +13,8 @@ export type StartReply = {
   /** The desktop app's saved subtitle size (mpv's sub-scale); absent from builds older than the page. */
   subtitleScale?: number;
   partId: number | null;
+  /** The version playing, which the server picks when the request left it out. */
+  mediaIndex: number;
   startPositionSeconds: number;
   durationMs: number | null;
   decision: PlaybackFlags & { maxVideoBitrate: number | null };
@@ -238,6 +240,9 @@ export const hasSubtitleScale = (bridge: DesktopBridge | undefined): bridge is D
   typeof bridge?.setSubtitleScale === 'function'
 );
 
+/** Whether the desktop app takes a load with no version: a build older than the page refuses one, so a movie card fetches the title first. */
+export const desktopPicksVersion = (bridge: DesktopBridge | undefined) => bridge?.picksVersion === true;
+
 // --- Up Next (player.pen states 15 and 16)
 
 export const UP_NEXT_SECONDS = 10;
@@ -305,10 +310,14 @@ export const flagsFor = (qualityKbps: number | undefined): PlaybackFlags => (
   qualityKbps === undefined ? firstTry : { directPlay: false, directStream: true, directStreamAudio: true, maxVideoBitrate: qualityKbps }
 );
 
-/** The same title again from `seconds`, as a quality or track change and a retry need it. */
-export const reloadAt = (request: LoadRequest, seconds: number, qualityKbps: number | undefined): LoadRequest => (
-  { ...request, offsetSeconds: Math.max(0, Math.floor(seconds)), flags: flagsFor(qualityKbps) }
-);
+/**
+ * The same title again from `seconds`, as a quality or track change and a retry need it: without `resume`, which would send
+ * it back to Plex's saved position, and without the click's `openedAt`, which would time the reload from that click.
+ */
+export const reloadAt = (request: LoadRequest, seconds: number, qualityKbps: number | undefined): LoadRequest => {
+  const { resume: _resume, openedAt: _openedAt, ...rest } = request;
+  return { ...rest, offsetSeconds: Math.max(0, Math.floor(seconds)), flags: flagsFor(qualityKbps) };
+};
 
 export const stepLabel = (step: QualityStep) => `${step.height}p · ${step.kbps >= 1000 ? `${step.kbps / 1000} Mbps` : `${step.kbps} kbps`}`;
 
@@ -398,3 +407,14 @@ export const openOutcome = ({ current, load, failed, found }: { current: number;
 
 /** What Retry does: a Play that failed before it knew what it plays asks again; any other reloads where it was. */
 export const retryStep = (request: LoadRequest) => (request === OPENING_REQUEST ? 'reopen' : 'reload');
+
+/**
+ * What Retry loads. A Play whose start never answered (`replied` false) and that asked for Plex's saved position asks for it
+ * again: `seconds` is still the page's guess then. It gets fresh flags and loses the click's `openedAt`, as `reloadAt` gives.
+ * Any other request reloads at `seconds`.
+ */
+export const retryRequest = (request: LoadRequest, replied: boolean, seconds: number, qualityKbps: number | undefined): LoadRequest => {
+  if (replied || request.resume !== true) return reloadAt(request, seconds, qualityKbps);
+  const { openedAt: _openedAt, ...rest } = request;
+  return { ...rest, flags: flagsFor(qualityKbps) };
+};

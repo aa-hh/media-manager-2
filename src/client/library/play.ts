@@ -1,9 +1,10 @@
 // Starts playback in the desktop app from a library card or title page: the player (src/client/player/) opens first and
 // works out the load request behind its opening screen.
-import { inDesktopApp } from '../desktopBridge';
+import { desktopBridge, inDesktopApp } from '../desktopBridge';
+import { desktopPicksVersion } from '../player/model';
 import { openPlayer, type Loaded, type PlayerSeries } from '../player/open';
 import { getJson, type ContinueWatchingItem, type LibraryTitle, type MovieWatch } from './api';
-import { episodeLoad, movieLoad, type StartFrom } from './watch';
+import { cardMovieLoad, episodeLoad, movieLoad, type StartFrom } from './watch';
 
 type MovieReply = { watch: MovieWatch; backdropUrl: string | null };
 type SeriesReply = PlayerSeries & { backdropUrl: string | null };
@@ -39,8 +40,10 @@ export async function loadRequestFor(
  * Opens the player on the title at once and works out what to play behind its opening screen. Resolves false when Plex
  * has nothing to play, the signal aborted before Play, or there is no player (a plain browser). The player's own Esc
  * cancels a load still opening; the signal does not, because opening the player unmounts the Play button.
- * `options.reply` is the title page's copy of the detail reply: it gives the backdrop and episode names at once. What
- * to play is still fetched, because the page's saved position goes stale once something plays and the page stays open.
+ * `options.reply` (the title page's copy of the detail reply) or a movie card's watch entry is used as is, with no fetch.
+ * The saved position in them may be stale once something plays, so the request carries `resume` and the server reads
+ * Plex's. A movie card sends no version, so the server picks the default one; a desktop build older than the page refuses
+ * that, so there a movie card fetches the detail reply as a show card does.
  * `options.mediaIndex` plays a version picked on the title page; left out, Plex's default version plays.
  */
 export async function playInDesktop(
@@ -52,6 +55,18 @@ export async function playInDesktop(
   options?: { mediaIndex?: number; reply?: TitleReply },
 ): Promise<boolean> {
   if (!inDesktopApp() || signal.aborted) return false;
+  const playerTitle = { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id, backdropUrl: options?.reply?.backdropUrl ?? null };
+  const given = options?.reply;
+  if (given !== undefined) {
+    return openPlayer({
+      title: playerTitle,
+      load: async () => loadedFrom(given, item, from, options?.mediaIndex),
+      ...(title.tv === null ? {} : { series: Promise.resolve(given) as Promise<SeriesReply> }),
+    });
+  }
+  const card = title.tv === null && desktopPicksVersion(desktopBridge()) ? cardMovieLoad(title.watch, item, from) : null;
+  // The opening screen has no backdrop here: only the detail reply has it.
+  if (card !== null) return openPlayer({ title: playerTitle, load: async () => ({ request: card, backdropUrl: null }) });
   // On a card one fetch serves both the load request and, for a show, the player's episode names; a Retry fetches again.
   const reply = fetchReply(title, onUnauthenticated);
   let next: Promise<TitleReply> | null = reply;
@@ -61,8 +76,8 @@ export async function playInDesktop(
     return pending.then((value) => loadedFrom(value, item, from, options?.mediaIndex));
   };
   return openPlayer({
-    title: { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id, backdropUrl: options?.reply?.backdropUrl ?? null },
+    title: playerTitle,
     load,
-    ...(title.tv === null ? {} : { series: (options?.reply === undefined ? reply : Promise.resolve(options.reply)) as Promise<SeriesReply> }),
+    ...(title.tv === null ? {} : { series: reply as Promise<SeriesReply> }),
   });
 }

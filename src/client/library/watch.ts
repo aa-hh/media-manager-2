@@ -89,7 +89,24 @@ const request = (playable: { ratingKey: string; mediaIndex: number; viewOffsetMs
   partIndex: 0,
   offsetSeconds: from === 'resume' ? Math.floor((playable.viewOffsetMs ?? 0) / 1000) : 0,
   flags: firstTry,
+  ...(from === 'resume' ? { resume: true } : {}),
 });
+
+/**
+ * What the desktop app loads from a movie card, with no title fetch. The card never knows the version, so the server plays
+ * the default one; on resume the server reads Plex's saved position. Null unless the card's watch entry is a movie.
+ */
+export const cardMovieLoad = (watch: TitleWatch, item: ContinueWatchingItem | undefined, from: StartFrom): LoadRequest | null => {
+  if (watch?.kind !== 'movie') return null;
+  const offsetMs = item?.viewOffsetMs ?? watch.viewOffsetMs;
+  return {
+    ratingKey: watch.ratingKey,
+    partIndex: 0,
+    offsetSeconds: from === 'resume' ? Math.floor((offsetMs ?? 0) / 1000) : 0,
+    flags: firstTry,
+    ...(from === 'resume' ? { resume: true } : {}),
+  };
+};
 
 /** What the desktop app loads for a movie: the picked version, else its default (highest-quality) one. Null when Plex has no match. */
 export const movieLoad = (watch: MovieWatch, from: StartFrom, mediaIndex?: number): LoadRequest | null =>

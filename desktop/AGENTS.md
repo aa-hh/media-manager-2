@@ -7,7 +7,7 @@ The Mac desktop app: Electron loading the owner's media-manager-2 address, mpv p
 ## Rules
 
 - Every call into mpv is asynchronous: mpv's macOS window code waits on the main thread while mpv's core waits on it, so a blocking call freezes the app.
-- mpv draws in its own window, a child below this one; `--wid` does nothing on macOS. Layouts set mpv's `video-margin-ratio-*` and move no window: each new window size makes libplacebo rebuild its shaders and drop frames.
+- mpv draws in its own window, one for the app's life (`force-window`), a child below this one; `--wid` does nothing on macOS. Layouts set `video-margin-ratio-*` and move no window: each resize makes libplacebo rebuild shaders.
 - Fullscreen is mpv's own (`native-fs=no`); the Electron window follows mpv's frame.
 - The page never sees a stream or subtitle address. The start request runs in a private script world with the page's cookie; the page's copy drops `streamAddresses` and swaps subtitle `url`s for tokenless stream keys.
 - `lib/` imports nothing from Electron, so `tests/production.test.mjs` runs it.

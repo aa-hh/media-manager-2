@@ -7,7 +7,9 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
+const {
+  fileEvent, playsOnOpen, showsPosition, sendsPosition, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions,
+} = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -289,27 +291,18 @@ const number = (value) => (value === null || value === undefined || value === ''
 const ensureMpv = () => {
   if (mpv) return mpv;
   const { MpvView } = require('./build/Release/mpvview.node');
-  // mpv's own log, userData/mpv.log beside desktop.json, is written only when MM2_MPV_LOG=1 asks for it: mpv writes it at
-  // debug level, and it holds every stream and subtitle address, each with Plex's transient token. Set before init:
-  // log-file is read before mpv starts, and only a file opened then holds libmpv's start-up and video-output lines, where
-  // the time to the first frame goes. mpv empties the file each time it opens it, so it holds one launch.
-  const options = process.env.MM2_MPV_LOG === '1' ? { 'log-file': path.join(app.getPath('userData'), 'mpv.log') } : {};
+  // mpvStartOptions says why each option goes in before init: the shader cache folder, and mpv.log only on request.
+  const options = mpvStartOptions(process.env, app.getPath('userData'));
+  fs.mkdirSync(options['gpu-shader-cache-dir'], { recursive: true });
   mpv = new MpvView(win.getNativeWindowHandle(), options);
   // Repeats the addon's pre-init ytdl=no: an addon built before that list (npm start does not rebuild it) still never sends Plex addresses to youtube-dl or yt-dlp.
   void mpv.setOption('ytdl', 'no');
-  // mpv's window always takes the app window's frame, whatever the video's shape; the picture is fitted inside it.
-  void mpv.setOption('keepaspect-window', 'no');
-  // libmpv finds no cache folder of its own, so every new picture setup compiled its shaders again (the first Play of a
-  // launch waited 3.5 s for its first frame). Kept beside desktop.json, compiled shaders carry over between launches.
-  const shaderCache = path.join(app.getPath('userData'), 'mpv-shader-cache');
-  fs.mkdirSync(shaderCache, { recursive: true });
-  void mpv.setOption('gpu-shader-cache-dir', shaderCache);
   for (const name of OBSERVED) mpv.observe(name);
   mpv.onEvent(onMpvEvent);
   return mpv;
 };
-// mpv starts with the app page rather than at the first Play. Its window and picture setup still come with each file.
-// An addon that does not load fails only playback, as before.
+// mpv starts with the app page rather than at the first Play, and force-window gives it its window and picture setup
+// then; every file reuses them. An addon that does not load fails only playback, as before.
 const startMpvEarly = () => {
   try {
     ensureMpv();
@@ -327,7 +320,7 @@ const mark = (playing, step) => {
 const writeMarks = (playing) => {
   if (!playing?.marks || playing.marksWritten) return;
   playing.marksWritten = true;
-  const line = { at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, ...playing.marks };
+  const line = { at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, windows: playing.windows ?? null, ...playing.marks };
   fs.appendFile(path.join(app.getPath('userData'), 'play-timings.log'), `${JSON.stringify(line)}\n`, () => {});
 };
 // Sends the position held back while the load opened, once showsPosition lets it through.
@@ -388,6 +381,7 @@ function onMpvEvent(event) {
     // mpv drew the first frame after a load or a seek.
     if (current && current === loaded && current.drawn === false) {
       current.drawn = true;
+      if (typeof event.windows === 'number') current.windows = event.windows;
       mark(current, 'firstFrame');
       release(current);
     }
@@ -433,11 +427,13 @@ async function startPlaying() {
 
 // --- Loading (C1.2 load, C1.3 options, C1.5 retries)
 
-const requestBody = (ask, flags, offsetSeconds) => ({
+// Without `mediaIndex` the server plays the default version; with `resume` it starts from Plex's saved position.
+const requestBody = (ask, flags, offsetSeconds, resume) => ({
   ratingKey: ask.ratingKey,
-  mediaIndex: ask.mediaIndex,
+  ...(ask.mediaIndex === undefined ? {} : { mediaIndex: ask.mediaIndex }),
   partIndex: ask.partIndex,
   offsetSeconds: Math.max(0, Math.floor(offsetSeconds)),
+  ...(resume === true ? { resume: true } : {}),
   directPlay: flags.directPlay,
   directStream: flags.directStream,
   directStreamAudio: flags.directStreamAudio,
@@ -481,8 +477,8 @@ async function loadAddress(playing, address, startSeconds, directPlay) {
 }
 
 // One /api/playback/start, a tested Plex address, and mpv loading it. `playing` is the title asked for; a newer load or a stop replaces it.
-async function start(playing, offsetSeconds, retest) {
-  const { status, json } = await appRequest('POST', '/api/playback/start', requestBody(playing.ask, playing.flags, offsetSeconds));
+async function start(playing, offsetSeconds, retest, resume = false) {
+  const { status, json } = await appRequest('POST', '/api/playback/start', requestBody(playing.ask, playing.flags, offsetSeconds, resume));
   mark(playing, 'startReply');
   if (status !== 200 || json === null || !Array.isArray(json.streamAddresses)) {
     throw new Error(typeof json?.error === 'string' ? json.error : `start failed (${status})`);
@@ -500,7 +496,7 @@ async function start(playing, offsetSeconds, retest) {
   playing.subtitles = new Map(json.tracks.subtitle
     .filter((track) => track.external && typeof track.url === 'string')
     .map((track) => [track.key, subtitleAdd(track, origin)]));
-  await loadAddress(playing, playing.address, offsetSeconds, json.decision.directPlay);
+  await loadAddress(playing, playing.address, startSecondsFor(json.startPositionSeconds, offsetSeconds), json.decision.directPlay);
   return pageCopy(json, { clientId: clientId(), sessionIdentifier }, { volume: savedVolume(), muted: savedMuted(), subtitleScale: savedSubtitleScale() });
 }
 
@@ -528,26 +524,6 @@ async function recover(failure, playing = current) {
     if (current === playing) setTimeout(() => void recover('failed', playing), 5_000);
   }
 }
-
-const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
-const readAsk = (ask) => {
-  const flags = ask?.flags;
-  if (typeof ask?.ratingKey !== 'string' || !/^\d+$/.test(ask.ratingKey) || !isCount(ask.mediaIndex) || !isCount(ask.partIndex)
-    || typeof ask.offsetSeconds !== 'number' || !Number.isFinite(ask.offsetSeconds) || ask.offsetSeconds < 0
-    || typeof flags?.directPlay !== 'boolean' || typeof flags.directStream !== 'boolean' || typeof flags.directStreamAudio !== 'boolean'
-    || (flags.maxVideoBitrate !== undefined && !isCount(flags.maxVideoBitrate))) throw new Error('invalid_request');
-  return {
-    ask: { ratingKey: ask.ratingKey, mediaIndex: ask.mediaIndex, partIndex: ask.partIndex },
-    offsetSeconds: ask.offsetSeconds,
-    openedAt: clickTime(ask.openedAt, Date.now()),
-    flags: {
-      directPlay: flags.directPlay,
-      directStream: flags.directStream,
-      directStreamAudio: flags.directStreamAudio,
-      ...(flags.maxVideoBitrate === undefined ? {} : { maxVideoBitrate: flags.maxVideoBitrate }),
-    },
-  };
-};
 
 function stopPlayer() {
   current = null;
@@ -603,7 +579,7 @@ const finite = (value) => {
 };
 
 handle('player:load', async (ask) => {
-  const { ask: wanted, offsetSeconds, flags, openedAt } = readAsk(ask);
+  const { ask: wanted, offsetSeconds, resume, flags, openedAt } = readAsk(ask, Date.now());
   current = {
     ask: wanted, flags, tried: [planLabel(flags)], tries: { token: 0, same: 0 }, played: false, paused: false, position: offsetSeconds, duration: null,
     askedAt: openedAt ?? Date.now(), marks: {},
@@ -614,7 +590,7 @@ handle('player:load', async (ask) => {
   // The old file ends now, with reason stop, so it cannot fail or finish into this load while its start request runs.
   if (mpv) void mpv.command(['stop']).catch(() => {});
   try {
-    return await start(playing, offsetSeconds, false);
+    return await start(playing, offsetSeconds, false, resume);
   } catch (error) {
     if (current === playing) current = null;
     throw error;
