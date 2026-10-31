@@ -13,7 +13,7 @@ import {
   type Result as ArrResult,
   type Series,
 } from './services/arr.js';
-import { lookupTitle } from './search.js';
+import { lookupTitle, thumbnail } from './search.js';
 import { notConfigured } from './services/arr/result.js';
 import type { SecondVersionRow, TrackedHitAndRun } from './secondVersionRows.js';
 import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
@@ -42,12 +42,14 @@ export type LibraryTitle = {
   added: string | null;
   monitored: boolean;
   status: string | null;
+  // posterUrl is the full image, which the player's Up Next draws 352 px wide; smallPosterUrl (TMDB w500 or TheTVDB's thumbnail) is for 210 px posters.
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   qualityProfile: string | null;
   sizeOnDisk: number;
   tv: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; seasonCount: number } | null;
   movie: { hasFile: boolean; isAvailable: boolean } | null;
-  // Plex watch marks; null when unmatched or when Plex is off or not answering.
+  // Plex watch marks; null when unmatched or when Plex is off or has not answered for 5 minutes.
   watch: TitleWatch;
 };
 
@@ -90,6 +92,7 @@ export type SeriesDetail = {
   language: string | null;
   overview: string | null;
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
   ratingVotes: number | null;
@@ -137,6 +140,7 @@ export type MovieDetail = {
   status: string | null;
   overview: string | null;
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   backdropUrl: string | null;
   // Kept until the client reads ratings instead.
   rating: number | null;
@@ -277,6 +281,11 @@ export const imageUrl = (images: unknown, coverType: string): string | null => {
   return null;
 };
 
+const smallPosterUrl = (images: unknown): string | null => {
+  const url = imageUrl(images, 'poster');
+  return url === null ? null : thumbnail(new URL(url), 'w500');
+};
+
 export const newestFirst = <T extends { added: string | null; title: string }>(titles: T[]): T[] => {
   const time = (added: string | null) => {
     const parsed = added === null ? Number.NaN : Date.parse(added);
@@ -350,6 +359,7 @@ const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unkno
   language: record.language,
   overview: record.overview,
   posterUrl: imageUrl(record.images, 'poster'),
+  smallPosterUrl: smallPosterUrl(record.images),
   backdropUrl: imageUrl(record.images, 'fanart'),
   rating: record.rating,
   ratingVotes: record.ratingVotes,
@@ -386,6 +396,7 @@ const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown
   status: record.status,
   overview: record.overview,
   posterUrl: imageUrl(record.images, 'poster'),
+  smallPosterUrl: smallPosterUrl(record.images),
   backdropUrl: imageUrl(record.images, 'fanart'),
   rating: record.rating,
   ratings: record.ratings,
@@ -439,6 +450,7 @@ const toTitle = (service: Service, record: Series | Movie, profiles: unknown): L
     monitored: record.monitored,
     status: record.status,
     posterUrl: imageUrl(record.images, 'poster'),
+    smallPosterUrl: smallPosterUrl(record.images),
     qualityProfile: profile?.name ?? null,
     watch: null,
   };

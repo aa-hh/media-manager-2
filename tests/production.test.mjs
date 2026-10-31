@@ -1128,6 +1128,33 @@ test('Plex owner authentication', async (t) => {
       assert.equal(response.headers.get('x-frame-options'), 'DENY');
     }
   });
+  // Sending no-store or an uncompressed body for a hashed built file, or gzipping the event stream, turns this red.
+  await t.test('built files are cached for a year and gzipped; the application document is never stored and the event stream is not gzipped', async () => {
+    const { app } = await makeApp();
+    const { session } = await signIn(app);
+    const script = (await readdir(join(clientDirectory, 'assets'))).find((name) => name.startsWith('index-') && name.endsWith('.js'));
+    assert.ok(script);
+    const yearlong = 'public, max-age=31536000, immutable';
+    const zipped = await app.request(`/assets/${script}`, { headers: { 'Accept-Encoding': 'gzip' } });
+    assert.equal(zipped.status, 200);
+    assert.equal(zipped.headers.get('cache-control'), yearlong);
+    assert.equal(zipped.headers.get('content-encoding'), 'gzip');
+    assert.match(zipped.headers.get('vary'), /accept-encoding/i);
+    assert.deepEqual(gunzipSync(Buffer.from(await zipped.arrayBuffer())), await readFile(join(clientDirectory, 'assets', script)));
+    const plain = await app.request(`/assets/${script}`);
+    assert.equal(plain.headers.get('content-encoding'), null);
+    assert.equal(plain.headers.get('cache-control'), yearlong);
+    await plain.arrayBuffer();
+    const document = await app.request('/', { headers: { 'Accept-Encoding': 'gzip' } });
+    assert.equal(document.headers.get('cache-control'), 'no-store');
+    await document.arrayBuffer();
+    const stream = await app.request('/api/events', { headers: { Cookie: session, 'Accept-Encoding': 'gzip' } });
+    assert.equal(stream.status, 200);
+    assert.match(stream.headers.get('content-type'), /^text\/event-stream/);
+    assert.equal(stream.headers.get('content-encoding'), null);
+    assert.equal(stream.headers.get('cache-control'), 'no-store');
+    await stream.body.cancel();
+  });
   // Saving no owner on the first sign-in, letting a second account in once an owner exists, or letting the owner row outrank
   // PLEX_OWNER_ID turns this red.
   await t.test('first run makes the first Plex sign-in the owner, and PLEX_OWNER_ID outranks the owner row', async () => {
@@ -3733,8 +3760,8 @@ test('watch status from Plex marks library titles, both title pages and Continue
     assert.equal(listings(), 2);
   });
 
-  // Answering the first load after the 60 seconds from the old listing, so a title imported since shows no Play, turns this red.
-  await t.test('the first load after 60 seconds waits for the new Plex listing', async () => {
+  // Waiting for the new Plex listing on a load that already has one under 5 minutes old, or never picking up the finished rebuild, turns this red.
+  await t.test('the first load after 60 seconds answers from the old Plex listing and the next load has the new one', async () => {
     const file = '/movies/Dune (2021)/Dune.mkv';
     const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
     let inPlex = false;
@@ -3745,16 +3772,63 @@ test('watch status from Plex marks library titles, both title pages and Continue
     ) });
     const saved = fake.radarr.state.movies;
     fake.radarr.state.movies = [...saved, movieRecord({ id: 11, title: 'Dune', tmdbId: 438631, hasFile: true, movieFile: { id: 111, path: file } })];
-    const before = (await get('/movie/11')).body.watch;
-    inPlex = true;
-    clock.value += 60_001;
-    const after = (await get('/movie/11')).body.watch;
-    fake.radarr.state.movies = saved;
-    assert.equal(before, null);
-    assert.equal(after?.ratingKey, '400');
+    try {
+      const before = (await get('/movie/11')).body.watch;
+      assert.equal(before, null);
+      inPlex = true;
+      clock.value += 60_001;
+      assert.equal((await get('/movie/11')).body.watch, null);
+      let after = null;
+      for (let attempt = 0; attempt < 50 && after === null; attempt += 1) after = (await get('/movie/11')).body.watch;
+      assert.equal(after?.ratingKey, '400');
+    } finally {
+      fake.radarr.state.movies = saved;
+    }
   });
 
-  // Dropping the marks while a slow new listing runs past the 1.5 s cap turns this red.
+  // Answering at once from a Plex listing 5 minutes old instead of waiting for the rebuild turns this red.
+  await t.test('a Plex listing 5 minutes old makes the next load wait for the new one', async () => {
+    const file = '/movies/Dune (2021)/Dune.mkv';
+    const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
+    let inPlex = false;
+    const { get } = connect({ fetch: async (url, init) => (
+      inPlex && new URL(String(url)).pathname === '/library/sections/1/all'
+        ? new Response(JSON.stringify({ MediaContainer: { Metadata: [...movies, imported] } }), { status: 200 })
+        : plexFetch(url, init)
+    ) });
+    const saved = fake.radarr.state.movies;
+    fake.radarr.state.movies = [...saved, movieRecord({ id: 11, title: 'Dune', tmdbId: 438631, hasFile: true, movieFile: { id: 111, path: file } })];
+    try {
+      assert.equal((await get('/movie/11')).body.watch, null);
+      inPlex = true;
+      clock.value += 300_001;
+      assert.equal((await get('/movie/11')).body.watch?.ratingKey, '400');
+    } finally {
+      fake.radarr.state.movies = saved;
+    }
+  });
+
+  // Keeping a listing 5 minutes old after a failed rebuild, replacing a younger one with unavailable, or starting a new rebuild on every load after one fails, turns this red.
+  await t.test('a failed Plex rebuild keeps the old marks and is not retried on every load', async () => {
+    let fail = false;
+    const { requests, get } = connect({ fetch: async (url, init) => {
+      if (fail && new URL(String(url)).pathname.endsWith('/all')) throw new TypeError('fetch failed');
+      return plexFetch(url, init);
+    } });
+    await get('/titles');
+    fail = true;
+    clock.value += 60_001;
+    for (let load = 0; load < 10; load += 1) {
+      const { body } = await get('/titles');
+      assert.equal(body.watch.kind, 'ok');
+      assert.equal(titleWatch(body.titles, 'Arrival').ratingKey, '200');
+    }
+    assert.equal(requests.filter((path) => path === '/library/sections').length, 2);
+    clock.value += 240_000;
+    assert.deepEqual((await get('/titles')).body.watch, { kind: 'unavailable' });
+  });
+
+  // Showing no marks when the wait for a new listing behind one 5 minutes old runs past the 1.5 s cap, instead of falling back to the old listing, turns this red.
   await t.test('a slow new Plex listing keeps the old marks', async () => {
     let release;
     const slow = new Promise((resolve) => { release = resolve; });
@@ -3765,7 +3839,7 @@ test('watch status from Plex marks library titles, both title pages and Continue
     });
     await get('/titles');
     hold = true;
-    clock.value += 60_001;
+    clock.value += 300_001;
     const { body } = await get('/titles');
     release();
     assert.equal(body.watch.kind, 'ok');
@@ -11436,7 +11510,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   const { fake, ...services } = connectArr(database);
   fake.sonarr.state.series = [seriesRecord({
     id: 3, title: 'Andor', monitored: true, qualityProfileId: 4, tags: [9],
-    images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://img/p.jpg' }],
+    images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p.jpg' }],
     seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
     airTime: '21:00', firstAired: '2022-09-21T00:00:00Z', lastAired: '2025-05-13T00:00:00Z',
     nextAiring: '2026-11-01T01:00:00Z', previousAiring: '2025-05-13T01:00:00Z',
@@ -11447,6 +11521,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   fake.radarr.state.movies = [
     movieRecord({
       id: 5, title: 'Dune', originalTitle: 'Dune: Part Two', originalLanguage: { id: 1, name: 'English' },
+      images: [{ coverType: 'poster', remoteUrl: 'https://image.tmdb.org/t/p/original/dune.jpg' }],
       alternateTitles: [{ sourceType: 'tmdb', title: 'Dune 2' }, { sourceType: 'tmdb', title: 'Dune' }],
       ratings: {
         imdb: { votes: 600000, value: 8.5, type: 'user' }, tmdb: { votes: 7000, value: 8.2, type: 'user' },
@@ -11493,13 +11568,18 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   });
 
   await t.test('series keeps the raw facts the title page marks from', async () => {
-    // Resolving the cutoff by quality id only, or dropping a raw field the markers read, turns this red.
+    // Resolving the cutoff by quality id only, or dropping a raw field the markers read, turns this red. Shrinking posterUrl itself, which the player's Up Next draws full size, or sending smallPosterUrl at the original size, turns this red.
     const result = await library.series(3);
     assert.equal(result.kind, 'ok');
     const detail = result.value;
     assert.deepEqual(detail.qualityProfile, { id: 4, name: 'HD', cutoff: 'Remux group' });
     assert.deepEqual(detail.tags, ['kids']);
-    assert.equal(detail.posterUrl, 'https://img/p.jpg');
+    assert.equal(detail.posterUrl, 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p.jpg');
+    assert.equal(detail.smallPosterUrl, 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p_t.jpg');
+    const { titles } = await (await routes.request('/titles')).json();
+    const dune = titles.find((title) => title.service === 'radarr' && title.id === 5);
+    assert.equal(dune.posterUrl, 'https://image.tmdb.org/t/p/original/dune.jpg');
+    assert.equal(dune.smallPosterUrl, 'https://image.tmdb.org/t/p/w500/dune.jpg');
     assert.deepEqual(detail.episodes.map((episode) => episode.id), [31, 32]);
     const [first] = detail.episodes;
     assert.equal(first.finaleType, 'season');

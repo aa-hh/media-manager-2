@@ -61,9 +61,9 @@ export const parseSearchQuery = (input: string): SearchQuery | undefined => {
 };
 
 // A result row shows its poster 40 px wide, but lookups link the full image (up to 280 KB on TMDB); TMDB's 185 px
-// size and TheTVDB's _t thumbnail are 8 to 40 KB.
-const thumbnail = (url: URL) => {
-  if (url.hostname === 'image.tmdb.org') url.pathname = url.pathname.replace(/^\/t\/p\/original\//, '/t/p/w185/');
+// size and TheTVDB's _t thumbnail are 8 to 40 KB. The library asks for w500 for its 210 px posters.
+export const thumbnail = (url: URL, tmdbSize = 'w185') => {
+  if (url.hostname === 'image.tmdb.org') url.pathname = url.pathname.replace(/^\/t\/p\/original\//, `/t/p/${tmdbSize}/`);
   if (url.hostname === 'artworks.thetvdb.com') url.pathname = url.pathname.replace(/(?<!_t)(\.\w+)$/, '_t$1');
   return url.href;
 };

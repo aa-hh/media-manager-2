@@ -327,7 +327,7 @@ export function TitleHeader({ subject, owned, badges, play, facts, monitored, on
         actionsRight
         title={detail.title}
         backdropUrl={detail.backdropUrl ?? undefined}
-        posterUrl={detail.posterUrl ?? undefined}
+        posterUrl={detail.smallPosterUrl ?? undefined}
         breadcrumb={<Breadcrumb links={[crumb]} current={detail.title} />}
         bookmark={owned && monitored !== undefined ? { state: monitored, onToggle: onToggleMonitored } : { state: 'none' }}
         status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}

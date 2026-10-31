@@ -5,7 +5,7 @@ import { Button } from './components/ui/button';
 import { InputSearch } from './components/ui/input-search';
 import { Discover } from './discover/Discover';
 import type { DownloadsState } from './downloads/useDownloads';
-import { Library } from './library/Library';
+import { forgetLoadedLibrary, Library } from './library/Library';
 import { inScreenChange, navigate, replace, routeFor, useLocation } from './navigation';
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
 import { lazyScreen, ScreenLoading } from './lazyScreen';
@@ -72,6 +72,9 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
     void run(value);
   }, [run]);
   useDebouncedSearch(query, search);
+
+  // Home unmounts on sign-out, expiry and a 401; the next sign-in starts without the last owner's list.
+  useEffect(() => () => forgetLoadedLibrary(), []);
 
   useEffect(() => {
     // Replacing the address while typing also fires this; keep the typed text unless the address differs from it.
