@@ -22,5 +22,9 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The update installer's status; only Android's installer sends it, through our own PendingIntent. -->
+        <receiver
+            android:name=".update.UpdateStatusReceiver"
+            android:exported="false" />
     </application>
 </manifest>

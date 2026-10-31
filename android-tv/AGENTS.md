@@ -20,5 +20,5 @@ The Google TV app: Kotlin, Compose for TV and Media3, one Gradle module (`app`).
 
 - `app/build.gradle.kts` → app id, SDK levels, ABIs, dependencies.
 - `gradle/libs.versions.toml` → every dependency version.
-- `app/src/main/java/io/github/aahh/mediamanager2/tv/` → `MainActivity`; `api/`, `downloads/`, `player/`, `update/` and `ui/` as later tasks add them.
+- `app/src/main/java/io/github/aahh/mediamanager2/tv/` → `MainActivity`; `api/`, `downloads/`, `log/` (scrubbed log for Get logs), `player/`, `update/` and `ui/` as later tasks add them.
 - `app/src/main/res/xml/network_security_config.xml` → allows http server addresses, as desktop does.
