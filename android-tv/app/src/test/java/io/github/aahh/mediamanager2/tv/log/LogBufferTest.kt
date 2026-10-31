@@ -11,9 +11,15 @@ class LogBufferTest {
     @get:Rule
     val temporary = TemporaryFolder()
 
-    // Dropping a pattern from scrub(), or letting it eat the text after a token, turns this red.
+    // Dropping a pattern from scrub(), letting it eat the text after a token, or logging a token where its hash belongs
+    // turns this red.
     @Test
-    fun tokensAndCookiesAreScrubbed() {
+    fun tokensAndCookiesAreHashed() {
+        val abc = tokenHash("abc")
+        assertTrue(Regex("^sha256:[0-9a-f]{8}$").matches(abc))
+        // The SHA-256 of "abc" starts ba7816bf; the same value always gives the same hash, another value another.
+        assertEquals("sha256:ba7816bf", abc)
+        assertTrue(abc != tokenHash("def"))
         val scrubbed = scrub(
             "GET https://plex.example:32400/library/parts/1/file.mkv?X-Plex-Token=abc123&x=1 X-Plex-Token: def456 " +
                 "Cookie: __Host-mm_session=s3cr3t; other=1",
@@ -21,13 +27,16 @@ class LogBufferTest {
         assertFalse(scrubbed.contains("abc123"))
         assertFalse(scrubbed.contains("def456"))
         assertFalse(scrubbed.contains("s3cr3t"))
-        assertTrue(scrubbed.contains("X-Plex-Token=***&x=1"))
-        assertEquals("Set-Cookie: ***", scrub("Set-Cookie: __Host-mm_session=abc; Path=/; Secure"))
-        assertEquals("sent __Host-mm_session=*** then", scrub("sent __Host-mm_session=abc then"))
+        assertTrue(scrubbed.contains("X-Plex-Token=${tokenHash("abc123")}&x=1"))
+        // A value is hashed once, never hashed again as the hash of a hash.
+        assertTrue(scrubbed.endsWith("Cookie: __Host-mm_session=${tokenHash("s3cr3t")}; other=${tokenHash("1")}"))
+        assertEquals("Set-Cookie: __Host-mm_session=$abc; Path=/; Secure", scrub("Set-Cookie: __Host-mm_session=abc; Path=/; Secure"))
+        assertEquals("Cookie: theme=$abc", scrub("Cookie: theme=abc"))
+        assertEquals("sent __Host-mm_session=$abc then", scrub("sent __Host-mm_session=abc then"))
         assertEquals("nothing secret here", scrub("nothing secret here"))
         // An http server address drops the __Host- prefix; a JSON body quotes the header name.
-        assertEquals("mm_session=*** mm_plex=***", scrub("mm_session=abc mm_plex=def"))
-        assertEquals("{\"X-Plex-Token\":\"***\"}", scrub("{\"X-Plex-Token\":\"abc\"}"))
+        assertEquals("mm_session=$abc mm_plex=${tokenHash("def")}", scrub("mm_session=abc mm_plex=def"))
+        assertEquals("{\"X-Plex-Token\":\"$abc\"}", scrub("{\"X-Plex-Token\":\"abc\"}"))
     }
 
     // Dropping the newest lines instead of the oldest, or letting the buffer grow past its cap, turns this red.
