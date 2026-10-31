@@ -106,8 +106,8 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
   const canFinish = wizard !== undefined && !edited && backup.destination !== null;
   const verb = wizard === undefined ? 'Confirm' : 'Save and continue';
   const summary = pending ? 'Saving the destination.'
-    : canFinish && created !== undefined ? (keySaved ? 'The first backup runs within an hour.' : 'Copy or download the restore key, then finish setup.')
-    : canFinish ? (noKey ? 'Destination saved. Backups start once you create a key.' : 'The first backup runs within an hour.')
+    : canFinish && created !== undefined ? (keySaved ? 'The first backup runs within 5 minutes.' : 'Copy or download the restore key, then finish setup.')
+    : canFinish ? (noKey ? 'Destination saved. Backups start once you create a key.' : 'The first backup runs within 5 minutes.')
     : created !== undefined ? 'Save the restore key first. To change the destination, leave Backup and open it again.'
     : anyError ? 'Not saved. Fix the field marked in red.'
       : !edited ? `Nothing to save. Change a field, then ${verb}.`

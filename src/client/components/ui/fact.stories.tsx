@@ -33,7 +33,7 @@ export const TrackerStats: Story = {
 };
 
 export const Row: Story = {
-  render: () => <FactRow className="w-160" label="How often">Every 5 minutes</FactRow>,
+  render: () => <FactRow className="w-160" label="How often">Every hour</FactRow>,
 };
 
 export const RowWithNote: Story = {

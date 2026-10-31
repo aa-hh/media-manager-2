@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-import { backupsAreOff } from './backup.js';
+import { backupsAreOff, lastBackupAt } from './backup.js';
 import { readDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import type { createJobRunner } from './jobs.js';
@@ -103,11 +103,6 @@ const docsUrl = (value: unknown) => {
   return null;
 };
 
-const lastBackupAt = (database: DatabaseSync): number | null => {
-  const row = database.prepare("SELECT MAX(finished_at) AS at FROM backup_runs WHERE outcome = 'ok'").get();
-  return row === undefined || row.at === null ? null : Number(row.at);
-};
-
 const lastBackupFailure = (database: DatabaseSync): string | null => {
   const row = database.prepare('SELECT outcome, detail FROM backup_runs ORDER BY id DESC LIMIT 1').get();
   return row?.outcome === 'failed' ? String(row.detail) : null;
@@ -164,7 +159,7 @@ export const createHealth = (options: {
             slowReads.set(service, entry);
             return entry;
           }
-          return last ?? { updates: settled(updates, []), clients: settled(clients, []), media: settled<unknown>(media, undefined) };
+          return { updates: settled(updates, last?.updates ?? []), clients: settled(clients, last?.clients ?? []), media: settled<unknown>(media, last?.media) };
         };
         const [[health, disks], { updates, clients, media }] = await Promise.all([
           Promise.allSettled([read(service, '/api/v3/health'), read(service, '/api/v3/diskspace')]),

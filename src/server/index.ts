@@ -126,7 +126,7 @@ if (database !== undefined) {
       return destination === undefined ? undefined : createBackupStore(destination);
     },
   });
-  runner.register('backup', 60 * 60_000, async () => { await backup.run(); });
+  runner.register('backup', 5 * 60_000, async () => { await backup.runIfDue(); });
   const torrentGrabs = createGrabTracker({ database, arr, events });
   runner.register('arr-reconcile', torrentGrabs.intervalMs, torrentGrabs.reconcile);
   torrentGrabs.readOnNewTorrents();

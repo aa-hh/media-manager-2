@@ -134,7 +134,7 @@ Trackers is where you add each private tracker and its hit and run rule, so the
 app can tell you whether a torrent can go before you delete it. Posters and
 ratings takes keys for TMDB, MDBList and Trakt. Backup copies the database to a
 folder or an S3-compatible bucket every hour, and the first copy runs
-within an hour. The database holds every saved credential, so backups are
+within five minutes. The database holds every saved credential, so backups are
 always encrypted. The app makes the restore key and shows it once, with Copy
 and Download buttons. It keeps only the half that locks backups, so without your
 copy no backup can be read, and the wizard won't finish setup until you've

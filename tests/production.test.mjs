@@ -10878,7 +10878,7 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     return slowPaths.has(path) && (service === undefined || name === service);
   }).length;
 
-  // Re-reading the three before an hour, not re-reading them after an hour or after the service's address changes, dropping the last good values when a read fails, or ignoring a forced check turns this red.
+  // Re-reading the three before an hour, not re-reading them after an hour or after the service's address changes, dropping the last good values when a read fails, discarding a fresh read because another of the three failed, or ignoring a forced check turns this red.
   await t.test('update, download client and media management settings are read hourly, on a forced check, and after the address changes, keeping the last good values when a read fails', async () => {
     const { setSetting } = await import(settingsModuleUrl);
     const minute = 60_000;
@@ -10921,6 +10921,17 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     const beforeForce = slowReadCount(requests);
     await health.check({ force: true });
     assert.equal(slowReadCount(requests), beforeForce + 6);
+
+    // A failed update read keeps its last value without discarding the download client answer read alongside it.
+    input.fail = { radarr: ['/api/v3/update'] };
+    input.arr = { radarr: { '/api/v3/downloadclient': removing } };
+    clock.value = now + 190 * minute;
+    const partial = await health.check();
+    assert.ok(partial.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    const radarrPartial = slowReadCount(requests, 'radarr');
+    clock.value = now + 195 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests, 'radarr'), radarrPartial + 3);
   });
 
   // Leaving the health routes outside the sign-in guard, not running the checks on demand, or serving hour-old settings to a manual check, turns this red.
@@ -12501,7 +12512,7 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   assert.equal(existsSync(join(folder, 'backups', 'blocked.enc.partial')), false);
 });
 
-// Snapshotting with a plain file copy during a write, letting an unfinished transaction on the app's connection into the snapshot, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
+// Snapshotting with a plain file copy during a write, letting an unfinished transaction on the app's connection into the snapshot, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, opening a snapshot with the wrong kind of key, backing up again within an hour of a good backup, or counting a failed backup as one turns this red.
 test('backups snapshot a changing database and restore it consistently', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -12551,7 +12562,7 @@ test('backups snapshot a changing database and restore it consistently', async (
   const backup = createBackup({ database, events, store: () => (configured ? store : undefined), key: () => backupKey, now: () => clock });
   const outcome = (run) => [run.outcome, run.detail];
 
-  assert.deepEqual(outcome(await backup.run()), ['skipped', 'not_configured']);
+  assert.deepEqual(outcome(await backup.runIfDue()), ['skipped', 'not_configured']);
   assert.deepEqual(calls, []);
   assert.deepEqual(published.map((event) => event.type), ['backup']);
 
@@ -12585,7 +12596,7 @@ test('backups snapshot a changing database and restore it consistently', async (
   }
   configured = true;
   clock += 60_000;
-  const written = await backup.run();
+  const written = await backup.runIfDue();
   await writeFile(stopPath, '');
   const writerResult = await writer;
   assert.equal(writerResult.code, 0, writerResult.stderr);
@@ -12644,6 +12655,20 @@ test('backups snapshot a changing database and restore it consistently', async (
   assert.deepEqual(outcome(await backup.run()), ['ok', '']);
   assert.deepEqual(listBackupRuns(database).slice(0, 3).map((run) => run.outcome), ['ok', 'failed', 'ok']);
   assert.equal(published.length, listBackupRuns(database).length);
+
+  // The 5-minute job backs up only once the last good backup is an hour old, and a failed run does not count as one.
+  const runCount = () => listBackupRuns(database).length;
+  const runsBefore = runCount();
+  database.prepare("INSERT OR REPLACE INTO preferences (key, value) VALUES ('theme', 'light')").run();
+  clock += 5 * 60_000;
+  assert.equal(await backup.runIfDue(), undefined);
+  assert.equal(runCount(), runsBefore);
+  failPut = true;
+  clock += 55 * 60_000;
+  assert.deepEqual(outcome(await backup.runIfDue()), ['failed', 'Backup storage answered 503.']);
+  failPut = false;
+  clock += 5 * 60_000;
+  assert.deepEqual(outcome(await backup.runIfDue()), ['ok', '']);
 
   clock += 5 * 60_000;
   const keyAt = (offset) => `backups/${new Date(clock + offset).toISOString().replace(/:/g, '-')}-aaaaaaaaaaaa.sqlite.gz.enc`;

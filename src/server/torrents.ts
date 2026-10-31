@@ -279,7 +279,8 @@ export const createTorrentPoller = (options: {
   // Refreshes the moving values of torrents the full poll already stored, publishing only rows that changed.
   // It never adds, marks gone or touches lastSeenAt and seedingSeconds, so the seeding credit stays with the full poll's gaps;
   // a failed read is left for the full poll to report.
-  // It only feeds open event streams, so it skips while none is open; the hub's own listener count cannot stand in for that, because torrentGrabs always subscribes.
+  // It skips while no event stream is open, leaving the stored moving values up to one full poll old, which no server job needs sooner;
+  // the hub's own listener count cannot stand in for open streams, because torrentGrabs always subscribes.
   const pollLive = async () => {
     if (!hasViewers()) return;
     // While the full poll has rTorrent marked down, a hanging client would hold every run for the request time limit.
