@@ -79,6 +79,8 @@ is_risk_path() {
     src/server/titleDelete.ts|src/server/secondVersionDelete.ts|src/server/versionImport.ts) return 0 ;;
     src/server/torrentFiles.ts|src/server/relink.ts|src/server/trackerRules.ts) return 0 ;;
     src/server/services/arr/queue.ts|src/server/services/arr/commands.ts) return 0 ;;
+    # The players' Plex calls: the play queue, stream addresses and transient token that live desktop playback uses.
+    src/server/playback.ts|src/server/services/plexPlayback.ts) return 0 ;;
     # The desktop app holds the stream-address and Plex-token boundary.
     desktop/main.js|desktop/preload.js|desktop/lib/*) return 0 ;;
     # The TV app holds the same boundary, plus its build, permissions and self-update.

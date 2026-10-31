@@ -33,7 +33,13 @@ denied 'cd android-tv && ./gradlew test'
 denied 'env JAVA_HOME=x ./gradlew test'
 denied 'JAVA_HOME=x ./gradlew test'
 denied 'A=1 B=2 gradle build'
+denied 'GRADLE_OPTS="-Xmx2g -Dfoo=1" ./gradlew test'
+denied "JAVA_OPTS='-Xmx1g -Da=b' gradle build"
 denied 'cd android-tv && GRADLE_OPTS=-Xmx2g ./gradlew test'
+denied 'JAVA_HOME=$(/usr/libexec/java_home -v 17) ./gradlew test'
+denied 'JAVA_HOME=`/usr/libexec/java_home -v 17` ./gradlew test'
+denied 'JAVA_HOME=/opt/$(echo jdk 17)/home gradle build'
+denied 'X="a b"c ./gradlew test'
 denied 'npm test'
 
 allowed 'sh scripts/android-tv.sh test'
