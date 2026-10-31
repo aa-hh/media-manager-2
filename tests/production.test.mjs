@@ -3878,9 +3878,32 @@ test('watch status from Plex marks library titles, both title pages and Continue
       const response = await routes.request(path);
       return { status: response.status, body: await response.json() };
     };
-    return { requests, get, watchStatus, published };
+    const post = async (path, body) => {
+      const response = await routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return { status: response.status, body: response.status === 204 ? null : await response.json() };
+    };
+    return { requests, get, post, watchStatus, published };
   };
   const titleWatch = (titles, title) => titles.find((item) => item.title === title).watch;
+  // Plex answering the watch-state writes, recording each one as METHOD path?query.
+  const writingPlex = ({ writeStatus = 200, actions = [{ id: 'removeFromContinueWatching', key: '/actions/removeFromContinueWatching' }] } = {}) => {
+    const writes = [];
+    const fetch = async (url, init) => {
+      const { pathname, search } = new URL(String(url));
+      if (init.method === 'PUT') {
+        writes.push(`PUT ${pathname}${search}`);
+        return new Response('', { status: writeStatus });
+      }
+      if (pathname === '/media/providers') {
+        return new Response(JSON.stringify({ MediaContainer: { MediaProvider: [
+          { identifier: 'tv.plex.provider.music', Feature: [{ type: 'actions', Action: [{ id: 'removeFromContinueWatching', key: '/elsewhere' }] }] },
+          { identifier: 'com.plexapp.plugins.library', Feature: [{ type: 'content', key: '/library/sections' }, { type: 'actions', Action: actions }] },
+        ] } }), { status: 200 });
+      }
+      return plexFetch(url, init);
+    };
+    return { writes, fetch };
+  };
 
   // Picking the first Media entry instead of the tallest, or pairing a mediaIndex with another entry's part, turns this red.
   await t.test('a second version plays the tallest file and both stay listed', async () => {
@@ -4165,6 +4188,70 @@ test('watch status from Plex marks library titles, both title pages and Continue
     fake.sonarr.state.episodes = saved;
     assert.deepEqual([watched['74'].ratingKey, watched['74'].viewOffsetMs], ['304', 1000]);
     assert.deepEqual([watched['75'].ratingKey, watched['75'].viewOffsetMs], ['305', 2000]);
+  });
+
+  // Sending the wrong verb or ratingKey, marking a show's episodes one by one, or not telling open pages afterwards turns this red.
+  await t.test('marking a title watched or unwatched writes the matched Plex movie or show and tells open pages', async () => {
+    const plex = writingPlex();
+    const { post, published } = connect({ fetch: plex.fetch });
+    assert.deepEqual(await post('/radarr/9/watched', { watched: true }), { status: 204, body: null });
+    assert.deepEqual(await post('/sonarr/7/watched', { watched: false }), { status: 204, body: null });
+    assert.deepEqual(plex.writes, [
+      'PUT /:/scrobble?identifier=com.plexapp.plugins.library&key=100',
+      'PUT /:/unscrobble?identifier=com.plexapp.plugins.library&key=300',
+    ]);
+    for (const deadline = Date.now() + 10_000; published.length < 2;) {
+      assert.ok(Date.now() < deadline, 'no watch event');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(published.map(([, data]) => data.ratingKey).sort(), ['100', '300']);
+  });
+
+  // Writing to Plex for a title it does not hold, or for one Radarr no longer has, turns this red.
+  await t.test('a title Plex does not hold, or the library no longer has, is not found and nothing is written', async () => {
+    const saved = fake.radarr.state.movies;
+    fake.radarr.state.movies = [...saved, movieRecord({ id: 12, title: 'Unmatched', tmdbId: 1, hasFile: true, movieFile: { id: 121, path: '/movies/Unmatched.mkv' } })];
+    const plex = writingPlex();
+    const { post } = connect({ fetch: plex.fetch });
+    try {
+      assert.deepEqual(await post('/radarr/12/watched', { watched: true }), { status: 404, body: { error: 'not_found' } });
+      assert.deepEqual(await post('/radarr/12/continue-watching/remove', {}), { status: 404, body: { error: 'not_found' } });
+      assert.equal((await post('/radarr/404/watched', { watched: true })).status, 404);
+    } finally {
+      fake.radarr.state.movies = saved;
+    }
+    assert.deepEqual(plex.writes, []);
+  });
+
+  // Answering 204 when Plex refused, or 400 for a well-formed request, turns this red; so does accepting a loose body.
+  await t.test('Plex refusing a write is 502, Plex off is 503, and a malformed request is 400', async () => {
+    assert.deepEqual(await connect({ fetch: writingPlex({ writeStatus: 500 }).fetch }).post('/radarr/9/watched', { watched: true }), { status: 502, body: { error: 'plex_unavailable' } });
+    assert.deepEqual(await connect({ enabled: () => false }).post('/radarr/9/watched', { watched: true }), { status: 503, body: { error: 'not_configured' } });
+    const plex = writingPlex();
+    const { post } = connect({ fetch: plex.fetch });
+    for (const [path, body] of [
+      ['/radarr/9/watched', { watched: 'yes' }],
+      ['/radarr/9/watched', { watched: true, extra: 1 }],
+      ['/radarr/9/watched', {}],
+      ['/lidarr/9/watched', { watched: true }],
+      ['/radarr/0/watched', { watched: true }],
+      ['/radarr/9/continue-watching/remove', { ratingKey: '100' }],
+    ]) assert.equal((await post(path, body)).status, 400, `${path} ${JSON.stringify(body)}`);
+    assert.deepEqual(plex.writes, []);
+  });
+
+  // Sending the show's own ratingKey instead of its listed episodes, using a fixed address instead of the one Plex
+  // advertises, or another provider's action, turns this red.
+  await t.test('removing from Continue Watching sends PUT to the address Plex advertises, for each listed item', async () => {
+    const plex = writingPlex({ actions: [{ id: 'other', key: '/actions/other' }, { id: 'removeFromContinueWatching', key: '/actions/v2/removeFromContinueWatching' }] });
+    const { post } = connect({ fetch: plex.fetch });
+    assert.deepEqual(await post('/sonarr/7/continue-watching/remove', {}), { status: 204, body: null });
+    assert.deepEqual(await post('/radarr/9/continue-watching/remove', {}), { status: 204, body: null });
+    assert.deepEqual(await post('/radarr/10/continue-watching/remove', {}), { status: 404, body: { error: 'not_found' } }, 'Arrival is not in the row');
+    assert.deepEqual(plex.writes, ['PUT /actions/v2/removeFromContinueWatching?ratingKey=302', 'PUT /actions/v2/removeFromContinueWatching?ratingKey=100']);
+    const silent = writingPlex({ actions: [] });
+    assert.deepEqual(await connect({ fetch: silent.fetch }).post('/radarr/9/continue-watching/remove', {}), { status: 502, body: { error: 'plex_unavailable' } });
+    assert.deepEqual(silent.writes, []);
   });
 
   // Reading a 2xx reply with no readable body as an empty listing, which marks Plex working with every title unmarked, turns this red.

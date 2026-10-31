@@ -105,7 +105,8 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 **Title action routes** (T23, behind `privateGuard`; `:service` is `sonarr` or `radarr`):
 - `POST /api/library/:service/:id/watched` with body exactly `{"watched": boolean}`.
 - `POST /api/library/:service/:id/continue-watching/remove` with body `{}`.
-- Replies: 204; 404 `not_found` when Plex has no matching item; 502 `plex_unavailable`.
+- Replies: 204; 404 `not_found` when the title, its Plex item or (for remove) its Continue Watching entry is missing; 502 `plex_unavailable`; 503 `not_configured` when Plex is off; 400 `invalid_request`.
+- Remove sends one `PUT` per listed item: the movie, or each of the show's episodes in the row.
 - Monitoring reuses `POST /api/library/monitor`: `writeRoute('/monitor', …)` at `src/server/library.ts:856`.
 
 **Plex identity header** (T24):

@@ -18,7 +18,7 @@ import { notConfigured } from './services/arr/result.js';
 import type { SecondVersionRow, TrackedHitAndRun } from './secondVersionRows.js';
 import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
 import type { TitleStore } from './titleStore.js';
-import type { LibraryWatch, MovieWatch, SeriesWatch, TitleWatch, WatchStatus } from './watchStatus.js';
+import type { LibraryWatch, MovieWatch, SeriesWatch, TitleWatch, WatchAction, WatchStatus } from './watchStatus.js';
 
 export type { FileDetail };
 
@@ -548,7 +548,37 @@ export const createLibrary = (
     return result.kind === 'ok' ? result.value : undefined;
   };
 
+  // The title must still be in Sonarr or Radarr; Plex is then matched the same way the watch marks are.
+  const watchAction = async (
+    service: Service,
+    id: number,
+    run: (status: WatchStatus, title: { service: 'sonarr'; record: Series } | { service: 'radarr'; record: Movie }) => Promise<WatchAction>,
+  ): Promise<Failure | { kind: 'ok' } | { kind: 'off' } | { kind: 'unavailable' }> => {
+    if (watchStatus === undefined) return { kind: 'off' };
+    let outcome: WatchAction;
+    if (service === 'sonarr') {
+      const record = fromArr(await services.sonarr.series(id));
+      if (record.kind !== 'ok') return record;
+      outcome = await run(watchStatus, { service, record: record.value });
+    } else {
+      const record = fromArr(await services.radarr.movie(id));
+      if (record.kind !== 'ok') return record;
+      outcome = await run(watchStatus, { service, record: record.value });
+    }
+    if (outcome === 'ok') return { kind: 'ok' };
+    if (outcome === 'off') return { kind: 'off' };
+    return outcome === 'unavailable' ? { kind: 'unavailable' } : { kind: 'not_found' };
+  };
+
   return {
+    setWatched(service: Service, id: number, watched: boolean) {
+      return watchAction(service, id, (status, title) => status.markWatched(title, watched));
+    },
+
+    removeFromContinueWatching(service: Service, id: number) {
+      return watchAction(service, id, (status, title) => status.removeFromContinueWatching(title));
+    },
+
     async titles(): Promise<{ titles: LibraryTitle[]; services: { sonarr: Outcome; radarr: Outcome }; watch: LibraryWatch }> {
       const fetchService = async (service: Service) => {
         const [items, profiles] = await Promise.all([
@@ -856,5 +886,36 @@ export const createLibraryRoutes = (library: Library) => {
   writeRoute('/monitor', true, undefined, (change) => library.monitor(change));
   writeRoute('/search', false, undefined, (request) => library.search(request));
   writeRoute('/refresh', false, ['sonarr/series', 'radarr/movie'], (request) => library.refresh(request));
+
+  // Plex watch-state actions for a library title. Plex off (Jellyfin, or no Plex saved) is 503; Plex failing is 502.
+  const watchRoute = (path: string, parse: (body: unknown) => boolean | undefined, run: (service: Service, id: number, watched: boolean) => ReturnType<Library['setWatched']>) => {
+    routes.post(path, async (context) => {
+      const service = context.req.param('service');
+      const id = positiveInteger(Number(context.req.param('id')));
+      let body: unknown;
+      try {
+        body = await context.req.json();
+      } catch {
+        return context.json(invalid, 400);
+      }
+      const watched = parse(body);
+      if ((service !== 'sonarr' && service !== 'radarr') || id === null || watched === undefined) return context.json(invalid, 400);
+      const result = await run(service, id, watched);
+      if (result.kind === 'ok') return context.body(null, 204);
+      if (result.kind === 'off') return context.json({ error: 'not_configured' }, 503);
+      if (result.kind === 'unavailable') return context.json({ error: 'plex_unavailable' }, 502);
+      return failure(context, result);
+    });
+  };
+  watchRoute(
+    '/:service/:id/watched',
+    (body) => (isRecord(body) && Object.keys(body).length === 1 && typeof body.watched === 'boolean' ? body.watched : undefined),
+    (service, id, watched) => library.setWatched(service, id, watched),
+  );
+  watchRoute(
+    '/:service/:id/continue-watching/remove',
+    (body) => (isRecord(body) && Object.keys(body).length === 0 ? true : undefined),
+    (service, id) => library.removeFromContinueWatching(service, id),
+  );
   return routes;
 };
