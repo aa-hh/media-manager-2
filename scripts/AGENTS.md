@@ -14,13 +14,14 @@ The only sanctioned way to build, test, review, land and deploy this repo. Hooks
 
 ## Map
 
-- `build.sh` → compile and typecheck server and client.
-- `test.sh` → the test suite; `--full`, `--review-script`, `--production`, `--story-args` modes.
+- `build.sh` → compile and typecheck everything.
+- `test.sh` → the test suite and its modes.
 - `review-branch.sh` → picks and runs the branch review, posts the `review` status.
-- `test-review-branch.sh`, `test-guard-agents-docs.sh`, `test-screenshots.sh`, `test-story-args.sh` → self-tests; `test.sh --review-script` runs them.
+- `housekeeping.sh` → removes `.prunable` worktrees; `build.sh` runs it.
+- `test-*.sh` → self-tests; `test.sh --review-script` runs them.
 - `setup.sh` → one-time hook setup; `--sync-main` installs the main mirror job.
 - `sync-main.sh` → keeps local `main` matching `origin/main`.
 - `desktop-build.sh` → build, sign and notarise the desktop app.
 - `deploy.sh`, `ensure-running.sh` → deploy to and keep the server running on the host.
 - `launchd/` → macOS job template used by `setup.sh --sync-main`.
-- `screenshots/` → headless-Chrome shots of the title page against the arr fake; macOS.
+- `screenshots/` → headless-Chrome title-page shots against the arr fake; macOS.
