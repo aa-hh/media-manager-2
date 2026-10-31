@@ -2,8 +2,13 @@ package io.github.aahh.mediamanager2.tv.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Typography
 import androidx.tv.material3.darkColorScheme
+import io.github.aahh.mediamanager2.tv.R
 
 /**
  * Every dark colour token from `src/client/globals.css` (`:root[data-theme="dark"]`), under the same names in camelCase,
@@ -112,7 +117,41 @@ private val colorScheme = darkColorScheme(
     scrim = Tokens.scrim,
 )
 
+/**
+ * The desktop's two typefaces (`src/client/globals.css`): Schibsted Grotesk for the interface, Barlow Semi Condensed for
+ * numbers and data. Schibsted is the variable file, so each weight is an instance of its weight axis.
+ */
+object Fonts {
+    val ui = FontFamily(
+        Font(R.font.schibsted_grotesk, FontWeight.Normal),
+        Font(R.font.schibsted_grotesk, FontWeight.Medium),
+        Font(R.font.schibsted_grotesk, FontWeight.SemiBold),
+        Font(R.font.schibsted_grotesk, FontWeight.Bold),
+    )
+    val data = FontFamily(Font(R.font.barlow_semi_condensed_semibold, FontWeight.SemiBold))
+}
+
+private val typography = Typography().let { base ->
+    base.copy(
+        displayLarge = base.displayLarge.copy(fontFamily = Fonts.ui),
+        displayMedium = base.displayMedium.copy(fontFamily = Fonts.ui),
+        displaySmall = base.displaySmall.copy(fontFamily = Fonts.ui),
+        headlineLarge = base.headlineLarge.copy(fontFamily = Fonts.ui),
+        headlineMedium = base.headlineMedium.copy(fontFamily = Fonts.ui),
+        headlineSmall = base.headlineSmall.copy(fontFamily = Fonts.ui),
+        titleLarge = base.titleLarge.copy(fontFamily = Fonts.ui),
+        titleMedium = base.titleMedium.copy(fontFamily = Fonts.ui),
+        titleSmall = base.titleSmall.copy(fontFamily = Fonts.ui),
+        bodyLarge = base.bodyLarge.copy(fontFamily = Fonts.ui),
+        bodyMedium = base.bodyMedium.copy(fontFamily = Fonts.ui),
+        bodySmall = base.bodySmall.copy(fontFamily = Fonts.ui),
+        labelLarge = base.labelLarge.copy(fontFamily = Fonts.ui),
+        labelMedium = base.labelMedium.copy(fontFamily = Fonts.ui),
+        labelSmall = base.labelSmall.copy(fontFamily = Fonts.ui),
+    )
+}
+
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colorScheme, content = content)
+    MaterialTheme(colorScheme = colorScheme, typography = typography, content = content)
 }

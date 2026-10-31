@@ -431,6 +431,25 @@ The kind of decision sets the scale of the place it opens in. Three tiers:
 
 Every focused control gets a 2px `ring` outline with a 2px gap in the page colour (Tailwind `outline-2 outline-offset-2`). The ring is black on white (18.9:1) and off-white on the dark page (16.5:1), so it reads beside black, red and lime fills alike. On black bars it is `focus-on-dark`; on a poster it is `focus-on-dark` 3px outside the control; rows use the 2px inner edge. Spinners and skeleton shimmer stay still under reduced motion (see Motion).
 
+### TV app
+
+The Google TV app (`android-tv/`) builds its shared pieces in `android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/ui/components/`, one file per family, each headed with its `v2/TV/Family/Variant` (or `tv/Family/Variant`) name and the node in the Figma screens file (`LOntH5HQXfvTnfapJoyoqZ`, FINAL). Frames are 960 × 540 at one px per dp. Dark only, on `androidx.tv:tv-material` 1.1.0 (Card, Text, Icon) and Compose foundation, never phone Material 3. Colours come from `Tokens`; text is Schibsted Grotesk, and counts and percentages are Barlow Semi Condensed 600.
+
+- **Focus:** never shifts layout. A control grows from its centre through a graphics layer (cards and buttons 1.1×, list rows 1.05×) over the gap, and its neighbours and titles stay put. Cards and filled buttons add a 3dp `ring` drawn just outside their edge. Rows, menu items and tabs take the off-white `foreground-on-dark` (or `foreground`) fill with dark words instead, and do not grow. Every focus change is 150 ms on the ease-out curve below.
+- **Button** (`v2/TV/Button`): 40 high pill, 16 in (12 before an icon), icon gap 6. Filled is `action` at 80%, full when focused; Outline is a 1.5dp `input` 40% edge that turns a 3dp `focus-on-dark` edge. Disabled is 40% and skipped by focus. A busy button keeps focus and says so in its label ("Logging out…").
+- **Side menu** (`v2/TV/SideMenu`): 48 high pill items with a 24dp icon, 56 wide collapsed and full width open. The current page is `action` at 16% with `action` words. A 1dp `border-on-video` divider sits before the Plex lists and hides with them.
+- **Poster card** (`v2/TV/Card`): tv-material Card, radius 12, `muted` behind the art, 127 wide in rows. Overlays: the downloading tag top left, the played mark or unwatched count top right, the watch bar 8 in along the bottom. The title and facts line sit 12 under the card and never move. Holding OK opens the action list.
+- **Card action list** (T03a C1): a panel 16 beside the held card (left of it when there is no room) over a 50% dim. Rows are Mark as watched or unwatched, Monitor or Stop monitoring, and Remove from Continue watching. While one runs, every row and Back is blocked and the running row's label ends in "…"; success closes the list, a failure stays open with one plain line in `destructive`.
+- **Player** (`tv/Player`): 48dp round icon buttons and 40-high track buttons, which grow 1.1× on a `surface-pressed-on-video` fill with the ring. The timeline is an `input-on-dark` track with loaded (white 45%) and played (`foreground-on-dark`) spans, 3dp chapter gaps, an intro mark and a 14dp dot. The menu panel is 280 wide on `bar`, radius 16, with radio or check rows 40 high that take the off-white fill when focused.
+- **Dialog** (`v2/TV/Dialog`): 528 wide on `popover`, radius 16, 24 in, the heading block 24 above a row of buttons 12 apart, over a black 38% dim. It is a Compose `Dialog`; the caller puts focus on the button the frame names.
+- **Content block** (`v2/TV/ContentBlock`): Page (40/700 title, 15 facts line at 60%, overview at 80%) and Dialog (28/700 title, 16 sentence). The Home and Discover summary is a 484-wide overline, 36/700 title and two-line summary.
+- **Tabs** (`v2/TV/Tabs`): 32 high pills 4 apart. The selected tab is 600 `foreground` with a 3dp bar under its label; the bar's space is kept on every tab so nothing shifts.
+- **Text field** (`v2/TV/TextField`): a `BasicTextField`, label 6 above a 48-high box, radius 12, 1.5dp `input` edge that turns a 3dp white edge when focused; the supporting line turns `destructive` on an error. It does not grow.
+- **List item** (`v2/TV/ListItem`): the three-line release row, 80 high, radius 8.
+- **Episode row** (`tv/Browse/EpisodeRow`): 76 high, radius 12, a 100 × 56 still, title and air line with a 120-wide watch bar, the status (Missing in `warning`, Downloading with an 80-wide `live` line) and the monitor bookmark.
+- **Backdrop** (`v2/TV/Backdrop`): full-screen art under `background` gradients, in three strengths: Browse, Title page and Episodes.
+- **Marks:** the played mark is a 24dp `poster-mark` circle with a check, the unwatched count is Barlow 15, the downloading tag is `surface-on-video` at radius 10, and the progress bar is 4dp of `watch-bar` over black 12%.
+
 ## Motion
 
 The library's sixth sheet holds the motion tokens and a transition table; each screen file holds `v2 / Motion / …` storyboards drawn as Before, Mid and After frames.

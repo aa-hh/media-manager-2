@@ -4,21 +4,15 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -38,7 +32,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import androidx.tv.material3.Text
 import io.github.aahh.mediamanager2.tv.api.ApiResult
 import io.github.aahh.mediamanager2.tv.api.AuthApi
 import io.github.aahh.mediamanager2.tv.api.BrowseApi
@@ -46,6 +39,9 @@ import io.github.aahh.mediamanager2.tv.api.LibraryApi
 import io.github.aahh.mediamanager2.tv.api.Playlist
 import io.github.aahh.mediamanager2.tv.api.ServerClient
 import io.github.aahh.mediamanager2.tv.downloads.DownloadsFeed
+import io.github.aahh.mediamanager2.tv.ui.components.NavItem
+import io.github.aahh.mediamanager2.tv.ui.components.SideMenuDivider
+import io.github.aahh.mediamanager2.tv.ui.components.TvIcons
 import io.github.aahh.mediamanager2.tv.ui.screens.AddressScreen
 import io.github.aahh.mediamanager2.tv.ui.screens.AppDetailsScreen
 import io.github.aahh.mediamanager2.tv.ui.screens.DiscoverScreen
@@ -264,45 +260,30 @@ private fun Shell(
     LaunchedEffect(menuOpen.value) { if (menuOpen.value) runCatching { menuFocus.requestFocus() } }
     Row(Modifier.fillMaxSize()) {
         if (menuOpen.value) {
-            Column(Modifier.width(240.dp).fillMaxHeight().background(Tokens.card).padding(vertical = 32.dp, horizontal = 16.dp)) {
+            Column(
+                Modifier.width(240.dp).fillMaxHeight().background(Tokens.card).padding(vertical = 32.dp, horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 val choose = { route: Route ->
                     menuOpen.value = false
                     onNavigate(route)
                 }
-                MenuItem("Home", current is HomeRoute, Modifier.focusRequester(menuFocus)) { choose(HomeRoute) }
-                MenuItem("TV", current is TvRoute) { choose(TvRoute) }
-                MenuItem("Films", current is FilmsRoute) { choose(FilmsRoute) }
-                MenuItem("Search", current is SearchRoute) { choose(SearchRoute) }
-                MenuItem("Discover", current is DiscoverRoute) { choose(DiscoverRoute) }
+                NavItem("Home", TvIcons.Home, current is HomeRoute, expanded = true, onClick = { choose(HomeRoute) }, modifier = Modifier.focusRequester(menuFocus))
+                NavItem("TV", TvIcons.Tv, current is TvRoute, expanded = true, onClick = { choose(TvRoute) })
+                NavItem("Films", TvIcons.Movie, current is FilmsRoute, expanded = true, onClick = { choose(FilmsRoute) })
+                NavItem("Search", TvIcons.Search, current is SearchRoute, expanded = true, onClick = { choose(SearchRoute) })
+                NavItem("Discover", TvIcons.Explore, current is DiscoverRoute, expanded = true, onClick = { choose(DiscoverRoute) })
                 if (playlists.isNotEmpty()) {
-                    Box(Modifier.padding(vertical = 12.dp).fillMaxWidth().height(1.dp).background(Tokens.border))
+                    SideMenuDivider(Modifier.padding(vertical = 12.dp))
                     for (list in playlists) {
                         val route = PlexListRoute(list.id, list.title)
-                        MenuItem(list.title, current == route) { choose(route) }
+                        NavItem(list.title, TvIcons.PlaylistPlay, current == route, expanded = true, onClick = { choose(route) })
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                MenuItem("Settings", current is SettingsRoute) { choose(SettingsRoute) }
+                NavItem("Settings", TvIcons.Settings, current is SettingsRoute, expanded = true, onClick = { choose(SettingsRoute) })
             }
         }
         Box(Modifier.weight(1f).fillMaxHeight()) { content() }
-    }
-}
-
-// A plain focusable row until T13b builds the menu item from the approved frames.
-@Composable
-private fun MenuItem(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    val shape = RoundedCornerShape(12.dp)
-    Box(
-        modifier
-            .fillMaxWidth()
-            .background(if (focused) Tokens.primary else if (selected) Tokens.selected else Tokens.control, shape)
-            .border(if (focused) 2.dp else 0.dp, if (focused) Tokens.focusOnDark else Tokens.control, shape)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-    ) {
-        Text(label, color = if (focused) Tokens.primaryForeground else Tokens.foreground)
     }
 }

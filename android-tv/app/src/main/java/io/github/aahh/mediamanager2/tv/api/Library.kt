@@ -200,6 +200,14 @@ data class PlaylistItems(val kind: String, val title: String? = null, val items:
 @Serializable
 private data class WatchedBody(val watched: Boolean)
 
+// The title bodies `POST /api/library/monitor` takes (`parseTarget` in src/server/library.ts): exactly these keys, so the
+// defaults must be sent. The season and episode bodies come with the title pages that need them.
+@Serializable
+private data class MonitorSeries(val seriesId: Int, val monitored: Boolean, val service: String = "sonarr", val kind: String = "series")
+
+@Serializable
+private data class MonitorMovie(val movieId: Int, val monitored: Boolean, val service: String = "radarr", val kind: String = "movie")
+
 /** The library routes the TV's Home, TV, Films, title pages and list pages read. */
 class LibraryApi(private val client: ServerClient) {
     suspend fun titles(): ApiResult<LibraryTitles> = client.get("/api/library/titles", LibraryTitles.serializer())
@@ -225,6 +233,15 @@ class LibraryApi(private val client: ServerClient) {
     /** Remove from Continue Watching (T23). 204, or 404 `not_found` when it is not in the row. */
     suspend fun removeFromContinueWatching(service: Service, id: Int): ApiResult<Unit?> =
         client.post<Unit>("/api/library/${checked(service)}/$id/continue-watching/remove", "{}", null)
+
+    /** Monitor or stop monitoring a whole show or film, by its Sonarr or Radarr id. 204 on success. */
+    suspend fun monitor(service: Service, id: Int, monitored: Boolean): ApiResult<Unit?> {
+        val body = when (checked(service)) {
+            "sonarr" -> client.json.encodeToString(MonitorSeries(id, monitored))
+            else -> client.json.encodeToString(MonitorMovie(id, monitored))
+        }
+        return client.post<Unit>("/api/library/monitor", body, null)
+    }
 
     private fun checked(service: Service) = service.also { require(it == "sonarr" || it == "radarr") { "unknown service $it" } }
 
