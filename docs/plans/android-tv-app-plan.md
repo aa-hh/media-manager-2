@@ -103,7 +103,7 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - `POST /api/devices/:id/sign-out` → 204, or 404 `not_found`. Deletes the row and its in-memory Plex token.
 
 **TV Settings routes** (owner, 31 Oct):
-- Log out: `POST /auth/logout` with body `{}` and the browser headers. 204 deletes this TV's own session row and clears its cookie; other TVs and browsers stay signed in, and web Settings stops listing it. The TV then forgets its cookie and shows first launch.
+- Log out: `POST /auth/logout` with body `{}` and the browser headers. 204 deletes this TV's own session row and clears its cookie; other TVs and browsers stay signed in, and web Settings stops listing it. The TV then forgets its cookie and shows the address screen with the old address filled in and focus on Continue (owner, 31 Oct), so one OK leads to a new link code.
 - Get logs: `POST /api/device-logs` (behind `privateGuard`) with body exactly `{"appVersion": string, "log": string}`. `appVersion` matches `^[0-9A-Za-z._+-]{1,40}$`; `log` is 1 to 262144 characters. 201 `{reference}`: six characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, shown on the TV as is. Else 400 `invalid_request`, or 413 above 2 MiB.
 - The TV sends only its own recent lines, with the TV HTTP rules' token scrubbing already applied; never cookies or the server's session value.
 - Reading back: `GET /api/device-logs` → `{logs:[{reference, deviceName, appVersion, receivedAt, characters}]}`, newest first. `GET /api/device-logs/:reference` → the log as `text/plain`, headed by the TV's name, app version and time; 404 `not_found`. The server keeps the newest 20 for 30 days.
@@ -119,6 +119,10 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - `GET /api/library/titles` `watch` (kind `ok`) adds `recentlyAddedTv` and `recentlyAddedFilms`: up to 20 `{service, id, addedAt}` each, newest first; a show ranks by its newest episode's `addedAt`. From the same cached Plex listing as Continue Watching.
 - `GET /api/library/playlists` → `{kind:'ok', playlists:[{id, title, smart, itemCount}]}` (the owner's video playlists, Plex order) or `{kind:'off'|'unavailable'}`.
 - `GET /api/library/playlists/:id` (digits) → `{kind:'ok', title, items:[{service, id, episode:{seasonNumber, episodeNumber, title}|null}]}`, only library titles, playlist order; 404 `not_found`; or `{kind:'off'|'unavailable'}`.
+
+**Plex list playback and collage** (T29, owner, 31 Oct):
+- `POST /api/playback/start` takes two more optional fields, `playlistId` (digits, 1–12) and `shuffle` (boolean, only with `playlistId`). With them, Plex's play queue is built from the list (`/playQueues?type=video&playlistID=…&shuffle=0|1`) instead of from the title, and `ratingKey` is the list's first item (or the first of Plex's shuffled order). The reply's `playQueue` lists the queue as today. Without them, start is unchanged.
+- `GET /api/images/plex/playlist/:id` (digits) → the list's Plex collage as an image, fetched through `services/plex.ts` with the token kept on the server, sized for a card, cached like the other `/api/images/*` replies; 404 when Plex has no such list or no picture; 503 when Plex is off.
 
 **Plex identity header** (T24):
 - Every `/api/playback/*` request may carry `X-Media-Manager-Plex-Identity: android` or `desktop`.
@@ -162,8 +166,8 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - **S1.** Android Studio's first-launch SDK setup and licence acceptance. In SDK Manager install: the newest stable SDK Platform, Build-Tools, Platform-Tools, Command-line Tools (latest), NDK (Side by side) 26.1.10909125 (r26b), and CMake 3.22.1. The SDK must end up at `~/Library/Android/sdk`.
 - **S2.** After T06: run the two `security … | gh secret set …` commands T06 prints.
 - **S3.** On the Streamer, turn on Developer options, USB debugging and Wireless debugging, then read out the IP:port and the pairing code. Any time before T22.
-- **S4c / S4b / S4a.** Approve the T03c, T03b and T03a frames. Iterating is not approval.
-- **SD.** After each server pull request merges (T01, T23, T24): the owner OKs a deploy and names the host. The agent runs `DEPLOY_HOST=<host> sh scripts/deploy.sh` from a clean worktree at origin/main (`scripts/deploy.sh:1-13`). The TV can't use a route until it's deployed.
+- **S4c / S4b / S4a / S4d.** Approve the T03c, T03b, T03a and T03d frames. Iterating is not approval.
+- **SD.** After each server pull request merges (T01, T23, T24, T27/T28, T29): the owner OKs a deploy and names the host. The agent runs `DEPLOY_HOST=<host> sh scripts/deploy.sh` from a clean worktree at origin/main (`scripts/deploy.sh:1-13`). The TV can't use a route until it's deployed.
 - **S6a.** Box tests through the test player (T22).
 - **S6b.** The owner's full check of the finished app on the TV.
 - **Per pull request.** The owner approves each merge (CLAUDE.md).
@@ -503,13 +507,16 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - **Model:** Opus 5.5, which the skill's handoff rule requires. **Effort:** medium.
 - **Verify:** `sh scripts/test.sh --full` green, including the story accessibility check; library step 8 done after merge.
 
-**T13a · TV theme, navigation, screen stubs**
+**T13a · TV theme, navigation, screen stubs** (changed 31 Oct: menu, Settings and Log out)
 - **Files:** `…/tv/ui/{Theme.kt, Navigation.kt}`, one stub file per FINAL frame in the screens file, and `MainActivity.kt`.
 - **What:**
   - `Theme.kt` copies every dark token from `src/client/globals.css` into tv-material `darkColorScheme` plus a token object, same names in camelCase.
   - One route per FINAL frame. Each stub has its final signature.
   - Routing: no address → Address; no session → LinkCode; else Home. A later 401 → LinkCode.
-  - No sign-out or address-change route.
+  - Side menu: Home, TV, Films, Search, Discover, a divider, one item per Plex list from `GET /api/library/playlists` (loaded at launch; the divider and lists hidden when there are none or Plex is off), Settings at the bottom. The app opens on Home.
+  - Routes for Home, TV, Films, Search, Discover, a Plex list (by id) and Settings, plus the title pages.
+  - Log out (from Settings) goes to Address with the old address filled in and focus on Continue. There is no other address-change route.
+  - Back follows the interactions doc (https://claude.ai/artifact/FnYdCGH4PvPRZAv6uPYbtg): on a top-level page Back opens the menu; Back from the menu goes to Home, and from Home's menu leaves the app.
   - Pop-ups use `androidx.compose.ui.window.Dialog`, because tv-material has no dialog (`tv-design-guidelines.md:187`).
   - Text entry uses `BasicTextField` with the keyboard set to URI input, because tv-material has no text field (`tv-design-guidelines.md:193`).
   - The update check runs at launch.
@@ -553,10 +560,20 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - **Model:** Sonnet 5.5. **Effort:** high.
 - **Verify:** build and test green; S6b.
 
-**T16 · Home/discover and library**
+**T16a · Home and Discover** (T16 split, 31 Oct)
 - **Files:** the stubs for those frames.
-- **What:** From S4a on T08: Continue Watching and played marks from `/api/library/titles` `watch`; cards with the hold-OK action list; posters through Coil.
-- **Kind:** new-code · **Depends on:** T13b, T08, T23
+- **What:** From S4a and S4d on T08.
+  - Home: the focused card's backdrop at the top; rows Continue watching, Recently added TV, Recently added films (from `/api/library/titles` `watch`), Playlists (from `GET /api/library/playlists`, pictures from the T29 collage route), then the Trakt rows from `/api/discover/home`. An empty or failing row is hidden; all empty shows "Nothing here yet" with Go to Discover. Focus starts on the first Continue watching card.
+  - Discover: Trakt rows only.
+  - Cards with the hold-OK action list and Play/Pause (T33); played marks; posters through Coil.
+- **Kind:** new-code · **Depends on:** T13b, T08, T23, T27 deployed, T29 (playlist pictures), S4d
+- **Model:** Sonnet 5.5. **Effort:** medium.
+- **Verify:** build green; S6b.
+
+**T16b · TV and Films pages** (T16 split, 31 Oct)
+- **Files:** the stubs for those frames.
+- **What:** From S4d. One grid page used twice, for shows and for films, with the tabs All, Continue watching, Unwatched, Missing, Downloading. All but Downloading filter `/api/library/titles`; Downloading reads T26. Per-tab empty text as the interactions doc. Cards as T16a.
+- **Kind:** new-code · **Depends on:** T13b, T08, T23, T26, S4d
 - **Model:** Sonnet 5.5. **Effort:** medium.
 - **Verify:** build green; S6b.
 
@@ -616,6 +633,73 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - **Model:** Haiku 5.5. **Effort:** low.
 - **Verify:** build green.
 
+### Tasks added 31 Oct (new TV features)
+
+The owner added these during the TV design work. Scope and the owner's answers: https://claude.ai/artifact/7kDb9uYyxZuy7AtPXu9NUL.
+
+**T27 · Server: Home rails from Plex and playlists** (AA-435)
+- Built and merged in PR #281: the "Home rails and playlists" contract. Needs SD before the TV can use it.
+
+**T28 · Server: TV Log out and Get logs** (AA-436)
+- Built and merged in PR #281: the "TV Settings routes" contract. Needs SD.
+
+**T03d · Design: rest of the app** (AA-437)
+- **Files:** Figma screens file, section T03d.
+- **What:** Following the interactions doc: Home's first view with the backdrop; TV and Films grid pages with tabs; the Plex list page (name, Play all, Shuffle, grid, empty); Settings (Playback, Log out confirm, App details with Check for updates, Get logs with the reference); Can't reach Media Manager; empty and error states; the side menu with no Plex lists.
+- **Kind:** docs (Figma) · **Depends on:** the interactions doc agreed
+- **Model:** Opus 5.5. **Effort:** high.
+- **Verify:** owner review (S4d).
+
+**T29 · Server: Play all and Shuffle a Plex list; list collage** (AA-438)
+- **Files:** `src/server/playback.ts` (start route and `createPlayQueue` call), `src/server/services/plexPlayback.ts`, `src/server/services/plex.ts`, the image routes in `src/server/titles.ts`, `tests/production.test.mjs`.
+- **What:** The "Plex list playback and collage" contract.
+- **Tests first:** a list start builds the queue from the list; `shuffle` reaches Plex; an unknown list → 404; `shuffle` without `playlistId` → 400; the collage reply carries no token and is cached; start without `playlistId` sends exactly what it sends today (desktop regression row).
+- **Kind:** backend · **Depends on:** T27 (shared files), and the tests-only follow-up to #281 on the playlist fake
+- **Model:** Opus 5.5, because it threads through the play-queue code live desktop playback uses. **Effort:** medium.
+- **Verify:** `sh scripts/test.sh --full` green; then SD.
+
+**T30 · TV in-app log buffer** (AA-439)
+- **Files:** new `…/tv/log/*`, with tests.
+- **What:** A ring buffer of the newest 256 K characters of app log lines, kept in memory and written to app-private storage so the previous run survives one restart. Every line passes the token scrubber from the TV HTTP rules; cookies and the session value are never logged.
+- **Tests:** tokens and cookies scrubbed; the buffer caps at 256 K characters, dropping oldest lines first; the previous run is kept once.
+- **Kind:** new-code · **Depends on:** T08
+- **Model:** Sonnet 5.5. **Effort:** medium.
+- **Verify:** `sh scripts/android-tv.sh test` green.
+
+**T31 · Plex list page** (AA-441)
+- **Files:** the Plex list stub.
+- **What:** From S4d on T08: the list's name, Play all (first focus), Shuffle, then its items as a grid from `GET /api/library/playlists/:id`; "This list is empty". Play all and Shuffle open the player with `playlistId` (and `shuffle`). OK on an item opens its title page; Play/Pause plays it (T33). Back opens the menu on this list's item.
+- **Kind:** new-code · **Depends on:** T13b, T08, T29, S4d
+- **Model:** Sonnet 5.5. **Effort:** medium.
+- **Verify:** build green; S6b.
+
+**T32 · Settings page** (AA-442)
+- **Files:** the Settings stubs; new `…/tv/settings/PlaybackPreferences.kt`.
+- **What:** From S4d.
+  - Playback, saved on the TV: subtitle size (the five sizes; a saved pick beats the caption setting), preferred audio language, preferred subtitle language (with Off), default quality (Original or the desktop's steps). Languages apply on the TV only and are never written to Plex (owner, 31 Oct).
+  - Log out: confirm (Log out / Cancel, Cancel focused), `POST /auth/logout`, forget the cookie, then Address as T13a.
+  - App details: version name, server address, Check for updates (T10 `checkNow()`, then T19's prompt or "You're up to date").
+  - Get logs: sends T30's buffer with `POST /api/device-logs` and shows the reference large. Blocked while in flight. The owner reads a log at `/api/device-logs/<reference>` in a signed-in browser; there is no web list (owner, 31 Oct).
+- **Kind:** new-code · **Depends on:** T13b, T08, T10, T19, T30, S4d
+- **Model:** Sonnet 5.5. **Effort:** medium.
+- **Verify:** build green; S6b.
+
+**T33 · Play/Pause on a focused card** (AA-443)
+- **Files:** new `…/tv/ui/PlayTarget.kt`, the card in `…/tv/ui/components/`, with tests.
+- **What:** `playTargetFor(card)` reads the title's watch state (`/api/library/movie/:id` or `/series/:id`) and returns a `PlayerRequest` with `resume: true`: a film resumes or starts; a show plays the episode in progress, else the next to watch, else S1 E1; a Continue watching card plays that episode. A title with nothing in Plex (Discover, search, still downloading) opens its title page instead (owner, 31 Oct). The card's Play/Pause key calls it on every page.
+- **Tests:** each of those cases.
+- **Kind:** new-code · **Depends on:** T13b, T09a
+- **Model:** Sonnet 5.5. **Effort:** low.
+- **Verify:** `sh scripts/android-tv.sh test` green.
+
+Changes to earlier tasks (also noted on their Linear tickets):
+- **T08:** models for the recently added fields, the playlist routes, the collage route, `/auth/logout`, `/api/device-logs`, and T29's start fields.
+- **T09a:** reads `PlaybackPreferences` at each start: default quality sets the first `maxVideoBitrate`; preferred languages pick the track when Plex's choice differs, without `POST /api/playback/track` (a track picked by hand still calls it); a saved subtitle size beats the caption setting. Accepts a list start.
+- **T09b:** after an item started from a list, Up Next is the list's next item (the play queue) before the other rules.
+- **T10:** exposes `checkNow()` for Settings.
+- **T13b:** the card takes the Play/Pause key (T33); a tab row; settings rows. Also waits for S4d.
+- **T20:** README and PRODUCT mention TV Settings, Log out and Get logs.
+
 ### Box tests
 
 The owner checks on screen, except tests marked adb.
@@ -647,11 +731,11 @@ The owner checks on screen, except tests marked adb.
 |---|---|---|
 | 0 | S0, T00 (once the plan is OK'd), T01, T03c, T06, T12, S1, S3 (any time) | No shared files. |
 | 1 | T04 (after S1); T03b (after T03c); S2 (after T06); T23 (after T01); SD for T01 | |
-| 2 | T05, T08, T10 (after T04); T03a (after T03b); T24 (after T23); SD for T23 | |
-| 3 | T07 (after T05 + S2); T09a (after T05 + T08); T26 (after T08); T11 (after T01 + S4c); SD for T24 | |
+| 2 | T05, T08, T10 (after T04); T03a (after T03b); T24 (after T23); SD for T23; T03d (after the interactions doc); T29 (after T27); SD for T27/T28 | |
+| 3 | T07 (after T05 + S2); T09a (after T05 + T08); T26 (after T08); T11 (after T01 + S4c); SD for T24; T30 (after T08); SD for T29 | |
 | 4 | T09b (after T08 + T26); T09c (after T09a + T24); T13a (after S4c + T12 + T08) | |
-| 5 | T22 + S6a (after S0, T07 merged, T09c, S3, SD); T14 (after T13a); T19 (after T13a + T10); T13b (after S4a + S4b) | |
-| 6 | T15, T16, T17 (after T13b plus their own dependencies); T25 (after B15) | |
+| 5 | T22 + S6a (after S0, T07 merged, T09c, S3, SD); T14 (after T13a); T19 (after T13a + T10); T13b (after S4a + S4b + S4d) | |
+| 6 | T15, T16a, T16b, T17, T31, T32, T33 (after T13b plus their own dependencies); T25 (after B15) | |
 | 7 | T18 (after T17); T20 (after T01 + T11) | |
 | 8 | S6b | |
 
@@ -659,16 +743,16 @@ Files that force tasks into a fixed order:
 - `scripts/android-tv.sh`: T04 → T05 → T07.
 - `android-tv/app/build.gradle.kts` and `libs.versions.toml`: T04 → T05 → T07 (T22 only if B2 trims the ABIs).
 - `.github/workflows/tests.yml`: T04 → T05.
-- `tests/production.test.mjs`, `src/server/app.ts`, `src/server/services/plexPlayback.ts`: T01 → T23 → T24.
+- `tests/production.test.mjs`, `src/server/app.ts`, `src/server/services/plexPlayback.ts`: T01 → T23 → T24 → T27/T28 → T29.
 - `…/ui/Navigation.kt`: T13a only.
 - Title-page stub files: T17 → T18.
 - `…/player/PlaybackEngine.kt`: T09a → T25.
 - Root `AGENTS.md`: T04 only.
-- The Figma screens file: T03c → T03b → T03a, one designer at a time.
+- The Figma screens file: T03c → T03b → T03a → T03d, one designer at a time.
 
 Inside `player/`, T09a and T09b write different files and can run together.
 
-**Critical path:** T03c → S4c → T03b → S4b → T03a → S4a → T13b → T17 → T18 → S6b. The build path, S1 → T04 → T05 → T09a → T09c → S6a, finishes well before it.
+**Critical path:** T03c → S4c → T03b → S4b → T03a → S4a → T03d → S4d → T13b → T17 → T18 → S6b. The build path, S1 → T04 → T05 → T09a → T09c → S6a, finishes well before it.
 
 ## E. recommended_execution
 
@@ -692,7 +776,7 @@ Inside `player/`, T09a and T09b write different files and can run together.
 
 **Data migration.** One `applicationMigrations` entry; existing rows stay web sessions.
 
-**Linear.** One project, one epic, and sub-issues for: T01, T03a, T03b, T03c, T04, T05, T06 (with S2), T07, T08, T09a, T09b, T09c, T10, T11, T12, T13a, T13b, T14, T15, T16, T17, T18, T19, T20, T22, T23, T24, T25, T26.
+**Linear.** One project, one epic, and sub-issues for: T01, T03a, T03b, T03c, T04, T05, T06 (with S2), T07, T08, T09a, T09b, T09c, T10, T11, T12, T13a, T13b, T14, T15, T16, T17, T18, T19, T20, T22, T23, T24, T25, T26; added 31 Oct: T03d, T16b (T16 is T16a), T27–T33 (AA-435 to AA-443).
 
 ## G. Risks to check during execution
 
