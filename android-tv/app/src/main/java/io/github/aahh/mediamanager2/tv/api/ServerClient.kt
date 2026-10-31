@@ -37,7 +37,8 @@ class ServerClient(
     val cookies: ServerCookieJar,
     base: OkHttpClient = OkHttpClient(),
 ) {
-    val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    // Defaults are sent (the server requires partIndex and offsetSeconds even at 0); nulls are left out, as optional keys must be absent.
+    val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val root: HttpUrl = origin.toHttpUrl()
     private val mutableSignedOut = MutableStateFlow(false)
     val signedOut: StateFlow<Boolean> = mutableSignedOut.asStateFlow()
@@ -69,12 +70,14 @@ class ServerClient(
         mutableSignedOut.value = false
     }
 
-    suspend fun <T> get(path: String, reply: DeserializationStrategy<T>): ApiResult<T> =
-        call(Request.Builder().url(url(path)).build(), reply)
+    suspend fun <T> get(path: String, reply: DeserializationStrategy<T>, headers: Map<String, String> = emptyMap()): ApiResult<T> =
+        call(Request.Builder().url(url(path)).withHeaders(headers).build(), reply)
 
     /** POSTs [body], a JSON text (`{}` when the route takes no fields). */
-    suspend fun <T> post(path: String, body: String, reply: DeserializationStrategy<T>?): ApiResult<T?> =
-        call(Request.Builder().url(url(path)).post(body.toRequestBody(JSON_TYPE.toMediaType())).build(), reply)
+    suspend fun <T> post(path: String, body: String, reply: DeserializationStrategy<T>?, headers: Map<String, String> = emptyMap()): ApiResult<T?> =
+        call(Request.Builder().url(url(path)).withHeaders(headers).post(body.toRequestBody(JSON_TYPE.toMediaType())).build(), reply)
+
+    private fun Request.Builder.withHeaders(headers: Map<String, String>) = apply { headers.forEach { (name, value) -> header(name, value) } }
 
     private suspend fun <T> call(request: Request, reply: DeserializationStrategy<T>?): ApiResult<T> = withContext(Dispatchers.IO) {
         try {
