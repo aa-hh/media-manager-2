@@ -13,10 +13,11 @@ The initiative holds one project per epic plus one for planning:
 | `P-AA-5` V1 · Second versions and safe deletion | Epic AA-32 and its build tickets |
 | `P-AA-6` V1 · Live downloads and automatic fixes | Epic AA-33 and its build tickets |
 | `P-AA-7` V1 · Flags, history and health | Epic AA-34 and its build tickets |
+| `P-AA-16` V2 · Google TV app | Epic AA-402 and its build tickets |
 
 ## Conventions
 
-- Every issue goes in team `AA`. A build ticket goes in its epic's project; a planning ticket goes in `P-AA-1`. Don't create new projects.
+- Every issue goes in team `AA`. A build ticket goes in its epic's project; a planning ticket goes in `P-AA-1`. Don't create new projects unless the owner asks for one.
 - A feature's spec (an epic) is a parent issue; its implementation tickets are sub-issues of it, one per ticket, in the same project. Never one combined tickets issue.
 - Triage state is a label on the issue (see `triage-labels.md` for the role strings). Linear's workflow status (Todo, In Progress, Done) tracks progress separately.
 - Comments and conversation history go in the issue's comments.
