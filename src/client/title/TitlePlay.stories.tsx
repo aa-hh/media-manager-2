@@ -58,6 +58,9 @@ export const PlayInPlex: Story = { args: { mode: 'plex-web' } };
 
 /** NIjoo E04, wnNt9: the next episode's still glows; with a saved position it opens the resume menu under it. */
 export const StillResume: Story = {
+  // Quarantined 31 Oct 2026: the accessibility check flakes on the resume menu's focus guards (PR #265, PR #266 CI). See
+  // .scratch/flaky-still-resume-story/ticket.md.
+  tags: ['!test'],
   render: (args) => <PlayStill mode="desktop" code="E04" image={still} next watched={60} resumeAtMs={21 * 60_000} plexUrl={plexUrl} onStart={args.onPlay} />,
   play: async ({ canvas, args, userEvent }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Resume E04' }));
