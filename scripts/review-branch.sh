@@ -81,6 +81,9 @@ is_risk_path() {
     src/server/services/arr/queue.ts|src/server/services/arr/commands.ts) return 0 ;;
     # The desktop app holds the stream-address and Plex-token boundary.
     desktop/main.js|desktop/preload.js|desktop/lib/*) return 0 ;;
+    # The TV app holds the same boundary, plus its build and self-update.
+    android-tv/app/build.gradle.kts) return 0 ;;
+    android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/api/*|android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/player/*|android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/update/*) return 0 ;;
     # settings.json registers the hooks, so it is as dangerous as the hooks themselves.
     .githooks/*|scripts/*|.github/*|.claude/hooks/*|.claude/settings.json) return 0 ;;
   esac
@@ -94,7 +97,7 @@ is_product_path() {
   case "$1" in *Tests/*|*.md|package-lock.json) return 1 ;; esac
   case "$1" in .claude/hooks/*) ;; .impeccable/*|.claude/*) return 1 ;; esac
   case "${1##*/}" in *Test*) return 1 ;; esac
-  case "$1" in .githooks/*|*.swift|*.c|*.h|*.m|*.mm|*.gyp|*.sh|*.py|*.ts|*.tsx|*.js|*.mjs|*.go|*.rs|*.rb|*.java|*.kt|*.yml|*.yaml|*.json) return 0 ;; esac
+  case "$1" in .githooks/*|*.swift|*.c|*.h|*.m|*.mm|*.gyp|*.sh|*.py|*.ts|*.tsx|*.js|*.mjs|*.go|*.rs|*.rb|*.java|*.kt|*.kts|*.toml|android-tv/*.xml|android-tv/*.pro|*.yml|*.yaml|*.json) return 0 ;; esac
   return 1
 }
 

@@ -6,7 +6,7 @@ The only sanctioned way to build, test, review, land and deploy this repo. Hooks
 
 ## Rules
 
-- Build and test only through `build.sh` and `test.sh`. The Claude hook denies the bare commands, and the tests run against a build that only `test.sh` guarantees is fresh.
+- Build and test only through `build.sh`, `test.sh` and `android-tv.sh`. The Claude hook denies the bare commands; only `test.sh` keeps the build fresh.
 - The review's size thresholds, model choices and risk paths live together at the top of `review-branch.sh` (`is_risk_path`, `is_product_path`). Change them there and nowhere else; a risk file missing from `is_risk_path` lets a small dangerous change skip review.
 - `setup.sh` points `core.hooksPath` at `.githooks`, so every worktree of a clone shares one set of hooks. A hook must work from any worktree, not only the checkout holding it.
 - A guard that a path pattern can bypass is a defect, not a limitation. When adding a file type or folder, check that the hooks' `SOURCE_PATHS` and the review's path functions still see it.
@@ -16,6 +16,7 @@ The only sanctioned way to build, test, review, land and deploy this repo. Hooks
 
 - `build.sh` → compile and typecheck everything.
 - `test.sh` → the test suite and its modes.
+- `android-tv.sh` → TV app build, tests, install.
 - `review-branch.sh` → picks and runs the branch review, posts the `review` status.
 - `housekeeping.sh` → removes `.prunable` worktrees; `build.sh` runs it.
 - `test-*.sh` → self-tests; `test.sh --review-script` runs them.
@@ -23,5 +24,5 @@ The only sanctioned way to build, test, review, land and deploy this repo. Hooks
 - `sync-main.sh` → keeps local `main` matching `origin/main`.
 - `desktop-build.sh` → build, sign and notarise the desktop app.
 - `deploy.sh`, `ensure-running.sh` → deploy to and keep the server running on the host.
-- `launchd/` → macOS job template used by `setup.sh --sync-main`.
+- `launchd/` → the job `setup.sh --sync-main` installs.
 - `screenshots/` → headless-Chrome title-page shots against the arr fake; macOS.

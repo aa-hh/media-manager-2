@@ -13,3 +13,12 @@ dist/
 
 *storybook.log
 storybook-static
+
+# Android TV app (scripts/android-tv.sh). Signing keys never enter the repo.
+android-tv/.gradle/
+android-tv/**/build/
+android-tv/local.properties
+android-tv/ffmpeg/out/
+*.jks
+*.keystore
+*.p12

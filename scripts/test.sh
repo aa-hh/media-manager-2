@@ -40,6 +40,7 @@ if [ "${1:-}" = --review-script ]; then
     /bin/bash scripts/test-screenshots.sh
     /bin/bash scripts/test-story-args.sh
     /bin/bash scripts/test-housekeeping.sh
+    /bin/bash scripts/test-guard-bash.sh
     exit 0
 fi
 
@@ -70,6 +71,18 @@ full=0
 
 if [ "$full" = 1 ]; then
     sh scripts/test.sh --review-script
+fi
+
+# The TV app's unit tests, when this branch (working tree included) touches it;
+# the base is the one --story-args uses. No main to compare with runs them.
+android_base=
+if android_base=$(git merge-base HEAD origin/main 2>/dev/null); then
+    if [ "$android_base" = "$(git rev-parse HEAD)" ]; then
+        android_base=$(git rev-parse -q --verify HEAD~1) || android_base=
+    fi
+fi
+if [ -z "$android_base" ] || git diff --name-only "$android_base" -- android-tv scripts/android-tv.sh | grep -q .; then
+    sh scripts/android-tv.sh test
 fi
 
 sh scripts/build.sh
