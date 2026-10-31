@@ -95,6 +95,11 @@ object Tokens {
     val statusImporting = Color(0xFFA584EC)
     val statusStalled = Color(0xFFF2827A)
     val statusBlocked = Color(0xFFE0433A)
+
+    // Not in globals.css. The sign-in page's own ground and scrim colour (`SignIn.tsx` writes it inline), and the
+    // resting border of the TV Design Kit text field as restyled in T03c.
+    val signInGround = Color(0xFF07080B)
+    val fieldBorder = Color(0xFF858C99)
 }
 
 private val colorScheme = darkColorScheme(

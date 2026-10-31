@@ -176,6 +176,8 @@ fun AppNavigation(session: AppSession, onLeave: () -> Unit) {
                     active.signedIn()
                     menuOpen.value = false
                     nav.navigate(HomeRoute) { popUpTo(nav.graph.id) { inclusive = true } }
+                }, onChangeAddress = {
+                    nav.navigate(AddressRoute(session.address)) { popUpTo(nav.graph.id) { inclusive = true } }
                 })
             }
         }
