@@ -292,6 +292,8 @@ const ensureMpv = () => {
   mpv = new MpvView(win.getNativeWindowHandle());
   // Plex addresses must never go to youtube-dl or yt-dlp.
   void mpv.setOption('ytdl', 'no');
+  // mpv's window always takes the app window's frame, whatever the video's shape; the picture is fitted inside it.
+  void mpv.setOption('keepaspect-window', 'no');
   // libmpv finds no cache folder of its own, so every new picture setup compiled its shaders again (the first Play of a
   // launch waited 3.5 s for its first frame). Kept beside desktop.json, compiled shaders carry over between launches.
   const shaderCache = path.join(app.getPath('userData'), 'mpv-shader-cache');

@@ -134,6 +134,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
  private:
   NSWindow *win_ = nil;    // Electron's window
   NSWindow *video_ = nil;  // mpv's window, child of win_ once attached
+  int pins_ = 0;           // times Pin() put mpv's window back since the last attach
   CGFloat radius_ = 0;     // macOS's window corner radius
   NSMutableArray *observers_ = [NSMutableArray array];
   mpv_handle *mpv_ = nullptr;
@@ -371,9 +372,12 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     [video_ setFrame:win_.frame display:YES];
     [win_ addChildWindow:video_ ordered:NSWindowBelow];
     Corners();
+    pins_ = 0;
+    Pin();
     MpvView *self = this;
     // A drag moves mpv's window with its parent, so only resizes need matching.
     On(video_, NSWindowDidResizeNotification, ^{ self->Follow(); });
+    On(video_, NSWindowDidMoveNotification, ^{ self->Pin(); });
     On(video_, NSWindowWillCloseNotification, ^{ self->Detach(); });
     On(win_, NSWindowDidEndLiveResizeNotification, ^{ self->Match(); });
     On(win_, NSWindowDidResizeNotification, ^{ if (!self->win_.inLiveResize) self->Match(); });
@@ -410,6 +414,18 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
 
   // The user resized the Electron window: mpv's window takes its frame once the
   // gesture ends. Setting a child's frame never moves its parent.
+  // mpv moved its window without resizing it: on 31 Oct it sat 60 pt below the app window straight after Attach set the
+  // same frame (mpv placing its own window), so the picture ran off the bottom. Puts it back on the app window's frame. A
+  // resize is mpv's fullscreen, which Follow() handles. At most 3 times per attach, so mpv and this can never trade moves forever.
+  void Pin() {
+    if (!video_ || !win_ || !NSEqualSizes(video_.frame.size, win_.frame.size) || NSEqualPoints(video_.frame.origin, win_.frame.origin)) return;
+    if (pins_ >= 3) return;
+    pins_++;
+    std::string before = Describe(video_);
+    [video_ setFrame:win_.frame display:YES];
+    Emit("pinned", before + " -> " + Describe(video_));
+  }
+
   void Match() {
     if (video_ && win_ && !NSEqualRects(win_.frame, video_.frame)) [video_ setFrame:win_.frame display:YES];
   }
