@@ -1,4 +1,4 @@
-// v2/Row/flagged — ~/Projects/media-manager-2-design/design-system.lib.pen NKsS2
+// Figma: RowFlagged — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4392
 import type { ReactNode } from 'react';
 import { TableCell, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
@@ -29,7 +29,7 @@ function RowFlagged({ poster, title, reason, gaveUp, tries, actions, className, 
       </TableCell>
       <TableCell fill className="flex-col items-start justify-center gap-0.5">
         <span className="w-full truncate font-ui font-semibold">{title}</span>
-        {reason !== undefined && <span className="w-full truncate text-[13px] text-muted-foreground">{reason}</span>}
+        {reason !== undefined && <span className="w-full truncate text-[13px] text-muted-foreground select-text">{reason}</span>}
       </TableCell>
       <TableCell className={cn(w.gaveUp, 'text-muted-foreground')}>{gaveUp}</TableCell>
       <TableCell align="end" className={w.tries}>{tries}</TableCell>

@@ -1,4 +1,4 @@
-// v2/Collapsible/content — ~/Projects/media-manager-2-design/design-system.lib.pen xy2em
+// Figma: CollapsibleContent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8945
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';

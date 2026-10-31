@@ -79,6 +79,8 @@ is_risk_path() {
     src/server/titleDelete.ts|src/server/secondVersionDelete.ts|src/server/versionImport.ts) return 0 ;;
     src/server/torrentFiles.ts|src/server/relink.ts|src/server/trackerRules.ts) return 0 ;;
     src/server/services/arr/queue.ts|src/server/services/arr/commands.ts) return 0 ;;
+    # The desktop app holds the stream-address and Plex-token boundary.
+    desktop/main.js|desktop/preload.js|desktop/lib/*) return 0 ;;
     # settings.json registers the hooks, so it is as dangerous as the hooks themselves.
     .githooks/*|scripts/*|.github/*|.claude/hooks/*|.claude/settings.json) return 0 ;;
   esac
@@ -92,7 +94,7 @@ is_product_path() {
   case "$1" in *Tests/*|*.md|package-lock.json) return 1 ;; esac
   case "$1" in .claude/hooks/*) ;; .impeccable/*|.claude/*) return 1 ;; esac
   case "${1##*/}" in *Test*) return 1 ;; esac
-  case "$1" in .githooks/*|*.swift|*.c|*.h|*.m|*.sh|*.py|*.ts|*.tsx|*.js|*.mjs|*.go|*.rs|*.rb|*.java|*.kt|*.yml|*.yaml|*.json) return 0 ;; esac
+  case "$1" in .githooks/*|*.swift|*.c|*.h|*.m|*.mm|*.gyp|*.sh|*.py|*.ts|*.tsx|*.js|*.mjs|*.go|*.rs|*.rb|*.java|*.kt|*.yml|*.yaml|*.json) return 0 ;; esac
   return 1
 }
 

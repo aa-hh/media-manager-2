@@ -1,11 +1,12 @@
-// v2/Header/title — ~/Projects/media-manager-2-design/design-system.lib.pen NaDkI
+// Figma: HeaderTitle — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=12-4118
+// Figma: HeaderPlayLine — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=118-162
 import { type ReactNode, useState } from 'react';
 import { ToggleBookmark, type BookmarkState } from '@/components/ui/toggle-bookmark';
 import { cn } from '@/lib/utils';
 
 type HeaderTitleProps = {
   title: string;
-  /** Sonarr or Radarr backdrop image; the band fades to white under it. */
+  /** Sonarr or Radarr backdrop image; the band fades to the page colour under it. */
   backdropUrl?: string;
   posterUrl?: string;
   /** A Breadcrumb. */
@@ -17,6 +18,8 @@ type HeaderTitleProps = {
   meta?: ReactNode;
   /** Status Badges. */
   badges?: ReactNode;
+  /** A HeaderPlayLine under the badges; left out when nothing can play, and by the compact title header. */
+  play?: ReactNode;
   overview?: ReactNode;
   /** Large default Button. */
   primary?: ReactNode;
@@ -84,7 +87,7 @@ function HeaderBackdrop({ posterUrl, backdropUrl, tall, className }: { posterUrl
       {backdropUrl !== undefined && <FadeImage key={backdropUrl} src={backdropUrl} settle className="absolute inset-0 size-full" />}
       <div className={cn('relative size-full', !tall && 'bg-linear-to-b', tall
           ? 'bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--color-background)_50%,transparent),color-mix(in_oklab,var(--color-background)_85%,transparent)_50%,color-mix(in_oklab,var(--color-background)_97%,transparent)_80%,var(--color-background))]'
-          : 'from-transparent via-background/55 via-55% to-background')} />
+          : 'from-transparent via-background/55 via-55% to-background dark:from-background/45')} />
     </div>
   );
 }
@@ -99,6 +102,7 @@ function HeaderTitle({
   status,
   meta,
   badges,
+  play,
   overview,
   primary,
   secondary,
@@ -145,6 +149,7 @@ function HeaderTitle({
           </div>
           {meta !== undefined && <p className="font-data text-[15px] font-normal text-muted-foreground">{meta}</p>}
           {badges !== undefined && <div className="flex flex-wrap items-center gap-1.5">{badges}</div>}
+          {play}
           {!actionsRight && overview !== undefined && <p className="max-w-170 font-ui text-[15px] leading-[1.55] font-normal text-muted-foreground">{overview}</p>}
           {!actionsRight && actions}
         </div>
@@ -155,4 +160,17 @@ function HeaderTitle({
   );
 }
 
-export { HeaderBackdrop, HeaderTitle };
+/** The header's Play line: a large default Play or Resume Button, then what it plays and how much is left. */
+function HeaderPlayLine({ action, line1, line2 }: { action: ReactNode; line1: ReactNode; line2?: ReactNode }) {
+  return (
+    <div className="flex items-center gap-4 pt-2">
+      {action}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-ui text-sm font-semibold text-foreground">{line1}</span>
+        {line2 !== undefined && <span className="font-data text-sm text-muted-foreground">{line2}</span>}
+      </div>
+    </div>
+  );
+}
+
+export { HeaderBackdrop, HeaderPlayLine, HeaderTitle };

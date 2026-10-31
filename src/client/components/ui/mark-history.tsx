@@ -1,6 +1,4 @@
-// v2/Mark/history — ~/Projects/media-manager-2-design/design-system.lib.pen KXKiC
-// v2/Mark/history/blocklisted — ~/Projects/media-manager-2-design/design-system.lib.pen K6TIJ
-// v2/Mark/history/grabbed before — ~/Projects/media-manager-2-design/design-system.lib.pen b7cYi
+// Figma: MarkHistory — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-862
 import { Ban, CircleX, History } from 'lucide-react';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';

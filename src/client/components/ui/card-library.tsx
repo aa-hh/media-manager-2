@@ -1,4 +1,4 @@
-// v2/Card/library — ~/Projects/media-manager-2-design/design-system.lib.pen yZ5NT
+// Figma: CardLibrary — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-420
 import { HardDrive } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';

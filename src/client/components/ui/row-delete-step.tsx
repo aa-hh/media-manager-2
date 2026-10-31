@@ -1,4 +1,4 @@
-// Step row on the delete results screen — ~/Projects/media-manager-2-design/title.pen "Dialog, delete season results" (s6SYzN)
+// Figma: RowDeleteStep — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8538
 import { CircleCheck, CirclePause, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
@@ -18,7 +18,7 @@ function RowDeleteStep({ look, text, why }: { look: StepLook; text: string; why?
       {icons[look]}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 font-ui text-[13px]">
         <span className={cn('font-medium [overflow-wrap:anywhere]', look === 'failed' ? 'text-warning' : 'text-foreground')}>{text}</span>
-        {why !== null && why !== undefined && why !== '' && <span className="text-muted-foreground [overflow-wrap:anywhere]">{why}</span>}
+        {why !== null && why !== undefined && why !== '' && <span className="text-muted-foreground [overflow-wrap:anywhere] select-text">{why}</span>}
       </div>
     </div>
   );

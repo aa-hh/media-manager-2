@@ -1,9 +1,7 @@
-// v2/Select trigger — ~/Projects/media-manager-2-design/design-system.lib.pen v8Swg
-// v2/Select trigger/sm — ~/Projects/media-manager-2-design/design-system.lib.pen VlOeD (size="sm")
-// v2/Select trigger/inline — ~/Projects/media-manager-2-design/design-system.lib.pen fzgYZ (variant="inline")
+// Figma: SelectTrigger — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1453
 import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { ChevronDown, Plus } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
+import { useId, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 type SelectSize = 'row' | 'sm' | 'default' | 'large';
@@ -44,14 +42,18 @@ type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> & {
 /** The trigger only; it sits inside Select, and the open list is the dropdown menu content. Open shows the pressed fill and an upward chevron. */
 function SelectTrigger({ size = 'default', variant = 'default', empty = false, lead, placeholder, className, children, ...props }: SelectTriggerProps) {
   const inline = variant === 'inline';
+  const leadId = useId();
+  const valueId = useId();
   return (
     <SelectPrimitive.Trigger
+      // A combobox takes no name from its text, so the lead and the value name it, as in "Sort Popularity".
+      aria-labelledby={lead !== undefined ? `${leadId} ${valueId}` : undefined}
       className={cn(
         inline
           ? cn(inlineTriggerClass(empty), size === 'sm' && 'h-8 rounded-sm gap-1.5 px-2.5 text-sm font-semibold [&_svg]:size-3.5')
           : cn(
             base,
-            'border border-input bg-card text-foreground',
+            'border border-input bg-control text-foreground',
             size !== 'row' && 'border-[1.5px]',
             'hover:border-muted-foreground hover:bg-surface-hover data-popup-open:border-muted-foreground data-popup-open:bg-surface-pressed',
             'data-invalid:border-destructive aria-invalid:border-destructive',
@@ -61,8 +63,8 @@ function SelectTrigger({ size = 'default', variant = 'default', empty = false, l
       )}
       {...props}
     >
-      {lead !== undefined && <span className="font-normal text-subtle-foreground group-data-disabled:text-faint-foreground">{lead}</span>}
-      <span className={cn('min-w-0 truncate', !inline && 'flex-1 text-left font-semibold')}>{children ?? <SelectPrimitive.Value placeholder={placeholder} />}</span>
+      {lead !== undefined && <span id={leadId} className="font-normal text-subtle-foreground group-data-disabled:text-faint-foreground">{lead}</span>}
+      <span id={valueId} className={cn('min-w-0 truncate', !inline && 'flex-1 text-left font-semibold')}>{children ?? <SelectPrimitive.Value placeholder={placeholder} />}</span>
       <SelectPrimitive.Icon className={cn('flex group-data-disabled:text-faint-foreground group-data-popup-open:rotate-180', !inline && 'text-muted-foreground')}>
         {inline && empty ? <Plus aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
       </SelectPrimitive.Icon>

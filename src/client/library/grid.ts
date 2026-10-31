@@ -1,5 +1,5 @@
 // Pure helpers for the library grid. No runtime imports so the tests can load this file from source.
-import type { LibraryTitle } from './api';
+import type { ContinueWatchingItem, LibraryTitle } from './api';
 import type { SubjectProgress } from './progress';
 
 export const progressText = (files: number, downloading: number, count: number) =>
@@ -31,11 +31,63 @@ export const movieWord = (title: LibraryTitle, live: SubjectProgress | undefined
 };
 
 // Shows with aired episodes that have no file and are not downloading, plus movies that are missing or not available.
+const isMissing = (title: LibraryTitle, progress: Map<string, SubjectProgress>, downloadingByShow: Map<number, number>) => {
+  if (title.tv !== null) return title.tv.episodeCount - title.tv.episodeFileCount - (downloadingByShow.get(title.id) ?? 0) > 0;
+  return title.status !== 'deleted' && title.movie?.hasFile === false && !progress.has(`movie:${title.id}`);
+};
+
 export const missingCount = (titles: LibraryTitle[], progress: Map<string, SubjectProgress>, downloadingByShow: Map<number, number>) =>
-  titles.filter((title) => {
-    if (title.tv !== null) return title.tv.episodeCount - title.tv.episodeFileCount - (downloadingByShow.get(title.id) ?? 0) > 0;
-    return title.status !== 'deleted' && title.movie?.hasFile === false && !progress.has(`movie:${title.id}`);
-  }).length;
+  titles.filter((title) => isMissing(title, progress, downloadingByShow)).length;
+
+export const KINDS = ['all', 'movie', 'tv'] as const;
+export type Kind = typeof KINDS[number];
+export const SEGMENTS = ['all', 'continue', 'unwatched', 'missing', 'downloading'] as const;
+export type Segment = typeof SEGMENTS[number];
+
+export type FilterFacts = {
+  progress: Map<string, SubjectProgress>;
+  downloadingByShow: Map<number, number>;
+  /** Plex's Continue Watching in Plex's order; empty when Plex is off or not answering. */
+  continueWatching: ContinueWatchingItem[];
+};
+
+export const titleKey = (title: { service: string; id: number }) => `${title.service}:${title.id}`;
+
+// Unwatched as Plex counts it: a movie never played through, or a show with an episode not played.
+const isUnwatched = ({ watch }: LibraryTitle) =>
+  watch?.kind === 'movie' ? watch.viewCount === 0 : watch?.kind === 'show' && watch.leafCount > watch.viewedLeafCount;
+
+const isDownloading = (title: LibraryTitle, facts: FilterFacts) =>
+  title.tv !== null ? (facts.downloadingByShow.get(title.id) ?? 0) > 0 : facts.progress.has(`movie:${title.id}`);
+
+// Both filter sets apply together. Continue Watching keeps Plex's order; the rest keep the library's.
+export const filterTitles = (titles: LibraryTitle[], kind: Kind, segment: Segment, facts: FilterFacts): LibraryTitle[] => {
+  const ofKind = (title: LibraryTitle) => kind === 'all' || title.type === kind;
+  if (segment === 'continue') {
+    const byKey = new Map(titles.map((title) => [titleKey(title), title]));
+    const keys = new Set(facts.continueWatching.map(titleKey));
+    return [...keys].flatMap((key) => {
+      const title = byKey.get(key);
+      return title !== undefined && ofKind(title) ? [title] : [];
+    });
+  }
+  return titles.filter((title) => ofKind(title) && (
+    segment === 'all'
+    || (segment === 'unwatched' && isUnwatched(title))
+    || (segment === 'missing' && isMissing(title, facts.progress, facts.downloadingByShow))
+    || (segment === 'downloading' && isDownloading(title, facts))
+  ));
+};
+
+// Each set's counts follow the other set's choice.
+export const filterCounts = (titles: LibraryTitle[], kind: Kind, segment: Segment, facts: FilterFacts) => ({
+  kinds: Object.fromEntries(KINDS.map((each) => [each, filterTitles(titles, each, segment, facts).length])) as Record<Kind, number>,
+  segments: Object.fromEntries(SEGMENTS.map((each) => [each, filterTitles(titles, kind, each, facts).length])) as Record<Segment, number>,
+});
+
+// Continue Watching and Unwatched need Plex's answer; without it they hide and the choice falls back to All.
+export const segmentsFor = (watchKind: 'ok' | 'unavailable' | 'off'): Segment[] =>
+  (watchKind === 'ok' ? [...SEGMENTS] : SEGMENTS.filter((segment) => segment !== 'continue' && segment !== 'unwatched'));
 
 export const FIELDS = ['year', 'progress', 'size', 'profile', 'added'] as const;
 export type Field = typeof FIELDS[number];

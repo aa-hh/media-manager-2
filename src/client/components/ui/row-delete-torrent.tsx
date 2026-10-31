@@ -1,4 +1,4 @@
-// Torrent row in the delete movie, show and season dialogs — ~/Projects/media-manager-2-design/title.pen "Dialog, delete season" (DASyr), "Dialog, delete show" (g9Y8c)
+// Figma: RowDeleteTorrent — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-10060
 import { CircleCheck, Clock, Lock, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
@@ -38,7 +38,7 @@ function RowDeleteTorrent({ lead, name, size, holds, label, advice, action, lock
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex w-full items-center gap-2 [&>img]:size-4 [&>svg]:size-4 [&>svg]:shrink-0">
           {lead}
-          <span className="min-w-0 flex-1 truncate font-data text-sm text-foreground" title={name}>{name}</span>
+          <span className="min-w-0 flex-1 truncate font-data text-sm text-foreground select-text" title={name}>{name}</span>
           {size !== undefined && <span className="shrink-0 font-data text-sm text-muted-foreground">{size}</span>}
         </div>
         <div className={cn('flex w-full items-center gap-2 font-ui text-[13px] text-muted-foreground', indent)}>

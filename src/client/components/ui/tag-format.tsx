@@ -1,4 +1,4 @@
-// v2/Tag/format — ~/Projects/media-manager-2-design/design-system.lib.pen NNH8u
+// Figma: TagFormat — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-774
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

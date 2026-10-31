@@ -3,6 +3,38 @@ import { applyEvent, type Snapshot } from './model';
 
 const liveTypes = ['torrents', 'queue', 'grab', 'problem'] as const;
 
+// Pages listening for Plex's 'watch' event, which names the show or movie (its Plex ratingKey) just played, paused, stopped
+// or watched. Null means any title may have changed: the stream reopened, and events sent while it was closed are lost.
+const watchListeners = new Set<(ratingKey: string | null) => void>();
+const watchChanged = (ratingKey: string | null) => {
+  for (const listener of watchListeners) listener(ratingKey);
+};
+
+/**
+ * Calls `reread` after a 'watch' event that `matches`. An event while `ready` is false waits until it turns true, since
+ * the read under way may predate it.
+ */
+export const useWatchChange = (ready: boolean, matches: (ratingKey: string | null) => boolean, reread: () => void) => {
+  const latest = useRef({ ready, matches, reread });
+  latest.current = { ready, matches, reread };
+  const missed = useRef(false);
+  useEffect(() => {
+    const listener = (ratingKey: string | null) => {
+      const current = latest.current;
+      if (!current.matches(ratingKey)) return;
+      if (current.ready) current.reread();
+      else missed.current = true;
+    };
+    watchListeners.add(listener);
+    return () => { watchListeners.delete(listener); };
+  }, []);
+  useEffect(() => {
+    if (!ready || !missed.current) return;
+    missed.current = false;
+    latest.current.reread();
+  }, [ready]);
+};
+
 export type DownloadsState =
   | { kind: 'loading' }
   | { kind: 'failed' }
@@ -18,6 +50,7 @@ export const useDownloads = (onUnauthorized: () => void) => {
   const versionRef = useRef(0);
   const openRef = useRef(false);
   const eventDuringLoadRef = useRef(false);
+  const openedRef = useRef(false);
 
   // An event that lands while the snapshot is in flight is applied to the old state, which the snapshot then
   // replaces, and the snapshot may predate it; so a read that saw one runs again.
@@ -50,6 +83,8 @@ export const useDownloads = (onUnauthorized: () => void) => {
     let reopen: number | undefined;
     const setLive = (live: boolean) => setState((current) => (current.kind === 'ready' ? { ...current, live } : current));
     source.addEventListener('open', () => {
+      if (openedRef.current) watchChanged(null);
+      openedRef.current = true;
       openRef.current = true;
       reopenDelayRef.current = 2_000;
       void load();
@@ -65,6 +100,14 @@ export const useDownloads = (onUnauthorized: () => void) => {
         reopen = window.setTimeout(() => setGeneration((current) => current + 1), reopenDelayRef.current);
         reopenDelayRef.current = Math.min(reopenDelayRef.current * 2, 30_000);
       });
+    });
+    source.addEventListener('watch', (event) => {
+      try {
+        const { ratingKey } = JSON.parse((event as MessageEvent<string>).data) as { ratingKey: string };
+        watchChanged(ratingKey);
+      } catch {
+        // An unreadable event changes nothing.
+      }
     });
     for (const type of liveTypes) {
       source.addEventListener(type, (event) => {

@@ -1,4 +1,4 @@
-// v2/Callout — ~/Projects/media-manager-2-design/design-system.lib.pen BXgoa
+// Figma: Callout — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-629
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
@@ -30,8 +30,8 @@ function Callout({ look = 'risk', title, action, className, children, ...props }
     >
       {looks[look].icon}
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-        <p className="font-ui text-sm font-semibold [overflow-wrap:anywhere] text-foreground">{title}</p>
-        {children !== undefined && <p className="max-w-[60ch] font-ui text-[13px] leading-[1.45] font-normal [overflow-wrap:anywhere] text-foreground">{children}</p>}
+        <p className="font-ui text-sm font-semibold [overflow-wrap:anywhere] text-foreground select-text">{title}</p>
+        {children !== undefined && <p className="max-w-[60ch] font-ui text-[13px] leading-[1.45] font-normal [overflow-wrap:anywhere] text-foreground select-text">{children}</p>}
         {action !== undefined && <div className="mt-3">{action}</div>}
       </div>
     </div>

@@ -1,8 +1,4 @@
-// v2/Chip/fit — ~/Projects/media-manager-2-design/design-system.lib.pen y1RsT
-// v2/Chip/fit/negative — ~/Projects/media-manager-2-design/design-system.lib.pen Xn9l7
-// v2/Chip/fit/best — ~/Projects/media-manager-2-design/design-system.lib.pen PYUzh
-// v2/Chip/fit/best star — ~/Projects/media-manager-2-design/design-system.lib.pen Y0eZP
-// v2/Chip/fit/rejected — ~/Projects/media-manager-2-design/design-system.lib.pen n1y92P
+// Figma: ChipFit — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-892
 import { MonitorX, Star } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -13,8 +9,8 @@ type ChipFitKind = 'score' | 'negative' | 'best' | 'best-star' | 'rejected';
 const looks: Record<ChipFitKind, string> = {
   score: 'border border-input text-muted-foreground',
   negative: 'bg-warning-soft text-warning',
-  best: 'bg-best text-foreground',
-  'best-star': 'bg-best text-foreground',
+  best: 'bg-best text-best-foreground',
+  'best-star': 'bg-best text-best-foreground',
   rejected: 'bg-destructive-soft text-destructive',
 };
 

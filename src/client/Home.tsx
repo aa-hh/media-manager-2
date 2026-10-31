@@ -5,11 +5,13 @@ import { Button } from './components/ui/button';
 import { InputSearch } from './components/ui/input-search';
 import { Discover } from './discover/Discover';
 import type { DownloadsState } from './downloads/useDownloads';
-import { Library } from './library/Library';
+import { forgetLoadedLibrary, Library } from './library/Library';
 import { inScreenChange, navigate, replace, routeFor, useLocation } from './navigation';
 import { readSearchQuery, SearchResults, useDebouncedSearch, useSearch } from './Search';
 import { lazyScreen, ScreenLoading } from './lazyScreen';
 import { cn } from './lib/utils';
+import { isPlayAddress } from './player/model';
+import { Player } from './player/Player';
 import { Overview } from './title/Overview';
 
 const Settings = lazyScreen(() => import('./settings/Settings').then((module) => module.Settings));
@@ -71,9 +73,15 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
   }, [run]);
   useDebouncedSearch(query, search);
 
+  // Home unmounts on sign-out, expiry and a 401; the next sign-in starts without the last owner's list.
+  useEffect(() => () => forgetLoadedLibrary(), []);
+
   useEffect(() => {
     // Replacing the address while typing also fires this; keep the typed text unless the address differs from it.
-    const onPopState = () => setQuery((current) => (current.trim() === readSearchQuery() ? current : readSearchQuery()));
+    // A /play address carries no query: the search under the full-size player keeps its own.
+    const onPopState = () => {
+      if (!isPlayAddress(window.location.pathname)) setQuery((current) => (current.trim() === readSearchQuery() ? current : readSearchQuery()));
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -91,7 +99,10 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const view = pathname === '/search' || query.trim() !== '' ? 'search'
+  // The player lives outside the keyed view. useLocation keeps the page under it while the address is /play/<ratingKey>, so
+  // 'play' is only a fresh load at that address, which the player corrects.
+  const view = pathname.startsWith('/play/') ? 'play'
+    : pathname === '/search' || query.trim() !== '' ? 'search'
     : pathname === '/downloads' ? 'downloads'
       : pathname === '/flagged' ? 'flagged'
       : pathname === '/history' ? 'history'
@@ -110,7 +121,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
   };
 
   return (
-    <div className="min-h-screen">
+    <div data-app className="min-h-screen">
       <AppBarDesktop
         className="sticky top-0 z-10"
         productName={<h1 ref={headingRef} tabIndex={-1}>media-manager-2</h1>}
@@ -193,7 +204,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         <div key={view === 'title' ? pathname : view} className={cn(!inScreenChange() && 'transition-opacity duration-(--duration-fast) ease-out starting:opacity-0')}>
         {/* Inside the keyed view, so a screen still loading its chunk blanks only itself, never the bar or a mounted screen. */}
         <Suspense fallback={<ScreenLoading />}>
-        {view === 'search'
+        {view === 'play' ? null
+          : view === 'search'
           ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
           : view === 'downloads'
             ? downloads
@@ -212,6 +224,8 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         </Suspense>
         </div>
       </main>
+      {/* Beside the downloads bar and outside the keyed view, so moving between screens never unmounts it. */}
+      <Player />
       {renderBar?.(() => {
         setQuery('');
         navigate('/downloads');

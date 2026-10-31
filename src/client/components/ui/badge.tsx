@@ -1,5 +1,4 @@
-// v2/Badge — ~/Projects/media-manager-2-design/design-system.lib.pen zGBcp
-// v2/Badge/inline — ~/Projects/media-manager-2-design/design-system.lib.pen J92fI (variant="inline-value")
+// Figma: Badge — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-587
 import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { StatusDownloadCircle } from '@/components/ui/status-download-circle';
@@ -20,7 +19,7 @@ type BadgeProps = ComponentProps<'span'> & {
 const variants: Record<BadgeVariant, string> = {
   neutral: 'bg-muted text-muted-foreground',
   strong: 'bg-primary text-primary-foreground',
-  best: 'bg-best text-foreground',
+  best: 'bg-best text-best-foreground',
   live: 'bg-muted text-foreground',
   risk: 'bg-destructive-soft text-destructive',
   warning: 'bg-warning-soft text-warning',
@@ -30,7 +29,7 @@ const variants: Record<BadgeVariant, string> = {
   plain: 'h-(--control-h-row) text-(length:--control-text-row) text-muted-foreground [&>svg]:size-(--control-icon-row) [&>svg]:text-foreground',
   /** The service logo and name in the add dialog's sentence (interface font, 500); never focusable. */
   inline: 'h-[38px] rounded-sm px-3 gap-2 font-ui text-[22px] font-medium bg-inline-control text-inline-control-foreground [&>svg]:size-5 [&>img]:size-6',
-  /** v2/Badge/inline: a calculated number or date in the same sentence (data font, 700, 26px, tabular); never focusable. */
+  /** A calculated number or date in the same sentence (data font, 700, 26px, tabular); never focusable. */
   'inline-value': 'h-[38px] rounded-sm px-3 font-data text-[26px] font-bold leading-[1.3] bg-inline-control text-inline-control-foreground',
 };
 

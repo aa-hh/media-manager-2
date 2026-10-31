@@ -1,5 +1,5 @@
-// v2/Input/Search — ~/Projects/media-manager-2-design/design-system.lib.pen tY5yB
-// The field and field-on-dark looks are the Input inside v2/Field/labelled (N61zp) and v2/Field/labelled/on-dark (z5mBu); an empty field shows the placeholder as in v2/Field/labelled/empty (SAhSg).
+// Figma: InputSearch — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-958
+// The field and field-on-dark looks are the Input inside FieldLabelled in Figma, its on-dark and empty looks included: https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1769
 import { Input } from '@base-ui/react/input';
 import { Search, X } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
@@ -22,12 +22,12 @@ const looks = {
   search: cn(
     'h-12 gap-3 rounded-(--control-radius-large) border-[1.5px] border-transparent bg-muted px-(--space-4) text-base',
     'not-has-disabled:hover:bg-surface-pressed [&>svg]:size-5',
-    'has-[input:focus-visible]:border-input! has-[input:focus-visible]:bg-card! has-[input:focus-visible]:outline-ring',
+    'has-[input:focus-visible]:border-input! has-[input:focus-visible]:bg-control! has-[input:focus-visible]:outline-ring',
   ),
   field: cn(
-    'h-(--control-h-default) gap-2 rounded-(--control-radius-default) border-input bg-card px-(--control-px-default) text-(length:--control-text-default) pointer-coarse:text-base',
+    'h-(--control-h-default) gap-2 rounded-(--control-radius-default) border-input bg-control px-(--control-px-default) text-(length:--control-text-default) pointer-coarse:text-base',
     'not-has-disabled:hover:border-muted-foreground has-disabled:border-border has-disabled:bg-muted [&>svg]:size-4',
-    'has-[input:focus-visible]:border-input! has-[input:focus-visible]:bg-card! has-[input:focus-visible]:outline-ring',
+    'has-[input:focus-visible]:border-input! has-[input:focus-visible]:bg-control! has-[input:focus-visible]:outline-ring',
   ),
   'field-on-dark': cn(
     'h-(--control-h-default) gap-2 rounded-(--control-radius-default) border-input-on-dark bg-card-on-dark px-(--control-px-default) text-(length:--control-text-default) text-muted-foreground-on-dark pointer-coarse:text-base',
@@ -42,7 +42,7 @@ const inputText = {
   'field-on-dark': 'text-foreground-on-dark placeholder:text-muted-foreground-on-dark',
 };
 
-/** Rest: grey fill, no edge. Focus: white fill, input edge and the focus ring. */
+/** Rest: grey fill, no edge. Focus: control fill (white in light), input edge and the focus ring. */
 function InputSearch({ variant = 'search', icon, kbd, onClear, clearLabel = 'Clear', wrapperClassName, className, value, ...props }: InputSearchProps) {
   const lead = icon === undefined && variant === 'search' ? <Search aria-hidden="true" /> : icon;
   const hasText = value !== undefined && value !== null && String(value) !== '';

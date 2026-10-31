@@ -7,8 +7,8 @@ import { HeaderBackdrop } from '@/components/ui/header-title';
 import { Arrival } from '../Arrival';
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton';
 import { buildRows } from '../downloads/model';
-import type { DownloadsState } from '../downloads/useDownloads';
-import { getJson, type MovieDetail, type OwnedMovieDetail, type SeriesDetail } from '../library/api';
+import { useWatchChange, type DownloadsState } from '../downloads/useDownloads';
+import { getJson, type MovieDetail, type MovieWatch, type OwnedMovieDetail, type SeriesDetail, type SeriesWatch } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
 import { passedPosterUrl, preloadImages, replace, useLocation, useScreenReady } from '../navigation';
 import { AddControls } from './AddControls';
@@ -26,8 +26,8 @@ type ProtectedItem = { service: 'radarr'; kind: 'movie'; movieId: number } | { s
 type Load =
   | { kind: 'loading' }
   | { kind: 'failed'; message: string }
-  | { kind: 'series'; detail: SeriesDetail; protectedIds: Set<number> }
-  | { kind: 'movie'; detail: OwnedMovieDetail; protectedIds: Set<number> }
+  | { kind: 'series'; detail: SeriesDetail & { watch: SeriesWatch }; protectedIds: Set<number> }
+  | { kind: 'movie'; detail: OwnedMovieDetail & { watch: MovieWatch }; protectedIds: Set<number> }
   | { kind: 'preview-tv'; detail: SeriesDetail }
   | { kind: 'preview-movie'; detail: MovieDetail };
 
@@ -115,17 +115,17 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
         .then((body) => body.items)
         .catch((): ProtectedItem[] => []);
       if (route.type === 'tv') {
-        const [detail, items] = await Promise.all([getJson<SeriesDetail>(`/api/library/series/${route.id}`, onUnauthenticated, controller.signal), protectedRead]);
+        const [detail, items] = await Promise.all([getJson<SeriesDetail & { watch: SeriesWatch }>(`/api/library/series/${route.id}`, onUnauthenticated, controller.signal), protectedRead]);
         return { kind: 'series', detail, protectedIds: new Set(items.flatMap((item) => (item.kind === 'episode' ? [item.episodeId] : []))) };
       }
-      const [detail, items] = await Promise.all([getJson<OwnedMovieDetail>(`/api/library/movie/${route.id}`, onUnauthenticated, controller.signal), protectedRead]);
+      const [detail, items] = await Promise.all([getJson<OwnedMovieDetail & { watch: MovieWatch }>(`/api/library/movie/${route.id}`, onUnauthenticated, controller.signal), protectedRead]);
       return { kind: 'movie', detail, protectedIds: new Set(items.flatMap((item) => (item.kind === 'movie' ? [item.movieId] : []))) };
     };
     read()
       // razor: waits at most 300 ms for the header's poster, so the page usually arrives with it drawn. The backdrop is not
       // waited for: the band behind the header shows a blurred poster until it settles in.
       .then(async (loaded) => {
-        if ('detail' in loaded) await preloadImages([loaded.detail.posterUrl], 300);
+        if ('detail' in loaded) await preloadImages([loaded.detail.smallPosterUrl], 300);
         return loaded;
       })
       .then((loaded) => {
@@ -141,6 +141,24 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       });
     return () => controller.abort();
   }, [route, onUnauthenticated, attempt]);
+
+  // Plex's webhook says this title was played, paused, stopped or watched: its watch status is read again, so Play names what plays next.
+  const watched = load.kind === 'series' || load.kind === 'movie' ? load.detail.watch : null;
+  const watchKey = watched !== null && watched.kind === 'ok' ? watched.ratingKey : null;
+  // Without a ratingKey (still loading, or Plex did not answer) any event counts. A reply for another page is dropped by its id.
+  useWatchChange(load.kind !== 'loading', (ratingKey) => ratingKey === null || watchKey === null || ratingKey === watchKey, () => {
+    if (route === undefined || !route.owned) return;
+    const { id } = route;
+    if (route.type === 'tv') {
+      getJson<{ watch: SeriesWatch }>(`/api/library/series/${id}`, onUnauthenticated)
+        .then(({ watch }) => setLoad((current) => (current.kind === 'series' && current.detail.id === id ? { ...current, detail: { ...current.detail, watch } } : current)))
+        .catch(() => undefined);
+    } else {
+      getJson<{ watch: MovieWatch }>(`/api/library/movie/${id}`, onUnauthenticated)
+        .then(({ watch }) => setLoad((current) => (current.kind === 'movie' && current.detail.id === id ? { ...current, detail: { ...current.detail, watch } } : current)))
+        .catch(() => undefined);
+    }
+  });
 
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
   const rows = useMemo(() => (snapshot === undefined ? [] : buildRows(snapshot)), [snapshot]);
@@ -196,6 +214,7 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       {load.kind === 'series' && (
         <SeriesOverview
           detail={load.detail}
+          watch={load.detail.watch}
           protectedIds={load.protectedIds}
           downloads={downloads}
           progress={progress}
@@ -203,7 +222,7 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
         />
       )}
       {load.kind === 'movie' && (
-        <MovieOverview detail={load.detail} downloads={downloads} progress={progress} onUnauthenticated={onUnauthenticated} />
+        <MovieOverview detail={load.detail} watch={load.detail.watch} downloads={downloads} progress={progress} onUnauthenticated={onUnauthenticated} />
       )}
       {(load.kind === 'preview-tv' || load.kind === 'preview-movie') && (
         <TitleHeader

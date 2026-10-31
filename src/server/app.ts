@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { extname, isAbsolute } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { getConnInfo } from '@hono/node-server/conninfo';
@@ -6,6 +6,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { compress } from 'hono/compress';
 import { streamSSE } from 'hono/streaming';
 import { createAuthentication, isLoopback, type JellyfinQuickConnectStartResult, type JellyfinSignInResult } from './auth.js';
 import { createDiscoverRoutes, type Discover } from './discover/index.js';
@@ -16,6 +17,7 @@ import { createAddRoutes, type Add } from './add.js';
 import { createGrabRoutes, type Grabs } from './grabs.js';
 import { createLibraryRoutes, type Library } from './library.js';
 import { createOwnedRoutes, type Owned } from './owned.js';
+import { createPlaybackRoutes, type Playback } from './playback.js';
 import { effectiveOwner } from './owner.js';
 import { createProtectionRoutes, type Protection } from './protection.js';
 import { createReleaseRoutes, type Releases } from './releases.js';
@@ -35,6 +37,7 @@ export type CreateAppOptions = {
   now?: () => number;
   fetch?: typeof globalThis.fetch;
   events?: EventHub;
+  onOpenStreams?: (count: number) => void;
   timers?: Timers;
   search?: Search;
   add?: Add;
@@ -48,13 +51,14 @@ export type CreateAppOptions = {
   discover?: Discover;
   titleDelete?: TitleDelete;
   tmdbTitles?: TmdbTitles;
+  playback?: Playback;
   setup?: Hono<SetupEnvironment>;
   api?: Hono;
   images?: Hono;
   cache?: Hono;
   webhooks?: {
     secret(): string | undefined;
-    receive(service: 'sonarr' | 'radarr', payload: unknown): 'ok' | 'ignored' | 'invalid';
+    receive(service: 'sonarr' | 'radarr' | 'plex', payload: unknown): 'ok' | 'ignored' | 'invalid';
   };
 };
 
@@ -90,6 +94,17 @@ const readCookie = (header: string | undefined, name: string): CookieRead => {
 };
 
 const WEBHOOK_BODY_LIMIT = 512 * 1024;
+// Plex attaches the item's poster to some events.
+const PLEX_WEBHOOK_BODY_LIMIT = 4 * 1024 * 1024;
+
+// What Plex's webhook address carries in place of the webhook secret. plex.tv stores that address, so a copy read from
+// there must not sign Sonarr or Radarr events.
+export const plexWebhookCode = (secret: string) => createHmac('sha256', secret).update('plex').digest('hex');
+
+const secretMatches = (given: string, secret: string) => {
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(given), digest(secret));
+};
 
 // Sonarr and Radarr send their webhook username and password as Basic auth; only the password is checked.
 const webhookPasswordMatches = (header: string | undefined, secret: string) => {
@@ -98,8 +113,7 @@ const webhookPasswordMatches = (header: string | undefined, secret: string) => {
   const decoded = Buffer.from(match[1], 'base64').toString('utf8');
   const separator = decoded.indexOf(':');
   if (separator === -1) return false;
-  const digest = (value: string) => createHash('sha256').update(value).digest();
-  return timingSafeEqual(digest(decoded.slice(separator + 1)), digest(secret));
+  return secretMatches(decoded.slice(separator + 1), secret);
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
@@ -188,10 +202,11 @@ export const createApp = (options: CreateAppOptions) => {
   };
 
   // Times every API request but these: the event stream stays open for hours, browser timings are logged by their own route,
-  // and image loads would flood the log.
+  // and image loads would flood the log, as would the player's timeline, reported every 10 s, and previews, which follow the pointer.
   app.use('*', async (context, next) => {
     const { path } = context.req;
-    if (!path.startsWith('/api') || path === '/api/events' || path === '/api/metrics' || path.startsWith('/api/images/')) return next();
+    if (!path.startsWith('/api') || path === '/api/events' || path === '/api/metrics' || path.startsWith('/api/images/')
+      || path === '/api/playback/timeline' || path === '/api/playback/preview') return next();
     const started = performance.now();
     await next();
     logEvent('api', { method: context.req.method, path, status: context.res.status, ms: Math.round((performance.now() - started) * 10) / 10 });
@@ -199,13 +214,22 @@ export const createApp = (options: CreateAppOptions) => {
 
   app.use('*', async (context, next) => {
     await next();
-    // Cached poster and fanart may be reused by the browser for five minutes; everything else, error answers included, is never stored.
+    // Cached poster and fanart may be reused by the browser for five minutes; everything else but a built file under /assets/, error answers included, is never stored.
+    // Vite names every file under /assets/ by content hash, so a browser may keep it for a year.
     const reusableImage = context.req.path.startsWith('/api/images/') && (context.res.status === 200 || context.res.status === 304);
-    context.header('Cache-Control', reusableImage ? 'private, max-age=300' : 'no-store');
+    const builtFile = context.req.path.startsWith('/assets/') && context.res.status === 200;
+    context.header('Cache-Control', builtFile ? 'public, max-age=31536000, immutable' : reusableImage ? 'private, max-age=300' : 'no-store');
     context.header('Referrer-Policy', 'no-referrer');
     context.header('X-Content-Type-Options', 'nosniff');
     context.header('X-Frame-Options', 'DENY');
   });
+
+  // Compression happens per request. The event stream and the search's line-per-answer stream are exempt because their
+  // content types fail Hono's compressible-type check (and the event stream already carries Transfer-Encoding: chunked).
+  // Compressing either would buffer it and freeze live screens.
+  // razor: gzip of the 765 KB script runs again on every uncached load; precompressed .gz files next to the built assets,
+  // served through serveStatic({ precompressed: true }), would remove that work.
+  app.use('*', compress());
 
   const requestLimit = bodyLimit({
     maxSize: 1_024,
@@ -473,6 +497,25 @@ export const createApp = (options: CreateAppOptions) => {
     if (result === 'invalid') return context.json({ error: 'invalid_request' }, 400);
     return context.body(null, 204);
   });
+  // Plex sends no password, so its webhook address carries plexWebhookCode; the event is JSON in the form field `payload`.
+  const plexWebhookLimit = bodyLimit({
+    maxSize: PLEX_WEBHOOK_BODY_LIMIT,
+    onError: (context) => context.json({ error: 'request_too_large' }, 413),
+  });
+  app.post('/webhooks/plex/:secret', plexWebhookLimit, async (context) => {
+    const secret = options.webhooks?.secret();
+    if (options.webhooks === undefined || secret === undefined) return context.json({ error: 'not_configured' }, 503);
+    if (!secretMatches(context.req.param('secret'), plexWebhookCode(secret))) return context.json({ error: 'unauthenticated' }, 401);
+    let payload: unknown;
+    try {
+      const form = await context.req.parseBody();
+      payload = typeof form.payload === 'string' ? JSON.parse(form.payload) : undefined;
+    } catch {
+      payload = undefined;
+    }
+    if (payload === undefined || options.webhooks.receive('plex', payload) === 'invalid') return context.json({ error: 'invalid_request' }, 400);
+    return context.body(null, 204);
+  });
   app.all('/webhooks/*', (context) => context.json({ error: 'not_found' }, 404));
 
   const privateGuard: MiddlewareHandler<AppEnvironment> = async (context, next) => {
@@ -511,6 +554,7 @@ export const createApp = (options: CreateAppOptions) => {
     if (context.req.method !== 'GET') return context.json({ error: 'method_not_allowed' }, 405);
     if (openStreams >= MAX_STREAMS) return context.json({ error: 'too_many_streams' }, 503);
     openStreams += 1;
+    options.onOpenStreams?.(openStreams);
     return streamSSE(context, async (stream) => {
       const token = context.get('sessionToken');
       let finished = false;
@@ -522,6 +566,7 @@ export const createApp = (options: CreateAppOptions) => {
         unsubscribe();
         timers.clearInterval(keepalive);
         openStreams -= 1;
+        options.onOpenStreams?.(openStreams);
         closed();
       };
       const valid = () => {
@@ -551,6 +596,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
   if (options.tmdbTitles !== undefined) app.route('/api/library', createTmdbTitleRoutes(options.tmdbTitles));
   if (options.discover !== undefined) app.route('/api/discover', createDiscoverRoutes(options.discover));
+  if (options.playback !== undefined) app.route('/api/playback', createPlaybackRoutes(options.playback));
   if (options.images !== undefined) app.route('/api/images', options.images);
   if (options.cache !== undefined) app.route('/api/cache', options.cache);
   if (options.setup !== undefined) app.route('/api/setup', options.setup);

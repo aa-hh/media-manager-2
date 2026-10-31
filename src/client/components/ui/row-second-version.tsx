@@ -1,4 +1,5 @@
-// v2/Row/second-version — ~/Projects/media-manager-2-design/design-system.lib.pen c49N0
+// Figma: RowSecondVersion — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7373
+// Figma: RowSecondVersionHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-6225
 import type { ReactNode } from 'react';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
@@ -56,13 +57,13 @@ function RowSecondVersion({ inset = false, tracked = false, roleLabel, release, 
       <TableCell fill className={cn(detail !== undefined && 'flex-col items-start justify-center gap-0.5')}>
         <span className="flex max-w-full min-w-0 items-baseline gap-3">
           {/* The group is never cut; the dotted name before it truncates. */}
-          <span className="flex min-w-0" title={release}>
+          <span className="flex min-w-0 select-text" title={release}>
             <span className="truncate text-muted-foreground">{release.slice(0, split)}</span>
             <span className="shrink-0 font-bold text-foreground">{release.slice(split)}</span>
           </span>
           <span className="shrink-0 font-ui text-[13px] text-subtle-foreground">{roleLabel ?? (tracked ? 'Tracked version' : 'Second version')}</span>
         </span>
-        {detail !== undefined && <span className="max-w-full truncate text-data-small text-muted-foreground">{detail}</span>}
+        {detail !== undefined && <span className="max-w-full truncate text-data-small text-muted-foreground select-text">{detail}</span>}
       </TableCell>
       <TableCell className={cn(w.hitAndRun, 'text-muted-foreground')}><span className="truncate">{hitAndRun}</span></TableCell>
       <TableCell className={w.tracker}>

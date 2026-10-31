@@ -1,4 +1,4 @@
-// v2/Status/download circle — ~/Projects/media-manager-2-design/design-system.lib.pen AaZS1
+// Figma: StatusDownloadCircle — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-414
 import { cn } from '@/lib/utils';
 
 type DownloadCircleState = 'grabbed' | 'downloading' | 'importing' | 'stalled' | 'import-blocked';

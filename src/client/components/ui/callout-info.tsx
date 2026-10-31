@@ -1,4 +1,4 @@
-// v2/Callout/info — ~/Projects/media-manager-2-design/design-system.lib.pen Tegv9
+// Figma: CalloutInfo — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-751
 import { Info } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

@@ -17,3 +17,7 @@ Backups need nothing on the slot beyond the app itself and four settings. The sn
 ## Update, 11 Oct 2026
 
 The pause was 250 to 320 ms on the Whatbox slot. The app now requires Node 22.16, where `node:sqlite`'s `backup()` exists, so the snapshot copies through that from its own read-only connection and gzip runs asynchronously; both work off the main thread. The longest pause measured on the slot fell to about 30 ms, mostly the SHA-256 of the copy. The copy keeps free pages that `VACUUM INTO` dropped, so the upload grew from 1.24 MB to 1.50 MB.
+
+## Update, 31 Oct 2026
+
+The `unchanged` skip never fired on the Whatbox slot, because the torrent poll rewrites every row every 30 seconds, so the slot uploaded 288 snapshots a day. The job still wakes every 5 minutes but now backs up only when the last good backup is more than an hour old, about 24 uploads a day. A restart no longer delays a due backup, and a failed run is retried 5 minutes later. The worst case is now losing the last hour.

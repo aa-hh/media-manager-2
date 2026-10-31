@@ -243,11 +243,13 @@ function OverviewBand({ subject, owned, library }: { subject: Subject; owned: bo
 
 type Sent = 'sending' | 'sent' | 'failed';
 
-export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
+export function TitleHeader({ subject, owned, badges, play, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
   subject: Subject;
   owned: boolean;
   /** Status Badges under the meta line. */
   badges?: ReactNode;
+  /** The Play line (TitlePlayLine) under the badges; with it, Search turns outline (title.pen NIjoo), except in the compact header, which hides the Play line. */
+  play?: ReactNode;
   /** The library card's rows; Added and Folder follow when the title is in the library. */
   facts?: TitleFact[];
   monitored?: MonitoredState;
@@ -271,7 +273,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   const libraryRows: TitleFact[] = [
     ...(facts ?? []),
     ...(detail.added === null ? [] : [{ label: 'Added', value: day(detail.added) }]),
-    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="[overflow-wrap:anywhere]">{detail.path}</span> }]),
+    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="select-text [overflow-wrap:anywhere]">{detail.path}</span> }]),
   ];
   const { state } = useLocation();
   const [search, setSearch] = useState<Sent | undefined>(undefined);
@@ -325,14 +327,15 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
         actionsRight
         title={detail.title}
         backdropUrl={detail.backdropUrl ?? undefined}
-        posterUrl={detail.posterUrl ?? undefined}
+        posterUrl={detail.smallPosterUrl ?? undefined}
         breadcrumb={<Breadcrumb links={[crumb]} current={detail.title} />}
         bookmark={owned && monitored !== undefined ? { state: monitored, onToggle: onToggleMonitored } : { state: 'none' }}
         status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}
         meta={metaLine(subject)}
         badges={badges}
+        play={compact ? undefined : play}
         primary={owned ? (
-          <Button size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
+          <Button variant={compact || play === undefined ? 'default' : 'outline'} size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
             Search automatically
           </Button>
         ) : addAction}

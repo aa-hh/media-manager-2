@@ -1,4 +1,4 @@
-// v2/Library poster card — ~/Projects/media-manager-2-design/design-system.lib.pen Z0OVp
+// Figma: LibraryPosterCard — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-2830
 import { ArrowRight, Check, Clapperboard, ImageOff, Tv } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -9,8 +9,10 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
   poster?: string;
   title: ReactNode;
   meta?: ReactNode;
-  /** One Badge on the poster's bottom-left corner, or nothing when normal; hidden while imported. */
+  /** One Badge on the poster's bottom-left corner, or nothing when normal; hidden while imported. Sits above the watch bar when one shows, and hides while `action` shows. */
   status?: ReactNode;
+  /** Puts `status` on the top row, level with the watch mark, as Library does for Downloading. */
+  statusOnTop?: boolean;
   /** Downloading percent: the 4 px lime strip on the poster's bottom edge. */
   progress?: number;
   /** Just imported: full-width strip plus the black Imported label with a lime check. */
@@ -30,7 +32,17 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
   dateTab?: { month: string; day: string };
   /** Shown over the lower poster on hover and keyboard focus. */
   overview?: string;
+  /** Watched percent of a title stopped partway: the blue watch bar, 8 in from the poster's sides and bottom. */
+  watched?: number;
+  /** Top-right mark: a tick when everything available is watched, or a show's number of unwatched episodes. Hidden while the watch bar shows. */
+  watchMark?: 'played' | number;
+  /** The Play or Resume button at the poster's left, just above the watch bar. Shows on hover or keyboard focus. */
+  action?: ReactNode;
+  /** Keeps `action` showing, as on Continue Watching. */
+  actionAlwaysVisible?: boolean;
 };
+
+const mark = 'flex h-9 items-center justify-center rounded-full bg-poster-mark text-bar-foreground ring-1 ring-white/15 ring-inset backdrop-blur-sm';
 
 /**
  * Poster card for Library and Discover, 210 by 315 poster in full colour with a 1 px inner edge. Hover darkens the poster to 92 %,
@@ -40,13 +52,13 @@ type LibraryPosterCardProps = ComponentProps<'a'> & {
  * itself fades in, so a card does not fade on every screen change). An image that fails to load shows the no-poster fallback.
  */
 function LibraryPosterCard({
-  poster, title, meta, status, progress, imported = false, importedLabel = 'Imported', selected = false,
-  rank, kind, year, genres, badges, dateTab, overview, className, ...props
+  poster, title, meta, status, statusOnTop = false, progress, imported = false, importedLabel = 'Imported', selected = false,
+  rank, kind, year, genres, badges, dateTab, overview, watched, watchMark, action, actionAlwaysVisible = false, className, ...props
 }: LibraryPosterCardProps) {
   const strip = imported ? 100 : progress;
   const [image, setImage] = useState<'loading' | 'loaded' | 'shown' | 'failed'>('loading');
   const showPoster = poster !== undefined && image !== 'failed';
-  return (
+  const card = (
     <a className={cn('group flex w-(--poster-width) flex-col gap-2 outline-none', className)} {...props}>
       <span
         data-poster
@@ -68,7 +80,7 @@ function LibraryPosterCard({
             onError={() => setImage('failed')}
             className={cn(
               'size-full object-cover transition-[filter] duration-(--duration-fast) ease-out',
-              'group-hover:brightness-92 group-active:brightness-84 group-active:duration-0',
+              'group-hover:brightness-92 group-hover/card:brightness-92 group-active:brightness-84 group-active:duration-0',
               image === 'loaded' && 'animate-content-in',
               image === 'loading' && 'opacity-0',
             )}
@@ -80,7 +92,38 @@ function LibraryPosterCard({
             <span className="font-ui text-xs text-muted-foreground">No poster yet</span>
           </span>
         )}
-        {status !== undefined && !imported && <span className="absolute bottom-2 left-2 flex">{status}</span>}
+        {status !== undefined && !imported && !(actionAlwaysVisible && action !== undefined && !statusOnTop) && (
+          <span
+            className={cn(
+              'absolute left-2 flex',
+              statusOnTop ? 'top-4' : watched === undefined ? 'bottom-2' : 'bottom-6',
+              // The Play button shows over the same corner, so the badge gives way to it.
+              !statusOnTop && action !== undefined && 'transition-[opacity,visibility] duration-(--duration-fast) ease-out group-focus-within/card:invisible group-focus-within/card:opacity-0 group-hover/card:invisible group-hover/card:opacity-0',
+            )}
+          >
+            {status}
+          </span>
+        )}
+        {watchMark !== undefined && watched === undefined && (
+          <span className="absolute top-2 right-2 flex">
+            {watchMark === 'played' ? (
+              <span className={cn(mark, 'w-9')}>
+                <Check aria-hidden="true" className="size-5.25" />
+                <span className="sr-only">Played</span>
+              </span>
+            ) : (
+              <span className={cn(mark, 'min-w-9 px-3.5 font-data text-sm font-semibold')}>
+                {watchMark}
+                <span className="sr-only"> unwatched</span>
+              </span>
+            )}
+          </span>
+        )}
+        {watched !== undefined && (
+          <span aria-hidden="true" className="absolute inset-x-2 bottom-2 h-1.5 overflow-hidden rounded-full bg-bar-foreground/30">
+            <span style={{ translate: `${Math.min(100, Math.max(0, watched)) - 100}% 0` }} className="block h-full w-full rounded-full bg-watch-bar" />
+          </span>
+        )}
         <span
           aria-hidden="true"
           className={cn('pointer-events-none absolute inset-0 rounded-md ring-inset', selected ? 'ring-2 ring-foreground' : 'ring-1 ring-foreground/10')}
@@ -155,6 +198,22 @@ function LibraryPosterCard({
       </span>
       {badges !== undefined && <span className="flex items-center gap-1.5 pt-0.5">{badges}</span>}
     </a>
+  );
+  if (action === undefined) return card;
+  return (
+    <div className="group/card relative w-fit">
+      {card}
+      {/* Beside the link, not inside it: a button inside a link is invalid, and only a click on the button plays. */}
+      <span
+        className={cn(
+          'absolute top-63.75 left-3 flex transition-[opacity,visibility] duration-(--duration-fast) ease-out',
+          '[&_:focus-visible]:outline-focus-on-dark! [&_:focus-visible]:outline-offset-3!',
+          !actionAlwaysVisible && 'invisible opacity-0 group-focus-within/card:visible group-focus-within/card:opacity-100 group-hover/card:visible group-hover/card:opacity-100',
+        )}
+      >
+        {action}
+      </span>
+    </div>
   );
 }
 

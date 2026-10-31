@@ -13,6 +13,7 @@
 - [plex-watch-status.md](plex-watch-status.md): showing Plex watch status in the app, and matching our titles to Plex items.
 - [plax-lessons.md](plax-lessons.md): what the owner's own Plex TV client, Plax, shows about Plex's playback calls.
 - [plex-desktop-network.md](plex-desktop-network.md) (27 Oct): every request the official Plex desktop app (1.115.0, which also uses mpv) makes during playback, read from its bundled code. Covers the full playback order, how it picks the server address, how mpv fetches the video, intro and credits skip, and recommendations for our player.
+- [mpv-in-window.md](mpv-in-window.md) (27 Oct): the test of three ways to draw mpv inside the desktop window, with the owner's measured results and what the desktop app takes from them.
 
 The Jellyfin recommendation below stands as research but is no longer the plan.
 
@@ -32,12 +33,13 @@ Confirms and narrows the 14 Oct desktop decision below.
 - **Token:** the stream address carries a Plex token (`X-Plex-Token`).
   - Suggestion: our server fetches a short-lived one with `GET /security/token?type=delegation&scope=all` and hands only that to the desktop app.
   - Plex Web calls this to hand playback to another device; the reply is a token starting with `transient-`, but how long it lasts is untested.
-- **Still open:** how mpv is drawn inside an Electron window (below).
+- **Settled 27 Oct: how mpv is drawn inside the window.** mpv draws with its `gpu-next` renderer in its own borderless window, with the transparent Electron window attached on top. It is the only way tested that shows Dolby Vision profile 5 in the right colours ([mpv-in-window.md](mpv-in-window.md)).
 
 ## Decision, 14 Oct 2026
 
 - **Plex only.**
 - **A desktop app built with Electron**, running on the owner's computer and connecting to the app and Plex on the slot. It plays the original file with mpv, so normal playback puts no conversion load on Whatbox. This rules out [player-stack.md](player-stack.md)'s recommendation of a player in the website. Its desktop section and the mpv details there still apply.
+- **Watching on a phone is v3 or v4.** The player, watch status (played marks, unwatched counts, Continue Watching) and the hover actions are designed for the desktop app first. Phone versions of them wait until v3 or v4. Checking status and making quick grabs on a phone are unaffected.
 - **No playback tests on the slot.** Whatbox doesn't want resource-heavy programs running on shared slots.
 - **Quality: original file by default, a quality setting in the player for the rest.** Picking a lower quality asks Plex on the slot to convert, and the player plays whatever stream comes back. The owner has run Plex conversions on the slot before. Whatbox's rules still ban converting 4K HEVC ([aa-8-whatbox-hosting.md](../aa-8-whatbox-hosting.md)), so for those files the setting would offer only Original, or a lower-quality second version if one exists.
 - **HDR must not look grey on a non-HDR screen.** Many of the owner's files are HDR, and the Plex app shows them with correct colour on a laptop without an HDR display. Ours must too. Confirmed 14 Oct: Plex's dashboard shows these files as Direct Play, so the Plex app does the conversion on the laptop and Whatbox only sends the file. That means tone mapping on the owner's computer: converting HDR colour to normal colour while playing. mpv does this when the screen isn't HDR. The Plex app does it with libmpv drawn inside its own window (`vo=libmpv`, through mpv's render API), so an embedded mpv can keep tone mapping. That was shown in Plex's Qt app, not yet in Electron ([plex-desktop-network.md](plex-desktop-network.md) section 9). Plex's client also flags itself as able to show HDR but not Dolby Vision (`canDisplayHDR: true`, `canDisplayDolbyVision: false`), and still direct-plays Dolby Vision files. Dolby Vision files need checking separately: shown without Dolby Vision support, some of them come out green and purple.

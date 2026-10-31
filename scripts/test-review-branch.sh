@@ -190,6 +190,19 @@ run_review
 case "$OUT" in *"Review level: full (2 product lines, risk: .claude/hooks/guard.sh, .claude/settings.json), round 1"*) ok ".impeccable/ and .claude/ data stay out of the size count" ;;
   *) fail "size count: wanted 2 product lines from the hook only and settings.json as a risk path, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
 
+# Desktop app: the native addon's lines count, and a one-line change to the
+# stream-address and Plex-token code makes the review full.
+# Breaks if *.mm leaves is_product_path or desktop/lib/* leaves is_risk_path.
+setup
+: > "$STUB/comments"
+mkdir -p "$W/desktop/src" "$W/desktop/lib"
+printf '// %s\n' $(seq 60) > "$W/desktop/src/mpvview.mm"
+printf 'export {};\n' > "$W/desktop/lib/connection.js"
+g add -A; g commit -qm desktop
+run_review
+case "$OUT" in *"Review level: full (61 product lines, risk: desktop/lib/connection.js), round 1"*) ok "desktop addon lines count and desktop/lib/ is a risk path" ;;
+  *) fail "desktop: wanted 61 product lines and desktop/lib/connection.js as a risk path, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
+
 # A commit of the branch's own after round 2 still refuses.
 setup
 on_main b.txt 'b2\n' main-change

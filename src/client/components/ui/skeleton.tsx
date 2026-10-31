@@ -1,9 +1,9 @@
-// v2/Skeleton — ~/Projects/media-manager-2-design/design-system.lib.pen ZWg7X
-// v2/Skeleton/row — ~/Projects/media-manager-2-design/design-system.lib.pen g34znm
-// v2/Skeleton/row-two-line — ~/Projects/media-manager-2-design/design-system.lib.pen kJlIx
-// v2/Skeleton/poster card — ~/Projects/media-manager-2-design/design-system.lib.pen Om6ge
-// v2/Skeleton/search result — ~/Projects/media-manager-2-design/design-system.lib.pen MFkuO
-// v2/Skeleton/calendar entry — ~/Projects/media-manager-2-design/design-system.lib.pen jhCRH
+// Figma: Skeleton — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-381
+// Figma: SkeletonRow — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-384
+// Figma: SkeletonRowTwoLine — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-392
+// Figma: SkeletonPosterCard — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-417
+// Figma: SkeletonSearchResult — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-423
+// Figma: SkeletonCalendarEntry — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-431
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 

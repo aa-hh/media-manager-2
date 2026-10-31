@@ -142,5 +142,5 @@ export const backupPill = (backup: SetupStatus['backup']): { state: ServiceState
   if (backup.destination === null) return { state: 'not-set-up', text: 'Not set up' };
   if (backup.key === 'missing') return { state: 'failed', text: 'Can\'t run: no key yet' };
   if (backup.key === 'invalid') return { state: 'failed', text: 'Can\'t run: BACKUP_KEY invalid' };
-  return { state: 'connected', text: 'On · every 5 min' };
+  return { state: 'connected', text: 'On · every hour' };
 };

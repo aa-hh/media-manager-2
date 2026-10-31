@@ -1,4 +1,4 @@
-// v2/Dialog — ~/Projects/media-manager-2-design/design-system.lib.pen Oi69B
+// Figma: Dialog — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7741
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -48,9 +48,9 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
         />
         <DialogPrimitive.Popup
           className={cn(
-            'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-5rem)] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col rounded-lg border border-border bg-card outline-hidden',
+            'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-5rem)] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col rounded-lg border border-border bg-popover outline-hidden',
             wide ? 'w-200 p-9' : 'w-140 p-6',
-            'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]',
+            'shadow-float',
             'transition-[opacity,scale]',
             'data-starting-style:scale-(--motion-scale-dialog) data-starting-style:opacity-0',
             'data-ending-style:scale-(--motion-scale-dialog) data-ending-style:opacity-0',
@@ -73,8 +73,9 @@ function Dialog({ open, onOpenChange, title, subject, children, callout, footerC
           <div
             className={cn(
               'min-h-0 w-full flex-1 overflow-y-auto',
+              // Dark shades the edges with the shadow colour: its foreground is off-white.
               scrollEdges &&
-                'border-y border-border shadow-[inset_0_8px_10px_color-mix(in_srgb,var(--foreground)_8%,transparent),inset_0_-8px_10px_color-mix(in_srgb,var(--foreground)_8%,transparent)]',
+                'border-y border-border shadow-[inset_0_8px_10px_color-mix(in_srgb,var(--foreground)_8%,transparent),inset_0_-8px_10px_color-mix(in_srgb,var(--foreground)_8%,transparent)] dark:shadow-[inset_0_8px_10px_color-mix(in_srgb,var(--shadow)_66%,transparent),inset_0_-8px_10px_color-mix(in_srgb,var(--shadow)_66%,transparent)]',
             )}
           >
             {!scrollEdges && subject !== undefined && (

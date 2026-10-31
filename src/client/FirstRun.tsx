@@ -47,7 +47,7 @@ const loginFailure = (status: number, body: Record<string, unknown>, password: b
 
 const heading = 'font-ui text-2xl leading-[1.2] font-extrabold tracking-[-0.3px] text-[#ece9e1]';
 const body = 'font-ui text-[15px] leading-[22px] text-[#b8b9b6]';
-const errorText = 'font-ui text-sm leading-[21px] text-[#f2a097]';
+const errorText = 'font-ui text-sm leading-[21px] text-[#f2a097] select-text';
 const input = 'h-10 w-full rounded-xl border border-[#3a3b40] bg-[#121317] px-3 font-ui text-[15px] text-[#ece9e1] placeholder:text-[#6f716e] focus-ring-on-dark';
 const label = 'flex flex-col gap-1.5 font-ui text-sm font-semibold text-[#ece9e1]';
 const link = 'self-start font-ui text-sm font-semibold text-[#ece9e1] underline underline-offset-2 focus-ring-on-dark';
@@ -63,7 +63,7 @@ function DoneRow({ children, onChange }: { children: ReactNode; onChange: () => 
   );
 }
 
-function PickRow({ logo, title, line, onClick }: { logo: 'plex' | 'jellyfin'; title: string; line: string; onClick: () => void }) {
+function PickRow({ logo, title, line, onClick }: { logo: 'plex-gold' | 'jellyfin'; title: string; line: string; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-xl border border-[#2a2b30] bg-[#ffffff08] p-4 text-left transition-colors duration-(--duration-fast) hover:bg-[#ffffff12] focus-ring-on-dark">
       <Logo name={logo} alt="" />
@@ -329,7 +329,7 @@ export function FirstRun({ headingRef, plexBusy, plexLine, onPlexSignIn, onSigne
         <>
           <p className={body}>No one owns this install yet. Pick the media server you’ll log in with. The first person to log in becomes the owner.</p>
           <div className="flex flex-col gap-2">
-            <PickRow logo="plex" title="Plex" line="Log in with your Plex account, through plex.tv." onClick={() => setStep('plex')} />
+            <PickRow logo="plex-gold" title="Plex" line="Log in with your Plex account, through plex.tv." onClick={() => setStep('plex')} />
             <PickRow logo="jellyfin" title="Jellyfin" line="Log in with an administrator account on your own Jellyfin server." onClick={() => setStep('jellyfin-address')} />
           </div>
           <p className="font-ui text-sm text-[#b8b9b6]">The owner can switch media server later in Settings.</p>

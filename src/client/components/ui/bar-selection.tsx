@@ -1,4 +1,5 @@
-// v2/Bar/selection — ~/Projects/media-manager-2-design/design-system.lib.pen TPw8z
+// Figma: BarSelection — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8764
+// Figma: BarSelectionAction — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8595
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button, type ButtonProps } from '@/components/ui/button';
@@ -6,9 +7,10 @@ import { cn } from '@/lib/utils';
 
 // A Button on the black bar: white label and icon, white 12% hover, white focus ring, white 35% when disabled.
 const onDark = cn(
-  'bg-transparent text-bar-foreground focus-visible:outline-focus-on-dark',
-  'not-data-disabled:hover:bg-bar-foreground/12 not-data-disabled:active:bg-bar-foreground/12',
-  'data-disabled:bg-transparent data-disabled:text-bar-foreground/35',
+  // The Button draws its fill on ::before, so the overrides target before: too.
+  'before:bg-transparent text-bar-foreground focus-visible:outline-focus-on-dark',
+  'not-data-disabled:hover:before:bg-bar-foreground/12 not-data-disabled:active:before:bg-bar-foreground/12',
+  'data-disabled:before:bg-transparent data-disabled:text-bar-foreground/35',
 );
 
 /** One action on the selection bar, such as Search automatically; keeps the Button's icon and kbd props. */
@@ -41,7 +43,7 @@ function BarSelection({ open, count, children, hint, onClear, clearLabel = 'Clea
       inert={!open}
       className={cn(
         'fixed bottom-[calc(var(--livebar)+var(--space-4))] left-1/2 z-40 h-14 -translate-x-1/2 items-center gap-1 rounded-lg bg-bar pr-2 pl-5',
-        'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]',
+        'shadow-float',
         'transition-discrete',
         open
           ? 'flex transition-[opacity,translate,display] duration-(--duration-base) ease-out starting:translate-y-(--motion-rise-16) starting:opacity-0'
