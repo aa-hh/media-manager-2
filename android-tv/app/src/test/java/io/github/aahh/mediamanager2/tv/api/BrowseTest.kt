@@ -16,7 +16,7 @@ class BrowseTest {
     private val browse = BrowseApi(ServerClient(origin, ServerCookieJar(origin.toHttpUrl(), object : CookieStore {
         override fun load() = emptyList<String>()
         override fun save(cookies: List<String>) = Unit
-    })))
+    }), allowHttp = true))
 
     @After
     fun stop() = server.shutdown()

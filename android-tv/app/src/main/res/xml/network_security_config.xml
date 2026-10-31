@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Server addresses may be http, as on desktop (owner's choice, plan Q4). -->
+<!-- Cleartext is for Plex's video streams, which often use LAN addresses. Our own server is https only: normaliseAddress and
+     ServerClient refuse an http address (owner's rule, 31 Oct 2026). -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

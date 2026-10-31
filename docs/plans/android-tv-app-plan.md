@@ -45,7 +45,7 @@ None. The owner answered all eight on 31 Oct 2026:
 | Q1: TV sign-in before setup | Refuse: "Finish setup in a browser first." | T01 (409 `setup_required`), T14 |
 | Q2: FFmpeg decoder | Built once per Media3 version, kept out of git, cached in CI | T05 |
 | Q3: TV design path | Start from the TV Design Kit library, restyle to our theme; approved parts go into our library as `v2/TV/<Family>/<Variant>`; Kotlin is the master copy; library redrawn after merge | T12, T03a–c, T13b |
-| Q4: http addresses | Allowed, as desktop; no warning text | contracts, T04, T08 |
+| Q4: http addresses | Refused for our server (owner, 31 Oct; was allowed); http only for Plex streams | contracts, T04, T08 |
 | Q5: sign-out / change address on TV | Sign-out and a Settings page are in v1 (owner, 31 Oct); address change is not | T13a |
 | Q6: grab progress | Live, through the existing event stream | T26, T17, T18 |
 | Q7: when TV tests run | At every commit that touches `android-tv/` | T04 |
@@ -133,8 +133,8 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - The client for our server sends `Origin: <typed origin>`, `X-Requested-With: media-manager-2` and `Content-Type: application/json` on every non-GET request.
 - On `/api/playback/start` it also sends `X-Media-Manager-Desktop: 1`, so the reply carries `streamAddresses`, `directAddressCount` and `machineIdentifier` (`src/server/playback.ts:273, 416`).
 - The player's Plex data source is a separate OkHttpClient with no cookie jar.
-- Every logged string has `X-Plex-Token` values replaced with `***`.
-- Unencrypted http is allowed for every host: `res/xml/network_security_config.xml` with `<base-config cleartextTrafficPermitted="true">`.
+- Every logged string has `X-Plex-Token` values and cookie values replaced with their short SHA-256 (`sha256:` and 8 hex digits), so equal tokens can be matched without logging them.
+- Our server is https only: sign-in and the session cookie never go over http (owner's rule, 31 Oct). Cleartext stays allowed in `res/xml/network_security_config.xml` (`<base-config cleartextTrafficPermitted="true">`) for Plex's video streams only.
 
 **Releases.**
 - Tag `android-tv-v<versionCode>`; asset `media-manager-2-tv.apk`.
@@ -788,7 +788,7 @@ Inside `player/`, T09a and T09b write different files and can run together.
 - **Buffer.** Media3's default buffer may be small for 76 Mbps remuxes (B9). A bigger buffer uses Java memory, so any change waits for measurements.
 - **32-bit Android** is possible on a 64-bit chip; both ABIs stay until B2.
 - **Unknown-apps setting.** Some Google TV builds hide "Install unknown apps" (B10). If the Streamer does, updates fall back to ADB.
-- **http addresses** send the session cookie unencrypted (owner accepted, Q4).
+- **http addresses** are refused for our server (Q4, changed 31 Oct), so the session cookie never goes out unencrypted.
 - **Event streams.** The server allows 20 (`app.ts:73`); TV title pages open one each.
 - **Mule rsync.** remote-run's rsync exclude list doesn't cover `android-tv/**/build` or `.gradle`. Use `AUDIOUT_REMOTE_LOCAL=1` for Android work.
 - **Release key.** Its only readable copy is this Mac's Keychain (ADR 0007).

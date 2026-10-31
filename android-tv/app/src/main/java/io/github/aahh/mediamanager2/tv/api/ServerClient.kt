@@ -31,20 +31,24 @@ sealed interface ApiResult<out T> {
 /**
  * The OkHttp client for our server at [origin] (from [normaliseAddress]). It holds the session cookie in [cookies] and
  * adds the headers `requireBrowserPost` checks to every non-GET request, as a browser would. A 401 from a private
- * `/api/` route means the session ended, so it sets [signedOut].
+ * `/api/` route means the session ended, so it sets [signedOut]. Only an https [origin] is accepted, and a redirect from
+ * https to http is never followed, so the session cookie and sign-in never go out in the clear ([allowHttp] is for the
+ * tests' local server only).
  */
 class ServerClient(
     val origin: String,
     val cookies: ServerCookieJar,
     base: OkHttpClient = OkHttpClient(),
+    internal val allowHttp: Boolean = false,
 ) {
     // Defaults are sent (the server requires partIndex and offsetSeconds even at 0); nulls are left out, as optional keys must be absent.
     val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
-    private val root: HttpUrl = origin.toHttpUrl()
+    private val root: HttpUrl = origin.toHttpUrl().also { require(it.isHttps || allowHttp) { "the server address must be https" } }
     private val mutableSignedOut = MutableStateFlow(false)
     val signedOut: StateFlow<Boolean> = mutableSignedOut.asStateFlow()
 
     val http: OkHttpClient = base.newBuilder()
+        .followSslRedirects(false)
         .cookieJar(cookies)
         .addInterceptor(Interceptor { chain -> chain.proceed(withBrowserHeaders(chain.request())) })
         .addInterceptor(Interceptor { chain ->
