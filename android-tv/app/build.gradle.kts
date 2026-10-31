@@ -46,6 +46,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.media3.datasource.okhttp)
+    // Built by `sh scripts/android-tv.sh ffmpeg`; not in git.
+    implementation(files("../ffmpeg/out/lib-decoder-ffmpeg-release.aar"))
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
     implementation(libs.serialization.json)
