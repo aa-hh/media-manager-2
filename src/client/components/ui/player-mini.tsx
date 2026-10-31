@@ -29,7 +29,15 @@ type PlayerMiniProps = {
 function PlayerMini({ picture, title, time, progress, playing, muted, onMute, onPlayPause, onExpand, onClose, className }: PlayerMiniProps) {
   const corner = 'w-9 [&>svg]:size-4.5';
   return (
-    <div className={cn('group/mini relative h-56.25 w-100 overflow-hidden rounded-lg bg-black shadow-[0_2px_6px_#1111110f,0_12px_32px_#11111140]', className)}>
+    <div
+      className={cn(
+        'group/mini relative h-56.25 w-100 overflow-hidden rounded-lg bg-black shadow-[0_2px_6px_#1111110f,0_12px_32px_#11111140]',
+        // Dark: a black shadow, and a 1px lit ring over the picture so black video parts from the near-black page.
+        'dark:shadow-[0_2px_6px_color-mix(in_srgb,var(--shadow)_50%,transparent),0_12px_32px_var(--shadow)]',
+        'after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-edge-highlight after:ring-inset',
+        className,
+      )}
+    >
       {picture !== undefined && <div className="absolute inset-0 [&>img]:size-full [&>img]:object-cover">{picture}</div>}
       <div
         className={cn(

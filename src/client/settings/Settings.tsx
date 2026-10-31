@@ -17,6 +17,8 @@ import { RowService } from '@/components/ui/row-service';
 import { SkeletonRowTwoLine } from '@/components/ui/skeleton';
 import { type ServiceState, StatusServicePill } from '@/components/ui/status-service-pill';
 import { useToastManager } from '@/components/ui/toast';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { readThemeChoice, type ThemeChoice, writeThemeChoice } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import {
   ago, chain, changedCount, changes, type Check, type Draft, failureTitle, fieldWords, headerSummary, isConfigured, linkTone, pillFor,
@@ -66,6 +68,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
   const [now, setNow] = useState(Date.now);
   const [setup, setSetup] = useState<SetupStatus>();
   const [clearing, setClearing] = useState(false);
+  const [theme, setTheme] = useState(readThemeChoice);
   const toasts = useToastManager();
   const mediaServerContext = use(MediaServerContext);
   const unauthorizedRef = useRef(onUnauthenticated);
@@ -372,6 +375,23 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
           <div className="px-4 py-2">
             <Button variant="outline" size="row" icon={<Eraser />} loading={clearing} onClick={() => void clearCache()}>Clear cache</Button>
           </div>
+          <LabelGroup>Appearance</LabelGroup>
+          <div className="flex flex-col gap-2 px-4 py-2">
+            <ToggleGroup
+              aria-label="Appearance"
+              value={theme}
+              onValueChange={(value) => {
+                setTheme(value as ThemeChoice);
+                writeThemeChoice(value as ThemeChoice);
+              }}
+              className="self-start"
+            >
+              <ToggleGroupItem value="light">Light</ToggleGroupItem>
+              <ToggleGroupItem value="dark">Dark</ToggleGroupItem>
+              <ToggleGroupItem value="system">System</ToggleGroupItem>
+            </ToggleGroup>
+            <p className="font-ui text-[13px] leading-[1.5] text-muted-foreground">On this device. System follows the computer’s light or dark setting.</p>
+          </div>
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {adding ? (
@@ -528,7 +548,7 @@ export function PiecesStrip({ checks, editedOf, folders, look = 'plain', watch }
                       return <StatusServicePill key={name} look={pillLook} logo={member.logo === null ? null : <Logo name={member.logo === 'plex' && pillLook === 'dark' && pill.state === 'connected' ? 'plex-gold' : member.logo} alt="" />} name={member.label} state={pill.state}>{pill.text}</StatusServicePill>;
                     })}
                     {column.names.includes('rtorrent') && (
-                      <StatusServicePill look={pillLook} logo={<Folder aria-hidden="true" className={cn('size-4', pillLook === 'dark' && folders.state === 'connected' ? 'text-bar-foreground' : 'text-foreground')} />} name="Folders" state={folders.state}>
+                      <StatusServicePill look={pillLook} logo={<Folder aria-hidden="true" className={cn('size-4', folders.state !== 'connected' ? 'text-foreground' : pillLook === 'dark' ? 'text-bar-foreground' : pillLook === 'lime' ? 'text-best-foreground' : 'text-foreground')} />} name="Folders" state={folders.state}>
                         {folders.text}
                       </StatusServicePill>
                     )}

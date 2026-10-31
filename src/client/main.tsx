@@ -407,6 +407,8 @@ function SignedIn(props: SignedInProps) {
               <PanelInline
                 open
                 title="Downloads"
+                // It floats above the bar, so it takes the menus' surface and lit edge (no shadow, as in the page flow).
+                className="bg-popover shadow-[inset_0_1px_0_var(--edge-highlight)]"
                 onClose={() => setBarOpen(false)}
                 primary={<Button size="large" onClick={onOpen}>Open Downloads</Button>}
                 secondary={<Button variant="outline" kbd="Esc" onClick={() => setBarOpen(false)}>Collapse</Button>}

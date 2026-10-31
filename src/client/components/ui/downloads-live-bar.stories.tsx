@@ -19,6 +19,7 @@ const panel = (
   <PanelInline
     open
     title="Downloads"
+    className="bg-popover shadow-[inset_0_1px_0_var(--edge-highlight)]"
     onClose={fn()}
     primary={<Button size="large" onClick={fn()}>Open Downloads</Button>}
     secondary={<Button variant="outline" kbd="Esc" onClick={fn()}>Collapse</Button>}

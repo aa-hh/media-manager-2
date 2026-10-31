@@ -24,7 +24,7 @@ function Tooltip({ children, text, kbd, side = 'top' }: TooltipProps) {
           <TooltipPrimitive.Popup
             className={
               'flex max-w-96 items-center gap-1.5 rounded-sm bg-bar px-2 py-1.5 font-ui text-[13px] font-medium text-bar-foreground ' +
-              'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)] ' +
+              'shadow-float ' +
               'transition-opacity duration-(--duration-fast) ease-out data-ending-style:opacity-0 data-starting-style:opacity-0'
             }
           >

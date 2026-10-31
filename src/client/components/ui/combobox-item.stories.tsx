@@ -10,7 +10,7 @@ const meta = {
   // An item sits in the floating list surface the dropdown menu and select lists share.
   decorators: [
     (Story) => (
-      <div role="listbox" aria-label="Titles" className="flex w-62 flex-col rounded-lg border border-border bg-card p-1 text-foreground shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]">
+      <div role="listbox" aria-label="Titles" className="flex w-62 flex-col rounded-lg border border-border bg-popover p-1 text-foreground shadow-float">
         <Story />
       </div>
     ),

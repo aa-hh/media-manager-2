@@ -19,7 +19,7 @@ type BadgeProps = ComponentProps<'span'> & {
 const variants: Record<BadgeVariant, string> = {
   neutral: 'bg-muted text-muted-foreground',
   strong: 'bg-primary text-primary-foreground',
-  best: 'bg-best text-foreground',
+  best: 'bg-best text-best-foreground',
   live: 'bg-muted text-foreground',
   risk: 'bg-destructive-soft text-destructive',
   warning: 'bg-warning-soft text-warning',

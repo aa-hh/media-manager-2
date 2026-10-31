@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, Menu, ipcMain, net, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, nativeTheme, net, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { randomBytes, randomUUID } = require('node:crypto');
@@ -24,7 +24,7 @@ if (fs.existsSync(driverFile)) {
   process.env.VK_ICD_FILENAMES = driverFile;
 }
 
-// --- Settings kept in userData: the address, the client id (network §1), Load ahead, volume, mute and subtitle size.
+// --- Settings kept in userData: the address, the client id (network §1), Load ahead, volume, mute, subtitle size and theme.
 
 const settingsPath = () => path.join(app.getPath('userData'), 'desktop.json');
 const readSettings = () => {
@@ -56,6 +56,9 @@ const savedVolume = () => volumePercent(readSettings().volume) ?? 100;
 const savedMuted = () => readSettings().muted === true;
 // The subtitle text size, a setting of this app rather than of a title: never saved to Plex.
 const savedSubtitleScale = () => subtitleScale(readSettings().subtitleScale) ?? 1;
+// Settings' Appearance choice (light, dark or system). Electron forgets nativeTheme.themeSource between runs, so it is kept here.
+const THEMES = ['light', 'dark', 'system'];
+const savedTheme = () => (THEMES.includes(readSettings().theme) ? readSettings().theme : 'system');
 // One per app run (network §1).
 const sessionIdentifier = randomUUID();
 
@@ -125,7 +128,8 @@ function createWindow() {
     if (url === 'about:blank' || originOf(url) === 'https://app.plex.tv') {
       return {
         action: 'allow',
-        overrideBrowserWindowOptions: { transparent: false, backgroundColor: '#ffffff', titleBarStyle: 'default', fullscreenable: true },
+        // The page's background colour (src/client/globals.css), so the window does not flash the other theme first.
+        overrideBrowserWindowOptions: { transparent: false, backgroundColor: nativeTheme.shouldUseDarkColors ? '#0c0f14' : '#ffffff', titleBarStyle: 'default', fullscreenable: true },
       };
     }
     openOutside(url);
@@ -612,12 +616,20 @@ handle('player:setLayout', (wanted) => {
   applyLayout();
 });
 handle('player:setFullscreen', (on) => setFullscreen(on === true));
+handle('app:setTheme', (choice) => {
+  if (!THEMES.includes(choice)) throw new Error('invalid_request');
+  writeSettings({ theme: choice });
+  nativeTheme.themeSource = choice;
+});
 
 // `npm start` runs Electron's own app, which shows the Electron logo in the Dock. The built app has the planet icon from
 // icon.icns and leaves icon.png out, so only `npm start` finds the file.
 const DEV_ICON = path.join(__dirname, 'icon.png');
 app.whenReady().then(() => {
   if (fs.existsSync(DEV_ICON)) app.dock.setIcon(DEV_ICON);
+  // The main window stays transparent for mpv's picture, so the theme reaches it through the page and through macOS's
+  // appearance for the window buttons, scroll bars and menus.
+  nativeTheme.themeSource = savedTheme();
   createWindow();
 });
 app.on('window-all-closed', () => app.quit());

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 type HeaderTitleProps = {
   title: string;
-  /** Sonarr or Radarr backdrop image; the band fades to white under it. */
+  /** Sonarr or Radarr backdrop image; the band fades to the page colour under it. */
   backdropUrl?: string;
   posterUrl?: string;
   /** A Breadcrumb. */
@@ -87,7 +87,7 @@ function HeaderBackdrop({ posterUrl, backdropUrl, tall, className }: { posterUrl
       {backdropUrl !== undefined && <FadeImage key={backdropUrl} src={backdropUrl} settle className="absolute inset-0 size-full" />}
       <div className={cn('relative size-full', !tall && 'bg-linear-to-b', tall
           ? 'bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--color-background)_50%,transparent),color-mix(in_oklab,var(--color-background)_85%,transparent)_50%,color-mix(in_oklab,var(--color-background)_97%,transparent)_80%,var(--color-background))]'
-          : 'from-transparent via-background/55 via-55% to-background')} />
+          : 'from-transparent via-background/55 via-55% to-background dark:from-background/45')} />
     </div>
   );
 }

@@ -4,6 +4,9 @@
 /* Only in the desktop app: its preload script sets data-desktop on <html>. */
 @custom-variant desktop (&:where([data-desktop], [data-desktop] *));
 
+/* Dark mode: the inline script in index.html sets data-theme on <html> before first paint (src/client/lib/theme.ts). */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 @font-face {
   font-family: "Schibsted Grotesk";
   src: url("./assets/fonts/SchibstedGrotesk-VariableFont_wght.ttf") format("truetype");
@@ -44,7 +47,7 @@
   font-display: swap;
 }
 
-/* The Figma library's variables carry the same names and values (light mode only): https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5787 */
+/* The Figma library's variables carry the same names and values (light mode; dark values are in the block after this one): https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5787 */
 :root {
   color-scheme: light;
 
@@ -99,7 +102,8 @@
   --mark-on-video: #ffffffb3;
   --best: #c6f135;
   --best-soft: #f3fcd6;
-  --best-foreground: #3d5600;
+  /* Text on a lime fill. */
+  --best-foreground: #111111;
   --live: #c6f135;
   --watch-bar: #75bad1;
   --poster-mark: #1111119e;
@@ -118,6 +122,10 @@
   --bar-muted-foreground: #b5b5ae;
   --scrim: #1111114d;
   --shadow: #1111111f;
+  /* The 1px lit top edge of anything raised; only dark draws it. */
+  --edge-highlight: #ffffff00;
+  /* The fill of a control (outline buttons, checkboxes, radios, selects, fields, filter chips, option and choice cards). */
+  --control: #ffffff;
   --inline-control: #f1f4f8;
   --inline-control-hover: #e8edf4;
   --inline-control-border: #7889a3;
@@ -209,6 +217,101 @@
   --motion-scale-dialog: 0.98;
 }
 
+/*
+ * Dark mode, cool night. Lighter is higher: page < card < sunken (muted) < menus and dialogs (popover) < bars.
+ * Hover, selected and pressed are translucent white so one value lifts whatever surface they sit on.
+ * Controls fill with the surface under them (control is transparent) and their edge draws them.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: #0c0f14;
+  --card: #12161c;
+  --card-foreground: #ebeef3;
+  --popover: #1e2430;
+  --popover-foreground: #ebeef3;
+  --muted: #171c24;
+  --secondary: #171c24;
+  --secondary-foreground: #ebeef3;
+  --accent: #191e26;
+  --accent-foreground: #ebeef3;
+  --surface-hover: #ffffff0a;
+  --surface-pressed: #ffffff1a;
+  --selected: #ffffff12;
+  --foreground: #ebeef3;
+  --muted-foreground: #aab3c1;
+  --subtle-foreground: #959eac;
+  --faint-foreground: #4b5361;
+  --border: #262c36;
+  --input: #6a7486;
+  /* "On" states invert: the brightest neutral, with dark ticks and labels on it. */
+  --primary: #ebeef3;
+  --primary-hover: #cdd4de;
+  --primary-pressed: #ffffff;
+  --primary-foreground: #0c0f14;
+  /* Glow-blue keeps its fill; hover brightens instead of darkening. */
+  --action: #9ecae1;
+  --action-hover: #b3d7ea;
+  --action-pressed: #8bbfdb;
+  --action-foreground: #07080b;
+  --plex: #e5a00d;
+  --plex-hover: #f3aa0e;
+  --plex-pressed: #d19209;
+  --plex-foreground: #111111;
+  --jellyfin: #00a4dc;
+  --jellyfin-hover: #1ab3e8;
+  --jellyfin-pressed: #0093c6;
+  --jellyfin-foreground: #07080b;
+  --foreground-on-dark: #ece9e1;
+  --muted-foreground-on-dark: #b8b9b6;
+  --destructive-on-dark: #f2a097;
+  --card-on-dark: #ffffff0d;
+  /* White 35%: 3.1:1 on the sign-in ground (white 24% was 2.0:1). */
+  --input-on-dark: #ffffff59;
+  --surface-on-video: #111111d9;
+  --surface-hover-on-video: #ffffff14;
+  --surface-pressed-on-video: #ffffff1f;
+  --border-on-video: #ffffff1f;
+  --kbd-on-video: #ffffff26;
+  --mark-on-video: #ffffffb3;
+  /* Lime keeps its fill; it is never text here, only a fill, an icon or a thin line on the dark page. */
+  --best: #c6f135;
+  --best-soft: #1a2211;
+  --best-foreground: #0c0f14;
+  --live: #c6f135;
+  --watch-bar: #75bad1;
+  --poster-mark: #1111119e;
+  /* One red for text and fill; its buttons take near-black words. */
+  --destructive: #f07f76;
+  --destructive-hover: #f4978f;
+  --destructive-pressed: #e2665d;
+  --destructive-soft: #2d1719;
+  --destructive-foreground: #0c0f14;
+  --warning: #e3a447;
+  --warning-soft: #2a2113;
+  --warning-foreground: #0c0f14;
+  --ring: #ebeef3;
+  --focus-on-dark: #ffffff;
+  --bar: #242b38;
+  --bar-foreground: #f2f4f7;
+  --bar-muted-foreground: #b2bac7;
+  --scrim: #000000a3;
+  --shadow: #00000099;
+  --edge-highlight: #ffffff14;
+  --control: #ffffff00;
+  --inline-control: #1a2230;
+  --inline-control-hover: #222d3e;
+  --inline-control-border: #61738f;
+  --inline-control-border-hover: #7184a1;
+  --inline-control-foreground: #b9c9e2;
+  /* Download circles: brighter steps so a 2px ring holds 3:1 on card. Blocked stays the deeper red. */
+  --status-queued: #f28b3b;
+  --status-downloading: #5cbf48;
+  --status-importing: #a584ec;
+  --status-stalled: #f2827a;
+  --status-blocked: #e0433a;
+}
+
 /* Under reduced motion every slide and scale becomes a plain fade, size changes are instant and loops stop. */
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -251,6 +354,11 @@
   background-attachment: fixed;
   background-position: -75vw 0;
   animation: skeleton-sweep var(--duration-shimmer) var(--ease-linear) infinite;
+
+  /* White 90% would flash on the dark page; dark sweeps a faint glow-blue band. */
+  @variant dark {
+    background-image: linear-gradient(105deg, transparent 40%, rgb(158 202 225 / 0.1) 50%, transparent 60%);
+  }
 }
 
 /*
@@ -382,6 +490,8 @@
   --color-bar-muted-foreground: var(--bar-muted-foreground);
   --color-scrim: var(--scrim);
   --color-shadow: var(--shadow);
+  --color-edge-highlight: var(--edge-highlight);
+  --color-control: var(--control);
   --color-inline-control: var(--inline-control);
   --color-inline-control-hover: var(--inline-control-hover);
   --color-inline-control-border: var(--inline-control-border);
@@ -406,6 +516,10 @@
   --ease-in: var(--ease-in);
   --ease-in-out: var(--ease-in-out);
   --ease-linear: var(--ease-linear);
+
+  /* The one shadow every floating thing casts (DESIGN.md Elevation); light resolves to 0 2px 6px #1111110F, 0 8px 24px #1111111F. */
+  --shadow-float: inset 0 1px 0 var(--edge-highlight), 0 2px 6px color-mix(in srgb, var(--shadow) 50%, transparent), 0 8px 24px var(--shadow);
+  --shadow-float-up: inset 0 1px 0 var(--edge-highlight), 0 -2px 6px color-mix(in srgb, var(--shadow) 50%, transparent), 0 -8px 24px var(--shadow);
 }
 
 @utility font-ui {

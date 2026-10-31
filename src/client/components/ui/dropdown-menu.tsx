@@ -12,8 +12,7 @@ import { cn } from '@/lib/utils';
 
 // The float shadow every floating surface shares (DESIGN.md: only things that float get a shadow).
 const content = cn(
-  'flex w-62 flex-col rounded-lg border border-border bg-card p-1 text-foreground outline-hidden',
-  'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]',
+  'flex w-62 flex-col rounded-lg border border-border bg-popover p-1 text-foreground outline-hidden shadow-float',
   // Fade and a 4 px slide from the trigger; in with ease-out, out with ease-in.
   'transition-[opacity,translate] duration-(--duration-fast) ease-out data-ending-style:ease-in',
   'data-starting-style:opacity-0 data-ending-style:opacity-0',
