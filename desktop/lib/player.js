@@ -30,6 +30,16 @@ const fileEvent = (event, playing, loaded) => {
  */
 const playsOnOpen = (playing) => playing.paused !== true;
 
+/**
+ * Whether the page hears mpv's position for `playing`. mpv reports one as soon as a file opens, still paused and before
+ * anything is drawn; the page takes the first one as playing and swapped its opening screen for controls over an empty
+ * picture. So each load stays on the opening screen until mpv has drawn its first frame (`drawn`, from
+ * `playback-restart`) and the tracks are picked and playback let go (`begun`). Playback moving a second past where it
+ * started also counts, should mpv skip `playback-restart`.
+ */
+const showsPosition = (playing) => !playing || (playing.drawn === true && playing.begun === true)
+  || (typeof playing.position === 'number' && typeof playing.startedAt === 'number' && playing.position > playing.startedAt + 1);
+
 /** `address` with the scheme, host and port of `origin`. */
 const withOrigin = (address, origin) => {
   const url = new URL(address);
@@ -59,4 +69,4 @@ const subtitleScale = (value) => (SUBTITLE_SCALES.includes(value) ? value : null
 /** Settings' Appearance choice for nativeTheme.themeSource: light, dark or system, or null for anything else. */
 const themeSource = (value) => (['light', 'dark', 'system'].includes(value) ? value : null);
 
-module.exports = { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale, themeSource };
+module.exports = { fileEvent, playsOnOpen, showsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource };

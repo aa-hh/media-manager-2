@@ -7,7 +7,7 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
+const { fileEvent, playsOnOpen, showsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -111,7 +111,11 @@ function createWindow() {
   const contents = win.webContents;
   // As in native Mac apps, the app's frame is not selectable; fields and elements marked select-text still are.
   contents.on('dom-ready', () => { void contents.insertCSS(NO_SELECT_CSS); });
-  contents.on('did-finish-load', () => { if (originOf(contents.getURL()) === appOrigin) testEarly(); });
+  contents.on('did-finish-load', () => {
+    if (originOf(contents.getURL()) !== appOrigin) return;
+    testEarly();
+    startMpvEarly();
+  });
   // A reload or a full page load of the app ends the page that drove mpv: mpv stops, so it never outlives its controls.
   // The app's own address changes are same-document and pass; other origins are refused below and never load.
   contents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument }) => {
@@ -292,6 +296,35 @@ const ensureMpv = () => {
   mpv.onEvent(onMpvEvent);
   return mpv;
 };
+// mpv starts with the app page rather than at the first Play. Its window and picture setup still come with each file.
+// An addon that does not load fails only playback, as before.
+const startMpvEarly = () => {
+  try {
+    ensureMpv();
+  } catch (error) {
+    console.error('desktop: mpv did not start:', error);
+  }
+};
+
+// Each Play's steps, in ms since it was asked, as one JSON line in play-timings.log beside desktop.json, so a slow start
+// can be read back step by step. Only a step's first time counts: a retry's reload keeps the first load's numbers.
+// razor: a plain file the owner reads by hand; upgrade path is sending them to the server's log if they stay useful.
+const mark = (playing, step) => {
+  if (playing?.marks && !(step in playing.marks)) playing.marks[step] = Date.now() - playing.askedAt;
+};
+const writeMarks = (playing) => {
+  if (!playing?.marks || playing.marksWritten) return;
+  playing.marksWritten = true;
+  const line = { at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, ...playing.marks };
+  fs.appendFile(path.join(app.getPath('userData'), 'play-timings.log'), `${JSON.stringify(line)}\n`, () => {});
+};
+// Sends the position held back while the load opened, once showsPosition lets it through.
+const release = (playing) => {
+  if (current !== playing || !showsPosition(playing)) return;
+  mark(playing, 'shown');
+  writeMarks(playing);
+  send('position', playing.position);
+};
 
 const TRACK_FIELDS = { id: 'number', type: 'string', 'ff-index': 'number', lang: 'string', title: 'string', codec: 'string', external: 'boolean', selected: 'boolean', default: 'boolean' };
 // mpv only gives the whole track list as display text over this addon, so it is read field by field.
@@ -318,6 +351,9 @@ function onMpvEvent(event) {
           current.played = true;
           current.tries = { token: 0, same: 0 };
         }
+        if (!showsPosition(current)) return;
+        mark(current, 'shown');
+        writeMarks(current);
       }
       send('position', position);
     } else if (name === 'duration') {
@@ -331,14 +367,24 @@ function onMpvEvent(event) {
     else if (name === 'track-list') readTracks().then((tracks) => send('tracks', tracks), () => {});
   } else if (event.event === 'log-message') {
     if (current && /HTTP error 401/i.test(String(event.value))) current.unauthorized = true;
+  } else if (event.event === 'playback-restart') {
+    // mpv drew the first frame after a load or a seek.
+    if (current && current === loaded && current.drawn === false) {
+      current.drawn = true;
+      mark(current, 'firstFrame');
+      release(current);
+    }
   } else if (event.event === 'file-loaded' || event.event === 'end-file') {
     const meaning = fileEvent(event, current, loaded);
-    if (meaning === 'opened') startPlaying().catch(() => {}); // a track that cannot be picked still plays, with mpv's own choice
-    else if (meaning === 'finished') {
+    if (meaning === 'opened') {
+      mark(current, 'fileOpened');
+      startPlaying().catch(() => {}); // a track that cannot be picked still plays, with mpv's own choice
+    } else if (meaning === 'finished') {
       current = null;
       send('endOfFile');
     } else if (meaning !== null) void recover(meaning);
   } else if (event.event === 'window' && event.name === 'attached') {
+    mark(current, 'window');
     applyLayout();
   }
 }
@@ -359,7 +405,11 @@ async function startPlaying() {
       if (subtitle) await selectSubtitle({ url: subtitle.external ? subtitle.key : null, ffIndex: subtitle.ffIndex }, tracks);
     }
   } finally {
-    if (playsOnOpen(playing)) await mpv.setProperty('pause', 'no');
+    // A refused unpause must still let the page past its opening screen.
+    if (playsOnOpen(playing)) await mpv.setProperty('pause', 'no').catch(() => {});
+    playing.begun = true;
+    mark(playing, 'begun');
+    release(playing);
   }
 }
 
@@ -403,13 +453,17 @@ async function loadAddress(playing, address, startSeconds, directPlay) {
   playing.unauthorized = false;
   playing.startedAt = startSeconds;
   playing.position = startSeconds;
+  playing.drawn = false;
+  playing.begun = false;
   loaded = playing;
+  mark(playing, 'loadfile');
   await mpv.command(['loadfile', address, 'replace']);
 }
 
 // One /api/playback/start, a tested Plex address, and mpv loading it. `playing` is the title asked for; a newer load or a stop replaces it.
 async function start(playing, offsetSeconds, retest) {
   const { status, json } = await appRequest('POST', '/api/playback/start', requestBody(playing.ask, playing.flags, offsetSeconds));
+  mark(playing, 'startReply');
   if (status !== 200 || json === null || !Array.isArray(json.streamAddresses)) {
     throw new Error(typeof json?.error === 'string' ? json.error : `start failed (${status})`);
   }
@@ -418,6 +472,7 @@ async function start(playing, offsetSeconds, retest) {
   if (typeof json.machineIdentifier === 'string' && json.machineIdentifier !== '') serverId = json.machineIdentifier;
   const origin = await plexAddresses.pick(originsOf(json.streamAddresses, json.directAddressCount), retest);
   if (origin === null) throw new Error('plex_unreachable');
+  mark(playing, 'addressPicked');
   if (current !== playing) throw new Error('replaced');
   playing.reply = json;
   playing.address = addresses.find((address) => originOf(address) === origin);
@@ -433,6 +488,8 @@ async function recover(failure, playing = current) {
   if (!playing || current !== playing) return;
   const step = nextStep(playing.flags, failure, playing.played, playing.tries);
   if (step.kind === 'give-up') {
+    mark(playing, 'failed');
+    writeMarks(playing);
     current = null;
     send('error', { message: 'Plex couldn’t play this, in any of the ways tried.', tried: playing.tried });
     return;
@@ -526,7 +583,10 @@ const finite = (value) => {
 
 handle('player:load', async (ask) => {
   const { ask: wanted, offsetSeconds, flags } = readAsk(ask);
-  current = { ask: wanted, flags, tried: [planLabel(flags)], tries: { token: 0, same: 0 }, played: false, paused: false, position: offsetSeconds, duration: null };
+  current = {
+    ask: wanted, flags, tried: [planLabel(flags)], tries: { token: 0, same: 0 }, played: false, paused: false, position: offsetSeconds, duration: null,
+    askedAt: Date.now(), marks: {},
+  };
   const playing = current;
   // The old file ends now, with reason stop, so it cannot fail or finish into this load while its start request runs.
   if (mpv) void mpv.command(['stop']).catch(() => {});

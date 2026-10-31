@@ -54,6 +54,12 @@ export const startOnPage = (
   from,
   onUnauthenticated,
   signal,
+  // The page already has the title's detail, so Play fetches nothing before the player opens.
+  {
+    reply: subject.type === 'tv'
+      ? { title: subject.detail.title, episodes: subject.detail.episodes, watch: watch as SeriesWatch, backdropUrl: subject.detail.backdropUrl }
+      : { watch: watch as MovieWatch, backdropUrl: subject.detail.backdropUrl },
+  },
 );
 
 /** One Play at a time per button: true while it loads; Esc or leaving the page cancels it. */

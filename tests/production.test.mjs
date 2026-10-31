@@ -15022,7 +15022,7 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const { fileEvent, playsOnOpen, showsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -15053,6 +15053,15 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   // Leaving a new load paused turns the first row red.
   assert.equal(playsOnOpen({ paused: false }), true);
   assert.equal(playsOnOpen({ paused: true }), false);
+
+  // Letting a position through before the first frame and the unpause brings back the controls over an empty picture at
+  // 0:00; never letting it through once playback moves leaves the opening screen up should mpv skip playback-restart.
+  assert.equal(showsPosition(null), true);
+  assert.equal(showsPosition({ drawn: false, begun: false, startedAt: 0, position: 0 }), false);
+  assert.equal(showsPosition({ drawn: true, begun: false, startedAt: 0, position: 0 }), false);
+  assert.equal(showsPosition({ drawn: false, begun: true, startedAt: 0, position: 0 }), false);
+  assert.equal(showsPosition({ drawn: true, begun: true, startedAt: 0, position: 0 }), true);
+  assert.equal(showsPosition({ drawn: false, begun: true, startedAt: 600, position: 601.5 }), true);
 
   // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);

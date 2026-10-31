@@ -18,7 +18,7 @@ import {
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
 } from './model';
-import { setPlayerHandler, type OpenRequest, type PlayerTitle } from './open';
+import { setPlayerHandler, type Loaded, type OpenRequest, type PlayerSeries, type PlayerTitle } from './open';
 import { PlayerScreen, type UpNextView } from './PlayerScreen';
 import './player.css';
 
@@ -37,7 +37,7 @@ const idsOf = (reply: StartReply | null) => ({
 
 // --- State
 
-type SeriesReply = { title: string; episodes: EpisodeDetail[]; watch: SeriesWatch };
+type SeriesReply = PlayerSeries;
 type NextItem = { request: LoadRequest; title: PlayerTitle; view: Omit<UpNextView, 'countdown' | 'steps' | 'onPlayNow'> };
 type UpNext =
   | { kind: 'choosing' }
@@ -108,6 +108,8 @@ type Sound = { volume: number; muted: boolean };
 const soundOf = (reply: StartReply, was: Sound) => ({ volume: reply.volume ?? was.volume, muted: reply.muted ?? was.muted });
 /** The subtitle delay in seconds that Plex saved for a track; 0 for Off or a track with none. */
 const savedDelay = (track: SubtitleTrack | null | undefined) => (track?.offsetMs ?? 0) / 1000;
+// Stands in while a Play works out what it plays: only the opening screen reads it, and it never reaches the desktop app.
+const OPENING_REQUEST: LoadRequest = { ratingKey: '', mediaIndex: 0, partIndex: 0, offsetSeconds: 0, flags: { directPlay: true, directStream: true, directStreamAudio: true } };
 
 const startFailure = (error: unknown, name: string) => {
   const text = error instanceof Error ? error.message : '';
@@ -145,6 +147,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   }, [setSound]);
   const fullscreenRef = useRef(false);
   const loads = useRef(0);
+  const givenSeries = useRef<{ id: number; promise: Promise<SeriesReply> } | null>(null);
   const playedMs = useRef(0);
   const returnFocus = useRef<HTMLElement | null>(null);
   const downloadsRef = useRef(downloads);
@@ -247,16 +250,39 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     if (focus !== null) window.requestAnimationFrame(() => { if (focus.isConnected) focus.focus(); });
   }, [bridge, commit, post, sendTimeline, setFullscreen]);
 
-  const open = useCallback(async ({ request, title }: OpenRequest) => {
+  // A Play from a card or title page. As in Plex's own app, the opening screen shows at once; what to play is worked out
+  // behind it, and the title playing stops now rather than under the opening screen.
+  const open = useCallback(async ({ title, loaded, series }: OpenRequest) => {
     const s = sessionRef.current;
-    if (s?.reply != null) sendTimeline(s, 'stopped');
+    if (s?.reply != null) {
+      sendTimeline(s, 'stopped');
+      void bridge?.stop().catch(() => undefined);
+    }
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest('[data-player-root]') === null) returnFocus.current = active;
-    const path = `/play/${request.ratingKey}`;
-    if (isPlayAddress(window.location.pathname)) replace(path);
-    else navigate(path);
-    return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, title, true);
-  }, [sendTimeline, startLoad]);
+    const load = ++loads.current;
+    givenSeries.current = series === undefined || title.seriesId === null ? null : { id: title.seriesId, promise: series };
+    commit({
+      load, request: OPENING_REQUEST, title, reply: null, playback: openingAt(0), openedAt: Date.now(),
+      saved: { audio: false, subtitles: false, delay: false }, subtitleDelay: 0, upNext: null,
+    });
+    if (!isPlayAddress(window.location.pathname)) navigate('/play/');
+    let found: Loaded;
+    try {
+      found = await loaded;
+    } catch (error) {
+      if (loads.current === load) change((current) => ({ ...current, playback: { ...current.playback, phase: 'failed', failure: { message: startFailure(error, title.name), tried: [] } } }));
+      return false;
+    }
+    if (loads.current !== load) return false;
+    if (found === null) {
+      close();
+      return false;
+    }
+    const { request } = found;
+    if (isPlayAddress(window.location.pathname)) replace(`/play/${request.ratingKey}`);
+    return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, { ...title, backdropUrl: found.backdropUrl }, true);
+  }, [bridge, change, close, commit, sendTimeline, startLoad]);
 
   const fetchSeries = useCallback((id: number) => getJson<SeriesReply>(`/api/library/series/${id}`, unauthenticatedRef.current), []);
 
@@ -443,7 +469,10 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       return undefined;
     }
     const controller = new AbortController();
-    getJson<SeriesReply>(`/api/library/series/${seriesId}`, unauthenticatedRef.current, controller.signal).then(setSeries, () => undefined);
+    // The Play that opened the player may already hold the show, or be fetching it.
+    const given = givenSeries.current?.id === seriesId ? givenSeries.current.promise : null;
+    (given ?? getJson<SeriesReply>(`/api/library/series/${seriesId}`, unauthenticatedRef.current, controller.signal))
+      .then((show) => { if (!controller.signal.aborted) setSeries(show); }, () => undefined);
     return () => controller.abort();
   }, [seriesId]);
 
@@ -845,8 +874,8 @@ export function Player() {
         else if (screen === 'opening') controller.close();
         else if (context?.fullscreen === true) controller.setFullscreen(false);
         else window.history.back();
-      } else if (screen === 'up-next') {
-        // Enter belongs to Play now, which holds focus.
+      } else if (screen === 'up-next' || screen === 'opening') {
+        // Up Next: Enter belongs to Play now, which holds focus. Opening: nothing plays yet to pause, seek or turn up.
       } else if (soundKey !== null) {
         event.preventDefault();
         if (soundKey.kind === 'mute') controller.toggleMute();
