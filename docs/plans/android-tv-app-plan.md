@@ -514,10 +514,11 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - **Verify:** previews compile; build green.
 
 **T14 · First-launch address and link-code screens**
-- **Files:** the `AddressScreen.kt` and `LinkCodeScreen.kt` stubs.
+- **Files:** the `AddressScreen.kt` and `LinkCodeScreen.kt` stubs; new `…/tv/ui/signin/Planet.kt` and its shader source under `android-tv/app/src/main/assets/`.
 - **What:** Build from S4c on T08. Show the frames' wording for `setup_required` ("Finish setup in a browser first."), `owner_only`, `flow_expired` and `rate_limited`.
+  - The planet behind these screens is the desktop's, exactly (owner, 31 Oct): port `src/client/signInPlanet.ts` (WebGL 2 fragment shader, 3D noise texture) to OpenGL ES 3.0 in a `GLSurfaceView` or `TextureView` hosted in Compose, keeping its constants, palette, the `idle` / `checking` / `success` states with their targets, durations and delays, the 0.5 render scale and the 24 fps step while idle or checking. Idle on the address and code screens, checking while connecting or waiting for the code, success when signed in. When Android's animator duration scale is 0, draw one still frame (the desktop's reduced-motion path). Tint and layout follow the T03c frames.
 - **Kind:** new-code · **Depends on:** T13a, T08
-- **Model:** Sonnet 5.5. **Effort:** medium.
+- **Model:** Opus 5.5 (raised from Sonnet for the shader port). **Effort:** medium.
 - **Verify:** build green; checked in S6b.
 
 **T19 · Update prompt**
