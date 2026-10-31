@@ -36,7 +36,7 @@ class DownloadsModelTest {
     private fun problem(
         id: Long = 1,
         kind: String = "stalled",
-        subject: ProblemSubject = ProblemSubject("torrent", null, hash),
+        subject: ProblemSubject = ProblemSubject("torrent", null, this.hash),
         hash: String? = this.hash,
         state: String = "handling",
     ) = Problem(id, kind, subject, hash, state, "No seeders.")
