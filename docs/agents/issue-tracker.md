@@ -36,7 +36,7 @@ Look the issue up by identifier (`AA-12`) or URL with the Linear tools. The user
 Used by `/wayfinder`.
 
 - **Map**: an issue in `P-AA-1` labelled `wayfinder:map`; its description is the map body.
-- **Child ticket**: a sub-issue of the map (set `parentId`), labelled `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Planning types stay in `P-AA-1`; an epic (`task`) gets its own `V1 · …` project.
+- **Child ticket**: a sub-issue of the map (set `parentId`), labelled `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Planning types stay in `P-AA-1`; an epic (`task`) gets its own `V1 · …` or `V2 · …` project.
 - **Blocking**: Linear's native "blocked by" relation. A ticket is unblocked when every blocker is Done or Canceled.
 - **Frontier**: the map's sub-issues that are open, unblocked, and unassigned; lowest identifier number first.
 - **Claim**: assign the issue to the person driving the map before any work.
