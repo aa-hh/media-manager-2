@@ -69,7 +69,9 @@ class BrowseTest {
             """{"results":[$hit],"services":{"sonarr":{"kind":"ok","count":0},"radarr":{"kind":"ok","count":1}}}""" + "\n")
         val seen = mutableListOf<SearchAnswer>()
         val result = browse.search("  heat   1995 ") { seen += it }
-        assertEquals("/api/search?q=heat%201995", server.takeRequest().path)
+        val url = server.takeRequest().requestUrl!!
+        assertEquals("/api/search", url.encodedPath)
+        assertEquals("heat 1995", url.queryParameter("q"))
         assertEquals(listOf(false, true), seen.map { it.complete })
         assertEquals(949, (result as ApiResult.Ok).value.results.single().tmdbId)
     }
