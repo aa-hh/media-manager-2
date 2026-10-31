@@ -1,4 +1,4 @@
-// Figma: RowSignedInTv — https://www.figma.com/design/dFQMjELOx6ObLS0qOG3NCF?node-id=23-1657
+// Figma: RowSignedInTv — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=154-1621
 import type { ComponentProps, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
