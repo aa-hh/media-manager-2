@@ -153,9 +153,10 @@ class DownloadsFeed(
         setLive(false)
         // Reading the snapshot finds an expired session (the client then reports it signed out); otherwise the stream
         // reopens after a growing wait, as after a proxy's 502 mid-deploy or the server's stream limit.
+        // A read overtaken by a newer one (a reload under way) still reopens; only a release or a 401 stops it.
         scope.launch {
             val result = load()
-            if (users == 0 || connection != null || result == LoadResult.Unauthorized || result == LoadResult.Stale) return@launch
+            if (users == 0 || connection != null || result == LoadResult.Unauthorized) return@launch
             val wait = reopenDelay
             reopenDelay = minOf(reopenDelay * 2, MAX_REOPEN_MS)
             reopenJob = scope.launch {

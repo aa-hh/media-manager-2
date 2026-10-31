@@ -120,6 +120,29 @@ class DownloadsFeedTest {
         assertEquals("an open stream resets the wait to 2 s", 4, setup.stream.listeners.size)
     }
 
+    // A reload under way when the stream closes makes the close's own read stale; treating stale as "stop" leaves the
+    // stream closed for good and the TV never live again. Skipping the reopen on a stale read turns this red.
+    @Test
+    fun aStreamThatClosesDuringAReloadStillReopens() = runTest {
+        val setup = Setup(this)
+        setup.feed.acquire()
+        setup.stream.current.opened()
+        runCurrent()
+        setup.source.answer(0, snapshotNamed("first"))
+        runCurrent()
+        setup.stream.current.closed()
+        runCurrent()
+        backgroundScope.launch { setup.feed.reload() }
+        runCurrent()
+        setup.source.answer(1, snapshotNamed("stale"))
+        setup.source.answer(2, snapshotNamed("reloaded"))
+        runCurrent()
+        advanceTimeBy(2_001)
+        runCurrent()
+        assertEquals(2, setup.stream.listeners.size)
+        assertEquals(DownloadsState.Ready(snapshotNamed("reloaded"), live = false), setup.feed.state.value)
+    }
+
     // Reopening with an expired session would retry forever; ignoring the 401 turns this red.
     @Test
     fun anExpiredSessionStopsTheReopening() = runTest {
