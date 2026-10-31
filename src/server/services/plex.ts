@@ -123,6 +123,39 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     return { title: typeof body.title === 'string' ? body.title : '', items: metadata(body) };
   };
 
+  // A playlist's collage (Plex draws it from the list's items), sized for a TV card. Plex answers with the list's own
+  // composite address, whose last part changes when the list does, so it doubles as a cache key. Off when Plex is unset,
+  // not_found when Plex has no such list or no picture; throws when Plex is unreachable or refuses.
+  const playlistCollage = async (id: string): Promise<
+    { kind: 'off' } | { kind: 'not_found' } | { kind: 'ok'; key: string; load: () => Promise<{ bytes: Uint8Array; contentType: string }> }
+  > => {
+    const configuration = readConfiguration();
+    if (configuration === undefined) return { kind: 'off' };
+    const result = await request(`/playlists/${encodeURIComponent(id)}`);
+    if (result.status === 404) return { kind: 'not_found' };
+    if (result.status < 200 || result.status > 299) throw new Error('Plex refused the playlist.');
+    const body = isRecord(result.body) ? result.body.MediaContainer : undefined;
+    if (!isRecord(body)) throw new Error('Plex sent an unreadable reply for the playlist.');
+    const composite = metadata(body)[0]?.composite;
+    if (typeof composite !== 'string' || !/^\/playlists\/\d{1,12}\/composite\/\d{1,15}$/.test(composite)) return { kind: 'not_found' };
+    const load = async () => {
+      let response: Response;
+      try {
+        response = await requestWithTimeout(fetchImpl, `${configuration.url.replace(/\/+$/, '')}${composite}?width=600&height=600`, {
+          headers: { 'X-Plex-Token': configuration.token, Accept: 'image/jpeg,image/png' },
+        });
+      } catch {
+        throw new Error('Plex is unreachable.');
+      }
+      const contentType = response.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase() ?? '';
+      if (response.status < 200 || response.status > 299 || !['image/jpeg', 'image/png'].includes(contentType)) {
+        throw new Error('Plex refused the playlist picture.');
+      }
+      return { bytes: new Uint8Array(await response.arrayBuffer()), contentType };
+    };
+    return { kind: 'ok', key: composite, load };
+  };
+
   // Watch-state writes; each throws when Plex is unset, unreachable or refuses. Marking by hand sets played or unplayed
   // without adding to Plex's watch history, and works on a show to mark every episode.
   const write = async (path: string, what: string) => {
@@ -174,5 +207,5 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     });
   };
 
-  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, playlists, playlistItems, markWatched, removeFromContinueWatching, webhooks, setWebhooks };
+  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, playlists, playlistItems, playlistCollage, markWatched, removeFromContinueWatching, webhooks, setWebhooks };
 };

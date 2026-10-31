@@ -249,7 +249,7 @@ if (database !== undefined) {
       history: createHistory({ database, arr, labels }),
       blocklist,
     }),
-    images: createImageRoutes(titles, tmdbImages),
+    images: createImageRoutes(titles, tmdbImages, plex.playlistCollage),
     cache: createCacheRoutes(database, imageDirectory, titles.reconcile),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),

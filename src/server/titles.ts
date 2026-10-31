@@ -425,12 +425,39 @@ const serveImage = (context: Context, found: StoredImage) => {
   });
 };
 
+type PlexCollage = (id: string) => Promise<
+  { kind: 'off' } | { kind: 'not_found' } | { kind: 'ok'; key: string; load: () => Promise<{ bytes: Uint8Array; contentType: string }> }
+>;
+// The newest few Plex list collages, by Plex's composite address, which changes when the list does.
+const KEPT_COLLAGES = 32;
+
 export const createImageRoutes = (
   cache: Pick<ReturnType<typeof createTitleCache>, 'image'>,
   tmdb?: ReturnType<typeof createTmdbImages>,
+  plexCollage?: PlexCollage,
 ) => {
   const routes = new Hono();
   routes.use('*', etag());
+  if (plexCollage !== undefined) {
+    const collages = new Map<string, { bytes: Uint8Array; contentType: string }>();
+    // Fetched through the server so the Plex token never reaches the TV or the page.
+    routes.get('/plex/playlist/:id{[0-9]{1,12}}', async (context) => {
+      let found: { bytes: Uint8Array; contentType: string };
+      try {
+        const collage = await plexCollage(context.req.param('id'));
+        if (collage.kind === 'off') return context.json({ error: 'not_configured' }, 503);
+        if (collage.kind === 'not_found') return context.json({ error: 'not_found' }, 404);
+        const kept = collages.get(collage.key);
+        found = kept ?? await collage.load();
+        collages.delete(collage.key);
+        collages.set(collage.key, found);
+        while (collages.size > KEPT_COLLAGES) collages.delete(collages.keys().next().value as string);
+      } catch {
+        return context.json({ error: 'plex_unavailable' }, 502);
+      }
+      return context.body(new Uint8Array(found.bytes), 200, { 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=300' });
+    });
+  }
   routes.get('/:service{sonarr|radarr}/:id{[0-9]{1,18}}/:kind{poster|fanart}', (context) => {
     const found = cache.image(
       context.req.param('service') as Service,
