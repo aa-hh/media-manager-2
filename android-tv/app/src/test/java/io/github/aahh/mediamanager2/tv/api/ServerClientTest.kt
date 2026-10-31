@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 private class MemoryCookieStore : CookieStore {
@@ -33,7 +34,20 @@ class ServerClientTest {
     fun stop() = server.shutdown()
 
     private fun newClient(clock: () -> Long = System::currentTimeMillis) =
-        ServerClient(origin, ServerCookieJar(origin.toHttpUrl(), store, clock))
+        ServerClient(origin, ServerCookieJar(origin.toHttpUrl(), store, clock), allowHttp = true)
+
+    // The session cookie and sign-in go only over https: building a client for an http server, or following a redirect
+    // from https down to http, turns this red.
+    @Test
+    fun onlyAnHttpsServerIsUsed() {
+        try {
+            ServerClient("http://media.example.com", ServerCookieJar("http://media.example.com".toHttpUrl(), store, System::currentTimeMillis))
+            fail("an http server address was accepted")
+        } catch (expected: IllegalArgumentException) {
+        }
+        val client = ServerClient("https://media.example.com", ServerCookieJar("https://media.example.com".toHttpUrl(), store, System::currentTimeMillis))
+        assertFalse(client.http.followSslRedirects)
+    }
 
     // requireBrowserPost refuses a write without these three headers; dropping any of them, or sending them on a GET,
     // turns this red.

@@ -20,7 +20,7 @@ class LibraryPlaybackTest {
     private val client = ServerClient(origin, ServerCookieJar(origin.toHttpUrl(), object : CookieStore {
         override fun load() = emptyList<String>()
         override fun save(cookies: List<String>) = Unit
-    }))
+    }), allowHttp = true)
     private val library = LibraryApi(client)
     private val playback = PlaybackApi(client, "14")
 

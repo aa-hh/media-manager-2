@@ -8,7 +8,8 @@ The Google TV app: Kotlin, Compose for TV and Media3, one Gradle module (`app`).
 
 - Build, test and install only through `scripts/android-tv.sh`; the hook denies bare `gradle` and `gradlew`.
 - The Plex client (the player's data source) is a separate OkHttpClient with no cookie jar, so our session cookie never reaches Plex.
-- No token appears in a log: replace every `X-Plex-Token` value and cookie value with its short SHA-256 (`sha256:` and 8 hex digits) before logging.
+- No token appears in a log: every `X-Plex-Token` and cookie value becomes its short SHA-256 (`scrub`).
+- Our server is https only; cleartext is for Plex streams alone.
 - Stream addresses come only from `POST /api/playback/start`; never build a Plex address yourself.
 - Every non-GET request to our server carries `Origin`, `X-Requested-With: media-manager-2` and `Content-Type: application/json`, as a browser would.
 - A grab is blocked while one is in flight and is never resent. A grab that errors is settled from history, because the server may have sent it anyway.
@@ -21,4 +22,4 @@ The Google TV app: Kotlin, Compose for TV and Media3, one Gradle module (`app`).
 - `app/build.gradle.kts` → app id, SDK levels, ABIs, dependencies.
 - `gradle/libs.versions.toml` → every dependency version.
 - `app/src/main/java/io/github/aahh/mediamanager2/tv/` → `MainActivity`; `api/`, `downloads/`, `log/` (scrubbed log for Get logs), `player/`, `update/` and `ui/` as later tasks add them.
-- `app/src/main/res/xml/network_security_config.xml` → allows http server addresses, as desktop does.
+- `app/src/main/res/xml/network_security_config.xml` → allows cleartext, for Plex streams only.
