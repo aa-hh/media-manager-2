@@ -443,7 +443,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api, library, discover, titleDelete, images, setup, playback } = input;
+  const { fetch, fixtureOptions, events, onOpenStreams, timers, webhooks, api, library, discover, titleDelete, images, setup, playback } = input;
   const { createApp } = await import(appModuleUrl);
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const database = input.database ?? new DatabaseSync(':memory:');
@@ -459,6 +459,7 @@ const makeApp = async (input = {}) => {
     now,
     fetch: fetch ?? fixture.fetch,
     events,
+    onOpenStreams,
     timers,
     webhooks,
     api,
@@ -1666,11 +1667,11 @@ test('the sign-in screen re-checks an unfinished Plex sign-in a few times, holds
 });
 
 test('event stream delivery', async (t) => {
-  const setup = async () => {
+  const setup = async (extra = {}) => {
     const clock = { value: 1_800_000_000_000 };
     const events = (await import(eventsModuleUrl)).createEventHub();
     const timers = createFakeTimers(clock);
-    const { app } = await makeApp({ clock, events, timers });
+    const { app } = await makeApp({ clock, events, timers, ...extra });
     return { app, clock, events, timers };
   };
   const logout = (app, session) => app.request('/auth/logout', {
@@ -1763,9 +1764,10 @@ test('event stream delivery', async (t) => {
     await second.reader.cancel();
   });
 
-  // Removing the stream cap, or failing to release a slot when a client disconnects, turns this red.
+  // Removing the stream cap, failing to release a slot when a client disconnects, or not reporting the open-stream count to the owner of the live poll, turns this red.
   await t.test('the 21st concurrent stream is refused with 503 and a closed stream frees its slot', async () => {
-    const { app } = await setup();
+    const counts = [];
+    const { app } = await setup({ onOpenStreams: (count) => counts.push(count) });
     const { session } = await signIn(app);
     const readers = [];
     for (let index = 0; index < 20; index += 1) {
@@ -1773,6 +1775,7 @@ test('event stream delivery', async (t) => {
       assert.equal(response.status, 200, String(index));
       readers.push(reader);
     }
+    assert.deepEqual(counts, Array.from({ length: 20 }, (_, index) => index + 1));
     const refused = await app.request('/api/events', { headers: { Cookie: session } });
     assert.equal(refused.status, 503);
     assert.match(refused.headers.get('content-type'), /application\/json/);
@@ -1780,6 +1783,7 @@ test('event stream delivery', async (t) => {
     await readers.shift().cancel();
     const { response, reader } = await openStream(app, session);
     assert.equal(response.status, 200);
+    assert.deepEqual(counts.slice(-2), [19, 20]);
     readers.push(reader);
     for (const open of readers) await open.cancel();
   });
@@ -5455,7 +5459,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     const events = createEventHub();
     const published = [];
     events.subscribe((event) => published.push(event));
-    const fake = { rows: [], fail: undefined, calls: [] };
+    const fake = { rows: [], fail: undefined, calls: [], viewers: true };
     const rtorrent = {
       call: async (method, params) => {
         fake.calls.push([method, params]);
@@ -5467,7 +5471,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
         return fake.rows;
       },
     };
-    const poller = createTorrentPoller({ database, rtorrent, events, now: () => clock.value, intervalMs: 30_000 });
+    const poller = createTorrentPoller({ database, rtorrent, events, now: () => clock.value, intervalMs: 30_000, hasViewers: () => fake.viewers });
     return { database, clock, published, fake, poller };
   };
 
@@ -5579,7 +5583,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
   });
 
   // Publishing unchanged rows, adding a torrent the full poll has not stored, moving lastSeenAt, crediting seeding time
-  // from the one-second refresh, or calling rTorrent while it is marked down turns this red.
+  // from the one-second refresh, calling rTorrent while it is marked down, or calling rTorrent while no event stream is open turns this red.
   await t.test('the one-second refresh updates and publishes only changed live values and leaves the seeding counter to the full poll', async () => {
     const { database, clock, published, fake, poller } = setup();
     // Live field order: the full row without name, size and directory.
@@ -5611,6 +5615,15 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     fake.rows = [row(hashA, { up: 70 }), row(hashB, { complete: 0, completed: 400, down: 99 })];
     await poller.poll();
     assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).seedingSeconds, 30);
+
+    // While no event stream is open, the refresh neither calls rTorrent nor publishes.
+    fake.viewers = false;
+    const idleCalls = fake.calls.length;
+    const idlePublished = published.length;
+    await poller.pollLive();
+    assert.equal(fake.calls.length, idleCalls);
+    assert.equal(published.length, idlePublished);
+    fake.viewers = true;
 
     // While the full poll has rTorrent marked down, the refresh does not call it.
     fake.fail = 'unreachable';
@@ -10707,10 +10720,15 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     if (input.torrentHost !== undefined) {
       database.prepare("INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, ?, 1, 1, NULL, 0, '')").run(input.torrentHost);
     }
+    const requests = [];
     const fake = (service) => ({
       configured: () => true,
       check: async () => input.statuses?.[service] ?? ok,
-      request: async (path) => ({ status: 200, body: { ...healthy, ...input.arr?.[service] }[path] }),
+      request: async (path) => {
+        requests.push(`${service} ${path}`);
+        if (input.fail?.[service]?.includes(path)) throw new Error(`${service} ${path} failed`);
+        return { status: 200, body: { ...healthy, ...input.arr?.[service] }[path] };
+      },
     });
     const notConfigured = [{ host: 'blutopia.cc', connection: { kind: 'not_configured' } }];
     const published = [];
@@ -10724,10 +10742,10 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       jobs: { status: () => input.jobs ?? [] },
       trackerAccounts: { stats: async () => input.accounts ?? notConfigured },
       events: { publish: (type, data) => { published.push({ type, data }); } },
-      now: () => now,
+      now: () => input.clock?.value ?? now,
     });
     const snapshot = await health.check();
-    return { snapshot, badge: published.at(-1), health, database };
+    return { snapshot, badge: published.at(-1), health, database, requests };
   };
 
   // Dropping a check, ranking a lower level above a higher one, or rewriting a service's own message turns this red.
@@ -10854,15 +10872,68 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     ]);
   });
 
-  // Leaving the health routes outside the sign-in guard, or not running the checks on demand, turns this red.
+  const slowPaths = new Set(['/api/v3/update', '/api/v3/downloadclient', '/api/v3/config/mediamanagement']);
+  const slowReadCount = (requests, service) => requests.filter((request) => {
+    const [name, path] = request.split(' ');
+    return slowPaths.has(path) && (service === undefined || name === service);
+  }).length;
+
+  // Re-reading the three before an hour, not re-reading them after an hour or after the service's address changes, dropping the last good values when a read fails, or ignoring a forced check turns this red.
+  await t.test('update, download client and media management settings are read hourly, on a forced check, and after the address changes, keeping the last good values when a read fails', async () => {
+    const { setSetting } = await import(settingsModuleUrl);
+    const minute = 60_000;
+    const clock = { value: now };
+    const input = { clock };
+    const { health, database, requests } = await run(input);
+    assert.equal(slowReadCount(requests), 6);
+    clock.value = now + 5 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 6);
+    clock.value = now + 60 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 12);
+
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://sonarr-two:8989');
+    clock.value = now + 65 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 15);
+    assert.equal(slowReadCount(requests, 'sonarr'), 9);
+
+    const removing = [{ name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: true, removeFailedDownloads: true }];
+    input.arr = { radarr: { '/api/v3/downloadclient': removing } };
+    const forced = await health.check({ force: true });
+    assert.ok(forced.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+
+    input.fail = { radarr: ['/api/v3/downloadclient'] };
+    const radarrBefore = slowReadCount(requests, 'radarr');
+    clock.value = now + 125 * minute;
+    const failed = await health.check();
+    assert.ok(failed.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    assert.equal(slowReadCount(requests, 'radarr'), radarrBefore + 3);
+    clock.value = now + 130 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests, 'radarr'), radarrBefore + 6);
+
+    input.fail = undefined;
+    input.arr = undefined;
+    const recovered = await health.check();
+    assert.ok(!recovered.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    const beforeForce = slowReadCount(requests);
+    await health.check({ force: true });
+    assert.equal(slowReadCount(requests), beforeForce + 6);
+  });
+
+  // Leaving the health routes outside the sign-in guard, not running the checks on demand, or serving hour-old settings to a manual check, turns this red.
   await t.test('the health routes need the owner session and run the checks on demand', async () => {
-    const { health, database } = await run();
+    const { health, database, requests } = await run();
     const { app } = await makeApp({ api: createApiRoutes(database, { arr: {}, refresh: async () => {}, manualImport: {}, health }) });
     assert.equal((await app.request('/api/health')).status, 401);
     const { session } = await signIn(app);
+    const before = slowReadCount(requests);
     const response = await app.request('/api/health/check', { method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: '{}' });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).checkedAt, now);
+    assert.equal(slowReadCount(requests), before + 6);
   });
 });
 

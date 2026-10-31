@@ -4,7 +4,7 @@ import { backupsAreOff } from './backup.js';
 import { readDependency } from './dependencies.js';
 import type { EventHub } from './events.js';
 import type { createJobRunner } from './jobs.js';
-import type { ConnectionStatus } from './services/connection.js';
+import { type ConnectionStatus, readSetting } from './services/connection.js';
 import type { MediaServer } from './services/mediaServer.js';
 import type { TrackerConnection } from './services/trackerAccounts.js';
 import { trackerRule } from './trackerRules.js';
@@ -71,6 +71,7 @@ const belongsTo = (host: string, tracker: string) => host === tracker || host.en
 const GB = 1_000_000_000;
 const DISK_FREE_MINIMUM = 25 * GB;
 const BACKUP_STALE_MS = 26 * 60 * 60_000;
+const SLOW_READ_INTERVAL_MS = 60 * 60_000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -129,6 +130,7 @@ export const createHealth = (options: {
   let snapshot: HealthSnapshot | undefined;
   // Kept in memory only: the first check after a restart records the count without warning.
   const lastHitAndRuns = new Map<string, number>();
+  const slowReads = new Map<Service, { identity: string; readAt: number; updates: Record<string, unknown>[]; clients: Record<string, unknown>[]; media: unknown }>();
 
   const readBody = async (service: Service, path: string) => {
     const { status, body } = await arr[service].request(path);
@@ -138,29 +140,37 @@ export const createHealth = (options: {
   const read = async (service: Service, path: string) => records(await readBody(service, path));
   const settled = <T>(result: PromiseSettledResult<T>, fallback: T) => (result.status === 'fulfilled' ? result.value : fallback);
 
-  const check = async (): Promise<HealthSnapshot> => {
+  const check = async ({ force = false }: { force?: boolean } = {}): Promise<HealthSnapshot> => {
     const checkedAt = now();
     const configured = arrServices.filter((service) => arr[service].configured());
     const server = mediaServer();
     const [statuses, arrReads, accountStats] = await Promise.all([
       Promise.allSettled([arr.sonarr.check(), arr.radarr.check(), rtorrent.check(), server.check(), tmdb.check(), mdblist.check()]),
       Promise.all(configured.map(async (service) => {
-        const [health, disks, updates, clients, media] = await Promise.allSettled([
-          read(service, '/api/v3/health'),
-          read(service, '/api/v3/diskspace'),
-          read(service, '/api/v3/update'),
-          // Remove Completed is set on each download client, not in the shared download client settings.
-          read(service, '/api/v3/downloadclient'),
-          readBody(service, '/api/v3/config/mediamanagement'),
-        ]);
-        return {
-          service,
-          health: settled(health, []),
-          disks: settled(disks, []),
-          updates: settled(updates, []),
-          clients: settled(clients, []),
-          media: settled<unknown>(media, undefined),
+        const identity = `${readSetting(database, 'serviceAddresses', `${service}.url`)}\n${readSetting(database, 'credentials', `${service}.apiKey`)}`;
+        const kept = slowReads.get(service);
+        const last = kept?.identity === identity ? kept : undefined;
+        // Updates, download clients and media management settings change rarely, so they are re-read hourly and on a forced check, and a failed read keeps the last good values and retries at the next tick.
+        const readSlow = async () => {
+          if (last !== undefined && !force && checkedAt - last.readAt < SLOW_READ_INTERVAL_MS) return last;
+          const [updates, clients, media] = await Promise.allSettled([
+            read(service, '/api/v3/update'),
+            // Remove Completed is set on each download client, not in the shared download client settings.
+            read(service, '/api/v3/downloadclient'),
+            readBody(service, '/api/v3/config/mediamanagement'),
+          ]);
+          if (updates.status === 'fulfilled' && clients.status === 'fulfilled' && media.status === 'fulfilled') {
+            const entry = { identity, readAt: checkedAt, updates: updates.value, clients: clients.value, media: media.value };
+            slowReads.set(service, entry);
+            return entry;
+          }
+          return last ?? { updates: settled(updates, []), clients: settled(clients, []), media: settled<unknown>(media, undefined) };
         };
+        const [[health, disks], { updates, clients, media }] = await Promise.all([
+          Promise.allSettled([read(service, '/api/v3/health'), read(service, '/api/v3/diskspace')]),
+          readSlow(),
+        ]);
+        return { service, health: settled(health, []), disks: settled(disks, []), updates, clients, media };
       })),
       Promise.allSettled([trackerAccounts.stats()]).then(([result]) => settled(result, [])),
     ]);
@@ -325,6 +335,6 @@ export type Health = ReturnType<typeof createHealth>;
 export const createHealthRoutes = (health: Health) => {
   const routes = new Hono();
   routes.get('/', async (context) => context.json(health.current() ?? await health.check()));
-  routes.post('/check', async (context) => context.json(await health.check()));
+  routes.post('/check', async (context) => context.json(await health.check({ force: true })));
   return routes;
 };

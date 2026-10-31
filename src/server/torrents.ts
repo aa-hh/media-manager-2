@@ -164,10 +164,12 @@ export const createTorrentPoller = (options: {
   events: EventHub;
   now?: () => number;
   intervalMs?: number;
+  hasViewers?: () => boolean;
 }) => {
   const { database, rtorrent, events } = options;
   const now = options.now ?? Date.now;
   const intervalMs = options.intervalMs ?? POLL_INTERVAL_MS;
+  const hasViewers = options.hasViewers ?? (() => true);
 
   const setDependency = (state: 'ok' | 'down', at: number, detail: string) => {
     writeDependency(database, events, 'rtorrent', state, at, detail);
@@ -277,7 +279,9 @@ export const createTorrentPoller = (options: {
   // Refreshes the moving values of torrents the full poll already stored, publishing only rows that changed.
   // It never adds, marks gone or touches lastSeenAt and seedingSeconds, so the seeding credit stays with the full poll's gaps;
   // a failed read is left for the full poll to report.
+  // It only feeds open event streams, so it skips while none is open; the hub's own listener count cannot stand in for that, because torrentGrabs always subscribes.
   const pollLive = async () => {
+    if (!hasViewers()) return;
     // While the full poll has rTorrent marked down, a hanging client would hold every run for the request time limit.
     if (readDependency(database, 'rtorrent')?.state === 'down') return;
     let observed: Live[];

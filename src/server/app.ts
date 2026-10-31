@@ -36,6 +36,7 @@ export type CreateAppOptions = {
   now?: () => number;
   fetch?: typeof globalThis.fetch;
   events?: EventHub;
+  onOpenStreams?: (count: number) => void;
   timers?: Timers;
   search?: Search;
   add?: Add;
@@ -514,6 +515,7 @@ export const createApp = (options: CreateAppOptions) => {
     if (context.req.method !== 'GET') return context.json({ error: 'method_not_allowed' }, 405);
     if (openStreams >= MAX_STREAMS) return context.json({ error: 'too_many_streams' }, 503);
     openStreams += 1;
+    options.onOpenStreams?.(openStreams);
     return streamSSE(context, async (stream) => {
       const token = context.get('sessionToken');
       let finished = false;
@@ -525,6 +527,7 @@ export const createApp = (options: CreateAppOptions) => {
         unsubscribe();
         timers.clearInterval(keepalive);
         openStreams -= 1;
+        options.onOpenStreams?.(openStreams);
         closed();
       };
       const valid = () => {
