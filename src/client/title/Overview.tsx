@@ -7,7 +7,7 @@ import { HeaderBackdrop } from '@/components/ui/header-title';
 import { Arrival } from '../Arrival';
 import { Skeleton, SkeletonRow } from '@/components/ui/skeleton';
 import { buildRows } from '../downloads/model';
-import type { DownloadsState } from '../downloads/useDownloads';
+import { onWatchChange, type DownloadsState } from '../downloads/useDownloads';
 import { getJson, type MovieDetail, type MovieWatch, type OwnedMovieDetail, type SeriesDetail, type SeriesWatch } from '../library/api';
 import { subjectProgress, type SubjectProgress } from '../library/progress';
 import { passedPosterUrl, preloadImages, replace, useLocation, useScreenReady } from '../navigation';
@@ -141,6 +141,30 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       });
     return () => controller.abort();
   }, [route, onUnauthenticated, attempt]);
+
+  // Plex's webhook says this title was played, paused, stopped or watched: its watch status is read again, so Play names what plays next.
+  const watched = load.kind === 'series' || load.kind === 'movie' ? load.detail.watch : null;
+  const watchKey = watched !== null && watched.kind === 'ok' ? watched.ratingKey : null;
+  useEffect(() => {
+    if (watchKey === null || route === undefined) return undefined;
+    const controller = new AbortController();
+    const off = onWatchChange((ratingKey) => {
+      if (ratingKey !== watchKey) return;
+      if (route.type === 'tv') {
+        getJson<{ watch: SeriesWatch }>(`/api/library/series/${route.id}`, onUnauthenticated, controller.signal)
+          .then(({ watch }) => setLoad((current) => (current.kind === 'series' ? { ...current, detail: { ...current.detail, watch } } : current)))
+          .catch(() => undefined);
+      } else {
+        getJson<{ watch: MovieWatch }>(`/api/library/movie/${route.id}`, onUnauthenticated, controller.signal)
+          .then(({ watch }) => setLoad((current) => (current.kind === 'movie' ? { ...current, detail: { ...current.detail, watch } } : current)))
+          .catch(() => undefined);
+      }
+    });
+    return () => {
+      off();
+      controller.abort();
+    };
+  }, [watchKey, route, onUnauthenticated]);
 
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
   const rows = useMemo(() => (snapshot === undefined ? [] : buildRows(snapshot)), [snapshot]);

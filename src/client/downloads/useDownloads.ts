@@ -3,6 +3,13 @@ import { applyEvent, type Snapshot } from './model';
 
 const liveTypes = ['torrents', 'queue', 'grab', 'problem'] as const;
 
+// Pages listening for Plex's 'watch' event, which names the show or movie (its Plex ratingKey) just played, paused, stopped or watched.
+const watchListeners = new Set<(ratingKey: string) => void>();
+export const onWatchChange = (listener: (ratingKey: string) => void) => {
+  watchListeners.add(listener);
+  return () => { watchListeners.delete(listener); };
+};
+
 export type DownloadsState =
   | { kind: 'loading' }
   | { kind: 'failed' }
@@ -65,6 +72,14 @@ export const useDownloads = (onUnauthorized: () => void) => {
         reopen = window.setTimeout(() => setGeneration((current) => current + 1), reopenDelayRef.current);
         reopenDelayRef.current = Math.min(reopenDelayRef.current * 2, 30_000);
       });
+    });
+    source.addEventListener('watch', (event) => {
+      try {
+        const { ratingKey } = JSON.parse((event as MessageEvent<string>).data) as { ratingKey: string };
+        for (const listener of watchListeners) listener(ratingKey);
+      } catch {
+        // An unreadable event changes nothing.
+      }
     });
     for (const type of liveTypes) {
       source.addEventListener(type, (event) => {
