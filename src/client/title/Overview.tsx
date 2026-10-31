@@ -125,7 +125,7 @@ export function Overview({ downloads, onUnauthenticated }: { downloads: Download
       // razor: waits at most 300 ms for the header's poster, so the page usually arrives with it drawn. The backdrop is not
       // waited for: the band behind the header shows a blurred poster until it settles in.
       .then(async (loaded) => {
-        if ('detail' in loaded) await preloadImages([loaded.detail.posterUrl], 300);
+        if ('detail' in loaded) await preloadImages([loaded.detail.smallPosterUrl], 300);
         return loaded;
       })
       .then((loaded) => {

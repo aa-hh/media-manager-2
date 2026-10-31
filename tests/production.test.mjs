@@ -443,7 +443,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api, library, discover, titleDelete, images, setup, playback } = input;
+  const { fetch, fixtureOptions, events, onOpenStreams, timers, webhooks, api, library, discover, titleDelete, images, setup, playback } = input;
   const { createApp } = await import(appModuleUrl);
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const database = input.database ?? new DatabaseSync(':memory:');
@@ -459,6 +459,7 @@ const makeApp = async (input = {}) => {
     now,
     fetch: fetch ?? fixture.fetch,
     events,
+    onOpenStreams,
     timers,
     webhooks,
     api,
@@ -1127,6 +1128,33 @@ test('Plex owner authentication', async (t) => {
       assert.equal(response.headers.get('x-frame-options'), 'DENY');
     }
   });
+  // Sending no-store or an uncompressed body for a hashed built file, or gzipping the event stream, turns this red.
+  await t.test('built files are cached for a year and gzipped; the application document is never stored and the event stream is not gzipped', async () => {
+    const { app } = await makeApp();
+    const { session } = await signIn(app);
+    const script = (await readdir(join(clientDirectory, 'assets'))).find((name) => name.startsWith('index-') && name.endsWith('.js'));
+    assert.ok(script);
+    const yearlong = 'public, max-age=31536000, immutable';
+    const zipped = await app.request(`/assets/${script}`, { headers: { 'Accept-Encoding': 'gzip' } });
+    assert.equal(zipped.status, 200);
+    assert.equal(zipped.headers.get('cache-control'), yearlong);
+    assert.equal(zipped.headers.get('content-encoding'), 'gzip');
+    assert.match(zipped.headers.get('vary'), /accept-encoding/i);
+    assert.deepEqual(gunzipSync(Buffer.from(await zipped.arrayBuffer())), await readFile(join(clientDirectory, 'assets', script)));
+    const plain = await app.request(`/assets/${script}`);
+    assert.equal(plain.headers.get('content-encoding'), null);
+    assert.equal(plain.headers.get('cache-control'), yearlong);
+    await plain.arrayBuffer();
+    const document = await app.request('/', { headers: { 'Accept-Encoding': 'gzip' } });
+    assert.equal(document.headers.get('cache-control'), 'no-store');
+    await document.arrayBuffer();
+    const stream = await app.request('/api/events', { headers: { Cookie: session, 'Accept-Encoding': 'gzip' } });
+    assert.equal(stream.status, 200);
+    assert.match(stream.headers.get('content-type'), /^text\/event-stream/);
+    assert.equal(stream.headers.get('content-encoding'), null);
+    assert.equal(stream.headers.get('cache-control'), 'no-store');
+    await stream.body.cancel();
+  });
   // Saving no owner on the first sign-in, letting a second account in once an owner exists, or letting the owner row outrank
   // PLEX_OWNER_ID turns this red.
   await t.test('first run makes the first Plex sign-in the owner, and PLEX_OWNER_ID outranks the owner row', async () => {
@@ -1666,11 +1694,11 @@ test('the sign-in screen re-checks an unfinished Plex sign-in a few times, holds
 });
 
 test('event stream delivery', async (t) => {
-  const setup = async () => {
+  const setup = async (extra = {}) => {
     const clock = { value: 1_800_000_000_000 };
     const events = (await import(eventsModuleUrl)).createEventHub();
     const timers = createFakeTimers(clock);
-    const { app } = await makeApp({ clock, events, timers });
+    const { app } = await makeApp({ clock, events, timers, ...extra });
     return { app, clock, events, timers };
   };
   const logout = (app, session) => app.request('/auth/logout', {
@@ -1763,9 +1791,10 @@ test('event stream delivery', async (t) => {
     await second.reader.cancel();
   });
 
-  // Removing the stream cap, or failing to release a slot when a client disconnects, turns this red.
+  // Removing the stream cap, failing to release a slot when a client disconnects, or not reporting the open-stream count to the owner of the live poll, turns this red.
   await t.test('the 21st concurrent stream is refused with 503 and a closed stream frees its slot', async () => {
-    const { app } = await setup();
+    const counts = [];
+    const { app } = await setup({ onOpenStreams: (count) => counts.push(count) });
     const { session } = await signIn(app);
     const readers = [];
     for (let index = 0; index < 20; index += 1) {
@@ -1773,6 +1802,7 @@ test('event stream delivery', async (t) => {
       assert.equal(response.status, 200, String(index));
       readers.push(reader);
     }
+    assert.deepEqual(counts, Array.from({ length: 20 }, (_, index) => index + 1));
     const refused = await app.request('/api/events', { headers: { Cookie: session } });
     assert.equal(refused.status, 503);
     assert.match(refused.headers.get('content-type'), /application\/json/);
@@ -1780,6 +1810,7 @@ test('event stream delivery', async (t) => {
     await readers.shift().cancel();
     const { response, reader } = await openStream(app, session);
     assert.equal(response.status, 200);
+    assert.deepEqual(counts.slice(-2), [19, 20]);
     readers.push(reader);
     for (const open of readers) await open.cancel();
   });
@@ -3815,8 +3846,8 @@ test('watch status from Plex marks library titles, both title pages and Continue
     assert.equal(listings(), 2);
   });
 
-  // Answering the first load after the 60 seconds from the old listing, so a title imported since shows no Play, turns this red.
-  await t.test('the first load after 60 seconds waits for the new Plex listing', async () => {
+  // Waiting for the new Plex listing on a load that already has one under 5 minutes old, or never picking up the finished rebuild, turns this red.
+  await t.test('the first load after 60 seconds answers from the old Plex listing and the next load has the new one', async () => {
     const file = '/movies/Dune (2021)/Dune.mkv';
     const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
     let inPlex = false;
@@ -3827,16 +3858,63 @@ test('watch status from Plex marks library titles, both title pages and Continue
     ) });
     const saved = fake.radarr.state.movies;
     fake.radarr.state.movies = [...saved, movieRecord({ id: 11, title: 'Dune', tmdbId: 438631, hasFile: true, movieFile: { id: 111, path: file } })];
-    const before = (await get('/movie/11')).body.watch;
-    inPlex = true;
-    clock.value += 60_001;
-    const after = (await get('/movie/11')).body.watch;
-    fake.radarr.state.movies = saved;
-    assert.equal(before, null);
-    assert.equal(after?.ratingKey, '400');
+    try {
+      const before = (await get('/movie/11')).body.watch;
+      assert.equal(before, null);
+      inPlex = true;
+      clock.value += 60_001;
+      assert.equal((await get('/movie/11')).body.watch, null);
+      let after = null;
+      for (let attempt = 0; attempt < 50 && after === null; attempt += 1) after = (await get('/movie/11')).body.watch;
+      assert.equal(after?.ratingKey, '400');
+    } finally {
+      fake.radarr.state.movies = saved;
+    }
   });
 
-  // Dropping the marks while a slow new listing runs past the 1.5 s cap turns this red.
+  // Answering at once from a Plex listing 5 minutes old instead of waiting for the rebuild turns this red.
+  await t.test('a Plex listing 5 minutes old makes the next load wait for the new one', async () => {
+    const file = '/movies/Dune (2021)/Dune.mkv';
+    const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
+    let inPlex = false;
+    const { get } = connect({ fetch: async (url, init) => (
+      inPlex && new URL(String(url)).pathname === '/library/sections/1/all'
+        ? new Response(JSON.stringify({ MediaContainer: { Metadata: [...movies, imported] } }), { status: 200 })
+        : plexFetch(url, init)
+    ) });
+    const saved = fake.radarr.state.movies;
+    fake.radarr.state.movies = [...saved, movieRecord({ id: 11, title: 'Dune', tmdbId: 438631, hasFile: true, movieFile: { id: 111, path: file } })];
+    try {
+      assert.equal((await get('/movie/11')).body.watch, null);
+      inPlex = true;
+      clock.value += 300_001;
+      assert.equal((await get('/movie/11')).body.watch?.ratingKey, '400');
+    } finally {
+      fake.radarr.state.movies = saved;
+    }
+  });
+
+  // Keeping a listing 5 minutes old after a failed rebuild, replacing a younger one with unavailable, or starting a new rebuild on every load after one fails, turns this red.
+  await t.test('a failed Plex rebuild keeps the old marks and is not retried on every load', async () => {
+    let fail = false;
+    const { requests, get } = connect({ fetch: async (url, init) => {
+      if (fail && new URL(String(url)).pathname.endsWith('/all')) throw new TypeError('fetch failed');
+      return plexFetch(url, init);
+    } });
+    await get('/titles');
+    fail = true;
+    clock.value += 60_001;
+    for (let load = 0; load < 10; load += 1) {
+      const { body } = await get('/titles');
+      assert.equal(body.watch.kind, 'ok');
+      assert.equal(titleWatch(body.titles, 'Arrival').ratingKey, '200');
+    }
+    assert.equal(requests.filter((path) => path === '/library/sections').length, 2);
+    clock.value += 240_000;
+    assert.deepEqual((await get('/titles')).body.watch, { kind: 'unavailable' });
+  });
+
+  // Showing no marks when the wait for a new listing behind one 5 minutes old runs past the 1.5 s cap, instead of falling back to the old listing, turns this red.
   await t.test('a slow new Plex listing keeps the old marks', async () => {
     let release;
     const slow = new Promise((resolve) => { release = resolve; });
@@ -3847,7 +3925,7 @@ test('watch status from Plex marks library titles, both title pages and Continue
     });
     await get('/titles');
     hold = true;
-    clock.value += 60_001;
+    clock.value += 300_001;
     const { body } = await get('/titles');
     release();
     assert.equal(body.watch.kind, 'ok');
@@ -5578,7 +5656,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     const events = createEventHub();
     const published = [];
     events.subscribe((event) => published.push(event));
-    const fake = { rows: [], fail: undefined, calls: [] };
+    const fake = { rows: [], fail: undefined, calls: [], viewers: true };
     const rtorrent = {
       call: async (method, params) => {
         fake.calls.push([method, params]);
@@ -5590,7 +5668,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
         return fake.rows;
       },
     };
-    const poller = createTorrentPoller({ database, rtorrent, events, now: () => clock.value, intervalMs: 30_000 });
+    const poller = createTorrentPoller({ database, rtorrent, events, now: () => clock.value, intervalMs: 30_000, hasViewers: () => fake.viewers });
     return { database, clock, published, fake, poller };
   };
 
@@ -5702,7 +5780,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
   });
 
   // Publishing unchanged rows, adding a torrent the full poll has not stored, moving lastSeenAt, crediting seeding time
-  // from the one-second refresh, or calling rTorrent while it is marked down turns this red.
+  // from the one-second refresh, calling rTorrent while it is marked down, or calling rTorrent while no event stream is open turns this red.
   await t.test('the one-second refresh updates and publishes only changed live values and leaves the seeding counter to the full poll', async () => {
     const { database, clock, published, fake, poller } = setup();
     // Live field order: the full row without name, size and directory.
@@ -5734,6 +5812,15 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     fake.rows = [row(hashA, { up: 70 }), row(hashB, { complete: 0, completed: 400, down: 99 })];
     await poller.poll();
     assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).seedingSeconds, 30);
+
+    // While no event stream is open, the refresh neither calls rTorrent nor publishes.
+    fake.viewers = false;
+    const idleCalls = fake.calls.length;
+    const idlePublished = published.length;
+    await poller.pollLive();
+    assert.equal(fake.calls.length, idleCalls);
+    assert.equal(published.length, idlePublished);
+    fake.viewers = true;
 
     // While the full poll has rTorrent marked down, the refresh does not call it.
     fake.fail = 'unreachable';
@@ -10844,10 +10931,15 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     if (input.torrentHost !== undefined) {
       database.prepare("INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, ?, 1, 1, NULL, 0, '')").run(input.torrentHost);
     }
+    const requests = [];
     const fake = (service) => ({
       configured: () => true,
       check: async () => input.statuses?.[service] ?? ok,
-      request: async (path) => ({ status: 200, body: { ...healthy, ...input.arr?.[service] }[path] }),
+      request: async (path) => {
+        requests.push(`${service} ${path}`);
+        if (input.fail?.[service]?.includes(path)) throw new Error(`${service} ${path} failed`);
+        return { status: 200, body: { ...healthy, ...input.arr?.[service] }[path] };
+      },
     });
     const notConfigured = [{ host: 'blutopia.cc', connection: { kind: 'not_configured' } }];
     const published = [];
@@ -10861,10 +10953,10 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       jobs: { status: () => input.jobs ?? [] },
       trackerAccounts: { stats: async () => input.accounts ?? notConfigured },
       events: { publish: (type, data) => { published.push({ type, data }); } },
-      now: () => now,
+      now: () => input.clock?.value ?? now,
     });
     const snapshot = await health.check();
-    return { snapshot, badge: published.at(-1), health, database };
+    return { snapshot, badge: published.at(-1), health, database, requests };
   };
 
   // Dropping a check, ranking a lower level above a higher one, or rewriting a service's own message turns this red.
@@ -10991,15 +11083,79 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     ]);
   });
 
-  // Leaving the health routes outside the sign-in guard, or not running the checks on demand, turns this red.
+  const slowPaths = new Set(['/api/v3/update', '/api/v3/downloadclient', '/api/v3/config/mediamanagement']);
+  const slowReadCount = (requests, service) => requests.filter((request) => {
+    const [name, path] = request.split(' ');
+    return slowPaths.has(path) && (service === undefined || name === service);
+  }).length;
+
+  // Re-reading the three before an hour, not re-reading them after an hour or after the service's address changes, dropping the last good values when a read fails, discarding a fresh read because another of the three failed, or ignoring a forced check turns this red.
+  await t.test('update, download client and media management settings are read hourly, on a forced check, and after the address changes, keeping the last good values when a read fails', async () => {
+    const { setSetting } = await import(settingsModuleUrl);
+    const minute = 60_000;
+    const clock = { value: now };
+    const input = { clock };
+    const { health, database, requests } = await run(input);
+    assert.equal(slowReadCount(requests), 6);
+    clock.value = now + 5 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 6);
+    clock.value = now + 60 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 12);
+
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://sonarr-two:8989');
+    clock.value = now + 65 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 15);
+    assert.equal(slowReadCount(requests, 'sonarr'), 9);
+
+    const removing = [{ name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: true, removeFailedDownloads: true }];
+    input.arr = { radarr: { '/api/v3/downloadclient': removing } };
+    const forced = await health.check({ force: true });
+    assert.ok(forced.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+
+    input.fail = { radarr: ['/api/v3/downloadclient'] };
+    const radarrBefore = slowReadCount(requests, 'radarr');
+    clock.value = now + 125 * minute;
+    const failed = await health.check();
+    assert.ok(failed.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    assert.equal(slowReadCount(requests, 'radarr'), radarrBefore + 3);
+    clock.value = now + 130 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests, 'radarr'), radarrBefore + 6);
+
+    input.fail = undefined;
+    input.arr = undefined;
+    const recovered = await health.check();
+    assert.ok(!recovered.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    const beforeForce = slowReadCount(requests);
+    await health.check({ force: true });
+    assert.equal(slowReadCount(requests), beforeForce + 6);
+
+    // A failed update read keeps its last value without discarding the download client answer read alongside it.
+    input.fail = { radarr: ['/api/v3/update'] };
+    input.arr = { radarr: { '/api/v3/downloadclient': removing } };
+    clock.value = now + 190 * minute;
+    const partial = await health.check();
+    assert.ok(partial.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    const radarrPartial = slowReadCount(requests, 'radarr');
+    clock.value = now + 195 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests, 'radarr'), radarrPartial + 3);
+  });
+
+  // Leaving the health routes outside the sign-in guard, not running the checks on demand, or serving hour-old settings to a manual check, turns this red.
   await t.test('the health routes need the owner session and run the checks on demand', async () => {
-    const { health, database } = await run();
+    const { health, database, requests } = await run();
     const { app } = await makeApp({ api: createApiRoutes(database, { arr: {}, refresh: async () => {}, manualImport: {}, health }) });
     assert.equal((await app.request('/api/health')).status, 401);
     const { session } = await signIn(app);
+    const before = slowReadCount(requests);
     const response = await app.request('/api/health/check', { method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: '{}' });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).checkedAt, now);
+    assert.equal(slowReadCount(requests), before + 6);
   });
 });
 
@@ -11491,7 +11647,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   const { fake, ...services } = connectArr(database);
   fake.sonarr.state.series = [seriesRecord({
     id: 3, title: 'Andor', monitored: true, qualityProfileId: 4, tags: [9],
-    images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://img/p.jpg' }],
+    images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p.jpg' }],
     seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
     airTime: '21:00', firstAired: '2022-09-21T00:00:00Z', lastAired: '2025-05-13T00:00:00Z',
     nextAiring: '2026-11-01T01:00:00Z', previousAiring: '2025-05-13T01:00:00Z',
@@ -11502,6 +11658,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   fake.radarr.state.movies = [
     movieRecord({
       id: 5, title: 'Dune', originalTitle: 'Dune: Part Two', originalLanguage: { id: 1, name: 'English' },
+      images: [{ coverType: 'poster', remoteUrl: 'https://image.tmdb.org/t/p/original/dune.jpg' }],
       alternateTitles: [{ sourceType: 'tmdb', title: 'Dune 2' }, { sourceType: 'tmdb', title: 'Dune' }],
       ratings: {
         imdb: { votes: 600000, value: 8.5, type: 'user' }, tmdb: { votes: 7000, value: 8.2, type: 'user' },
@@ -11548,13 +11705,18 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   });
 
   await t.test('series keeps the raw facts the title page marks from', async () => {
-    // Resolving the cutoff by quality id only, or dropping a raw field the markers read, turns this red.
+    // Resolving the cutoff by quality id only, or dropping a raw field the markers read, turns this red. Shrinking posterUrl itself, which the player's Up Next draws full size, or sending smallPosterUrl at the original size, turns this red.
     const result = await library.series(3);
     assert.equal(result.kind, 'ok');
     const detail = result.value;
     assert.deepEqual(detail.qualityProfile, { id: 4, name: 'HD', cutoff: 'Remux group' });
     assert.deepEqual(detail.tags, ['kids']);
-    assert.equal(detail.posterUrl, 'https://img/p.jpg');
+    assert.equal(detail.posterUrl, 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p.jpg');
+    assert.equal(detail.smallPosterUrl, 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p_t.jpg');
+    const { titles } = await (await routes.request('/titles')).json();
+    const dune = titles.find((title) => title.service === 'radarr' && title.id === 5);
+    assert.equal(dune.posterUrl, 'https://image.tmdb.org/t/p/original/dune.jpg');
+    assert.equal(dune.smallPosterUrl, 'https://image.tmdb.org/t/p/w500/dune.jpg');
     assert.deepEqual(detail.episodes.map((episode) => episode.id), [31, 32]);
     const [first] = detail.episodes;
     assert.equal(first.finaleType, 'season');
@@ -11985,8 +12147,8 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     for (const [bridge, takes] of bridges) assert.equal(hasSoundCommands(bridge), takes, JSON.stringify(Object.keys(bridge ?? {})));
   });
 
-  // Skipping the title fetch for a movie card without the marker turns the last rows red: a desktop build older than the
-  // page refuses a load with no version, so every movie card's Play would fail there.
+  // Treating a missing or non-true `picksVersion` as taking a load with no version turns the last three rows red: a desktop
+  // build older than the page refuses one, so every movie card's Play would fail there.
   await t.test('a movie card leaves the version to the server only on a desktop build that says it takes that', () => {
     assert.deepEqual([{ picksVersion: true }, { picksVersion: 'yes' }, {}, undefined].map(desktopPicksVersion), [true, false, false, false]);
   });
@@ -12602,7 +12764,7 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   assert.equal(existsSync(join(folder, 'backups', 'blocked.enc.partial')), false);
 });
 
-// Snapshotting with a plain file copy during a write, letting an unfinished transaction on the app's connection into the snapshot, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
+// Snapshotting with a plain file copy during a write, letting an unfinished transaction on the app's connection into the snapshot, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, opening a snapshot with the wrong kind of key, backing up again within an hour of a good backup, or counting a failed backup as one turns this red.
 test('backups snapshot a changing database and restore it consistently', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -12621,9 +12783,11 @@ test('backups snapshot a changing database and restore it consistently', async (
   const objects = new Map();
   const calls = [];
   let failPut = false;
+  let uploadTime = 0;
   const store = {
     async put(key, body) {
       calls.push(['put', key]);
+      clock += uploadTime;
       if (failPut) throw new Error('Backup storage answered 503.');
       objects.set(key, Uint8Array.from(body));
     },
@@ -12652,7 +12816,7 @@ test('backups snapshot a changing database and restore it consistently', async (
   const backup = createBackup({ database, events, store: () => (configured ? store : undefined), key: () => backupKey, now: () => clock });
   const outcome = (run) => [run.outcome, run.detail];
 
-  assert.deepEqual(outcome(await backup.run()), ['skipped', 'not_configured']);
+  assert.deepEqual(outcome(await backup.runIfDue()), ['skipped', 'not_configured']);
   assert.deepEqual(calls, []);
   assert.deepEqual(published.map((event) => event.type), ['backup']);
 
@@ -12686,7 +12850,7 @@ test('backups snapshot a changing database and restore it consistently', async (
   }
   configured = true;
   clock += 60_000;
-  const written = await backup.run();
+  const written = await backup.runIfDue();
   await writeFile(stopPath, '');
   const writerResult = await writer;
   assert.equal(writerResult.code, 0, writerResult.stderr);
@@ -12745,6 +12909,30 @@ test('backups snapshot a changing database and restore it consistently', async (
   assert.deepEqual(outcome(await backup.run()), ['ok', '']);
   assert.deepEqual(listBackupRuns(database).slice(0, 3).map((run) => run.outcome), ['ok', 'failed', 'ok']);
   assert.equal(published.length, listBackupRuns(database).length);
+
+  // The 5-minute job backs up only once the last good backup is an hour old, and a failed run does not count as one.
+  const runCount = () => listBackupRuns(database).length;
+  const runsBefore = runCount();
+  database.prepare("INSERT OR REPLACE INTO preferences (key, value) VALUES ('theme', 'light')").run();
+  clock += 5 * 60_000;
+  assert.equal(await backup.runIfDue(), undefined);
+  assert.equal(runCount(), runsBefore);
+  failPut = true;
+  clock += 55 * 60_000;
+  assert.deepEqual(outcome(await backup.runIfDue()), ['failed', 'Backup storage answered 503.']);
+  failPut = false;
+  uploadTime = 60_000;
+  clock += 5 * 60_000;
+  const slowUpload = await backup.runIfDue();
+  uploadTime = 0;
+  assert.deepEqual(outcome(slowUpload), ['ok', '']);
+  assert.ok(slowUpload.finishedAt > slowUpload.startedAt);
+  // The hour counts from the good backup's start, so a slow upload does not push the next one to the 65-minute tick.
+  database.prepare("INSERT OR REPLACE INTO preferences (key, value) VALUES ('theme', 'dark')").run();
+  clock = slowUpload.startedAt + 55 * 60_000;
+  assert.equal(await backup.runIfDue(), undefined);
+  clock += 5 * 60_000;
+  assert.deepEqual(outcome(await backup.runIfDue()), ['ok', '']);
 
   clock += 5 * 60_000;
   const keyAt = (offset) => `backups/${new Date(clock + offset).toISOString().replace(/:/g, '-')}-aaaaaaaaaaaa.sqlite.gz.enc`;
@@ -15297,6 +15485,20 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   assert.equal(readAsk({ ...ask, mediaIndex: 0 }, clickNow).ask.mediaIndex, 0);
   for (const mediaIndex of [-1, '0', 1.5]) assert.throws(() => readAsk({ ...ask, mediaIndex }, clickNow), /invalid_request/, String(mediaIndex));
   assert.deepEqual([true, 'yes', 1, undefined].map((resume) => readAsk({ ...ask, resume }, clickNow).resume), [true, false, false, false]);
+  // Dropping readAsk's check on ratingKey, partIndex, offsetSeconds, a flag or maxVideoBitrate turns that field's rows red: a
+  // malformed value from the page would reach the start request or mpv.
+  const badFields = [
+    ['ratingKey', '12a'], ['ratingKey', 123], ['partIndex', -1], ['partIndex', 1.5], ['partIndex', '0'],
+    ['offsetSeconds', -1], ['offsetSeconds', Number.NaN], ['offsetSeconds', Number.POSITIVE_INFINITY],
+  ];
+  for (const [name, value] of badFields) assert.throws(() => readAsk({ ...ask, [name]: value }, clickNow), /invalid_request/, `${name} ${String(value)}`);
+  const badFlags = [
+    ['directPlay', 'true'], ['directStream', 1], ['directStreamAudio', undefined],
+    ['maxVideoBitrate', -1], ['maxVideoBitrate', 1.5], ['maxVideoBitrate', '8000'],
+  ];
+  for (const [name, value] of badFlags) {
+    assert.throws(() => readAsk({ ...ask, flags: { ...flags, [name]: value } }, clickNow), /invalid_request/, `${name} ${String(value)}`);
+  }
 
   // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);

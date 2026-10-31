@@ -6,6 +6,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { compress } from 'hono/compress';
 import { streamSSE } from 'hono/streaming';
 import { createAuthentication, isLoopback, type JellyfinQuickConnectStartResult, type JellyfinSignInResult } from './auth.js';
 import { createDiscoverRoutes, type Discover } from './discover/index.js';
@@ -36,6 +37,7 @@ export type CreateAppOptions = {
   now?: () => number;
   fetch?: typeof globalThis.fetch;
   events?: EventHub;
+  onOpenStreams?: (count: number) => void;
   timers?: Timers;
   search?: Search;
   add?: Add;
@@ -208,13 +210,22 @@ export const createApp = (options: CreateAppOptions) => {
 
   app.use('*', async (context, next) => {
     await next();
-    // Cached poster and fanart may be reused by the browser for five minutes; everything else, error answers included, is never stored.
+    // Cached poster and fanart may be reused by the browser for five minutes; everything else but a built file under /assets/, error answers included, is never stored.
+    // Vite names every file under /assets/ by content hash, so a browser may keep it for a year.
     const reusableImage = context.req.path.startsWith('/api/images/') && (context.res.status === 200 || context.res.status === 304);
-    context.header('Cache-Control', reusableImage ? 'private, max-age=300' : 'no-store');
+    const builtFile = context.req.path.startsWith('/assets/') && context.res.status === 200;
+    context.header('Cache-Control', builtFile ? 'public, max-age=31536000, immutable' : reusableImage ? 'private, max-age=300' : 'no-store');
     context.header('Referrer-Policy', 'no-referrer');
     context.header('X-Content-Type-Options', 'nosniff');
     context.header('X-Frame-Options', 'DENY');
   });
+
+  // Compression happens per request. The event stream and the search's line-per-answer stream are exempt because their
+  // content types fail Hono's compressible-type check (and the event stream already carries Transfer-Encoding: chunked).
+  // Compressing either would buffer it and freeze live screens.
+  // razor: gzip of the 765 KB script runs again on every uncached load; precompressed .gz files next to the built assets,
+  // served through serveStatic({ precompressed: true }), would remove that work.
+  app.use('*', compress());
 
   const requestLimit = bodyLimit({
     maxSize: 1_024,
@@ -539,6 +550,7 @@ export const createApp = (options: CreateAppOptions) => {
     if (context.req.method !== 'GET') return context.json({ error: 'method_not_allowed' }, 405);
     if (openStreams >= MAX_STREAMS) return context.json({ error: 'too_many_streams' }, 503);
     openStreams += 1;
+    options.onOpenStreams?.(openStreams);
     return streamSSE(context, async (stream) => {
       const token = context.get('sessionToken');
       let finished = false;
@@ -550,6 +562,7 @@ export const createApp = (options: CreateAppOptions) => {
         unsubscribe();
         timers.clearInterval(keepalive);
         openStreams -= 1;
+        options.onOpenStreams?.(openStreams);
         closed();
       };
       const valid = () => {

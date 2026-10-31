@@ -311,8 +311,9 @@ export const flagsFor = (qualityKbps: number | undefined): PlaybackFlags => (
 );
 
 /**
- * The same title again from `seconds`, as a quality or track change and a retry need it: without `resume`, which would send
- * it back to Plex's saved position, and without the click's `openedAt`, which would time the reload from that click.
+ * The same title again from `seconds`, as a quality or track change, a lost transcode and a Retry after the start answered
+ * need it: without `resume`, which would send it back to Plex's saved position, and without the click's `openedAt`, which
+ * would time the reload from that click.
  */
 export const reloadAt = (request: LoadRequest, seconds: number, qualityKbps: number | undefined): LoadRequest => {
   const { resume: _resume, openedAt: _openedAt, ...rest } = request;

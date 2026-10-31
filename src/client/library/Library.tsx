@@ -40,6 +40,10 @@ import { continueMeta, playLabel, playMode, plexWebUrl, watchMarks, type PlayMod
 type Loaded = { titles: LibraryTitle[]; services: { sonarr: Outcome; radarr: Outcome }; watch: LibraryWatch };
 type LoadState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; data: Loaded };
 
+// The last server response outlives the screen, so going back to the Library draws the old list at once while a fresh one loads.
+let lastLoaded: Loaded | undefined;
+export const forgetLoadedLibrary = () => { lastLoaded = undefined; };
+
 const fieldLabels: Record<Field, string> = { year: 'Year', progress: 'Progress', size: 'Size', profile: 'Quality profile', added: 'Date added' };
 const kindLabels: Record<Kind, string> = { all: 'All', movie: 'Movies', tv: 'TV' };
 const segmentLabels: Record<Segment, string> = { all: 'All', continue: 'Continue Watching', unwatched: 'Unwatched', missing: 'Missing', downloading: 'Downloading' };
@@ -137,7 +141,7 @@ const PosterCard = memo(function PosterCard({ title, fields, live, downloading, 
       <LibraryPosterCard
         href={path}
         onClick={openLink(path)}
-        poster={title.posterUrl ?? undefined}
+        poster={title.smallPosterUrl ?? undefined}
         title={title.title}
         meta={continueLine ?? (meta.length > 0 ? meta.join(' · ') : undefined)}
         status={status.badge}
@@ -162,7 +166,7 @@ const PosterCard = memo(function PosterCard({ title, fields, live, downloading, 
   && prev.onUnauthenticated === next.onUnauthenticated);
 
 export function Library({ downloads, onUnauthenticated }: { downloads: DownloadsState; onUnauthenticated: () => void }) {
-  const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  const [state, setState] = useState<LoadState>(() => (lastLoaded === undefined ? { kind: 'loading' } : { kind: 'ready', data: lastLoaded }));
   const [kind, setKind] = useState<Kind>('all');
   const [segment, setSegment] = useState<Segment>('all');
   const mediaServer = use(MediaServerContext).name;
@@ -171,10 +175,12 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
 
   useEffect(() => {
     const controller = new AbortController();
-    setState({ kind: 'loading' });
+    if (lastLoaded === undefined) setState({ kind: 'loading' });
     getJson<Loaded>('/api/library/titles', onUnauthenticated, controller.signal)
-      .then((data) => { if (!controller.signal.aborted) setState({ kind: 'ready', data }); })
-      .catch(() => { if (!controller.signal.aborted) setState({ kind: 'failed' }); });
+      .then((data) => {
+        if (!controller.signal.aborted) { lastLoaded = data; setState({ kind: 'ready', data }); }
+      })
+      .catch(() => { if (!controller.signal.aborted && lastLoaded === undefined) setState({ kind: 'failed' }); });
     return () => controller.abort();
   }, [attempt, onUnauthenticated]);
   // Plex's webhook says something was played, paused, stopped or watched: the marks and Continue Watching are read again.

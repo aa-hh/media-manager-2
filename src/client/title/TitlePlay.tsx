@@ -28,6 +28,7 @@ const asLibraryTitle = (subject: Subject, watch: SeriesWatch | MovieWatch): Libr
     monitored: detail.monitored,
     status: detail.status,
     posterUrl: detail.posterUrl,
+    smallPosterUrl: detail.smallPosterUrl,
     qualityProfile: detail.qualityProfile?.name ?? null,
     sizeOnDisk: subject.type === 'tv' ? subject.detail.statistics.sizeOnDisk : subject.detail.sizeOnDisk,
     tv: subject.type === 'tv' ? { ...subject.detail.statistics } : null,

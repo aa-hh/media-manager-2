@@ -90,8 +90,9 @@ if (database !== undefined) {
   const arr = { sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) };
   const events = createEventHub();
   const runner = createJobRunner();
+  let openStreams = 0;
   const rtorrent = createRtorrent(database);
-  const poller = createTorrentPoller({ database, rtorrent, events });
+  const poller = createTorrentPoller({ database, rtorrent, events, hasViewers: () => openStreams > 0 });
   const releases = createReleases(database, arr);
   const secondVersions = createSecondVersions({ database, releases, rtorrent });
   const problems = createProblems({ database, events });
@@ -131,7 +132,7 @@ if (database !== undefined) {
       return destination === undefined ? undefined : createBackupStore(destination);
     },
   });
-  runner.register('backup', 5 * 60_000, async () => { await backup.run(); });
+  runner.register('backup', 5 * 60_000, async () => { await backup.runIfDue(); });
   const torrentGrabs = createGrabTracker({ database, arr, events });
   runner.register('arr-reconcile', torrentGrabs.intervalMs, torrentGrabs.reconcile);
   torrentGrabs.readOnNewTorrents();
@@ -211,6 +212,7 @@ if (database !== undefined) {
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
+    onOpenStreams: (count) => { openStreams = count; },
     search,
     add: {
       ...add,

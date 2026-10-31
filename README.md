@@ -133,7 +133,7 @@ it when you reach it. Settings has all three later.
 Trackers is where you add each private tracker and its hit and run rule, so the
 app can tell you whether a torrent can go before you delete it. Posters and
 ratings takes keys for TMDB, MDBList and Trakt. Backup copies the database to a
-folder or an S3-compatible bucket every few minutes, and the first copy runs
+folder or an S3-compatible bucket every hour, and the first copy runs
 within five minutes. The database holds every saved credential, so backups are
 always encrypted. The app makes the restore key and shows it once, with Copy
 and Download buttons. It keeps only the half that locks backups, so without your
@@ -440,7 +440,7 @@ node dist/server/cli.js backup off   # no backups, no reminder
 node dist/server/cli.js backup on    # back on; a destination and key are then needed
 ```
 
-Once set up, every 5 minutes the server copies its database with `node:sqlite`'s `backup()`, gzips the
+Once set up, every hour the server copies its database with `node:sqlite`'s `backup()`, gzips the
 copy, encrypts it with AES-256-GCM under the restore key made in the app (or,
 until one exists, under `BACKUP_KEY`), and writes it to the destination you
 chose. The database holds every saved credential, so backups

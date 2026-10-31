@@ -428,7 +428,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
                 void rereadSetup();
                 toasts.add(setup.backup.key === 'missing' || setup.backup.key === 'invalid'
                   ? { title: 'Destination saved', description: 'Create a key so backups can run.' }
-                  : { title: 'Backups on', description: 'Every 5 minutes, to the destination you confirmed.' });
+                  : { title: 'Backups on', description: 'Every hour, to the destination you confirmed.' });
               }}
               onKeyCreated={() => void rereadSetup()}
             />

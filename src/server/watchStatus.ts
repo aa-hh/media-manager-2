@@ -67,7 +67,10 @@ const CACHE_MS = 60_000;
 // Plex webhook events that change what the app shows: a saved position (pause, stop), a watched mark (scrobble), and the
 // top of Continue Watching (play). Resume changes nothing a pause did not.
 const WATCH_EVENTS = new Set(['media.play', 'media.pause', 'media.stop', 'media.scrobble']);
-// A page waits this long for Plex before showing its titles unmarked; the rebuild carries on for the next load.
+// A listing this old no longer answers at once, and a failed rebuild no longer keeps it.
+const OLD_LISTING_MS = 300_000;
+// With no listing, or one OLD_LISTING_MS old, a load holds a page up to this long for the rebuild before falling back to
+// the old listing or none; forSeries also waits up to this long for Plex's On Deck episode.
 const WATCH_WAIT_MS = 1500;
 
 const isRecord = (value: unknown): value is Item => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -105,8 +108,8 @@ const playable = (item: Item): Playable | null => {
 
 // Plex watch marks for library titles, from one in-memory listing of every Plex movie and show library, kept 60 seconds
 // or until Plex's webhook says something was played, paused, stopped or watched.
-// Its reads never throw: a Plex that fails reads as unavailable, a Jellyfin owner or unset Plex as off. ensureWebhook
-// throws when plex.tv refuses.
+// Its reads never throw: a Plex that fails with no listing under 5 minutes old reads as unavailable, a Jellyfin owner or
+// unset Plex as off. ensureWebhook throws when plex.tv refuses.
 export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, sleep = (ms) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }) }: {
   plex: ReturnType<typeof createPlex>;
   enabled: () => boolean;
@@ -156,19 +159,25 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
     return snapshot;
   };
 
-  // One rebuild at a time, and a failed rebuild is kept as unavailable. A caller waits at most WATCH_WAIT_MS for it, so a
-  // title imported since the last listing gets its Play; running out of time answers from the old snapshot, if any, and
-  // is not cached as a failure.
-  let cached: { at: number; value: Snapshot | undefined } | undefined;
+  // One rebuild at a time, and every attempt, failed or not, restarts the 60 seconds, so Plex is asked at most once per
+  // CACHE_MS besides the rebuilds Plex's webhook asks for. A listing under OLD_LISTING_MS old, counted from when it was built, answers at once while the next one
+  // builds in the background; on purpose, a Resume or the first title page after an import within 5 minutes of the last
+  // listing can still use that listing. With no listing, or one OLD_LISTING_MS old, a load waits up to WATCH_WAIT_MS for
+  // the rebuild and falls back to the old listing only when that wait runs out, which is not cached as a failure. A
+  // failed rebuild keeps the old listing only while it is under OLD_LISTING_MS old; after that Plex reads as unavailable.
+  let cached: { at: number; builtAt: number; value: Snapshot | undefined } | undefined;
   let building: Promise<Snapshot | undefined> | undefined;
+  const recent = () => (cached !== undefined && now() - cached.builtAt < OLD_LISTING_MS ? cached.value : undefined);
   const rebuild = () => (building ??= build().catch(() => undefined).then((value) => {
-    cached = { at: now(), value };
+    const at = now();
+    cached = value === undefined ? { at, builtAt: cached?.builtAt ?? at, value: recent() } : { at, builtAt: at, value };
     building = undefined;
     return value;
   }));
   const snapshot = async (): Promise<Snapshot | undefined> => {
-    if (cached !== undefined && now() - cached.at < CACHE_MS) return cached.value;
-    return (await capped(rebuild())) ?? cached?.value;
+    if (cached !== undefined && now() - cached.at < CACHE_MS) return recent();
+    const pending = rebuild();
+    return recent() ?? (await capped(pending)) ?? cached?.value;
   };
 
   const matchMovie = (found: Snapshot, movie: Movie) => (
