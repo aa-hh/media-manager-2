@@ -15046,7 +15046,7 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, showsPosition, sendsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -15101,6 +15101,21 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
     [last, 10.9, 1100, false],
   ];
   for (const [sent, position, now, expected] of sends) assert.equal(sendsPosition(sent, position, now), expected, JSON.stringify([sent, position, now]));
+
+  // Accepting a non-number, a click time from the future, or one older than a minute turns these rows red:
+  // play-timings.log would count a Play from a time its click never had.
+  const clickNow = 1_000_000;
+  const clicks = [
+    [undefined, undefined],
+    ['123', undefined],
+    [Number.NaN, undefined],
+    [Number.POSITIVE_INFINITY, undefined],
+    [clickNow, clickNow],
+    [clickNow - 60_000, clickNow - 60_000],
+    [clickNow - 60_001, undefined],
+    [clickNow + 1, undefined],
+  ];
+  for (const [value, expected] of clicks) assert.equal(clickTime(value, clickNow), expected, String(value));
 
   // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);
