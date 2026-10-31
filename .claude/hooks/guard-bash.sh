@@ -18,7 +18,8 @@ decide() {
     exit 0
 }
 
-start='(^|[;&|(]|&&|\|\|)[[:space:]]*(env [^;&|]*[[:space:]])?'
+# A command may follow `env …` or plain NAME=value prefixes (`JAVA_HOME=x ./gradlew test`).
+start='(^|[;&|(]|&&|\|\|)[[:space:]]*(env [^;&|]*[[:space:]])?([A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|]*[[:space:]]+)*'
 if printf '%s\n' "$cmd" | grep -Eq "$start$BARE_CMDS([[:space:]]|\$)"; then
     decide deny "Use scripts/test.sh, scripts/build.sh or scripts/android-tv.sh instead of the bare command (CLAUDE.md, Build & test)."
 fi

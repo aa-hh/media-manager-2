@@ -3935,7 +3935,8 @@ test('watch status from Plex marks library titles, both title pages and Continue
       '/library/sections/2/all': { Metadata: searchParams.get('type') === '2' ? shows : episodes },
       '/hubs/continueWatching/items': { Metadata: continueWatching },
       '/library/metadata/300': { Metadata: [{ ratingKey: '300', OnDeck: { Metadata: [{ ratingKey: '303', parentIndex: 1, index: 3 }] } }] },
-      '/playlists': { Metadata: [
+      // Plex lists music and photo playlists too unless asked for video ones; this fake answers only that ask.
+      '/playlists': searchParams.get('playlistType') !== 'video' ? { Metadata: [{ ratingKey: '950', title: 'Road trip', smart: false, playlistType: 'audio', leafCount: 40 }] } : { Metadata: [
         { ratingKey: '900', title: 'Weekend', smart: false, playlistType: 'video', leafCount: 3 },
         { ratingKey: '901', title: 'Unwatched films', smart: true, playlistType: 'video', leafCount: 12 },
       ] },

@@ -42,6 +42,7 @@ if [ "${1:-}" = --review-script ]; then
     /bin/bash scripts/test-story-args.sh
     /bin/bash scripts/test-housekeeping.sh
     /bin/bash scripts/test-guard-bash.sh
+    /bin/bash scripts/test-android-tests.sh
     exit 0
 fi
 
