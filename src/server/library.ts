@@ -18,7 +18,7 @@ import { notConfigured } from './services/arr/result.js';
 import type { SecondVersionRow, TrackedHitAndRun } from './secondVersionRows.js';
 import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
 import type { TitleStore } from './titleStore.js';
-import type { LibraryWatch, MovieWatch, SeriesWatch, TitleWatch, WatchAction, WatchStatus } from './watchStatus.js';
+import type { LibraryWatch, MovieWatch, Playlist, PlaylistItem, SeriesWatch, TitleWatch, WatchAction, WatchStatus } from './watchStatus.js';
 
 export type { FileDetail };
 
@@ -579,6 +579,21 @@ export const createLibrary = (
       return watchAction(service, id, (status, title) => status.removeFromContinueWatching(title));
     },
 
+    async playlists(): Promise<{ kind: 'ok'; playlists: Playlist[] } | { kind: 'off' | 'unavailable' }> {
+      return watchStatus === undefined ? { kind: 'off' } : watchStatus.playlists();
+    },
+
+    // Items whose title Sonarr or Radarr does not answer for are left out, as when that service is down.
+    async playlist(id: string): Promise<{ kind: 'ok'; title: string; items: PlaylistItem[] } | { kind: 'off' | 'unavailable' | 'not_found' }> {
+      if (watchStatus === undefined) return { kind: 'off' };
+      const [series, movies] = await Promise.all([services.sonarr.listSeries().then(fromArr), services.radarr.listMovies().then(fromArr)]);
+      const records = [
+        ...(series.kind === 'ok' ? series.value.map((record) => ({ service: 'sonarr' as const, record })) : []),
+        ...(movies.kind === 'ok' ? movies.value.map((record) => ({ service: 'radarr' as const, record })) : []),
+      ];
+      return (await watchStatus.playlist(id, records)) ?? { kind: 'not_found' };
+    },
+
     async titles(): Promise<{ titles: LibraryTitle[]; services: { sonarr: Outcome; radarr: Outcome }; watch: LibraryWatch }> {
       const fetchService = async (service: Service) => {
         const [items, profiles] = await Promise.all([
@@ -816,6 +831,15 @@ export const createLibraryRoutes = (library: Library) => {
   );
 
   routes.get('/titles', async (context) => context.json(await library.titles()));
+
+  // Plex off or failing is a 200 whose kind says so, as for the titles' watch marks.
+  routes.get('/playlists', async (context) => context.json(await library.playlists()));
+  routes.get('/playlists/:id', async (context) => {
+    const id = context.req.param('id');
+    if (!/^\d{1,12}$/.test(id)) return context.json(invalid, 400);
+    const result = await library.playlist(id);
+    return result.kind === 'not_found' ? context.json({ error: 'not_found' }, 404) : context.json(result);
+  });
 
   routes.get('/series/:id', async (context) => {
     const id = positiveInteger(Number(context.req.param('id')));

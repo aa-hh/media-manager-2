@@ -109,6 +109,11 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - Remove sends one `PUT` per listed item: the movie, or each of the show's episodes in the row.
 - Monitoring reuses `POST /api/library/monitor`: `writeRoute('/monitor', …)` at `src/server/library.ts:856`.
 
+**Home rails and playlists** (behind `privateGuard`; asked for by the approved T03a Home design):
+- `GET /api/library/titles` `watch` (kind `ok`) adds `recentlyAddedTv` and `recentlyAddedFilms`: up to 20 `{service, id, addedAt}` each, newest first; a show ranks by its newest episode's `addedAt`. From the same cached Plex listing as Continue Watching.
+- `GET /api/library/playlists` → `{kind:'ok', playlists:[{id, title, smart, itemCount}]}` (the owner's video playlists, Plex order) or `{kind:'off'|'unavailable'}`.
+- `GET /api/library/playlists/:id` (digits) → `{kind:'ok', title, items:[{service, id, episode:{seasonNumber, episodeNumber, title}|null}]}`, only library titles, playlist order; 404 `not_found`; or `{kind:'off'|'unavailable'}`.
+
 **Plex identity header** (T24):
 - Every `/api/playback/*` request may carry `X-Media-Manager-Plex-Identity: android` or `desktop`.
 - Missing means `desktop`. Any other value is 400 `invalid_request`.
@@ -379,7 +384,7 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
   - Port `normaliseAddress`/`isMediaManager` (`desktop/lib/address.js:6-22`), http and https both allowed.
   - Link code: start, poll every 2 s until `expiresAt`, cancel.
   - Device name from `Settings.Global.DEVICE_NAME`, else `Build.MODEL`, cut to 64 characters.
-  - kotlinx-serialization models with `ignoreUnknownKeys`, field names copied from the server source, for: `/api/session`, `/api/discover/home`, `/api/discover/:type`, `/api/search`, `/api/add/options/:service`, `POST /api/add`, `/api/library/titles`, `/series/:id`, `/movie/:id`, `/preview/…`, `/tmdb/:type/:tmdbId`, `POST /api/library/monitor`, `POST /api/library/search`, both T23 routes, `/api/releases`, `/api/releases/refresh`, `GET`/`POST /api/grabs`, `/api/downloads`, and every `/api/playback/*` route (`src/server/playback.ts:396-510`).
+  - kotlinx-serialization models with `ignoreUnknownKeys`, field names copied from the server source, for: `/api/session`, `/api/discover/home`, `/api/discover/:type`, `/api/search`, `/api/add/options/:service`, `POST /api/add`, `/api/library/titles`, `/series/:id`, `/movie/:id`, `/preview/…`, `/tmdb/:type/:tmdbId`, `POST /api/library/monitor`, `POST /api/library/search`, both T23 routes, `/api/library/playlists`, `/api/library/playlists/:id`, `/api/releases`, `/api/releases/refresh`, `GET`/`POST /api/grabs`, `/api/downloads`, and every `/api/playback/*` route (`src/server/playback.ts:396-510`).
   - A Coil `ImageLoader` on the same client, for `/api/images/*`.
 - **Tests (MockWebServer):** browser headers on POST and not on GET; the cookie survives a client restart; 401 → signed out; address rows; link poll pending → done.
 - **Kind:** new-code · **Depends on:** T04
