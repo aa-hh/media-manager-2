@@ -41,7 +41,7 @@ function DownloadsLiveBar({ count, idle = false, speeds, items = [], problem, ex
       >
         {panel}
       </Collapsible.Panel>
-      <div className="flex h-(--livebar) items-center gap-4 overflow-hidden bg-bar px-(--page-margin) whitespace-nowrap">
+      <div className="flex h-(--livebar) items-center gap-4 overflow-hidden bg-bar px-(--page-margin) whitespace-nowrap shadow-[inset_0_1px_0_var(--edge-highlight)]">
         <ArrowDownToLine aria-hidden="true" className={cn('size-4 shrink-0', idle ? 'text-bar-muted-foreground' : 'text-live')} />
         <span className={cn('font-ui text-sm text-bar-foreground', idle ? 'font-medium' : 'font-semibold')}>{count}</span>
         {speeds !== undefined && <span className="min-w-0 truncate font-data text-sm text-bar-muted-foreground">{speeds}</span>}

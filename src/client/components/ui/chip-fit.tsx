@@ -9,8 +9,8 @@ type ChipFitKind = 'score' | 'negative' | 'best' | 'best-star' | 'rejected';
 const looks: Record<ChipFitKind, string> = {
   score: 'border border-input text-muted-foreground',
   negative: 'bg-warning-soft text-warning',
-  best: 'bg-best text-foreground',
-  'best-star': 'bg-best text-foreground',
+  best: 'bg-best text-best-foreground',
+  'best-star': 'bg-best text-best-foreground',
   rejected: 'bg-destructive-soft text-destructive',
 };
 

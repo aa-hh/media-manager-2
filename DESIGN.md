@@ -1,7 +1,7 @@
 ---
 name: media-manager-2
 description: Paper white and black with lime. Dense release tables, glow-blue actions, lime only for the best release and live downloads.
-# Light mode only. Values come from the CSS custom properties in src/client/globals.css; the Figma library "media-manager-2 library" keeps a copy.
+# Light mode values; the dark values are in the "Dark mode" section. Values come from the CSS custom properties in src/client/globals.css; the Figma library "media-manager-2 library" keeps a copy.
 colors:
   background: "#FFFFFF"
   card: "#FFFFFF"
@@ -47,7 +47,7 @@ colors:
   mark-on-video: "#FFFFFFB3"
   best: "#C6F135"
   best-soft: "#F3FCD6"
-  best-foreground: "#3D5600"
+  best-foreground: "#111111"
   live: "#C6F135"
   watch-bar: "#75BAD1"
   poster-mark: "#1111119E"
@@ -66,6 +66,8 @@ colors:
   bar-muted-foreground: "#B5B5AE"
   scrim: "#1111114D"
   shadow: "#1111111F"
+  edge-highlight: "#FFFFFF00"
+  control: "#FFFFFF"
   inline-control: "#F1F4F8"
   inline-control-hover: "#E8EDF4"
   inline-control-border: "#7889A3"
@@ -118,21 +120,21 @@ components:
   button-default-pressed: {backgroundColor: "{colors.action-pressed}"}
   button-row: {backgroundColor: "{colors.action}", textColor: "{colors.action-foreground}", rounded: "{rounded.control-radius-row}", padding: "0px 10px", height: "28px"}
   button-large: {backgroundColor: "{colors.action}", textColor: "{colors.action-foreground}", rounded: "{rounded.button-radius}", padding: "0px 18px", height: "44px"}
-  button-outline: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.button-radius}", padding: "0px 16px", height: "36px"}
+  button-outline: {backgroundColor: "{colors.control}", textColor: "{colors.foreground}", rounded: "{rounded.button-radius}", padding: "0px 16px", height: "36px"}
   button-ghost: {textColor: "{colors.foreground}", rounded: "{rounded.button-radius}", padding: "0px 16px", height: "36px"}
   button-destructive: {backgroundColor: "{colors.destructive}", textColor: "{colors.destructive-foreground}", rounded: "{rounded.button-radius}", padding: "0px 16px", height: "36px"}
   button-destructive-hover: {backgroundColor: "{colors.destructive-hover}"}
   input-search: {backgroundColor: "{colors.muted}", textColor: "{colors.foreground}", rounded: "{rounded.radius-lg}", padding: "0px 16px", height: "48px", width: "640px"}
-  input-field: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", padding: "0px 12px", height: "36px"}
-  select-trigger: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 12px 0px 16px", height: "36px"}
+  input-field: {backgroundColor: "{colors.control}", textColor: "{colors.foreground}", rounded: "{rounded.radius-sm}", padding: "0px 12px", height: "36px"}
+  select-trigger: {backgroundColor: "{colors.control}", textColor: "{colors.foreground}", rounded: "{rounded.radius-md}", padding: "0px 12px 0px 16px", height: "36px"}
   toggle-group: {backgroundColor: "{colors.muted}", rounded: "{rounded.radius-md}", padding: "3px", height: "36px"}
-  toggle-group-item-selected: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.control-radius-row}", height: "30px"}
+  toggle-group-item-selected: {backgroundColor: "{colors.popover}", textColor: "{colors.foreground}", rounded: "{rounded.control-radius-row}", height: "30px"}
   toggle-group-on-dark: {backgroundColor: "{colors.surface-hover-on-video}", rounded: "{rounded.radius-md}", padding: "3px", height: "36px"}
   toggle-group-on-dark-item-selected: {backgroundColor: "{colors.foreground-on-dark}", textColor: "{colors.bar}", rounded: "{rounded.control-radius-row}", height: "30px"}
   volume-popover: {backgroundColor: "{colors.bar}", textColor: "{colors.foreground-on-dark}", typography: "{typography.data}", rounded: "{rounded.radius-lg}", padding: "12px 0px 14px", width: "52px"}
   badge-neutral: {backgroundColor: "{colors.muted}", textColor: "{colors.muted-foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-strong: {backgroundColor: "{colors.primary}", textColor: "{colors.primary-foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
-  badge-best: {backgroundColor: "{colors.best}", textColor: "{colors.foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
+  badge-best: {backgroundColor: "{colors.best}", textColor: "{colors.best-foreground}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-destructive: {backgroundColor: "{colors.destructive-soft}", textColor: "{colors.destructive}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-warning: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.warning}", rounded: "{rounded.radius-xs}", padding: "0px 6px", height: "20px"}
   badge-plain: {textColor: "{colors.muted-foreground}", padding: "0px", height: "28px"}
@@ -146,10 +148,10 @@ components:
   nav-item: {textColor: "{colors.muted-foreground}", rounded: "{rounded.radius-md}", padding: "0px 10px", height: "40px"}
   nav-item-active: {backgroundColor: "{colors.selected}", textColor: "{colors.foreground}"}
   dropdown-item: {rounded: "{rounded.radius-xs}", padding: "0px 8px", height: "32px"}
-  dropdown-content: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "4px", width: "248px"}
+  dropdown-content: {backgroundColor: "{colors.popover}", rounded: "{rounded.radius-lg}", padding: "4px", width: "248px"}
   panel-inline: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "20px 0px"}
-  dialog: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "24px", width: "560px"}
-  dialog-add: {backgroundColor: "{colors.card}", rounded: "{rounded.radius-lg}", padding: "36px", width: "800px"}
+  dialog: {backgroundColor: "{colors.popover}", rounded: "{rounded.radius-lg}", padding: "24px", width: "560px"}
+  dialog-add: {backgroundColor: "{colors.popover}", rounded: "{rounded.radius-lg}", padding: "36px", width: "800px"}
   select-inline: {backgroundColor: "{colors.inline-control}", textColor: "{colors.inline-control-foreground}", rounded: "{rounded.radius-sm}", padding: "0px 12px", height: "38px"}
   select-inline-hover: {backgroundColor: "{colors.inline-control-hover}"}
   badge-inline: {backgroundColor: "{colors.inline-control}", textColor: "{colors.inline-control-foreground}", rounded: "{rounded.radius-sm}", padding: "0px 12px", height: "38px"}
@@ -172,16 +174,16 @@ components:
   tag-format: {textColor: "{colors.muted-foreground}", rounded: "{rounded.radius-xs}", padding: "0px 4px", height: "16px"}
   chip-release-state: {backgroundColor: "{colors.muted}", textColor: "{colors.foreground}", rounded: "{rounded.control-radius-row}", padding: "0px 6px", height: "28px"}
   line-inset-notice: {backgroundColor: "{colors.warning-soft}", textColor: "{colors.foreground}", height: "40px"}
-  chip-filter: {backgroundColor: "{colors.card}", textColor: "{colors.foreground}", rounded: "{rounded.radius-full}", padding: "0px 6px 0px 10px", height: "28px"}
+  chip-filter: {backgroundColor: "{colors.control}", textColor: "{colors.foreground}", rounded: "{rounded.radius-full}", padding: "0px 6px 0px 10px", height: "28px"}
 ---
 
 # Design System: media-manager-2
 
 ## Overview
 
-Paper white and black with lime. Black carries the content and every "on" state (checkboxes, radios, selected rows, toggles). The main action on a screen is a glow-blue button (`action`, the rim of light on the planet mascot, near-black text 11:1); hover `action-hover` with the corners easing from 12 to 14px (`button-radius` to `button-radius-hover`), pressed `action-pressed`, focus the usual 2px black ring, disabled the muted look. Secondary buttons stay white with an edge and tertiary buttons have no fill; buttons use 12px corners, row-size buttons in tables 6px. Destructive buttons stay red. Lime appears in two places only: the best release and live downloads. Red means something went wrong, amber means something is missing or waiting. Tables stay dense: 40px rows inside a 40px page margin, 6 posters per row on Library.
+Paper white and black with lime. Black carries the content and every "on" state (checkboxes, radios, selected rows, toggles). The main action on a screen is a glow-blue button (`action`, the rim of light on the planet mascot, near-black text 11:1); hover `action-hover` with the corners easing from 12 to 14px (`button-radius` to `button-radius-hover`), pressed `action-pressed`, focus the usual 2px black ring, disabled the muted look. Secondary buttons fill with `control` (white in light, the surface under them in dark) and have an edge, and tertiary buttons have no fill; buttons use 12px corners, row-size buttons in tables 6px. Destructive buttons stay red. Lime appears in two places only: the best release and live downloads. Red means something went wrong, amber means something is missing or waiting. Tables stay dense: 40px rows inside a 40px page margin, 6 posters per row on Library.
 
-Light mode only for now. The dark design survives only in the read-only old design file `~/Projects/media-manager-2-design/archive/mediaManager2-2026-10-11.pen`. Desktop first; the phone is secondary and several phone rows are deferred.
+Light and dark (see Dark mode); the page follows the computer's setting unless Settings, Appearance picks Light or Dark for that device. Desktop first; the phone is secondary and several phone rows are deferred.
 
 The source of truth is the code: the components in `src/client/components/ui/` and the CSS custom properties in `src/client/globals.css`. The Figma library `media-manager-2 library` is a copy kept in step with it, redrawn from the code after each build. See [`design/README.md`](design/README.md) for the Figma files and their rules.
 
@@ -193,11 +195,11 @@ Token names follow shadcn/ui, so code and design use the same words.
 
 Neutrals do most of the work. One meaning per colour.
 
-- **Page and surfaces:** `background` is the page; `card` is tables, panels and menus (both white). `muted` is sunken things: tracks, Kbd keys, the neutral badge, the search field at rest. `surface-hover` and `surface-pressed` are hover and pressed. `selected` is the grey tint on a selected row, always with the 3px black side bar.
+- **Page and surfaces:** `background` is the page; `card` is tables and panels; `popover` is menus, select lists, dialogs, the phone sheet and the panel above the downloads bar (all white in light). `control` is the fill of outline buttons, checkboxes, radios, selects, fields, filter chips, bordered option rows and choice cards (white in light, transparent in dark). `muted` is sunken things: tracks, Kbd keys, the neutral badge, the search field at rest. `surface-hover` and `surface-pressed` are hover and pressed. `selected` is the grey tint on a selected row, always with the 3px black side bar. In dark these three are translucent white (4, 10 and 7%).
 - **Text:** `foreground` (18.9:1 on white) for text and icons. `muted-foreground` (7.5:1) for secondary text. `subtle-foreground` (5.6:1) for meta, placeholders and column headers. `faint-foreground` (2.5:1) is for disabled things only, never readable text.
 - **Lines:** `border` draws dividers and panel edges. `input` (3.4:1) draws control edges: checkboxes, radios, focused fields. Outline and menu buttons take a 1.5px `foreground` edge instead (1.5px `border` when disabled, 1.5px `destructive` on outline-destructive); at row size inside a table the outline edge is 1px `border`.
 - **Black:** `primary` is "on" states (checked, monitored, selected segment label, active tab underline). `bar` is the downloads bar, toasts, tooltips and the selection bar, with `bar-foreground` text. One in-page exception: the setup wizard's "How the pieces connect" strip fills with `bar` once every part is connected, meaning the whole chain is live.
-- **Lime:** `best` marks the single best release; `best-soft` tints its row. `live` marks downloads in progress. Lime is 1.3:1 on white, so it is only ever a fill behind black text (14.4:1) or a fill on the black downloads bar or on a poster. Setup wizard exception: a connected part's pill in the "How the pieces connect" strip is black with a lime dot (connected and answering), and the finished strip's pills are lime with black text. Never lime text, lime icons or thin lime lines on white.
+- **Lime:** `best` marks the single best release; `best-soft` tints its row. `live` marks downloads in progress. Lime is 1.3:1 on white, so it is only ever a fill behind `best-foreground` text (near-black in both modes, 14.4:1) or a fill on the black downloads bar or on a poster. Setup wizard exception: a connected part's pill in the "How the pieces connect" strip is black with a lime dot (connected and answering), and the finished strip's pills are lime with black text. Never lime text, lime icons or thin lime lines on white. In dark, a lime icon or thin line on the dark page is allowed; lime text never is.
 - **Slate:** only inside the add dialog's sentence. `inline-control` fills the chips and pills, `inline-control-foreground` is their text (8.5:1 on the fill), `inline-control-border` edges the chips you can click (3.2:1), and the `-hover` pair is hover and open. Slate means "a value in this sentence"; it never marks status, selection or an action.
 - **Plex orange:** `plex`, `plex-hover`, `plex-pressed` and `plex-foreground` are only for the "Log in with Plex" button.
 - **Jellyfin blue:** `jellyfin` (#00A4DC), `jellyfin-hover`, `jellyfin-pressed` and `jellyfin-foreground` (near-black, 7.0:1 on the fill) are only for buttons that log in with Jellyfin: the "Log in with Jellyfin" Quick Connect button and the "Log in" button of the username-and-password form.
@@ -207,7 +209,7 @@ Neutrals do most of the work. One meaning per colour.
 - **On a poster:** `watch-bar` (#75BAD1) is the blue watch bar of a title stopped partway; `poster-mark` (black 62%) is the frosted base of the played tick and the unwatched number.
 - **Focus:** `ring` (black) on white; `focus-on-dark` (white) on the black bars and on posters.
 - **Over the video:** the player draws over a moving picture, so its colours are translucent. `surface-on-video` (#111111 at 85%) fills a control floating on the picture (Skip intro) and the played circle on an episode still. `surface-hover-on-video` (white 8%) is the highlighted row in a dark menu and the subtitle timing steps; `surface-pressed-on-video` (white 12%) is an on-dark button on hover, press and while its menu is open; `border-on-video` (white 12%) edges the dark menus and tooltips and draws their separators; `kbd-on-video` (white 15%) is a key hint's fill on Skip intro; `mark-on-video` (white 70%) draws the intro and credits marks over the timeline. Text on them is `foreground-on-dark` and `muted-foreground-on-dark`; menus fill with `bar`.
-- **Overlay:** `scrim` (black 30%) dims the page behind a phone sheet. `shadow` is the colour of the floating shadow.
+- **Overlay:** `scrim` (black 30%) dims the page behind a phone sheet. `shadow` is the colour of the floating shadow; `edge-highlight` is the 1px lit top edge of raised things, transparent in light.
 
 Posters keep their own colour; the interface stays black and white around them.
 
@@ -216,6 +218,54 @@ Posters keep their own colour; the interface stays black and white around them.
 ### Names in the current code
 
 `src/client/globals.css` now uses the names above, with Schibsted Grotesk and Barlow Semi Condensed bundled in `src/client/assets/fonts/`.
+
+## Dark mode
+
+Cool night, approved 31 Oct 2026: the sign-in planet's night side, so the neutrals carry a slight blue. Glow-blue `action` and lime stay the only saturated notes. `:root[data-theme="dark"]` in `src/client/globals.css` redefines every colour token; nothing else changes, and Tailwind's `dark:` variant keys on the same attribute.
+
+- **Choosing it:** Settings, Appearance: Light, Dark or System, kept per device in the browser (`mm2.theme`). System, the default, follows the computer and keeps following it. An inline script in `index.html` sets `data-theme` on `<html>` before first paint, so the page never flashes the other theme. In the desktop app the choice also sets macOS's appearance for the window (`nativeTheme.themeSource`, kept in `desktop.json`); the main window stays transparent for mpv's picture, so its colour comes from the page.
+- **Lighter is higher:** page `background` #0C0F14 < `card` #12161C < sunken `muted` and `secondary` #171C24 < `popover` #1E2430 (menus, select lists, dialogs, the phone sheet, the panel above the downloads bar, the toggle group's chosen segment) < `bar` #242B38 (downloads bar, tooltips, toasts, selection bar). A menu opened in a dialog is popover on popover; its edge, lit top edge and shadow carry it.
+- **Hover, selected, pressed:** white 4, 7 and 10 % (`surface-hover` #FFFFFF0A, `selected` #FFFFFF12, `surface-pressed` #FFFFFF1A), so one value lifts card, popover, season rows and the page alike. The selected row keeps its 3px bar, in off-white.
+- **Controls:** `control` is transparent, so outline buttons, checkboxes, radios, selects, fields, filter chips, option rows and choice cards take the surface under them and their edge draws them; inside a dialog they sit flush instead of reading as holes.
+- **On states:** `primary` #EBEEF3 with `primary-foreground` #0C0F14: checked boxes and radios, the switch track, the strong badge, today's date, the selected-row bar and the tab underline are off-white with a dark tick or label. The switch thumb stays `card`, a dark knob.
+- **Red:** one red for text and fill, `destructive` #F07F76; red buttons take near-black words (`destructive-foreground` #0C0F14, 7.3:1). `destructive-soft` #2D1719.
+- **Lime:** the fill stays #C6F135 and everything on it is `best-foreground` #0C0F14 (14.7:1): the best badge, the best fit chip, the setup wizard's finished pills. `best-soft` is a dark olive, #1A2211. A lime icon or thin line on the dark page is allowed (the downloads arrow); lime text never is.
+- **Shadows:** `shadow` is black 60% and every float adds the 1px `edge-highlight` (white 8%) top edge. No shadow mixes `foreground`, which is off-white here. The mini player's black picture gets a 1px `edge-highlight` ring, since black on the page has no edge.
+- **Pictures:** the still's no-file and downloading wash fades toward the page (`background` 55%); the hover scrim, the play glyph and the tracks under the watch bar and lime strip are black. Posters keep their 10% `foreground` inner edge, a faint lit rim in dark.
+- **Loading:** the skeleton sweep is a faint glow-blue band (10%) instead of white 90%.
+- **Sign-in family:** `input-on-dark` is white 35% in dark (3.1:1 on #07080B); light keeps white 24% (2.0:1).
+
+| Token | Dark | Token | Dark |
+|---|---|---|---|
+| background | #0C0F14 | primary | #EBEEF3 |
+| card | #12161C | primary-hover | #CDD4DE |
+| popover | #1E2430 | primary-pressed | #FFFFFF |
+| muted, secondary | #171C24 | primary-foreground | #0C0F14 |
+| accent | #191E26 | action | #9ECAE1 |
+| surface-hover | #FFFFFF0A | action-hover | #B3D7EA |
+| selected | #FFFFFF12 | action-pressed | #8BBFDB |
+| surface-pressed | #FFFFFF1A | best-soft | #1A2211 |
+| foreground (and every `*-foreground` on a surface) | #EBEEF3 | best-foreground | #0C0F14 |
+| muted-foreground | #AAB3C1 | destructive | #F07F76 |
+| subtle-foreground | #959EAC | destructive-hover | #F4978F |
+| faint-foreground | #4B5361 | destructive-pressed | #E2665D |
+| border | #262C36 | destructive-soft | #2D1719 |
+| input | #6A7486 | destructive-foreground | #0C0F14 |
+| bar | #242B38 | warning | #E3A447 |
+| bar-foreground | #F2F4F7 | warning-soft | #2A2113 |
+| bar-muted-foreground | #B2BAC7 | warning-foreground | #0C0F14 |
+| ring | #EBEEF3 | scrim | #000000A3 |
+| shadow | #00000099 | edge-highlight | #FFFFFF14 |
+| control | #FFFFFF00 | input-on-dark | #FFFFFF59 |
+| inline-control | #1A2230 | inline-control-hover | #222D3E |
+| inline-control-border | #61738F | inline-control-border-hover | #7184A1 |
+| inline-control-foreground | #B9C9E2 | status-queued | #F28B3B |
+| status-downloading | #5CBF48 | status-importing | #A584EC |
+| status-stalled | #F2827A | status-blocked | #E0433A |
+
+Unchanged in dark: the brand buttons (`plex*`, `jellyfin*`), the sign-in family apart from `input-on-dark`, the over-the-video family, `best`, `live`, `watch-bar`, `poster-mark` and `focus-on-dark`.
+
+Contrast: `foreground` 16.5:1 on the page, 15.6 on card, 13.4 on popover, 13.0 on a selected row; `muted-foreground` 7.4 on popover; `subtle-foreground` 5.1 on a highlighted menu row; `input` 3.3 on popover. Known gaps against the 12:1 floor for full text on tinted rows: a highlighted menu row is 11.9:1 (accepted 31 Oct 2026), and a row on a card is 11.8:1 while pressed.
 
 ## Typography
 
@@ -232,7 +282,7 @@ Schibsted Grotesk (`font-ui`) for the interface: titles, labels, buttons, naviga
 - **Library:** 210px posters (`poster-width`), 6 per row at 1440px with 20px gaps (`poster-gutter`). The first and last poster in a row sit on the page margins; at other widths the gaps widen to fill the row, never below 20px. The Discover grids work the same way.
 - **Group headings:** 24px above, 8px below, no band and no line.
 - **Episode details:** opens under the row as a full-width white band, content starting at the Title column (`detail-indent`, 133px). Three sections 24px apart: Details, Versions, History, each a group heading over a white panel. The open row's 3px black side bar runs down the band too; the library draws none, and the owner chose to keep it (13 Oct 2026).
-- **Title header:** 220px backdrop band fading to white behind a 210 by 315 poster, title 36/800, facts column on the right. When the page scrolls it collapses to a 72px strip with a 32 by 48 poster thumb, breadcrumb, 20/700 title and the same three actions; the strip has no Play line, so Search stays filled there.
+- **Title header:** 220px backdrop band fading to the page colour (its top dimmed to page 45% in dark) behind a 210 by 315 poster, title 36/800, facts column on the right. When the page scrolls it collapses to a 72px strip with a 32 by 48 poster thumb, breadcrumb, 20/700 title and the same three actions; the strip has no Play line, so Search stays filled there.
 - **Phone:** 16px margin (`page-margin-phone`), 52px top bar with a full-width 44px search under it (`v2/Navigation/Phone`, `navigation-phone.tsx`), bottom sheets for grabs and choices (`v2/Sheet (phone)`, `sheet-phone.tsx`: corners 10 on top, a 36 by 4 handle, 18/700 title, full-width 44px actions), 44px touch targets.
 - **Spacing:** the `space-*` scale, 4 to 64px.
 
@@ -240,7 +290,7 @@ Schibsted Grotesk (`font-ui`) for the interface: titles, labels, buttons, naviga
 
 Flat by default. Things in the page flow (tables, rows, the inline panel, callouts, cards, the add block, the episode details band) get a 1px `border` edge and no shadow.
 
-Only things that float get a shadow: dropdown menus, tooltips, toasts, dialogs, the phone sheet and the selection bar. One shadow for all of them: `0 2px 6px #1111110F, 0 8px 24px #1111111F` (the phone sheet casts it upward).
+Only things that float get a shadow: dropdown menus, tooltips, toasts, dialogs, the phone sheet and the selection bar. One shadow for all of them, `shadow-float`: `0 2px 6px #1111110F, 0 8px 24px #1111111F` in light (the phone sheet casts it upward, `shadow-float-up`). In dark it is mixed from `shadow` (black 60%) and adds a 1px `edge-highlight` top edge; the downloads bar, the panel above it and the toggle group's chosen segment take that edge alone.
 
 ## Shapes
 
@@ -263,12 +313,12 @@ Icon-only buttons are squares at the same heights, and badges follow the same he
 
 ### Buttons, badges and inputs
 
-- **v2/Button:** primary (glow-blue `action`, shadcn `default`), outline (white, 1.5px `foreground` edge; 1px `border` at row size), ghost, destructive (red), outline-destructive, menu (outline with a chevron), and the two brand buttons `v2/Button/plex` and `v2/Button/jellyfin` (44px, brand fill and edge, 20px black mark and label on the brand tokens; only on the sign-in block). Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
-- **v2/Badge**, 20px (`badge-h`, padding `badge-px` 6, text `badge-text` 11, icon `badge-icon` 12): neutral (`muted`), strong (black, "In library"), best (lime `best`, black text: the best release), live (`muted`, black text and `v2/Status/download circle`: "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). `v2/Mark/pending-change` shows the old value, an arrow and the new value on amber while a change waits; the release table's chips and marks are listed under Releases. `v2/Chip/filter` (`chip-filter.tsx`) is a filter that is on, such as a Discover filter tag: 28 high, white, 1.5px `input` edge, fully round, 13/500 words and a 14px remove cross. `v2/Mark/comparison` (`mark-comparison.tsx`) says how a release compares, such as "better": a 12px up arrow and 12/600 words, 20 high, no fill. Plain is the look for a standing status beside a row button, such as In library on a search result: no fill and no padding, a 14px `foreground` check and `muted-foreground` words, built from the row tokens (`control-h-row`, `control-text-row`, `control-icon-row`) so it lines up with the button. A filled badge never takes button height, or it reads as a button; the one exception is `v2/Chip/release-state` (`chip-release-state.tsx`), 28 high because it stands where the row's Grab button was.
-- **v2/Input/Search:** `muted` fill and no edge at rest, white with a 1.5px `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 36px, radius 12, white with an edge. Phone: 44px, full width. An empty field is `v2/Field/labelled/empty`: the placeholder in `subtle-foreground`. A field whose check failed is `v2/Field/labelled/error`: the input edge turns `destructive`, the help line is replaced by the error text in `destructive`, and the error wraps. On the dark sign-in ground it is `v2/Field/labelled/on-dark`: `card-on-dark` fill, `input-on-dark` edge, on-dark text, and `destructive-on-dark` error text with a 2px edge; the sign-in block uses it at the large size (44px, 16px text).
+- **v2/Button:** primary (glow-blue `action`, shadcn `default`), outline (`control` fill, 1.5px `foreground` edge; 1px `border` at row size), ghost, destructive (red), outline-destructive, menu (outline with a chevron), and the two brand buttons `v2/Button/plex` and `v2/Button/jellyfin` (44px, brand fill and edge, 20px black mark and label on the brand tokens; only on the sign-in block). Disabled is a grey fill, never opacity. Loading swaps the icon for a spinner and keeps the width.
+- **v2/Badge**, 20px (`badge-h`, padding `badge-px` 6, text `badge-text` 11, icon `badge-icon` 12): neutral (`muted`), strong (black, "In library"), best (lime `best`, `best-foreground` text: the best release), live (`muted`, black text and `v2/Status/download circle`: "Downloading 64%"), risk, warning, outline ("Searching" with a spinner). `v2/Mark/pending-change` shows the old value, an arrow and the new value on amber while a change waits; the release table's chips and marks are listed under Releases. `v2/Chip/filter` (`chip-filter.tsx`) is a filter that is on, such as a Discover filter tag: 28 high, `control` fill, 1.5px `input` edge, fully round, 13/500 words and a 14px remove cross. `v2/Mark/comparison` (`mark-comparison.tsx`) says how a release compares, such as "better": a 12px up arrow and 12/600 words, 20 high, no fill. Plain is the look for a standing status beside a row button, such as In library on a search result: no fill and no padding, a 14px `foreground` check and `muted-foreground` words, built from the row tokens (`control-h-row`, `control-text-row`, `control-icon-row`) so it lines up with the button. A filled badge never takes button height, or it reads as a button; the one exception is `v2/Chip/release-state` (`chip-release-state.tsx`), 28 high because it stands where the row's Grab button was.
+- **v2/Input/Search:** `muted` fill and no edge at rest, `control` fill with a 1.5px `input` edge plus the ring when focused. In a form (`v2/Field/labelled`) it becomes 36px, radius 12, `control` fill with an edge. Phone: 44px, full width. An empty field is `v2/Field/labelled/empty`: the placeholder in `subtle-foreground`. A field whose check failed is `v2/Field/labelled/error`: the input edge turns `destructive`, the help line is replaced by the error text in `destructive`, and the error wraps. On the dark sign-in ground it is `v2/Field/labelled/on-dark`: `card-on-dark` fill, `input-on-dark` edge, on-dark text, and `destructive-on-dark` error text with a 2px edge; the sign-in block uses it at the large size (44px, 16px text).
 - **Select trigger:** 36px, radius 12, 1.5px `input` edge, an optional grey lead label before the value, the chevron at the right edge at any width; the open list is a dropdown menu. `v2/Select trigger/sm` is the same at 30px for filter bars.
-- **Toggle group:** up to six segments, 30px each inside a 36px `muted` track with 3px padding; white selected segment, radius 6, with a 1px edge and black 600 label, no shadow. The releases inset's quality filter is the same group at 32px with 28px segments (`size="inset"` in `toggle-group.tsx`). `v2/ToggleGroup/on-dark` (`DropdownMenuToggleGroup` in `dropdown-menu.tsx`) is the same geometry inside the player's dark menus: a white 8% track, labels 13/600 in `muted-foreground-on-dark`, the chosen segment `foreground-on-dark` with a `bar` label and no edge, the segments sharing the width; the keyboard's place is the white 8% highlight, or a 2px inner `bar` edge on the chosen one; disabled, 40%. Its choices are menu radio items, since a menu may hold only menu items. **Tabs:** `v2/Tabs trigger/active` has a black 600 label and count in `muted-foreground` over a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
-- **Option rows:** `v2/Option row` (`option-row.tsx`) is a radio or checkbox with a title and a line of explanation, radius 12, no edge; the choice shows in the control, never as a tint. `v2/Option row/bordered` (the `bordered` prop) is the same row as a card with its own edge, for a short set of standalone choices in a grid: site software, backup destination, Plex token, the setup wizard's optional parts. Radius 12, padding 14 16, white fill, 1px `border` edge; on, the edge turns 2px `foreground`, the second pixel an inset shadow so nothing moves. `v2/Option row/bordered/service` is the first-run pick of a media server on the dark ground: `card-on-dark` fill, white 12% edge, a 32px service logo in place of the radio and a chevron on the right; it opens the next step rather than recording a choice. `v2/Card/choice` is the larger radio card for decisions in a panel or dialog.
+- **Toggle group:** up to six segments, 30px each inside a 36px `muted` track with 3px padding; `popover` selected segment (white in light; in dark it sits a step above the track with a 1px lit top edge), radius 6, with a 1px edge and black 600 label, no shadow. The releases inset's quality filter is the same group at 32px with 28px segments (`size="inset"` in `toggle-group.tsx`). `v2/ToggleGroup/on-dark` (`DropdownMenuToggleGroup` in `dropdown-menu.tsx`) is the same geometry inside the player's dark menus: a white 8% track, labels 13/600 in `muted-foreground-on-dark`, the chosen segment `foreground-on-dark` with a `bar` label and no edge, the segments sharing the width; the keyboard's place is the white 8% highlight, or a 2px inner `bar` edge on the chosen one; disabled, 40%. Its choices are menu radio items, since a menu may hold only menu items. **Tabs:** `v2/Tabs trigger/active` has a black 600 label and count in `muted-foreground` over a 2px underline. **Checkbox and radio:** 16px, `input` edge, black when on. **Switch** is for settings only; monitored is always `v2/Toggle/Bookmark`.
+- **Option rows:** `v2/Option row` (`option-row.tsx`) is a radio or checkbox with a title and a line of explanation, radius 12, no edge; the choice shows in the control, never as a tint. `v2/Option row/bordered` (the `bordered` prop) is the same row as a card with its own edge, for a short set of standalone choices in a grid: site software, backup destination, Plex token, the setup wizard's optional parts. Radius 12, padding 14 16, `control` fill, 1px `border` edge; on, the edge turns 2px `foreground`, the second pixel an inset shadow so nothing moves. `v2/Option row/bordered/service` is the first-run pick of a media server on the dark ground: `card-on-dark` fill, white 12% edge, a 32px service logo in place of the radio and a chevron on the right; it opens the next step rather than recording a choice. `v2/Card/choice` is the larger radio card for decisions in a panel or dialog, also on `control`.
 
 - **Sentence form (the add dialog):** the settings are read as one sentence. `v2/Select trigger/inline` is a choice inside it: slate fill, 1px `inline-control-border` edge, bold text, line height 1.3 and a 16px chevron; open or hover goes to the `-hover` pair, open adds a 1.5px `inline-control-foreground` edge. The Sonarr or Radarr logo and name inside it (`Badge variant="inline"`) has the same fill, a 24px logo, no edge, no chevron, 500 weight, and is never focusable. `v2/Badge/inline` (`Badge variant="inline-value"`) is a calculated value inside it (aired count, next air date, movies in a collection, expected date) in Barlow Semi Condensed 700 at 26px, line height 1.3, with tabular figures, in the same 38px pill with 12px padding. A required choice left empty is the same select in amber (`warning-soft` fill, 1.5px `warning` edge, `warning` text) with a plus in place of the chevron and a verb-first label ("Choose seasons"), plus an amber helper line under the sentence; the confirm button stays disabled. Text is 22px with chips 38px tall. The sentence sits in a rounded box (1.5px `input` edge, radius 16, padding 28 32, 14px between lines, as wide as its longest sentence up to the dialog width so the space either side of the text matches) so it reads as the one place to change the add; the amber helper line goes under the box. Wording: three short sentences, one fact each, one per line. 1 "[Sonarr] will add <title> to your library." 2 "Monitor [choice] using profile [profile]." (specific seasons: "Monitor [specific seasons]: [1, 2, 7] using profile [profile]."; no episodes or nothing: "Monitor [no episodes]." and no third line). 3 what the search covers: "[18] aired episodes will be included in the search."; nothing aired yet: "Nothing has aired yet. The first episode airs on (date)."; future episodes: "The next episode airs on (date)." when known. For a movie the monitor choices read "just the movie", "entire collection" and "nothing", and line 3 reads "Search starts once it's [available], expected on (date)." (date from the chosen availability: cinema date, or the earliest digital or physical date; dropped when unknown or past), "Search starts now." when already out, or "Search covers up to (3) movies once they're [available]." for a collection. `v2/Block/add-controls` lays out the dialog body: More options sits 28 below the box. Settings that don't read as a sentence sit under that 32-high `v2/Collapsible trigger` whose summary line lists their values, as `v2/Fact/row` rows 48 high with 180px labels, indented 24, with a select sized to its longest option (MUI Select rule: the trigger never changes width, the chevron sits at the right edge). A successful Confirm closes the dialog and shows a toast titled "Added <title> to your library" whose second line repeats line 3's fact ("Sonarr is searching 18 aired episodes.", "Sonarr will search once episodes air.", "Nothing is monitored.", "Radarr is searching now.", "Radarr will search once it's available, expected on 26 Mar 2027.", "Radarr is searching up to 3 movies."). The dialog opens with the remembered quality profile and root folder (the last successful add per service) preselected.
 
@@ -355,9 +405,9 @@ From `player.pen` v96V7 and `title.pen` CaPVj (approved 27 Oct 2026). Redrawn in
 
 ### Chrome and floating things
 
-- **App bar:** 64px, white at 70% over a 24px background blur on every page so what scrolls under it shows through, line under, 40px side padding. Nav items are 40px, radius 12, 500 labels in `muted-foreground`, with a count pill (red on `destructive-soft` for problems); the active item gets the `selected` fill and a black 600 label. In the desktop app the bar drags the window and its left padding is 80px, clear of the macOS window buttons. Service status lives behind Health, whose count turns red when a service fails. Before setup is done the bar is `v2/AppBar/Desktop/setup`: the product name only, no search or navigation, and a ghost "Sign out" button on the right.
+- **App bar:** 64px, `card` at 70% over a 24px background blur on every page so what scrolls under it shows through, line under, 40px side padding. Nav items are 40px, radius 12, 500 labels in `muted-foreground`, with a count pill (red on `destructive-soft` for problems); the active item gets the `selected` fill and a black 600 label. In the desktop app the bar drags the window and its left padding is 80px, clear of the macOS window buttons. The logo is `design/app-logo/small-on-light.png`, or `small-on-dark.png` in dark. Service status lives behind Health, whose count turns red when a service fails. Before setup is done the bar is `v2/AppBar/Desktop/setup`: the product name only, no search or navigation, and a ghost "Sign out" button on the right.
 - **Downloads bar:** black with white text; lime is allowed there for the arrow and progress fills because it sits on black. Idle reads "Nothing downloading". A stalled item shows a red dot and words.
-- **Floating:** menus (248px, 32px items, sentence-case group headings), tooltips (`bar`, after 400ms), toasts (`bar`, 400px, bottom left above the downloads bar, Undo with the Z key), dialogs and the selection bar (`bar`, 56px, 16px above the downloads bar) take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
+- **Floating:** menus (`popover`, 248px, 32px items, sentence-case group headings), tooltips (`bar`, after 400ms), toasts (`bar`, 400px, bottom left above the downloads bar, Undo with the Z key), dialogs and the selection bar (`bar`, 56px, 16px above the downloads bar) take the shadow. Inside menus and lists the highlight is the focus cue, with no ring.
 - **Sign-in:** a dark `#07080b` ground with the planet drawn behind and no app bar, a 400px block fixed 120px from the left and bottom edges on desktop (24px sides and 83px from the bottom on a phone) holding the product name and the brand button for the chosen media server: Plex-orange `plex` "Log in with Plex" with Plex's black chevron (`v2/Sign-in/block`), or Jellyfin-blue `jellyfin` "Log in with Jellyfin" with the black Jellyfin mark (`v2/Sign-in/block/jellyfin`). Text on the ground uses `foreground-on-dark` and `muted-foreground-on-dark`. While Jellyfin Quick Connect waits for approval the block's body is `v2/Sign-in/quick-connect code` (`sign-in-quick-connect-code.tsx`): an instruction line, six digits in two groups of three (Barlow Semi Condensed 64/600, 6px tracking) and the expiry; the username and password fallback is the on-dark field at the large size. One line under the button only after a failed attempt, an expired session, or when sign-in is not configured. The first-run page (no owner yet) uses the same ground, planet and column, with the Plex-orange and Jellyfin-blue buttons and `destructive-on-dark` error lines.
 
 ### Where a decision opens
@@ -378,7 +428,7 @@ The kind of decision sets the scale of the place it opens in. Three tiers:
 
 ### Focus
 
-Every focused control gets a 2px `ring` outline with a 2px white gap (Tailwind `outline-2 outline-offset-2`). The black ring is 18.9:1 against the white gap, so it reads beside black, red and lime fills alike. On black bars it is `focus-on-dark`; on a poster it is `focus-on-dark` 3px outside the control; rows use the 2px inner edge. Spinners and skeleton shimmer stay still under reduced motion (see Motion).
+Every focused control gets a 2px `ring` outline with a 2px gap in the page colour (Tailwind `outline-2 outline-offset-2`). The ring is black on white (18.9:1) and off-white on the dark page (16.5:1), so it reads beside black, red and lime fills alike. On black bars it is `focus-on-dark`; on a poster it is `focus-on-dark` 3px outside the control; rows use the 2px inner edge. Spinners and skeleton shimmer stay still under reduced motion (see Motion).
 
 ## Motion
 

@@ -53,7 +53,7 @@ function SelectTrigger({ size = 'default', variant = 'default', empty = false, l
           ? cn(inlineTriggerClass(empty), size === 'sm' && 'h-8 rounded-sm gap-1.5 px-2.5 text-sm font-semibold [&_svg]:size-3.5')
           : cn(
             base,
-            'border border-input bg-card text-foreground',
+            'border border-input bg-control text-foreground',
             size !== 'row' && 'border-[1.5px]',
             'hover:border-muted-foreground hover:bg-surface-hover data-popup-open:border-muted-foreground data-popup-open:bg-surface-pressed',
             'data-invalid:border-destructive aria-invalid:border-destructive',

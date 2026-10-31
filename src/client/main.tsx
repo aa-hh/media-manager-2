@@ -23,6 +23,7 @@ import { useBlocklist, useHistory } from './history/useHistory';
 import { MediaServerContext } from './mediaServer';
 import { PlayerProvider } from './player/Player';
 import type { SetupStatus } from './settings/setup';
+import { syncDesktopTheme } from './lib/theme';
 import './globals.css';
 
 const SetupWizard = lazyScreen(() => import('./settings/SetupWizard').then((module) => module.SetupWizard));
@@ -407,6 +408,8 @@ function SignedIn(props: SignedInProps) {
               <PanelInline
                 open
                 title="Downloads"
+                // It floats above the bar, so it takes the menus' surface and lit edge (no shadow, as in the page flow).
+                className="bg-popover shadow-[inset_0_1px_0_var(--edge-highlight)]"
                 onClose={() => setBarOpen(false)}
                 primary={<Button size="large" onClick={onOpen}>Open Downloads</Button>}
                 secondary={<Button variant="outline" kbd="Esc" onClick={() => setBarOpen(false)}>Collapse</Button>}
@@ -441,6 +444,7 @@ function SignedIn(props: SignedInProps) {
   );
 }
 
+syncDesktopTheme();
 createRoot(document.getElementById('root')!).render(<ToastProvider><App /></ToastProvider>);
 // After the first render and out of the main chunk; web-vitals reads buffered entries, so starting late loses nothing.
 void import('./metrics').then(({ startMetrics }) => startMetrics(), () => undefined);

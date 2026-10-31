@@ -30,14 +30,14 @@ function StillEpisode({ image, noFile = false, downloading, watched, played = fa
       {image !== undefined
         ? <img src={image} alt="" className={cn('size-full object-cover', noFile && 'grayscale')} />
         : <span className="absolute inset-0 rounded-[inherit] bg-muted ring-1 ring-border ring-inset" />}
-      {(noFile || downloading !== undefined) && <span className="absolute inset-0 bg-white/55" />}
+      {(noFile || downloading !== undefined) && <span className="absolute inset-0 bg-background/55" />}
       {playable && (
         <>
-          <span className="absolute inset-0 bg-foreground/40 opacity-0 transition-opacity duration-(--duration-fast) ease-out group-hover/still:opacity-100 group-focus-visible/still:opacity-100" />
+          <span className="absolute inset-0 bg-foreground/40 opacity-0 dark:bg-black/40 transition-opacity duration-(--duration-fast) ease-out group-hover/still:opacity-100 group-focus-visible/still:opacity-100" />
           <span
             className={cn(
               'absolute top-2 left-6 flex size-6 items-center justify-center rounded-full transition-opacity duration-(--duration-fast) ease-out',
-              next ? 'bg-action text-action-foreground' : 'bg-white text-foreground opacity-0 group-hover/still:opacity-100 group-focus-visible/still:opacity-100',
+              next ? 'bg-action text-action-foreground' : 'bg-white text-foreground opacity-0 dark:text-black group-hover/still:opacity-100 group-focus-visible/still:opacity-100',
             )}
           >
             <Play aria-hidden="true" className="size-3" />
@@ -45,12 +45,12 @@ function StillEpisode({ image, noFile = false, downloading, watched, played = fa
         </>
       )}
       {watched !== undefined && (
-        <span className="absolute inset-x-0 bottom-0 h-1.5 bg-foreground/60">
+        <span className="absolute inset-x-0 bottom-0 h-1.5 bg-foreground/60 dark:bg-black/60">
           <span style={{ width: `${Math.min(100, Math.max(0, watched))}%` }} className="block h-full bg-watch-bar" />
         </span>
       )}
       {downloading !== undefined && (
-        <span className="absolute inset-x-0 bottom-0 h-1 bg-foreground/70">
+        <span className="absolute inset-x-0 bottom-0 h-1 bg-foreground/70 dark:bg-black/70">
           <span style={{ width: `${Math.min(100, Math.max(0, downloading))}%` }} className="block h-full bg-live" />
         </span>
       )}

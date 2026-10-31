@@ -11,6 +11,20 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preload" href="/src/client/assets/fonts/SchibstedGrotesk-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin />
+    <script>
+      // Light or dark before first paint, so the page never flashes the other one. The choice is Settings' Appearance,
+      // kept per device; without one the page follows the system, and keeps following it (src/client/lib/theme.ts).
+      (function () {
+        var media = window.matchMedia('(prefers-color-scheme: dark)');
+        var apply = function () {
+          var choice = null;
+          try { choice = window.localStorage.getItem('mm2.theme'); } catch (error) {}
+          document.documentElement.dataset.theme = choice === 'dark' || (choice !== 'light' && media.matches) ? 'dark' : 'light';
+        };
+        apply();
+        media.addEventListener('change', apply);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

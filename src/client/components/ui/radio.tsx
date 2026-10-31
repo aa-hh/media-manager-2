@@ -9,7 +9,7 @@ function Radio({ className, ...props }: ComponentProps<typeof RadioPrimitive.Roo
   return (
     <RadioPrimitive.Root
       className={cn(
-        'inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-input bg-card',
+        'inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-input bg-control',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         'hover:border-muted-foreground active:border-muted-foreground active:bg-surface-pressed',
         'data-checked:border-primary data-checked:bg-primary data-checked:hover:border-primary data-checked:hover:bg-primary-hover',

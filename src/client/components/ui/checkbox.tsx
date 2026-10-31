@@ -10,7 +10,7 @@ function Checkbox({ className, indeterminate, ...props }: ComponentProps<typeof 
     <CheckboxPrimitive.Root
       indeterminate={indeterminate}
       className={cn(
-        'inline-flex size-4 shrink-0 items-center justify-center rounded-xs border border-input bg-card',
+        'inline-flex size-4 shrink-0 items-center justify-center rounded-xs border border-input bg-control',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         'hover:border-muted-foreground active:border-muted-foreground active:bg-surface-pressed',
         'data-checked:border-primary data-checked:bg-primary data-checked:hover:border-primary-hover data-checked:hover:bg-primary-hover',

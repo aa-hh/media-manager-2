@@ -19,7 +19,7 @@ function Switch({ className, ...props }: ComponentProps<typeof SwitchPrimitive.R
     >
       <SwitchPrimitive.Thumb
         className={cn(
-          'size-3.5 rounded-full bg-card shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_20%,transparent)]',
+          'size-3.5 rounded-full bg-card shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_20%,transparent)] dark:shadow-[0_1px_2px_var(--shadow)]',
           'transition-transform duration-(--duration-fast) ease-out data-checked:translate-x-3.5',
         )}
       />

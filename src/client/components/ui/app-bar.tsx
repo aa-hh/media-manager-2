@@ -2,6 +2,7 @@
 // Figma: AppBarNavItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8353
 import type { ComponentProps, ReactNode } from 'react';
 import logo from '@/assets/logos/media-manager-2.png';
+import logoOnDark from '@/assets/logos/media-manager-2-on-dark.png';
 import { cn } from '@/lib/utils';
 
 type AppBarNavItemProps = ComponentProps<'a'> & {
@@ -58,7 +59,7 @@ type AppBarDesktopProps = ComponentProps<'header'> & {
   signedOut?: boolean;
 };
 
-/** Top bar, 64 px, white at 70% over a 24 px blur so what scrolls under it shows through, a line under, page-margin side padding (80 px on the left in the desktop app). The 28 px logo is the small-size render, design/app-logo/small-on-light.png. */
+/** Top bar, 64 px, card at 70% over a 24 px blur so what scrolls under it shows through, a line under, page-margin side padding (80 px on the left in the desktop app). The 28 px logo is the small-size render, design/app-logo/small-on-light.png, or small-on-dark.png in dark mode. */
 function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, signedOut = false, className, ...props }: AppBarDesktopProps) {
   return (
     <header
@@ -71,7 +72,8 @@ function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, s
       {...props}
     >
       <div className="flex shrink-0 items-center gap-2.5 font-ui text-base font-extrabold tracking-[-0.2px] text-foreground">
-        <img src={logo} alt="" width={28} height={28} className="size-7" />
+        <img src={logo} alt="" width={28} height={28} className="size-7 dark:hidden" />
+        <img src={logoOnDark} alt="" width={28} height={28} className="hidden size-7 dark:block" />
         {productName}
       </div>
       {!signedOut && (

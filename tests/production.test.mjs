@@ -15022,7 +15022,7 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -15058,6 +15058,8 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);
   // Taking a value outside the five sizes turns this red: a broken settings file or a bad call would set any sub-scale on mpv.
   assert.deepEqual([0.5, 0.75, 1, 1.25, 2, 1.5, 3, '1', null].map(subtitleScale), [0.5, 0.75, 1, 1.25, 2, null, null, null, null]);
+  // Taking any other value turns this red: Electron throws on an unknown themeSource, and a broken settings file would stop the launch.
+  assert.deepEqual(['light', 'dark', 'system', 'Dark', '', null].map(themeSource), ['light', 'dark', 'system', null, null, null]);
 
   // Dropping the title, or falling back to the file's address, turns the title column red: mpv would name the track
   // after the address, token included. Keeping Plex's first connection turns the address column red.

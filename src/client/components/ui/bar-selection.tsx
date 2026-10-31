@@ -43,7 +43,7 @@ function BarSelection({ open, count, children, hint, onClear, clearLabel = 'Clea
       inert={!open}
       className={cn(
         'fixed bottom-[calc(var(--livebar)+var(--space-4))] left-1/2 z-40 h-14 -translate-x-1/2 items-center gap-1 rounded-lg bg-bar pr-2 pl-5',
-        'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]',
+        'shadow-float',
         'transition-discrete',
         open
           ? 'flex transition-[opacity,translate,display] duration-(--duration-base) ease-out starting:translate-y-(--motion-rise-16) starting:opacity-0'
