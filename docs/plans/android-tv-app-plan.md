@@ -133,7 +133,7 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - The client for our server sends `Origin: <typed origin>`, `X-Requested-With: media-manager-2` and `Content-Type: application/json` on every non-GET request.
 - On `/api/playback/start` it also sends `X-Media-Manager-Desktop: 1`, so the reply carries `streamAddresses`, `directAddressCount` and `machineIdentifier` (`src/server/playback.ts:273, 416`).
 - The player's Plex data source is a separate OkHttpClient with no cookie jar.
-- Every logged string has `X-Plex-Token` values replaced with `***`.
+- Every logged string has `X-Plex-Token` and cookie values replaced with a short SHA-256 fingerprint (`#` + 8 hex characters).
 - Unencrypted http is allowed for every host: `res/xml/network_security_config.xml` with `<base-config cleartextTrafficPermitted="true">`.
 
 **Releases.**

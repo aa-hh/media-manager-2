@@ -8,7 +8,7 @@ The Google TV app: Kotlin, Compose for TV and Media3, one Gradle module (`app`).
 
 - Build, test and install only through `scripts/android-tv.sh`; the hook denies bare `gradle` and `gradlew`.
 - The Plex client (the player's data source) is a separate OkHttpClient with no cookie jar, so our session cookie never reaches Plex.
-- No token appears in a log: replace every `X-Plex-Token` value with `***` before logging.
+- No token appears in a log: replace every `X-Plex-Token` value and cookie value with `#` plus the first 8 hex characters of its SHA-256 before logging (`log/Scrub.kt`).
 - Stream addresses come only from `POST /api/playback/start`; never build a Plex address yourself.
 - Every non-GET request to our server carries `Origin`, `X-Requested-With: media-manager-2` and `Content-Type: application/json`, as a browser would.
 - A grab is blocked while one is in flight and is never resent. A grab that errors is settled from history, because the server may have sent it anyway.

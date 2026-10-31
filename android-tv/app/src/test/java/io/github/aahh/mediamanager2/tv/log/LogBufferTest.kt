@@ -21,13 +21,15 @@ class LogBufferTest {
         assertFalse(scrubbed.contains("abc123"))
         assertFalse(scrubbed.contains("def456"))
         assertFalse(scrubbed.contains("s3cr3t"))
-        assertTrue(scrubbed.contains("X-Plex-Token=***&x=1"))
-        assertEquals("Set-Cookie: ***", scrub("Set-Cookie: __Host-mm_session=abc; Path=/; Secure"))
-        assertEquals("sent __Host-mm_session=*** then", scrub("sent __Host-mm_session=abc then"))
+        assertTrue(scrubbed.contains("X-Plex-Token=${fingerprint("abc123")}&x=1"))
+        assertEquals("Set-Cookie: ${fingerprint("__Host-mm_session=abc; Path=/; Secure")}", scrub("Set-Cookie: __Host-mm_session=abc; Path=/; Secure"))
+        assertEquals("sent __Host-mm_session=${fingerprint("abc")} then", scrub("sent __Host-mm_session=abc then"))
+        // Same token, same fingerprint; a known value, so the hash is SHA-256 and not something weaker.
+        assertEquals("#ba7816bf", fingerprint("abc"))
         assertEquals("nothing secret here", scrub("nothing secret here"))
         // An http server address drops the __Host- prefix; a JSON body quotes the header name.
-        assertEquals("mm_session=*** mm_plex=***", scrub("mm_session=abc mm_plex=def"))
-        assertEquals("{\"X-Plex-Token\":\"***\"}", scrub("{\"X-Plex-Token\":\"abc\"}"))
+        assertEquals("mm_session=${fingerprint("abc")} mm_plex=${fingerprint("def")}", scrub("mm_session=abc mm_plex=def"))
+        assertEquals("{\"X-Plex-Token\":\"${fingerprint("abc")}\"}", scrub("{\"X-Plex-Token\":\"abc\"}"))
     }
 
     // Dropping the newest lines instead of the oldest, or letting the buffer grow past its cap, turns this red.
