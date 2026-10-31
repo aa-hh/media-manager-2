@@ -15089,7 +15089,7 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -15166,6 +15166,21 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   assert.deepEqual([0.5, 0.75, 1, 1.25, 2, 1.5, 3, '1', null].map(subtitleScale), [0.5, 0.75, 1, 1.25, 2, null, null, null, null]);
   // Taking any other value turns this red: Electron throws on an unknown themeSource, and a broken settings file would stop the launch.
   assert.deepEqual(['light', 'dark', 'system', 'Dark', '', null].map(themeSource), ['light', 'dark', 'system', null, null, null]);
+
+  // Writing mpv.log without MM2_MPV_LOG=1 asking for it turns the first three rows red: the log holds Plex's transient
+  // token in every stream address.
+  const userData = '/Users/owner/Library/Application Support/media-manager-2';
+  const starts = [
+    [{}, null],
+    [{ MM2_MPV_LOG: '0' }, null],
+    [{ MM2_MPV_LOG: 'true' }, null],
+    [{ MM2_MPV_LOG: '1' }, `${userData}/mpv.log`],
+  ];
+  for (const [env, logFile] of starts) {
+    const options = mpvStartOptions(env, userData);
+    assert.equal(Object.hasOwn(options, 'log-file') ? options['log-file'] : null, logFile, JSON.stringify(env));
+  }
+  assert.equal(mpvStartOptions({}, userData)['gpu-shader-cache-dir'], `${userData}/mpv-shader-cache`);
 
   // Dropping the title, or falling back to the file's address, turns the title column red: mpv would name the track
   // after the address, token included. Keeping Plex's first connection turns the address column red.

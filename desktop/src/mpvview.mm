@@ -162,7 +162,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
  private:
   NSWindow *win_ = nil;    // Electron's window
   NSWindow *video_ = nil;  // mpv's window, child of win_ once attached
-  int pins_ = 0;           // times Pin() put mpv's window back since the last attach
+  int pins_ = 0;           // times Pin() put mpv's window back since the last attach or file loaded
   CGFloat radius_ = 0;     // macOS's window corner radius
   NSMutableArray *observers_ = [NSMutableArray array];
   mpv_handle *mpv_ = nullptr;
@@ -362,6 +362,8 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
         // Every window the app has, for play-timings.log: a count that grows from Play to Play means a window left behind.
         o.Set("windows", (double)NSApp.windows.count);
       }
+      // Each file gets 3 fresh Pin() moves (force-window attaches once per run); file-loaded, not playback-restart, which mpv also sends after every seek.
+      if (ev->event_id == MPV_EVENT_FILE_LOADED) pins_ = 0;
       // mpv makes its window on the main thread after the video reconfig, so the observer can read window-id before the
       // window exists and then hear no later change: the picture then sits in mpv's own unattached window, off the app's
       // frame. Once a frame is drawn the window exists, so ask again. force-window's reconfig is sent after its window
@@ -440,7 +442,8 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
   // gesture ends. Setting a child's frame never moves its parent.
   // mpv moved its window without resizing it: on 31 Oct it sat 60 pt below the app window straight after Attach set the
   // same frame (mpv placing its own window), so the picture ran off the bottom. Puts it back on the app window's frame. A
-  // resize is mpv's fullscreen, which Follow() handles. At most 3 times per attach, so mpv and this can never trade moves forever.
+  // resize is mpv's fullscreen, which Follow() handles. At most 3 times per attach and per file loaded, so mpv and this can
+  // never trade moves forever.
   void Pin() {
     if (!video_ || !win_ || !NSEqualSizes(video_.frame.size, win_.frame.size) || NSEqualPoints(video_.frame.origin, win_.frame.origin)) return;
     if (pins_ >= 3) return;

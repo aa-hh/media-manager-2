@@ -1,6 +1,7 @@
 'use strict';
 // Decisions the player makes about mpv's file events, pausing, subtitle
 // files and the values it saves. No Electron here, so tests/production.test.mjs can run it.
+const path = require('node:path');
 
 /**
  * What an mpv `file-loaded` or `end-file` event means for `playing`, the
@@ -89,6 +90,25 @@ const subtitleScale = (value) => (SUBTITLE_SCALES.includes(value) ? value : null
 /** Settings' Appearance choice for nativeTheme.themeSource: light, dark or system, or null for anything else. */
 const themeSource = (value) => (['light', 'dark', 'system'].includes(value) ? value : null);
 
+/**
+ * The options mpv takes before init, from `env` (the process's environment) and `userData` (the folder desktop.json
+ * lives in).
+ *
+ * mpv's own log, userData/mpv.log beside desktop.json, is written only when MM2_MPV_LOG=1 asks for it: mpv writes it at
+ * debug level, and it holds every stream and subtitle address, each with Plex's transient token. Set before init:
+ * log-file is read before mpv starts, and only a file opened then holds libmpv's start-up and video-output lines, where
+ * the time to the first frame goes. mpv empties the file each time it opens it, so it holds one launch.
+ *
+ * libmpv finds no shader cache folder of its own, so every new picture setup compiled its shaders again (the first Play
+ * of a launch waited 3.5 s for its first frame). Kept beside desktop.json, compiled shaders carry over between launches.
+ * Set before init: force-window makes the video output straight after init, and the output reads the folder only when
+ * it is made, so a set that lands later is ignored.
+ */
+const mpvStartOptions = (env, userData) => ({
+  ...(env.MM2_MPV_LOG === '1' ? { 'log-file': path.join(userData, 'mpv.log') } : {}),
+  'gpu-shader-cache-dir': path.join(userData, 'mpv-shader-cache'),
+});
+
 module.exports = {
-  fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource,
+  fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions,
 };

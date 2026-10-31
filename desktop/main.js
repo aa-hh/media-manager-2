@@ -7,7 +7,7 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
+const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions } = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -289,18 +289,10 @@ const number = (value) => (value === null || value === undefined || value === ''
 const ensureMpv = () => {
   if (mpv) return mpv;
   const { MpvView } = require('./build/Release/mpvview.node');
-  // libmpv finds no cache folder of its own, so every new picture setup compiled its shaders again (the first Play of a
-  // launch waited 3.5 s for its first frame). Kept beside desktop.json, compiled shaders carry over between launches.
-  // Set before init: force-window makes the video output straight after init, and the output reads the folder only when
-  // it is made, so a set that lands later is ignored.
-  const shaderCache = path.join(app.getPath('userData'), 'mpv-shader-cache');
-  fs.mkdirSync(shaderCache, { recursive: true });
-  // mpv's own log, userData/mpv.log beside desktop.json, is written only when MM2_MPV_LOG=1 asks for it: mpv writes it at
-  // debug level, and it holds every stream and subtitle address, each with Plex's transient token. Set before init:
-  // log-file is read before mpv starts, and only a file opened then holds libmpv's start-up and video-output lines, where
-  // the time to the first frame goes. mpv empties the file each time it opens it, so it holds one launch.
-  const log = process.env.MM2_MPV_LOG === '1' ? { 'log-file': path.join(app.getPath('userData'), 'mpv.log') } : {};
-  mpv = new MpvView(win.getNativeWindowHandle(), { ...log, 'gpu-shader-cache-dir': shaderCache });
+  // mpvStartOptions says why each option goes in before init: the shader cache folder, and mpv.log only on request.
+  const options = mpvStartOptions(process.env, app.getPath('userData'));
+  fs.mkdirSync(options['gpu-shader-cache-dir'], { recursive: true });
+  mpv = new MpvView(win.getNativeWindowHandle(), options);
   // Repeats the addon's pre-init ytdl=no: an addon built before that list (npm start does not rebuild it) still never sends Plex addresses to youtube-dl or yt-dlp.
   void mpv.setOption('ytdl', 'no');
   for (const name of OBSERVED) mpv.observe(name);
