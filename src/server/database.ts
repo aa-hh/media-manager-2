@@ -423,6 +423,10 @@ export const applicationMigrations = [
   ALTER TABLE sessions_rebuilt RENAME TO sessions;`,
   // The Jellyfin server's Id from /System/Info/Public, so an address change can be held to the same server.
   `ALTER TABLE owner ADD COLUMN server_id TEXT;`,
+  // A TV's session carries the name it signed in with and a random id for Settings, and lasts 90 days; a browser's keeps
+  // both NULL and lasts a day.
+  `ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUMN created_at INTEGER;
+  ALTER TABLE sessions ADD COLUMN device_id TEXT; CREATE UNIQUE INDEX sessions_device_id ON sessions (device_id);`,
 ] as const;
 
 class DatabaseError extends Error {}

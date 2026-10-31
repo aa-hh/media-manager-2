@@ -356,22 +356,28 @@ const createPlexFixture = ({
       assert.equal(headers.get('content-type'), 'application/json');
       if (failAt === 'create-redirect') throw new TypeError('redirect mode rejected the response');
       const body = JSON.parse(init.body);
-      assert.deepEqual(Object.keys(body).sort(), ['jwk', 'strong']);
-      assert.equal(body.strong, true);
-      assert.deepEqual(Object.keys(body.jwk).sort(), ['alg', 'crv', 'kid', 'kty', 'x']);
-      assert.equal(body.jwk.kty, 'OKP');
-      assert.equal(body.jwk.crv, 'Ed25519');
-      assert.equal(body.jwk.alg, 'EdDSA');
-      assert.ok(body.jwk.kid);
-      assert.ok(body.jwk.x);
-      assert.equal(body.jwk.d, undefined);
-      const publicKey = createPublicKey({ key: body.jwk, format: 'jwk' });
       const id = nextPinId++;
-      attempts.set(String(id), {
-        clientId: headers.get('x-plex-client-identifier'),
-        jwk: body.jwk,
-        publicKey,
-      });
+      // A TV's link-code PIN is plain: no device key, and its check carries no signed token.
+      if (!Object.hasOwn(body, 'jwk')) {
+        assert.deepEqual(body, { strong: false });
+        attempts.set(String(id), { clientId: headers.get('x-plex-client-identifier'), link: true });
+      } else {
+        assert.deepEqual(Object.keys(body).sort(), ['jwk', 'strong']);
+        assert.equal(body.strong, true);
+        assert.deepEqual(Object.keys(body.jwk).sort(), ['alg', 'crv', 'kid', 'kty', 'x']);
+        assert.equal(body.jwk.kty, 'OKP');
+        assert.equal(body.jwk.crv, 'Ed25519');
+        assert.equal(body.jwk.alg, 'EdDSA');
+        assert.ok(body.jwk.kid);
+        assert.ok(body.jwk.x);
+        assert.equal(body.jwk.d, undefined);
+        const publicKey = createPublicKey({ key: body.jwk, format: 'jwk' });
+        attempts.set(String(id), {
+          clientId: headers.get('x-plex-client-identifier'),
+          jwk: body.jwk,
+          publicKey,
+        });
+      }
       const value = createBody ?? {
         id,
         code: `pin-${id}`,
@@ -388,6 +394,11 @@ const createPlexFixture = ({
       const attempt = attempts.get(id);
       assert.ok(attempt, 'PIN check must use an ID returned by PIN creation');
       assert.equal(headers.get('x-plex-client-identifier'), attempt.clientId);
+      if (attempt.link) {
+        assert.equal(url.search, '');
+        if (failAt === 'check-network') throw new TypeError('fixture network failure');
+        return responseJson(checkBody ?? { authToken: 'plex-secret-token' }, checkStatus);
+      }
       const compact = url.searchParams.get('deviceJWT');
       const parts = compact?.split('.') ?? [];
       assert.equal(parts.length, 3);
@@ -592,6 +603,8 @@ test('Plex owner authentication', async (t) => {
     assert.match(responseCookies(started.response).join('\n'), /SameSite=Lax/i);
     assert.match(responseCookies(started.response).join('\n'), /Secure/i);
     assert.match(responseCookies(started.response).join('\n'), /Path=\//i);
+    // The fixture also takes a TV's plain PIN, so the browser's strong one is checked here.
+    assert.equal(JSON.parse(fixture.calls[0].init.body).strong, true);
     const { parameters, state } = plexStateFromUrl(started.json.url);
     assert.equal(parameters.get('clientID'), fixture.calls[0].headers.get('x-plex-client-identifier'));
     assert.equal(parameters.get('code'), 'pin-100');
@@ -1430,6 +1443,198 @@ test('Plex owner authentication', async (t) => {
     assert.equal(pinnedSwitch.status, 409);
     assert.deepEqual(await pinnedSwitch.json(), { error: 'owner_exists' });
     assert.equal(pinned.database.prepare('SELECT count(*) AS count FROM owner').get().count, 0);
+  });
+});
+
+test('a TV signs in with a Plex link code and keeps a named 90-day session', async (t) => {
+  const DAY = 24 * 60 * 60_000;
+  const post = (app, path, body, cookie, headers = jsonHeaders()) => app.request(path, {
+    method: 'POST', headers: { ...headers, ...(cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(body),
+  });
+  const link = async (app, deviceName = 'Living room TV') => {
+    const started = await post(app, '/auth/link/start', { deviceName });
+    assert.equal(started.status, 201);
+    return { started, binding: cookieValue(started, '__Host-mm_plex'), json: await started.json() };
+  };
+  const signInTv = async (app, deviceName) => {
+    const { binding } = await link(app, deviceName);
+    const completed = await post(app, '/auth/link/complete', {}, binding);
+    assert.equal(completed.status, 200);
+    return { completed, session: cookieValue(completed, '__Host-mm_session') };
+  };
+  const sessionSetCookie = (response) => responseCookies(response).find((value) => value.startsWith('__Host-mm_session='));
+  const sessionCount = (database) => database.prepare('SELECT count(*) AS count FROM sessions').get().count;
+
+  // Sending a strong PIN or a signed check, keeping the untrimmed name, or giving the TV a browser's 24-hour session turns this red.
+  await t.test('the owner\'s TV gets a plain PIN and a named 90-day session', async () => {
+    const { app, clock, fixture, database } = await makeApp();
+    const { started, binding, json } = await link(app, '  Living room TV  ');
+    assert.deepEqual(JSON.parse(fixture.calls[0].init.body), { strong: false });
+    assert.deepEqual(json, { code: 'pin-100', expiresAt: clock.value + 9 * 60_000 });
+    assert.match(responseCookies(started).find((value) => value.startsWith('__Host-mm_plex=')), /Max-Age=540/i);
+    const completed = await post(app, '/auth/link/complete', {}, binding);
+    assert.equal(completed.status, 200);
+    assert.deepEqual(await completed.json(), { expiresAt: clock.value + 90 * DAY });
+    assert.equal(fixture.calls[1].url.search, '');
+    assert.match(sessionSetCookie(completed), /Max-Age=7776000/i);
+    assert.match(sessionSetCookie(completed), /HttpOnly/i);
+    assert.deepEqual({ ...database.prepare('SELECT owner_id, device_name, created_at, expires_at FROM sessions').get() },
+      { owner_id: '42', device_name: 'Living room TV', created_at: clock.value, expires_at: clock.value + 90 * DAY });
+    const session = cookieValue(completed, '__Host-mm_session');
+    assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
+  });
+
+  // Accepting a bad or extra device name, skipping the browser headers, opening a session before the code is linked, or
+  // giving the TV its own start limit turns this red.
+  await t.test('the link routes refuse a bad device name, missing browser headers and a code not yet linked', async () => {
+    const { app, database } = await makeApp({ fixtureOptions: { checkBody: { authToken: null } } });
+    for (const body of [{}, { deviceName: '' }, { deviceName: '   ' }, { deviceName: 7 }, { deviceName: 'x'.repeat(65) }, { deviceName: 'TV\u0007room' }, { deviceName: 'TV', extra: true }]) {
+      const response = await post(app, '/auth/link/start', body);
+      assert.equal(response.status, 400, JSON.stringify(body));
+      assert.deepEqual(await response.json(), { error: 'invalid_request' });
+    }
+    for (const [path, body] of [['/auth/link/start', { deviceName: 'TV' }], ['/auth/link/complete', {}]]) {
+      for (const headers of [{ 'Content-Type': 'application/json', Origin: 'https://media.example' }, jsonHeaders('https://foreign.example')]) {
+        const response = await post(app, path, body, undefined, headers);
+        assert.equal(response.status, 403, path);
+        assert.deepEqual(await response.json(), { error: 'invalid_origin' });
+      }
+    }
+    const { binding } = await link(app, 'é'.repeat(64));
+    for (let poll = 0; poll < 2; poll += 1) {
+      const pending = await post(app, '/auth/link/complete', {}, binding);
+      assert.equal(pending.status, 202);
+      assert.deepEqual(await pending.json(), { status: 'pending' });
+    }
+    assert.equal(sessionCount(database), 0);
+    // The link above was this client's first start; nine browser starts fill the shared limit of ten a minute.
+    for (let index = 0; index < 9; index += 1) assert.equal((await startAuthentication(app)).response.status, 201);
+    const limited = await post(app, '/auth/link/start', { deviceName: 'TV' });
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get('retry-after')) > 0);
+    assert.deepEqual(await limited.json(), { error: 'rate_limited' });
+  });
+
+  // Dropping the owner check from the shared end of the Plex sign-ins, letting a TV make the first owner, or letting it
+  // switch a Jellyfin owner to Plex turns this red.
+  await t.test('only the Plex owner links a TV, and never before setup has an owner', async () => {
+    for (const userBody of [{ id: 8, restricted: false, anonymous: false }, { id: 42, restricted: true, anonymous: false }, { id: 42, restricted: false, anonymous: true }]) {
+      const { app, database } = await makeApp({ fixtureOptions: { userBody } });
+      const { binding } = await link(app);
+      const refused = await post(app, '/auth/link/complete', {}, binding);
+      assert.equal(refused.status, 403, JSON.stringify(userBody));
+      assert.deepEqual(await refused.json(), { error: 'owner_only' });
+      assert.equal(sessionCount(database), 0);
+    }
+    const firstRun = await makeApp({ ownerPlexId: undefined });
+    const early = await post(firstRun.app, '/auth/link/start', { deviceName: 'TV' });
+    assert.equal(early.status, 409);
+    assert.deepEqual(await early.json(), { error: 'setup_required' });
+    assert.equal(firstRun.fixture.calls.length, 0);
+    assert.equal(firstRun.database.prepare('SELECT count(*) AS count FROM owner').get().count, 0);
+
+    const jellyfinOwned = await makeApp({ ownerPlexId: undefined });
+    jellyfinOwned.database.prepare("INSERT INTO owner (id, provider, user_id, user_name, server_name) VALUES (1, 'jellyfin', 'admin-guid', 'admin', 'Home')").run();
+    const { binding } = await link(jellyfinOwned.app);
+    const refused = await post(jellyfinOwned.app, '/auth/link/complete', {}, binding);
+    assert.equal(refused.status, 403);
+    assert.deepEqual(await refused.json(), { error: 'owner_only' });
+    assert.equal(jellyfinOwned.database.prepare('SELECT provider FROM owner').get().provider, 'jellyfin');
+    assert.equal(sessionCount(jellyfinOwned.database), 0);
+  });
+
+  // Completing a link attempt past its expiry, or after /auth/cancel, turns this red.
+  await t.test('a link attempt expires with the Plex code, and cancel ends it', async () => {
+    const { app, clock, database } = await makeApp();
+    const expiring = await link(app);
+    clock.value += 9 * 60_000;
+    const expired = await post(app, '/auth/link/complete', {}, expiring.binding);
+    assert.equal(expired.status, 401);
+    assert.deepEqual(await expired.json(), { error: 'flow_expired' });
+    const cancelled = await link(app);
+    assert.equal((await post(app, '/auth/cancel', {}, cancelled.binding)).status, 204);
+    const late = await post(app, '/auth/link/complete', {}, cancelled.binding);
+    assert.equal(late.status, 401);
+    assert.deepEqual(await late.json(), { error: 'invalid_flow' });
+    assert.equal(sessionCount(database), 0);
+  });
+
+  // Renewing a browser's session, renewing a TV's on every request, not sending the renewed cookie back, or keeping an
+  // expired TV row valid turns this red.
+  await t.test('a TV\'s session renews on use once a day has passed; a browser\'s still lasts 24 hours', async () => {
+    const { app, clock, database } = await makeApp();
+    const web = await signIn(app);
+    const tv = await signInTv(app);
+    const tvExpiry = () => database.prepare('SELECT expires_at FROM sessions WHERE device_name IS NOT NULL').get().expires_at;
+    const firstExpiry = tvExpiry();
+    clock.value += 23 * 60 * 60_000;
+    for (const { session, expiresAt } of [{ session: tv.session, expiresAt: firstExpiry }, web]) {
+      const quiet = await app.request('/api/session', { headers: { Cookie: session } });
+      assert.equal((await quiet.json()).expiresAt, expiresAt);
+      assert.equal(sessionSetCookie(quiet), undefined);
+    }
+    assert.equal(tvExpiry(), firstExpiry);
+    clock.value += 2 * 60 * 60_000;
+    const renewed = await app.request('/api/session', { headers: { Cookie: tv.session } });
+    assert.equal((await renewed.json()).expiresAt, clock.value + 90 * DAY);
+    assert.match(sessionSetCookie(renewed), /Max-Age=7776000/i);
+    assert.equal(cookieValue(renewed, '__Host-mm_session'), tv.session);
+    const renewedExpiry = tvExpiry();
+    assert.equal(renewedExpiry, clock.value + 90 * DAY);
+    clock.value += 60 * 60_000;
+    const within = await app.request('/api/session', { headers: { Cookie: tv.session } });
+    assert.equal(within.status, 200);
+    assert.equal(sessionSetCookie(within), undefined);
+    assert.equal(tvExpiry(), renewedExpiry);
+    const webExpired = await app.request('/api/session', { headers: { Cookie: web.session } });
+    assert.deepEqual(await webExpired.json(), { error: 'session_expired' });
+    clock.value = renewedExpiry;
+    const tvExpired = await app.request('/api/session', { headers: { Cookie: tv.session } });
+    assert.equal(tvExpired.status, 401);
+    assert.deepEqual(await tvExpired.json(), { error: 'session_expired' });
+  });
+
+  // Listing a browser's session or an expired TV, leaving the TV's session working after sign-out, skipping the browser
+  // headers on sign-out, or naming a TV by an id a later TV can reuse (such as SQLite's rowid) turns this red.
+  await t.test('Settings lists signed-in TVs and signs one out', async () => {
+    const { app, clock, database } = await makeApp();
+    const web = await signIn(app);
+    const livingRoom = await signInTv(app, 'Living room TV');
+    const livingRoomAt = clock.value;
+    clock.value += 60_000;
+    const den = await signInTv(app, 'Den TV');
+    database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at, device_name, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('old', '42', clock.value, 'Old TV', 'o'.repeat(22), 1);
+    const listed = await (await app.request('/api/devices', { headers: { Cookie: web.session } })).json();
+    assert.deepEqual(listed.devices.map(({ name, signedInAt, expiresAt }) => ({ name, signedInAt, expiresAt })), [
+      { name: 'Living room TV', signedInAt: livingRoomAt, expiresAt: livingRoomAt + 90 * DAY },
+      { name: 'Den TV', signedInAt: clock.value, expiresAt: clock.value + 90 * DAY },
+    ]);
+    const [livingRoomId] = listed.devices.map(({ id }) => id);
+    assert.match(livingRoomId, /^[A-Za-z0-9_-]{22}$/);
+    const unsafe = await app.request(`/api/devices/${livingRoomId}/sign-out`, { method: 'POST', headers: { Cookie: web.session } });
+    assert.equal(unsafe.status, 403);
+    for (const id of ['1', 'x'.repeat(22)]) {
+      const missing = await post(app, `/api/devices/${id}/sign-out`, {}, web.session);
+      assert.equal(missing.status, 404, String(id));
+      assert.deepEqual(await missing.json(), { error: 'not_found' });
+    }
+    assert.equal((await post(app, `/api/devices/${livingRoomId}/sign-out`, {}, web.session)).status, 204);
+    const signedOut = await app.request('/api/session', { headers: { Cookie: livingRoom.session } });
+    assert.equal(signedOut.status, 401);
+    for (const session of [den.session, web.session]) assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
+    const after = await (await app.request('/api/devices', { headers: { Cookie: web.session } })).json();
+    assert.deepEqual(after.devices.map(({ name }) => name), ['Den TV']);
+
+    // TV A holds the newest row, so once it is signed out TV B takes the same rowid; A's id from a stale list must miss B.
+    const tvA = await signInTv(app, 'TV A');
+    const tvAId = (await (await app.request('/api/devices', { headers: { Cookie: web.session } })).json()).devices.at(-1).id;
+    assert.equal((await post(app, `/api/devices/${tvAId}/sign-out`, {}, web.session)).status, 204);
+    assert.equal((await app.request('/api/session', { headers: { Cookie: tvA.session } })).status, 401);
+    const tvB = await signInTv(app, 'TV B');
+    const stale = await post(app, `/api/devices/${tvAId}/sign-out`, {}, web.session);
+    assert.equal(stale.status, 404);
+    assert.equal((await app.request('/api/session', { headers: { Cookie: tvB.session } })).status, 200);
   });
 });
 
@@ -5207,6 +5412,20 @@ test('the sessions rebuild keeps old sessions with a text owner ID and takes a J
   migrateDatabase(database, applicationMigrations);
   assert.deepEqual({ ...database.prepare('SELECT token_hash, owner_id, expires_at FROM sessions').get() }, { token_hash: 'old', owner_id: '42', expires_at: 1 });
   database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('new', 'b5a4e0c2-guid', 1);
+  database.close();
+});
+
+// Dropping the device columns, or giving an existing browser session a device name and so a 90-day life, turns this red.
+test('the sessions device columns leave existing browser sessions as they were', async () => {
+  const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
+  const deviceColumns = applicationMigrations.findIndex((migration) => migration.includes('ADD COLUMN device_name'));
+  assert.ok(deviceColumns > 0);
+  const database = new DatabaseSync(':memory:');
+  migrateDatabase(database, applicationMigrations.slice(0, deviceColumns));
+  database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run('web', '42', 1);
+  migrateDatabase(database, applicationMigrations);
+  assert.deepEqual({ ...database.prepare('SELECT token_hash, owner_id, expires_at, device_name, device_id, created_at FROM sessions').get() },
+    { token_hash: 'web', owner_id: '42', expires_at: 1, device_name: null, device_id: null, created_at: null });
   database.close();
 });
 
