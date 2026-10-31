@@ -83,7 +83,7 @@ export type DesktopBridge = {
   setMuted?(on: boolean): Promise<void>;
   /** mpv's sub-scale, one of 0.5, 0.75, 1, 1.25 or 2; kept by the desktop app for every file, never saved to Plex. Missing from builds older than the page. */
   setSubtitleScale?(scale: number): Promise<void>;
-  /** Settings' Appearance choice; the desktop app opens its next window in it. Missing from builds older than the page. */
+  /** Settings' Appearance choice; the desktop app applies it to its window now and keeps it for the next launch. Missing from builds older than the page. */
   setTheme?(choice: 'light' | 'dark' | 'system'): Promise<void>;
   stop(): Promise<void>;
   /** Subscribes to one event; the returned function unsubscribes. */

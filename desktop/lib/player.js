@@ -56,4 +56,7 @@ const SUBTITLE_SCALES = [0.5, 0.75, 1, 1.25, 2];
 /** A sub-scale for mpv: one of SUBTITLE_SCALES, or null for anything else (refused, or a saved value ignored). */
 const subtitleScale = (value) => (SUBTITLE_SCALES.includes(value) ? value : null);
 
-module.exports = { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale };
+/** Settings' Appearance choice for nativeTheme.themeSource: light, dark or system, or null for anything else. */
+const themeSource = (value) => (['light', 'dark', 'system'].includes(value) ? value : null);
+
+module.exports = { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale, themeSource };

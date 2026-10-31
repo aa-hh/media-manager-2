@@ -23,6 +23,7 @@ import { useBlocklist, useHistory } from './history/useHistory';
 import { MediaServerContext } from './mediaServer';
 import { PlayerProvider } from './player/Player';
 import type { SetupStatus } from './settings/setup';
+import { syncDesktopTheme } from './lib/theme';
 import './globals.css';
 
 const SetupWizard = lazyScreen(() => import('./settings/SetupWizard').then((module) => module.SetupWizard));
@@ -443,6 +444,7 @@ function SignedIn(props: SignedInProps) {
   );
 }
 
+syncDesktopTheme();
 createRoot(document.getElementById('root')!).render(<ToastProvider><App /></ToastProvider>);
 // After the first render and out of the main chunk; web-vitals reads buffered entries, so starting late loses nothing.
 void import('./metrics').then(({ startMetrics }) => startMetrics(), () => undefined);

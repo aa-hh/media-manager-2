@@ -7,7 +7,7 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale } = require('./lib/player');
+const { fileEvent, playsOnOpen, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -57,8 +57,7 @@ const savedMuted = () => readSettings().muted === true;
 // The subtitle text size, a setting of this app rather than of a title: never saved to Plex.
 const savedSubtitleScale = () => subtitleScale(readSettings().subtitleScale) ?? 1;
 // Settings' Appearance choice (light, dark or system). Electron forgets nativeTheme.themeSource between runs, so it is kept here.
-const THEMES = ['light', 'dark', 'system'];
-const savedTheme = () => (THEMES.includes(readSettings().theme) ? readSettings().theme : 'system');
+const savedTheme = () => themeSource(readSettings().theme) ?? 'system';
 // One per app run (network §1).
 const sessionIdentifier = randomUUID();
 
@@ -617,9 +616,10 @@ handle('player:setLayout', (wanted) => {
 });
 handle('player:setFullscreen', (on) => setFullscreen(on === true));
 handle('app:setTheme', (choice) => {
-  if (!THEMES.includes(choice)) throw new Error('invalid_request');
-  writeSettings({ theme: choice });
-  nativeTheme.themeSource = choice;
+  const value = themeSource(choice);
+  if (value === null) throw new Error('invalid_request');
+  writeSettings({ theme: value });
+  nativeTheme.themeSource = value;
 });
 
 // `npm start` runs Electron's own app, which shows the Electron logo in the Dock. The built app has the planet icon from

@@ -21,6 +21,14 @@ export const writeThemeChoice = (choice: ThemeChoice) => {
   } catch { /* the choice lasts until the page reloads */ }
   const dark = choice === 'dark' || (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  // The desktop app opens its next window in the same theme; builds older than the page have no setTheme.
+  syncDesktopTheme(choice);
+};
+
+/**
+ * Tells the desktop app the choice, which it applies to its window now and keeps for the next launch. Called on every page
+ * load too: the page's choice belongs to one address, so after a new address or cleared storage the app's copy follows the
+ * page's. Builds older than the page have no setTheme.
+ */
+export const syncDesktopTheme = (choice: ThemeChoice = readThemeChoice()) => {
   void desktopBridge()?.setTheme?.(choice).catch(() => undefined);
 };
