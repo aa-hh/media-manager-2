@@ -158,7 +158,7 @@ private data class TrackBody(val partId: Long, val kind: String, val streamId: L
 private data class PlayedBody(val ratingKey: String, val played: Boolean, val clientId: String)
 
 /**
- * `/api/playback/*` as the TV: every call names the Android Plex identity (T24), so Plex sees an Android TV and not the
+ * The `/api/playback/` routes as the TV: every call names the Android Plex identity (T24), so Plex sees an Android TV and not the
  * desktop app. [androidRelease] is `Build.VERSION.RELEASE`.
  */
 class PlaybackApi(private val client: ServerClient, androidRelease: String) {
