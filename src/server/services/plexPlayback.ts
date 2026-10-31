@@ -14,31 +14,22 @@ export type PlexIdentity = { kind: 'desktop' } | { kind: 'android'; platformVers
 
 const DESKTOP: PlexIdentity = { kind: 'desktop' };
 
-// What the Google TV Streamer plays, added to Plex's bundled Android profile, which on its own allows only 1080p H.264 in MP4
-// with stereo AAC. Plex documents no format for X-Plex-Client-Profile-Extra; this follows the one Plex's own clients send,
-// and whether the limits here lift the bundled profile's 1080p cap is unverified until the TV compares (T25).
-export const ANDROID_PROFILE_EXTRA = [
-  'add-direct-play-profile(type=videoProfile&container=mkv,mp4,mov,mpegts&videoCodec=h264,hevc,vp9,av1,mpeg2video&audioCodec=aac,ac3,eac3,mp3,flac,opus,vorbis,truehd,dca,pcm&subtitleCodec=srt,ass,pgs)',
-  // Playback always asks with protocol=http, so a transcode comes as one Matroska stream, as for the desktop.
-  'add-transcode-target(type=videoProfile&context=streaming&protocol=http&container=mkv&videoCodec=hevc,h264&audioCodec=eac3,ac3,aac,opus&subtitleCodec=srt,ass)',
-  'add-limitation(scope=videoCodec&scopeName=*&type=upperBound&name=video.width&value=3840)',
-  'add-limitation(scope=videoCodec&scopeName=*&type=upperBound&name=video.height&value=2160)',
-  'add-limitation(scope=videoAudioCodec&scopeName=*&type=upperBound&name=audio.channels&value=8)',
-].join('+');
-
 // What Plex learns about the player on each playback call; the client id is the player install's own, so Plex sees each
 // desktop or TV as its own player.
+// The TV keeps Plex Desktop's profile, which allows anything and transcodes to Matroska, under its own name. Plex's
+// bundled Android profile caps a transcode at 1080p H.264 and burns in subtitles, even with X-Plex-Client-Profile-Extra
+// (checked on the slot's Plex 1.43.4, 31 Oct 2026); Plex's dashboard shows product, platform and device, not the profile.
 export const identityValues = (clientId: string, identity: PlexIdentity = DESKTOP): Record<string, string> => ({
-  'X-Plex-Product': 'media-manager-2',
-  'X-Plex-Version': '1',
   ...(identity.kind === 'desktop'
-    ? { 'X-Plex-Platform': 'macOS', 'X-Plex-Model': 'standalone', 'X-Plex-Client-Profile-Name': 'Plex Desktop' }
+    ? { 'X-Plex-Product': 'media-manager-2', 'X-Plex-Platform': 'macOS', 'X-Plex-Model': 'standalone' }
     : {
+        'X-Plex-Product': 'media-manager-2 TV',
         'X-Plex-Platform': 'Android',
         'X-Plex-Platform-Version': identity.platformVersion,
-        'X-Plex-Client-Profile-Name': 'Android',
-        'X-Plex-Client-Profile-Extra': ANDROID_PROFILE_EXTRA,
+        'X-Plex-Device': 'Android TV',
       }),
+  'X-Plex-Version': '1',
+  'X-Plex-Client-Profile-Name': 'Plex Desktop',
   'X-Plex-Features': 'external-media,indirect-media,hub-style-list',
   'X-Plex-Device-Name': 'media-manager-2',
   'X-Plex-Client-Identifier': clientId,

@@ -4390,22 +4390,21 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.equal(body.machineIdentifier, 'plex-machine-1');
   });
 
-  // Changing what the desktop sends Plex, sending Android values without the header, dropping the TV's capability list, or
-  // letting an unknown identity through turns this red.
+  // Changing what the desktop sends Plex, sending the TV's name without the header, moving the TV off the unlimited Plex
+  // Desktop profile, or letting an unknown identity through turns this red.
   await t.test('the Plex identity header picks desktop or Android values for every Plex call, and refuses anything else', async () => {
-    const { ANDROID_PROFILE_EXTRA } = await import(plexPlaybackModuleUrl);
     const named = (values) => ({
       platform: values('X-Plex-Platform'),
       version: values('X-Plex-Platform-Version'),
       profile: values('X-Plex-Client-Profile-Name'),
-      extra: values('X-Plex-Client-Profile-Extra'),
+      device: values('X-Plex-Device'),
       product: values('X-Plex-Product'),
       client: values('X-Plex-Client-Identifier'),
     });
     const fromQuery = (url) => named((name) => url.searchParams.get(name));
     const fromHeaders = (url) => named((name) => url.headers[name] ?? null);
-    const desktopValues = { platform: 'macOS', version: null, profile: 'Plex Desktop', extra: null, product: 'media-manager-2', client: ids.clientId };
-    const androidValues = { platform: 'Android', version: '14', profile: 'Android', extra: ANDROID_PROFILE_EXTRA, product: 'media-manager-2', client: ids.clientId };
+    const desktopValues = { platform: 'macOS', version: null, profile: 'Plex Desktop', device: null, product: 'media-manager-2', client: ids.clientId };
+    const androidValues = { platform: 'Android', version: '14', profile: 'Plex Desktop', device: 'Android TV', product: 'media-manager-2 TV', client: ids.clientId };
 
     const plain = connect();
     assert.equal((await start(plain.routes, {}, { desktop: true, headers: { 'X-Media-Manager-Plex-Identity': 'desktop' } })).status, 200);
@@ -4420,7 +4419,6 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.deepEqual(fromQuery(tv.decisions()[0]), androidValues);
     assert.deepEqual(fromHeaders(tv.requests.find((url) => url.pathname === '/playQueues')), androidValues);
     assert.deepEqual(fromQuery(new URL(body.streamAddresses[0])), androidValues);
-    assert.match(ANDROID_PROFILE_EXTRA, /video\.width&value=3840/);
     const played = await tv.routes.request('/played', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...android }, body: JSON.stringify({ ratingKey: '100', played: true, clientId: ids.clientId }),
     });

@@ -415,7 +415,7 @@ export const createPlaybackRoutes = (playback: Playback) => {
     return who === undefined || who.kind === 'desktop' ? playback : playback.as(who);
   };
 
-  // X-Media-Manager-Desktop: 1 adds the stream addresses, for the desktop's main process; page JS could send it too, so this
+  // X-Media-Manager-Desktop: 1 adds the stream addresses, for the desktop's main process and the TV app; page JS could send it too, so this
   // keeps addresses out of the page's ordinary replies (state, devtools, logs) rather than defending against the page.
   routes.post('/start', async (context) => {
     const body = await readBody(context, [
