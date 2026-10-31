@@ -3628,19 +3628,21 @@ test('watch status from Plex marks library titles, both title pages and Continue
     return body === undefined ? new Response('', { status: 404 }) : new Response(JSON.stringify({ MediaContainer: body }), { status: 200 });
   };
   const clock = { value: 1_800_000_000_000 };
-  const connect = ({ fetch = plexFetch, enabled = () => true, sleep = () => new Promise(() => {}) } = {}) => {
+  const connect = ({ fetch = plexFetch, enabled = () => true, sleep = () => new Promise(() => {}), webhookUrl = () => undefined } = {}) => {
     const requests = [];
+    const published = [];
     const plex = createPlex(database, { fetch: async (url, init) => {
       requests.push(new URL(String(url)).pathname);
       return fetch(url, init);
     } });
-    const watchStatus = createWatchStatus({ plex, enabled, now: () => clock.value, sleep });
+    const events = { publish: (type, data) => published.push([type, data]) };
+    const watchStatus = createWatchStatus({ plex, enabled, now: () => clock.value, sleep, events, webhookUrl });
     const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database), undefined, undefined, undefined, undefined, undefined, watchStatus));
     const get = async (path) => {
       const response = await routes.request(path);
       return { status: response.status, body: await response.json() };
     };
-    return { requests, get };
+    return { requests, get, watchStatus, published };
   };
   const titleWatch = (titles, title) => titles.find((item) => item.title === title).watch;
 
@@ -3714,6 +3716,90 @@ test('watch status from Plex marks library titles, both title pages and Continue
     const second = await get('/titles');
     assert.equal(second.body.watch.kind, 'ok');
     assert.equal(titleWatch(second.body.titles, 'Arrival').ratingKey, '200');
+  });
+
+  // Telling pages before Plex is listed again, or answering their next read from the 60-second listing, turns this red:
+  // the show page reads again and still offers the episode just watched.
+  await t.test('a Plex webhook lists Plex again, then names the show that was watched', async () => {
+    let watched = false;
+    let quick = false;
+    const { get, watchStatus, published } = connect({
+      fetch: async (url, init) => {
+        const { pathname, searchParams } = new URL(String(url));
+        if (watched && pathname === '/library/sections/2/all' && searchParams.get('type') === '4') {
+          return new Response(JSON.stringify({ MediaContainer: { Metadata: [{ ...episodes[0], viewOffset: 0, viewCount: 1 }] } }), { status: 200 });
+        }
+        return plexFetch(url, init);
+      },
+      // Once quick, a page read answers at once from the listing it has rather than waiting for a new one.
+      sleep: () => (quick ? Promise.resolve() : new Promise(() => {})),
+    });
+    assert.equal((await get('/series/7')).body.watch.episodes['70'].viewOffsetMs, 2511000);
+    quick = true;
+    watched = true;
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.resume', Metadata: { type: 'episode', grandparentRatingKey: '300' } }), 'ignored');
+    assert.equal(watchStatus.receiveWebhook({ event: 'library.new', Metadata: { type: 'movie', ratingKey: '100' } }), 'ignored');
+    assert.equal(watchStatus.receiveWebhook({ Metadata: {} }), 'invalid');
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.scrobble', Metadata: { type: 'episode', ratingKey: '302', grandparentRatingKey: '300' } }), 'ok');
+    for (const deadline = Date.now() + 10_000; published.length === 0;) {
+      assert.ok(Date.now() < deadline, 'no watch event');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(published, [['watch', { ratingKey: '300' }]]);
+    const after = (await get('/series/7')).body.watch.episodes['70'];
+    assert.deepEqual([after.viewOffsetMs, after.viewCount], [0, 1]);
+  });
+
+  // Telling pages after a failed listing turns this red: they would swap their marks for the failure.
+  await t.test('a Plex webhook whose listing fails tells no page', async () => {
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    let failing = true;
+    const { requests, watchStatus, published } = connect({ fetch: async (url, init) => {
+      if (failing && new URL(String(url)).pathname === '/library/sections') return held.then(() => { throw new TypeError('fetch failed'); });
+      return plexFetch(url, init);
+    } });
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.stop', Metadata: { type: 'movie', ratingKey: '100' } }), 'ok');
+    for (const deadline = Date.now() + 10_000; !requests.includes('/library/sections');) {
+      assert.ok(Date.now() < deadline, 'the failing listing never started');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    failing = false;
+    // This one waits for the failing listing, so once it is told, the failing one has settled.
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.scrobble', Metadata: { type: 'episode', grandparentRatingKey: '300' } }), 'ok');
+    release();
+    for (const deadline = Date.now() + 10_000; published.length === 0;) {
+      assert.ok(Date.now() < deadline, 'no watch event');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(published, [['watch', { ratingKey: '300' }]]);
+  });
+
+  // Posting only our address (dropping webhooks other apps added), leaving an old address of ours with a stale secret,
+  // or posting when the list is already right turns this red.
+  await t.test('the Plex webhook is kept on the plex.tv list beside other apps', async () => {
+    let listed = ['https://other.app/plex', 'http://mm2.lan:8080/webhooks/plex/old-secret'];
+    const posted = [];
+    let url;
+    const { watchStatus } = connect({
+      webhookUrl: () => url,
+      fetch: async (address, init) => {
+        if (String(address) !== 'https://plex.tv/api/v2/user/webhooks') return plexFetch(address, init);
+        assert.equal(init.headers['X-Plex-Token'], 'plex-token');
+        if (init.method === 'POST') {
+          posted.push(init.body);
+          listed = new URLSearchParams(init.body).getAll('urls[]');
+          return new Response('', { status: 201 });
+        }
+        return new Response(JSON.stringify(listed.map((entry) => ({ url: entry }))), { status: 200 });
+      },
+    });
+    assert.equal(await watchStatus.ensureWebhook(), false, 'nothing is registered without the address and the webhook secret');
+    url = 'http://mm2.lan:8080/webhooks/plex/new-secret';
+    assert.equal(await watchStatus.ensureWebhook(), true);
+    assert.deepEqual(listed, ['https://other.app/plex', url]);
+    await watchStatus.ensureWebhook();
+    assert.equal(posted.length, 1);
   });
 
   // Listing Plex on every library load instead of keeping the listing for 60 seconds turns this red.
@@ -5892,7 +5978,8 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     database.close();
   });
 
-  // Serving the webhook without a configured secret, accepting a wrong password, or putting it behind the owner sign-in turns this red.
+  // Serving the webhook without a configured secret, accepting a wrong password or a wrong secret in Plex's address, or putting it
+  // behind the owner sign-in turns this red.
   await t.test('the webhook endpoint needs the saved secret and no sign-in', async () => {
     const received = [];
     const authorization = (password) => `Basic ${Buffer.from(`sonarr:${password}`).toString('base64')}`;
@@ -5913,6 +6000,19 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     assert.equal(received.length, 0);
     assert.equal((await post(app, '/webhooks/radarr', { Authorization: authorization(secret) })).status, 204);
     assert.deepEqual(received, [['radarr', { eventType: 'Test' }]]);
+    // Plex sends no password: the secret is the address's last part and the event is JSON in the form field `payload`.
+    const plexForm = (payload) => {
+      const form = new FormData();
+      form.set('payload', payload);
+      return form;
+    };
+    const plexPost = (path, form) => app.request(path, { method: 'POST', body: form });
+    assert.equal((await plexPost('/webhooks/plex/wrong', plexForm('{"event":"media.stop"}'))).status, 401);
+    assert.equal((await plexPost(`/webhooks/plex/${secret}`, plexForm('not json'))).status, 400);
+    assert.equal((await plexPost(`/webhooks/plex/${secret}`, new FormData())).status, 400);
+    assert.equal(received.length, 1);
+    assert.equal((await plexPost(`/webhooks/plex/${secret}`, plexForm('{"event":"media.stop"}'))).status, 204);
+    assert.deepEqual(received.at(-1), ['plex', { event: 'media.stop' }]);
   });
 });
 

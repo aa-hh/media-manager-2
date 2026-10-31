@@ -22,7 +22,7 @@ import { SkeletonPosterCard } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs-trigger';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { buildRows, formatBytes } from '../downloads/model';
-import type { DownloadsState } from '../downloads/useDownloads';
+import { useWatchChange, type DownloadsState } from '../downloads/useDownloads';
 import { Arrival } from '../Arrival';
 import { inDesktopApp } from '../desktopBridge';
 import { MediaServerContext } from '../mediaServer';
@@ -177,6 +177,12 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
       .catch(() => { if (!controller.signal.aborted) setState({ kind: 'failed' }); });
     return () => controller.abort();
   }, [attempt, onUnauthenticated]);
+  // Plex's webhook says something was played, paused, stopped or watched: the marks and Continue Watching are read again.
+  useWatchChange(state.kind !== 'loading', () => true, () => {
+    getJson<Loaded>('/api/library/titles', onUnauthenticated)
+      .then((data) => setState((current) => (current.kind === 'ready' ? { kind: 'ready', data } : current)))
+      .catch(() => undefined);
+  });
   useScreenReady(state.kind !== 'loading');
 
   const snapshot = downloads.kind === 'ready' ? downloads.snapshot : undefined;
