@@ -12531,9 +12531,11 @@ test('backups snapshot a changing database and restore it consistently', async (
   const objects = new Map();
   const calls = [];
   let failPut = false;
+  let uploadTime = 0;
   const store = {
     async put(key, body) {
       calls.push(['put', key]);
+      clock += uploadTime;
       if (failPut) throw new Error('Backup storage answered 503.');
       objects.set(key, Uint8Array.from(body));
     },
@@ -12667,6 +12669,16 @@ test('backups snapshot a changing database and restore it consistently', async (
   clock += 55 * 60_000;
   assert.deepEqual(outcome(await backup.runIfDue()), ['failed', 'Backup storage answered 503.']);
   failPut = false;
+  uploadTime = 60_000;
+  clock += 5 * 60_000;
+  const slowUpload = await backup.runIfDue();
+  uploadTime = 0;
+  assert.deepEqual(outcome(slowUpload), ['ok', '']);
+  assert.ok(slowUpload.finishedAt > slowUpload.startedAt);
+  // The hour counts from the good backup's start, so a slow upload does not push the next one to the 65-minute tick.
+  database.prepare("INSERT OR REPLACE INTO preferences (key, value) VALUES ('theme', 'dark')").run();
+  clock = slowUpload.startedAt + 55 * 60_000;
+  assert.equal(await backup.runIfDue(), undefined);
   clock += 5 * 60_000;
   assert.deepEqual(outcome(await backup.runIfDue()), ['ok', '']);
 
