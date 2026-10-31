@@ -12,7 +12,9 @@ export type LibraryTitle = {
   added: string | null;
   monitored: boolean;
   status: string | null;
+  /** The full image, which the player's Up Next draws 352 px wide; smallPosterUrl (TMDB w500 or TheTVDB's thumbnail) is for 210 px posters. */
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   qualityProfile: string | null;
   sizeOnDisk: number;
   tv: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; seasonCount: number } | null;
@@ -127,6 +129,7 @@ export type SeriesDetail = {
   language: string | null;
   overview: string | null;
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   backdropUrl: string | null;
   /** Sonarr's one rating, out of 10; the server does not say which site it comes from. */
   rating: number | null;
@@ -166,6 +169,7 @@ export type MovieDetail = {
   status: string | null;
   overview: string | null;
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
   /** IMDb, TMDB and Trakt score out of 10; Rotten Tomatoes and Metacritic out of 100. */

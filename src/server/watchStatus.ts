@@ -63,7 +63,8 @@ type Snapshot = {
 };
 
 const CACHE_MS = 60_000;
-// A page waits this long for Plex before showing its titles unmarked; the rebuild carries on for the next load.
+// The first listing holds a page up to this long before its titles show unmarked; later listings refresh in the
+// background behind the old one.
 const WATCH_WAIT_MS = 1500;
 
 const isRecord = (value: unknown): value is Item => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -100,7 +101,7 @@ const playable = (item: Item): Playable | null => {
 };
 
 // Plex watch marks for library titles, from one in-memory listing of every Plex movie and show library, kept 60 seconds.
-// Never throws: a Plex that fails reads as unavailable, a Jellyfin owner or unset Plex as off.
+// Never throws: a Plex that fails before any listing exists reads as unavailable, a Jellyfin owner or unset Plex as off.
 export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }) }: {
   plex: ReturnType<typeof createPlex>;
   enabled: () => boolean;
@@ -147,18 +148,20 @@ export const createWatchStatus = ({ plex, enabled, now, sleep = (ms) => new Prom
     return snapshot;
   };
 
-  // One rebuild at a time, and a failed rebuild is kept as unavailable. A caller waits at most WATCH_WAIT_MS for it, so a
-  // title imported since the last listing gets its Play; running out of time answers from the old snapshot, if any, and
-  // is not cached as a failure.
+  // One rebuild at a time. Until a listing exists, a load waits up to WATCH_WAIT_MS for the first one and running out of
+  // time is not cached as a failure. Once one exists, a stale listing answers at once while the next one builds in the
+  // background. A failed rebuild keeps the old listing (unavailable only when there is none) and still restarts the
+  // 60 seconds, so Plex is asked at most once per CACHE_MS.
   let cached: { at: number; value: Snapshot | undefined } | undefined;
   let building: Promise<Snapshot | undefined> | undefined;
   const snapshot = async (): Promise<Snapshot | undefined> => {
     if (cached !== undefined && now() - cached.at < CACHE_MS) return cached.value;
     building ??= build().catch(() => undefined).then((value) => {
-      cached = { at: now(), value };
+      cached = { at: now(), value: value ?? cached?.value };
       building = undefined;
       return value;
     });
+    if (cached?.value !== undefined) return cached.value;
     return (await capped(building)) ?? cached?.value;
   };
 
