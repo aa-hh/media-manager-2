@@ -361,7 +361,7 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - **Files:** new `.github/workflows/android-tv-release.yml`; `android-tv/app/build.gradle.kts` (release signing from `ANDROID_TV_KEYSTORE_PATH`/`ANDROID_TV_KEYSTORE_PASSWORD`, alias `release`; `versionCode` from Gradle property `versionCode`, default 1); `scripts/android-tv.sh` (`release`).
 - **What:**
   - Triggers on push to main with paths `android-tv/**` and `scripts/android-tv.sh`; `permissions: contents: write`; `concurrency: android-tv-release`.
-  - Steps: checkout, setup-java 25, setup-gradle, restore the FFmpeg cache, decode the keystore secret into `$RUNNER_TEMP`, `sh scripts/android-tv.sh test`, then `ANDROID_TV_VERSION_CODE=$GITHUB_RUN_NUMBER sh scripts/android-tv.sh release`.
+  - Steps: checkout, setup-java 25, setup-gradle, restore the FFmpeg cache, decode the keystore secret into `$RUNNER_TEMP`, `sh scripts/android-tv.sh test`. T06 stored the GitHub secrets as `ANDROID_TV_RELEASE_KEYSTORE` (base64 of the .p12) and `ANDROID_TV_RELEASE_PASSWORD` (store and key password); map the decoded file to `ANDROID_TV_KEYSTORE_PATH` and the password to `ANDROID_TV_KEYSTORE_PASSWORD`. Certificate SHA-256 `97:6A:2A:1B:32:D3:74:53:05:E7:CF:41:BB:86:65:7E:E1:C4:20:36:05:CB:CE:52:CF:DC:E8:48:36:CE:7C:7E`, owner `CN=media-manager-2 TV`, then `ANDROID_TV_VERSION_CODE=$GITHUB_RUN_NUMBER sh scripts/android-tv.sh release`.
   - `apksigner verify --print-certs`.
   - `gh release create android-tv-v$GITHUB_RUN_NUMBER <apk>#media-manager-2-tv.apk --title "TV app 1.0.$GITHUB_RUN_NUMBER" --notes "<merge commit subject>"`.
   - A missing secret fails the job.
