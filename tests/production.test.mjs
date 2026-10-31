@@ -3838,6 +3838,10 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     }],
   });
   const hevc = (extra) => ({ id: 1000, streamType: 1, index: 0, codec: 'hevc', ...extra });
+  // Two versions with movie()'s streams: the 720 one first, the 1080 one second.
+  const twoVersions = (base) => ({ ...base, Media: [[720, 4000, 811, 'file-720.mkv'], [1080, 8000, 812, 'file-1080.mkv']].map(([height, bitrate, id, file]) => ({
+    ...base.Media[0], height, bitrate, Part: [{ ...base.Media[0].Part[0], id, key: `/library/parts/${id}/1700000000/${file}` }],
+  })) });
   const items = {
     '/library/metadata/100': movie('100', 1080),
     '/library/metadata/200': movie('200', 720),
@@ -3845,6 +3849,8 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     '/library/metadata/400': movie('400', 2160, hevc({ colorTrc: 'smpte2084' })),
     '/library/metadata/500': movie('500', 2160, hevc({ colorTrc: 'arib-std-b67' })),
     '/library/metadata/600': movie('600', 2160, hevc({ colorTrc: 'bt709' })),
+    '/library/metadata/700': { ...movie('700', 1080), viewOffset: 61_500 },
+    '/library/metadata/800': twoVersions(movie('800', 720)),
   };
   const accepted = () => ({ generalDecisionCode: 1000, mdeDecisionCode: 1000, transcodeDecisionCode: 1000, directPlayDecisionCode: 1000 });
   const connect = ({ decision = accepted, now } = {}) => {
@@ -4057,6 +4063,27 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     const address = new URL(body.streamAddresses[0]);
     assert.equal(address.pathname, '/video/:/transcode/universal/start');
     assert.equal(address.searchParams.get('X-Plex-Session-Identifier'), ids.sessionIdentifier);
+  });
+
+  // Picking the first version instead of the tallest, dropping mediaIndex from the reply, taking the page's stale
+  // offsetSeconds when resume is set, or keeping Plex's viewOffset in ms turns this red.
+  await t.test('a start without a version plays the tallest one, and resume starts from Plex\'s saved position', async () => {
+    const { routes, decisions } = connect();
+    const last = () => decisions().at(-1).searchParams;
+    const picked = await start(routes, { ratingKey: '800', mediaIndex: undefined }, { desktop: true });
+    assert.equal(picked.status, 200);
+    assert.deepEqual([picked.body.mediaIndex, picked.body.partId], [1, 812]);
+    assert.ok(picked.body.streamAddresses.every((address) => address.includes('/library/parts/812/')));
+    assert.equal(last().get('mediaIndex'), '1');
+    const asked = await start(routes, { ratingKey: '800', mediaIndex: 0 }, { desktop: true });
+    assert.equal(asked.body.mediaIndex, 0);
+    assert.ok(asked.body.streamAddresses.every((address) => address.includes('/library/parts/811/')));
+    assert.equal((await start(routes, { mediaIndex: 'x' })).status, 400);
+    const resumed = await start(routes, { ratingKey: '700', resume: true, offsetSeconds: 30 });
+    assert.equal(resumed.body.startPositionSeconds, 61);
+    assert.equal(last().get('offset'), '61');
+    assert.equal((await start(routes, { ratingKey: '100', resume: true, offsetSeconds: 30 })).body.startPositionSeconds, 0);
+    assert.equal((await start(routes, { resume: 'yes' })).status, 400);
   });
 
   // Dropping the Sec-Fetch-Site check on the timeline route turns this red.
@@ -11594,7 +11621,7 @@ test('library filters, watch marks and the card Play follow Plex watch status', 
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
   const { filterTitles, filterCounts, segmentsFor } = await load('../src/client/library/grid.ts');
-  const { watchMarks, continueMeta, playLabel, playMode, plexWebUrl, movieLoad, episodeLoad, clockText } = await load('../src/client/library/watch.ts');
+  const { watchMarks, continueMeta, playLabel, playMode, plexWebUrl, movieLoad, episodeLoad, cardMovieLoad, clockText } = await load('../src/client/library/watch.ts');
 
   const show = (id, { files = 10, episodes = 10, watch = null } = {}) => ({ type: 'tv', service: 'sonarr', id, status: 'continuing', monitored: true,
     tv: { episodeFileCount: files, episodeCount: episodes, totalEpisodeCount: episodes, seasonCount: 1 }, movie: null, watch });
@@ -11690,15 +11717,27 @@ test('library filters, watch marks and the card Play follow Plex watch status', 
       episodes: { 10: playable('e10'), 11: playable('e11'), 12: playable('e12', 90_500) } };
     const flags = { directPlay: true, directStream: true, directStreamAudio: true };
     assert.deepEqual(episodeLoad({ episodes, watch }, { seasonNumber: 1, episodeNumber: 2 }, 'resume'),
-      { ratingKey: 'e12', mediaIndex: 1, partIndex: 0, offsetSeconds: 90, flags });
+      { ratingKey: 'e12', mediaIndex: 1, partIndex: 0, offsetSeconds: 90, flags, resume: true });
     assert.equal(episodeLoad({ episodes, watch }, { seasonNumber: 1, episodeNumber: 2 }, 'start').offsetSeconds, 0);
     assert.equal(episodeLoad({ episodes, watch: { ...watch, nextEpisode: { seasonNumber: 1, episodeNumber: 2 } } }, null, 'start').ratingKey, 'e12');
     assert.equal(episodeLoad({ episodes, watch }, null, 'start').ratingKey, 'e11');
     assert.equal(episodeLoad({ episodes, watch }, { seasonNumber: 4, episodeNumber: 1 }, 'start'), null);
     assert.equal(episodeLoad({ episodes, watch: { kind: 'unavailable' } }, null, 'start'), null);
     assert.deepEqual(movieLoad({ kind: 'ok', machineIdentifier: 'm', ...playable('m1', 61_000) }, 'resume'),
-      { ratingKey: 'm1', mediaIndex: 1, partIndex: 0, offsetSeconds: 61, flags });
+      { ratingKey: 'm1', mediaIndex: 1, partIndex: 0, offsetSeconds: 61, flags, resume: true });
     assert.equal(movieLoad(null, 'start'), null);
+    // Sending a mediaIndex from a card (the card never knows the version), preferring the title's saved position over the
+    // Continue Watching item's, or dropping resume turns these rows red.
+    const cardWatch = film({ viewOffsetMs: 61_000 });
+    const card = cardMovieLoad(cardWatch, undefined, 'resume');
+    assert.deepEqual(card, { ratingKey: 'M', partIndex: 0, offsetSeconds: 61, flags, resume: true });
+    assert.ok(!('mediaIndex' in card));
+    assert.equal(cardMovieLoad(cardWatch, item('radarr', 5, { viewOffsetMs: 30_000 }), 'resume').offsetSeconds, 30);
+    const fromStart = cardMovieLoad(cardWatch, undefined, 'start');
+    assert.equal(fromStart.offsetSeconds, 0);
+    assert.ok(!('resume' in fromStart));
+    assert.equal(cardMovieLoad(shown({}), undefined, 'resume'), null);
+    assert.equal(cardMovieLoad(null, undefined, 'resume'), null);
   });
 
   // Ignoring the version picked on the title page, or dropping Plex's default when none is picked, turns this red.
@@ -11720,7 +11759,7 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
     activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands, wheelStep,
     SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale, formatLine, originalLabel, isPlayAddress, onlyPlayerMoves,
-    OPENING_REQUEST, openOutcome, retryStep,
+    OPENING_REQUEST, openOutcome, retryStep, reloadAt,
   } = await load('../src/client/player/model.ts');
   const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
 
@@ -11748,6 +11787,10 @@ test('the in-app player seeks, reports to Plex and picks what plays next by Plex
     assert.equal(openOutcome({ current: 2, load: 2, failed: false, found }), 'play');
     assert.equal(retryStep(OPENING_REQUEST), 'reopen');
     assert.equal(retryStep({ ...OPENING_REQUEST }), 'reload');
+    // Keeping resume on a reload sends the title back to Plex's saved position on every retry.
+    assert.equal(reloadAt({ ...OPENING_REQUEST, ratingKey: '7', resume: true }, 30, undefined).resume, undefined);
+    // Keeping openedAt on a reload makes that reload's timing line count from the original click.
+    assert.equal(reloadAt({ ...OPENING_REQUEST, ratingKey: '7', openedAt: 1 }, 30, undefined).openedAt, undefined);
   });
 
   // Letting a seek pass 5 s before the end, or go below zero, turns this red.

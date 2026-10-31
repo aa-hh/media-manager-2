@@ -23,6 +23,16 @@ const QUALITY_STEPS = [
   { index: 9, kbps: 12000, height: 1080 },
   { index: 10, kbps: 20000, height: 1080 },
 ];
+// The tallest version plays by default, the higher bitrate breaking a tie and the earlier entry any other tie, among the
+// entries whose first Part is a record. Copied from `playable` in src/server/watchStatus.ts, which does not export it.
+const defaultMediaIndex = (mediaList: Array<Record<string, unknown>>) => mediaList
+  .reduce<{ index: number; height: number; bitrate: number } | undefined>((top, entry, index) => {
+    if (!Array.isArray(entry.Part) || !isRecord(entry.Part[0])) return top;
+    const height = numberOrNull(entry.height) ?? 0;
+    const bitrate = numberOrNull(entry.bitrate) ?? 0;
+    return top === undefined || height > top.height || (height === top.height && bitrate > top.bitrate) ? { index, height, bitrate } : top;
+  }, undefined)?.index;
+
 const DIRECT_PLAY_CONTAINERS = new Set(['3gpp', 'asf', 'avi', 'mkv', 'mov', 'mp4', 'mpeg', 'mpegts', 'rm', 'wtv']);
 const PICTURE_SUBTITLES = new Set(['pgs', 'vobsub', 'dvd_subtitle', 'idx']);
 
@@ -41,9 +51,12 @@ const unavailable: Reply = { status: 502, body: { error: 'plex_unavailable' } };
 
 export type StartInput = {
   ratingKey: string;
-  mediaIndex: number;
+  /** Left out, the default version plays and the reply's `mediaIndex` names it. */
+  mediaIndex?: number;
   partIndex: number;
   offsetSeconds: number;
+  /** True: start from Plex's saved position, not `offsetSeconds`. */
+  resume?: boolean;
   directPlay: boolean;
   directStream: boolean;
   directStreamAudio: boolean;
@@ -79,10 +92,14 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
     const record = itemResult.value;
     const transient = tokenResult.value;
     const { machineIdentifier, maxUploadBitrate } = identityResult.value;
-    const media = record === undefined ? undefined : records(record.Media)[input.mediaIndex];
+    const mediaList = record === undefined ? [] : records(record.Media);
+    const mediaIndex = input.mediaIndex ?? defaultMediaIndex(mediaList);
+    const media = mediaIndex === undefined ? undefined : mediaList[mediaIndex];
     const part = media === undefined ? undefined : records(media.Part)[input.partIndex];
-    if (record === undefined || media === undefined || part === undefined || typeof part.key !== 'string'
+    if (record === undefined || mediaIndex === undefined || media === undefined || part === undefined || typeof part.key !== 'string'
       || typeof record.librarySectionUUID !== 'string') return { status: 404, body: { error: 'not_found' } };
+    // Plex clears viewOffset once an item is watched, so resuming a watched one starts at 0.
+    const startSeconds = input.resume === true ? Math.floor((numberOrNull(record.viewOffset) ?? 0) / 1000) : input.offsetSeconds;
 
     const { uris, directCount } = addressesOf(resourcesResult.value, machineIdentifier);
     if (uris.length === 0) return { status: 502, body: { error: 'plex_tv_unavailable' } };
@@ -109,7 +126,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
     const paramsFor = ({ directPlay, directStream, directStreamAudio }: Plan): Record<string, string> => ({
       hasMDE: '1',
       path: `/library/metadata/${ratingKey}`,
-      mediaIndex: String(input.mediaIndex),
+      mediaIndex: String(mediaIndex),
       partIndex: String(input.partIndex),
       protocol: 'http',
       fastSeek: '1',
@@ -117,7 +134,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
       directStream: bit(directStream),
       directStreamAudio: bit(directStreamAudio),
       location: 'wan',
-      offset: String(input.offsetSeconds),
+      offset: String(startSeconds),
       copyts: '1',
       ...(directPlay ? {} : { 'X-Plex-Chunked': '1' }),
       'X-Plex-Incomplete-Segments': '1',
@@ -200,7 +217,8 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
       body: {
         session,
         partId: numberOrNull(part.id),
-        startPositionSeconds: input.offsetSeconds,
+        mediaIndex,
+        startPositionSeconds: startSeconds,
         durationMs: numberOrNull(record.duration),
         decision: { ...plan, maxVideoBitrate: maxVideoBitrate ?? null },
         playQueue: {
@@ -377,17 +395,22 @@ export const createPlaybackRoutes = (playback: Playback) => {
   // keeps addresses out of the page's ordinary replies (state, devtools, logs) rather than defending against the page.
   routes.post('/start', async (context) => {
     const body = await readBody(context, [
-      'ratingKey', 'mediaIndex', 'partIndex', 'offsetSeconds', 'directPlay', 'directStream', 'directStreamAudio', 'clientId', 'sessionIdentifier',
-    ], ['maxVideoBitrate']);
+      'ratingKey', 'partIndex', 'offsetSeconds', 'directPlay', 'directStream', 'directStreamAudio', 'clientId', 'sessionIdentifier',
+    ], ['maxVideoBitrate', 'mediaIndex', 'resume']);
     if (body === undefined) return context.json(invalid, 400);
-    const { ratingKey, mediaIndex, partIndex, offsetSeconds, directPlay, directStream, directStreamAudio, maxVideoBitrate, clientId, sessionIdentifier } = body;
-    if (!isRatingKey(ratingKey) || !isCount(mediaIndex) || !isCount(partIndex)
+    const {
+      ratingKey, mediaIndex, partIndex, offsetSeconds, resume, directPlay, directStream, directStreamAudio, maxVideoBitrate, clientId, sessionIdentifier,
+    } = body;
+    if (!isRatingKey(ratingKey) || (mediaIndex !== undefined && !isCount(mediaIndex)) || !isCount(partIndex)
       || typeof offsetSeconds !== 'number' || !Number.isFinite(offsetSeconds) || offsetSeconds < 0
+      || (resume !== undefined && !isBoolean(resume))
       || !isBoolean(directPlay) || !isBoolean(directStream) || !isBoolean(directStreamAudio)
       || (maxVideoBitrate !== undefined && (typeof maxVideoBitrate !== 'number' || !QUALITY_KBPS.has(maxVideoBitrate)))
       || !isId(clientId) || !isId(sessionIdentifier)) return context.json(invalid, 400);
     const input: StartInput = {
-      ratingKey, mediaIndex, partIndex, offsetSeconds, directPlay, directStream, directStreamAudio, clientId, sessionIdentifier,
+      ratingKey, partIndex, offsetSeconds, directPlay, directStream, directStreamAudio, clientId, sessionIdentifier,
+      ...(mediaIndex === undefined ? {} : { mediaIndex }),
+      ...(resume === undefined ? {} : { resume }),
       ...(maxVideoBitrate === undefined ? {} : { maxVideoBitrate }),
     };
     return send(context, await playback.start(input, context.req.header('X-Media-Manager-Desktop') === '1'));

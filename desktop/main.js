@@ -429,11 +429,13 @@ async function startPlaying() {
 
 // --- Loading (C1.2 load, C1.3 options, C1.5 retries)
 
-const requestBody = (ask, flags, offsetSeconds) => ({
+// Without `mediaIndex` the server plays the default version; with `resume` it starts from Plex's saved position.
+const requestBody = (ask, flags, offsetSeconds, resume) => ({
   ratingKey: ask.ratingKey,
-  mediaIndex: ask.mediaIndex,
+  ...(ask.mediaIndex === undefined ? {} : { mediaIndex: ask.mediaIndex }),
   partIndex: ask.partIndex,
   offsetSeconds: Math.max(0, Math.floor(offsetSeconds)),
+  ...(resume === true ? { resume: true } : {}),
   directPlay: flags.directPlay,
   directStream: flags.directStream,
   directStreamAudio: flags.directStreamAudio,
@@ -477,8 +479,8 @@ async function loadAddress(playing, address, startSeconds, directPlay) {
 }
 
 // One /api/playback/start, a tested Plex address, and mpv loading it. `playing` is the title asked for; a newer load or a stop replaces it.
-async function start(playing, offsetSeconds, retest) {
-  const { status, json } = await appRequest('POST', '/api/playback/start', requestBody(playing.ask, playing.flags, offsetSeconds));
+async function start(playing, offsetSeconds, retest, resume = false) {
+  const { status, json } = await appRequest('POST', '/api/playback/start', requestBody(playing.ask, playing.flags, offsetSeconds, resume));
   mark(playing, 'startReply');
   if (status !== 200 || json === null || !Array.isArray(json.streamAddresses)) {
     throw new Error(typeof json?.error === 'string' ? json.error : `start failed (${status})`);
@@ -496,7 +498,10 @@ async function start(playing, offsetSeconds, retest) {
   playing.subtitles = new Map(json.tracks.subtitle
     .filter((track) => track.external && typeof track.url === 'string')
     .map((track) => [track.key, subtitleAdd(track, origin)]));
-  await loadAddress(playing, playing.address, offsetSeconds, json.decision.directPlay);
+  // The reply's start wins: with `resume` the server read it from Plex, and the asked offset was the page's guess.
+  const startSeconds = typeof json.startPositionSeconds === 'number' && Number.isFinite(json.startPositionSeconds) && json.startPositionSeconds >= 0
+    ? json.startPositionSeconds : offsetSeconds;
+  await loadAddress(playing, playing.address, startSeconds, json.decision.directPlay);
   return pageCopy(json, { clientId: clientId(), sessionIdentifier }, { volume: savedVolume(), muted: savedMuted(), subtitleScale: savedSubtitleScale() });
 }
 
@@ -528,7 +533,8 @@ async function recover(failure, playing = current) {
 const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
 const readAsk = (ask) => {
   const flags = ask?.flags;
-  if (typeof ask?.ratingKey !== 'string' || !/^\d+$/.test(ask.ratingKey) || !isCount(ask.mediaIndex) || !isCount(ask.partIndex)
+  if (typeof ask?.ratingKey !== 'string' || !/^\d+$/.test(ask.ratingKey) || (ask.mediaIndex !== undefined && !isCount(ask.mediaIndex))
+    || !isCount(ask.partIndex)
     || typeof ask.offsetSeconds !== 'number' || !Number.isFinite(ask.offsetSeconds) || ask.offsetSeconds < 0
     || typeof flags?.directPlay !== 'boolean' || typeof flags.directStream !== 'boolean' || typeof flags.directStreamAudio !== 'boolean'
     || (flags.maxVideoBitrate !== undefined && !isCount(flags.maxVideoBitrate))) throw new Error('invalid_request');
@@ -539,6 +545,8 @@ const readAsk = (ask) => {
   return {
     ask: { ratingKey: ask.ratingKey, mediaIndex: ask.mediaIndex, partIndex: ask.partIndex },
     offsetSeconds: ask.offsetSeconds,
+    // Anything but true is ignored.
+    resume: ask.resume === true,
     openedAt,
     flags: {
       directPlay: flags.directPlay,
@@ -603,7 +611,7 @@ const finite = (value) => {
 };
 
 handle('player:load', async (ask) => {
-  const { ask: wanted, offsetSeconds, flags, openedAt } = readAsk(ask);
+  const { ask: wanted, offsetSeconds, resume, flags, openedAt } = readAsk(ask);
   current = {
     ask: wanted, flags, tried: [planLabel(flags)], tries: { token: 0, same: 0 }, played: false, paused: false, position: offsetSeconds, duration: null,
     askedAt: openedAt ?? Date.now(), marks: {},
@@ -614,7 +622,7 @@ handle('player:load', async (ask) => {
   // The old file ends now, with reason stop, so it cannot fail or finish into this load while its start request runs.
   if (mpv) void mpv.command(['stop']).catch(() => {});
   try {
-    return await start(playing, offsetSeconds, false);
+    return await start(playing, offsetSeconds, false, resume);
   } catch (error) {
     if (current === playing) current = null;
     throw error;

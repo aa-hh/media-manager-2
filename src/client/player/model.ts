@@ -13,6 +13,8 @@ export type StartReply = {
   /** The desktop app's saved subtitle size (mpv's sub-scale); absent from builds older than the page. */
   subtitleScale?: number;
   partId: number | null;
+  /** The version playing, which the server picks when the request left it out. */
+  mediaIndex: number;
   startPositionSeconds: number;
   durationMs: number | null;
   decision: PlaybackFlags & { maxVideoBitrate: number | null };
@@ -305,10 +307,14 @@ export const flagsFor = (qualityKbps: number | undefined): PlaybackFlags => (
   qualityKbps === undefined ? firstTry : { directPlay: false, directStream: true, directStreamAudio: true, maxVideoBitrate: qualityKbps }
 );
 
-/** The same title again from `seconds`, as a quality or track change and a retry need it. */
-export const reloadAt = (request: LoadRequest, seconds: number, qualityKbps: number | undefined): LoadRequest => (
-  { ...request, offsetSeconds: Math.max(0, Math.floor(seconds)), flags: flagsFor(qualityKbps) }
-);
+/**
+ * The same title again from `seconds`, as a quality or track change and a retry need it: without `resume`, which would send
+ * it back to Plex's saved position, and without the click's `openedAt`, which would time the reload from that click.
+ */
+export const reloadAt = (request: LoadRequest, seconds: number, qualityKbps: number | undefined): LoadRequest => {
+  const { resume: _resume, openedAt: _openedAt, ...rest } = request;
+  return { ...rest, offsetSeconds: Math.max(0, Math.floor(seconds)), flags: flagsFor(qualityKbps) };
+};
 
 export const stepLabel = (step: QualityStep) => `${step.height}p · ${step.kbps >= 1000 ? `${step.kbps / 1000} Mbps` : `${step.kbps} kbps`}`;
 

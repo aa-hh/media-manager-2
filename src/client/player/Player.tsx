@@ -212,7 +212,11 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       takeSaved(reply);
       // A new title starts at the chosen subtitle's offset saved in Plex; a reload of the same title keeps the delay it had.
       const delay = fresh ? savedDelay(reply.tracks.subtitle.find((track) => track.selected)) : null;
-      change((s) => ({ ...s, reply, subtitleDelay: delay ?? s.subtitleDelay }));
+      // A request without a version takes the one the server picked, so later reloads of this title ask for the same one.
+      const picked = request.mediaIndex === undefined && typeof reply.mediaIndex === 'number' ? reply.mediaIndex : undefined;
+      change((s) => ({
+        ...s, reply, subtitleDelay: delay ?? s.subtitleDelay, ...(picked === undefined ? {} : { request: { ...s.request, mediaIndex: picked } }),
+      }));
       if (delay !== null) void bridge.setSubtitleDelay(delay).catch(() => undefined);
       return true;
     } catch (error) {
