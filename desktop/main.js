@@ -7,7 +7,7 @@ const { normaliseAddress, isMediaManager } = require('./lib/address');
 const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = require('./lib/connection');
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
-const { fileEvent, playsOnOpen, showsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
+const { fileEvent, playsOnOpen, showsPosition, sendsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource } = require('./lib/player');
 
 const MiB = 1024 * 1024;
 const DEFAULT_LOAD_AHEAD = 512 * MiB; // recommendation 4
@@ -289,9 +289,10 @@ const number = (value) => (value === null || value === undefined || value === ''
 const ensureMpv = () => {
   if (mpv) return mpv;
   const { MpvView } = require('./build/Release/mpvview.node');
-  mpv = new MpvView(win.getNativeWindowHandle());
-  // Plex addresses must never go to youtube-dl or yt-dlp.
-  void mpv.setOption('ytdl', 'no');
+  // mpv's own log beside desktop.json, set before init: log-file is read before mpv starts, and only a file opened then
+  // holds libmpv's start-up and video-output lines, where the time to the first frame goes. mpv empties the file each
+  // time it opens it, so it holds one launch and never grows past it.
+  mpv = new MpvView(win.getNativeWindowHandle(), { 'log-file': path.join(app.getPath('userData'), 'mpv.log') });
   // mpv's window always takes the app window's frame, whatever the video's shape; the picture is fitted inside it.
   void mpv.setOption('keepaspect-window', 'no');
   // libmpv finds no cache folder of its own, so every new picture setup compiled its shaders again (the first Play of a
@@ -322,20 +323,15 @@ const mark = (playing, step) => {
 const writeMarks = (playing) => {
   if (!playing?.marks || playing.marksWritten) return;
   playing.marksWritten = true;
-  // Written 3 s later, so the addon's window notes from the first frame make it into the line.
-  setTimeout(() => {
-    const line = {
-      at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, ...playing.marks,
-      ...(playing.windowNotes ? { windowNotes: playing.windowNotes } : {}),
-    };
-    fs.appendFile(path.join(app.getPath('userData'), 'play-timings.log'), `${JSON.stringify(line)}\n`, () => {});
-  }, 3_000);
+  const line = { at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, ...playing.marks };
+  fs.appendFile(path.join(app.getPath('userData'), 'play-timings.log'), `${JSON.stringify(line)}\n`, () => {});
 };
 // Sends the position held back while the load opened, once showsPosition lets it through.
 const release = (playing) => {
   if (current !== playing || !showsPosition(playing)) return;
   mark(playing, 'shown');
   writeMarks(playing);
+  playing.lastSent = { at: Date.now(), position: playing.position };
   send('position', playing.position);
 };
 
@@ -367,6 +363,10 @@ function onMpvEvent(event) {
         if (!showsPosition(current)) return;
         mark(current, 'shown');
         writeMarks(current);
+        // Four times a second, and a seek at once: sending every frame re-rendered the page 24-60 times a second.
+        const at = Date.now();
+        if (!sendsPosition(current.lastSent, position, at)) return;
+        current.lastSent = { at, position };
       }
       send('position', position);
     } else if (name === 'duration') {
@@ -397,7 +397,6 @@ function onMpvEvent(event) {
       send('endOfFile');
     } else if (meaning !== null) void recover(meaning);
   } else if (event.event === 'window') {
-    if (current?.marks) (current.windowNotes ??= []).push(`${Date.now() - current.askedAt} ${event.name}: ${event.value}`);
     if (event.name !== 'attached') return;
     mark(current, 'window');
     applyLayout();
@@ -533,9 +532,14 @@ const readAsk = (ask) => {
     || typeof ask.offsetSeconds !== 'number' || !Number.isFinite(ask.offsetSeconds) || ask.offsetSeconds < 0
     || typeof flags?.directPlay !== 'boolean' || typeof flags.directStream !== 'boolean' || typeof flags.directStreamAudio !== 'boolean'
     || (flags.maxVideoBitrate !== undefined && !isCount(flags.maxVideoBitrate))) throw new Error('invalid_request');
+  // The page's click time, kept only when it is from the last minute; play-timings.log starts there.
+  const now = Date.now();
+  const openedAt = typeof ask.openedAt === 'number' && Number.isFinite(ask.openedAt) && ask.openedAt >= now - 60_000 && ask.openedAt <= now
+    ? ask.openedAt : undefined;
   return {
     ask: { ratingKey: ask.ratingKey, mediaIndex: ask.mediaIndex, partIndex: ask.partIndex },
     offsetSeconds: ask.offsetSeconds,
+    openedAt,
     flags: {
       directPlay: flags.directPlay,
       directStream: flags.directStream,
@@ -599,12 +603,14 @@ const finite = (value) => {
 };
 
 handle('player:load', async (ask) => {
-  const { ask: wanted, offsetSeconds, flags } = readAsk(ask);
+  const { ask: wanted, offsetSeconds, flags, openedAt } = readAsk(ask);
   current = {
     ask: wanted, flags, tried: [planLabel(flags)], tries: { token: 0, same: 0 }, played: false, paused: false, position: offsetSeconds, duration: null,
-    askedAt: Date.now(), marks: {},
+    askedAt: openedAt ?? Date.now(), marks: {},
   };
   const playing = current;
+  // From the click to here: the page's title fetch.
+  mark(playing, 'load');
   // The old file ends now, with reason stop, so it cannot fail or finish into this load while its start request runs.
   if (mpv) void mpv.command(['stop']).catch(() => {});
   try {

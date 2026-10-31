@@ -254,6 +254,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   // A Play from a card or title page. As in Plex's own app, the opening screen shows at once; what to play is worked out
   // behind it, and the title playing stops now rather than under the opening screen.
   const open = useCallback(async (asked: OpenRequest) => {
+    const openedAt = Date.now();
     const { title, load: findLoad, series } = asked;
     lastOpen.current = asked;
     const s = sessionRef.current;
@@ -265,7 +266,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     const load = ++loads.current;
     givenSeries.current = series === undefined || title.seriesId === null ? null : { id: title.seriesId, promise: series };
     commit({
-      load, request: OPENING_REQUEST, title, reply: null, playback: openingAt(0), openedAt: Date.now(),
+      load, request: OPENING_REQUEST, title, reply: null, playback: openingAt(0), openedAt,
       saved: { audio: false, subtitles: false, delay: false }, subtitleDelay: 0, upNext: null,
     });
     if (!isPlayAddress(window.location.pathname)) navigate('/play/');
@@ -282,7 +283,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     if (outcome !== 'play' || found === null) return false;
     const { request } = found;
     if (isPlayAddress(window.location.pathname)) replace(`/play/${request.ratingKey}`);
-    return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, { ...title, backdropUrl: found.backdropUrl }, true);
+    return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags, openedAt }, { ...title, backdropUrl: found.backdropUrl }, true);
   }, [bridge, change, close, commit, sendTimeline, startLoad]);
 
   const fetchSeries = useCallback((id: number) => getJson<SeriesReply>(`/api/library/series/${id}`, unauthenticatedRef.current), []);

@@ -113,15 +113,37 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     // auto-window-resize=no: mpv does not resize its window for each new file.
     // native-fs=no: mpv's fullscreen fills the screen in place (window.swift setToFullScreen)
     // instead of moving to a new Space, so the attached Electron window stays with it.
+    // ytdl=no: Plex addresses must never go to youtube-dl or yt-dlp.
+    // load-*=no: mpv's built-in scripts this app never uses. Which scripts load is decided at mpv_initialize, so these are
+    // set before it; ytdl set after it loaded its hook and then unloaded it.
     const char *vo[][2] = {
         {"vo", "gpu-next"}, {"gpu-api", "vulkan"}, {"gpu-context", "macvk"},
-        {"border", "no"}, {"ontop", "no"}, {"auto-window-resize", "no"}, {"native-fs", "no"}};
+        {"border", "no"}, {"ontop", "no"}, {"auto-window-resize", "no"}, {"native-fs", "no"},
+        {"ytdl", "no"}, {"load-stats-overlay", "no"}, {"load-console", "no"}, {"load-commands", "no"},
+        {"load-auto-profiles", "no"}, {"load-select", "no"}, {"load-positioning", "no"}, {"load-context-menu", "no"}};
+    // main.js's own pre-init options (the optional second argument): the object's own string-valued properties.
+    std::vector<std::pair<std::string, std::string>> given;
+    napi_value keys;
+    if (info.Length() > 1 && info[1].IsObject() &&
+        napi_get_all_property_names(env, info[1], napi_key_own_only, static_cast<napi_key_filter>(napi_key_enumerable | napi_key_skip_symbols),
+                                    napi_key_numbers_to_strings, &keys) == napi_ok) {
+      Napi::Object options = info[1].As<Napi::Object>();
+      Napi::Array names(env, keys);
+      for (uint32_t i = 0; i < names.Length(); i++) {
+        Napi::Value value = options.Get(names.Get(i));
+        if (value.IsString()) given.emplace_back(names.Get(i).ToString().Utf8Value(), value.As<Napi::String>().Utf8Value());
+      }
+    }
     int err = 0;
-    for (auto &o : vo)
-      if (err >= 0) err = mpv_set_option_string(mpv_, o[0], o[1]);
+    std::string refused;  // "<name>: " of the option mpv refused, for the error
+    auto set = [&](const std::string &name, const std::string &value) {
+      if (err >= 0 && (err = mpv_set_option_string(mpv_, name.c_str(), value.c_str())) < 0) refused = name + ": ";
+    };
+    for (auto &o : vo) set(o[0], o[1]);
+    for (auto &o : given) set(o.first, o.second);
     if (err >= 0) err = mpv_initialize(mpv_);
     if (err < 0) {
-      Napi::Error::New(env, std::string("mpv init: ") + mpv_error_string(err)).ThrowAsJavaScriptException();
+      Napi::Error::New(env, "mpv init: " + refused + mpv_error_string(err)).ThrowAsJavaScriptException();
       return;
     }
     // window-id is mpv's NSWindow pointer (video/out/mac/common.swift, VOCTRL_GET_WINDOW_ID);
@@ -274,7 +296,6 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     if (ev->event_id == MPV_EVENT_GET_PROPERTY_REPLY && ev->reply_userdata == kWindowId) {
       auto *p = static_cast<mpv_event_property *>(ev->data);
       bool has = ev->error >= 0 && p->format == MPV_FORMAT_STRING && p->data;
-      Emit("asked", has ? *static_cast<char **>(p->data) : std::string("none: ") + mpv_error_string(ev->error));
       if (has) Attach((__bridge NSWindow *)(void *)(intptr_t)strtoll(*static_cast<char **>(p->data), nullptr, 10));
       return true;
     }
@@ -314,9 +335,6 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
           o.Set("value", *static_cast<char **>(p->data));
         else
           o.Set("value", env.Null());
-        // razor: diagnostic notes for play-timings.log while the missed attach is tracked down; remove with them.
-        if (ev->reply_userdata == kWindowId)
-          Emit("seen", std::string(has ? *static_cast<char **>(p->data) : "none") + (video_ ? " (attached)" : " (unattached)"));
         if (ev->reply_userdata == kWindowId && has)
           Attach((__bridge NSWindow *)(void *)(intptr_t)strtoll(*static_cast<char **>(p->data), nullptr, 10));
       } else if (ev->event_id == MPV_EVENT_LOG_MESSAGE) {
@@ -338,11 +356,6 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
       // mpv makes its window on the main thread after the video reconfig, so the observer can read window-id before the
       // window exists and then hear no later change: the picture then sits in mpv's own unattached window, off the app's
       // frame. Once a frame is drawn the window exists, so ask again.
-      if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART) {
-        std::string all;
-        for (NSWindow *w in NSApp.windows) all += " [" + std::to_string((intptr_t)(__bridge void *)w) + " " + Describe(w) + "]";
-        Emit("restart", std::string(video_ ? "attached" : "unattached") + " | app " + std::to_string((intptr_t)(__bridge void *)win_) + " | windows" + all);
-      }
       if (!video_ && ev->event_id == MPV_EVENT_PLAYBACK_RESTART)
         mpv_get_property_async(mpv_, kWindowId, "window-id", MPV_FORMAT_STRING);
       if (!callback_.IsEmpty()) callback_.Call({o});
@@ -421,9 +434,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     if (!video_ || !win_ || !NSEqualSizes(video_.frame.size, win_.frame.size) || NSEqualPoints(video_.frame.origin, win_.frame.origin)) return;
     if (pins_ >= 3) return;
     pins_++;
-    std::string before = Describe(video_);
     [video_ setFrame:win_.frame display:YES];
-    Emit("pinned", before + " -> " + Describe(video_));
   }
 
   void Match() {
