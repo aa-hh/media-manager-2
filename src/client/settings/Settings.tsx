@@ -32,6 +32,7 @@ import { backupPill, backupWords, type SetupStatus } from './setup';
 import { MediaServerContext } from '../mediaServer';
 import { useScreenReady } from '../navigation';
 import { infoOf, requester, useServices, writeHeaders } from './useServices';
+import { SignedInTvs } from './SignedInTvs';
 import { SwitchMediaServer } from './SwitchMediaServer';
 import { AddTracker, TrackerEditor, TrackerListRow, TrackerPill } from './TrackerEditor';
 import { draftFromRow, isEdited, type RuleDraft, softwareLabels, trackerInfo, type TrackerRow, trackerSummary } from './trackers';
@@ -392,6 +393,7 @@ export function Settings({ onUnauthenticated }: { onUnauthenticated: () => void 
             </ToggleGroup>
             <p className="font-ui text-[13px] leading-[1.5] text-muted-foreground">On this device. System follows the computer’s light or dark setting.</p>
           </div>
+          <SignedInTvs now={now} onUnauthenticated={onUnauthenticated} />
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {adding ? (
