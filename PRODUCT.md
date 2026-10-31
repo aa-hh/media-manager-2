@@ -14,7 +14,7 @@ Component library: shadcn/ui on Base UI, with TanStack Table ([Choose the design
 
 ## Users
 
-One user in the first version: the owner, a power user who runs Sonarr, Radarr, rTorrent and Plex on a Whatbox seedbox and downloads from private trackers. Mostly at a desktop browser searching, picking releases and managing files; on a phone to check status and make quick grabs, for example while travelling.
+One user per install in the first version: the owner, a power user who runs Sonarr, Radarr, rTorrent and Plex, usually on a seedbox, and downloads from private trackers. The app is built for other owners' setups, not only the first owner's Whatbox slot. Mostly at a desktop browser searching, picking releases and managing files; on a phone to check status and make quick grabs, for example while travelling.
 
 Friends who request movies and TV shows are a planned later audience (v2), not a first-version user.
 
@@ -30,7 +30,8 @@ Sonarr and Radarr only see rTorrent through a slow, vague summary, never retry a
 
 ## Operating Context
 
-- Runs on the same Whatbox machine as rTorrent and the library folder, reached at the owner's own domain through Cloudflare. Plex sign-in, limited to the owner's account.
+- Runs on the same machine as rTorrent and the library folder, reached at the owner's own domain. The first owner runs it on a Whatbox seedbox behind Cloudflare. Plex sign-in, limited to the owner's account.
+- No rules tied to one host. Limits a particular host sets, such as Whatbox banning 4K HEVC transcodes, are never written into the app; the app offers what the servers report and recovers when a server can't deliver.
 - Talks to Sonarr, Radarr, rTorrent, Plex and three private trackers (Beyond-HD, PrivateHD, Blutopia).
 - Torrents must keep seeding to satisfy each tracker's hit and run rules; files reach the library folder as hardlinks.
 - The v1 tool (https://github.com/aa-hh/media-manager) is retired; its code is a source to copy from, not a reference for this product's design.
@@ -60,7 +61,7 @@ Images and descriptions come only from Sonarr and Radarr: one poster and one bac
 
 Terminology: use the words in `CONTEXT.md` exactly. "Release" always means a torrent, never a release date.
 
-Out of the first version: friend requests, playback statistics, deletion score, scheduled deletion, storage forecasting, calendar actions, phone notifications, watching on a phone (the in-app player and watch status on a phone are v3 or v4; see `docs/research/in-app-player/README.md`), and configuration for other people's setups.
+Out of the first version: friend requests, playback statistics, deletion score, scheduled deletion, storage forecasting, calendar actions, phone notifications, and watching on a phone (the in-app player and watch status on a phone are v3 or v4; see `docs/research/in-app-player/README.md`).
 
 ## Brand Commitments
 
