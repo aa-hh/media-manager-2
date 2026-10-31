@@ -38,7 +38,8 @@ export async function loadRequestFor(
  * Opens the player on the title at once and works out what to play behind its opening screen. Resolves false when Plex
  * has nothing to play, the signal aborted before Play, or there is no player (a plain browser). The player's own Esc
  * cancels a load still opening; the signal does not, because opening the player unmounts the Play button.
- * `options.reply` is the title's detail reply when the page already has it, so nothing is fetched;
+ * `options.reply` is the title page's copy of the detail reply: it gives the backdrop and episode names at once. What
+ * to play is still fetched, because the page's saved position goes stale once something plays and the page stays open.
  * `options.mediaIndex` plays a version picked on the title page; left out, Plex's default version plays.
  */
 export async function playInDesktop(
@@ -50,11 +51,17 @@ export async function playInDesktop(
   options?: { mediaIndex?: number; reply?: TitleReply },
 ): Promise<boolean> {
   if (!inDesktopApp() || signal.aborted) return false;
-  // One fetch serves both the load request and, for a show, the player's episode names.
-  const reply: Promise<TitleReply> = options?.reply === undefined ? fetchReply(title, onUnauthenticated) : Promise.resolve(options.reply);
+  // On a card one fetch serves both the load request and, for a show, the player's episode names; a Retry fetches again.
+  const reply = fetchReply(title, onUnauthenticated);
+  let next: Promise<TitleReply> | null = reply;
+  const load = () => {
+    const pending = next ?? fetchReply(title, onUnauthenticated);
+    next = null;
+    return pending.then((value) => loadedFrom(value, item, from, options?.mediaIndex));
+  };
   return openPlayer({
     title: { name: title.title, year: title.year, seriesId: title.tv === null ? null : title.id, backdropUrl: options?.reply?.backdropUrl ?? null },
-    loaded: reply.then((value) => loadedFrom(value, item, from, options?.mediaIndex)),
-    ...(title.tv === null ? {} : { series: reply as Promise<SeriesReply> }),
+    load,
+    ...(title.tv === null ? {} : { series: (options?.reply === undefined ? reply : Promise.resolve(options.reply)) as Promise<SeriesReply> }),
   });
 }

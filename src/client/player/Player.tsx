@@ -148,6 +148,8 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   const fullscreenRef = useRef(false);
   const loads = useRef(0);
   const givenSeries = useRef<{ id: number; promise: Promise<SeriesReply> } | null>(null);
+  // The last Play opened, so Retry can work out again what it plays when that failed.
+  const lastOpen = useRef<OpenRequest | null>(null);
   const playedMs = useRef(0);
   const returnFocus = useRef<HTMLElement | null>(null);
   const downloadsRef = useRef(downloads);
@@ -252,7 +254,9 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
 
   // A Play from a card or title page. As in Plex's own app, the opening screen shows at once; what to play is worked out
   // behind it, and the title playing stops now rather than under the opening screen.
-  const open = useCallback(async ({ title, loaded, series }: OpenRequest) => {
+  const open = useCallback(async (asked: OpenRequest) => {
+    const { title, load: findLoad, series } = asked;
+    lastOpen.current = asked;
     const s = sessionRef.current;
     if (s?.reply != null) {
       sendTimeline(s, 'stopped');
@@ -269,7 +273,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     if (!isPlayAddress(window.location.pathname)) navigate('/play/');
     let found: Loaded;
     try {
-      found = await loaded;
+      found = await findLoad();
     } catch (error) {
       if (loads.current === load) change((current) => ({ ...current, playback: { ...current.playback, phase: 'failed', failure: { message: startFailure(error, title.name), tried: [] } } }));
       return false;
@@ -636,7 +640,13 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       },
       retry: () => {
         const s = sessionRef.current;
-        if (s !== null) void startLoad(reloadAt(s.request, s.playback.position, qualityRef.current), s.title, true);
+        if (s === null) return;
+        // A Play that failed before it knew what it plays asks again; the stand-in request never goes to the desktop app.
+        if (s.request === OPENING_REQUEST) {
+          if (lastOpen.current !== null) void open({ ...lastOpen.current, series: undefined });
+          return;
+        }
+        void startLoad(reloadAt(s.request, s.playback.position, qualityRef.current), s.title, true);
       },
       reportNow: () => {
         const s = sessionRef.current;
@@ -644,7 +654,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         if (s !== null && state !== null) sendTimeline(s, state);
       },
     };
-  }, [bridge, change, close, endTitle, playItem, post, readLoadAhead, restartAt, saveTrack, sendTimeline, setFullscreen, setSound, startLoad]);
+  }, [bridge, change, close, endTitle, open, playItem, post, readLoadAhead, restartAt, saveTrack, sendTimeline, setFullscreen, setSound, startLoad]);
 
   const soundShown = hasSoundCommands(bridge) ? sound : null;
   const scaleShown = hasSubtitleScale(bridge) ? subtitleScale : null;

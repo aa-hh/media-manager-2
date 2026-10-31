@@ -16,10 +16,11 @@ export type PlayerSeries = { title: string; episodes: EpisodeDetail[]; watch: Se
 export type Loaded = { request: LoadRequest; backdropUrl: string | null } | null;
 
 /**
- * The player opens on its opening screen straight away (as Plex's own app does) while `loaded` works out what to play.
- * `series`, when the caller already has or is fetching the show, saves the player fetching it again.
+ * The player opens on its opening screen straight away (as Plex's own app does) while `load` works out what to play;
+ * Retry calls it again when it failed. `series`, when the caller already has or is fetching the show, saves the player
+ * fetching it again.
  */
-export type OpenRequest = { title: PlayerTitle; loaded: Promise<Loaded>; series?: Promise<PlayerSeries> };
+export type OpenRequest = { title: PlayerTitle; load: () => Promise<Loaded>; series?: Promise<PlayerSeries> };
 
 type Handler = (open: OpenRequest) => Promise<boolean>;
 let handler: Handler | null = null;
