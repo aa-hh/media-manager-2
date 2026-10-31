@@ -8,7 +8,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /**
  * The server address the TV signed in to and the client for it, kept in app-private preferences (backup is off). The
- * address is set once, on the Address screen; Log out keeps it so the Address screen can offer it again.
+ * address is set on the Address screen, at first launch and after Log out, which keeps the old one to offer again.
  */
 class AppSession(context: Context) {
     private val preferences = context.getSharedPreferences("server", Context.MODE_PRIVATE)

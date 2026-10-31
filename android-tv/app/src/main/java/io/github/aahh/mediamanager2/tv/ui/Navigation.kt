@@ -64,6 +64,7 @@ import io.github.aahh.mediamanager2.tv.ui.screens.ShowScreen
 import io.github.aahh.mediamanager2.tv.ui.screens.UpdatePrompt
 import io.github.aahh.mediamanager2.tv.update.UpdateChecker
 import io.github.aahh.mediamanager2.tv.update.UpdateState
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import okhttp3.OkHttpClient
 
@@ -107,6 +108,7 @@ fun AppNavigation(session: AppSession, onLeave: () -> Unit) {
     val menuOpen = rememberSaveable { mutableStateOf(false) }
     var playlists by remember { mutableStateOf(emptyList<Playlist>()) }
     var playlistsFor by remember { mutableStateOf<ServerClient?>(null) }
+    var playlistsLoading by remember { mutableStateOf(false) }
     val feed = remember(client) { client?.let { DownloadsFeed.forServer(it, scope) } }
     val context = LocalContext.current
     val updates = remember { UpdateChecker(OkHttpClient(), installedVersionCode(context), isDebuggable(context)) }
@@ -125,15 +127,22 @@ fun AppNavigation(session: AppSession, onLeave: () -> Unit) {
 
     fun go(route: Route) = nav.navigateTo(route)
 
-    // The side menu and Back for the pages it lists. Plex lists load once per signed-in client, after sign-in.
+    // The side menu and Back for the pages it lists. Plex lists load after sign-in, in the app's own scope so leaving the
+    // page doesn't cancel the read. A read that failed or found Plex unavailable is tried again on the next page.
     @Composable
     fun TopLevel(current: Route, content: @Composable () -> Unit) {
         val active = client
         LaunchedEffect(active) {
-            if (active == null || playlistsFor == active) return@LaunchedEffect
-            playlistsFor = active
-            val result = LibraryApi(active).playlists()
-            playlists = if (result is ApiResult.Ok && result.value.kind == "ok") result.value.playlists else emptyList()
+            if (active == null || playlistsFor == active || playlistsLoading) return@LaunchedEffect
+            playlistsLoading = true
+            scope.launch {
+                val result = LibraryApi(active).playlists()
+                playlistsLoading = false
+                if (result is ApiResult.Ok && result.value.kind != "unavailable" && client == active) {
+                    playlists = if (result.value.kind == "ok") result.value.playlists else emptyList()
+                    playlistsFor = active
+                }
+            }
         }
         Shell(current, playlists, menuOpen, onNavigate = ::go, onLeave = onLeave, content = content)
     }
