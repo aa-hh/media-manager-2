@@ -26,7 +26,7 @@ A design for the Google TV app (the Kotlin and Compose code in `android-tv/`) fo
 ## Steps
 
 1. **Worktree.** Work in a worktree branched from `origin/main`, as `CLAUDE.md` describes. Never in the main checkout.
-2. **Read the approved frame.** Get its Figma URL from the owner if the conversation lacks it. Load the `figma:figma-use` skill, then call `get_design_context` on the frame, plus `get_screenshot` for a picture to compare against. Figma allows 200 read calls a day, so read the frame once and work from what came back.
+2. **Read the approved frame.** Get its Figma URL from the owner if the conversation lacks it. Load the `figma:figma-use` skill, then call `get_design_context` on the frame, plus `get_screenshot` for a picture to compare against.
 3. **List the differences** between the frame and the code:
    - components: every `v2/Family/Variant` the frame adds, changes or stops using, against `src/client/components/ui/*.tsx` (TV: the `v2/TV/…` components, against the `.kt` files in the TV components folder)
    - variables: against `src/client/globals.css` and the front matter of `DESIGN.md` (TV: the theme in `android-tv/`)
@@ -39,7 +39,7 @@ A design for the Google TV app (the Kotlin and Compose code in `android-tv/`) fo
 5. **Build the screen** from those components.
 6. **Check:** `sh scripts/build.sh` and `sh scripts/test.sh` pass, and Storybook's tests and accessibility checks pass for every story that changed. TV: `sh scripts/android-tv.sh build` and `sh scripts/android-tv.sh test` pass instead; there are no stories.
 7. **Finish** as `CLAUDE.md` says: push, `gh pr create --fill`, `bash scripts/review-branch.sh`, then ask the owner before merging.
-8. **After the merge, redraw the library.** Load `figma:figma-use` and `figma:figma-generate-library`, then redraw every added or changed component and variable in `media-manager-2 library` from the merged code (TV: as `v2/TV/<Family>/<Variant>`; the Kotlin code is the master copy), and remove the deleted ones. One agent writes to Figma at a time. Compare each redrawn component's screenshot with its story. If a new component's links still point at the exploration, open a small pull request that moves its header comment and story `url` to the library component.
+8. **After the merge, redraw the library.** Load `figma:figma-use` and `figma:figma-generate-library`, then redraw every added or changed component and variable in `media-manager-2 library` from the merged code (TV: as `v2/TV/<Family>/<Variant>`; the Kotlin code is the master copy), and remove the deleted ones. Several agents may write to Figma at once if each owns different frames. Compare each redrawn component's screenshot with its story. If a new component's links still point at the exploration, open a small pull request that moves its header comment and story `url` to the library component.
 
 Report which components and variables were added, changed and deleted, and whether step 8 is done.
 
