@@ -23,7 +23,8 @@ import okhttp3.Response
 /** One call to our server: its decoded reply, the server's `{error}` code, or no answer at all. */
 sealed interface ApiResult<out T> {
     data class Ok<T>(val status: Int, val value: T) : ApiResult<T>
-    data class Error(val status: Int, val code: String?) : ApiResult<Nothing>
+    /** [reason] is the server's readable `reason`, when it sends one (an add Sonarr refused, TMDB down). */
+    data class Error(val status: Int, val code: String?, val reason: String? = null) : ApiResult<Nothing>
     data class Failed(val cause: IOException) : ApiResult<Nothing>
 }
 
@@ -90,7 +91,7 @@ class ServerClient(
     @Suppress("UNCHECKED_CAST")
     private fun <T> decode(response: Response, reply: DeserializationStrategy<T>?): ApiResult<T> {
         val text = response.body.string()
-        if (!response.isSuccessful) return ApiResult.Error(response.code, errorCode(text))
+        if (!response.isSuccessful) return ApiResult.Error(response.code, errorField(text, "error"), errorField(text, "reason"))
         if (reply == null || response.code == 204) return ApiResult.Ok(response.code, null as T)
         return try {
             ApiResult.Ok(response.code, json.decodeFromString(reply, text))
@@ -101,8 +102,8 @@ class ServerClient(
         }
     }
 
-    private fun errorCode(text: String): String? = runCatching {
-        ((json.parseToJsonElement(text) as? JsonObject)?.get("error") as? JsonPrimitive)?.takeIf { it.isString }?.content
+    private fun errorField(text: String, name: String): String? = runCatching {
+        ((json.parseToJsonElement(text) as? JsonObject)?.get(name) as? JsonPrimitive)?.takeIf { it.isString }?.content
     }.getOrNull()
 
     companion object {
