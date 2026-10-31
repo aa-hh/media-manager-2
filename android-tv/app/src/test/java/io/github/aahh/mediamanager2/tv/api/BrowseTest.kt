@@ -65,6 +65,7 @@ class BrowseTest {
     fun searchReadsEachStreamedAnswer() = runTest {
         val hit = """{"type":"movie","service":"radarr","key":"radarr:1","title":"Heat","year":1995,"network":null,"status":null,
             "rating":8.3,"overview":null,"posterUrl":null,"inLibrary":true,"libraryId":3,"files":1,"tvdbId":null,"tmdbId":949,"imdbId":"tt0113277"}"""
+            .lines().joinToString("") { it.trim() } // one answer per line, as the server streams it
         reply("""{"results":[$hit],"services":{"sonarr":{"kind":"pending"},"radarr":{"kind":"ok","count":1}}}""" + "\n" +
             """{"results":[$hit],"services":{"sonarr":{"kind":"ok","count":0},"radarr":{"kind":"ok","count":1}}}""" + "\n")
         val seen = mutableListOf<SearchAnswer>()
