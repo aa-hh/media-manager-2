@@ -134,6 +134,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
  private:
   NSWindow *win_ = nil;    // Electron's window
   NSWindow *video_ = nil;  // mpv's window, child of win_ once attached
+  int pins_ = 0;           // times Pin() put mpv's window back since the last attach
   CGFloat radius_ = 0;     // macOS's window corner radius
   NSMutableArray *observers_ = [NSMutableArray array];
   mpv_handle *mpv_ = nullptr;
@@ -269,6 +270,14 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     if (ev->event_id != MPV_EVENT_COMMAND_REPLY && ev->event_id != MPV_EVENT_SET_PROPERTY_REPLY &&
         ev->event_id != MPV_EVENT_GET_PROPERTY_REPLY)
       return false;
+    // Drain's own ask for window-id, after the observer missed mpv's window.
+    if (ev->event_id == MPV_EVENT_GET_PROPERTY_REPLY && ev->reply_userdata == kWindowId) {
+      auto *p = static_cast<mpv_event_property *>(ev->data);
+      bool has = ev->error >= 0 && p->format == MPV_FORMAT_STRING && p->data;
+      Emit("asked", has ? *static_cast<char **>(p->data) : std::string("none: ") + mpv_error_string(ev->error));
+      if (has) Attach((__bridge NSWindow *)(void *)(intptr_t)strtoll(*static_cast<char **>(p->data), nullptr, 10));
+      return true;
+    }
     auto it = replies_.find(ev->reply_userdata);
     if (it == replies_.end()) return true;
     Napi::Promise::Deferred d = it->second;
@@ -305,6 +314,9 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
           o.Set("value", *static_cast<char **>(p->data));
         else
           o.Set("value", env.Null());
+        // razor: diagnostic notes for play-timings.log while the missed attach is tracked down; remove with them.
+        if (ev->reply_userdata == kWindowId)
+          Emit("seen", std::string(has ? *static_cast<char **>(p->data) : "none") + (video_ ? " (attached)" : " (unattached)"));
         if (ev->reply_userdata == kWindowId && has)
           Attach((__bridge NSWindow *)(void *)(intptr_t)strtoll(*static_cast<char **>(p->data), nullptr, 10));
       } else if (ev->event_id == MPV_EVENT_LOG_MESSAGE) {
@@ -323,6 +335,16 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
         }
         o.Set("value", reason);
       }
+      // mpv makes its window on the main thread after the video reconfig, so the observer can read window-id before the
+      // window exists and then hear no later change: the picture then sits in mpv's own unattached window, off the app's
+      // frame. Once a frame is drawn the window exists, so ask again.
+      if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART) {
+        std::string all;
+        for (NSWindow *w in NSApp.windows) all += " [" + std::to_string((intptr_t)(__bridge void *)w) + " " + Describe(w) + "]";
+        Emit("restart", std::string(video_ ? "attached" : "unattached") + " | app " + std::to_string((intptr_t)(__bridge void *)win_) + " | windows" + all);
+      }
+      if (!video_ && ev->event_id == MPV_EVENT_PLAYBACK_RESTART)
+        mpv_get_property_async(mpv_, kWindowId, "window-id", MPV_FORMAT_STRING);
       if (!callback_.IsEmpty()) callback_.Call({o});
       if (env.IsExceptionPending()) return;
     }
@@ -337,7 +359,11 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     // mpv's border=no keeps a titled window with a hidden title bar
     // (video/out/mac/title_bar.swift); borderless drops its rounded corners and shadow.
     video_.styleMask = NSWindowStyleMaskBorderless;
-    video_.hasShadow = NO;
+    // macOS draws a transparent window's shadow around every edge of what it draws, so the Electron window's shadow
+    // traced the player's scrims as lines across the picture. mpv's window covers the same frame and is filled edge to
+    // edge, so it carries the shadow while attached.
+    video_.hasShadow = YES;
+    win_.hasShadow = NO;
     // Clear, so its clipped corners show what is behind the app rather than mpv's window background.
     video_.opaque = NO;
     video_.backgroundColor = NSColor.clearColor;
@@ -346,9 +372,12 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     [video_ setFrame:win_.frame display:YES];
     [win_ addChildWindow:video_ ordered:NSWindowBelow];
     Corners();
+    pins_ = 0;
+    Pin();
     MpvView *self = this;
     // A drag moves mpv's window with its parent, so only resizes need matching.
     On(video_, NSWindowDidResizeNotification, ^{ self->Follow(); });
+    On(video_, NSWindowDidMoveNotification, ^{ self->Pin(); });
     On(video_, NSWindowWillCloseNotification, ^{ self->Detach(); });
     On(win_, NSWindowDidEndLiveResizeNotification, ^{ self->Match(); });
     On(win_, NSWindowDidResizeNotification, ^{ if (!self->win_.inLiveResize) self->Match(); });
@@ -360,6 +389,7 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     if (!video_) return;
     Unwatch();
     [win_ removeChildWindow:video_];
+    win_.hasShadow = YES;
     video_ = nil;
     Corners();
   }
@@ -384,6 +414,18 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
 
   // The user resized the Electron window: mpv's window takes its frame once the
   // gesture ends. Setting a child's frame never moves its parent.
+  // mpv moved its window without resizing it: on 31 Oct it sat 60 pt below the app window straight after Attach set the
+  // same frame (mpv placing its own window), so the picture ran off the bottom. Puts it back on the app window's frame. A
+  // resize is mpv's fullscreen, which Follow() handles. At most 3 times per attach, so mpv and this can never trade moves forever.
+  void Pin() {
+    if (!video_ || !win_ || !NSEqualSizes(video_.frame.size, win_.frame.size) || NSEqualPoints(video_.frame.origin, win_.frame.origin)) return;
+    if (pins_ >= 3) return;
+    pins_++;
+    std::string before = Describe(video_);
+    [video_ setFrame:win_.frame display:YES];
+    Emit("pinned", before + " -> " + Describe(video_));
+  }
+
   void Match() {
     if (video_ && win_ && !NSEqualRects(win_.frame, video_.frame)) [video_ setFrame:win_.frame display:YES];
   }

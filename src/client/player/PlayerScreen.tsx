@@ -282,7 +282,8 @@ export function PlayerScreen(props: PlayerScreenProps) {
         subtitle={subtitle}
         format={props.format}
         centre={screen === 'opening'
-          ? { text: opening.text, detail: opening.slow ? <span className="font-ui">Plex is slow to answer. Still trying.</span> : undefined }
+          // The spinner alone on screen (owner, 31 Oct); the line still names it for screen readers.
+          ? { text: <span className="sr-only">{opening.text}</span>, detail: opening.slow ? <span className="font-ui">Plex is slow to answer. Still trying.</span> : undefined }
           : screen === 'buffering'
             ? { text: 'Loading from Plex', detail: `${durationWords(loadedAhead)} ready of ${loadAheadLabel}` }
             : undefined}

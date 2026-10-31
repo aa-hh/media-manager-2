@@ -1,5 +1,6 @@
 // The in-app player: state above Home (PlayerProvider in SignedIn) and one element drawn by Home outside its keyed screen
-// (Player), so navigation never unmounts it. /play/<ratingKey> shows it full size, any other address as the mini player.
+// (Player), so navigation never unmounts it. /play/<ratingKey> shows it full size (the key is empty while the opening screen works out
+// what to play), any other address as the mini player.
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { PlayerMenu, PlayerQueueItem } from '@/components/ui/player-stage';
@@ -13,12 +14,12 @@ import { subjectProgress } from '../library/progress';
 import { clockText, continueMeta, minutesText } from '../library/watch';
 import { navigate, replace, replaceScreen, useLocation } from '../navigation';
 import {
-  BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, TIMELINE_EVERY_MS,
+  BACK_SECONDS, FORWARD_SECONDS, LOAD_AHEAD, OPENING_REQUEST, TIMELINE_EVERY_MS, openOutcome, retryStep,
   activeMarker, applyEvent, clampSeek, isPlayAddress, clampVolume, formatLine, originalLabel, hasSoundCommands, hasSubtitleScale, subtitleScaleOf, volumeKey, wheelStep, loadAheadChoice, nextEpisode, openingAt, playedBetween, qualityLabel, queueNeighbours, reloadAt,
   reportNow, reportsPeriodically, screenFor, streamKey, timelineQuery, timelineState, triedText, upNextChoice,
   type AudioTrack, type BridgeEvent, type Playback, type QueueItem, type StartReply, type SubtitleTrack, type TimelineState,
 } from './model';
-import { setPlayerHandler, type OpenRequest, type PlayerTitle } from './open';
+import { setPlayerHandler, type Loaded, type OpenRequest, type PlayerSeries, type PlayerTitle } from './open';
 import { PlayerScreen, type UpNextView } from './PlayerScreen';
 import './player.css';
 
@@ -37,7 +38,7 @@ const idsOf = (reply: StartReply | null) => ({
 
 // --- State
 
-type SeriesReply = { title: string; episodes: EpisodeDetail[]; watch: SeriesWatch };
+type SeriesReply = PlayerSeries;
 type NextItem = { request: LoadRequest; title: PlayerTitle; view: Omit<UpNextView, 'countdown' | 'steps' | 'onPlayNow'> };
 type UpNext =
   | { kind: 'choosing' }
@@ -145,6 +146,9 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
   }, [setSound]);
   const fullscreenRef = useRef(false);
   const loads = useRef(0);
+  const givenSeries = useRef<{ id: number; promise: Promise<SeriesReply> } | null>(null);
+  // The last Play opened, so Retry can work out again what it plays when that failed.
+  const lastOpen = useRef<OpenRequest | null>(null);
   const playedMs = useRef(0);
   const returnFocus = useRef<HTMLElement | null>(null);
   const downloadsRef = useRef(downloads);
@@ -247,16 +251,39 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
     if (focus !== null) window.requestAnimationFrame(() => { if (focus.isConnected) focus.focus(); });
   }, [bridge, commit, post, sendTimeline, setFullscreen]);
 
-  const open = useCallback(async ({ request, title }: OpenRequest) => {
+  // A Play from a card or title page. As in Plex's own app, the opening screen shows at once; what to play is worked out
+  // behind it, and the title playing stops now rather than under the opening screen.
+  const open = useCallback(async (asked: OpenRequest) => {
+    const { title, load: findLoad, series } = asked;
+    lastOpen.current = asked;
     const s = sessionRef.current;
     if (s?.reply != null) sendTimeline(s, 'stopped');
+    // Also a title still opening: its first frame would otherwise end this one's opening screen.
+    if (s !== null) void bridge?.stop().catch(() => undefined);
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest('[data-player-root]') === null) returnFocus.current = active;
-    const path = `/play/${request.ratingKey}`;
-    if (isPlayAddress(window.location.pathname)) replace(path);
-    else navigate(path);
-    return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, title, true);
-  }, [sendTimeline, startLoad]);
+    const load = ++loads.current;
+    givenSeries.current = series === undefined || title.seriesId === null ? null : { id: title.seriesId, promise: series };
+    commit({
+      load, request: OPENING_REQUEST, title, reply: null, playback: openingAt(0), openedAt: Date.now(),
+      saved: { audio: false, subtitles: false, delay: false }, subtitleDelay: 0, upNext: null,
+    });
+    if (!isPlayAddress(window.location.pathname)) navigate('/play/');
+    let found: Loaded = null;
+    let failure: unknown;
+    try {
+      found = await findLoad();
+    } catch (error) {
+      failure = error ?? new Error('failed');
+    }
+    const outcome = openOutcome({ current: loads.current, load, failed: failure !== undefined, found });
+    if (outcome === 'fail') change((current) => ({ ...current, playback: { ...current.playback, phase: 'failed', failure: { message: startFailure(failure, title.name), tried: [] } } }));
+    if (outcome === 'close') close();
+    if (outcome !== 'play' || found === null) return false;
+    const { request } = found;
+    if (isPlayAddress(window.location.pathname)) replace(`/play/${request.ratingKey}`);
+    return startLoad({ ...request, flags: reloadAt(request, request.offsetSeconds, qualityRef.current).flags }, { ...title, backdropUrl: found.backdropUrl }, true);
+  }, [bridge, change, close, commit, sendTimeline, startLoad]);
 
   const fetchSeries = useCallback((id: number) => getJson<SeriesReply>(`/api/library/series/${id}`, unauthenticatedRef.current), []);
 
@@ -443,7 +470,10 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       return undefined;
     }
     const controller = new AbortController();
-    getJson<SeriesReply>(`/api/library/series/${seriesId}`, unauthenticatedRef.current, controller.signal).then(setSeries, () => undefined);
+    // The Play that opened the player may already hold the show, or be fetching it.
+    const given = givenSeries.current?.id === seriesId ? givenSeries.current.promise : null;
+    (given ?? getJson<SeriesReply>(`/api/library/series/${seriesId}`, unauthenticatedRef.current, controller.signal))
+      .then((show) => { if (!controller.signal.aborted) setSeries(show); }, () => undefined);
     return () => controller.abort();
   }, [seriesId]);
 
@@ -607,7 +637,13 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
       },
       retry: () => {
         const s = sessionRef.current;
-        if (s !== null) void startLoad(reloadAt(s.request, s.playback.position, qualityRef.current), s.title, true);
+        if (s === null) return;
+        // A Play that failed before it knew what it plays asks again; the stand-in request never goes to the desktop app.
+        if (retryStep(s.request) === 'reopen') {
+          if (lastOpen.current !== null) void open({ ...lastOpen.current, series: undefined });
+          return;
+        }
+        void startLoad(reloadAt(s.request, s.playback.position, qualityRef.current), s.title, true);
       },
       reportNow: () => {
         const s = sessionRef.current;
@@ -615,7 +651,7 @@ export function PlayerProvider({ downloads, onUnauthenticated, children }: { dow
         if (s !== null && state !== null) sendTimeline(s, state);
       },
     };
-  }, [bridge, change, close, endTitle, playItem, post, readLoadAhead, restartAt, saveTrack, sendTimeline, setFullscreen, setSound, startLoad]);
+  }, [bridge, change, close, endTitle, open, playItem, post, readLoadAhead, restartAt, saveTrack, sendTimeline, setFullscreen, setSound, startLoad]);
 
   const soundShown = hasSoundCommands(bridge) ? sound : null;
   const scaleShown = hasSubtitleScale(bridge) ? subtitleScale : null;
@@ -845,8 +881,8 @@ export function Player() {
         else if (screen === 'opening') controller.close();
         else if (context?.fullscreen === true) controller.setFullscreen(false);
         else window.history.back();
-      } else if (screen === 'up-next') {
-        // Enter belongs to Play now, which holds focus.
+      } else if (screen === 'up-next' || screen === 'opening') {
+        // Up Next: Enter belongs to Play now, which holds focus. Opening: nothing plays yet to pause, seek or turn up.
       } else if (soundKey !== null) {
         event.preventDefault();
         if (soundKey.kind === 'mute') controller.toggleMute();

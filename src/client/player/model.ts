@@ -57,7 +57,7 @@ export const BACK_SECONDS = 10;
 export const FORWARD_SECONDS = 30;
 const END_GAP_SECONDS = 5;
 
-/** The player's full-size address, /play/<ratingKey>. The page that was on screen stays mounted under it. */
+/** The player's full-size address, /play/<ratingKey>; the key is empty while the opening screen works out what to play. The page that was on screen stays mounted under it. */
 export const isPlayAddress = (path: string) => path.startsWith('/play/');
 
 /**
@@ -381,3 +381,20 @@ export const durationWords = (seconds: number) => {
   const minutes = Math.floor(whole / 60);
   return minutes === 0 ? `${whole} s` : whole % 60 === 0 ? `${minutes} min` : `${minutes} min ${whole % 60} s`;
 };
+
+// --- Opening a Play before it knows what it plays
+
+/** Stands in while a Play works out what it plays: only the opening screen reads it, and it never reaches the desktop app. */
+export const OPENING_REQUEST: LoadRequest = { ratingKey: '', mediaIndex: 0, partIndex: 0, offsetSeconds: 0, flags: { directPlay: true, directStream: true, directStreamAudio: true } };
+
+/**
+ * What a Play does once its load request is worked out: drop it when a newer Play or a close replaced it (`current` is
+ * the player's load count, `load` the Play's own), show the error screen when the fetch failed, close the player when
+ * Plex has nothing to play, else play.
+ */
+export const openOutcome = ({ current, load, failed, found }: { current: number; load: number; failed: boolean; found: unknown }) => (
+  current !== load ? 'drop' : failed ? 'fail' : found === null ? 'close' : 'play'
+);
+
+/** What Retry does: a Play that failed before it knew what it plays asks again; any other reloads where it was. */
+export const retryStep = (request: LoadRequest) => (request === OPENING_REQUEST ? 'reopen' : 'reload');

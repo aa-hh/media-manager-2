@@ -54,9 +54,15 @@ export const startOnPage = (
   from,
   onUnauthenticated,
   signal,
+  // The page's detail gives the player its backdrop and episode names before anything is fetched.
+  {
+    reply: subject.type === 'tv'
+      ? { title: subject.detail.title, episodes: subject.detail.episodes, watch: watch as SeriesWatch, backdropUrl: subject.detail.backdropUrl }
+      : { watch: watch as MovieWatch, backdropUrl: subject.detail.backdropUrl },
+  },
 );
 
-/** One Play at a time per button: true while it loads; Esc or leaving the page cancels it. */
+/** One Play at a time per button: true while it loads. Esc or leaving the page cancels it only until the player opens; then the player's own Esc does. */
 const useStart = (onPlay: OnPlay) => {
   const [running, setRunning] = useState<AbortController | null>(null);
   useEffect(() => {

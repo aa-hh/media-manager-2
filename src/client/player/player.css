@@ -9,8 +9,11 @@ html[data-player] body {
   background: transparent;
 }
 
+/* opacity as well: a child can turn its own visibility back on (the poster card's Play button does on hover and focus),
+   but never its parent's opacity. */
 html[data-player='full'] [data-app] {
   visibility: hidden;
+  opacity: 0;
 }
 
 /* The page stays mounted under the full-size player (navigation.ts useLocation); it keeps its scroll for the way back. */

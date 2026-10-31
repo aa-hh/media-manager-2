@@ -87,10 +87,12 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
     const { uris, directCount } = addressesOf(resourcesResult.value, machineIdentifier);
     if (uris.length === 0) return { status: 502, body: { error: 'plex_tv_unavailable' } };
 
-    // The play queue is made after the item fetch, which gives its section UUID.
-    const queue = await plexPlayback.createPlayQueue({
+    // The play queue is made after the item fetch, which gives its section UUID. Only the reply needs it, so it runs beside
+    // the decision; the catch keeps a failure from going unhandled when the decision returns first.
+    const queueRequest = plexPlayback.createPlayQueue({
       clientId, sessionIdentifier, sectionUuid: record.librarySectionUUID, ratingKey, continuous: record.type === 'episode',
     });
+    queueRequest.catch(() => {});
 
     const fileKbps = numberOrNull(media.bitrate);
     // A remote server applies a low default cap and refuses direct play without one, so Original sends the file's bitrate
@@ -146,6 +148,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
       plan = { ...plan, directPlay: false };
       session = randomUUID();
     }
+    const queue = await queueRequest;
 
     const identity = new URLSearchParams(identityValues(clientId)).toString();
     const token = new URLSearchParams({ 'X-Plex-Token': transient }).toString();
