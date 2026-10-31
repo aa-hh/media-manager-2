@@ -1,4 +1,4 @@
-// v2/Sheet (phone) — ~/Projects/media-manager-2-design/design-system.lib.pen E8opC
+// Figma: SheetPhone — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-7991
 import type { ReactNode } from 'react';
 
 type SheetPhoneProps = {
@@ -14,7 +14,7 @@ type SheetPhoneProps = {
 /** A sheet rising from the bottom of a phone screen: grab handle, title, content, then the actions stacked full width. */
 function SheetPhone({ title, subtitle, children, primary, secondary }: SheetPhoneProps) {
   return (
-    <div className="flex w-full flex-col gap-3 rounded-t-[10px] bg-card px-4 pt-2 pb-6 shadow-[0_-2px_6px_#1111110f,0_-8px_24px_#1111111f] [&>button]:w-full">
+    <div className="flex w-full flex-col gap-3 rounded-t-[10px] bg-popover px-4 pt-2 pb-6 shadow-float-up [&>button]:w-full">
       <div aria-hidden="true" className="flex justify-center">
         <span className="h-1 w-9 rounded-full bg-input" />
       </div>

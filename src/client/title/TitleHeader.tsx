@@ -10,6 +10,8 @@ import { HeaderTitle } from '@/components/ui/header-title';
 import { StatusInline } from '@/components/ui/status-inline';
 import type { BookmarkState } from '@/components/ui/toggle-bookmark';
 import { postJson, type Credits, type EpisodeDetail, type MovieDetail, type SeriesDetail } from '../library/api';
+import { openLink } from '../discover/Card';
+import { chipState, homePath, writeStoredState, type HomeState } from '../discover/model';
 import { navigate, useLocation } from '../navigation';
 import { statusLabel } from '../Search';
 import { DeleteTitle } from './DeleteTitle';
@@ -179,11 +181,28 @@ function FactGrid({ rows, className }: { rows: Cell[][]; className: string }) {
   );
 }
 
+// With TMDB's ids each genre and keyword opens Discover filtered by it alone; without them they stay plain labels as Sonarr or Radarr names them.
+const titleChips = (subject: Subject): Array<{ label: string; state: HomeState | null }> => {
+  const { detail } = subject;
+  const tmdb = detail.tmdbChips ?? null;
+  if (tmdb === null) return [...detail.genres, ...(subject.type === 'movie' ? subject.detail.keywords : [])].map((label) => ({ label, state: null }));
+  return [
+    ...tmdb.genres.map((genre) => ({ label: genre.name, state: chipState(subject.type, { genres: [genre.id] }) })),
+    ...tmdb.keywords.map((keyword) => ({ label: keyword.name, state: chipState(subject.type, { keywords: [keyword.id] }) })),
+  ];
+};
+
+// The chip's filter replaces the saved Discover filters, so a later visit to a bare /discover does not bring the old ones back.
+const openChip = (state: HomeState) => (event: MouseEvent<HTMLAnchorElement>) => {
+  if (!event.metaKey && !event.ctrlKey && !event.shiftKey && event.button === 0) writeStoredState(state);
+  openLink(homePath(state))(event);
+};
+
 // Under the header of every title: the show or film itself on the left, the owner's copy (or the add choices still to make) in the card on the right.
 function OverviewBand({ subject, owned, library }: { subject: Subject; owned: boolean; library: TitleFact[] }) {
   const { detail } = subject;
   const links = titleLinks(subject);
-  const chips = [...detail.genres, ...(subject.type === 'movie' ? subject.detail.keywords : [])];
+  const chips = titleChips(subject);
   return (
     <section aria-label="About" className="flex items-start gap-10 pt-6 pb-8">
       <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -203,7 +222,17 @@ function OverviewBand({ subject, owned, library }: { subject: Subject; owned: bo
         )}
         {chips.length > 0 && (
           <ul aria-label="Genres and keywords" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
-            {chips.map((chip, index) => <li key={`${index}-${chip}`}><Badge variant="outline" icon={<Tag />}>{chip}</Badge></li>)}
+            {chips.map((chip, index) => (
+              <li key={`${index}-${chip.label}`}>
+                {chip.state === null ? (
+                  <Badge variant="outline" icon={<Tag />}>{chip.label}</Badge>
+                ) : (
+                  <a href={homePath(chip.state)} onClick={openChip(chip.state)} className="group focus-ring block rounded-xs">
+                    <Badge variant="outline" icon={<Tag />} className="group-hover:border-foreground group-hover:text-foreground">{chip.label}</Badge>
+                  </a>
+                )}
+              </li>
+            ))}
           </ul>
         )}
       </div>
@@ -214,11 +243,13 @@ function OverviewBand({ subject, owned, library }: { subject: Subject; owned: bo
 
 type Sent = 'sending' | 'sent' | 'failed';
 
-export function TitleHeader({ subject, owned, badges, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
+export function TitleHeader({ subject, owned, badges, play, facts, monitored, onToggleMonitored, monitorProblem, history, onPick, picking = false, compact = false, onChangeMonitoring, add, addAction, onUnauthenticated }: {
   subject: Subject;
   owned: boolean;
   /** Status Badges under the meta line. */
   badges?: ReactNode;
+  /** The Play line (TitlePlayLine) under the badges; with it, Search turns outline (title.pen NIjoo), except in the compact header, which hides the Play line. */
+  play?: ReactNode;
   /** The library card's rows; Added and Folder follow when the title is in the library. */
   facts?: TitleFact[];
   monitored?: MonitoredState;
@@ -242,7 +273,7 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
   const libraryRows: TitleFact[] = [
     ...(facts ?? []),
     ...(detail.added === null ? [] : [{ label: 'Added', value: day(detail.added) }]),
-    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="[overflow-wrap:anywhere]">{detail.path}</span> }]),
+    ...(detail.path === null ? [] : [{ label: 'Folder', value: <span className="select-text [overflow-wrap:anywhere]">{detail.path}</span> }]),
   ];
   const { state } = useLocation();
   const [search, setSearch] = useState<Sent | undefined>(undefined);
@@ -296,14 +327,15 @@ export function TitleHeader({ subject, owned, badges, facts, monitored, onToggle
         actionsRight
         title={detail.title}
         backdropUrl={detail.backdropUrl ?? undefined}
-        posterUrl={detail.posterUrl ?? undefined}
+        posterUrl={detail.smallPosterUrl ?? undefined}
         breadcrumb={<Breadcrumb links={[crumb]} current={detail.title} />}
         bookmark={owned && monitored !== undefined ? { state: monitored, onToggle: onToggleMonitored } : { state: 'none' }}
         status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}
         meta={metaLine(subject)}
         badges={badges}
+        play={compact ? undefined : play}
         primary={owned ? (
-          <Button size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
+          <Button variant={compact || play === undefined ? 'default' : 'outline'} size="large" icon={<Search />} loading={search === 'sending'} onClick={() => void send('/api/library/search', setSearch)}>
             Search automatically
           </Button>
         ) : addAction}

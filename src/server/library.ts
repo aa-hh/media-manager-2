@@ -13,11 +13,12 @@ import {
   type Result as ArrResult,
   type Series,
 } from './services/arr.js';
-import { lookupTitle } from './search.js';
+import { lookupTitle, thumbnail } from './search.js';
 import { notConfigured } from './services/arr/result.js';
 import type { SecondVersionRow, TrackedHitAndRun } from './secondVersionRows.js';
 import { type Mdblist, noRatings, type RatingsBySite } from './services/mdblist.js';
 import type { TitleStore } from './titleStore.js';
+import type { LibraryWatch, MovieWatch, SeriesWatch, TitleWatch, WatchStatus } from './watchStatus.js';
 
 export type { FileDetail };
 
@@ -41,11 +42,15 @@ export type LibraryTitle = {
   added: string | null;
   monitored: boolean;
   status: string | null;
+  // posterUrl is the full image, which the player's Up Next draws 352 px wide; smallPosterUrl (TMDB w500 or TheTVDB's thumbnail) is for 210 px posters.
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   qualityProfile: string | null;
   sizeOnDisk: number;
   tv: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; seasonCount: number } | null;
   movie: { hasFile: boolean; isAvailable: boolean } | null;
+  // Plex watch marks; null when unmatched or when Plex is off or has not answered for 5 minutes.
+  watch: TitleWatch;
 };
 
 // A strict superset of OwnedEpisode in the client's PickRelease.
@@ -87,12 +92,14 @@ export type SeriesDetail = {
   language: string | null;
   overview: string | null;
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
   ratingVotes: number | null;
   ratingsBySite: RatingsBySite;
   certification: string | null;
   genres: string[];
+  tmdbChips: TmdbChips;
   runtime: number | null;
   path: string | null;
   tags: string[];
@@ -119,6 +126,10 @@ export type SeriesDetail = {
   episodes: EpisodeDetail[];
 };
 
+// TMDB's genres and keywords with their ids, so the title page's chips can open Discover filtered by one.
+// Null when TMDB is not set up, failed or was too slow; the chips then show Sonarr's or Radarr's names as plain labels.
+export type TmdbChips = { genres: Array<{ id: number; name: string }>; keywords: Array<{ id: number; name: string }> } | null;
+
 export type MovieDetail = {
   id: number | null;
   title: string;
@@ -129,6 +140,7 @@ export type MovieDetail = {
   status: string | null;
   overview: string | null;
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   backdropUrl: string | null;
   // Kept until the client reads ratings instead.
   rating: number | null;
@@ -138,6 +150,7 @@ export type MovieDetail = {
   website: string | null;
   certification: string | null;
   genres: string[];
+  tmdbChips: TmdbChips;
   runtime: number | null;
   studio: string | null;
   collection: string | null;
@@ -268,6 +281,11 @@ export const imageUrl = (images: unknown, coverType: string): string | null => {
   return null;
 };
 
+const smallPosterUrl = (images: unknown): string | null => {
+  const url = imageUrl(images, 'poster');
+  return url === null ? null : thumbnail(new URL(url), 'w500');
+};
+
 export const newestFirst = <T extends { added: string | null; title: string }>(titles: T[]): T[] => {
   const time = (added: string | null) => {
     const parsed = added === null ? Number.NaN : Date.parse(added);
@@ -325,7 +343,7 @@ const episodeDetails = (episodes: Episode[]): EpisodeDetail[] => episodes
   }))
   .sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
 
-const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unknown; episodes?: Episode[]; owned: boolean; ratingsBySite: RatingsBySite }): SeriesDetail => ({
+const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unknown; episodes?: Episode[]; owned: boolean; ratingsBySite: RatingsBySite; chips: TmdbChips }): SeriesDetail => ({
   id: extras.owned ? record.id : null,
   title: record.title,
   alternateTitles: record.alternateTitles,
@@ -341,12 +359,14 @@ const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unkno
   language: record.language,
   overview: record.overview,
   posterUrl: imageUrl(record.images, 'poster'),
+  smallPosterUrl: smallPosterUrl(record.images),
   backdropUrl: imageUrl(record.images, 'fanart'),
   rating: record.rating,
   ratingVotes: record.ratingVotes,
   ratingsBySite: extras.ratingsBySite,
   certification: record.certification,
   genres: record.genres,
+  tmdbChips: extras.chips,
   runtime: record.runtime,
   path: extras.owned ? record.path : null,
   tags: extras.owned ? tagNames(extras.tags, record.tags) : [],
@@ -366,7 +386,7 @@ const seriesDetail = (record: Series, extras: { profiles?: unknown; tags?: unkno
   episodes: episodeDetails(extras.episodes ?? []),
 });
 
-const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown; owned: boolean }): MovieDetail => ({
+const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown; owned: boolean; chips: TmdbChips }): MovieDetail => ({
   id: extras.owned ? record.id : null,
   title: record.title,
   originalTitle: record.originalTitle,
@@ -376,6 +396,7 @@ const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown
   status: record.status,
   overview: record.overview,
   posterUrl: imageUrl(record.images, 'poster'),
+  smallPosterUrl: smallPosterUrl(record.images),
   backdropUrl: imageUrl(record.images, 'fanart'),
   rating: record.rating,
   ratings: record.ratings,
@@ -384,6 +405,7 @@ const movieDetail = (record: Movie, extras: { profiles?: unknown; tags?: unknown
   website: webUrl(record.website),
   certification: record.certification,
   genres: record.genres,
+  tmdbChips: extras.chips,
   runtime: record.runtime,
   studio: record.studio,
   collection: record.collection,
@@ -428,7 +450,9 @@ const toTitle = (service: Service, record: Series | Movie, profiles: unknown): L
     monitored: record.monitored,
     status: record.status,
     posterUrl: imageUrl(record.images, 'poster'),
+    smallPosterUrl: smallPosterUrl(record.images),
     qualityProfile: profile?.name ?? null,
+    watch: null,
   };
   if (service === 'sonarr') {
     const { statistics } = record as Series;
@@ -496,7 +520,12 @@ export const createLibrary = (
   tvdbIdOf?: (tmdbId: number) => Promise<ArrResult<number | null>>,
   backdropOf?: (type: 'tv' | 'movie', ids: { tmdbId: number | null; tvdbId: number | null }) => Promise<string | null>,
   trackedHitAndRun: TrackedRows = () => [],
+  chipsOf?: (type: 'tv' | 'movie', tmdbId: number) => Promise<TmdbChips>,
+  watchStatus?: WatchStatus,
 ) => {
+  const chips = (type: 'tv' | 'movie', record: Series | Movie): Promise<TmdbChips> => (
+    chipsOf === undefined || record.tmdbId === null ? Promise.resolve(null) : chipsOf(type, record.tmdbId)
+  );
   // The chosen backdrop source (TMDB unless set) beats Sonarr's TVDB fanart and Radarr's older copy; fanart stays the fallback.
   const backdropUrl = async (type: 'tv' | 'movie', record: Series | Movie) => (
     (backdropOf === undefined ? null : await backdropOf(type, { tmdbId: record.tmdbId, tvdbId: 'tvdbId' in record ? record.tvdbId : null }))
@@ -520,61 +549,75 @@ export const createLibrary = (
   };
 
   return {
-    async titles(): Promise<{ titles: LibraryTitle[]; services: { sonarr: Outcome; radarr: Outcome } }> {
+    async titles(): Promise<{ titles: LibraryTitle[]; services: { sonarr: Outcome; radarr: Outcome }; watch: LibraryWatch }> {
       const fetchService = async (service: Service) => {
         const [items, profiles] = await Promise.all([
           (service === 'sonarr' ? services.sonarr.listSeries() : services.radarr.listMovies()).then((result) => fromArr<Array<Series | Movie>>(result)),
           optional(service, '/api/v3/qualityprofile'),
         ]);
-        const titles = items.kind === 'ok' ? items.value.flatMap((record) => toTitle(service, record, profiles)) : [];
-        return { titles, outcome: outcome(items) };
+        const records = items.kind === 'ok' ? items.value : [];
+        const titles = records.flatMap((record) => toTitle(service, record, profiles));
+        return { titles, records: records.map((record) => ({ service, record })), outcome: outcome(items) };
       };
       const [sonarr, radarr] = await Promise.all([fetchService('sonarr'), fetchService('radarr')]);
-      return { titles: newestFirst([...sonarr.titles, ...radarr.titles]), services: { sonarr: sonarr.outcome, radarr: radarr.outcome } };
+      const watched = watchStatus === undefined
+        ? { watch: { kind: 'off' } as const, byTitle: new Map<string, TitleWatch>() }
+        : await watchStatus.forLibrary([...sonarr.records, ...radarr.records]);
+      const titles = [...sonarr.titles, ...radarr.titles].map((title) => ({ ...title, watch: watched.byTitle.get(`${title.service}:${title.id}`) ?? null }));
+      return { titles: newestFirst(titles), services: { sonarr: sonarr.outcome, radarr: radarr.outcome }, watch: watched.watch };
     },
 
-    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[] }>> {
+    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[]; watch: SeriesWatch }>> {
       const read = services.sonarr.series(id).then(fromArr);
-      const [record, episodes, profiles, tags, backdrop] = await Promise.all([
+      const [record, episodes, profiles, tags, backdrop, tmdbChips] = await Promise.all([
         read,
         services.sonarr.episodes(id, { withFiles: true }).then(fromArr),
         optional('sonarr', '/api/v3/qualityprofile'),
         optional('sonarr', '/api/v3/tag'),
         read.then((found) => (found.kind === 'ok' ? backdropUrl('tv', found.value) : null)),
+        read.then((found) => (found.kind === 'ok' ? chips('tv', found.value) : null)),
       ]);
       if (record.kind !== 'ok') return record;
       if (episodes.kind !== 'ok') return episodes;
-      const ratingsBySite = await showRatings(record.value);
+      // Not `?? off`: an unmatched show's null must stay null.
+      const [ratingsBySite, watch] = await Promise.all([
+        showRatings(record.value),
+        watchStatus === undefined ? { kind: 'off' as const } : watchStatus.forSeries(record.value, episodes.value),
+      ]);
       return {
         kind: 'ok',
         value: {
-          ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite }),
+          ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite, chips: tmdbChips }),
           backdropUrl: backdrop,
           secondVersions: versionRows({ service: 'sonarr', seriesId: id }),
           trackedHitAndRun: trackedHitAndRun({ service: 'sonarr', seriesId: id }),
+          watch,
         },
       };
     },
 
     // Credits cost one more Radarr call, so only this route asks for them; a failed read leaves them empty.
-    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[] }>> {
+    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[]; watch: MovieWatch }>> {
       const read = services.radarr.movie(id).then(fromArr);
-      const [record, profiles, tags, credits, backdrop] = await Promise.all([
+      const [record, profiles, tags, credits, backdrop, tmdbChips] = await Promise.all([
         read,
         optional('radarr', '/api/v3/qualityprofile'),
         optional('radarr', '/api/v3/tag'),
         services.radarr.credits(id),
         read.then((found) => (found.kind === 'ok' ? backdropUrl('movie', found.value) : null)),
+        read.then((found) => (found.kind === 'ok' ? chips('movie', found.value) : null)),
       ]);
       if (record.kind !== 'ok') return record;
+      const watch = watchStatus === undefined ? { kind: 'off' as const } : await watchStatus.forMovie(record.value);
       return {
         kind: 'ok',
         value: {
-          ...movieDetail(record.value, { profiles, tags, owned: true }),
+          ...movieDetail(record.value, { profiles, tags, owned: true, chips: tmdbChips }),
           backdropUrl: backdrop,
           credits: creditList(credits.kind === 'ok' ? credits.value : []),
           secondVersions: versionRows({ service: 'radarr', movieId: id }),
           trackedHitAndRun: trackedHitAndRun({ service: 'radarr', movieId: id }),
+          watch,
         },
       };
     },
@@ -586,10 +629,12 @@ export const createLibrary = (
       const show = service === 'sonarr' ? parseSeries(found.value) : null;
       const movie = service === 'radarr' ? parseMovie(found.value) : null;
       if (show !== null) {
-        const [ratingsBySite, backdrop] = await Promise.all([showRatings(show), backdropUrl('tv', show)]);
-        return { kind: 'ok', value: { ...seriesDetail(show, { owned: false, ratingsBySite }), backdropUrl: backdrop } };
+        const [ratingsBySite, backdrop, tmdbChips] = await Promise.all([showRatings(show), backdropUrl('tv', show), chips('tv', show)]);
+        return { kind: 'ok', value: { ...seriesDetail(show, { owned: false, ratingsBySite, chips: tmdbChips }), backdropUrl: backdrop } };
       }
-      return movie === null ? { kind: 'not_found' } : { kind: 'ok', value: { ...movieDetail(movie, { owned: false }), backdropUrl: await backdropUrl('movie', movie) } };
+      if (movie === null) return { kind: 'not_found' };
+      const [backdrop, tmdbChips] = await Promise.all([backdropUrl('movie', movie), chips('movie', movie)]);
+      return { kind: 'ok', value: { ...movieDetail(movie, { owned: false, chips: tmdbChips }), backdropUrl: backdrop } };
     },
 
     // Discover cards know a show only by its TMDB id; Sonarr looks shows up by TVDB id.

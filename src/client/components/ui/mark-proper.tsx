@@ -1,4 +1,4 @@
-// v2/Mark/proper — ~/Projects/media-manager-2-design/design-system.lib.pen PFiVs
+// Figma: MarkProper — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-902
 import { Wrench } from 'lucide-react';
 import { Tooltip } from '@/components/ui/tooltip';
 

@@ -1,4 +1,4 @@
-// v2/Downloads live bar — ~/Projects/media-manager-2-design/design-system.lib.pen jXjdR
+// Figma: DownloadsLiveBar — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5766
 import { Collapsible } from '@base-ui/react/collapsible';
 import { ArrowDownToLine, ChevronUp } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -41,14 +41,14 @@ function DownloadsLiveBar({ count, idle = false, speeds, items = [], problem, ex
       >
         {panel}
       </Collapsible.Panel>
-      <div className="flex h-(--livebar) items-center gap-4 overflow-hidden bg-bar px-(--page-margin) whitespace-nowrap">
+      <div className="flex h-(--livebar) items-center gap-4 overflow-hidden bg-bar px-(--page-margin) whitespace-nowrap shadow-[inset_0_1px_0_var(--edge-highlight)]">
         <ArrowDownToLine aria-hidden="true" className={cn('size-4 shrink-0', idle ? 'text-bar-muted-foreground' : 'text-live')} />
         <span className={cn('font-ui text-sm text-bar-foreground', idle ? 'font-medium' : 'font-semibold')}>{count}</span>
         {speeds !== undefined && <span className="min-w-0 truncate font-data text-sm text-bar-muted-foreground">{speeds}</span>}
         {!idle && items.slice(0, 3).map((item) => (
           <span key={item.key} className="flex min-w-0 items-center gap-2 font-data text-sm">
             <span className="truncate text-bar-foreground">{item.name}</span>
-            <Progress value={item.percent} tone="on-dark" className="w-12 shrink-0" />
+            <Progress aria-label="Download progress" value={item.percent} tone="on-dark" className="w-12 shrink-0" />
             <span className="text-bar-muted-foreground">{Math.round(item.percent)}%</span>
           </span>
         ))}

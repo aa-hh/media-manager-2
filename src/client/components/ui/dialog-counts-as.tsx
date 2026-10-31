@@ -1,5 +1,4 @@
-// v2/Dialog/counts-as — ~/Projects/media-manager-2-design/design-system.lib.pen sxn6s
-// v2/Dialog/counts-as/open — ~/Projects/media-manager-2-design/design-system.lib.pen QuXfd
+// Figma: DialogCountsAs — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-11238
 import type { ReactNode } from 'react';
 import { CollapsibleContent } from '@/components/ui/collapsible-content';
 import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible-trigger';

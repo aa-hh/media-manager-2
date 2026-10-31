@@ -1,12 +1,4 @@
-// v2/Row/episode-releases — ~/Projects/media-manager-2-design/design-system.lib.pen T9F8kg
-// v2/Row/episode-releases/searching — ~/Projects/media-manager-2-design/design-system.lib.pen n5kCp
-// v2/Row/episode-releases/empty — ~/Projects/media-manager-2-design/design-system.lib.pen G8K0o
-// v2/Row/episode-releases/failed — ~/Projects/media-manager-2-design/design-system.lib.pen EDHPy
-// v2/Row/episode-releases/refreshing — ~/Projects/media-manager-2-design/design-system.lib.pen E1vDO
-// v2/Row/episode-releases/with notice — ~/Projects/media-manager-2-design/design-system.lib.pen WkX6B
-// v2/Row/episode-releases/earlier results — ~/Projects/media-manager-2-design/design-system.lib.pen AetH5
-// v2/Row/episode-releases/out of date — ~/Projects/media-manager-2-design/design-system.lib.pen q63HhT
-// v2/Row/episode-releases/movie — ~/Projects/media-manager-2-design/design-system.lib.pen kWbVs
+// Figma: RowEpisodeReleases — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-18095
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

@@ -1,4 +1,4 @@
-// v2/Kbd — ~/Projects/media-manager-2-design/design-system.lib.pen NAj8m
+// Figma: Kbd — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-446
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,8 @@ type KbdProps = ComponentProps<'kbd'> & {
 function Kbd({ icon, onFill = false, className, children, ...props }: KbdProps) {
   return (
     <kbd
+      // A kbd allows no aria-label; an icon-only key named by one is announced as an image.
+      role={props['aria-label'] !== undefined ? 'img' : undefined}
       className={cn(
         'inline-flex h-4.5 shrink-0 items-center justify-center gap-0.5 rounded-xs px-1.25 font-data text-xs font-medium [&_svg]:size-3',
         onFill

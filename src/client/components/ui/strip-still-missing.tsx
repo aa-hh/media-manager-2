@@ -1,4 +1,4 @@
-// v2/Strip/still-missing — ~/Projects/media-manager-2-design/design-system.lib.pen EBkBo
+// Figma: StripStillMissing — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-1228
 import { CircleAlert } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';

@@ -1,4 +1,4 @@
-// Logo/* — ~/Projects/media-manager-2-design/design-system.lib.pen u3D0O5 (Sonarr) T1cDmD (Radarr) YJlCi (rTorrent) hNlc0 (Plex) zYSrG (Plex gold); iZPoX (Jellyfin) QZ1XQ (Jellyfin black) sVuiW (Jellyfin white) P9MlT s3gTgb E4joG (Jellyfin solid black, white, monochrome) b1EpMi mwYig (Jellyfin wordmark light, dark) nO7lC (Plex wordmark) J4Ci8U (Plex app icon) z7AOoy (Blutopia) i2QZW (PrivateHD) dofWM (Beyond-HD)
+// Figma: Logos — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-449
 import type { ComponentProps } from 'react';
 import beyondHd from '@/assets/logos/beyondhd-logo.png';
 import blutopia from '@/assets/logos/blutopia-logo.svg';
@@ -49,7 +49,7 @@ const logos: Record<LogoName, { src: string; alt: string }> = {
   trakt: { src: trakt, alt: 'Trakt' },
 };
 
-/** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on the black button; Jellyfin black only on the Jellyfin button. */
+/** The service's or tracker's own logo, 20 px by default. Pass alt="" when its name sits beside it. Plex gold goes only on dark grounds (the black button, the dark first-run pick, the setup strip's connected pill); Jellyfin black only on the Jellyfin button. */
 function Logo({ name, alt, className, ...props }: Omit<ComponentProps<'img'>, 'src'> & { name: LogoName }) {
   const logo = logos[name];
   return <img src={logo.src} alt={alt ?? logo.alt} width={20} height={20} className={cn('size-5 shrink-0 object-contain', className)} {...props} />;

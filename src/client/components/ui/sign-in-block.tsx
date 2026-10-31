@@ -1,5 +1,4 @@
-// v2/Sign-in/block — ~/Projects/media-manager-2-design/design-system.lib.pen X2BYp
-// v2/Sign-in/block/jellyfin — ~/Projects/media-manager-2-design/design-system.lib.pen KOMhP (service="jellyfin")
+// Figma: SignInBlock — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-6069
 import type { Ref } from 'react';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';

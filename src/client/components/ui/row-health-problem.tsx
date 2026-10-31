@@ -1,4 +1,4 @@
-// v2/Row/health-problem — ~/Projects/media-manager-2-design/design-system.lib.pen rBoB2
+// Figma: RowHealthProblem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4453
 import type { ReactNode } from 'react';
 import { TableCell, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
@@ -26,7 +26,7 @@ function RowHealthProblem({ logo, problem, detail, since, fixIcon, fix, actions,
     <TableRow className={cn('h-(--row-two-line)', className)} {...props}>
       <TableCell className={cn(w.logo, '[&_img]:size-5')}>{logo}</TableCell>
       <TableCell fill className="flex-col items-start justify-center gap-0.5">
-        <span className="w-full truncate font-ui font-semibold">{problem}</span>
+        <span className="w-full truncate font-ui font-semibold select-text">{problem}</span>
         {detail !== undefined && <span className="w-full truncate text-[13px] text-muted-foreground">{detail}</span>}
       </TableCell>
       <TableCell className={cn(w.since, 'text-muted-foreground')}>{since}</TableCell>

@@ -1,5 +1,5 @@
-// v2/ToggleGroup — ~/Projects/media-manager-2-design/design-system.lib.pen cofqY
-// v2/ToggleGroup item — ~/Projects/media-manager-2-design/design-system.lib.pen EBTr5
+// Figma: ToggleGroup — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-414
+// Figma: ToggleGroupItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-347
 import { Toggle } from '@base-ui/react/toggle';
 import { ToggleGroup as ToggleGroupPrimitive } from '@base-ui/react/toggle-group';
 import { createContext, use, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from 'react';
@@ -36,7 +36,7 @@ type ToggleGroupProps = Omit<ComponentProps<typeof ToggleGroupPrimitive>, 'value
   size?: ToggleGroupSize;
 };
 
-/** Single choice: a white segment on a grey track, up to six items. The segment slides to the chosen item. */
+/** Single choice: a raised segment (popover, white in light) on a grey track, up to six items. The segment slides to the chosen item. */
 function ToggleGroup({ value, onValueChange, size = 'default', className, children, ...props }: ToggleGroupProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -69,7 +69,7 @@ function ToggleGroup({ value, onValueChange, size = 'default', className, childr
         <span
           aria-hidden="true"
           className={cn(
-            'pointer-events-none absolute left-0 translate-x-(--segment-left) w-(--segment-width) border border-border bg-card',
+            'pointer-events-none absolute left-0 translate-x-(--segment-left) w-(--segment-width) border border-border bg-popover shadow-[inset_0_1px_0_var(--edge-highlight)]',
             'transition-[translate,width] duration-(--duration-base) ease-out',
             'group-data-segment-none/toggle:hidden group-data-segment-risk/toggle:border-destructive group-data-segment-risk/toggle:bg-destructive-soft',
             segments[size],

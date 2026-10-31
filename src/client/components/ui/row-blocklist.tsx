@@ -1,4 +1,5 @@
-// v2/Row/blocklist — ~/Projects/media-manager-2-design/design-system.lib.pen Dh5pL
+// Figma: RowBlocklist — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3473
+// Figma: RowBlocklistHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-3461
 import type { ReactNode } from 'react';
 import { TableCell, TableCellTracker, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
@@ -34,14 +35,14 @@ function RowBlocklist({ release, title, tracker, reason, added, actions, marker,
   return (
     <TableRow marker={marker} {...props}>
       <TableCell fill className="text-muted-foreground">
-        <span className="truncate">{release}</span>
+        <span className="truncate select-text">{release}</span>
       </TableCell>
       <TableCell className={cn(w.title, 'font-ui font-medium')}>
         <span className="truncate" title={typeof title === 'string' ? title : undefined}>{title}</span>
       </TableCell>
       <TableCell className={w.tracker}>{tracker !== undefined && <TableCellTracker name={tracker} />}</TableCell>
       <TableCell className={cn(w.reason, marker === 'risk' ? 'text-destructive' : 'text-muted-foreground')}>
-        <span className="truncate">{reason}</span>
+        <span className="truncate select-text">{reason}</span>
       </TableCell>
       <TableCell className={cn(w.added, 'text-muted-foreground')}>{added}</TableCell>
       <TableCell align="end" className={w.action}>{actions}</TableCell>

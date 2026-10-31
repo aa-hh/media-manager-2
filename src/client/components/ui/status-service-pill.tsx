@@ -1,5 +1,4 @@
-// v2/Status/service pill — ~/Projects/media-manager-2-design/design-system.lib.pen hpQjk
-// v2/Status/service pill/failed — ~/Projects/media-manager-2-design/design-system.lib.pen LK8zL (state "failed": destructive dot and words on destructive-soft)
+// Figma: StatusServicePill — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3119
 import { PencilLine } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Spinner } from '@/components/ui/spinner';
@@ -38,9 +37,9 @@ function StatusServicePill({ logo, name, state, compact = false, look = 'plain',
       {...props}
     >
       <span className="flex shrink-0 [&>img]:size-4">{logo}</span>
-      <span className={cn('font-ui text-[13px] font-semibold', lit === 'dark' ? 'text-bar-foreground' : 'text-foreground', hidden)}>{name}</span>
+      <span className={cn('font-ui text-[13px] font-semibold', lit === 'dark' ? 'text-bar-foreground' : lit === 'lime' ? 'text-best-foreground' : 'text-foreground', hidden)}>{name}</span>
       {(state === 'connected' || state === 'failed') && (
-        <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', state === 'failed' ? 'bg-destructive' : lit === 'dark' ? 'bg-live' : 'bg-foreground')} />
+        <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', state === 'failed' ? 'bg-destructive' : lit === 'dark' ? 'bg-live' : lit === 'lime' ? 'bg-best-foreground' : 'bg-foreground')} />
       )}
       {state === 'not-set-up' && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full border border-subtle-foreground" />}
       {state === 'testing' && <Spinner className="size-3" />}
@@ -49,7 +48,7 @@ function StatusServicePill({ logo, name, state, compact = false, look = 'plain',
         className={cn(
           'font-data text-[13px]',
           state === 'failed' ? 'text-destructive' : state === 'unsaved' ? 'text-warning'
-            : lit === 'dark' ? 'text-bar-muted-foreground' : lit === 'lime' ? 'text-foreground' : 'text-muted-foreground',
+            : lit === 'dark' ? 'text-bar-muted-foreground' : lit === 'lime' ? 'text-best-foreground' : 'text-muted-foreground',
           hidden,
         )}
       >

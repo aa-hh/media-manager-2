@@ -300,7 +300,7 @@ export function BackupEditor({ backup, request, onSaved, onKeyCreated, wizard }:
       )}
 
       <dl className="flex flex-col">
-        <FactRow label="How often">Every 5 minutes</FactRow>
+        <FactRow label="How often">Every hour</FactRow>
         {backup.key === 'pair' && backup.keyCreatedAt !== null && (
           <FactRow
             label="Restore key"

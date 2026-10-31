@@ -1,4 +1,4 @@
-// v2/Radio — ~/Projects/media-manager-2-design/design-system.lib.pen RhfKq
+// Figma: Radio — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-648
 import { Radio as RadioPrimitive } from '@base-ui/react/radio';
 import { RadioGroup } from '@base-ui/react/radio-group';
 import type { ComponentProps } from 'react';
@@ -9,7 +9,7 @@ function Radio({ className, ...props }: ComponentProps<typeof RadioPrimitive.Roo
   return (
     <RadioPrimitive.Root
       className={cn(
-        'inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-input bg-card',
+        'inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-input bg-control',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0 focus-ring',
         'hover:border-muted-foreground active:border-muted-foreground active:bg-surface-pressed',
         'data-checked:border-primary data-checked:bg-primary data-checked:hover:border-primary data-checked:hover:bg-primary-hover',

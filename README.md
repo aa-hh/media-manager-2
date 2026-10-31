@@ -133,7 +133,7 @@ it when you reach it. Settings has all three later.
 Trackers is where you add each private tracker and its hit and run rule, so the
 app can tell you whether a torrent can go before you delete it. Posters and
 ratings takes keys for TMDB, MDBList and Trakt. Backup copies the database to a
-folder or an S3-compatible bucket every few minutes, and the first copy runs
+folder or an S3-compatible bucket every hour, and the first copy runs
 within five minutes. The database holds every saved credential, so backups are
 always encrypted. The app makes the restore key and shows it once, with Copy
 and Download buttons. It keeps only the half that locks backups, so without your
@@ -203,8 +203,8 @@ on disk, through these saved settings:
 | `credentials` | `rtorrent.username` | rTorrent HTTP basic auth username |
 | `credentials` | `rtorrent.password` | rTorrent HTTP basic auth password |
 | `credentials` | `plex.token` | Plex Media Server token |
-| `serviceAddresses` | `mediaManager.hookUrl` | The address Sonarr and Radarr can reach this app at, such as `http://127.0.0.1:3000`. With `webhook.secret`, the server adds its own webhook to both and keeps it up to date |
-| `credentials` | `webhook.secret` | A long random password Sonarr and Radarr send with each webhook call |
+| `serviceAddresses` | `mediaManager.hookUrl` | The address Sonarr, Radarr and Plex Media Server can reach this app at, such as `http://127.0.0.1:3000` when all run on one machine. With `webhook.secret`, the server adds its own webhook to Sonarr, Radarr and the Plex owner's plex.tv webhook list (Plex Pass only), and keeps them up to date |
+| `credentials` | `webhook.secret` | A long random password Sonarr and Radarr send with each webhook call. Plex can send no password, so its webhook address ends in a code made from it, and plex.tv stores that address |
 | `hostPaths` | `downloads.sonarr` | Absolute folder rTorrent downloads Sonarr's torrents into, such as `/home/<user>/files/Sonarr`. TV second versions download here too |
 | `hostPaths` | `downloads.radarr` | Absolute folder rTorrent downloads Radarr's torrents into. Movie second versions download here too |
 | `hostPaths` | `library.sonarr` | Absolute Sonarr library root, such as `/home/<user>/TV`; a stopped torrent whose download files are gone is re-linked from here |
@@ -440,7 +440,7 @@ node dist/server/cli.js backup off   # no backups, no reminder
 node dist/server/cli.js backup on    # back on; a destination and key are then needed
 ```
 
-Once set up, every 5 minutes the server copies its database with `node:sqlite`'s `backup()`, gzips the
+Once set up, every hour the server copies its database with `node:sqlite`'s `backup()`, gzips the
 copy, encrypts it with AES-256-GCM under the restore key made in the app (or,
 until one exists, under `BACKUP_KEY`), and writes it to the destination you
 chose. The database holds every saved credential, so backups

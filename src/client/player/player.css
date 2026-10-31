@@ -1,0 +1,41 @@
+/*
+ * mpv draws in its own window under the transparent app window (desktop/AGENTS.md), so the picture shows only where the page
+ * paints nothing. While the player is open the page drops its own background: full size hides the app around the player,
+ * and the mini player cuts a hole, the mini player's size and corners, out of the app at the place it sits.
+ */
+/* globals.css paints <html> too, so both drop their background. */
+html[data-player],
+html[data-player] body {
+  background: transparent;
+}
+
+/* opacity as well: a child can turn its own visibility back on (the poster card's Play button does on hover and focus),
+   but never its parent's opacity. */
+html[data-player='full'] [data-app] {
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* The page stays mounted under the full-size player (navigation.ts useLocation); it keeps its scroll for the way back. */
+html[data-player='full'] {
+  overflow: hidden;
+}
+
+/* The hole follows the mini player as the app scrolls under it; Player.tsx keeps the two variables current. */
+html[data-player='mini'] [data-app] {
+  background-color: var(--background);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='225'%3E%3Crect width='400' height='225' rx='12'/%3E%3C/svg%3E"), linear-gradient(#000, #000);
+  mask-size: 400px 225px, 100% 100%;
+  mask-position: var(--player-hole-x, -1000px) var(--player-hole-y, -1000px), 0 0;
+  mask-repeat: no-repeat;
+  mask-composite: exclude;
+}
+
+/* The frameless desktop window moves by the player's top area; its buttons and timeline stay clickable. */
+.player-drag {
+  -webkit-app-region: drag;
+}
+
+[data-player-root] :is(button, a, [role='slider']) {
+  -webkit-app-region: no-drag;
+}

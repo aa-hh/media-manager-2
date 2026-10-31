@@ -402,7 +402,7 @@ export function AddControls({ subject, onAdded, onUnauthenticated }: {
           ))}
         </div>
         {seasonsMissing && <p className="font-ui text-sm text-warning">Choose at least one season to add this show.</p>}
-        {/* v2/Block/add-controls — ~/Projects/media-manager-2-design/design-system.lib.pen RJNba: 28 from the sentence box, a 32-high trigger, rows 48 high with 180 labels. */}
+        {/* Add controls: 28 from the sentence box, a 32-high trigger, rows 48 high with 180 labels. */}
         <Collapsible open={more} onOpenChange={setMore} className="mt-5">
           <CollapsibleTrigger className="h-8 px-0">More options</CollapsibleTrigger>
           <CollapsiblePrimitive.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-all duration-(--duration-size) ease-out data-ending-style:h-0 data-ending-style:duration-(--duration-fast) data-ending-style:ease-in data-starting-style:h-0 motion-reduce:transition-none">

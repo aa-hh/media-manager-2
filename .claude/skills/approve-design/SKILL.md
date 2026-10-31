@@ -1,32 +1,39 @@
 ---
 name: approve-design
-description: Bring DESIGN.md and the code component library in line with the pen.dev library once the owner approves a design. Use when the owner says a design is approved, signed off or final, or types /approve-design. Never on an agent's own judgement that a design is done.
+description: Build an approved Figma design in code, then redraw the changed components in the Figma library once it merges. Use when the owner says a design is approved, signed off or final, or types /approve-design. Never on an agent's own judgement that a design is done.
 ---
 
 # Approve design
 
-The owner has approved a design. Changes to `~/Projects/media-manager-2-design/design-system.lib.pen` (components or variables added, changed or deleted) now go into the code, as the very next job, without stopping in between. The session the owner approved in runs this, whether the design was drawn by that session or by one of its subagents.
+A design moves from idea to code in five steps (`docs/design/figma-switch-plan.md`):
 
-Iterating on a design is not approval. Only the owner's words start this.
+1. **Explore in Figma.** Explorations sit in the `DISCOVERY` frame of the screen's Figma file and use instances from the `media-manager-2 library` file. They never change the library.
+2. **Approve.** Only the owner's words start this skill. Iterating on a design is not approval.
+3. **Build** in code: each new or changed component first, with its story and its Figma link, then the screen from those components.
+4. **Check.** The build, the tests and the stories' accessibility checks pass.
+5. **Refresh Figma from the code.** After the pull request merges, redraw the changed components in the library so it matches what shipped.
+
+This skill runs steps 3 to 5. The code (`src/client/components/ui/`, `src/client/globals.css`) is the master copy; the Figma library is a copy kept in step with it. The session the owner approved in runs this, whether that session or one of its subagents drew the design.
 
 ## Steps
 
-1. **Library first.** If the approved design added or changed components, they go into the library before anything else: copy them from the approved exploration into `design-system.lib.pen` under the same name, run `~/.claude/scripts/pen-refresh <screen.pen>`, swap the screen's local copies for library instances, and check that `~/.claude/scripts/pen-library-changes <screen.pen> --dry-run` lists no row for the approved screen. Then ask the owner to confirm they pressed Cmd+S in the library tab; pen.dev writes to disk only then.
-2. **Worktree.** Work in a worktree branched from `origin/main`, as `CLAUDE.md` describes. Never in the main checkout.
-3. **Read the library** through pen.dev's tools (`mcp__pencil__*`; check `get_app_state` shows the library open first): every `v2/Family/Variant` component with its id, and every variable.
-4. **Compare it with the code and the docs:**
-   - components: `src/client/components/ui/*.tsx`, each headed `// v2/Family/Variant — ~/Projects/media-manager-2-design/design-system.lib.pen <id>`
-   - variables: `src/client/globals.css` and the front matter of `DESIGN.md`
-   - component notes: the component sections of `DESIGN.md`
-5. **Apply every difference:**
-   - added: write the component in `src/client/components/ui/`, with the header comment.
-   - changed: update the component file and every variable it uses.
-   - deleted: delete the component file. If a screen still uses it, stop and ask the owner what replaces it.
+1. **Worktree.** Work in a worktree branched from `origin/main`, as `CLAUDE.md` describes. Never in the main checkout.
+2. **Read the approved frame.** Get its Figma URL from the owner if the conversation lacks it. Load the `figma:figma-use` skill, then call `get_design_context` on the frame, plus `get_screenshot` for a picture to compare against. Figma allows 200 read calls a day, so read the frame once and work from what came back.
+3. **List the differences** between the frame and the code:
+   - components: every `v2/Family/Variant` the frame adds, changes or stops using, against `src/client/components/ui/*.tsx`
+   - variables: against `src/client/globals.css` and the front matter of `DESIGN.md`
+   - component notes: against the component sections of `DESIGN.md`
+4. **Build each component first:**
+   - added: write it in `src/client/components/ui/`, headed `// v2/Family/Variant — <Figma URL>`, with a `.stories.tsx` file whose `meta` has `parameters: { design: { type: 'figma', url } }`. Until step 8, the URL points at the component in the approved exploration.
+   - changed: update the component file, its story and every variable it uses.
+   - deleted: delete the component file and its story. If a screen still uses it, stop and ask the owner what replaces it.
    - update `DESIGN.md` to match: front matter values and the component sections.
-6. **Check:** `sh scripts/build.sh` and `sh scripts/test.sh` pass.
+5. **Build the screen** from those components.
+6. **Check:** `sh scripts/build.sh` and `sh scripts/test.sh` pass, and Storybook's tests and accessibility checks pass for every story that changed.
 7. **Finish** as `CLAUDE.md` says: push, `gh pr create --fill`, `bash scripts/review-branch.sh`, then ask the owner before merging.
+8. **After the merge, redraw the library.** Load `figma:figma-use` and `figma:figma-generate-library`, then redraw every added or changed component and variable in `media-manager-2 library` from the merged code, and remove the deleted ones. One agent writes to Figma at a time. Compare each redrawn component's screenshot with its story. If a new component's links still point at the exploration, open a small pull request that moves its header comment and story `url` to the library component.
 
-Report which components and variables were added, changed and deleted.
+Report which components and variables were added, changed and deleted, and whether step 8 is done.
 
 ## Handing it to a subagent
 

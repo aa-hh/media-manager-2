@@ -1,4 +1,4 @@
-// v2/Spinner — ~/Projects/media-manager-2-design/design-system.lib.pen SHXXo
+// Figma: Spinner — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-600
 import { LoaderCircle, type LucideProps } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

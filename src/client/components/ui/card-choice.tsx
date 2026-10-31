@@ -1,4 +1,4 @@
-// v2/Card/choice — ~/Projects/media-manager-2-design/design-system.lib.pen E7Mh6m
+// Figma: CardChoice — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-5106
 import type { ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
 import { Radio } from '@/components/ui/radio';
@@ -23,7 +23,7 @@ function CardChoice({ value, title, description, kbd, disabled = false, classNam
   return (
     <label
       className={cn(
-        'group flex w-full flex-col gap-1.5 rounded-md border border-border bg-card px-4 py-3.5',
+        'group flex w-full flex-col gap-1.5 rounded-md border border-border bg-control px-4 py-3.5',
         'transition-colors duration-(--duration-fast) ease-out active:duration-0',
         'not-has-data-disabled:hover:bg-surface-hover not-has-data-disabled:active:bg-surface-pressed',
         'has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]',

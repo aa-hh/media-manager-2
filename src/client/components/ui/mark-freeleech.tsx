@@ -1,4 +1,4 @@
-// v2/Mark/freeleech — ~/Projects/media-manager-2-design/design-system.lib.pen BUiSG
+// Figma: MarkFreeleech — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-895
 import { Percent } from 'lucide-react';
 import { Tooltip } from '@/components/ui/tooltip';
 

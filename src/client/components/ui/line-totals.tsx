@@ -1,4 +1,4 @@
-// v2/Line/totals — ~/Projects/media-manager-2-design/design-system.lib.pen mBarH
+// Figma: LineTotals — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-2311
 import { ArrowRight } from 'lucide-react';
 import type { ComponentProps, MouseEvent, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

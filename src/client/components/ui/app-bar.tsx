@@ -1,8 +1,8 @@
-// v2/AppBar/Nav item — ~/Projects/media-manager-2-design/design-system.lib.pen ACA2W
-// v2/AppBar/Desktop — ~/Projects/media-manager-2-design/design-system.lib.pen F5qou
-// v2/AppBar/Desktop/setup — ~/Projects/media-manager-2-design/design-system.lib.pen uWAN1 (no search or nav; a ghost Sign out with the log-out icon in actions)
+// Figma: AppBarDesktop — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-240
+// Figma: AppBarNavItem — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-8353
 import type { ComponentProps, ReactNode } from 'react';
 import logo from '@/assets/logos/media-manager-2.png';
+import logoOnDark from '@/assets/logos/media-manager-2-on-dark.png';
 import { cn } from '@/lib/utils';
 
 type AppBarNavItemProps = ComponentProps<'a'> & {
@@ -61,17 +61,26 @@ type AppBarDesktopProps = ComponentProps<'header'> & {
   signedOut?: boolean;
 };
 
-/** Top bar, 64 px, white at 70% over a 24 px blur so what scrolls under it shows through, a line under, page-margin side padding. The 28 px logo is the small-size render, design/app-logo/small-on-light.png. */
+/** Top bar, 64 px, card at 70% over a 24 px blur so what scrolls under it shows through, a line under, page-margin side padding (80 px on the left in the desktop app). The 28 px logo is the small-size render, design/app-logo/small-on-light.png, or small-on-dark.png in dark mode. */
 function AppBarDesktop({ productName, search, nav, navLabel = 'Main', actions, signedOut = false, home, className, ...props }: AppBarDesktopProps) {
   const brand = 'flex shrink-0 items-center gap-2.5 font-ui text-base font-extrabold tracking-[-0.2px] text-foreground';
   const mark = (
     <>
-      <img src={logo} alt="" width={28} height={28} className="size-7" />
+      <img src={logo} alt="" width={28} height={28} className="size-7 dark:hidden" />
+      <img src={logoOnDark} alt="" width={28} height={28} className="hidden size-7 dark:block" />
       {productName}
     </>
   );
   return (
-    <header className={cn('flex h-(--topbar) w-full items-center gap-6 border-b border-border bg-card/70 px-(--page-margin) backdrop-blur-[24px]', className)} {...props}>
+    <header
+      className={cn(
+        'flex h-(--topbar) w-full items-center gap-6 border-b border-border bg-card/70 px-(--page-margin) backdrop-blur-[24px]',
+        // Desktop app: the logo starts clear of the macOS window buttons, and the bar drags the window.
+        'desktop:pl-20 desktop:[-webkit-app-region:drag] desktop:[&_:is(a,button,input,[role=button])]:[-webkit-app-region:no-drag]',
+        className,
+      )}
+      {...props}
+    >
       {home === undefined ? (
         <div className={brand}>{mark}</div>
       ) : (

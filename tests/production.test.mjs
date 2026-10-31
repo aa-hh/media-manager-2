@@ -59,6 +59,9 @@ const secondVersionRowsModuleUrl = new URL('../dist/server/secondVersionRows.js'
 const secondVersionDeleteModuleUrl = new URL('../dist/server/secondVersionDelete.js', import.meta.url).href;
 const replaceModuleUrl = new URL('../dist/server/replace.js', import.meta.url).href;
 const libraryModuleUrl = new URL('../dist/server/library.js', import.meta.url).href;
+const watchStatusModuleUrl = new URL('../dist/server/watchStatus.js', import.meta.url).href;
+const playbackModuleUrl = new URL('../dist/server/playback.js', import.meta.url).href;
+const plexPlaybackModuleUrl = new URL('../dist/server/services/plexPlayback.js', import.meta.url).href;
 const protectionModuleUrl = new URL('../dist/server/protection.js', import.meta.url).href;
 const dependenciesModuleUrl = new URL('../dist/server/dependencies.js', import.meta.url).href;
 const torrentGrabsModuleUrl = new URL('../dist/server/torrentGrabs.js', import.meta.url).href;
@@ -440,7 +443,7 @@ const makeApp = async (input = {}) => {
   const ownerPlexId = Object.hasOwn(input, 'ownerPlexId') ? input.ownerPlexId : '42';
   const publicOrigin = Object.hasOwn(input, 'publicOrigin') ? input.publicOrigin : 'https://media.example';
   const listeningHost = input.listeningHost ?? '127.0.0.1';
-  const { fetch, fixtureOptions, events, timers, webhooks, api, library, discover, titleDelete, images, setup } = input;
+  const { fetch, fixtureOptions, events, onOpenStreams, timers, webhooks, api, library, discover, titleDelete, images, setup, playback } = input;
   const { createApp } = await import(appModuleUrl);
   const { applicationMigrations, migrateDatabase } = await import(databaseModuleUrl);
   const database = input.database ?? new DatabaseSync(':memory:');
@@ -456,6 +459,7 @@ const makeApp = async (input = {}) => {
     now,
     fetch: fetch ?? fixture.fetch,
     events,
+    onOpenStreams,
     timers,
     webhooks,
     api,
@@ -464,6 +468,7 @@ const makeApp = async (input = {}) => {
     titleDelete,
     images,
     setup,
+    playback,
   });
   return { app, clock, fixture, database };
 };
@@ -1123,6 +1128,33 @@ test('Plex owner authentication', async (t) => {
       assert.equal(response.headers.get('x-frame-options'), 'DENY');
     }
   });
+  // Sending no-store or an uncompressed body for a hashed built file, or gzipping the event stream, turns this red.
+  await t.test('built files are cached for a year and gzipped; the application document is never stored and the event stream is not gzipped', async () => {
+    const { app } = await makeApp();
+    const { session } = await signIn(app);
+    const script = (await readdir(join(clientDirectory, 'assets'))).find((name) => name.startsWith('index-') && name.endsWith('.js'));
+    assert.ok(script);
+    const yearlong = 'public, max-age=31536000, immutable';
+    const zipped = await app.request(`/assets/${script}`, { headers: { 'Accept-Encoding': 'gzip' } });
+    assert.equal(zipped.status, 200);
+    assert.equal(zipped.headers.get('cache-control'), yearlong);
+    assert.equal(zipped.headers.get('content-encoding'), 'gzip');
+    assert.match(zipped.headers.get('vary'), /accept-encoding/i);
+    assert.deepEqual(gunzipSync(Buffer.from(await zipped.arrayBuffer())), await readFile(join(clientDirectory, 'assets', script)));
+    const plain = await app.request(`/assets/${script}`);
+    assert.equal(plain.headers.get('content-encoding'), null);
+    assert.equal(plain.headers.get('cache-control'), yearlong);
+    await plain.arrayBuffer();
+    const document = await app.request('/', { headers: { 'Accept-Encoding': 'gzip' } });
+    assert.equal(document.headers.get('cache-control'), 'no-store');
+    await document.arrayBuffer();
+    const stream = await app.request('/api/events', { headers: { Cookie: session, 'Accept-Encoding': 'gzip' } });
+    assert.equal(stream.status, 200);
+    assert.match(stream.headers.get('content-type'), /^text\/event-stream/);
+    assert.equal(stream.headers.get('content-encoding'), null);
+    assert.equal(stream.headers.get('cache-control'), 'no-store');
+    await stream.body.cancel();
+  });
   // Saving no owner on the first sign-in, letting a second account in once an owner exists, or letting the owner row outrank
   // PLEX_OWNER_ID turns this red.
   await t.test('first run makes the first Plex sign-in the owner, and PLEX_OWNER_ID outranks the owner row', async () => {
@@ -1662,11 +1694,11 @@ test('the sign-in screen re-checks an unfinished Plex sign-in a few times, holds
 });
 
 test('event stream delivery', async (t) => {
-  const setup = async () => {
+  const setup = async (extra = {}) => {
     const clock = { value: 1_800_000_000_000 };
     const events = (await import(eventsModuleUrl)).createEventHub();
     const timers = createFakeTimers(clock);
-    const { app } = await makeApp({ clock, events, timers });
+    const { app } = await makeApp({ clock, events, timers, ...extra });
     return { app, clock, events, timers };
   };
   const logout = (app, session) => app.request('/auth/logout', {
@@ -1759,9 +1791,10 @@ test('event stream delivery', async (t) => {
     await second.reader.cancel();
   });
 
-  // Removing the stream cap, or failing to release a slot when a client disconnects, turns this red.
+  // Removing the stream cap, failing to release a slot when a client disconnects, or not reporting the open-stream count to the owner of the live poll, turns this red.
   await t.test('the 21st concurrent stream is refused with 503 and a closed stream frees its slot', async () => {
-    const { app } = await setup();
+    const counts = [];
+    const { app } = await setup({ onOpenStreams: (count) => counts.push(count) });
     const { session } = await signIn(app);
     const readers = [];
     for (let index = 0; index < 20; index += 1) {
@@ -1769,6 +1802,7 @@ test('event stream delivery', async (t) => {
       assert.equal(response.status, 200, String(index));
       readers.push(reader);
     }
+    assert.deepEqual(counts, Array.from({ length: 20 }, (_, index) => index + 1));
     const refused = await app.request('/api/events', { headers: { Cookie: session } });
     assert.equal(refused.status, 503);
     assert.match(refused.headers.get('content-type'), /application\/json/);
@@ -1776,6 +1810,7 @@ test('event stream delivery', async (t) => {
     await readers.shift().cancel();
     const { response, reader } = await openStream(app, session);
     assert.equal(response.status, 200);
+    assert.deepEqual(counts.slice(-2), [19, 20]);
     readers.push(reader);
     for (const open of readers) await open.cancel();
   });
@@ -3138,6 +3173,14 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
     assert.equal(calls[0].searchParams.get('api_key'), key);
   });
 
+  // Asking the wrong path, or reading a body without a name as a keyword, turns this red.
+  await t.test('a keyword reads its id and name, and a body without a name reads as null', async () => {
+    const { tmdb, calls } = connect((url) => json(url.pathname.endsWith('/1') ? { id: 1, name: 'heist' } : { id: 2 }));
+    assert.deepEqual(await tmdb.keyword(1), { kind: 'ok', value: { id: 1, name: 'heist' } });
+    assert.equal(calls[0].pathname, '/3/keyword/1');
+    assert.deepEqual(await tmdb.keyword(2), { kind: 'ok', value: null });
+  });
+
   // Dropping the cache, keeping a list past five minutes, or caching a failure turns this red.
   await t.test('a list is served from memory for five minutes, then fetched again', async () => {
     let fail = true;
@@ -3550,6 +3593,688 @@ test('MDBList ratings fill the show page by site, are saved for a week and never
   });
 });
 
+test('watch status from Plex marks library titles, both title pages and Continue Watching', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createLibrary, createLibraryRoutes } = await import(libraryModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createPlex } = await import(plexModuleUrl);
+  const { createWatchStatus } = await import(watchStatusModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-watch-status-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const { fake, ...services } = connectArr(database);
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', 'plex-token');
+  const dune1080 = '/movies/Dune Part Two (2024)/Dune.Part.Two.1080p.mkv';
+  const dune2160 = '/movies/Dune Part Two (2024)/Dune.Part.Two.2160p.mkv';
+  fake.radarr.state.movies = [
+    movieRecord({ id: 9, title: 'Dune: Part Two', tmdbId: 693134, hasFile: true, movieFile: { id: 91, path: dune1080 } }),
+    movieRecord({ id: 10, title: 'Arrival', tmdbId: 329865, hasFile: true, movieFile: { id: 101, path: '/movies/Arrival (2016)/Arrival.mkv' } }),
+  ];
+  fake.sonarr.state.series = [seriesRecord({ id: 7, title: 'Severance', tvdbId: 371980, path: '/tv/Severance' })];
+  fake.sonarr.state.episodes = [
+    episodeRecord({ id: 70, seriesId: 7, seasonNumber: 1, episodeNumber: 2, hasFile: true, episodeFile: { id: 701, path: '/old/Severance.S01E02.mkv' } }),
+  ];
+  const movies = [
+    {
+      ratingKey: '100', type: 'movie', Guid: [{ id: 'tmdb://693134' }], viewOffset: 600000, duration: 9960000, viewCount: 1, lastViewedAt: 1800000000,
+      Media: [
+        { id: 11, height: 1080, bitrate: 8000, container: 'mkv', Part: [{ id: 111, key: '/library/parts/111/file.mkv', file: dune1080 }] },
+        { id: 12, height: 2160, bitrate: 40000, container: 'mkv', Part: [{ id: 122, key: '/library/parts/122/file.mkv', file: dune2160 }] },
+      ],
+    },
+    {
+      ratingKey: '200', type: 'movie', Guid: [{ id: 'imdb://tt2543164' }, { id: 'tmdb://329865' }], viewOffset: 120000, duration: 6960000,
+      Media: [{ id: 21, height: 1080, bitrate: 9000, container: 'mkv', Part: [{ id: 211, file: '/plex/films/Arrival.mkv' }] }],
+    },
+  ];
+  const shows = [{ ratingKey: '300', type: 'show', Guid: [{ id: 'tvdb://371980' }], leafCount: 19, viewedLeafCount: 3, lastViewedAt: 1800000100 }];
+  const episodes = [{
+    ratingKey: '302', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 2, viewOffset: 2511000, duration: 3300000,
+    Media: [{ id: 31, height: 2160, bitrate: 20000, container: 'mkv', Part: [{ id: 3021, file: '/plex/tv/Severance/S01E02.mkv' }] }],
+  }];
+  const continueWatching = [
+    { ratingKey: '302', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 2, title: 'Half Loop', viewOffset: 2511000, duration: 3300000, lastViewedAt: 1800000200 },
+    { ratingKey: '999', type: 'movie', viewOffset: 5000, duration: 7000000, lastViewedAt: 1800000300 },
+    { ratingKey: '100', type: 'movie', viewOffset: 600000, duration: 9960000, lastViewedAt: 1800000000 },
+  ];
+  const plexFetch = async (url, init) => {
+    assert.equal(init.redirect, 'error');
+    assert.equal(init.headers['X-Plex-Token'], 'plex-token');
+    const { pathname, searchParams } = new URL(String(url));
+    if (pathname.endsWith('/all')) assert.equal(searchParams.get('includeGuids'), '1');
+    const answers = {
+      '/': { machineIdentifier: 'plex-machine-1', version: '1.41.0' },
+      '/library/sections': { Directory: [{ key: '1', type: 'movie' }, { key: '2', type: 'show' }, { key: '5', type: 'artist' }] },
+      '/library/sections/1/all': { Metadata: movies },
+      '/library/sections/2/all': { Metadata: searchParams.get('type') === '2' ? shows : episodes },
+      '/hubs/continueWatching/items': { Metadata: continueWatching },
+      '/library/metadata/300': { Metadata: [{ ratingKey: '300', OnDeck: { Metadata: [{ ratingKey: '303', parentIndex: 1, index: 3 }] } }] },
+    };
+    const body = answers[pathname];
+    return body === undefined ? new Response('', { status: 404 }) : new Response(JSON.stringify({ MediaContainer: body }), { status: 200 });
+  };
+  const clock = { value: 1_800_000_000_000 };
+  const connect = ({ fetch = plexFetch, enabled = () => true, sleep = () => new Promise(() => {}), webhookUrl = () => undefined } = {}) => {
+    const requests = [];
+    const published = [];
+    const plex = createPlex(database, { fetch: async (url, init) => {
+      requests.push(new URL(String(url)).pathname);
+      return fetch(url, init);
+    } });
+    const events = { publish: (type, data) => published.push([type, data]) };
+    const watchStatus = createWatchStatus({ plex, enabled, now: () => clock.value, sleep, events, webhookUrl });
+    const routes = createLibraryRoutes(createLibrary(services, () => [], createTitleStore(database), undefined, undefined, undefined, undefined, undefined, watchStatus));
+    const get = async (path) => {
+      const response = await routes.request(path);
+      return { status: response.status, body: await response.json() };
+    };
+    return { requests, get, watchStatus, published };
+  };
+  const titleWatch = (titles, title) => titles.find((item) => item.title === title).watch;
+
+  // Picking the first Media entry instead of the tallest, or pairing a mediaIndex with another entry's part, turns this red.
+  await t.test('a second version plays the tallest file and both stay listed', async () => {
+    const { body } = await connect().get('/movie/9');
+    assert.equal(body.watch.kind, 'ok');
+    assert.equal(body.watch.machineIdentifier, 'plex-machine-1');
+    assert.deepEqual([body.watch.ratingKey, body.watch.mediaIndex, body.watch.partId], ['100', 1, 122]);
+    assert.deepEqual(body.watch.versions, [{ mediaIndex: 0, partId: 111, file: dune1080 }, { mediaIndex: 1, partId: 122, file: dune2160 }]);
+    assert.deepEqual([body.watch.viewOffsetMs, body.watch.durationMs, body.watch.viewCount], [600000, 9960000, 1]);
+  });
+
+  // Dropping the Guid fallback, or matching episodes by anything but season and episode number, turns this red.
+  await t.test('a renamed file still matches by Guid, then by season and episode number', async () => {
+    const { get } = connect();
+    const series = (await get('/series/7')).body;
+    assert.equal(series.watch.ratingKey, '300');
+    assert.deepEqual([series.watch.leafCount, series.watch.viewedLeafCount], [19, 3]);
+    assert.equal(series.watch.episodes['70'].viewOffsetMs, 2511000);
+    assert.equal(series.watch.episodes['70'].partId, 3021);
+    assert.deepEqual(series.watch.nextEpisode, { seasonNumber: 1, episodeNumber: 3 });
+    const movie = (await get('/movie/10')).body;
+    assert.deepEqual([movie.watch.ratingKey, movie.watch.viewOffsetMs, movie.watch.viewCount, movie.watch.lastViewedAt], ['200', 120000, 0, null]);
+    const { titles } = (await get('/titles')).body;
+    assert.deepEqual(titleWatch(titles, 'Severance'), { kind: 'show', ratingKey: '300', leafCount: 19, viewedLeafCount: 3, lastViewedAt: 1800000100 });
+    assert.deepEqual(titleWatch(titles, 'Arrival'), { kind: 'movie', ratingKey: '200', viewOffsetMs: 120000, durationMs: 6960000, viewCount: 0, lastViewedAt: null });
+  });
+
+  // Failing the library when Plex is down, or inventing marks without Plex, turns this red.
+  await t.test('an unreachable Plex leaves the library whole and unmarked', async () => {
+    const { status, body } = await connect({ fetch: async () => { throw new TypeError('fetch failed'); } }).get('/titles');
+    assert.equal(status, 200);
+    assert.deepEqual(body.titles.map((title) => title.title).sort(), ['Arrival', 'Dune: Part Two', 'Severance']);
+    assert.ok(body.titles.every((title) => title.watch === null));
+    assert.deepEqual(body.watch, { kind: 'unavailable' });
+  });
+
+  // Listing Continue Watching items that map to no library title, or showing Plex marks on a Jellyfin install, turns this red.
+  await t.test('Continue Watching keeps Plex order and only library titles, and is off without Plex', async () => {
+    const { body } = await connect().get('/titles');
+    assert.deepEqual(body.watch, {
+      kind: 'ok',
+      machineIdentifier: 'plex-machine-1',
+      continueWatching: [
+        { service: 'sonarr', id: 7, viewOffsetMs: 2511000, durationMs: 3300000, lastViewedAt: 1800000200, episode: { seasonNumber: 1, episodeNumber: 2, title: 'Half Loop' } },
+        { service: 'radarr', id: 9, viewOffsetMs: 600000, durationMs: 9960000, lastViewedAt: 1800000000, episode: null },
+      ],
+    });
+    const off = connect({ enabled: () => false });
+    const offBody = (await off.get('/titles')).body;
+    assert.deepEqual(offBody.watch, { kind: 'off' });
+    assert.ok(offBody.titles.every((title) => title.watch === null));
+    assert.deepEqual((await off.get('/movie/9')).body.watch, { kind: 'off' });
+    assert.deepEqual(off.requests, []);
+  });
+
+  // Awaiting the first Plex listing without the 1.5 s cap, or caching the timed-out wait as a failure, turns this red.
+  await t.test('a slow first Plex listing leaves the library unmarked, and the next load gets the marks', async () => {
+    let answer;
+    const held = new Promise((resolve) => { answer = resolve; });
+    let waits = 0;
+    const { get } = connect({
+      fetch: async (url, init) => (new URL(String(url)).pathname.endsWith('/all') ? held.then(() => plexFetch(url, init)) : plexFetch(url, init)),
+      sleep: () => ((waits += 1) === 1 ? Promise.resolve() : new Promise(() => {})),
+    });
+    const first = await get('/titles');
+    assert.equal(first.status, 200);
+    assert.deepEqual(first.body.watch, { kind: 'unavailable' });
+    answer();
+    const second = await get('/titles');
+    assert.equal(second.body.watch.kind, 'ok');
+    assert.equal(titleWatch(second.body.titles, 'Arrival').ratingKey, '200');
+  });
+
+  // Telling pages before Plex is listed again, or answering their next read from the 60-second listing, turns this red:
+  // the show page reads again and still offers the episode just watched.
+  await t.test('a Plex webhook lists Plex again, then names the show that was watched', async () => {
+    let watched = false;
+    let quick = false;
+    const { get, watchStatus, published } = connect({
+      fetch: async (url, init) => {
+        const { pathname, searchParams } = new URL(String(url));
+        if (watched && pathname === '/library/sections/2/all' && searchParams.get('type') === '4') {
+          return new Response(JSON.stringify({ MediaContainer: { Metadata: [{ ...episodes[0], viewOffset: 0, viewCount: 1 }] } }), { status: 200 });
+        }
+        return plexFetch(url, init);
+      },
+      // Once quick, a page read answers at once from the listing it has rather than waiting for a new one.
+      sleep: () => (quick ? Promise.resolve() : new Promise(() => {})),
+    });
+    assert.equal((await get('/series/7')).body.watch.episodes['70'].viewOffsetMs, 2511000);
+    quick = true;
+    watched = true;
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.resume', Metadata: { type: 'episode', grandparentRatingKey: '300' } }), 'ignored');
+    assert.equal(watchStatus.receiveWebhook({ event: 'library.new', Metadata: { type: 'movie', ratingKey: '100' } }), 'ignored');
+    assert.equal(watchStatus.receiveWebhook({ Metadata: {} }), 'invalid');
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.scrobble', Metadata: { type: 'episode', ratingKey: '302', grandparentRatingKey: '300' } }), 'ok');
+    for (const deadline = Date.now() + 10_000; published.length === 0;) {
+      assert.ok(Date.now() < deadline, 'no watch event');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(published, [['watch', { ratingKey: '300' }]]);
+    const after = (await get('/series/7')).body.watch.episodes['70'];
+    assert.deepEqual([after.viewOffsetMs, after.viewCount], [0, 1]);
+  });
+
+  // Telling pages after a failed listing turns this red: they would swap their marks for the failure.
+  await t.test('a Plex webhook whose listing fails tells no page', async () => {
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    let failing = true;
+    const { requests, watchStatus, published } = connect({ fetch: async (url, init) => {
+      if (failing && new URL(String(url)).pathname === '/library/sections') return held.then(() => { throw new TypeError('fetch failed'); });
+      return plexFetch(url, init);
+    } });
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.stop', Metadata: { type: 'movie', ratingKey: '100' } }), 'ok');
+    for (const deadline = Date.now() + 10_000; !requests.includes('/library/sections');) {
+      assert.ok(Date.now() < deadline, 'the failing listing never started');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    failing = false;
+    // This one waits for the failing listing, so once it is told, the failing one has settled.
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.scrobble', Metadata: { type: 'episode', grandparentRatingKey: '300' } }), 'ok');
+    release();
+    for (const deadline = Date.now() + 10_000; published.length === 0;) {
+      assert.ok(Date.now() < deadline, 'no watch event');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(published, [['watch', { ratingKey: '300' }]]);
+  });
+
+  // Posting only our address (dropping webhooks other apps added), leaving an old address of ours with a stale secret,
+  // posting when the list is already right, or posting back a list with an entry it could not read turns this red.
+  await t.test('the Plex webhook is kept on the plex.tv list beside other apps', async () => {
+    let listed = ['https://other.app/plex', 'http://mm2.lan:8080/webhooks/plex/old-secret'];
+    let unreadable = false;
+    const posted = [];
+    let url;
+    const { watchStatus } = connect({
+      webhookUrl: () => url,
+      fetch: async (address, init) => {
+        if (String(address) !== 'https://plex.tv/api/v2/user/webhooks') return plexFetch(address, init);
+        assert.equal(init.headers['X-Plex-Token'], 'plex-token');
+        if (init.method === 'POST') {
+          posted.push(init.body);
+          listed = new URLSearchParams(init.body).getAll('urls[]');
+          return new Response('', { status: 201 });
+        }
+        return new Response(JSON.stringify([...listed.map((entry) => ({ url: entry })), ...(unreadable ? [{ address: 'https://third.app' }] : [])]), { status: 200 });
+      },
+    });
+    assert.equal(await watchStatus.ensureWebhook(), false, 'nothing is registered without the address and the webhook secret');
+    url = 'http://mm2.lan:8080/webhooks/plex/new-secret';
+    unreadable = true;
+    await assert.rejects(watchStatus.ensureWebhook(), /unreadable webhook list/);
+    assert.equal(posted.length, 0);
+    unreadable = false;
+    assert.equal(await watchStatus.ensureWebhook(), true);
+    assert.deepEqual(listed, ['https://other.app/plex', url]);
+    await watchStatus.ensureWebhook();
+    assert.equal(posted.length, 1);
+  });
+
+  // Listing Plex on every library load instead of keeping the listing for 60 seconds turns this red.
+  await t.test('the Plex listing is kept for 60 seconds', async () => {
+    const { requests, get } = connect();
+    const listings = () => requests.filter((path) => path === '/library/sections').length;
+    await get('/titles');
+    clock.value += 59_999;
+    await get('/titles');
+    assert.equal(listings(), 1);
+    clock.value += 60_001;
+    await get('/titles');
+    assert.equal(listings(), 2);
+  });
+
+  // Waiting for the new Plex listing on a load that already has one under 5 minutes old, or never picking up the finished rebuild, turns this red.
+  await t.test('the first load after 60 seconds answers from the old Plex listing and the next load has the new one', async () => {
+    const file = '/movies/Dune (2021)/Dune.mkv';
+    const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
+    let inPlex = false;
+    const { get } = connect({ fetch: async (url, init) => (
+      inPlex && new URL(String(url)).pathname === '/library/sections/1/all'
+        ? new Response(JSON.stringify({ MediaContainer: { Metadata: [...movies, imported] } }), { status: 200 })
+        : plexFetch(url, init)
+    ) });
+    const saved = fake.radarr.state.movies;
+    fake.radarr.state.movies = [...saved, movieRecord({ id: 11, title: 'Dune', tmdbId: 438631, hasFile: true, movieFile: { id: 111, path: file } })];
+    try {
+      const before = (await get('/movie/11')).body.watch;
+      assert.equal(before, null);
+      inPlex = true;
+      clock.value += 60_001;
+      assert.equal((await get('/movie/11')).body.watch, null);
+      let after = null;
+      for (let attempt = 0; attempt < 50 && after === null; attempt += 1) after = (await get('/movie/11')).body.watch;
+      assert.equal(after?.ratingKey, '400');
+    } finally {
+      fake.radarr.state.movies = saved;
+    }
+  });
+
+  // Answering at once from a Plex listing 5 minutes old instead of waiting for the rebuild turns this red.
+  await t.test('a Plex listing 5 minutes old makes the next load wait for the new one', async () => {
+    const file = '/movies/Dune (2021)/Dune.mkv';
+    const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
+    let inPlex = false;
+    const { get } = connect({ fetch: async (url, init) => (
+      inPlex && new URL(String(url)).pathname === '/library/sections/1/all'
+        ? new Response(JSON.stringify({ MediaContainer: { Metadata: [...movies, imported] } }), { status: 200 })
+        : plexFetch(url, init)
+    ) });
+    const saved = fake.radarr.state.movies;
+    fake.radarr.state.movies = [...saved, movieRecord({ id: 11, title: 'Dune', tmdbId: 438631, hasFile: true, movieFile: { id: 111, path: file } })];
+    try {
+      assert.equal((await get('/movie/11')).body.watch, null);
+      inPlex = true;
+      clock.value += 300_001;
+      assert.equal((await get('/movie/11')).body.watch?.ratingKey, '400');
+    } finally {
+      fake.radarr.state.movies = saved;
+    }
+  });
+
+  // Keeping a listing 5 minutes old after a failed rebuild, replacing a younger one with unavailable, or starting a new rebuild on every load after one fails, turns this red.
+  await t.test('a failed Plex rebuild keeps the old marks and is not retried on every load', async () => {
+    let fail = false;
+    const { requests, get } = connect({ fetch: async (url, init) => {
+      if (fail && new URL(String(url)).pathname.endsWith('/all')) throw new TypeError('fetch failed');
+      return plexFetch(url, init);
+    } });
+    await get('/titles');
+    fail = true;
+    clock.value += 60_001;
+    for (let load = 0; load < 10; load += 1) {
+      const { body } = await get('/titles');
+      assert.equal(body.watch.kind, 'ok');
+      assert.equal(titleWatch(body.titles, 'Arrival').ratingKey, '200');
+    }
+    assert.equal(requests.filter((path) => path === '/library/sections').length, 2);
+    clock.value += 240_000;
+    assert.deepEqual((await get('/titles')).body.watch, { kind: 'unavailable' });
+  });
+
+  // Showing no marks when the wait for a new listing behind one 5 minutes old runs past the 1.5 s cap, instead of falling back to the old listing, turns this red.
+  await t.test('a slow new Plex listing keeps the old marks', async () => {
+    let release;
+    const slow = new Promise((resolve) => { release = resolve; });
+    let hold = false;
+    const { get } = connect({
+      fetch: async (url, init) => (hold && new URL(String(url)).pathname.endsWith('/all') ? slow.then(() => plexFetch(url, init)) : plexFetch(url, init)),
+      sleep: () => (hold ? Promise.resolve() : new Promise(() => {})),
+    });
+    await get('/titles');
+    hold = true;
+    clock.value += 300_001;
+    const { body } = await get('/titles');
+    release();
+    assert.equal(body.watch.kind, 'ok');
+    assert.equal(titleWatch(body.titles, 'Arrival').ratingKey, '200');
+  });
+
+  // Keeping one Plex item per file, so the last episode in a shared file wins, turns this red.
+  await t.test('a file holding two episodes gives each episode its own Plex item', async () => {
+    const shared = '/tv/Severance/Severance.S01E04-E05.mkv';
+    const saved = fake.sonarr.state.episodes;
+    fake.sonarr.state.episodes = [
+      episodeRecord({ id: 74, seriesId: 7, seasonNumber: 1, episodeNumber: 4, hasFile: true, episodeFile: { id: 745, path: shared } }),
+      episodeRecord({ id: 75, seriesId: 7, seasonNumber: 1, episodeNumber: 5, hasFile: true, episodeFile: { id: 745, path: shared } }),
+    ];
+    const part = { id: 4545, file: shared };
+    const pair = [
+      { ratingKey: '304', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 4, viewOffset: 1000, Media: [{ id: 44, Part: [part] }] },
+      { ratingKey: '305', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 5, viewOffset: 2000, Media: [{ id: 44, Part: [part] }] },
+    ];
+    const { get } = connect({ fetch: async (url, init) => {
+      const { pathname, searchParams } = new URL(String(url));
+      return pathname === '/library/sections/2/all' && searchParams.get('type') === '4'
+        ? new Response(JSON.stringify({ MediaContainer: { Metadata: pair } }), { status: 200 })
+        : plexFetch(url, init);
+    } });
+    const { episodes: watched } = (await get('/series/7')).body.watch;
+    fake.sonarr.state.episodes = saved;
+    assert.deepEqual([watched['74'].ratingKey, watched['74'].viewOffsetMs], ['304', 1000]);
+    assert.deepEqual([watched['75'].ratingKey, watched['75'].viewOffsetMs], ['305', 2000]);
+  });
+
+  // Reading a 2xx reply with no readable body as an empty listing, which marks Plex working with every title unmarked, turns this red.
+  await t.test('a Plex listing cut off mid-reply reads as unavailable, not as an empty library', async () => {
+    const { body } = await connect({ fetch: async (url, init) => (
+      new URL(String(url)).pathname.endsWith('/all') ? new Response('{"MediaContainer": {"Meta', { status: 200 }) : plexFetch(url, init)
+    ) }).get('/titles');
+    assert.deepEqual(body.watch, { kind: 'unavailable' });
+  });
+});
+
+test('the playback API asks Plex for a decision and stream addresses, and passes the player\'s calls on without the owner token', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { setSetting } = await import(settingsModuleUrl);
+  const { createPlexPlayback } = await import(plexPlaybackModuleUrl);
+  const { createPlayback, createPlaybackRoutes } = await import(playbackModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-playback-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const ownerToken = `plex-owner-token-${process.pid}-distinctive`;
+  setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
+  setSetting(database, 'credentials', 'plex.token', ownerToken);
+  const direct = 'https://1-2-3-4.abc.plex.direct:32400';
+  const relay = 'https://5-6-7-8.abc.plex.direct:8443';
+  const movie = (ratingKey, height, video = { id: 1000, streamType: 1, index: 0, codec: 'h264' }) => ({
+    ratingKey, type: 'movie', title: 'Dune: Part Two', duration: 9960000,
+    Marker: [{ type: 'credits', startTimeOffset: 9600000, endTimeOffset: 9960000 }],
+    Chapter: [{ index: 1, tag: 'Arrakis', startTimeOffset: 0, endTimeOffset: 600000 }],
+    Media: [{
+      id: 11, container: 'mkv', bitrate: 8000, height, width: 3840, videoCodec: 'hevc',
+      Part: [{
+        id: 111,
+        key: '/library/parts/111/1700000000/file.mkv',
+        Stream: [
+          video,
+          { id: 1001, streamType: 2, index: 1, codec: 'eac3', language: 'English', title: 'Surround 5.1', selected: true, default: true },
+          { id: 1002, streamType: 2, index: 2, codec: 'aac', language: 'Japanese' },
+          { id: 1003, streamType: 3, index: 4, codec: 'srt', language: 'English' },
+          { id: 1004, streamType: 3, codec: 'srt', language: 'French', key: '/library/streams/1004', offset: 500 },
+        ],
+      }],
+    }],
+  });
+  const hevc = (extra) => ({ id: 1000, streamType: 1, index: 0, codec: 'hevc', ...extra });
+  // Two versions with movie()'s streams: the 720 one first, the 1080 one second.
+  const twoVersions = (base) => ({ ...base, Media: [[720, 4000, 811, 'file-720.mkv'], [1080, 8000, 812, 'file-1080.mkv']].map(([height, bitrate, id, file]) => ({
+    ...base.Media[0], height, bitrate, Part: [{ ...base.Media[0].Part[0], id, key: `/library/parts/${id}/1700000000/${file}` }],
+  })) });
+  const items = {
+    '/library/metadata/100': movie('100', 1080),
+    '/library/metadata/200': movie('200', 720),
+    '/library/metadata/300': movie('300', 2160, hevc({ DOVIPresent: true, DOVIProfile: 8, colorTrc: 'smpte2084' })),
+    '/library/metadata/400': movie('400', 2160, hevc({ colorTrc: 'smpte2084' })),
+    '/library/metadata/500': movie('500', 2160, hevc({ colorTrc: 'arib-std-b67' })),
+    '/library/metadata/600': movie('600', 2160, hevc({ colorTrc: 'bt709' })),
+    '/library/metadata/700': { ...movie('700', 1080), viewOffset: 61_500 },
+    '/library/metadata/800': twoVersions(movie('800', 720)),
+  };
+  const accepted = () => ({ generalDecisionCode: 1000, mdeDecisionCode: 1000, transcodeDecisionCode: 1000, directPlayDecisionCode: 1000 });
+  const connect = ({ decision = accepted, now } = {}) => {
+    const requests = [];
+    let hung = false;
+    const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push(url);
+      assert.equal(init.redirect, 'error');
+      assert.equal(init.headers['X-Plex-Token'], ownerToken);
+      assert.ok(!String(input).includes(ownerToken));
+      // A reply that never comes, for plex.tv and the server's identity.
+      if (hung && (url.host === 'plex.tv' || url.pathname === '/')) return new Promise(() => {});
+      if (url.host === 'plex.tv') {
+        assert.equal(url.pathname, '/api/v2/resources');
+        return json([{
+          clientIdentifier: 'plex-machine-1',
+          accessToken: 'server-access-token',
+          connections: [{ uri: relay, relay: true }, { uri: direct, relay: false }],
+        }]);
+      }
+      switch (url.pathname) {
+        case '/': return json({ MediaContainer: { machineIdentifier: 'plex-machine-1', version: '1.41.0' } });
+        case '/security/token': return json({ MediaContainer: { token: 'transient-fixture-token' } });
+        case '/playQueues': return json({ MediaContainer: {
+          playQueueID: 5, playQueueSelectedItemID: 51, playQueueSelectedItemOffset: 0, playQueueTotalCount: 1, playQueueVersion: 1,
+          playQueueShuffled: false, allowShuffle: true, playQueueSourceURI: 'library://section-uuid-1/item/%2Flibrary%2Fmetadata%2F100',
+          playQueueLastAddedItemID: 51, Metadata: [{ playQueueItemID: 51, ratingKey: '100', type: 'movie', title: 'Dune: Part Two', duration: 9960000 }],
+        } });
+        case '/video/:/transcode/universal/decision': return json({ MediaContainer: await decision(init) });
+        case '/:/timeline': return json({ MediaContainer: { size: 0 } });
+        case '/video/:/transcode/universal/stop': return new Response('', { status: 404 });
+        case '/video/:/transcode/universal/ping':
+        case '/library/parts/111':
+        case '/library/streams/1004':
+        case '/:/scrobble': return new Response('', { status: 200 });
+        case '/photo/:/transcode': return new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+        case '/hubs/metadata/100/postplay': return json({ MediaContainer: { Hub: [{
+          hubIdentifier: 'tv.plex.hub.upnext', title: 'Up Next', Metadata: [{ ratingKey: '101', type: 'movie', title: 'Arrival', duration: 6960000, viewOffset: 0 }],
+        }] } });
+        // As real Plex does, the library's UUID sits on the container; reading it only from the item turns every start into not_found.
+        default: return items[url.pathname] === undefined ? new Response('', { status: 404 }) : json({ MediaContainer: { librarySectionUUID: 'section-uuid-1', Metadata: [items[url.pathname]] } });
+      }
+    };
+    const routes = createPlaybackRoutes(createPlayback({ plexPlayback: createPlexPlayback(database, { fetch, now }), enabled: () => true }));
+    const decisions = () => requests.filter((url) => url.pathname === '/video/:/transcode/universal/decision');
+    return { routes, decisions, requests, hang: () => { hung = true; } };
+  };
+  const ids = { clientId: 'desktop-client-0001', sessionIdentifier: 'player-session-0001' };
+  const start = async (routes, extra = {}, { desktop = false } = {}) => {
+    const response = await routes.request('/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(desktop ? { 'X-Media-Manager-Desktop': '1' } : {}) },
+      body: JSON.stringify({
+        ratingKey: '100', mediaIndex: 0, partIndex: 0, offsetSeconds: 0, directPlay: true, directStream: true, directStreamAudio: true, ...ids, ...extra,
+      }),
+    });
+    const text = await response.text();
+    return { status: response.status, text, body: JSON.parse(text) };
+  };
+
+  // Changing the decision's client profile or protocol, or putting the relay connection before the direct one, turns this red.
+  await t.test('the decision names the Plex Desktop profile and http, and the direct connection comes before the relay', async () => {
+    const { routes, decisions } = connect();
+    const { status, body } = await start(routes, {}, { desktop: true });
+    assert.equal(status, 200);
+    const [decision] = decisions();
+    assert.equal(decision.searchParams.get('X-Plex-Client-Profile-Name'), 'Plex Desktop');
+    assert.equal(decision.searchParams.get('protocol'), 'http');
+    assert.equal(body.streamAddresses.length, 2);
+    assert.ok(body.streamAddresses[0].startsWith(`${direct}/library/parts/111/1700000000/file.mkv?`));
+    assert.ok(body.streamAddresses[1].startsWith(`${relay}/library/parts/111/1700000000/file.mkv?`));
+    // Dropping these turns this red: the desktop app would test the relay alongside the direct address, and fetch the whole library for the id.
+    assert.equal(body.directAddressCount, 1);
+    assert.equal(body.machineIdentifier, 'plex-machine-1');
+  });
+
+  // Asking plex.tv or the server's identity on every call, putting a token in the connections reply, waiting for plex.tv or the
+  // identity once a kept answer exists, or never refreshing a kept answer older than 5 minutes turns this red.
+  await t.test('the connections route gives the addresses without a token, and plex.tv and the server identity are asked once for both calls', async () => {
+    let clock = 1_000_000;
+    const { routes, requests, hang } = connect({ now: () => clock });
+    const response = await routes.request(`/connections?clientId=${ids.clientId}`);
+    const text = await response.text();
+    assert.equal(response.status, 200);
+    assert.deepEqual(JSON.parse(text), { machineIdentifier: 'plex-machine-1', origins: [direct, relay], directCount: 1 });
+    assert.ok(!text.includes(ownerToken) && !text.includes('transient-'));
+    assert.equal((await start(routes, {}, { desktop: true })).status, 200);
+    const asked = () => [requests.filter((url) => url.host === 'plex.tv').length, requests.filter((url) => url.pathname === '/').length];
+    assert.deepEqual(asked(), [1, 1]);
+    assert.equal((await routes.request('/connections?clientId=bad')).status, 400);
+    clock += 5 * 60_000 + 1;
+    hang();
+    assert.equal((await start(routes, {}, { desktop: true })).status, 200);
+    assert.deepEqual(asked(), [2, 2]);
+  });
+
+  // Removing the 2 s decision timeout, or failing the start when the decision never answers, turns this red.
+  await t.test('a decision that never answers still gives a direct-play address', { timeout: 10_000 }, async () => {
+    const { routes } = connect({ decision: (init) => new Promise((resolve, reject) => {
+      // AbortSignal.timeout's timer does not keep Node running, so with nothing else pending the run would end first.
+      const hold = setTimeout(() => {}, 10_000);
+      init.signal.addEventListener('abort', () => { clearTimeout(hold); reject(init.signal.reason); });
+    }) });
+    const started = performance.now();
+    const { status, body } = await start(routes, {}, { desktop: true });
+    assert.ok(performance.now() - started < 5_000); // real-time-ok: the 2 s decision timeout is the behaviour under test
+    assert.equal(status, 200);
+    assert.equal(body.decision.directPlay, true);
+    assert.ok(body.streamAddresses[0].startsWith(`${direct}/library/parts/111/`));
+  });
+
+  // Putting the owner token in a stream address or any reply in place of the transient token turns this red.
+  await t.test('no playback reply carries the owner token, and stream addresses carry the transient one', async () => {
+    const { routes } = connect();
+    const page = await start(routes);
+    const desktop = await start(routes, {}, { desktop: true });
+    assert.ok(desktop.body.streamAddresses.every((address) => address.includes('X-Plex-Token=transient-fixture-token')));
+    for (const { status, text } of [page, desktop]) {
+      assert.equal(status, 200);
+      assert.ok(!text.includes(ownerToken));
+    }
+    const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const timelineQuery = new URLSearchParams({ ratingKey: '100', state: 'playing', time: '1000', duration: '9960000', playbackTime: '1000', playQueueItemID: '51', ...ids });
+    const replies = {
+      timeline: [200, await routes.request(`/timeline?${timelineQuery}`)],
+      ping: [200, await routes.request(`/ping?session=${desktop.body.session}&clientId=${ids.clientId}`)],
+      stop: [204, await post('/stop', { session: desktop.body.session, clientId: ids.clientId })],
+      track: [204, await post('/track', { partId: 111, kind: 'audio', streamId: 1002, allParts: false, clientId: ids.clientId })],
+      subtitleOffset: [204, await post('/subtitle-offset', { streamKey: '/library/streams/1004', offsetMs: 500, clientId: ids.clientId })],
+      played: [204, await post('/played', { ratingKey: '100', played: true, clientId: ids.clientId })],
+      postplay: [200, await routes.request(`/postplay?ratingKey=100&clientId=${ids.clientId}`)],
+      preview: [200, await routes.request(`/preview?partId=111&ms=61400&width=320&height=180&clientId=${ids.clientId}`)],
+    };
+    for (const [name, [status, response]] of Object.entries(replies)) {
+      assert.equal(response.status, status, name);
+      assert.ok(!(await response.text()).includes(ownerToken), name);
+    }
+  });
+
+  // Dropping the file block or the subtitle offset from the start reply, or reading HDR from anything but DOVIPresent and colorTrc, turns this red.
+  await t.test('the start reply carries the file facts and each subtitle track\'s saved offset', async () => {
+    const { routes } = connect();
+    const file = async (ratingKey) => (await start(routes, { ratingKey })).body.file;
+    const base = { width: 3840, videoCodec: 'hevc', bitrateKbps: 8000 };
+    assert.deepEqual(await file('100'), { ...base, height: 1080, dynamicRange: 'sdr', dolbyVisionProfile: null });
+    assert.deepEqual(await file('300'), { ...base, height: 2160, dynamicRange: 'dolby_vision', dolbyVisionProfile: 8 });
+    assert.deepEqual(await file('400'), { ...base, height: 2160, dynamicRange: 'hdr10', dolbyVisionProfile: null });
+    assert.deepEqual(await file('500'), { ...base, height: 2160, dynamicRange: 'hlg', dolbyVisionProfile: null });
+    assert.deepEqual(await file('600'), { ...base, height: 2160, dynamicRange: 'sdr', dolbyVisionProfile: null });
+    const first = (await start(routes)).body;
+    assert.deepEqual(first.tracks.subtitle.map((track) => track.offsetMs), [null, 500]);
+  });
+
+  // Sending stream addresses or subtitle file addresses to the page without the desktop header turns this red.
+  await t.test('only the desktop header adds stream and subtitle addresses', async () => {
+    const { routes } = connect();
+    const page = (await start(routes)).body;
+    assert.ok(!Object.hasOwn(page, 'streamAddresses'));
+    assert.equal(page.tracks.subtitle.filter((track) => track.external).length, 1);
+    assert.ok(page.tracks.subtitle.every((track) => !Object.hasOwn(track, 'url')));
+    const desktop = (await start(routes, {}, { desktop: true })).body;
+    assert.equal(desktop.streamAddresses.length, 2);
+    assert.equal(desktop.tracks.subtitle.find((track) => track.external).url, `${direct}/library/streams/1004?X-Plex-Token=transient-fixture-token&encoding=utf-8`);
+  });
+
+  // Letting a quality step below the file's bitrate direct play, sending Original without the file's bitrate plus 10% or with
+  // direct play off, or offering steps taller than the file turns this red.
+  await t.test('a quality step below the file bitrate turns direct play off, Original sends the file bitrate plus 10%, and steps stop at the file height', async () => {
+    const { routes, decisions } = connect();
+    await start(routes, { maxVideoBitrate: 4000 });
+    const originalReply = (await start(routes, {}, { desktop: true })).body;
+    const [capped, original] = decisions();
+    assert.deepEqual([capped.searchParams.get('maxVideoBitrate'), capped.searchParams.get('directPlay')], ['4000', '0']);
+    assert.deepEqual([original.searchParams.get('maxVideoBitrate'), original.searchParams.get('directPlay')], ['8800', '1']);
+    assert.ok(originalReply.streamAddresses[0].startsWith(`${direct}/library/parts/111/1700000000/file.mkv?`));
+    assert.equal(originalReply.decision.maxVideoBitrate, null);
+    const steps = async (ratingKey) => (await start(routes, { ratingKey })).body.qualitySteps.map((step) => step.index);
+    assert.deepEqual(await steps('100'), [2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(await steps('200'), [2, 3, 4, 5, 6]);
+  });
+
+  // Dropping the retry with direct play off after Plex answers 1001, refusing on directPlayDecisionCode, reusing the first
+  // transcode session for the retry, or turning direct stream on for a retry the player sent with it off turns this red.
+  await t.test('a 1001 answer with a refused direct play is retried once with direct play off in a new session', async () => {
+    let calls = 0;
+    const { routes, decisions } = connect({ decision: () => ((calls += 1) === 1
+      ? { generalDecisionCode: 1001, directPlayDecisionCode: 3000 }
+      : { generalDecisionCode: 1000 }) });
+    const { status, body } = await start(routes, {}, { desktop: true });
+    assert.equal(status, 200);
+    const sent = decisions();
+    assert.equal(sent.length, 2);
+    assert.deepEqual([sent[0].searchParams.get('directPlay'), sent[1].searchParams.get('directPlay'), sent[1].searchParams.get('directStream')], ['1', '0', '1']);
+    assert.notEqual(sent[1].searchParams.get('session'), sent[0].searchParams.get('session'));
+    assert.equal(body.session, sent[1].searchParams.get('session'));
+    assert.ok(body.streamAddresses[0].startsWith(`${direct}/video/:/transcode/universal/start?`));
+    calls = 0;
+    await start(routes, { directStream: false });
+    assert.equal(decisions()[3].searchParams.get('directStream'), '0');
+  });
+
+  // Moving X-Plex-Session-Identifier out of the decision parameters, which the transcode start address reuses, turns this red.
+  await t.test('the player session identifier is in the decision query and the transcode start address', async () => {
+    const { routes, decisions } = connect();
+    const { body } = await start(routes, { maxVideoBitrate: 4000 }, { desktop: true });
+    const [decision] = decisions();
+    assert.equal(decision.searchParams.get('X-Plex-Session-Identifier'), ids.sessionIdentifier);
+    const address = new URL(body.streamAddresses[0]);
+    assert.equal(address.pathname, '/video/:/transcode/universal/start');
+    assert.equal(address.searchParams.get('X-Plex-Session-Identifier'), ids.sessionIdentifier);
+  });
+
+  // Picking the first version instead of the tallest, dropping mediaIndex from the reply, taking the page's stale
+  // offsetSeconds when resume is set, or keeping Plex's viewOffset in ms turns this red.
+  await t.test('a start without a version plays the tallest one, and resume starts from Plex\'s saved position', async () => {
+    const { routes, decisions } = connect();
+    const last = () => decisions().at(-1).searchParams;
+    const picked = await start(routes, { ratingKey: '800', mediaIndex: undefined }, { desktop: true });
+    assert.equal(picked.status, 200);
+    assert.deepEqual([picked.body.mediaIndex, picked.body.partId], [1, 812]);
+    assert.ok(picked.body.streamAddresses.every((address) => address.includes('/library/parts/812/')));
+    assert.equal(last().get('mediaIndex'), '1');
+    const asked = await start(routes, { ratingKey: '800', mediaIndex: 0 }, { desktop: true });
+    assert.equal(asked.body.mediaIndex, 0);
+    assert.ok(asked.body.streamAddresses.every((address) => address.includes('/library/parts/811/')));
+    assert.equal((await start(routes, { mediaIndex: 'x' })).status, 400);
+    const resumed = await start(routes, { ratingKey: '700', resume: true, offsetSeconds: 30 });
+    assert.equal(resumed.body.startPositionSeconds, 61);
+    assert.equal(last().get('offset'), '61');
+    assert.equal((await start(routes, { ratingKey: '100', resume: true, offsetSeconds: 30 })).body.startPositionSeconds, 0);
+    assert.equal((await start(routes, { resume: 'yes' })).status, 400);
+  });
+
+  // Dropping the Sec-Fetch-Site check on the timeline route turns this red.
+  await t.test('a cross-site timeline report is refused before it reaches Plex', async () => {
+    const { routes, requests } = connect();
+    const query = new URLSearchParams({ ratingKey: '100', state: 'playing', time: '1000', duration: '9960000', playbackTime: '1000', ...ids });
+    const crossSite = await routes.request(`/timeline?${query}`, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+    assert.equal(crossSite.status, 403);
+    assert.deepEqual(await crossSite.json(), { error: 'forbidden' });
+    assert.equal(requests.length, 0);
+    assert.equal((await routes.request(`/timeline?${query}`, { headers: { 'Sec-Fetch-Site': 'same-origin' } })).status, 200);
+    assert.deepEqual(requests.map((url) => url.pathname), ['/:/timeline']);
+  });
+
+  // Mounting the playback routes ahead of the sign-in check turns this red.
+  await t.test('the app serves the playback routes only to a signed-in session', async () => {
+    const playback = createPlayback({ plexPlayback: createPlexPlayback(database), enabled: () => true });
+    const { app } = await makeApp({ playback });
+    assert.equal((await app.request('/api/playback/ping')).status, 401);
+  });
+});
+
 test('a title page gets top cast, keywords and similar titles from TMDB, saved for seven days', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting, deleteSetting } = await import(settingsModuleUrl);
@@ -3632,6 +4357,16 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     await settle(() => store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails') !== undefined);
     assert.equal(store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails'), undefined);
     assert.equal(await titles.backdropPath('movie', 88888), null);
+  });
+
+  // Dropping the ids, reading TV keywords from the movie field, or answering a TMDB failure with anything but null turns this red.
+  await t.test('chips gives genres and keywords with their ids, and null when TMDB fails', async () => {
+    respond = json({ id: 61, title: 'Film', genres: [{ id: 28, name: 'Action' }], keywords: { keywords: [{ id: 9715, name: 'superhero' }] } });
+    assert.deepEqual(await titles.chips('movie', 61), { genres: [{ id: 28, name: 'Action' }], keywords: [{ id: 9715, name: 'superhero' }] });
+    respond = json({ id: 62, name: 'Show', external_ids: { tvdb_id: 62062 }, genres: [{ id: 10765, name: 'Sci-Fi & Fantasy' }], keywords: { results: [{ id: 818, name: 'based on novel' }] } });
+    assert.deepEqual(await titles.chips('tv', 62), { genres: [{ id: 10765, name: 'Sci-Fi & Fantasy' }], keywords: [{ id: 818, name: 'based on novel' }] });
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.equal(await titles.chips('movie', 63), null);
   });
 
   // Throwing or dropping a section when TMDB omits keywords, credits or recommendations turns this red.
@@ -4926,7 +5661,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     const events = createEventHub();
     const published = [];
     events.subscribe((event) => published.push(event));
-    const fake = { rows: [], fail: undefined, calls: [] };
+    const fake = { rows: [], fail: undefined, calls: [], viewers: true };
     const rtorrent = {
       call: async (method, params) => {
         fake.calls.push([method, params]);
@@ -4938,7 +5673,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
         return fake.rows;
       },
     };
-    const poller = createTorrentPoller({ database, rtorrent, events, now: () => clock.value, intervalMs: 30_000 });
+    const poller = createTorrentPoller({ database, rtorrent, events, now: () => clock.value, intervalMs: 30_000, hasViewers: () => fake.viewers });
     return { database, clock, published, fake, poller };
   };
 
@@ -5050,7 +5785,7 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
   });
 
   // Publishing unchanged rows, adding a torrent the full poll has not stored, moving lastSeenAt, crediting seeding time
-  // from the one-second refresh, or calling rTorrent while it is marked down turns this red.
+  // from the one-second refresh, calling rTorrent while it is marked down, or calling rTorrent while no event stream is open turns this red.
   await t.test('the one-second refresh updates and publishes only changed live values and leaves the seeding counter to the full poll', async () => {
     const { database, clock, published, fake, poller } = setup();
     // Live field order: the full row without name, size and directory.
@@ -5082,6 +5817,15 @@ test('rTorrent poll keeps a live torrent table and a seeding counter', async (t)
     fake.rows = [row(hashA, { up: 70 }), row(hashB, { complete: 0, completed: 400, down: 99 })];
     await poller.poll();
     assert.equal(listTorrents(database).find((torrent) => torrent.hash === hashA.toUpperCase()).seedingSeconds, 30);
+
+    // While no event stream is open, the refresh neither calls rTorrent nor publishes.
+    fake.viewers = false;
+    const idleCalls = fake.calls.length;
+    const idlePublished = published.length;
+    await poller.pollLive();
+    assert.equal(fake.calls.length, idleCalls);
+    assert.equal(published.length, idlePublished);
+    fake.viewers = true;
 
     // While the full poll has rTorrent marked down, the refresh does not call it.
     fake.fail = 'unreachable';
@@ -5326,7 +6070,8 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     database.close();
   });
 
-  // Serving the webhook without a configured secret, accepting a wrong password, or putting it behind the owner sign-in turns this red.
+  // Serving the webhook without a configured secret, accepting a wrong password or a wrong secret in Plex's address, or putting it
+  // behind the owner sign-in turns this red.
   await t.test('the webhook endpoint needs the saved secret and no sign-in', async () => {
     const received = [];
     const authorization = (password) => `Basic ${Buffer.from(`sonarr:${password}`).toString('base64')}`;
@@ -5347,6 +6092,23 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     assert.equal(received.length, 0);
     assert.equal((await post(app, '/webhooks/radarr', { Authorization: authorization(secret) })).status, 204);
     assert.deepEqual(received, [['radarr', { eventType: 'Test' }]]);
+    // Plex sends no password: the address ends in a code made from the secret, never the secret itself, which would sign
+    // Sonarr and Radarr events for whoever reads the address on plex.tv. The event is JSON in the form field `payload`.
+    const { createHmac } = await import('node:crypto');
+    const code = createHmac('sha256', secret).update('plex').digest('hex');
+    const plexForm = (payload) => {
+      const form = new FormData();
+      form.set('payload', payload);
+      return form;
+    };
+    const plexPost = (path, form) => app.request(path, { method: 'POST', body: form });
+    assert.equal((await plexPost('/webhooks/plex/wrong', plexForm('{"event":"media.stop"}'))).status, 401);
+    assert.equal((await plexPost(`/webhooks/plex/${secret}`, plexForm('{"event":"media.stop"}'))).status, 401);
+    assert.equal((await plexPost(`/webhooks/plex/${code}`, plexForm('not json'))).status, 400);
+    assert.equal((await plexPost(`/webhooks/plex/${code}`, new FormData())).status, 400);
+    assert.equal(received.length, 1);
+    assert.equal((await plexPost(`/webhooks/plex/${code}`, plexForm('{"event":"media.stop"}'))).status, 204);
+    assert.deepEqual(received.at(-1), ['plex', { event: 'media.stop' }]);
   });
 });
 
@@ -10178,10 +10940,15 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     if (input.torrentHost !== undefined) {
       database.prepare("INSERT INTO torrents VALUES ('HASH1', 'Some.Movie', 100, 50, 0, 0, 1, 1, 1, 0, '', 0, 0, 0, 0, ?, 1, 1, NULL, 0, '')").run(input.torrentHost);
     }
+    const requests = [];
     const fake = (service) => ({
       configured: () => true,
       check: async () => input.statuses?.[service] ?? ok,
-      request: async (path) => ({ status: 200, body: { ...healthy, ...input.arr?.[service] }[path] }),
+      request: async (path) => {
+        requests.push(`${service} ${path}`);
+        if (input.fail?.[service]?.includes(path)) throw new Error(`${service} ${path} failed`);
+        return { status: 200, body: { ...healthy, ...input.arr?.[service] }[path] };
+      },
     });
     const notConfigured = [{ host: 'blutopia.cc', connection: { kind: 'not_configured' } }];
     const published = [];
@@ -10195,10 +10962,10 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
       jobs: { status: () => input.jobs ?? [] },
       trackerAccounts: { stats: async () => input.accounts ?? notConfigured },
       events: { publish: (type, data) => { published.push({ type, data }); } },
-      now: () => now,
+      now: () => input.clock?.value ?? now,
     });
     const snapshot = await health.check();
-    return { snapshot, badge: published.at(-1), health, database };
+    return { snapshot, badge: published.at(-1), health, database, requests };
   };
 
   // Dropping a check, ranking a lower level above a higher one, or rewriting a service's own message turns this red.
@@ -10325,15 +11092,79 @@ test('health merges service, tracker, disk, job and backup checks and ranks the 
     ]);
   });
 
-  // Leaving the health routes outside the sign-in guard, or not running the checks on demand, turns this red.
+  const slowPaths = new Set(['/api/v3/update', '/api/v3/downloadclient', '/api/v3/config/mediamanagement']);
+  const slowReadCount = (requests, service) => requests.filter((request) => {
+    const [name, path] = request.split(' ');
+    return slowPaths.has(path) && (service === undefined || name === service);
+  }).length;
+
+  // Re-reading the three before an hour, not re-reading them after an hour or after the service's address changes, dropping the last good values when a read fails, discarding a fresh read because another of the three failed, or ignoring a forced check turns this red.
+  await t.test('update, download client and media management settings are read hourly, on a forced check, and after the address changes, keeping the last good values when a read fails', async () => {
+    const { setSetting } = await import(settingsModuleUrl);
+    const minute = 60_000;
+    const clock = { value: now };
+    const input = { clock };
+    const { health, database, requests } = await run(input);
+    assert.equal(slowReadCount(requests), 6);
+    clock.value = now + 5 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 6);
+    clock.value = now + 60 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 12);
+
+    setSetting(database, 'serviceAddresses', 'sonarr.url', 'http://sonarr-two:8989');
+    clock.value = now + 65 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests), 15);
+    assert.equal(slowReadCount(requests, 'sonarr'), 9);
+
+    const removing = [{ name: 'rTorrent', enable: true, protocol: 'torrent', removeCompletedDownloads: true, removeFailedDownloads: true }];
+    input.arr = { radarr: { '/api/v3/downloadclient': removing } };
+    const forced = await health.check({ force: true });
+    assert.ok(forced.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+
+    input.fail = { radarr: ['/api/v3/downloadclient'] };
+    const radarrBefore = slowReadCount(requests, 'radarr');
+    clock.value = now + 125 * minute;
+    const failed = await health.check();
+    assert.ok(failed.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    assert.equal(slowReadCount(requests, 'radarr'), radarrBefore + 3);
+    clock.value = now + 130 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests, 'radarr'), radarrBefore + 6);
+
+    input.fail = undefined;
+    input.arr = undefined;
+    const recovered = await health.check();
+    assert.ok(!recovered.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    const beforeForce = slowReadCount(requests);
+    await health.check({ force: true });
+    assert.equal(slowReadCount(requests), beforeForce + 6);
+
+    // A failed update read keeps its last value without discarding the download client answer read alongside it.
+    input.fail = { radarr: ['/api/v3/update'] };
+    input.arr = { radarr: { '/api/v3/downloadclient': removing } };
+    clock.value = now + 190 * minute;
+    const partial = await health.check();
+    assert.ok(partial.problems.some((problem) => problem.id === 'setting:radarr:removeCompletedDownloads'));
+    const radarrPartial = slowReadCount(requests, 'radarr');
+    clock.value = now + 195 * minute;
+    await health.check();
+    assert.equal(slowReadCount(requests, 'radarr'), radarrPartial + 3);
+  });
+
+  // Leaving the health routes outside the sign-in guard, not running the checks on demand, or serving hour-old settings to a manual check, turns this red.
   await t.test('the health routes need the owner session and run the checks on demand', async () => {
-    const { health, database } = await run();
+    const { health, database, requests } = await run();
     const { app } = await makeApp({ api: createApiRoutes(database, { arr: {}, refresh: async () => {}, manualImport: {}, health }) });
     assert.equal((await app.request('/api/health')).status, 401);
     const { session } = await signIn(app);
+    const before = slowReadCount(requests);
     const response = await app.request('/api/health/check', { method: 'POST', headers: { ...jsonHeaders(), Cookie: session }, body: '{}' });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).checkedAt, now);
+    assert.equal(slowReadCount(requests), before + 6);
   });
 });
 
@@ -10825,7 +11656,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   const { fake, ...services } = connectArr(database);
   fake.sonarr.state.series = [seriesRecord({
     id: 3, title: 'Andor', monitored: true, qualityProfileId: 4, tags: [9],
-    images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://img/p.jpg' }],
+    images: [{ coverType: 'poster', remoteUrl: 'ftp://nope/p.jpg' }, { coverType: 'poster', remoteUrl: 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p.jpg' }],
     seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }],
     airTime: '21:00', firstAired: '2022-09-21T00:00:00Z', lastAired: '2025-05-13T00:00:00Z',
     nextAiring: '2026-11-01T01:00:00Z', previousAiring: '2025-05-13T01:00:00Z',
@@ -10836,6 +11667,7 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   fake.radarr.state.movies = [
     movieRecord({
       id: 5, title: 'Dune', originalTitle: 'Dune: Part Two', originalLanguage: { id: 1, name: 'English' },
+      images: [{ coverType: 'poster', remoteUrl: 'https://image.tmdb.org/t/p/original/dune.jpg' }],
       alternateTitles: [{ sourceType: 'tmdb', title: 'Dune 2' }, { sourceType: 'tmdb', title: 'Dune' }],
       ratings: {
         imdb: { votes: 600000, value: 8.5, type: 'user' }, tmdb: { votes: 7000, value: 8.2, type: 'user' },
@@ -10882,13 +11714,18 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
   });
 
   await t.test('series keeps the raw facts the title page marks from', async () => {
-    // Resolving the cutoff by quality id only, or dropping a raw field the markers read, turns this red.
+    // Resolving the cutoff by quality id only, or dropping a raw field the markers read, turns this red. Shrinking posterUrl itself, which the player's Up Next draws full size, or sending smallPosterUrl at the original size, turns this red.
     const result = await library.series(3);
     assert.equal(result.kind, 'ok');
     const detail = result.value;
     assert.deepEqual(detail.qualityProfile, { id: 4, name: 'HD', cutoff: 'Remux group' });
     assert.deepEqual(detail.tags, ['kids']);
-    assert.equal(detail.posterUrl, 'https://img/p.jpg');
+    assert.equal(detail.posterUrl, 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p.jpg');
+    assert.equal(detail.smallPosterUrl, 'https://artworks.thetvdb.com/banners/v4/series/3/posters/p_t.jpg');
+    const { titles } = await (await routes.request('/titles')).json();
+    const dune = titles.find((title) => title.service === 'radarr' && title.id === 5);
+    assert.equal(dune.posterUrl, 'https://image.tmdb.org/t/p/original/dune.jpg');
+    assert.equal(dune.smallPosterUrl, 'https://image.tmdb.org/t/p/w500/dune.jpg');
     assert.deepEqual(detail.episodes.map((episode) => episode.id), [31, 32]);
     const [first] = detail.episodes;
     assert.equal(first.finaleType, 'season');
@@ -11050,6 +11887,400 @@ test('library posters and title pages derive progress and totals from the live d
   });
 });
 
+test('library filters, watch marks and the card Play follow Plex watch status', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const { filterTitles, filterCounts, segmentsFor } = await load('../src/client/library/grid.ts');
+  const { watchMarks, continueMeta, playLabel, playMode, plexWebUrl, movieLoad, episodeLoad, cardMovieLoad, clockText } = await load('../src/client/library/watch.ts');
+
+  const show = (id, { files = 10, episodes = 10, watch = null } = {}) => ({ type: 'tv', service: 'sonarr', id, status: 'continuing', monitored: true,
+    tv: { episodeFileCount: files, episodeCount: episodes, totalEpisodeCount: episodes, seasonCount: 1 }, movie: null, watch });
+  const movie = (id, { hasFile = true, watch = null } = {}) => ({ type: 'movie', service: 'radarr', id, status: 'released', monitored: true,
+    tv: null, movie: { hasFile, isAvailable: true }, watch });
+  const shown = (watch) => ({ kind: 'show', ratingKey: 'S', leafCount: 10, viewedLeafCount: 0, lastViewedAt: null, ...watch });
+  const film = (watch) => ({ kind: 'movie', ratingKey: 'M', viewOffsetMs: null, durationMs: 7_200_000, viewCount: 0, lastViewedAt: null, ...watch });
+  const item = (service, id, rest = {}) => ({ service, id, viewOffsetMs: null, durationMs: null, lastViewedAt: null, episode: null, ...rest });
+  const titles = [
+    show(1, { watch: shown({ viewedLeafCount: 4 }) }),
+    show(2, { files: 7, watch: shown({ viewedLeafCount: 10 }) }),
+    show(3, { watch: shown({ viewedLeafCount: 10 }) }),
+    movie(4, { watch: film({ viewCount: 1 }) }),
+    movie(5, { watch: film({}) }),
+    movie(6, { hasFile: false }),
+  ];
+  const facts = {
+    progress: new Map([['movie:5', { word: 'downloading', tone: 'normal', percent: 40, downRate: 1 }]]),
+    downloadingByShow: new Map([[2, 1]]),
+    continueWatching: [item('radarr', 5), item('sonarr', 1), item('sonarr', 99)],
+  };
+  const ids = (list) => list.map((title) => title.id);
+
+  // Applying only one filter set, or making Continue Watching follow the library's order instead of Plex's, turns this red.
+  await t.test('the type tabs and the segments apply together, and Continue Watching keeps Plex\'s order', () => {
+    assert.deepEqual(ids(filterTitles(titles, 'all', 'continue', facts)), [5, 1]);
+    assert.deepEqual(ids(filterTitles(titles, 'tv', 'continue', facts)), [1]);
+    assert.deepEqual(ids(filterTitles(titles, 'all', 'unwatched', facts)), [1, 5]);
+    assert.deepEqual(ids(filterTitles(titles, 'movie', 'unwatched', facts)), [5]);
+    assert.deepEqual(ids(filterTitles(titles, 'all', 'missing', facts)), [2, 6]);
+    assert.deepEqual(ids(filterTitles(titles, 'all', 'downloading', facts)), [2, 5]);
+    assert.deepEqual(ids(filterTitles(titles, 'movie', 'all', facts)), [4, 5, 6]);
+  });
+
+  // Counting each set against the whole library, instead of the other set's choice, turns this red.
+  await t.test('each filter set counts within the other set\'s choice', () => {
+    assert.deepEqual(filterCounts(titles, 'tv', 'unwatched', facts), {
+      kinds: { all: 2, movie: 1, tv: 1 },
+      segments: { all: 3, continue: 1, unwatched: 1, missing: 1, downloading: 1 },
+    });
+  });
+
+  // Offering Continue Watching or Unwatched without Plex's answer turns this red.
+  await t.test('Continue Watching and Unwatched hide when Plex is off or not answering', () => {
+    assert.deepEqual(segmentsFor('ok'), ['all', 'continue', 'unwatched', 'missing', 'downloading']);
+    for (const kind of ['unavailable', 'off']) assert.deepEqual(segmentsFor(kind), ['all', 'missing', 'downloading']);
+  });
+
+  // A tick beside the watch bar, a tick on a partly watched show, or a mark with no Plex match turns this red.
+  await t.test('marks follow Plex: the bar when stopped partway, else a tick or the unwatched count', () => {
+    assert.deepEqual(watchMarks(film({ viewCount: 1 }), undefined), { watchMark: 'played' });
+    assert.deepEqual(watchMarks(film({ viewCount: 1, viewOffsetMs: 1_800_000 }), undefined), { watched: 25 });
+    assert.deepEqual(watchMarks(film({}), undefined), {});
+    assert.deepEqual(watchMarks(shown({ viewedLeafCount: 2 }), undefined), { watchMark: 8 });
+    assert.deepEqual(watchMarks(shown({ viewedLeafCount: 10 }), undefined), { watchMark: 'played' });
+    assert.deepEqual(watchMarks(shown({ viewedLeafCount: 2 }), item('sonarr', 1, { viewOffsetMs: 600_000, durationMs: 2_400_000 })), { watched: 25 });
+    assert.deepEqual(watchMarks(null, undefined), {});
+  });
+
+  // Changing the wording the design fixes ("S2 E4 · 31 min left", "Next: S3 E2 · 28 min", "1 h 15 min left") turns this red.
+  await t.test('the Continue Watching meta line and the button words', () => {
+    const resumed = item('sonarr', 1, { viewOffsetMs: 21 * 60_000, durationMs: 52 * 60_000, episode: { seasonNumber: 2, episodeNumber: 4, title: null } });
+    const next = item('sonarr', 1, { durationMs: 28 * 60_000, episode: { seasonNumber: 3, episodeNumber: 2, title: null } });
+    const film75 = item('radarr', 5, { viewOffsetMs: 30 * 60_000, durationMs: 105 * 60_000 });
+    assert.equal(continueMeta(resumed), 'S2 E4 · 31 min left');
+    assert.equal(continueMeta(next), 'Next: S3 E2 · 28 min');
+    assert.equal(continueMeta(film75), '1 h 15 min left');
+    assert.equal(continueMeta(item('radarr', 5, { durationMs: 120 * 60_000 })), '2 h');
+    assert.equal(playLabel(shown({}), resumed), 'Resume');
+    assert.equal(playLabel(shown({}), next), 'Play S3 E2');
+    assert.equal(playLabel(film({}), undefined), 'Play');
+    assert.equal(playLabel(film({ viewOffsetMs: 60_000 }), undefined), 'Resume');
+    assert.equal(clockText(21 * 60_000), '21:00');
+    assert.equal(clockText(3_909_000), '1:05:09');
+  });
+
+  // A Play on Jellyfin or for an unmatched title, the in-app player in a plain browser, or a wrong Plex address turns this red.
+  await t.test('which Play a card shows, and the Plex Web address', () => {
+    const plex = { mediaServer: 'plex', libraryWatch: 'ok', watch: film({}) };
+    assert.equal(playMode({ ...plex, desktop: true }), 'desktop');
+    assert.equal(playMode({ ...plex, desktop: false }), 'plex-web');
+    assert.equal(playMode({ ...plex, desktop: true, mediaServer: 'jellyfin' }), 'none');
+    assert.equal(playMode({ ...plex, desktop: false, libraryWatch: 'unavailable' }), 'none');
+    assert.equal(playMode({ ...plex, desktop: true, watch: null }), 'none');
+    assert.equal(plexWebUrl('abc123', '4521'), 'https://app.plex.tv/desktop/#!/server/abc123/details?key=%2Flibrary%2Fmetadata%2F4521');
+  });
+
+  // Loading a show's first episode instead of the asked or next one, or resuming from a start click, turns this red.
+  await t.test('the desktop load picks the asked episode, then Plex\'s next, then the earliest', () => {
+    const playable = (ratingKey, viewOffsetMs = null) => ({ ratingKey, mediaIndex: 1, partId: 9, versions: [], viewOffsetMs, durationMs: 1, viewCount: 0, lastViewedAt: null });
+    const episodes = [{ id: 10, seasonNumber: 0, episodeNumber: 1 }, { id: 11, seasonNumber: 1, episodeNumber: 1 }, { id: 12, seasonNumber: 1, episodeNumber: 2 }];
+    const watch = { kind: 'ok', machineIdentifier: 'm', ratingKey: 'S', leafCount: 3, viewedLeafCount: 0, nextEpisode: null,
+      episodes: { 10: playable('e10'), 11: playable('e11'), 12: playable('e12', 90_500) } };
+    const flags = { directPlay: true, directStream: true, directStreamAudio: true };
+    assert.deepEqual(episodeLoad({ episodes, watch }, { seasonNumber: 1, episodeNumber: 2 }, 'resume'),
+      { ratingKey: 'e12', mediaIndex: 1, partIndex: 0, offsetSeconds: 90, flags, resume: true });
+    assert.equal(episodeLoad({ episodes, watch }, { seasonNumber: 1, episodeNumber: 2 }, 'start').offsetSeconds, 0);
+    assert.equal(episodeLoad({ episodes, watch: { ...watch, nextEpisode: { seasonNumber: 1, episodeNumber: 2 } } }, null, 'start').ratingKey, 'e12');
+    assert.equal(episodeLoad({ episodes, watch }, null, 'start').ratingKey, 'e11');
+    assert.equal(episodeLoad({ episodes, watch }, { seasonNumber: 4, episodeNumber: 1 }, 'start'), null);
+    assert.equal(episodeLoad({ episodes, watch: { kind: 'unavailable' } }, null, 'start'), null);
+    assert.deepEqual(movieLoad({ kind: 'ok', machineIdentifier: 'm', ...playable('m1', 61_000) }, 'resume'),
+      { ratingKey: 'm1', mediaIndex: 1, partIndex: 0, offsetSeconds: 61, flags, resume: true });
+    assert.equal(movieLoad(null, 'start'), null);
+    // Sending a mediaIndex from a card (the card never knows the version), preferring the title's saved position over the
+    // Continue Watching item's, or dropping resume turns these rows red.
+    const cardWatch = film({ viewOffsetMs: 61_000 });
+    const card = cardMovieLoad(cardWatch, undefined, 'resume');
+    assert.deepEqual(card, { ratingKey: 'M', partIndex: 0, offsetSeconds: 61, flags, resume: true });
+    assert.ok(!('mediaIndex' in card));
+    assert.equal(cardMovieLoad(cardWatch, item('radarr', 5, { viewOffsetMs: 30_000 }), 'resume').offsetSeconds, 30);
+    const fromStart = cardMovieLoad(cardWatch, undefined, 'start');
+    assert.equal(fromStart.offsetSeconds, 0);
+    assert.ok(!('resume' in fromStart));
+    assert.equal(cardMovieLoad(shown({}), undefined, 'resume'), null);
+    assert.equal(cardMovieLoad(null, undefined, 'resume'), null);
+  });
+
+  // Ignoring the version picked on the title page, or dropping Plex's default when none is picked, turns this red.
+  await t.test('a picked version replaces Plex\'s default version in the load', () => {
+    const watch = { kind: 'ok', machineIdentifier: 'm', ratingKey: 'm1', mediaIndex: 0, partId: 9, versions: [], viewOffsetMs: null, durationMs: 1, viewCount: 0, lastViewedAt: null };
+    assert.equal(movieLoad(watch, 'start', 1).mediaIndex, 1);
+    assert.equal(movieLoad(watch, 'start').mediaIndex, 0);
+    const episodes = [{ id: 11, seasonNumber: 1, episodeNumber: 1 }];
+    const series = { kind: 'ok', machineIdentifier: 'm', ratingKey: 'S', leafCount: 1, viewedLeafCount: 0, nextEpisode: null, episodes: { 11: { ...watch, ratingKey: 'e11' } } };
+    assert.equal(episodeLoad({ episodes, watch: series }, null, 'start', 1).mediaIndex, 1);
+  });
+});
+
+test('the in-app player seeks, reports to Plex and picks what plays next by Plex\'s rules', async (t) => {
+  // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
+  const {
+    clampSeek, openingAt, applyEvent, screenFor, timelineState, reportNow, reportsPeriodically, timelineQuery, upNextChoice, nextEpisode,
+    activeMarker, LOAD_AHEAD, loadAheadChoice, qualityLabel, flagsFor, clampVolume, volumeKey, hasSoundCommands, wheelStep,
+    SUBTITLE_SIZES, subtitleScaleOf, subtitleSizeState, hasSubtitleScale, formatLine, originalLabel, isPlayAddress, onlyPlayerMoves,
+    OPENING_REQUEST, openOutcome, retryStep, reloadAt, retryRequest, desktopPicksVersion,
+  } = await load('../src/client/player/model.ts');
+  const run = (events, start = openingAt(0)) => events.reduce((state, [type, value]) => applyEvent(state, { type, value }), start);
+
+  // Treating every move out of /play as player-only turns this red: Up Next closing to the Library would keep the title
+  // page's scroll. Treating a move into /play as a screen change brings back the held frame over mpv's resized picture.
+  await t.test('only moves into /play, or back to the page under the player, skip the screen change', () => {
+    assert.equal(isPlayAddress('/play/34613'), true);
+    assert.equal(isPlayAddress('/player'), false);
+    assert.equal(onlyPlayerMoves('/movie/95', '/play/34613', '/movie/95'), true);
+    assert.equal(onlyPlayerMoves('/play/34613', '/play/40000', '/movie/95'), true);
+    assert.equal(onlyPlayerMoves('/play/34613', '/movie/95', '/movie/95'), true);
+    assert.equal(onlyPlayerMoves('/play/34613', '/search?q=lobster', '/search?q=lobster'), true);
+    assert.equal(onlyPlayerMoves('/play/34613', '/', '/movie/95'), false);
+    assert.equal(onlyPlayerMoves('/movie/95', '/', '/movie/95'), false);
+  });
+
+  // Playing a Play that a newer Play or a close replaced turns the first row red: two titles would load at once. Retrying
+  // the stand-in request turns the last rows red: the desktop app refuses its empty ratingKey on every Retry.
+  await t.test('a Play opened before it knows what it plays drops, fails, closes or plays, and Retry asks again', () => {
+    const found = { request: { ratingKey: '7' }, backdropUrl: null };
+    assert.equal(openOutcome({ current: 3, load: 2, failed: false, found }), 'drop');
+    assert.equal(openOutcome({ current: 3, load: 2, failed: true, found: null }), 'drop');
+    assert.equal(openOutcome({ current: 2, load: 2, failed: true, found: null }), 'fail');
+    assert.equal(openOutcome({ current: 2, load: 2, failed: false, found: null }), 'close');
+    assert.equal(openOutcome({ current: 2, load: 2, failed: false, found }), 'play');
+    assert.equal(retryStep(OPENING_REQUEST), 'reopen');
+    assert.equal(retryStep({ ...OPENING_REQUEST }), 'reload');
+    // Keeping resume on a reload sends the title back to Plex's saved position on every retry.
+    assert.equal(reloadAt({ ...OPENING_REQUEST, ratingKey: '7', resume: true }, 30, undefined).resume, undefined);
+    // Keeping openedAt on a reload makes that reload's timing line count from the original click.
+    assert.equal(reloadAt({ ...OPENING_REQUEST, ratingKey: '7', openedAt: 1 }, 30, undefined).openedAt, undefined);
+    // Retrying through reloadAt when the start never answered turns the first row red (Retry would drop resume and play from
+    // the page's stale guess), and keeping resume or openedAt on any other Retry turns the last two red.
+    const asked = { ratingKey: '7', partIndex: 0, offsetSeconds: 12, flags: flagsFor(4000), resume: true, openedAt: 1 };
+    const { resume: _resume, ...unresumed } = asked;
+    const fresh = { ratingKey: '7', partIndex: 0, flags: flagsFor(undefined) };
+    const retries = [
+      [asked, false, { ...fresh, offsetSeconds: 12, resume: true }],
+      [asked, true, { ...fresh, offsetSeconds: 30 }],
+      [unresumed, false, { ...fresh, offsetSeconds: 30 }],
+    ];
+    for (const [request, replied, expected] of retries) {
+      assert.deepEqual(retryRequest(request, replied, 30, undefined), expected, JSON.stringify([request.resume, replied]));
+    }
+  });
+
+  // Letting a seek pass 5 s before the end, or go below zero, turns this red.
+  await t.test('seeks stop 5 s before the end and never go below zero', () => {
+    assert.equal(clampSeek(3600, 3600), 3595);
+    assert.equal(clampSeek(-10, 3600), 0);
+    assert.equal(clampSeek(1200, 3600), 1200);
+    assert.equal(clampSeek(500, 0), 500);
+  });
+
+  // Leaving the opening state before the first position, hiding the error behind buffering, or reading every stall as Plex being down turns this red.
+  await t.test('the bridge\'s events choose the state on screen', () => {
+    assert.equal(screenFor(run([['paused', false], ['duration', 3600]]), false), 'opening');
+    const playing = run([['duration', 3600], ['position', 12]]);
+    assert.equal(screenFor(playing, false), 'playing');
+    assert.equal(screenFor(run([['buffering', true]], playing), false), 'buffering');
+    assert.equal(screenFor(run([['buffering', true]], playing), true), 'unreachable');
+    assert.equal(screenFor(run([['started', {}]], playing), false), 'buffering');
+    assert.equal(screenFor(run([['started', {}], ['position', 13]], playing), false), 'playing');
+    assert.equal(screenFor(run([['buffering', true], ['error', { message: 'x', tried: ['Direct play'] }]], playing), true), 'error');
+    assert.equal(screenFor(run([['endOfFile', undefined], ['position', 3599]], playing), false), 'up-next');
+  });
+
+  // Reporting during opening, missing the first-position, pause, buffering, error or duration report, or reporting periodically after a stop turns this red.
+  await t.test('timeline reports go out at once on each change and every 10 s while playing', () => {
+    const opening = openingAt(0);
+    const playing = run([['duration', 3600], ['position', 1]]);
+    assert.equal(timelineState(opening), null);
+    assert.equal(reportNow(opening, run([['duration', 3600]])), false);
+    assert.equal(reportNow(opening, playing), true);
+    assert.equal(reportNow(playing, run([['position', 11]], playing)), false);
+    assert.equal(reportNow(playing, run([['paused', true]], playing)), true);
+    assert.equal(timelineState(run([['paused', true]], playing)), 'paused');
+    assert.equal(reportNow(playing, run([['buffering', true]], playing)), true);
+    assert.equal(timelineState(run([['buffering', true]], playing)), 'buffering');
+    assert.equal(reportNow(playing, run([['duration', 3700]], playing)), true);
+    const failed = run([['error', { message: 'x', tried: [] }]], playing);
+    assert.equal(reportNow(playing, failed), true);
+    assert.equal(timelineState(failed), 'stopped');
+    assert.equal(reportsPeriodically(run([['paused', true]], playing)), true);
+    assert.equal(reportsPeriodically(failed), false);
+    assert.equal(reportsPeriodically(run([['endOfFile', undefined]], playing)), false);
+    assert.deepEqual(timelineQuery({ ratingKey: '7', state: 'stopped', position: 61.4, duration: 3600, playedMs: 59_900.6, playQueueItemID: 3, continuing: true, clientId: 'c', sessionIdentifier: 's' }),
+      { ratingKey: '7', state: 'stopped', time: '61400', duration: '3600000', playbackTime: '59901', playQueueItemID: '3', continuing: '1', clientId: 'c', sessionIdentifier: 's' });
+  });
+
+  // Counting down after a short video, skipping a next episode still on its way, or preferring Continue Watching over the next episode turns this red.
+  await t.test('Up Next counts down to the next episode, waits for one on its way, then falls back to Continue Watching', () => {
+    assert.deepEqual(upNextChoice({ next: 'e2', nextOnItsWay: false, continueWatching: 'cw', durationSeconds: 3000 }), { kind: 'countdown', item: 'e2', seconds: 10 });
+    assert.deepEqual(upNextChoice({ next: 'e2', nextOnItsWay: false, continueWatching: null, durationSeconds: 120 }), { kind: 'play', item: 'e2' });
+    assert.deepEqual(upNextChoice({ next: null, nextOnItsWay: true, continueWatching: 'cw', durationSeconds: 3000 }), { kind: 'waiting' });
+    assert.deepEqual(upNextChoice({ next: null, nextOnItsWay: false, continueWatching: 'cw', durationSeconds: 3000 }), { kind: 'countdown', item: 'cw', seconds: 10 });
+    assert.deepEqual(upNextChoice({ next: null, nextOnItsWay: false, continueWatching: null, durationSeconds: 3000 }), { kind: 'none' });
+    const episodes = [{ seasonNumber: 0, episodeNumber: 1 }, { seasonNumber: 1, episodeNumber: 2 }, { seasonNumber: 2, episodeNumber: 1 }, { seasonNumber: 1, episodeNumber: 3 }];
+    assert.deepEqual(nextEpisode(episodes, { seasonNumber: 1, episodeNumber: 2 }), { seasonNumber: 1, episodeNumber: 3 });
+    assert.deepEqual(nextEpisode(episodes, { seasonNumber: 1, episodeNumber: 3 }), { seasonNumber: 2, episodeNumber: 1 });
+    assert.equal(nextEpisode(episodes, { seasonNumber: 2, episodeNumber: 1 }), null);
+  });
+
+  // Showing Skip outside its marker, or jumping to the marker's end unrounded, turns this red.
+  await t.test('Skip shows only inside an intro or credits marker and lands on its end', () => {
+    const markers = [{ type: 'commercial', startTimeOffset: 0, endTimeOffset: 9000 }, { type: 'intro', startTimeOffset: 5000, endTimeOffset: 65_600 }];
+    assert.deepEqual(activeMarker(markers, 30), { kind: 'intro', key: 'intro:5000:65600', endSeconds: 66 });
+    assert.equal(activeMarker(markers, 65.6), null);
+    assert.equal(activeMarker(markers, 4), null);
+  });
+
+  // Taking Left or Right for volume (they seek), a step other than 5 %, or a volume outside 0 to 100 turns this red.
+  await t.test('Up and Down change the volume 5 %, M mutes, and the volume stays within 0 to 100', () => {
+    assert.deepEqual(['ArrowUp', 'ArrowDown', 'm', 'M', 'ArrowLeft', 'ArrowRight', ' '].map(volumeKey),
+      [{ kind: 'step', by: 5 }, { kind: 'step', by: -5 }, { kind: 'mute' }, { kind: 'mute' }, null, null, null]);
+    assert.deepEqual([102, -4, 47.4].map(clampVolume), [100, 0, 47]);
+  });
+
+  // Checking one command, or neither, turns a row red: on a desktop build older than the page, Volume, Up, Down and M would throw.
+  await t.test('volume and mute work only when the desktop app has both commands', () => {
+    const command = async () => {};
+    const bridges = [[{ setVolume: command, setMuted: command }, true], [{ setVolume: command }, false], [{ setMuted: command }, false], [{}, false], [undefined, false]];
+    for (const [bridge, takes] of bridges) assert.equal(hasSoundCommands(bridge), takes, JSON.stringify(Object.keys(bridge ?? {})));
+  });
+
+  // Treating a missing or non-true `picksVersion` as taking a load with no version turns the last three rows red: a desktop
+  // build older than the page refuses one, so every movie card's Play would fail there.
+  await t.test('a movie card leaves the version to the server only on a desktop build that says it takes that', () => {
+    assert.deepEqual([{ picksVersion: true }, { picksVersion: 'yes' }, {}, undefined].map(desktopPicksVersion), [true, false, false, false]);
+  });
+
+  // Reversing the direction, a step other than 5 %, or dropping the 100 ms gap turns its row red: the last would carry a trackpad swipe to 0 or 100.
+  await t.test('the wheel moves the volume 5 % a step, up louder, at most one step per 100 ms', () => {
+    const rows = [[-120, 1000, 0, 5], [3, 1000, 0, -5], [0, 1000, 0, 0], [-4, 1050, 1000, 0], [-4, 1100, 1000, 5]];
+    for (const [deltaY, now, last, by] of rows) assert.equal(wheelStep(deltaY, now, last), by, JSON.stringify([deltaY, now, last]));
+  });
+
+  // Changing a label or scale turns the first assertion red (they match Plex's desktop app); a saved value outside the list reaching the row turns the second red.
+  await t.test('subtitle text sizes are Plex\'s five, and anything else reads as Normal', () => {
+    assert.deepEqual(SUBTITLE_SIZES.map((size) => `${size.label} ${size.scale}`), ['Tiny 0.5', 'Small 0.75', 'Normal 1', 'Large 1.25', 'Huge 2']);
+    assert.deepEqual([0.75, 2, 1.5, '1.25', undefined].map(subtitleScaleOf), [0.75, 2, 1, 1, 1]);
+    const command = async () => {};
+    assert.deepEqual([{ setSubtitleScale: command }, {}, undefined].map(hasSubtitleScale), [true, false, false]);
+  });
+
+  // Dropping a picture codec turns its row red: the size row would offer sizes mpv's sub-scale cannot apply to that track.
+  await t.test('the size row is off with no subtitle and greyed for picture subtitles', () => {
+    const track = (codec) => ({ id: 1, index: 0, ffIndex: 1, codec, language: 'English', title: null, selected: true });
+    const rows = [[undefined, 'off'], [track('pgs'), 'picture'], [track('hdmv_pgs_subtitle'), 'picture'], [track('dvd_subtitle'), 'picture'],
+      [track('VOBSUB'), 'picture'], [track('dvb_subtitle'), 'picture'], [track('xsub'), 'picture'], [track('srt'), 'text'], [track('ass'), 'text'], [track(null), 'text']];
+    for (const [chosen, state] of rows) assert.equal(subtitleSizeState(chosen), state, chosen?.codec ?? 'none');
+  });
+
+  // Mapping the desktop app's 512 MiB default to anything but 2 min, losing the quality cap on a step, or labelling a step-down Original turns this red.
+  await t.test('Load ahead, quality flags and the Quality label', () => {
+    assert.equal(loadAheadChoice(512 * 1024 * 1024).label, '2 min');
+    assert.equal(loadAheadChoice(LOAD_AHEAD[4].bytes).label, '10 min');
+    assert.deepEqual(flagsFor(4000), { directPlay: false, directStream: true, directStreamAudio: true, maxVideoBitrate: 4000 });
+    assert.equal(flagsFor(undefined).directPlay, true);
+    const steps = [{ index: 6, kbps: 4000, height: 720 }];
+    assert.equal(qualityLabel({ directPlay: true, directStream: true, directStreamAudio: true, maxVideoBitrate: null }, steps), 'Original');
+    assert.equal(qualityLabel({ directPlay: false, directStream: false, directStreamAudio: true, maxVideoBitrate: null }, steps), 'Converted');
+    assert.equal(qualityLabel({ directPlay: false, directStream: true, directStreamAudio: true, maxVideoBitrate: 4000 }, steps), '720p');
+  });
+
+  // Changing the dynamic-range words, dropping the profile, or mis-rounding the Original row's bitrate turns this red.
+  await t.test('the format line names HDR and Dolby Vision, and the Original row the file', () => {
+    const file = (rest) => ({ width: 3840, height: 2160, videoCodec: 'hevc', bitrateKbps: 57_600, dynamicRange: 'sdr', dolbyVisionProfile: null, ...rest });
+    const lines = [
+      [{ dynamicRange: 'dolby_vision', dolbyVisionProfile: 8 }, 'Dolby Vision profile 8, colours adjusted for this screen'],
+      [{ dynamicRange: 'dolby_vision' }, 'Dolby Vision, colours adjusted for this screen'],
+      [{ dynamicRange: 'hdr10' }, 'HDR10, colours adjusted for this screen'],
+      [{ dynamicRange: 'hlg' }, 'HLG, colours adjusted for this screen'],
+      [{}, undefined],
+      [{ dynamicRange: null }, undefined],
+    ];
+    for (const [rest, line] of lines) assert.equal(formatLine(file(rest)), line, JSON.stringify(rest));
+    const rows = [
+      [{}, 'Original · 2160p HEVC, 58 Mbps'],
+      [{ bitrateKbps: 800 }, 'Original · 2160p HEVC, 800 kbps'],
+      [{ videoCodec: null }, 'Original · 2160p, 58 Mbps'],
+      [{ height: null, videoCodec: null }, 'Original · 58 Mbps'],
+      [{ bitrateKbps: null }, 'Original · 2160p HEVC'],
+      [{ height: null, videoCodec: null, bitrateKbps: null }, 'Original'],
+    ];
+    for (const [rest, label] of rows) assert.equal(originalLabel(file(rest)), label, JSON.stringify(rest));
+  });
+});
+
+test('title page Play follows Plex watch status', async (t) => {
+  // playLine.ts imports library/watch.ts at run time, so that import is pointed at watch.ts loaded the same way.
+  const { stripTypeScriptTypes } = await import('node:module');
+  const source = async (path) => stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8'));
+  const asUrl = (code) => `data:text/javascript,${encodeURIComponent(code)}`;
+  const watchUrl = asUrl(await source('../src/client/library/watch.ts'));
+  const { titlePlayMode, nextEpisode, rowSecondLine, seriesPlayLine, moviePlayLine, defaultQuality } = await import(
+    asUrl((await source('../src/client/title/playLine.ts')).replace("'../library/watch'", JSON.stringify(watchUrl))));
+
+  const min = 60_000;
+  const playable = (rest = {}) => ({ ratingKey: 'k', mediaIndex: 0, partId: 1, versions: [{ mediaIndex: 0, partId: 1, file: '/media/a.mkv' }],
+    viewOffsetMs: null, durationMs: 52 * min, viewCount: 0, lastViewedAt: null, ...rest });
+  const episode = (id, seasonNumber, episodeNumber, rest = {}) => ({ id, seasonNumber, episodeNumber, title: `Episode ${id}`, hasFile: true, runtime: 50, ...rest });
+  const show = (episodes, rest = {}) => ({ kind: 'ok', machineIdentifier: 'm', ratingKey: 'S', leafCount: 3, viewedLeafCount: 0, nextEpisode: null, episodes, ...rest });
+
+  // Showing Play on Jellyfin, with Plex not answering, in a plain browser as the in-app player, or with nothing downloaded turns this red.
+  await t.test('which Play the page shows', () => {
+    const watch = show({ 1: playable() });
+    assert.equal(titlePlayMode('plex', true, watch, true), 'desktop');
+    assert.equal(titlePlayMode('plex', false, watch, true), 'plex-web');
+    assert.equal(titlePlayMode('jellyfin', true, watch, true), 'none');
+    assert.equal(titlePlayMode('plex', true, { kind: 'unavailable' }, true), 'none');
+    assert.equal(titlePlayMode('plex', true, null, true), 'none');
+    assert.equal(titlePlayMode('plex', true, watch, false), 'none');
+  });
+
+  // Picking an episode Plex does not have, one without a Sonarr file, or a special before season 1 turns this red.
+  await t.test('which episode is next', () => {
+    const episodes = [episode(10, 0, 1), episode(11, 1, 1), episode(12, 1, 2), episode(13, 1, 3, { hasFile: false })];
+    const watch = show({ 10: playable(), 11: playable(), 12: playable(), 13: playable() });
+    assert.equal(nextEpisode(episodes, { ...watch, nextEpisode: { seasonNumber: 1, episodeNumber: 2 } })?.id, 12);
+    assert.equal(nextEpisode(episodes, watch)?.id, 11);
+    assert.equal(nextEpisode(episodes, { ...watch, nextEpisode: { seasonNumber: 1, episodeNumber: 3 } }), undefined);
+    assert.equal(nextEpisode(episodes, { kind: 'off' }), undefined);
+  });
+
+  // Counting the time left from the start, dropping the Played word, or ignoring Sonarr's runtime when Plex has none turns this red.
+  await t.test('the episode row\'s second line', () => {
+    assert.equal(rowSecondLine(episode(1, 2, 4), playable({ viewOffsetMs: 21 * min })), '31 min left');
+    assert.equal(rowSecondLine(episode(1, 2, 4), playable({ viewCount: 1 })), 'Played');
+    assert.equal(rowSecondLine(episode(1, 2, 4), playable()), '52 min');
+    assert.equal(rowSecondLine(episode(1, 2, 4, { runtime: 51 }), undefined), '51 min');
+    assert.equal(rowSecondLine(episode(1, 2, 4, { runtime: null }), undefined), null);
+  });
+
+  // Changing the W3 wording of the header Play line, or offering resume without a saved position, turns this red.
+  await t.test('the header Play line wording', () => {
+    const hollow = episode(4, 2, 4, { title: 'Woe’s Hollow' });
+    assert.deepEqual(seriesPlayLine(hollow, playable({ viewOffsetMs: 21 * min })),
+      { label: 'Resume S2 E4', line1: 'Stopped at 21:00 · S2 E4 · Woe’s Hollow', line2: '31 min left of 52 min', resumeAtMs: 21 * min });
+    assert.deepEqual(seriesPlayLine(episode(5, 3, 5, { title: 'Attila' }), playable({ durationMs: 56 * min })),
+      { label: 'Play S3 E5', line1: 'S3 E5 · Attila', line2: '56 min', resumeAtMs: null });
+    const film = playable({ durationMs: 166 * min, versions: [{ mediaIndex: 0, partId: 1, file: '/media/Dune 2160p.mkv' }, { mediaIndex: 1, partId: 2, file: '/media/Dune 1080p.mkv' }] });
+    const quality = defaultQuality({ file: { relativePath: 'Dune 2160p.mkv', quality: '2160p WEB-DL' }, secondVersions: [{ state: 'imported', path: '/data/Dune 1080p.mkv', quality: '1080p WEB-DL' }] }, film);
+    assert.deepEqual(moviePlayLine(film, 166, quality),
+      { label: 'Play', line1: '2 h 46 min · plays 2160p WEB-DL', line2: 'Highest quality of 2 versions', resumeAtMs: null });
+    assert.deepEqual(moviePlayLine({ ...film, viewOffsetMs: 3_909_000 }, 166, quality),
+      { label: 'Resume', line1: 'Stopped at 1:05:09', line2: '1 h 41 min left of 2 h 46 min', resumeAtMs: 3_909_000 });
+  });
+});
+
 test('title pages mark episodes and select ranges of episodes only', async (t) => {
   // The client modules are bundled by Vite, not compiled to dist, so they are loaded from source with Node's type stripping.
   const { stripTypeScriptTypes } = await import('node:module');
@@ -11157,8 +12388,8 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
   const { stripTypeScriptTypes } = await import('node:module');
   const load = async (path) => import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await readFile(new URL(path, import.meta.url), 'utf8')))}`);
   const { countdown, dateTab, homeQuery, gridPath, readState, readGridState, titlePath, extraRowsView, visibleCards, filterTags,
-    readStoredState, writeStoredState, readRememberedState, clearSessionState, withoutFilters, readServices, writeServices } = await load('../src/client/discover/model.ts');
-  const empty = { genres: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
+    readStoredState, writeStoredState, readRememberedState, clearSessionState, withoutFilters, readServices, writeServices, chipState, homePath } = await load('../src/client/discover/model.ts');
+  const empty = { genres: [], keywords: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
   const fakeStorage = () => {
     const map = new Map();
     return { getItem: (key) => map.get(key) ?? null, setItem: (key, value) => { map.set(key, String(value)); }, removeItem: (key) => { map.delete(key); }, clear: () => map.clear() };
@@ -11184,9 +12415,9 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
   // Sending window or region to the server, or keeping an empty value, turns this red.
   await t.test('the home query uses the API names and drops empty values and the client-only window', () => {
     assert.equal(homeQuery({ ...empty, type: 'all', window: 90 }, []), '');
-    const state = { type: 'tv', window: 30, genres: [18, 10765], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
+    const state = { type: 'tv', window: 30, genres: [18, 10765], keywords: [9715], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
     const query = homeQuery(state, [8, 337]);
-    assert.equal(query, 'type=tv&genres=18%2C10765&providers=8&yearFrom=2006&minRating=7&services=8%2C337');
+    assert.equal(query, 'type=tv&genres=18%2C10765&keywords=9715&providers=8&yearFrom=2006&minRating=7&services=8%2C337');
     assert.ok(!query.includes('window') && !query.includes('region'));
     assert.deepEqual(readState(`?${query}`), { ...state, window: 90 });
     assert.equal(readState('?window=30').window, 30);
@@ -11206,6 +12437,15 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
     // Dropping the 1870–2200 bounds from yearOf turns this red: the server answers those years with a 400.
     assert.deepEqual([readState('?yearFrom=1869&yearTo=2201'), readState('?yearFrom=1870&yearTo=2200')].map(({ yearFrom, yearTo }) => [yearFrom, yearTo]),
       [[null, null], [1870, 2200]]);
+  });
+
+  // Keeping any other filter, or leaving out the media type (TMDB's movie and TV genre ids differ), turns this red.
+  await t.test('a title page chip opens the Discover home with its type and that one genre or keyword only', () => {
+    assert.equal(homePath(chipState('tv', { genres: [10765] })), '/discover?type=tv&genres=10765');
+    const keyword = chipState('movie', { keywords: [9715] });
+    assert.equal(homePath(keyword), '/discover?type=movie&keywords=9715');
+    assert.deepEqual(readState('?type=movie&keywords=9715'), keyword);
+    assert.deepEqual(readState('?keywords=x,9715,1234567890').keywords, [9715]);
   });
 
   // Sending a library title to the preview page, or a show to the movie preview, turns this red.
@@ -11240,16 +12480,17 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
 
   // Dropping a tag, or removing more than the one the tag names, turns this red.
   await t.test('filter tags name each active filter and clear only their own', () => {
-    const filters = { genres: [18, 99], providers: [8], yearFrom: 2006, yearTo: 2024, minRating: 7 };
-    const tags = filterTags(filters, [{ id: 18, name: 'Drama' }], [{ id: 8, name: 'Netflix' }]);
-    assert.deepEqual(tags.map((tag) => tag.label), ['Drama', 'Netflix', '2006–2024', 'Rating 7 and above']);
+    const filters = { genres: [18, 99], keywords: [9715], providers: [8], yearFrom: 2006, yearTo: 2024, minRating: 7 };
+    const tags = filterTags(filters, [{ id: 18, name: 'Drama' }], [{ id: 8, name: 'Netflix' }], [{ id: 9715, name: 'superhero' }]);
+    assert.deepEqual(tags.map((tag) => tag.label), ['Drama', 'superhero', 'Netflix', '2006–2024', 'Rating 7 and above']);
+    assert.deepEqual(tags[1].remove, { ...filters, keywords: [] });
     assert.deepEqual(tags[0].remove, { ...filters, genres: [99] });
-    assert.deepEqual(tags[2].remove, { ...filters, yearFrom: null, yearTo: null });
+    assert.deepEqual(tags[3].remove, { ...filters, yearFrom: null, yearTo: null });
     assert.equal(filterTags({ ...empty, yearFrom: 2006 }, [], [])[0].label, 'From 2006');
     assert.equal(filterTags({ ...empty, yearTo: 2024 }, [], [])[0].label, 'Up to 2024');
   });
 
-  const filtered = { type: 'tv', window: 30, genres: [18, 10765], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
+  const filtered = { type: 'tv', window: 30, genres: [18, 10765], keywords: [], providers: [8], yearFrom: 2006, yearTo: null, minRating: 7 };
 
   // Writing the filters to localStorage again, or reading the remembered set back as the current state, turns this red.
   await t.test('filters are saved for the tab session only and the last non-empty set is remembered', () => {
@@ -11281,7 +12522,7 @@ test('discover helpers turn dates, filters and rows into what the screen shows',
     assert.equal(readStoredState(), undefined);
     assert.deepEqual(readRememberedState(), filtered);
     assert.deepEqual(readServices(), [8]);
-    assert.equal(withoutFilters('?type=tv&genres=36&providers=8&yearFrom=2000&yearTo=2010&minRating=7&window=30'), '');
+    assert.equal(withoutFilters('?type=tv&genres=36&keywords=9715&providers=8&yearFrom=2000&yearTo=2010&minRating=7&window=30'), '');
     assert.equal(withoutFilters('?sort=rating&genres=36'), '?sort=rating');
     assert.equal(withoutFilters('?type=movie&window=90&sort=rating'), '?sort=rating');
     assert.equal(withoutFilters('?genres=36'), '');
@@ -11532,7 +12773,7 @@ test('backups go to a folder or an S3-compatible bucket, chosen by settings or e
   assert.equal(existsSync(join(folder, 'backups', 'blocked.enc.partial')), false);
 });
 
-// Snapshotting with a plain file copy during a write, letting an unfinished transaction on the app's connection into the snapshot, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, or opening a snapshot with the wrong kind of key turns this red.
+// Snapshotting with a plain file copy during a write, letting an unfinished transaction on the app's connection into the snapshot, uploading an unencrypted snapshot, skipping after a failed upload, pruning by the wrong day, restoring a snapshot without checking its key, hash or schema version, sealing with BACKUP_KEY after a key pair exists, opening a snapshot with the wrong kind of key, backing up again within an hour of a good backup, or counting a failed backup as one turns this red.
 test('backups snapshot a changing database and restore it consistently', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -11551,9 +12792,11 @@ test('backups snapshot a changing database and restore it consistently', async (
   const objects = new Map();
   const calls = [];
   let failPut = false;
+  let uploadTime = 0;
   const store = {
     async put(key, body) {
       calls.push(['put', key]);
+      clock += uploadTime;
       if (failPut) throw new Error('Backup storage answered 503.');
       objects.set(key, Uint8Array.from(body));
     },
@@ -11582,7 +12825,7 @@ test('backups snapshot a changing database and restore it consistently', async (
   const backup = createBackup({ database, events, store: () => (configured ? store : undefined), key: () => backupKey, now: () => clock });
   const outcome = (run) => [run.outcome, run.detail];
 
-  assert.deepEqual(outcome(await backup.run()), ['skipped', 'not_configured']);
+  assert.deepEqual(outcome(await backup.runIfDue()), ['skipped', 'not_configured']);
   assert.deepEqual(calls, []);
   assert.deepEqual(published.map((event) => event.type), ['backup']);
 
@@ -11616,7 +12859,7 @@ test('backups snapshot a changing database and restore it consistently', async (
   }
   configured = true;
   clock += 60_000;
-  const written = await backup.run();
+  const written = await backup.runIfDue();
   await writeFile(stopPath, '');
   const writerResult = await writer;
   assert.equal(writerResult.code, 0, writerResult.stderr);
@@ -11675,6 +12918,30 @@ test('backups snapshot a changing database and restore it consistently', async (
   assert.deepEqual(outcome(await backup.run()), ['ok', '']);
   assert.deepEqual(listBackupRuns(database).slice(0, 3).map((run) => run.outcome), ['ok', 'failed', 'ok']);
   assert.equal(published.length, listBackupRuns(database).length);
+
+  // The 5-minute job backs up only once the last good backup is an hour old, and a failed run does not count as one.
+  const runCount = () => listBackupRuns(database).length;
+  const runsBefore = runCount();
+  database.prepare("INSERT OR REPLACE INTO preferences (key, value) VALUES ('theme', 'light')").run();
+  clock += 5 * 60_000;
+  assert.equal(await backup.runIfDue(), undefined);
+  assert.equal(runCount(), runsBefore);
+  failPut = true;
+  clock += 55 * 60_000;
+  assert.deepEqual(outcome(await backup.runIfDue()), ['failed', 'Backup storage answered 503.']);
+  failPut = false;
+  uploadTime = 60_000;
+  clock += 5 * 60_000;
+  const slowUpload = await backup.runIfDue();
+  uploadTime = 0;
+  assert.deepEqual(outcome(slowUpload), ['ok', '']);
+  assert.ok(slowUpload.finishedAt > slowUpload.startedAt);
+  // The hour counts from the good backup's start, so a slow upload does not push the next one to the 65-minute tick.
+  database.prepare("INSERT OR REPLACE INTO preferences (key, value) VALUES ('theme', 'dark')").run();
+  clock = slowUpload.startedAt + 55 * 60_000;
+  assert.equal(await backup.runIfDue(), undefined);
+  clock += 5 * 60_000;
+  assert.deepEqual(outcome(await backup.runIfDue()), ['ok', '']);
 
   clock += 5 * 60_000;
   const keyAt = (offset) => `backups/${new Date(clock + offset).toISOString().replace(/:/g, '-')}-aaaaaaaaaaaa.sqlite.gz.enc`;
@@ -13141,6 +14408,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     if (path === '/genre/movie/list') return json({ genres: [{ id: 878, name: 'Science Fiction' }, { id: 18, name: 'Drama' }] });
     if (path === '/genre/tv/list') return json({ genres: [{ id: 18, name: 'Drama' }] });
     if (path === '/watch/providers/movie') return json({ results: [{ provider_id: 8, provider_name: 'Netflix' }] });
+    if (path === '/keyword/9715') return json({ id: 9715, name: 'superhero' });
     let match = path.match(/^\/(movie|tv)\/(\d+)\/watch\/providers$/);
     if (match && providersDown) return new Response('', { status: 500 });
     if (match) return json({ id: Number(match[2]), results: { US: { flatrate: flatrate(Number(match[2])).map((id) => ({ provider_id: id })) } } });
@@ -13218,7 +14486,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
   // Mounting the home outside the private guard, or letting an unchecked value reach TMDB or Trakt, turns this red.
   await t.test('the home refuses a signed-out caller and every invalid value before any upstream call', async () => {
     assert.equal((await app.request('/api/discover/home')).status, 401);
-    for (const query of ['?type=person', '?services=a', '?providers=8|9']) {
+    for (const query of ['?type=person', '?services=a', '?providers=8|9', '?keywords=a', '?keywords=1|2']) {
       const response = await home(query);
       assert.equal(response.status, 400, query);
       assert.deepEqual(response.body, { error: 'invalid_request' });
@@ -13316,6 +14584,23 @@ test('the discover home serves recipe rows from saved results, blends sources by
     assert.deepEqual(ids(body.trending.movie), [101, 103, 102]);
   });
 
+  // Not sending the keyword to TMDB discover, showing Trakt or trending titles nothing checked against it, or a keyword tag without its name turns this red.
+  await t.test('a keyword filter reaches TMDB discover, empties the rows it cannot be checked on, and its name is served', async () => {
+    const at = mark();
+    const { status, body } = await home('?type=movie&keywords=9715');
+    assert.equal(status, 200);
+    const { tmdb: tmdbSent, trakt: traktSent } = since(at);
+    const discoverCalls = tmdbSent.filter((call) => call.pathname.startsWith('/3/discover/'));
+    assert.ok(discoverCalls.length > 0);
+    for (const call of discoverCalls) assert.equal(call.searchParams.get('with_keywords'), '9715');
+    assert.equal(tmdbSent.some((call) => call.pathname.startsWith('/3/trending/')), false);
+    assert.deepEqual(traktSent, []);
+    assert.deepEqual(ids(body.trending.movie), []);
+    assert.deepEqual(ids(body.popularMovies), [601]);
+    assert.deepEqual((await get('/api/discover/keywords/9715')).body, { id: 9715, name: 'superhero' });
+    assert.equal((await get('/api/discover/keywords/x')).status, 400);
+  });
+
   // Filtering Trakt titles out by streaming service, looking up a title twice, dropping a TMDB-only show unchecked,
   // or keeping a title not on the chosen service turns this red.
   await t.test('the services filter checks each title once and keeps Trakt-only titles on that service', async () => {
@@ -13392,7 +14677,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     await signInAgain();
     // Every other row is built first on the long cap, so only movie trending depends on the real timer.
     await home('?type=movie');
-    discover.rows.remove(rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } }));
+    discover.rows.remove(rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], keywords: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } }));
     const capped = createDiscover({ tmdb, trakt: traktFake, store, database, now, fillTimeoutMs: 20 });
     const { app: cappedApp } = await makeApp({ clock, discover: capped });
     const { session: cappedSession } = await signIn(cappedApp);
@@ -13501,7 +14786,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     await signInAgain();
     database.prepare('DELETE FROM discover_rows').run();
     database.prepare("DELETE FROM title_store_parts WHERE key = 'movie:201' AND part = 'tmdbSummary'").run();
-    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
+    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], keywords: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
     missingSummary = '/movie/201';
     const without = (await home()).body;
     await discover.idle();
@@ -13545,7 +14830,7 @@ test('the discover home serves recipe rows from saved results, blends sources by
     const { app: plain } = await makeApp({ clock, discover: noClientId });
     const { session: plainSession } = await signIn(plain);
     database.prepare('DELETE FROM discover_rows').run();
-    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
+    const trendingKey = rowKey({ kind: 'row', recipe: 'trending', type: 'movie', filters: { genres: [], keywords: [], providers: [], region: 'US', yearFrom: null, yearTo: null, minRating: null } });
     const before = await get('/api/discover/home', plain, plainSession);
     assert.equal(before.status, 200);
     assert.deepEqual(ids(before.body.trending.movie), [102, 101, 103]);
@@ -13871,4 +15156,391 @@ test('the add sentence picks the search fact from the choices and the title', as
     [film('movieAndCollection', 'released'), movie('released'), { kind: 'collection', movies: 3, allReleased: false, availability: 'available' }],
   ];
   for (const [choices, title, fact] of cases) assert.deepEqual(searchFact(choices, title), fact, `${choices.monitor} ${JSON.stringify(title.movie?.status ?? title.airing?.seasons)}`);
+});
+
+test('the desktop app streams from the first direct Plex address to answer as this server, and from a relay only when none does', async () => {
+  const { chooseConnection, answerPasses, originsOf } = await import(new URL('../desktop/lib/connection.js', import.meta.url));
+  const deferred = () => {
+    let resolve;
+    let reject;
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+  };
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+  // Waiting for every earlier address to fail turns this red: a dead direct address would hold up a live one for its whole time limit.
+  const pending = new Map(['https://direct-a', 'https://direct-b', 'https://relay'].map((origin) => [origin, deferred()]));
+  const probed = [];
+  let chosen;
+  const choice = chooseConnection([...pending.keys()], (origin) => {
+    probed.push(origin);
+    return pending.get(origin).promise;
+  }, 'server-1', 2).then((value) => { chosen = value; });
+  await tick();
+  // Testing a relay alongside the direct addresses turns this red: a quick relay would beat a slower direct address.
+  assert.deepEqual(probed, ['https://direct-a', 'https://direct-b']);
+  pending.get('https://direct-b').resolve('server-1');
+  await choice;
+  assert.equal(chosen, 'https://direct-b');
+
+  // The relay is tested once every direct address has failed.
+  const relayOnly = await chooseConnection(['https://direct-a', 'https://relay'], async (origin) => (origin === 'https://relay' ? 'server-1' : null), 'server-1', 1);
+  assert.equal(relayOnly, 'https://relay');
+
+  // Dropping the machineIdentifier comparison turns this red: another Plex server on the owner's network would get the stream.
+  assert.equal(await chooseConnection(['http://192.168.1.20:32400', 'https://relay'], async (origin) => (origin.startsWith('http:') ? 'someone-else' : 'server-1'), 'server-1', 1), 'https://relay');
+  assert.equal(await chooseConnection(['http://192.168.1.20:32400'], async () => 'someone-else', 'server-1'), null);
+  assert.equal(await chooseConnection([], async () => 'server-1', 'server-1'), null);
+
+  // Raising the five-at-once limit, or testing addresses one by one, turns this red.
+  let inFlight = 0;
+  let most = 0;
+  const origins = Array.from({ length: 8 }, (_, index) => `https://address-${index}`);
+  assert.equal(await chooseConnection(origins, async (origin) => {
+    inFlight += 1;
+    most = Math.max(most, inFlight);
+    await tick();
+    inFlight -= 1;
+    return origin === 'https://address-7' ? 'server-1' : null;
+  }, 'server-1'), 'https://address-7');
+  assert.equal(most, 5);
+
+  // Letting a plain http address pass when the server's id is unknown turns this red; only a plex.direct certificate proves which server answered.
+  const unknownId = [
+    ['https://1-2-3-4.abc.plex.direct:32400', 'server-1', true],
+    ['http://192.168.1.20:32400', 'server-1', false],
+    ['https://plex.example.com', 'server-1', false],
+    ['https://1-2-3-4.abc.plex.direct:32400', null, false],
+  ];
+  for (const [origin, answered, passes] of unknownId) assert.equal(answerPasses(origin, answered, null), passes, origin);
+
+  // Each row: addresses, the server's direct count, expected origins and direct count. Counting past an entry that is not an
+  // address turns a row red: a relay would join the direct group and race the direct addresses.
+  const groups = [
+    [['https://a:1/x?t=1', 'https://r:2/y'], undefined, ['https://a:1', 'https://r:2'], 2], // an older server: all direct
+    [['nonsense', 'https://a:1/x', 'https://r:2/y'], 2, ['https://a:1', 'https://r:2'], 1],
+    [[42, 'https://r:2/y'], 1, ['https://r:2'], 0],
+    [['https://a:1/x'], 5, ['https://a:1'], 1],
+    [['https://a:1/x', 'https://r:2/y'], -1, ['https://a:1', 'https://r:2'], 2],
+  ];
+  for (const [addresses, count, origins, directCount] of groups) {
+    assert.deepEqual(originsOf(addresses, count), { origins, directCount }, JSON.stringify(addresses));
+  }
+});
+
+test('the desktop app tests Plex\'s addresses early, and Play reuses that answer unless retrying', async () => {
+  const { createAddressKeeper } = await import(new URL('../desktop/lib/connection.js', import.meta.url));
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((yes) => { resolve = yes; });
+    return { promise, resolve };
+  };
+  const found = { origins: ['https://direct-a', 'https://relay'], directCount: 1 };
+  let tests = 0;
+  const keeper = createAddressKeeper(async () => {
+    tests += 1;
+    return 'https://direct-a';
+  });
+
+  // Not waiting for the early test turns this red: a Play during it would test every address a second time.
+  const loaded = deferred();
+  const early = keeper.testEarly(() => loaded.promise);
+  let picked;
+  const pick = keeper.pick(found, false).then((value) => { picked = value; });
+  await tick();
+  assert.equal(picked, undefined, 'Play went ahead while the early test was running');
+  loaded.resolve(found);
+  await early;
+  await pick;
+  assert.equal(picked, 'https://direct-a');
+  assert.equal(tests, 1);
+
+  // A retry tests again; a start reply that no longer lists the kept address tests again too.
+  assert.equal(await keeper.pick(found, true), 'https://direct-a');
+  assert.equal(tests, 2);
+  await keeper.pick({ origins: ['https://direct-b'], directCount: 1 }, false);
+  assert.equal(tests, 3);
+
+  // A failed early test (signed out, an older server) leaves Play to test for itself.
+  const failing = createAddressKeeper(async () => 'https://direct-a');
+  await failing.testEarly(() => Promise.reject(new Error('401')));
+  assert.equal(await failing.pick(found, false), 'https://direct-a');
+
+  // Keeping a test's answer across forget() turns this red: Play would stream from the old server's address.
+  let fresh = 0;
+  const moved = createAddressKeeper(async () => {
+    fresh += 1;
+    return 'https://direct-a';
+  });
+  const slow = deferred();
+  const stale = moved.testEarly(() => slow.promise);
+  moved.forget();
+  slow.resolve(found);
+  await stale;
+  assert.equal(fresh, 0);
+  await moved.pick(found, false);
+  assert.equal(fresh, 1);
+
+  // The same when the address changes while the addresses are being tested, after the load.
+  const gate = deferred();
+  let tried = 0;
+  const midway = createAddressKeeper(async () => {
+    tried += 1;
+    if (tried === 1) await gate.promise;
+    return 'https://direct-a';
+  });
+  const testingNow = midway.testEarly(async () => found);
+  await tick();
+  midway.forget();
+  gate.resolve();
+  await testingNow;
+  await midway.pick(found, false);
+  assert.equal(tried, 2, 'the old server\'s answer was kept after forget()');
+});
+
+test('the desktop app retries a failed stream with a fresh load first and steps down from direct play only when the plan never worked', async () => {
+  const { nextStep, planLabel, TOKEN_RELOADS, SAME_PLAN_RELOADS } = await import(new URL('../desktop/lib/retry.js', import.meta.url));
+  const directPlay = { directPlay: true, directStream: true, directStreamAudio: true };
+  const directStream = { directPlay: false, directStream: true, directStreamAudio: true };
+  const transcode = { directPlay: false, directStream: false, directStreamAudio: true };
+  const transcodeAudio = { directPlay: false, directStream: false, directStreamAudio: false };
+  const tries = (token, same) => ({ token, same });
+  // Each row: plan, failure, already played, tries since playback last moved, expected answer. Changing a rule turns
+  // its row red: a 401 reloads without stepping down, a plan that played reloads in place (a network drop), a transcode
+  // gets one reload, and the order is direct play, direct stream, transcode, transcode with the audio converted too.
+  const cases = [
+    [directPlay, 'unauthorized', false, tries(0, 0), { kind: 'reload', count: 'token' }],
+    [directPlay, 'unauthorized', true, tries(TOKEN_RELOADS - 1, 0), { kind: 'reload', count: 'token' }],
+    [directPlay, 'unauthorized', false, tries(TOKEN_RELOADS, 0), { kind: 'step', flags: directStream }],
+    [directPlay, 'failed', false, tries(0, 0), { kind: 'step', flags: directStream }],
+    [directPlay, 'failed', true, tries(0, 0), { kind: 'reload', count: 'same' }],
+    [directPlay, 'failed', true, tries(0, SAME_PLAN_RELOADS), { kind: 'step', flags: directStream }],
+    [directStream, 'failed', false, tries(0, 0), { kind: 'reload', count: 'same' }],
+    [directStream, 'failed', false, tries(0, 1), { kind: 'step', flags: transcode }],
+    [transcode, 'failed', false, tries(0, 1), { kind: 'step', flags: transcodeAudio }],
+    [{ ...directStream, maxVideoBitrate: 4000 }, 'failed', false, tries(0, 1), { kind: 'step', flags: { ...transcode, maxVideoBitrate: 4000 } }],
+    [transcodeAudio, 'failed', false, tries(0, 1), { kind: 'give-up' }],
+    [transcodeAudio, 'failed', true, tries(0, SAME_PLAN_RELOADS), { kind: 'give-up' }],
+  ];
+  for (const [flags, failure, played, count, expected] of cases) {
+    assert.deepEqual(nextStep(flags, failure, played, count), expected, `${planLabel(flags)} ${failure} played=${played} ${JSON.stringify(count)}`);
+  }
+});
+
+test('the desktop app\'s first-launch address keeps only an http or https origin and accepts only media-manager-2\'s status reply', async () => {
+  const { normaliseAddress, isMediaManager } = await import(new URL('../desktop/lib/address.js', import.meta.url));
+  // Keeping a path, accepting another scheme or credentials, or dropping the https default for a bare host turns its row red.
+  const addresses = [
+    ['media.example.com', 'https://media.example.com'],
+    ['  https://media.example.com/library?x=1  ', 'https://media.example.com'],
+    ['http://192.168.1.20:3000', 'http://192.168.1.20:3000'],
+    ['HTTPS://Media.Example.com', 'https://media.example.com'],
+    ['file:///etc/passwd', null],
+    ['javascript:alert(1)', null],
+    ['https://user:secret@media.example.com', null],
+    ['', null],
+    ['https://', null],
+    [undefined, null],
+  ];
+  for (const [input, origin] of addresses) assert.equal(normaliseAddress(input), origin, String(input));
+  // Accepting any 200 turns this red: a different site at a mistyped address would be saved as the app.
+  assert.equal(isMediaManager(200, { configured: true, firstRun: false }), true);
+  assert.equal(isMediaManager(200, { configured: false }), true);
+  assert.equal(isMediaManager(200, { ok: true }), false);
+  assert.equal(isMediaManager(200, null), false);
+  assert.equal(isMediaManager(503, { configured: true }), false);
+});
+
+test('the desktop app\'s page never gets a Plex token, and only the app page\'s main frame drives the player', async () => {
+  const { pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = await import(new URL('../desktop/lib/page.js', import.meta.url));
+  const token = 'X-Plex-Token=transient-abc';
+  const reply = {
+    session: 'session-1',
+    decision: { directPlay: true },
+    tracks: {
+      audio: [{ id: 1, index: 0, title: 'English' }],
+      subtitle: [
+        { id: 7, index: 0, external: true, key: '/library/streams/7', url: `https://1-2-3-4.abc.plex.direct:32400/library/streams/7?${token}&encoding=utf-8` },
+        { id: 8, index: 0, external: false, key: null, ffIndex: 3 },
+      ],
+    },
+    streamAddresses: [`https://1-2-3-4.abc.plex.direct:32400/library/parts/5/file.mkv?${token}`],
+  };
+  // Keeping streamAddresses or a subtitle's url in the page's copy turns this red: the page would hold the transient token.
+  const copy = pageCopy(reply, { clientId: 'client-24-characters-long', sessionIdentifier: 'run-1' }, { volume: 35, muted: true, subtitleScale: 1.25 });
+  assert.equal(JSON.stringify(copy).includes('X-Plex-Token'), false);
+  assert.deepEqual(copy.tracks.subtitle.map((track) => track.url), ['/library/streams/7', null]);
+  // Leaving the install's ids out of the page's copy turns this red: the page's timeline reports would reach Plex as a second player.
+  assert.deepEqual([copy.clientId, copy.sessionIdentifier], ['client-24-characters-long', 'run-1']);
+  // Leaving the saved volume, mute or subtitle size out turns this red: after a reload the page would show 100 %, unmuted and Normal while mpv keeps them.
+  assert.deepEqual([copy.volume, copy.muted, copy.subtitleScale], [35, true, 1.25]);
+  // Passing an external track's title or language through turns this red: mpv makes both from the file's address.
+  const external = pageTrack({ id: 3, type: 'sub', external: true, title: `7?${token}&encoding=utf-8`, lang: null, codec: 'subrip' });
+  assert.equal(JSON.stringify(external).includes('X-Plex-Token'), false);
+
+  // Dropping the html rule, or the rule giving text fields selection back, turns this red: the frame would highlight, or fields could not be copied from.
+  assert.match(NO_SELECT_CSS, /html \{[^}]*user-select: none/);
+  assert.match(NO_SELECT_CSS, /input, textarea, \[contenteditable\], \[contenteditable\] \* \{[^}]*user-select: text/);
+
+  // Stopping on a same-document change, a subframe or another origin (or missing the app's own reload) turns a row red: mpv would die mid-playback, or outlive the page that controls it.
+  const nav = { url: 'https://mm.example.com/player', isMainFrame: true, isSameDocument: false, appOrigin: 'https://mm.example.com' };
+  assert.equal(stopsPlayerOnNavigation(nav), true);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, isSameDocument: true }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, isMainFrame: false }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, url: 'https://other.example.org/' }), false);
+  assert.equal(stopsPlayerOnNavigation({ ...nav, url: 'https://mm.example.com.evil.test/' }), false);
+
+  // Dropping the window, main-frame or origin check turns its row red: that caller could start playback and drive mpv.
+  const appOrigin = 'https://media.example.com';
+  const app = { fromAppWindow: true, mainFrame: true, frameUrl: `${appOrigin}/watch/123`, appOrigin };
+  const callers = [
+    [app, true],
+    [{ ...app, frameUrl: 'https://media.example.com.evil.test/watch/123' }, false],
+    [{ ...app, mainFrame: false }, false],
+    [{ ...app, frameUrl: 'file:///Applications/media-manager-2.app/Contents/Resources/app/address/index.html' }, false],
+    [{ ...app, fromAppWindow: false }, false],
+  ];
+  for (const [caller, allowed] of callers) assert.equal(callerAllowed(caller), allowed, JSON.stringify(caller));
+});
+
+test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
+  const {
+    fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions,
+  } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
+  // [the title asked for, the title whose file mpv last opened]
+  const same = (fields) => { const playing = title(fields); return [playing, playing]; };
+  const replaced = [title(), title()];
+  const ended = (reason) => ({ event: 'end-file', value: reason });
+  // Dropping the `loaded` comparison turns the replaced rows red: a file stopped before a new load, or replaced by it,
+  // would open, fail or finish into that load. Counting a stop as an ending turns the stop row red: every seek's reload
+  // would retry the title. Ignoring Plex's length turns the transcode rows (no mpv duration) red.
+  const events = [
+    [{ event: 'file-loaded' }, same(), 'opened'],
+    [{ event: 'file-loaded' }, replaced, null],
+    [ended('error'), replaced, null],
+    [ended('eof'), [null, null], null],
+    [ended('stop'), same(), null],
+    [ended('error'), same(), 'failed'],
+    [ended('error'), same({ unauthorized: true }), 'unauthorized'],
+    [ended('eof'), same({ position: 3590 }), 'finished'],
+    [ended('eof'), same(), 'failed'],
+    [ended('eof'), same({ duration: null, position: 3590 }), 'finished'],
+    [ended('eof'), same({ duration: null }), 'failed'],
+    [ended('eof'), same({ duration: null, reply: {} }), 'finished'],
+  ];
+  for (const [event, [playing, loaded], meaning] of events) {
+    assert.equal(fileEvent(event, playing, loaded), meaning, JSON.stringify([event, playing, playing === loaded]));
+  }
+
+  // Unpausing whenever a file opens turns the paused row red: a seek or a retry would start a title the owner paused.
+  // Leaving a new load paused turns the first row red.
+  assert.equal(playsOnOpen({ paused: false }), true);
+  assert.equal(playsOnOpen({ paused: true }), false);
+
+  // Letting a position through before the first frame and the unpause brings back the controls over an empty picture at
+  // 0:00; never letting it through once playback moves leaves the opening screen up should mpv skip playback-restart.
+  assert.equal(showsPosition(null), true);
+  assert.equal(showsPosition({ drawn: false, begun: false, startedAt: 0, position: 0 }), false);
+  assert.equal(showsPosition({ drawn: true, begun: false, startedAt: 0, position: 0 }), false);
+  assert.equal(showsPosition({ drawn: false, begun: true, startedAt: 0, position: 0 }), false);
+  assert.equal(showsPosition({ drawn: true, begun: true, startedAt: 0, position: 0 }), true);
+  assert.equal(showsPosition({ drawn: false, begun: true, startedAt: 600, position: 601.5 }), true);
+
+  // Sending every frame again turns the time rows red (the page re-rendered 24-60 times a second); holding a seek's new
+  // position until the window passes turns the jump rows red.
+  const last = { at: 1000, position: 10 };
+  const sends = [
+    [undefined, 10, 1000, true],
+    [last, 10, 1100, false],
+    [last, 10.249, 1249, false],
+    [last, 10.25, 1250, true],
+    [last, 11.5, 1100, true],
+    [last, 8.5, 1100, true],
+    [last, 11, 1100, false],
+    [last, 10.9, 1100, false],
+  ];
+  for (const [sent, position, now, expected] of sends) assert.equal(sendsPosition(sent, position, now), expected, JSON.stringify([sent, position, now]));
+
+  // Accepting a non-number, a click time from the future, or one older than a minute turns these rows red:
+  // play-timings.log would count a Play from a time its click never had.
+  const clickNow = 1_000_000;
+  const clicks = [
+    [undefined, undefined],
+    ['123', undefined],
+    [Number.NaN, undefined],
+    [Number.POSITIVE_INFINITY, undefined],
+    [clickNow, clickNow],
+    [clickNow - 60_000, clickNow - 60_000],
+    [clickNow - 60_001, undefined],
+    [clickNow + 1, undefined],
+  ];
+  for (const [value, expected] of clicks) assert.equal(clickTime(value, clickNow), expected, String(value));
+
+  // Starting at the asked offset when the reply has a usable start turns the first two rows red (a resume would start at
+  // the page's stale guess); passing a negative, non-number or missing reply value to mpv turns the rest red.
+  assert.deepEqual([61, 0, -1, Number.NaN, '61', undefined].map((replied) => startSecondsFor(replied, 30)), [61, 0, 30, 30, 30, 30]);
+
+  // Requiring mediaIndex again turns the versionless row red (every movie card's Play fails); taking a version that is not a
+  // whole number from 0 turns the throwing rows red; treating anything but true as resume turns the resume row red.
+  const flags = { directPlay: true, directStream: true, directStreamAudio: true };
+  const ask = { ratingKey: '123', mediaIndex: 1, partIndex: 0, offsetSeconds: 61.5, flags, openedAt: clickNow - 500 };
+  assert.deepEqual(readAsk(ask, clickNow), {
+    ask: { ratingKey: '123', mediaIndex: 1, partIndex: 0 }, offsetSeconds: 61.5, resume: false, openedAt: clickNow - 500, flags,
+  });
+  const { mediaIndex: _mediaIndex, ...versionless } = ask;
+  assert.ok(!('mediaIndex' in readAsk(versionless, clickNow).ask));
+  assert.equal(readAsk({ ...ask, mediaIndex: 0 }, clickNow).ask.mediaIndex, 0);
+  for (const mediaIndex of [-1, '0', 1.5]) assert.throws(() => readAsk({ ...ask, mediaIndex }, clickNow), /invalid_request/, String(mediaIndex));
+  assert.deepEqual([true, 'yes', 1, undefined].map((resume) => readAsk({ ...ask, resume }, clickNow).resume), [true, false, false, false]);
+  // Dropping readAsk's check on ratingKey, partIndex, offsetSeconds, a flag or maxVideoBitrate turns that field's rows red: a
+  // malformed value from the page would reach the start request or mpv.
+  const badFields = [
+    ['ratingKey', '12a'], ['ratingKey', 123], ['partIndex', -1], ['partIndex', 1.5], ['partIndex', '0'],
+    ['offsetSeconds', -1], ['offsetSeconds', Number.NaN], ['offsetSeconds', Number.POSITIVE_INFINITY],
+  ];
+  for (const [name, value] of badFields) assert.throws(() => readAsk({ ...ask, [name]: value }, clickNow), /invalid_request/, `${name} ${String(value)}`);
+  const badFlags = [
+    ['directPlay', 'true'], ['directStream', 1], ['directStreamAudio', undefined],
+    ['maxVideoBitrate', -1], ['maxVideoBitrate', 1.5], ['maxVideoBitrate', '8000'],
+  ];
+  for (const [name, value] of badFlags) {
+    assert.throws(() => readAsk({ ...ask, flags: { ...flags, [name]: value } }, clickNow), /invalid_request/, `${name} ${String(value)}`);
+  }
+
+  // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
+  assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);
+  // Taking a value outside the five sizes turns this red: a broken settings file or a bad call would set any sub-scale on mpv.
+  assert.deepEqual([0.5, 0.75, 1, 1.25, 2, 1.5, 3, '1', null].map(subtitleScale), [0.5, 0.75, 1, 1.25, 2, null, null, null, null]);
+  // Taking any other value turns this red: Electron throws on an unknown themeSource, and a broken settings file would stop the launch.
+  assert.deepEqual(['light', 'dark', 'system', 'Dark', '', null].map(themeSource), ['light', 'dark', 'system', null, null, null]);
+
+  // Writing mpv.log without MM2_MPV_LOG=1 asking for it turns the first three rows red: the log holds Plex's transient
+  // token in every stream address.
+  const userData = '/Users/owner/Library/Application Support/media-manager-2';
+  const starts = [
+    [{}, null],
+    [{ MM2_MPV_LOG: '0' }, null],
+    [{ MM2_MPV_LOG: 'true' }, null],
+    [{ MM2_MPV_LOG: '1' }, `${userData}/mpv.log`],
+  ];
+  for (const [env, logFile] of starts) {
+    const options = mpvStartOptions(env, userData);
+    assert.equal(Object.hasOwn(options, 'log-file') ? options['log-file'] : null, logFile, JSON.stringify(env));
+  }
+  assert.equal(mpvStartOptions({}, userData)['gpu-shader-cache-dir'], `${userData}/mpv-shader-cache`);
+
+  // Dropping the title, or falling back to the file's address, turns the title column red: mpv would name the track
+  // after the address, token included. Keeping Plex's first connection turns the address column red.
+  const answered = 'https://5-6-7-8.abc.plex.direct:32400';
+  const url = 'https://1-2-3-4.abc.plex.direct:32400/library/streams/7?X-Plex-Token=transient-abc&encoding=utf-8';
+  const subtitles = [
+    [{ url, key: '/library/streams/7', title: 'English (SRT)', language: 'English' }, 'English (SRT)'],
+    [{ url, key: '/library/streams/7', title: null, language: 'English' }, 'English'],
+    [{ url, key: '/library/streams/7' }, '/library/streams/7'],
+  ];
+  for (const [track, name] of subtitles) {
+    assert.deepEqual(subtitleAdd(track, answered), ['sub-add', `${answered}/library/streams/7?X-Plex-Token=transient-abc&encoding=utf-8`, 'cached', name]);
+  }
 });

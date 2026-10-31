@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { use, useState, type KeyboardEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { OptionRow } from '@/components/ui/option-row';
@@ -6,12 +6,17 @@ import { PanelInline } from '@/components/ui/panel-inline';
 import { Radio, RadioGroup } from '@/components/ui/radio';
 import { formatBytes } from '../downloads/model';
 import type { DownloadsState } from '../downloads/useDownloads';
-import type { EpisodeDetail, SeriesDetail } from '../library/api';
+import { inDesktopApp } from '../desktopBridge';
+import type { EpisodeDetail, SeriesDetail, SeriesWatch } from '../library/api';
 import type { SubjectProgress } from '../library/progress';
+import { plexWebUrl } from '../library/watch';
+import { MediaServerContext } from '../mediaServer';
 import { EpisodeRows, type MonitorChange } from './EpisodeRows';
 import { History } from './History';
+import { nextEpisode, playableEpisode, seriesPlayLine, titlePlayMode } from './playLine';
 import { episodeWord } from './rows';
 import { episodeCode as code, sendAction, TitleHeader, type TitleFact } from './TitleHeader';
+import { startOnPage, TitlePlayLine } from './TitlePlay';
 
 const MAX_EPISODE_IDS = 100;
 
@@ -101,8 +106,10 @@ function MonitoringPanel({ open, episodes, onApply, onClose }: {
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
-export function SeriesOverview({ detail: loaded, protectedIds, downloads, progress, onUnauthenticated }: {
+export function SeriesOverview({ detail: loaded, watch, protectedIds, downloads, progress, onUnauthenticated }: {
   detail: SeriesDetail;
+  /** Plex's watch status; Play shows only for episodes Plex has. */
+  watch: SeriesWatch;
   protectedIds: Set<number>;
   downloads: DownloadsState;
   progress: Map<string, SubjectProgress>;
@@ -155,6 +162,19 @@ export function SeriesOverview({ detail: loaded, protectedIds, downloads, progre
     { label: 'On disk', value: statistics.episodeFileCount === 0 ? 'Nothing yet' : `${formatBytes(statistics.sizeOnDisk)} · ${plural(statistics.episodeFileCount, 'file')}` },
   ];
   const live = downloading.length === 1 ? progress.get(`episode:${downloading[0].id}`) : undefined;
+  const mediaServer = use(MediaServerContext).name;
+  const mode = titlePlayMode(mediaServer, inDesktopApp(), watch, detail.episodes.some((episode) => playableEpisode(episode, watch) !== undefined));
+  const next = nextEpisode(detail.episodes, watch);
+  const nextPlayable = next === undefined ? undefined : playableEpisode(next, watch);
+  const play = mode === 'none' || next === undefined || nextPlayable === undefined || watch === null || watch.kind !== 'ok' ? undefined : (
+    <TitlePlayLine
+      mode={mode}
+      play={seriesPlayLine(next, nextPlayable)}
+      name={detail.title}
+      plexUrl={plexWebUrl(watch.machineIdentifier, nextPlayable.ratingKey)}
+      onPlay={startOnPage({ type: 'tv', detail }, watch, next, onUnauthenticated)}
+    />
+  );
   const badges = (
     <>
       <Badge variant="strong">In library · {statistics.episodeFileCount} of {plural(statistics.episodeCount, 'episode')}</Badge>
@@ -173,6 +193,7 @@ export function SeriesOverview({ detail: loaded, protectedIds, downloads, progre
         subject={{ type: 'tv', detail }}
         owned
         badges={badges}
+        play={play}
         facts={facts}
         onPick={() => setPickRequest((count) => count + 1)}
         onChangeMonitoring={() => setChanging(!changing)}
@@ -195,6 +216,9 @@ export function SeriesOverview({ detail: loaded, protectedIds, downloads, progre
         />
         <EpisodeRows
           detail={detail}
+          watch={watch}
+          playMode={mode}
+          nextEpisodeId={next?.id ?? null}
           pickRequest={pickRequest}
           snapshot={downloads.kind === 'ready' ? downloads.snapshot : undefined}
           protectedIds={protectedIds}

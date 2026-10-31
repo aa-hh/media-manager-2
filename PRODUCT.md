@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-TypeScript on Node.js. One Hono server runs the background jobs and serves a React single-page app built with Vite. SQLite database, optionally backed up every few minutes to a folder or an S3-compatible bucket. Live torrent status reaches the browser through server-sent events. Decided in Linear: [Choose the technology](https://linear.app/aa-hh/issue/AA-14).
+TypeScript on Node.js. One Hono server runs the background jobs and serves a React single-page app built with Vite. SQLite database, optionally backed up every hour to a folder or an S3-compatible bucket. Live torrent status reaches the browser through server-sent events. Decided in Linear: [Choose the technology](https://linear.app/aa-hh/issue/AA-14).
 
 Component library: shadcn/ui on Base UI, with TanStack Table ([Choose the design library](https://linear.app/aa-hh/issue/AA-15)). Add TanStack Virtual when a list needs it. The decision and supporting evidence are in `docs/design/design-library-requirements.md`.
 
@@ -60,7 +60,7 @@ Images and descriptions come only from Sonarr and Radarr: one poster and one bac
 
 Terminology: use the words in `CONTEXT.md` exactly. "Release" always means a torrent, never a release date.
 
-Out of the first version: friend requests, playback statistics, deletion score, scheduled deletion, storage forecasting, calendar actions, phone notifications, and configuration for other people's setups.
+Out of the first version: friend requests, playback statistics, deletion score, scheduled deletion, storage forecasting, calendar actions, phone notifications, watching on a phone (the in-app player and watch status on a phone are v3 or v4; see `docs/research/in-app-player/README.md`), and configuration for other people's setups.
 
 ## Brand Commitments
 

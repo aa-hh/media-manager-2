@@ -21,15 +21,11 @@ HTTP clients for every outside service. Plex sign-in (`auth.ts`), .torrent downl
 - `arr.ts` → Sonarr and Radarr client.
 - `arr/result.ts` → result type, answer classes.
 - `arr/commands.ts` → searches, refreshes, forced imports.
-- `arr/queue.ts` → queue.
-- `arr/history.ts` → history.
-- `arr/series.ts` → series.
-- `arr/episodes.ts` → episodes.
-- `arr/movies.ts` → movies.
-- `arr/files.ts` → file details.
+- `arr/queue.ts`, `arr/history.ts`, `arr/series.ts`, `arr/episodes.ts`, `arr/movies.ts`, `arr/files.ts` → queue, history, series, episodes, movies, file details.
 - `connection.ts` → timeout helper, settings.
 - `rtorrent.ts` → rTorrent client.
 - `mediaServer.ts` → owner's provider picks `plex.ts` or `jellyfin.ts`.
+- `plexPlayback.ts` → Plex playback calls for the desktop player.
 - `tmdb.ts` → TMDB client.
 - `mdblist.ts`, `fanart.ts` → MDBList and fanart.tv clients.
 - `trackerAccounts.ts` → tracker accounts.

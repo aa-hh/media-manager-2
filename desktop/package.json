@@ -1,0 +1,20 @@
+{
+  "name": "media-manager-2-desktop",
+  "productName": "media-manager-2",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "main": "main.js",
+  "scripts": {
+    "prepare-page": "node prepare.mjs",
+    "rebuild": "npx @electron/rebuild -v 45.0.0 -f",
+    "start": "node prepare.mjs && electron ."
+  },
+  "dependencies": {
+    "node-addon-api": "8.9.2"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "4.2.1",
+    "electron": "45.0.0"
+  }
+}

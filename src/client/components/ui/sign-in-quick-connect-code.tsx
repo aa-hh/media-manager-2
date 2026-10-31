@@ -1,4 +1,4 @@
-// v2/Sign-in/quick-connect code — ~/Projects/media-manager-2-design/design-system.lib.pen nSAWW
+// Figma: SignInQuickConnectCode — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=13-6084
 import { cn } from '@/lib/utils';
 
 type SignInQuickConnectCodeProps = {
@@ -16,7 +16,8 @@ function SignInQuickConnectCode({ code, expiry, className }: SignInQuickConnectC
       <p className="font-ui text-base leading-normal text-muted-foreground-on-dark">
         In a Jellyfin app where you're signed in, open your profile, choose Quick Connect and enter this code.
       </p>
-      <p aria-label={code.split('').join(' ')} className="flex items-center gap-5 font-data text-[64px] leading-none font-semibold tracking-[6px] text-foreground-on-dark">
+      <p className="flex items-center gap-5 font-data text-[64px] leading-none font-semibold tracking-[6px] text-foreground-on-dark">
+        <span className="sr-only">{code.split('').join(' ')}</span>
         <span aria-hidden="true">{code.slice(0, 3)}</span>
         <span aria-hidden="true">{code.slice(3)}</span>
       </p>

@@ -12,12 +12,58 @@ export type LibraryTitle = {
   added: string | null;
   monitored: boolean;
   status: string | null;
+  /** The full image, which the player's Up Next draws 352 px wide; smallPosterUrl (TMDB w500 or TheTVDB's thumbnail) is for 210 px posters. */
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   qualityProfile: string | null;
   sizeOnDisk: number;
   tv: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; seasonCount: number } | null;
   movie: { hasFile: boolean; isAvailable: boolean } | null;
+  /** Plex watch marks; null when unmatched or when Plex is off or has not answered for 5 minutes. */
+  watch: TitleWatch;
 };
+
+// Watch status from Plex; src/server/watchStatus.ts is the source of truth.
+export type TitleWatch =
+  | { kind: 'movie'; ratingKey: string; viewOffsetMs: number | null; durationMs: number | null; viewCount: number; lastViewedAt: number | null }
+  | { kind: 'show'; ratingKey: string; leafCount: number; viewedLeafCount: number; lastViewedAt: number | null }
+  | null;
+
+export type ContinueWatchingItem = {
+  service: Service;
+  id: number;
+  viewOffsetMs: number | null;
+  durationMs: number | null;
+  lastViewedAt: number | null;
+  episode: { seasonNumber: number; episodeNumber: number; title: string | null } | null;
+};
+
+/** `unavailable`: Plex did not answer; `off`: a Jellyfin owner or no Plex set up. */
+export type LibraryWatch = { kind: 'ok'; machineIdentifier: string; continueWatching: ContinueWatchingItem[] } | { kind: 'unavailable' } | { kind: 'off' };
+
+export type Playable = {
+  ratingKey: string;
+  mediaIndex: number;
+  partId: number;
+  versions: Array<{ mediaIndex: number; partId: number; file: string }>;
+  viewOffsetMs: number | null;
+  durationMs: number | null;
+  viewCount: number;
+  lastViewedAt: number | null;
+};
+
+type WatchOff = { kind: 'unavailable' } | { kind: 'off' };
+/** Episodes are keyed by Sonarr episode id. */
+export type SeriesWatch = {
+  kind: 'ok';
+  machineIdentifier: string;
+  ratingKey: string;
+  leafCount: number;
+  viewedLeafCount: number;
+  nextEpisode: { seasonNumber: number; episodeNumber: number } | null;
+  episodes: Record<string, Playable>;
+} | null | WatchOff;
+export type MovieWatch = ({ kind: 'ok'; machineIdentifier: string } & Playable) | null | WatchOff;
 
 export type FileDetail = {
   id: number;
@@ -83,12 +129,15 @@ export type SeriesDetail = {
   language: string | null;
   overview: string | null;
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   backdropUrl: string | null;
   /** Sonarr's one rating, out of 10; the server does not say which site it comes from. */
   rating: number | null;
   ratingVotes: number | null;
   certification: string | null;
   genres: string[];
+  /** TMDB's genres and keywords with ids; null when TMDB is not set up or failed. Same as `TmdbChips` in src/server/library.ts. */
+  tmdbChips: { genres: Array<{ id: number; name: string }>; keywords: Array<{ id: number; name: string }> } | null;
   runtime: number | null;
   path: string | null;
   tags: string[];
@@ -120,6 +169,7 @@ export type MovieDetail = {
   status: string | null;
   overview: string | null;
   posterUrl: string | null;
+  smallPosterUrl: string | null;
   backdropUrl: string | null;
   rating: number | null;
   /** IMDb, TMDB and Trakt score out of 10; Rotten Tomatoes and Metacritic out of 100. */
@@ -128,6 +178,8 @@ export type MovieDetail = {
   youTubeTrailerId: string | null;
   certification: string | null;
   genres: string[];
+  /** TMDB's genres and keywords with ids; null when TMDB is not set up or failed. Same as `TmdbChips` in src/server/library.ts. */
+  tmdbChips: { genres: Array<{ id: number; name: string }>; keywords: Array<{ id: number; name: string }> } | null;
   runtime: number | null;
   studio: string | null;
   collection: string | null;

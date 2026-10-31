@@ -15,7 +15,7 @@ import { navigate, replace, useLocation, useScreenReady } from '../navigation';
 import { Attribution } from './Attribution';
 import { Card, openLink } from './Card';
 import { FilterBar } from './FilterBar';
-import { gridPath, readGridState, type DiscoverResult, type Filters, type GridReply, type GridState, type MediaType } from './model';
+import { clearedFilters, gridPath, readGridState, type DiscoverResult, type GridReply, type GridState, type MediaType } from './model';
 
 type Kind = 'movies' | 'tv' | 'trending';
 type Option = { id: number; name: string };
@@ -31,7 +31,6 @@ const EMPTY_PAGE_LIMIT = 5;
 const keyOf = (result: DiscoverResult) => `${result.type}:${result.tmdbId}`;
 
 const titles: Record<Kind, string> = { movies: 'Movies', tv: 'TV', trending: 'Trending' };
-const cleared: Filters = { genres: [], providers: [], yearFrom: null, yearTo: null, minRating: null };
 
 // Genre and service lists barely change, so each screen visit reuses the last good reply instead of asking again.
 const optionReplies = new Map<string, unknown>();
@@ -64,6 +63,22 @@ export function useOptions(genres: 'movie' | 'tv' | 'both', providers: 'movie' |
     return () => controller.abort();
   }, [genres, providers, onUnauthenticated]);
   return options;
+}
+
+/** Names for the keyword filter's tags; a keyword whose name fails to load gets no tag. */
+export function useKeywordNames(ids: number[], onUnauthenticated: () => void) {
+  const [names, setNames] = useState<Option[]>([]);
+  const key = ids.join(',');
+  useEffect(() => {
+    if (key === '') return;
+    const controller = new AbortController();
+    Promise.all(key.split(',').map((id) => getOptions<Option>(`/api/discover/keywords/${id}`, onUnauthenticated, controller.signal).catch(() => undefined)))
+      .then((found) => {
+        if (!controller.signal.aborted) setNames(found.filter((name) => name !== undefined));
+      });
+    return () => controller.abort();
+  }, [key, onUnauthenticated]);
+  return names;
 }
 
 /** Shown instead of the page when TMDB has no key. */
@@ -104,6 +119,7 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
   const [attempt, setAttempt] = useState(0);
   const sentinel = useRef<HTMLDivElement>(null);
   const options = useOptions(kind === 'trending' ? 'both' : kind === 'movies' ? 'movie' : 'tv', kind === 'tv' ? 'tv' : 'movie', onUnauthenticated);
+  const keywords = useKeywordNames(state.keywords, onUnauthenticated);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -198,6 +214,7 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
         state={state}
         onChange={(next) => change(next)}
         genres={options.genres}
+        keywords={keywords}
         providers={options.providers}
         sort={kind !== 'trending'}
         trending={kind === 'trending'}
@@ -207,7 +224,7 @@ export function Grid({ kind, onUnauthenticated }: { kind: Kind; onUnauthenticate
           icon={<SearchX />}
           title="No titles match these filters"
           className="mt-10"
-          action={<Button variant="outline" onClick={() => change({ ...state, ...cleared })}>Clear filters</Button>}
+          action={<Button variant="outline" onClick={() => change({ ...state, ...clearedFilters })}>Clear filters</Button>}
         >
           Try fewer genres, a wider year range or a lower rating.
         </EmptyState>

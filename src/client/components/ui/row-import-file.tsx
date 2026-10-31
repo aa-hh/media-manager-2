@@ -1,4 +1,5 @@
-// v2/Row/import-file — ~/Projects/media-manager-2-design/design-system.lib.pen tm5WE
+// Figma: RowImportFile — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-11301
+// Figma: RowImportFileHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-11306
 import type { ReactNode } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
@@ -48,7 +49,7 @@ function RowImportFile({ checked, onCheckedChange, checkLabel, file, mapsTo, qua
         <Checkbox checked={checked} onCheckedChange={(next) => onCheckedChange(next)} aria-label={checkLabel} />
       </TableCell>
       <TableCell fill className={cn('text-muted-foreground', dim)}>
-        <span className="truncate">{file}</span>
+        <span className="truncate select-text">{file}</span>
       </TableCell>
       <TableCell className={cn(w.mapsTo, 'font-semibold', problem && 'text-warning', dim)}>
         <span className="truncate">{mapsTo}</span>

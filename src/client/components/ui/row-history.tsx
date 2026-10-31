@@ -1,4 +1,5 @@
-// v2/Row/history — ~/Projects/media-manager-2-design/design-system.lib.pen nT6fn
+// Figma: RowHistory — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1511
+// Figma: RowHistoryHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1650
 import type { ReactNode } from 'react';
 import { TableCell, TableHead, TableHeader, TableRow, type TableRowProps } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
@@ -43,7 +44,7 @@ function RowHistory({ when, icon, event, by, detail, tone, ...props }: RowHistor
         <span className="truncate">{by}</span>
       </TableCell>
       <TableCell className={cn(w.detail, 'text-muted-foreground')}>
-        <span className="truncate">{detail}</span>
+        <span className="truncate select-text">{detail}</span>
       </TableCell>
     </TableRow>
   );

@@ -1,8 +1,8 @@
-// v2/Table — ~/Projects/media-manager-2-design/design-system.lib.pen gp6Kh
-// v2/Table/Header — ~/Projects/media-manager-2-design/design-system.lib.pen Fj6GM
-// v2/Table/Row — ~/Projects/media-manager-2-design/design-system.lib.pen IODuw
-// v2/Table/Cell — ~/Projects/media-manager-2-design/design-system.lib.pen I73rkQ
-// v2/Table/Cell/header — ~/Projects/media-manager-2-design/design-system.lib.pen r5HBwn (TableHead; the library's header rows set it to 600, the releases header keeps its 700)
+// Figma: Table — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1228
+// Figma: TableHeader — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1218
+// Figma: TableHead — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1049
+// Figma: TableRow — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1217
+// Figma: TableCellTracker — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-1050
 import { ArrowDown } from 'lucide-react';
 import type { ComponentProps, CSSProperties } from 'react';
 import { Logo, trackerLogo, trackerName } from '@/components/ui/logo';
@@ -33,7 +33,8 @@ const cellLayout = (align: CellProps['align'], fill: boolean) => cn('flex h-full
 function TableHead({ align, fill = false, sorted = false, className, children, ...props }: CellProps & { sorted?: boolean }) {
   return (
     <div
-      role="columnheader"
+      // An empty head, such as over the actions, labels nothing; a columnheader must have text.
+      role={children === undefined ? 'cell' : 'columnheader'}
       aria-sort={sorted ? 'descending' : undefined}
       className={cn(cellLayout(align, fill), 'font-ui text-[11px] font-semibold tracking-[0.5px] whitespace-nowrap text-subtle-foreground uppercase', className)}
       {...props}

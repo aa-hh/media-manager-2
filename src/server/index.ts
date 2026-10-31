@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { createAdd } from './add.js';
 import { createApiRoutes } from './api.js';
-import { createApp } from './app.js';
+import { createApp, plexWebhookCode } from './app.js';
 import { createBlocklist } from './blocklist.js';
 import { createBackup } from './backup.js';
 import { createBackupStore, readBackupDestination } from './backupDestination.js';
@@ -22,6 +22,7 @@ import { createJobRunner } from './jobs.js';
 import { createLabels } from './labels.js';
 import { createLibrary } from './library.js';
 import { createOwned } from './owned.js';
+import { createPlayback } from './playback.js';
 import { createProblems } from './problems.js';
 import { createProtection, vetoInBackground } from './protection.js';
 import { createRelinkFix } from './relink.js';
@@ -31,6 +32,7 @@ import { createSearch } from './search.js';
 import { createDiscover } from './discover/index.js';
 import { createTitleStore } from './titleStore.js';
 import { createTmdbTitles } from './tmdbTitles.js';
+import { createWatchStatus } from './watchStatus.js';
 import { createSecondVersionChecks, listSecondVersionRows, listTrackedHitAndRun, VERSION_CHECK_INTERVAL_MS } from './secondVersionRows.js';
 import { createSecondVersionDelete } from './secondVersionDelete.js';
 import { createSecondVersions } from './secondVersions.js';
@@ -41,6 +43,8 @@ import { createArr } from './services/arr.js';
 import { readSetting } from './services/connection.js';
 import { createMdblist } from './services/mdblist.js';
 import { createMediaServer } from './services/mediaServer.js';
+import { createPlex } from './services/plex.js';
+import { createPlexPlayback } from './services/plexPlayback.js';
 import { createTmdb } from './services/tmdb.js';
 import { createTrakt } from './services/trakt.js';
 import { createFanart } from './services/fanart.js';
@@ -86,12 +90,30 @@ if (database !== undefined) {
   const arr = { sonarr: createArr('sonarr', database), radarr: createArr('radarr', database) };
   const events = createEventHub();
   const runner = createJobRunner();
+  let openStreams = 0;
   const rtorrent = createRtorrent(database);
-  const poller = createTorrentPoller({ database, rtorrent, events });
+  const poller = createTorrentPoller({ database, rtorrent, events, hasViewers: () => openStreams > 0 });
   const releases = createReleases(database, arr);
   const secondVersions = createSecondVersions({ database, releases, rtorrent });
   const problems = createProblems({ database, events });
   const mediaServer = createMediaServer(database, { ownerPlexId: process.env.PLEX_OWNER_ID });
+  const plex = createPlex(database);
+  const watchStatus = createWatchStatus({
+    plex,
+    enabled: () => mediaServer().name === 'plex' && readSetting(openedDatabase, 'credentials', 'plex.token') !== undefined,
+    now: Date.now,
+    events,
+    webhookUrl: () => {
+      const base = readSetting(openedDatabase, 'serviceAddresses', 'mediaManager.hookUrl');
+      const secret = readSetting(openedDatabase, 'credentials', 'webhook.secret');
+      return base === undefined || secret === undefined ? undefined : `${base.replace(/\/+$/, '')}/webhooks/plex/${plexWebhookCode(secret)}`;
+    },
+  });
+  const plexPlayback = createPlexPlayback(database);
+  const playback = createPlayback({
+    plexPlayback,
+    enabled: () => mediaServer().name === 'plex' && readSetting(openedDatabase, 'credentials', 'plex.token') !== undefined,
+  });
   const versionImport = createVersionImport({ database, rtorrent, arr, mediaServer, problems });
   // Second versions still sending (left by a restart, or unconfirmed by rTorrent) are settled by the poll that follows them,
   // and finished ones are imported after it.
@@ -110,7 +132,7 @@ if (database !== undefined) {
       return destination === undefined ? undefined : createBackupStore(destination);
     },
   });
-  runner.register('backup', 5 * 60_000, async () => { await backup.run(); });
+  runner.register('backup', 5 * 60_000, async () => { await backup.runIfDue(); });
   const torrentGrabs = createGrabTracker({ database, arr, events });
   runner.register('arr-reconcile', torrentGrabs.intervalMs, torrentGrabs.reconcile);
   torrentGrabs.readOnNewTorrents();
@@ -147,7 +169,7 @@ if (database !== undefined) {
   const searches = createSearchScheduler({ database, arr, problems, isManualDownload: protection.isProtected });
   runner.register('search-schedule', 2 * 60_000, searches.check);
   runner.register('manual-download-protection', 10 * 60_000, async () => {
-    await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr')]);
+    await Promise.allSettled([protection.ensureWebhook('sonarr'), protection.ensureWebhook('radarr'), watchStatus.ensureWebhook()]);
     await protection.reconcile();
   });
   const trackerAccounts = createTrackerAccounts(database);
@@ -179,7 +201,7 @@ if (database !== undefined) {
     forget: search.forget,
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
-  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title));
+  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips, watchStatus);
   const add = createAdd(arr, titleStore, openedDatabase);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);
@@ -190,6 +212,7 @@ if (database !== undefined) {
     ownerPlexId: process.env.PLEX_OWNER_ID,
     publicOrigin: process.env.APP_ORIGIN,
     events,
+    onOpenStreams: (count) => { openStreams = count; },
     search,
     add: {
       ...add,
@@ -214,6 +237,7 @@ if (database !== undefined) {
     library,
     discover,
     tmdbTitles,
+    playback,
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
       arr,
@@ -229,10 +253,11 @@ if (database !== undefined) {
     cache: createCacheRoutes(database, imageDirectory, titles.reconcile),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),
-      // One receiver for both: live downloads record every event, a Grab of a manual download is vetoed,
-      // the title cache refreshes or drops the title an event names, and a rename or download of a tracked file
-      // gets its second versions merged again in Jellyfin.
+      // Plex's events go to watch status. One receiver for Sonarr and Radarr: live downloads record every event,
+      // a Grab of a manual download is vetoed, the title cache refreshes or drops the title an event names, and a
+      // rename or download of a tracked file gets its second versions merged again in Jellyfin.
       receive: (service, payload) => {
+        if (service === 'plex') return watchStatus.receiveWebhook(payload);
         versionImport.trackedFileChanged(service, payload);
         const grabs = torrentGrabs.receiveWebhook(service, payload);
         const title = titles.receiveWebhook(service, payload);

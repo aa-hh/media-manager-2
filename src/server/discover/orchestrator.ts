@@ -83,6 +83,7 @@ const filterParams = (type: TmdbMediaType, filters: Filters, from?: string, to?:
   const yearTo = filters.yearTo === null ? undefined : `${filters.yearTo}-12-31`;
   return {
     with_genres: filters.genres.length === 0 ? undefined : filters.genres.join(','),
+    with_keywords: filters.keywords.length === 0 ? undefined : filters.keywords.join(','),
     // Any one of the chosen services is enough, so they are joined with TMDB's "or".
     with_watch_providers: filters.providers.length === 0 ? undefined : filters.providers.join('|'),
     watch_region: filters.region,
@@ -92,6 +93,7 @@ const filterParams = (type: TmdbMediaType, filters: Filters, from?: string, to?:
   };
 };
 
+// Keywords are not checked here: list items carry no keyword ids, so only TMDB discover applies that filter.
 // A title passes when it has every chosen genre, a date inside the year bounds and a rating at the floor.
 const passes = (item: StoredItem, filters: Filters) => {
   const year = item.date === null ? null : Number(item.date.slice(0, 4));
@@ -207,6 +209,8 @@ export const createOrchestrator = (options: {
   const run = async (source: Source, filters: Filters, at: number): Promise<Ran | undefined> => {
     if (source.kind === 'trakt') {
       if (trakt === undefined) return undefined;
+      // Trakt has no keyword filter, so its titles cannot be shown under one.
+      if (filters.keywords.length > 0) return { kind: 'ok', value: [] };
       // Box office takes no filters: it is always last weekend's top ten.
       const mapped = source.list.kind === 'boxoffice' ? undefined : await traktFilters(source.mediaType, filters);
       const result = await trakt.list({ ...source.list, limit: CAP, ...(mapped === undefined ? {} : { filters: mapped }) });
@@ -226,6 +230,8 @@ export const createOrchestrator = (options: {
       return entries.length === 0 && failure !== undefined ? failure : { kind: 'ok', value: entries, thinned: failure !== undefined };
     }
     if (source.kind === 'tmdb-trending') {
+      // TMDB's trending list takes no filters and its items carry no keyword ids.
+      if (filters.keywords.length > 0) return { kind: 'ok', value: [] };
       const result = await tmdb.trending(source.mediaType, 'week');
       return result.kind === 'ok' ? { kind: 'ok', value: fromTmdb(result.value.results) } : result;
     }
@@ -298,6 +304,8 @@ export const createOrchestrator = (options: {
       // razor: filters are applied after fetching because TMDB's trending endpoint takes none; this keeps TMDB's trending order and
       // works for the mixed movie and TV list, at the cost of pages holding fewer than 20 titles (the client stops after
       // 5 empty pages in a row, EMPTY_PAGE_LIMIT in Grid.tsx); upgrade path is a server-side merged page.
+      // Trending items carry no keyword ids, so a keyword filter leaves nothing to show.
+      if (spec.filters.keywords.length > 0) return { result: { kind: 'ok', value: { items: [], totalPages: 0 } }, partial: false };
       const trending = await tmdb.trending(spec.type, 'week', spec.page);
       if (trending.kind !== 'ok') return { result: trending, partial: false };
       let entries = fromTmdb(trending.value.results).filter(({ item }) => passes(item, spec.filters));

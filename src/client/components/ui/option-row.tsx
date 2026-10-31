@@ -1,6 +1,5 @@
-// v2/Option row — ~/Projects/media-manager-2-design/design-system.lib.pen qq4VX
-// v2/Option row/bordered — ~/Projects/media-manager-2-design/design-system.lib.pen zDrOf (the `bordered` prop)
-// v2/Option row/bordered/service — ~/Projects/media-manager-2-design/design-system.lib.pen UhcoW (OptionRowService)
+// Figma: OptionRow — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4303
+// Figma: OptionRowService — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=10-4324
 import { ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Kbd } from '@/components/ui/kbd';
@@ -26,7 +25,7 @@ function OptionRow({ control, title, description, kbd, bordered = false, classNa
         'not-has-data-disabled:hover:bg-surface-hover not-has-data-disabled:active:bg-surface-pressed',
         'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring',
         '[&>[data-control]>*]:focus-visible:outline-none',
-        bordered && 'rounded-md border border-border bg-card px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]',
+        bordered && 'rounded-md border border-border bg-control px-4 py-3.5 has-data-checked:border-foreground has-data-checked:shadow-[inset_0_0_0_1px_var(--foreground)]',
         className,
       )}
       {...props}

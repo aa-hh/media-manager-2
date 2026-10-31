@@ -1,4 +1,4 @@
-// v2/Tabs trigger — ~/Projects/media-manager-2-design/design-system.lib.pen Qf3qz
+// Figma: TabsTrigger — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3545
 import { Tabs as TabsPrimitive } from '@base-ui/react/tabs';
 import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '@/lib/utils';

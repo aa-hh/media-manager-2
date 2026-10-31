@@ -1,4 +1,4 @@
-// v2/Toast — ~/Projects/media-manager-2-design/design-system.lib.pen Dslj1
+// Figma: Toast — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-838
 import { Toast } from '@base-ui/react/toast';
 import { Check, Info, X } from 'lucide-react';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
@@ -40,7 +40,7 @@ function ToastList() {
       toast={toast}
       className={cn(
         'flex w-100 max-w-[calc(100vw-2*var(--page-margin))] items-center gap-3 rounded-lg bg-bar py-3 pr-3 pl-3.5 text-bar-foreground',
-        'shadow-[0_2px_6px_color-mix(in_srgb,var(--foreground)_6%,transparent),0_8px_24px_var(--shadow)]',
+        'shadow-float',
         // In: slide up 12 px and fade, duration-slow ease-out. Out: fade, duration-fast ease-in.
         'transition-[opacity,translate] duration-(--duration-slow) ease-out',
         'data-starting-style:translate-y-(--motion-rise-12) data-starting-style:opacity-0',
@@ -54,7 +54,7 @@ function ToastList() {
         {toast.type === 'error' ? <X /> : toast.type === 'info' ? <Info /> : <Check />}
       </span>
       <Toast.Content className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <Toast.Title className="font-ui text-sm font-semibold text-bar-foreground" />
+        <Toast.Title className="font-ui text-sm font-semibold text-bar-foreground wrap-anywhere" />
         <Toast.Description className="font-ui text-[13px] font-normal text-bar-muted-foreground" />
       </Toast.Content>
       {toast.actionProps !== undefined && (
