@@ -289,23 +289,25 @@ const number = (value) => (value === null || value === undefined || value === ''
 const ensureMpv = () => {
   if (mpv) return mpv;
   const { MpvView } = require('./build/Release/mpvview.node');
+  // libmpv finds no cache folder of its own, so every new picture setup compiled its shaders again (the first Play of a
+  // launch waited 3.5 s for its first frame). Kept beside desktop.json, compiled shaders carry over between launches.
+  // Set before init: force-window makes the video output straight after init, and the output reads the folder only when
+  // it is made, so a set that lands later is ignored.
+  const shaderCache = path.join(app.getPath('userData'), 'mpv-shader-cache');
+  fs.mkdirSync(shaderCache, { recursive: true });
   // mpv's own log beside desktop.json, set before init: log-file is read before mpv starts, and only a file opened then
   // holds libmpv's start-up and video-output lines, where the time to the first frame goes. mpv empties the file each
   // time it opens it, so it holds one launch and never grows past it.
-  mpv = new MpvView(win.getNativeWindowHandle(), { 'log-file': path.join(app.getPath('userData'), 'mpv.log') });
-  // mpv's window always takes the app window's frame, whatever the video's shape; the picture is fitted inside it.
-  void mpv.setOption('keepaspect-window', 'no');
-  // libmpv finds no cache folder of its own, so every new picture setup compiled its shaders again (the first Play of a
-  // launch waited 3.5 s for its first frame). Kept beside desktop.json, compiled shaders carry over between launches.
-  const shaderCache = path.join(app.getPath('userData'), 'mpv-shader-cache');
-  fs.mkdirSync(shaderCache, { recursive: true });
-  void mpv.setOption('gpu-shader-cache-dir', shaderCache);
+  mpv = new MpvView(win.getNativeWindowHandle(), {
+    'log-file': path.join(app.getPath('userData'), 'mpv.log'),
+    'gpu-shader-cache-dir': shaderCache,
+  });
   for (const name of OBSERVED) mpv.observe(name);
   mpv.onEvent(onMpvEvent);
   return mpv;
 };
-// mpv starts with the app page rather than at the first Play. Its window and picture setup still come with each file.
-// An addon that does not load fails only playback, as before.
+// mpv starts with the app page rather than at the first Play, and force-window gives it its window and picture setup
+// then; every file reuses them. An addon that does not load fails only playback, as before.
 const startMpvEarly = () => {
   try {
     ensureMpv();
@@ -323,7 +325,7 @@ const mark = (playing, step) => {
 const writeMarks = (playing) => {
   if (!playing?.marks || playing.marksWritten) return;
   playing.marksWritten = true;
-  const line = { at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, ...playing.marks };
+  const line = { at: new Date(playing.askedAt).toISOString(), ratingKey: playing.ask.ratingKey, directPlay: playing.reply?.decision?.directPlay ?? null, windows: playing.windows ?? null, ...playing.marks };
   fs.appendFile(path.join(app.getPath('userData'), 'play-timings.log'), `${JSON.stringify(line)}\n`, () => {});
 };
 // Sends the position held back while the load opened, once showsPosition lets it through.
@@ -384,6 +386,7 @@ function onMpvEvent(event) {
     // mpv drew the first frame after a load or a seek.
     if (current && current === loaded && current.drawn === false) {
       current.drawn = true;
+      if (typeof event.windows === 'number') current.windows = event.windows;
       mark(current, 'firstFrame');
       release(current);
     }

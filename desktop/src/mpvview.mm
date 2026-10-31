@@ -110,6 +110,12 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     // Warnings and errors only: main.js reads FFmpeg's "HTTP error 401" from them.
     mpv_request_log_messages(mpv_, "warn");
     // Video output and its window, set before mpv_initialize.
+    // force-window=yes: with libmpv's idle=yes, mpv makes its video output and window from its own thread when it goes
+    // idle straight after mpv_initialize, and keeps them across files and stops, so every Play reuses one window. Never
+    // immediate: that makes the window inside mpv_initialize on this thread while mpv's macOS window code waits on the
+    // main thread (the main-thread rule above).
+    // keepaspect-window=no: mpv's window always takes the app window's frame, whatever the video's shape; the picture is
+    // fitted inside it.
     // auto-window-resize=no: mpv does not resize its window for each new file.
     // native-fs=no: mpv's fullscreen fills the screen in place (window.swift setToFullScreen)
     // instead of moving to a new Space, so the attached Electron window stays with it.
@@ -117,8 +123,8 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     // load-*=no: mpv's built-in scripts this app never uses. Which scripts load is decided at mpv_initialize, so these are
     // set before it; ytdl set after it loaded its hook and then unloaded it.
     const char *vo[][2] = {
-        {"vo", "gpu-next"}, {"gpu-api", "vulkan"}, {"gpu-context", "macvk"},
-        {"border", "no"}, {"ontop", "no"}, {"auto-window-resize", "no"}, {"native-fs", "no"},
+        {"vo", "gpu-next"}, {"gpu-api", "vulkan"}, {"gpu-context", "macvk"}, {"force-window", "yes"},
+        {"border", "no"}, {"ontop", "no"}, {"keepaspect-window", "no"}, {"auto-window-resize", "no"}, {"native-fs", "no"},
         {"ytdl", "no"}, {"load-stats-overlay", "no"}, {"load-console", "no"}, {"load-commands", "no"},
         {"load-auto-profiles", "no"}, {"load-select", "no"}, {"load-positioning", "no"}, {"load-context-menu", "no"}};
     // main.js's own pre-init options (the optional second argument): the object's own string-valued properties.
@@ -352,11 +358,16 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
           default: reason = "redirect";
         }
         o.Set("value", reason);
+      } else if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART) {
+        // Every window the app has, for play-timings.log: a count that grows from Play to Play means a window left behind.
+        o.Set("windows", (double)NSApp.windows.count);
       }
       // mpv makes its window on the main thread after the video reconfig, so the observer can read window-id before the
       // window exists and then hear no later change: the picture then sits in mpv's own unattached window, off the app's
-      // frame. Once a frame is drawn the window exists, so ask again.
-      if (!video_ && ev->event_id == MPV_EVENT_PLAYBACK_RESTART)
+      // frame. Once a frame is drawn the window exists, so ask again. force-window's reconfig is sent after its window
+      // exists, so ask then too: at launch there is no playback-restart to fall back on, and an unattached window is
+      // visible on screen.
+      if (!video_ && (ev->event_id == MPV_EVENT_PLAYBACK_RESTART || ev->event_id == MPV_EVENT_VIDEO_RECONFIG))
         mpv_get_property_async(mpv_, kWindowId, "window-id", MPV_FORMAT_STRING);
       if (!callback_.IsEmpty()) callback_.Call({o});
       if (env.IsExceptionPending()) return;
