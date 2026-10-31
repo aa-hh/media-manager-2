@@ -84,7 +84,7 @@ is_risk_path() {
     # The desktop app holds the stream-address and Plex-token boundary.
     desktop/main.js|desktop/preload.js|desktop/lib/*) return 0 ;;
     # The TV app holds the same boundary, plus its build, permissions and self-update.
-    android-tv/gradle/*|android-tv/gradlew|android-tv/gradlew.bat|android-tv/gradle.properties) return 0 ;;
+    android-tv/gradle/*|android-tv/ffmpeg/*|android-tv/gradlew|android-tv/gradlew.bat|android-tv/gradle.properties) return 0 ;;
     android-tv/settings.gradle.kts|android-tv/build.gradle.kts|android-tv/app/build.gradle.kts) return 0 ;;
     android-tv/app/src/main/AndroidManifest.xml|android-tv/app/src/main/res/xml/network_security_config.xml) return 0 ;;
     android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/api/*|android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/player/*|android-tv/app/src/main/java/io/github/aahh/mediamanager2/tv/update/*) return 0 ;;

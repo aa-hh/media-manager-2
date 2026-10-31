@@ -38,6 +38,11 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v4
+      # The TV app's FFmpeg decoder; on a miss scripts/android-tv.sh installs the NDK and builds it.
+      - uses: actions/cache@v4
+        with:
+          path: android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
+          key: ffmpeg-${{ hashFiles('android-tv/ffmpeg/build.sh','android-tv/gradle/libs.versions.toml') }}
       - name: Chromium for the story tests
         run: npx playwright install --with-deps --only-shell chromium
       - name: Full suite
