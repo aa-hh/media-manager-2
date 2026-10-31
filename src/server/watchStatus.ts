@@ -105,7 +105,8 @@ const playable = (item: Item): Playable | null => {
 
 // Plex watch marks for library titles, from one in-memory listing of every Plex movie and show library, kept 60 seconds
 // or until Plex's webhook says something was played, paused, stopped or watched.
-// Never throws: a Plex that fails reads as unavailable, a Jellyfin owner or unset Plex as off.
+// Its reads never throw: a Plex that fails reads as unavailable, a Jellyfin owner or unset Plex as off. ensureWebhook
+// throws when plex.tv refuses.
 export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, sleep = (ms) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }) }: {
   plex: ReturnType<typeof createPlex>;
   enabled: () => boolean;
@@ -208,8 +209,11 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
       const item = isRecord(payload.Metadata) ? payload.Metadata : undefined;
       const ratingKey = key(item?.type === 'episode' ? item.grandparentRatingKey : item?.type === 'movie' ? item.ratingKey : undefined);
       if (ratingKey === null || !enabled()) return 'ignored';
-      // A listing already under way may predate the change, so a new one follows it, uncapped: pages read only once it is in.
-      void Promise.resolve(building).then(rebuild).then(() => events.publish('watch', { ratingKey }));
+      // A listing already under way may predate the change, so a new one follows it, uncapped: pages read only once it is
+      // in. A failed listing tells no page, so none swaps its marks for the failure.
+      void Promise.resolve(building).then(rebuild).then((value) => {
+        if (value !== undefined) events.publish('watch', { ratingKey });
+      });
       return 'ok';
     },
 

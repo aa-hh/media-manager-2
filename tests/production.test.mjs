@@ -3750,6 +3750,31 @@ test('watch status from Plex marks library titles, both title pages and Continue
     assert.deepEqual([after.viewOffsetMs, after.viewCount], [0, 1]);
   });
 
+  // Telling pages after a failed listing turns this red: they would swap their marks for the failure.
+  await t.test('a Plex webhook whose listing fails tells no page', async () => {
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    let failing = true;
+    const { requests, watchStatus, published } = connect({ fetch: async (url, init) => {
+      if (failing && new URL(String(url)).pathname === '/library/sections') return held.then(() => { throw new TypeError('fetch failed'); });
+      return plexFetch(url, init);
+    } });
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.stop', Metadata: { type: 'movie', ratingKey: '100' } }), 'ok');
+    for (const deadline = Date.now() + 10_000; !requests.includes('/library/sections');) {
+      assert.ok(Date.now() < deadline, 'the failing listing never started');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    failing = false;
+    // This one waits for the failing listing, so once it is told, the failing one has settled.
+    assert.equal(watchStatus.receiveWebhook({ event: 'media.scrobble', Metadata: { type: 'episode', grandparentRatingKey: '300' } }), 'ok');
+    release();
+    for (const deadline = Date.now() + 10_000; published.length === 0;) {
+      assert.ok(Date.now() < deadline, 'no watch event');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(published, [['watch', { ratingKey: '300' }]]);
+  });
+
   // Posting only our address (dropping webhooks other apps added), leaving an old address of ours with a stale secret,
   // or posting when the list is already right turns this red.
   await t.test('the Plex webhook is kept on the plex.tv list beside other apps', async () => {
