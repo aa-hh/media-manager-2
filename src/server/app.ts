@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { extname, isAbsolute } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { getConnInfo } from '@hono/node-server/conninfo';
@@ -96,6 +96,10 @@ const readCookie = (header: string | undefined, name: string): CookieRead => {
 const WEBHOOK_BODY_LIMIT = 512 * 1024;
 // Plex attaches the item's poster to some events.
 const PLEX_WEBHOOK_BODY_LIMIT = 4 * 1024 * 1024;
+
+// What Plex's webhook address carries in place of the webhook secret. plex.tv stores that address, so a copy read from
+// there must not sign Sonarr or Radarr events.
+export const plexWebhookCode = (secret: string) => createHmac('sha256', secret).update('plex').digest('hex');
 
 const secretMatches = (given: string, secret: string) => {
   const digest = (value: string) => createHash('sha256').update(value).digest();
@@ -493,7 +497,7 @@ export const createApp = (options: CreateAppOptions) => {
     if (result === 'invalid') return context.json({ error: 'invalid_request' }, 400);
     return context.body(null, 204);
   });
-  // Plex sends no password, so its webhook address carries the secret; the event is JSON in the form field `payload`.
+  // Plex sends no password, so its webhook address carries plexWebhookCode; the event is JSON in the form field `payload`.
   const plexWebhookLimit = bodyLimit({
     maxSize: PLEX_WEBHOOK_BODY_LIMIT,
     onError: (context) => context.json({ error: 'request_too_large' }, 413),
@@ -501,7 +505,7 @@ export const createApp = (options: CreateAppOptions) => {
   app.post('/webhooks/plex/:secret', plexWebhookLimit, async (context) => {
     const secret = options.webhooks?.secret();
     if (options.webhooks === undefined || secret === undefined) return context.json({ error: 'not_configured' }, 503);
-    if (!secretMatches(context.req.param('secret'), secret)) return context.json({ error: 'unauthenticated' }, 401);
+    if (!secretMatches(context.req.param('secret'), plexWebhookCode(secret))) return context.json({ error: 'unauthenticated' }, 401);
     let payload: unknown;
     try {
       const form = await context.req.parseBody();

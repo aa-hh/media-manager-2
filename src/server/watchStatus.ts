@@ -115,7 +115,7 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
   enabled: () => boolean;
   now: () => number;
   events: Pick<EventHub, 'publish'>;
-  /** This server's Plex webhook address, secret included; undefined until the address and secret are saved. */
+  /** This server's Plex webhook address; undefined until the address and webhook secret are saved. */
   webhookUrl: () => string | undefined;
   sleep?: (ms: number) => Promise<void>;
 }) => {

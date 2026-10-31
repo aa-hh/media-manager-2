@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { createAdd } from './add.js';
 import { createApiRoutes } from './api.js';
-import { createApp } from './app.js';
+import { createApp, plexWebhookCode } from './app.js';
 import { createBlocklist } from './blocklist.js';
 import { createBackup } from './backup.js';
 import { createBackupStore, readBackupDestination } from './backupDestination.js';
@@ -106,7 +106,7 @@ if (database !== undefined) {
     webhookUrl: () => {
       const base = readSetting(openedDatabase, 'serviceAddresses', 'mediaManager.hookUrl');
       const secret = readSetting(openedDatabase, 'credentials', 'webhook.secret');
-      return base === undefined || secret === undefined ? undefined : `${base.replace(/\/+$/, '')}/webhooks/plex/${encodeURIComponent(secret)}`;
+      return base === undefined || secret === undefined ? undefined : `${base.replace(/\/+$/, '')}/webhooks/plex/${plexWebhookCode(secret)}`;
     },
   });
   const plexPlayback = createPlexPlayback(database);

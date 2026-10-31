@@ -125,8 +125,11 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
   };
   const webhooks = async (): Promise<string[]> => {
     const body: unknown = await (await plexTv()).json().catch(() => undefined);
-    if (!Array.isArray(body)) throw new Error('plex.tv sent an unreadable webhook list.');
-    return body.flatMap((item) => (isRecord(item) && typeof item.url === 'string' ? [item.url] : []));
+    // An entry read wrongly would be dropped from the list posted back, so any unexpected one refuses the whole list.
+    if (!Array.isArray(body) || !body.every((item): item is { url: string } => isRecord(item) && typeof item.url === 'string')) {
+      throw new Error('plex.tv sent an unreadable webhook list.');
+    }
+    return body.map((item) => item.url);
   };
   const setWebhooks = async (urls: string[]) => {
     await plexTv({

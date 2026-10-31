@@ -3807,9 +3807,10 @@ test('watch status from Plex marks library titles, both title pages and Continue
   });
 
   // Posting only our address (dropping webhooks other apps added), leaving an old address of ours with a stale secret,
-  // or posting when the list is already right turns this red.
+  // posting when the list is already right, or posting back a list with an entry it could not read turns this red.
   await t.test('the Plex webhook is kept on the plex.tv list beside other apps', async () => {
     let listed = ['https://other.app/plex', 'http://mm2.lan:8080/webhooks/plex/old-secret'];
+    let unreadable = false;
     const posted = [];
     let url;
     const { watchStatus } = connect({
@@ -3822,11 +3823,15 @@ test('watch status from Plex marks library titles, both title pages and Continue
           listed = new URLSearchParams(init.body).getAll('urls[]');
           return new Response('', { status: 201 });
         }
-        return new Response(JSON.stringify(listed.map((entry) => ({ url: entry }))), { status: 200 });
+        return new Response(JSON.stringify([...listed.map((entry) => ({ url: entry })), ...(unreadable ? [{ address: 'https://third.app' }] : [])]), { status: 200 });
       },
     });
     assert.equal(await watchStatus.ensureWebhook(), false, 'nothing is registered without the address and the webhook secret');
     url = 'http://mm2.lan:8080/webhooks/plex/new-secret';
+    unreadable = true;
+    await assert.rejects(watchStatus.ensureWebhook(), /unreadable webhook list/);
+    assert.equal(posted.length, 0);
+    unreadable = false;
     assert.equal(await watchStatus.ensureWebhook(), true);
     assert.deepEqual(listed, ['https://other.app/plex', url]);
     await watchStatus.ensureWebhook();
@@ -6087,7 +6092,10 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     assert.equal(received.length, 0);
     assert.equal((await post(app, '/webhooks/radarr', { Authorization: authorization(secret) })).status, 204);
     assert.deepEqual(received, [['radarr', { eventType: 'Test' }]]);
-    // Plex sends no password: the secret is the address's last part and the event is JSON in the form field `payload`.
+    // Plex sends no password: the address ends in a code made from the secret, never the secret itself, which would sign
+    // Sonarr and Radarr events for whoever reads the address on plex.tv. The event is JSON in the form field `payload`.
+    const { createHmac } = await import('node:crypto');
+    const code = createHmac('sha256', secret).update('plex').digest('hex');
     const plexForm = (payload) => {
       const form = new FormData();
       form.set('payload', payload);
@@ -6095,10 +6103,11 @@ test('Sonarr and Radarr grabs are matched to torrents and recorded once', async 
     };
     const plexPost = (path, form) => app.request(path, { method: 'POST', body: form });
     assert.equal((await plexPost('/webhooks/plex/wrong', plexForm('{"event":"media.stop"}'))).status, 401);
-    assert.equal((await plexPost(`/webhooks/plex/${secret}`, plexForm('not json'))).status, 400);
-    assert.equal((await plexPost(`/webhooks/plex/${secret}`, new FormData())).status, 400);
+    assert.equal((await plexPost(`/webhooks/plex/${secret}`, plexForm('{"event":"media.stop"}'))).status, 401);
+    assert.equal((await plexPost(`/webhooks/plex/${code}`, plexForm('not json'))).status, 400);
+    assert.equal((await plexPost(`/webhooks/plex/${code}`, new FormData())).status, 400);
     assert.equal(received.length, 1);
-    assert.equal((await plexPost(`/webhooks/plex/${secret}`, plexForm('{"event":"media.stop"}'))).status, 204);
+    assert.equal((await plexPost(`/webhooks/plex/${code}`, plexForm('{"event":"media.stop"}'))).status, 204);
     assert.deepEqual(received.at(-1), ['plex', { event: 'media.stop' }]);
   });
 });
