@@ -725,6 +725,8 @@ function useNow(active: boolean) {
 
 // Plex's own player hides its controls 2 s after the last move, click or key (AudioVideoFullPlayer, Plex.app 4.160).
 const CONTROLS_HIDE_MS = 2_000;
+// Most Plays show their first frame within 1.5-2.5 s (play-timings.log, 31 Oct), so the opening screen's line waits well past that.
+const OPENING_SLOW_MS = 8_000;
 const SKIP_FADE_MS = 10_000;
 
 /** The player element; Home draws it beside the downloads bar. Nothing shows until a title plays. */
@@ -969,7 +971,7 @@ export function Player() {
       loadedAhead={playback.loadedAhead}
       playing={!playback.paused}
       controls={controlsShown ? 'all' : 'none'}
-      opening={{ text: request.flags.directPlay ? 'Starting the original file from Plex' : 'Starting from Plex', slow: now - session.openedAt >= 3_000 }}
+      opening={{ text: request.flags.directPlay ? 'Starting the original file from Plex' : 'Starting from Plex', slow: now - session.openedAt >= OPENING_SLOW_MS }}
       loadAhead={loadAheadChoice(context.loadAheadBytes).value}
       chapters={reply?.chapters.flatMap((chapter) => (chapter.startTimeOffset === null ? [] : [{ start: chapter.startTimeOffset / 1000, title: chapter.title ?? `Chapter ${chapter.index ?? ''}` }]))}
       markers={reply?.markers.flatMap((entry) => ((entry.type === 'intro' || entry.type === 'credits') && entry.startTimeOffset !== null && entry.endTimeOffset !== null
