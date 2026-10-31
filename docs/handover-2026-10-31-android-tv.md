@@ -12,7 +12,7 @@ Linear: project [V2 · Google TV app](https://linear.app/aa-hh/project/v2-google
 |---|---|---|---|
 | S0 docs to main | — | Done, merged | PR #261 |
 | T00 Linear project, epic, tickets; tracker doc | AA-403 | Done, merged | PR #276 |
-| T01 Server: TV link-code sign-in, 90-day device sessions, list and sign-out | AA-404 | In Review: round 1 passed; a sign-out fix went into round 2 (see below) | PR #277, branch `claude/tv-link-code-sign-in` |
+| T01 Server: TV link-code sign-in, 90-day device sessions, list and sign-out | AA-404 | In Review: rounds 1 and 2 passed; waiting for Alec's merge yes | PR #277, branch `claude/tv-link-code-sign-in` |
 | T03c Design: first launch, link code, update prompt, banner and icon; web "Signed-in TVs" | AA-406 | Drawn, waiting for Alec's approval (S4c) | Figma (below) |
 | T06 Release key into this Mac's Keychain | AA-410 | Done | Keychain |
 | T12 Extend /approve-design with a TV path | AA-408 | Done, merged | PR #275 |
@@ -21,7 +21,7 @@ Linear: project [V2 · Google TV app](https://linear.app/aa-hh/project/v2-google
 ### T01 notes for whoever finishes or deploys it
 
 - Went beyond the plan inside its four files: web and TV sign-in now share `requestPin`, `checkPin` and `plexCompleteReply` instead of two copies; `validateSession` renews only when `privateGuard` passes `renew` (the event stream's checks must not move the expiry without re-sending the cookie); TV sign-out removes only rows with a device name; `created_at` is written for browser rows too.
-- Review round 1 passed with no findings left. Its deep pass found that sign-out picked a TV by SQLite's reusable `rowid`; the scorer dropped it at 60 but confirmed it, and it was fixed anyway: TV rows now carry a random 22-character `device_id` (same migration entry, unique index), `GET /api/devices` returns it as `id`, and `POST /api/devices/:id{[A-Za-z0-9_-]{22}}/sign-out` matches it. That changes the plan's device-route contract: `id` is that string, not a number. Round 2 ran on that fix (check the PR's review comment for its result; commits after round 2 get no review status, so a further fix needs a new PR or Alec's word to merge with `--admin`)
+- Review round 1 passed with no findings left. Its deep pass found that sign-out picked a TV by SQLite's reusable `rowid`; the scorer dropped it at 60 but confirmed it, and it was fixed anyway: TV rows now carry a random 22-character `device_id` (same migration entry, unique index), `GET /api/devices` returns it as `id`, and `POST /api/devices/:id{[A-Za-z0-9_-]{22}}/sign-out` matches it. That changes the plan's device-route contract: `id` is that string, not a number. Round 2 passed with no findings left (commit 8398c48). The `device_id` column went into the same, never-deployed migration entry; that is safe only because no database ever ran the round-1 build, so deploy only the merged result. Commits after round 2 get no review status: a further fix needs a new PR or Alec's word to merge with `--admin`
 - Reviewer notes left for Alec, not code defects: anyone who reaches the public address can start a link code and try to get the owner to enter it (the usual risk with device codes); TV rows count toward `MAX_SESSIONS` (100). Live checks still owed: that plex.tv accepts the plain PIN and shows its code at plex.tv/link, and that the real TV app keeps and resends the cookies.
 - After merge: owner stop SD (Alec approves a deploy and names the host; then `DEPLOY_HOST=<host> sh scripts/deploy.sh` from a clean worktree at origin/main). The TV can't use the routes before that.
 
