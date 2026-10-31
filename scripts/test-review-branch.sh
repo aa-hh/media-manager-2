@@ -216,6 +216,17 @@ run_review
 case "$OUT" in *"Review level: full ("*"risk: android-tv/gradle.properties, android-tv/gradlew), round 1"*) ok "the TV Gradle wrapper and its properties are risk paths" ;;
   *) fail "tv wrapper: wanted a full review with both files as risk paths, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
 
+# Playback: a small change to the players' Plex calls gets a full review.
+# Breaks if src/server/playback.ts leaves is_risk_path.
+setup
+: > "$STUB/comments"
+mkdir -p "$W/src/server"
+printf 'export const x = 1;\n' > "$W/src/server/playback.ts"
+g add -A; g commit -qm playback
+run_review
+case "$OUT" in *"Review level: full ("*"risk: src/server/playback.ts), round 1"*) ok "the players' Plex calls are a risk path" ;;
+  *) fail "playback: wanted a full review with src/server/playback.ts as a risk path, got: $(printf '%s\n' "$OUT" | grep '^Review level')" ;; esac
+
 # A commit of the branch's own after round 2 still refuses.
 setup
 on_main b.txt 'b2\n' main-change
