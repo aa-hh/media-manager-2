@@ -279,7 +279,7 @@ export function SetupWizard({ status: initial, headingRef, signOutLabel, signOut
               <OptionRow
                 control={<Checkbox checked={wanted.backup} onCheckedChange={(on) => setWanted((current) => ({ ...current, backup: on }))} />}
                 title="Backup"
-                description="Copy the database every few minutes to a folder or an S3-compatible bucket."
+                description="Copy the database every hour to a folder or an S3-compatible bucket."
                 bordered
               />
             </div>

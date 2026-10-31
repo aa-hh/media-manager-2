@@ -76,7 +76,7 @@ export const WithCheckboxUnchecked: Story = {
     bordered: true,
     control: <Checkbox onCheckedChange={fn()} />,
     title: 'Backup',
-    description: 'Copy the database every few minutes to a folder or an S3-compatible bucket.',
+    description: 'Copy the database every hour to a folder or an S3-compatible bucket.',
   },
 };
 

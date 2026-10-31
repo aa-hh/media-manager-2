@@ -162,6 +162,13 @@ const prune = async (store: BackupStore, now: number, uploadedKey: string) => {
   }
 };
 
+const BACKUP_INTERVAL_MS = 60 * 60_000;
+
+export const lastBackupAt = (database: DatabaseSync): number | null => {
+  const row = database.prepare("SELECT MAX(finished_at) AS at FROM backup_runs WHERE outcome = 'ok'").get();
+  return row === undefined || row.at === null ? null : Number(row.at);
+};
+
 export const createBackup = ({ database, events, store, key = backupKeyFromEnvironment, now = Date.now }: {
   database: DatabaseSync;
   events: EventHub;
@@ -271,6 +278,11 @@ export const createBackup = ({ database, events, store, key = backupKeyFromEnvir
       const run: BackupRun = { id: Number(lastInsertRowid), startedAt, finishedAt, ...result };
       events.publish('backup', run);
       return run;
+    },
+    // The job calls this every 5 minutes, so a restart never delays a due backup; only a good backup starts the hour's wait.
+    async runIfDue(): Promise<BackupRun | undefined> {
+      const last = lastBackupAt(database);
+      return last !== null && now() - last < BACKUP_INTERVAL_MS ? undefined : this.run();
     },
   };
 };
