@@ -34,12 +34,13 @@ class LogBuffer(
         lines.addLast(line)
         characters += line.length
         while (characters > maxCharacters && lines.size > 1) characters -= lines.removeFirst().length
-        // The file grows by appends and is rewritten from memory once it holds twice the cap, so it stays bounded.
+        // The file grows by appends and is rewritten from memory once a cap's worth has been appended since the last
+        // rewrite, so it holds at most twice the cap and a full buffer rewrites once per cap of lines, not every line.
         writtenSinceRewrite += line.length
         runCatching {
             if (writtenSinceRewrite > maxCharacters) {
                 current.writeText(lines.joinToString(""))
-                writtenSinceRewrite = characters
+                writtenSinceRewrite = 0
             } else {
                 current.appendText(line)
             }
