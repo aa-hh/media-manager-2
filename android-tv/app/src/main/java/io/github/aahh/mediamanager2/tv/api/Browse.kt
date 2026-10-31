@@ -58,9 +58,9 @@ data class DiscoverHome(
     val extraRows: List<DiscoverRow> = emptyList(),
 )
 
-/** `GET /api/discover/:type`: one page of a grid. */
+/** `GET /api/discover/:type`: one page of a grid. [totalPages] is null while a page not yet saved is still being built. */
 @Serializable
-data class DiscoverPage(val page: Int, val totalPages: Int, val results: List<DiscoverResult> = emptyList(), val pending: Boolean = false)
+data class DiscoverPage(val page: Int, val totalPages: Int? = null, val results: List<DiscoverResult> = emptyList(), val pending: Boolean = false)
 
 /** A search hit from Sonarr or Radarr's lookup. `key` is stable across the streamed answers. */
 @Serializable

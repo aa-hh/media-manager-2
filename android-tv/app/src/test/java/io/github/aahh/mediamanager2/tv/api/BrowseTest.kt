@@ -55,6 +55,10 @@ class BrowseTest {
         reply("""{"page":2,"totalPages":9,"results":[],"pending":false}""")
         assertEquals(DiscoverPage(2, 9), (browse.discover("tv", "rating", 2) as ApiResult.Ok).value)
         assertEquals("/api/discover/tv?sort=rating&page=2", server.takeRequest().path)
+        // A page still being built comes back pending with no page count (the web shows `totalPages ?? page`).
+        reply("""{"page":1,"totalPages":null,"results":[],"pending":true}""")
+        assertEquals(DiscoverPage(1, null, pending = true), (browse.discover("movie") as ApiResult.Ok).value)
+        server.takeRequest()
         expectRefused { kotlinx.coroutines.runBlocking { browse.discover("all") } }
         expectRefused { kotlinx.coroutines.runBlocking { browse.discover("movie", "trending") } }
     }
