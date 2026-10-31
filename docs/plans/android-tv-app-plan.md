@@ -221,6 +221,7 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
   - Record the exact `X-Plex-Product`, `X-Plex-Platform` and `X-Plex-Client-Profile-Name` they match.
   - Context from `docs/research/in-app-player/plax-lessons.md:30`: Plax was accepted as `Plex for LG`/`webOS` and `Plex Web`/`Chrome`. Plex rejected unknown platform names and an empty platform version.
   - If no Android profile exists, stop and report. The TV keeps Plex Desktop, and T24/T25 are dropped.
+- **Step 1 result (31 Oct 2026, Plex 1.43.4 on the slot).** `Resources/Profiles/Android.xml` exists, with no identification rules (`<Client name="Android">` only). On its own it allows 1080p H.264 in MP4 with stereo AAC. Plex's own Android TV app gets 4K by adding its capabilities in `X-Plex-Client-Profile-Extra`, so the android identity sends a list for the Streamer (`ANDROID_PROFILE_EXTRA` in `services/plexPlayback.ts`). Desktop stays the default until T25 shows Android is not worse.
 - **Step 2 (code).**
   - `identityValues(clientId, identity = 'desktop', platformVersion?)`. The android branch sends the recorded product, platform and profile name, plus `X-Plex-Platform-Version`, `X-Plex-Version: 1` and the same `X-Plex-Features`, `X-Plex-Device-Name` and `X-Plex-Client-Identifier`.
   - `createPlexPlayback` gains `as(identity, platformVersion)`, which returns the same methods with that identity. The default object stays the desktop one.

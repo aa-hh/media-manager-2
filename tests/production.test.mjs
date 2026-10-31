@@ -4320,7 +4320,7 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
     const fetch = async (input, init) => {
       const url = new URL(String(input));
-      requests.push(url);
+      requests.push(Object.assign(url, { headers: init.headers }));
       assert.equal(init.redirect, 'error');
       assert.equal(init.headers['X-Plex-Token'], ownerToken);
       assert.ok(!String(input).includes(ownerToken));
@@ -4362,10 +4362,10 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     return { routes, decisions, requests, hang: () => { hung = true; } };
   };
   const ids = { clientId: 'desktop-client-0001', sessionIdentifier: 'player-session-0001' };
-  const start = async (routes, extra = {}, { desktop = false } = {}) => {
+  const start = async (routes, extra = {}, { desktop = false, headers = {} } = {}) => {
     const response = await routes.request('/start', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(desktop ? { 'X-Media-Manager-Desktop': '1' } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(desktop ? { 'X-Media-Manager-Desktop': '1' } : {}), ...headers },
       body: JSON.stringify({
         ratingKey: '100', mediaIndex: 0, partIndex: 0, offsetSeconds: 0, directPlay: true, directStream: true, directStreamAudio: true, ...ids, ...extra,
       }),
@@ -4388,6 +4388,57 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     // Dropping these turns this red: the desktop app would test the relay alongside the direct address, and fetch the whole library for the id.
     assert.equal(body.directAddressCount, 1);
     assert.equal(body.machineIdentifier, 'plex-machine-1');
+  });
+
+  // Changing what the desktop sends Plex, sending Android values without the header, dropping the TV's capability list, or
+  // letting an unknown identity through turns this red.
+  await t.test('the Plex identity header picks desktop or Android values for every Plex call, and refuses anything else', async () => {
+    const { ANDROID_PROFILE_EXTRA } = await import(plexPlaybackModuleUrl);
+    const named = (values) => ({
+      platform: values('X-Plex-Platform'),
+      version: values('X-Plex-Platform-Version'),
+      profile: values('X-Plex-Client-Profile-Name'),
+      extra: values('X-Plex-Client-Profile-Extra'),
+      product: values('X-Plex-Product'),
+      client: values('X-Plex-Client-Identifier'),
+    });
+    const fromQuery = (url) => named((name) => url.searchParams.get(name));
+    const fromHeaders = (url) => named((name) => url.headers[name] ?? null);
+    const desktopValues = { platform: 'macOS', version: null, profile: 'Plex Desktop', extra: null, product: 'media-manager-2', client: ids.clientId };
+    const androidValues = { platform: 'Android', version: '14', profile: 'Android', extra: ANDROID_PROFILE_EXTRA, product: 'media-manager-2', client: ids.clientId };
+
+    const plain = connect();
+    assert.equal((await start(plain.routes, {}, { desktop: true, headers: { 'X-Media-Manager-Plex-Identity': 'desktop' } })).status, 200);
+    assert.equal((await start(plain.routes, {}, { desktop: true })).status, 200);
+    for (const decision of plain.decisions()) assert.deepEqual(fromQuery(decision), desktopValues);
+    assert.deepEqual(fromHeaders(plain.requests.find((url) => url.pathname === '/playQueues')), desktopValues);
+
+    const tv = connect();
+    const android = { 'X-Media-Manager-Plex-Identity': 'android', 'X-Media-Manager-Platform-Version': '14' };
+    const { status, body } = await start(tv.routes, {}, { desktop: true, headers: android });
+    assert.equal(status, 200);
+    assert.deepEqual(fromQuery(tv.decisions()[0]), androidValues);
+    assert.deepEqual(fromHeaders(tv.requests.find((url) => url.pathname === '/playQueues')), androidValues);
+    assert.deepEqual(fromQuery(new URL(body.streamAddresses[0])), androidValues);
+    assert.match(ANDROID_PROFILE_EXTRA, /video\.width&value=3840/);
+    const played = await tv.routes.request('/played', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...android }, body: JSON.stringify({ ratingKey: '100', played: true, clientId: ids.clientId }),
+    });
+    assert.equal(played.status, 204);
+    assert.deepEqual(fromQuery(tv.requests.find((url) => url.pathname === '/:/scrobble')), androidValues);
+
+    const refused = connect();
+    for (const headers of [
+      { 'X-Media-Manager-Plex-Identity': 'ios' },
+      { 'X-Media-Manager-Plex-Identity': 'android' },
+      { 'X-Media-Manager-Plex-Identity': 'android', 'X-Media-Manager-Platform-Version': '' },
+      { 'X-Media-Manager-Plex-Identity': 'android', 'X-Media-Manager-Platform-Version': '14; Plex' },
+      { 'X-Media-Manager-Plex-Identity': 'android', 'X-Media-Manager-Platform-Version': '1.2.3.4' },
+    ]) {
+      assert.equal((await start(refused.routes, {}, { headers })).status, 400, JSON.stringify(headers));
+      assert.equal((await refused.routes.request(`/connections?clientId=${ids.clientId}`, { headers })).status, 400, JSON.stringify(headers));
+    }
+    assert.deepEqual(refused.requests, []);
   });
 
   // Asking plex.tv or the server's identity on every call, putting a token in the connections reply, waiting for plex.tv or the

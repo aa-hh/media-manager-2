@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Hono, type Context } from 'hono';
-import { identityValues, type PlexPlayback } from './services/plexPlayback.js';
+import { identityValues, type PlexIdentity, type PlexPlayback, type PlexPlaybackCalls } from './services/plexPlayback.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -69,7 +69,7 @@ type Plan = { directPlay: boolean; directStream: boolean; directStreamAudio: boo
 
 export type Playback = ReturnType<typeof createPlayback>;
 
-export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPlayback; enabled: () => boolean }) => {
+const buildPlayback = (plexPlayback: PlexPlaybackCalls, enabled: () => boolean, who: PlexIdentity) => {
   // Every Plex failure is 502; a thrown request is one too.
   const guarded = async (run: () => Promise<Reply>): Promise<Reply> => {
     try {
@@ -167,7 +167,7 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
     }
     const queue = await queueRequest;
 
-    const identity = new URLSearchParams(identityValues(clientId)).toString();
+    const identity = new URLSearchParams(identityValues(clientId, who)).toString();
     const token = new URLSearchParams({ 'X-Plex-Token': transient }).toString();
     const streamAddresses = uris.map((uri) => (plan.directPlay
       ? `${uri}${part.key}?${new URLSearchParams({ 'X-Plex-Session-Identifier': sessionIdentifier })}&${token}&${identity}`
@@ -350,12 +350,30 @@ export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPl
     timeline: (input: Parameters<typeof timeline>[0]) => guarded(() => timeline(input)),
     ping: (input: Parameters<typeof ping>[0]) => guarded(() => ping(input)),
     stop: (input: Parameters<typeof stop>[0]) => guarded(() => stop(input)),
-    track: (input: Parameters<PlexPlayback['setTrack']>[0]) => guarded(() => done(plexPlayback.setTrack(input))),
-    subtitleOffset: (input: Parameters<PlexPlayback['subtitleOffset']>[0]) => guarded(() => done(plexPlayback.subtitleOffset(input))),
-    played: (input: Parameters<PlexPlayback['scrobble']>[0]) => guarded(() => done(plexPlayback.scrobble(input))),
-    preview: (input: Parameters<PlexPlayback['preview']>[0]) => plexPlayback.preview(input).catch(() => ({ status: 502, contentType: null, bytes: null })),
+    track: (input: Parameters<PlexPlaybackCalls['setTrack']>[0]) => guarded(() => done(plexPlayback.setTrack(input))),
+    subtitleOffset: (input: Parameters<PlexPlaybackCalls['subtitleOffset']>[0]) => guarded(() => done(plexPlayback.subtitleOffset(input))),
+    played: (input: Parameters<PlexPlaybackCalls['scrobble']>[0]) => guarded(() => done(plexPlayback.scrobble(input))),
+    preview: (input: Parameters<PlexPlaybackCalls['preview']>[0]) => plexPlayback.preview(input).catch(() => ({ status: 502, contentType: null, bytes: null })),
     postplay: (input: Parameters<typeof postplay>[0]) => guarded(() => postplay(input)),
   };
+};
+
+// The desktop's playback, and as() for the same routes under the identity a TV asks for.
+export const createPlayback = ({ plexPlayback, enabled }: { plexPlayback: PlexPlayback; enabled: () => boolean }) => ({
+  ...buildPlayback(plexPlayback, enabled, { kind: 'desktop' }),
+  as: (who: PlexIdentity) => buildPlayback(plexPlayback.as(who), enabled, who),
+});
+
+const PLATFORM_VERSION = /^\d{1,3}(\.\d{1,3}){0,2}$/;
+
+// X-Media-Manager-Plex-Identity: missing or desktop is the desktop; android needs X-Media-Manager-Platform-Version, the
+// TV's Android release. Anything else is undefined, a bad request.
+const identityOf = (header: (name: string) => string | undefined): PlexIdentity | undefined => {
+  const kind = header('X-Media-Manager-Plex-Identity');
+  if (kind === undefined || kind === 'desktop') return { kind: 'desktop' };
+  const platformVersion = header('X-Media-Manager-Platform-Version');
+  if (kind !== 'android' || platformVersion === undefined || !PLATFORM_VERSION.test(platformVersion)) return undefined;
+  return { kind: 'android', platformVersion };
 };
 
 const ID = /^[A-Za-z0-9_-]{8,64}$/;
@@ -388,8 +406,14 @@ export const createPlaybackRoutes = (playback: Playback) => {
 
   routes.use('*', async (context, next) => {
     if (!playback.enabled()) return context.json({ error: 'not_configured' }, 503);
+    if (identityOf((name) => context.req.header(name)) === undefined) return context.json(invalid, 400);
     await next();
   });
+  // The playback for this request's identity; the guard above has refused a bad one.
+  const on = (context: Context) => {
+    const who = identityOf((name) => context.req.header(name));
+    return who === undefined || who.kind === 'desktop' ? playback : playback.as(who);
+  };
 
   // X-Media-Manager-Desktop: 1 adds the stream addresses, for the desktop's main process; page JS could send it too, so this
   // keeps addresses out of the page's ordinary replies (state, devtools, logs) rather than defending against the page.
@@ -413,14 +437,14 @@ export const createPlaybackRoutes = (playback: Playback) => {
       ...(resume === undefined ? {} : { resume }),
       ...(maxVideoBitrate === undefined ? {} : { maxVideoBitrate }),
     };
-    return send(context, await playback.start(input, context.req.header('X-Media-Manager-Desktop') === '1'));
+    return send(context, await on(context).start(input, context.req.header('X-Media-Manager-Desktop') === '1'));
   });
 
   // Bare origins with no token, unlike the start reply's addresses, so this needs no desktop header: the page may see them.
   routes.get('/connections', async (context) => {
     const clientId = context.req.query('clientId');
     if (!isId(clientId)) return context.json(invalid, 400);
-    return send(context, await playback.connections(clientId));
+    return send(context, await on(context).connections(clientId));
   });
 
   // A GET, so the last report when the window closes needs no X-Requested-With.
@@ -434,7 +458,7 @@ export const createPlaybackRoutes = (playback: Playback) => {
       || time === null || duration === null || playbackTime === null || !isId(query.clientId) || !isId(query.sessionIdentifier)
       || (query.playQueueItemID !== undefined && playQueueItemID === null)
       || (query.continuing !== undefined && query.continuing !== '1')) return context.json(invalid, 400);
-    return send(context, await playback.timeline({
+    return send(context, await on(context).timeline({
       ratingKey: query.ratingKey,
       state: query.state as string,
       time,
@@ -450,13 +474,13 @@ export const createPlaybackRoutes = (playback: Playback) => {
   routes.get('/ping', async (context) => {
     const { session, clientId } = context.req.query();
     if (!isId(session) || !isId(clientId)) return context.json(invalid, 400);
-    return send(context, await playback.ping({ session, clientId }));
+    return send(context, await on(context).ping({ session, clientId }));
   });
 
   routes.post('/stop', async (context) => {
     const body = await readBody(context, ['session', 'clientId']);
     if (body === undefined || !isId(body.session) || !isId(body.clientId)) return context.json(invalid, 400);
-    return send(context, await playback.stop({ session: body.session, clientId: body.clientId }));
+    return send(context, await on(context).stop({ session: body.session, clientId: body.clientId }));
   });
 
   routes.post('/track', async (context) => {
@@ -466,7 +490,7 @@ export const createPlaybackRoutes = (playback: Playback) => {
     if (!isCount(partId) || (kind !== 'audio' && kind !== 'subtitle') || !isCount(streamId) || !isBoolean(allParts) || !isId(clientId)) {
       return context.json(invalid, 400);
     }
-    return send(context, await playback.track({ partId, kind, streamId, allParts, clientId }));
+    return send(context, await on(context).track({ partId, kind, streamId, allParts, clientId }));
   });
 
   routes.post('/subtitle-offset', async (context) => {
@@ -476,7 +500,7 @@ export const createPlaybackRoutes = (playback: Playback) => {
     // A subtitle can run early or late, so the offset may be negative.
     if (typeof streamKey !== 'string' || !/^\/library\/streams\/\d+$/.test(streamKey)
       || typeof offsetMs !== 'number' || !Number.isSafeInteger(offsetMs) || !isId(clientId)) return context.json(invalid, 400);
-    return send(context, await playback.subtitleOffset({ streamKey, ms: offsetMs, clientId }));
+    return send(context, await on(context).subtitleOffset({ streamKey, ms: offsetMs, clientId }));
   });
 
   routes.post('/played', async (context) => {
@@ -484,7 +508,7 @@ export const createPlaybackRoutes = (playback: Playback) => {
     if (body === undefined) return context.json(invalid, 400);
     const { ratingKey, played, clientId } = body;
     if (!isRatingKey(ratingKey) || !isBoolean(played) || !isId(clientId)) return context.json(invalid, 400);
-    return send(context, await playback.played({ ratingKey, played, clientId }));
+    return send(context, await on(context).played({ ratingKey, played, clientId }));
   });
 
   routes.get('/preview', async (context) => {
@@ -492,7 +516,7 @@ export const createPlaybackRoutes = (playback: Playback) => {
     const [partId, ms, width, height] = [count(query.partId), count(query.ms), count(query.width), count(query.height)];
     if (partId === null || ms === null || width === null || height === null || width < 1 || width > 1920 || height < 1 || height > 1920
       || !isId(query.clientId)) return context.json(invalid, 400);
-    const result = await playback.preview({ partId, ms, width, height, clientId: query.clientId });
+    const result = await on(context).preview({ partId, ms, width, height, clientId: query.clientId });
     if (isOk(result.status) && result.bytes !== null) {
       return context.body(result.bytes, 200, { 'Content-Type': result.contentType ?? 'application/octet-stream' });
     }
@@ -502,7 +526,7 @@ export const createPlaybackRoutes = (playback: Playback) => {
   routes.get('/postplay', async (context) => {
     const { ratingKey, clientId } = context.req.query();
     if (!isRatingKey(ratingKey) || !isId(clientId)) return context.json(invalid, 400);
-    return send(context, await playback.postplay({ ratingKey, clientId }));
+    return send(context, await on(context).postplay({ ratingKey, clientId }));
   });
 
   return routes;
