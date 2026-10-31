@@ -280,9 +280,10 @@ export const createBackup = ({ database, events, store, key = backupKeyFromEnvir
       return run;
     },
     // The job calls this every 5 minutes, so a restart never delays a due backup; only a good backup starts the hour's wait.
+    // The hour counts from that backup's start, the moment the 5-minute ticks count from, so upload time never adds a tick.
     async runIfDue(): Promise<BackupRun | undefined> {
-      const last = lastBackupAt(database);
-      return last !== null && now() - last < BACKUP_INTERVAL_MS ? undefined : this.run();
+      const row = database.prepare("SELECT MAX(started_at) AS at FROM backup_runs WHERE outcome = 'ok'").get();
+      return row?.at != null && now() - Number(row.at) < BACKUP_INTERVAL_MS ? undefined : this.run();
     },
   };
 };
