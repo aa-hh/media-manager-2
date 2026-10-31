@@ -9,13 +9,26 @@ const isOk = (status: number) => status >= 200 && status <= 299;
 
 const containerOf = (body: unknown) => (isRecord(body) && isRecord(body.MediaContainer) ? body.MediaContainer : undefined);
 
-// What Plex learns about the player on each playback call; the client id is the desktop install's own, so Plex sees each
-// desktop as its own player.
-export const identityValues = (clientId: string): Record<string, string> => ({
-  'X-Plex-Product': 'media-manager-2',
+// Who Plex is told is playing. Missing means desktop; the TV app may ask for android, which also names its Android release.
+export type PlexIdentity = { kind: 'desktop' } | { kind: 'android'; platformVersion: string };
+
+const DESKTOP: PlexIdentity = { kind: 'desktop' };
+
+// What Plex learns about the player on each playback call; the client id is the player install's own, so Plex sees each
+// desktop or TV as its own player.
+// The TV keeps Plex Desktop's profile, which allows anything and transcodes to Matroska, under its own name. Plex's
+// bundled Android profile caps a transcode at 1080p H.264 and burns in subtitles, even with X-Plex-Client-Profile-Extra
+// (checked on the slot's Plex 1.43.4, 31 Oct 2026); Plex's dashboard shows product, platform and device, not the profile.
+export const identityValues = (clientId: string, identity: PlexIdentity = DESKTOP): Record<string, string> => ({
+  ...(identity.kind === 'desktop'
+    ? { 'X-Plex-Product': 'media-manager-2', 'X-Plex-Platform': 'macOS', 'X-Plex-Model': 'standalone' }
+    : {
+        'X-Plex-Product': 'media-manager-2 TV',
+        'X-Plex-Platform': 'Android',
+        'X-Plex-Platform-Version': identity.platformVersion,
+        'X-Plex-Device': 'Android TV',
+      }),
   'X-Plex-Version': '1',
-  'X-Plex-Platform': 'macOS',
-  'X-Plex-Model': 'standalone',
   'X-Plex-Client-Profile-Name': 'Plex Desktop',
   'X-Plex-Features': 'external-media,indirect-media,hub-style-list',
   'X-Plex-Device-Name': 'media-manager-2',
@@ -35,10 +48,19 @@ type Call = {
 };
 
 export type PlexPlayback = ReturnType<typeof createPlexPlayback>;
+/** The calls under one identity. */
+export type PlexPlaybackCalls = ReturnType<typeof build>;
 
-// Plex calls for the desktop player. The owner token is always a header; on GET the other identity values go in the
+type Options = ServiceOptions & { now?: () => number };
+
+type Shared = {
+  identity: () => Promise<{ machineIdentifier: string; maxUploadBitrate: number | null }>;
+  resources: (clientId: string) => Promise<unknown[]>;
+};
+
+// Plex calls for the in-app players. The owner token is always a header; on GET the other identity values go in the
 // query, on POST and PUT in headers, as Plex's own desktop client sends them.
-export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptions & { now?: () => number } = {}) => {
+const build = (database: DatabaseSync, options: Options, who: PlexIdentity, shared?: Shared) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const now = options.now ?? Date.now;
 
@@ -51,7 +73,7 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
   const send = async ({ method = 'GET', path, query = {}, timeoutMs, sessionIdentifier }: Call, clientId?: string) => {
     const configuration = readConfiguration();
     if (configuration === undefined) throw new Error('Plex is not configured.');
-    const identity = clientId === undefined ? {} : identityValues(clientId);
+    const identity = clientId === undefined ? {} : identityValues(clientId, who);
     const search = new URLSearchParams(method === 'GET' ? { ...query, ...identity } : query).toString();
     const headers: Record<string, string> = {
       ...(method === 'GET' ? {} : identity),
@@ -113,7 +135,7 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
     };
   };
 
-  const identity = keeping(
+  const identity = shared?.identity ?? keeping(
     ({ url, token }) => `${url}\n${token}`,
     async (): Promise<{ machineIdentifier: string; maxUploadBitrate: number | null }> => {
       const body = await container({ path: '/' }, undefined, 'the server identity');
@@ -129,7 +151,7 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
     return body.token;
   };
 
-  const resources = keeping(
+  const resources = shared?.resources ?? keeping(
     ({ token }) => token,
     async ({ token }, clientId: string): Promise<unknown[]> => {
       const response = await requestWithTimeout(fetchImpl, 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1', {
@@ -248,4 +270,11 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
   );
 
   return { identity, transientToken, resources, createPlayQueue, item, decision, timeline, ping, stop, setTrack, subtitleOffset, scrobble, preview, postplay };
+};
+
+// The desktop identity's calls, and as() for the same calls under another identity, sharing the kept server identity and
+// server list.
+export const createPlexPlayback = (database: DatabaseSync, options: Options = {}) => {
+  const desktop = build(database, options, DESKTOP);
+  return { ...desktop, as: (who: PlexIdentity) => build(database, options, who, { identity: desktop.identity, resources: desktop.resources }) };
 };
