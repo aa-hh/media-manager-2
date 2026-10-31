@@ -3925,8 +3925,9 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     '/library/metadata/600': movie('600', 2160, hevc({ colorTrc: 'bt709' })),
   };
   const accepted = () => ({ generalDecisionCode: 1000, mdeDecisionCode: 1000, transcodeDecisionCode: 1000, directPlayDecisionCode: 1000 });
-  const connect = ({ decision = accepted } = {}) => {
+  const connect = ({ decision = accepted, now } = {}) => {
     const requests = [];
+    let hung = false;
     const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
     const fetch = async (input, init) => {
       const url = new URL(String(input));
@@ -3934,6 +3935,8 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
       assert.equal(init.redirect, 'error');
       assert.equal(init.headers['X-Plex-Token'], ownerToken);
       assert.ok(!String(input).includes(ownerToken));
+      // A reply that never comes, for plex.tv and the server's identity.
+      if (hung && (url.host === 'plex.tv' || url.pathname === '/')) return new Promise(() => {});
       if (url.host === 'plex.tv') {
         assert.equal(url.pathname, '/api/v2/resources');
         return json([{
@@ -3965,9 +3968,9 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
         default: return items[url.pathname] === undefined ? new Response('', { status: 404 }) : json({ MediaContainer: { librarySectionUUID: 'section-uuid-1', Metadata: [items[url.pathname]] } });
       }
     };
-    const routes = createPlaybackRoutes(createPlayback({ plexPlayback: createPlexPlayback(database, { fetch }), enabled: () => true }));
+    const routes = createPlaybackRoutes(createPlayback({ plexPlayback: createPlexPlayback(database, { fetch, now }), enabled: () => true }));
     const decisions = () => requests.filter((url) => url.pathname === '/video/:/transcode/universal/decision');
-    return { routes, decisions, requests };
+    return { routes, decisions, requests, hang: () => { hung = true; } };
   };
   const ids = { clientId: 'desktop-client-0001', sessionIdentifier: 'player-session-0001' };
   const start = async (routes, extra = {}, { desktop = false } = {}) => {
@@ -3998,17 +4001,24 @@ test('the playback API asks Plex for a decision and stream addresses, and passes
     assert.equal(body.machineIdentifier, 'plex-machine-1');
   });
 
-  // Asking plex.tv on every call, or putting a token in the connections reply, turns this red.
-  await t.test('the connections route gives the addresses without a token, and plex.tv is asked once for both calls', async () => {
-    const { routes, requests } = connect();
+  // Asking plex.tv or the server's identity on every call, putting a token in the connections reply, waiting for plex.tv or the
+  // identity once a kept answer exists, or never refreshing a kept answer older than 5 minutes turns this red.
+  await t.test('the connections route gives the addresses without a token, and plex.tv and the server identity are asked once for both calls', async () => {
+    let clock = 1_000_000;
+    const { routes, requests, hang } = connect({ now: () => clock });
     const response = await routes.request(`/connections?clientId=${ids.clientId}`);
     const text = await response.text();
     assert.equal(response.status, 200);
     assert.deepEqual(JSON.parse(text), { machineIdentifier: 'plex-machine-1', origins: [direct, relay], directCount: 1 });
     assert.ok(!text.includes(ownerToken) && !text.includes('transient-'));
     assert.equal((await start(routes, {}, { desktop: true })).status, 200);
-    assert.equal(requests.filter((url) => url.host === 'plex.tv').length, 1);
+    const asked = () => [requests.filter((url) => url.host === 'plex.tv').length, requests.filter((url) => url.pathname === '/').length];
+    assert.deepEqual(asked(), [1, 1]);
     assert.equal((await routes.request('/connections?clientId=bad')).status, 400);
+    clock += 5 * 60_000 + 1;
+    hang();
+    assert.equal((await start(routes, {}, { desktop: true })).status, 200);
+    assert.deepEqual(asked(), [2, 2]);
   });
 
   // Removing the 2 s decision timeout, or failing the start when the decision never answers, turns this red.
@@ -15224,7 +15234,7 @@ test('the desktop app\'s page never gets a Plex token, and only the app page\'s 
 });
 
 test('the desktop player ignores a replaced load\'s file events, keeps the owner\'s pause across reloads, and never titles a subtitle with its address', async () => {
-  const { fileEvent, playsOnOpen, showsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const { fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource } = await import(new URL('../desktop/lib/player.js', import.meta.url));
   const title = (fields = {}) => ({ position: 100, duration: 3600, unauthorized: false, reply: { durationMs: 3_600_000 }, ...fields });
   // [the title asked for, the title whose file mpv last opened]
   const same = (fields) => { const playing = title(fields); return [playing, playing]; };
@@ -15264,6 +15274,36 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   assert.equal(showsPosition({ drawn: false, begun: true, startedAt: 0, position: 0 }), false);
   assert.equal(showsPosition({ drawn: true, begun: true, startedAt: 0, position: 0 }), true);
   assert.equal(showsPosition({ drawn: false, begun: true, startedAt: 600, position: 601.5 }), true);
+
+  // Sending every frame again turns the time rows red (the page re-rendered 24-60 times a second); holding a seek's new
+  // position until the window passes turns the jump rows red.
+  const last = { at: 1000, position: 10 };
+  const sends = [
+    [undefined, 10, 1000, true],
+    [last, 10, 1100, false],
+    [last, 10.249, 1249, false],
+    [last, 10.25, 1250, true],
+    [last, 11.5, 1100, true],
+    [last, 8.5, 1100, true],
+    [last, 11, 1100, false],
+    [last, 10.9, 1100, false],
+  ];
+  for (const [sent, position, now, expected] of sends) assert.equal(sendsPosition(sent, position, now), expected, JSON.stringify([sent, position, now]));
+
+  // Accepting a non-number, a click time from the future, or one older than a minute turns these rows red:
+  // play-timings.log would count a Play from a time its click never had.
+  const clickNow = 1_000_000;
+  const clicks = [
+    [undefined, undefined],
+    ['123', undefined],
+    [Number.NaN, undefined],
+    [Number.POSITIVE_INFINITY, undefined],
+    [clickNow, clickNow],
+    [clickNow - 60_000, clickNow - 60_000],
+    [clickNow - 60_001, undefined],
+    [clickNow + 1, undefined],
+  ];
+  for (const [value, expected] of clicks) assert.equal(clickTime(value, clickNow), expected, String(value));
 
   // Passing an asked or saved volume to mpv unclamped turns this red: mpv takes up to 130 %, and a broken settings file would reach it.
   assert.deepEqual([150, -3, 42.6, '80', null, Number.NaN].map(volumePercent), [100, 0, 43, null, null, null]);

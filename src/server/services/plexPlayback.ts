@@ -22,6 +22,10 @@ export const identityValues = (clientId: string): Record<string, string> => ({
   'X-Plex-Client-Identifier': clientId,
 });
 
+type Configuration = { url: string; token: string };
+
+const KEEP_MS = 5 * 60_000;
+
 type Call = {
   method?: 'GET' | 'POST' | 'PUT';
   path: string;
@@ -34,8 +38,9 @@ export type PlexPlayback = ReturnType<typeof createPlexPlayback>;
 
 // Plex calls for the desktop player. The owner token is always a header; on GET the other identity values go in the
 // query, on POST and PUT in headers, as Plex's own desktop client sends them.
-export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptions = {}) => {
+export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptions & { now?: () => number } = {}) => {
   const fetchImpl = options.fetch ?? globalThis.fetch;
+  const now = options.now ?? Date.now;
 
   const readConfiguration = () => {
     const url = readSetting(database, 'serviceAddresses', 'plex.url');
@@ -78,12 +83,45 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
     return body;
   };
 
-  const identity = async (): Promise<{ machineIdentifier: string; maxUploadBitrate: number | null }> => {
-    const body = await container({ path: '/' }, undefined, 'the server identity');
-    if (typeof body.machineIdentifier !== 'string' || body.machineIdentifier === '') throw new Error('Plex refused the server identity.');
-    const maxUploadBitrate = typeof body.maxUploadBitrate === 'number' && Number.isFinite(body.maxUploadBitrate) ? body.maxUploadBitrate : null;
-    return { machineIdentifier: body.machineIdentifier, maxUploadBitrate };
+  // The server identity and plex.tv's server list (the slowest call of every start) rarely change, so each keeps its last
+  // good answer with the configuration it was for. Same configuration and younger than 5 minutes: returned as is. Same
+  // configuration and older: returned at once while one refresh runs, and a failed refresh leaves the kept answer. No kept
+  // answer for this configuration: fetched and waited for, and a failure throws. Nothing expires and no timer runs, so
+  // the app page's /api/playback/connections call at load is what refreshes a long-idle answer before the next Play.
+  const keeping = <Args extends unknown[], T>(
+    keyOf: (configuration: Configuration) => string,
+    load: (configuration: Configuration, ...args: Args) => Promise<T>,
+  ) => {
+    let kept: { key: string; at: number; value: T } | undefined;
+    let refreshing = false;
+    return async (...args: Args): Promise<T> => {
+      const configuration = readConfiguration();
+      if (configuration === undefined) throw new Error('Plex is not configured.');
+      const key = keyOf(configuration);
+      const fetchFresh = async () => {
+        const value = await load(configuration, ...args);
+        kept = { key, at: now(), value };
+        return value;
+      };
+      const held = kept;
+      if (held === undefined || held.key !== key) return fetchFresh();
+      if (now() - held.at >= KEEP_MS && !refreshing) {
+        refreshing = true;
+        fetchFresh().catch(() => {}).finally(() => { refreshing = false; });
+      }
+      return held.value;
+    };
   };
+
+  const identity = keeping(
+    ({ url, token }) => `${url}\n${token}`,
+    async (): Promise<{ machineIdentifier: string; maxUploadBitrate: number | null }> => {
+      const body = await container({ path: '/' }, undefined, 'the server identity');
+      if (typeof body.machineIdentifier !== 'string' || body.machineIdentifier === '') throw new Error('Plex refused the server identity.');
+      const maxUploadBitrate = typeof body.maxUploadBitrate === 'number' && Number.isFinite(body.maxUploadBitrate) ? body.maxUploadBitrate : null;
+      return { machineIdentifier: body.machineIdentifier, maxUploadBitrate };
+    },
+  );
 
   const transientToken = async (clientId: string) => {
     const body = await container({ path: '/security/token', query: { type: 'delegation', scope: 'all' } }, clientId, 'a transient token');
@@ -91,27 +129,23 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
     return body.token;
   };
 
-  // plex.tv's list is the slowest call of every start and rarely changes, so a reply is kept for a few minutes per token.
-  // razor: a changed server address waits out the 5 min. Upgrade path: drop the kept list when no address answers.
-  let kept: { token: string; until: number; list: unknown[] } | undefined;
-  const resources = async (clientId: string): Promise<unknown[]> => {
-    const configuration = readConfiguration();
-    if (configuration === undefined) throw new Error('Plex is not configured.');
-    if (kept !== undefined && kept.token === configuration.token && Date.now() < kept.until) return kept.list;
-    const response = await requestWithTimeout(fetchImpl, 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1', {
-      headers: {
-        'X-Plex-Token': configuration.token,
-        'X-Plex-Client-Identifier': clientId,
-        'X-Plex-Product': 'media-manager-2',
-        Accept: 'application/json',
-      },
-    });
-    if (!isOk(response.status)) throw new Error('plex.tv refused the server list.');
-    const body: unknown = await response.json();
-    if (!Array.isArray(body)) throw new Error('plex.tv refused the server list.');
-    kept = { token: configuration.token, until: Date.now() + 5 * 60_000, list: body };
-    return body;
-  };
+  const resources = keeping(
+    ({ token }) => token,
+    async ({ token }, clientId: string): Promise<unknown[]> => {
+      const response = await requestWithTimeout(fetchImpl, 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1', {
+        headers: {
+          'X-Plex-Token': token,
+          'X-Plex-Client-Identifier': clientId,
+          'X-Plex-Product': 'media-manager-2',
+          Accept: 'application/json',
+        },
+      });
+      if (!isOk(response.status)) throw new Error('plex.tv refused the server list.');
+      const body: unknown = await response.json();
+      if (!Array.isArray(body)) throw new Error('plex.tv refused the server list.');
+      return body;
+    },
+  );
 
   const createPlayQueue = async (input: { clientId: string; sessionIdentifier: string; sectionUuid: string; ratingKey: string; continuous: boolean }) => container({
     method: 'POST',
@@ -134,10 +168,7 @@ export const createPlexPlayback = (database: DatabaseSync, options: ServiceOptio
   const item = async ({ clientId, ratingKey }: { clientId: string; ratingKey: string }): Promise<Record<string, unknown> | undefined> => {
     const result = await json({
       path: `/library/metadata/${ratingKey}`,
-      query: Object.fromEntries([
-        'includeConcerts', 'includeExtras', 'includeOnDeck', 'includePopularLeaves', 'includePreferences', 'includeChapters',
-        'includeStations', 'includeMarkers', 'includeExternalMedia', 'asyncAugmentMetadata', 'checkFiles',
-      ].map((name) => [name, '1'])),
+      query: Object.fromEntries(['includeChapters', 'includeMarkers', 'checkFiles'].map((name) => [name, '1'])),
       timeoutMs: 60_000,
     }, clientId);
     if (result.status === 404) return undefined;

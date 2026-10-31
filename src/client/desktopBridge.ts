@@ -17,6 +17,8 @@ export type LoadRequest = {
   partIndex: number;
   offsetSeconds: number;
   flags: PlaybackFlags;
+  /** The page's Date.now() at the click, so the desktop app's timings start there. */
+  openedAt?: number;
 };
 
 /**

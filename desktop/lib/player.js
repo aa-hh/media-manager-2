@@ -40,6 +40,26 @@ const playsOnOpen = (playing) => playing.paused !== true;
 const showsPosition = (playing) => !playing || (playing.drawn === true && playing.begun === true)
   || (typeof playing.position === 'number' && typeof playing.startedAt === 'number' && playing.position > playing.startedAt + 1);
 
+/** How often the page hears mpv's position during normal play, in ms. */
+const POSITION_EVERY_MS = 250;
+/** A position more than this many seconds from the last one sent (a seek) goes to the page at once. */
+const POSITION_JUMP_SECONDS = 1;
+
+/**
+ * Whether mpv's `time-pos` value `position`, at `now` (ms), goes to the page, given `last`, the `{ at, position }` last
+ * sent (null or undefined before the first). Successive positions sent during normal play differ by about 0.25 s, so
+ * they stay under the 2 s step the page's played-time count ignores (`playedBetween`); a seek shows at once. Keeping the
+ * title's own position up to date every frame is the caller's job, not this one's.
+ */
+const sendsPosition = (last, position, now) => last === null || last === undefined || now - last.at >= POSITION_EVERY_MS
+  || Math.abs(position - last.position) > POSITION_JUMP_SECONDS;
+
+/**
+ * The page's click time `value` (ms), where play-timings.log starts: kept only when it is a finite number from the
+ * minute up to `now`, else undefined. Never throws, whatever the page sent.
+ */
+const clickTime = (value, now) => (Number.isFinite(value) && value >= now - 60_000 && value <= now ? value : undefined);
+
 /** `address` with the scheme, host and port of `origin`. */
 const withOrigin = (address, origin) => {
   const url = new URL(address);
@@ -69,4 +89,6 @@ const subtitleScale = (value) => (SUBTITLE_SCALES.includes(value) ? value : null
 /** Settings' Appearance choice for nativeTheme.themeSource: light, dark or system, or null for anything else. */
 const themeSource = (value) => (['light', 'dark', 'system'].includes(value) ? value : null);
 
-module.exports = { fileEvent, playsOnOpen, showsPosition, subtitleAdd, volumePercent, subtitleScale, themeSource };
+module.exports = {
+  fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, subtitleAdd, volumePercent, subtitleScale, themeSource,
+};
