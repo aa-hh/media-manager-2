@@ -60,7 +60,7 @@ Images and descriptions come only from Sonarr and Radarr: one poster and one bac
 
 Terminology: use the words in `CONTEXT.md` exactly. "Release" always means a torrent, never a release date.
 
-Out of the first version: friend requests, playback statistics, deletion score, scheduled deletion, storage forecasting, calendar actions, phone notifications, and configuration for other people's setups.
+Out of the first version: friend requests, playback statistics, deletion score, scheduled deletion, storage forecasting, calendar actions, phone notifications, watching on a phone (the in-app player and watch status on a phone are v3 or v4; see `docs/research/in-app-player/README.md`), and configuration for other people's setups.
 
 ## Brand Commitments
 
