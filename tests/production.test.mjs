@@ -3756,7 +3756,7 @@ test('watch status from Plex marks library titles, both title pages and Continue
     assert.equal(listings(), 2);
   });
 
-  // Waiting for the new Plex listing on a load that already has an old one, or never picking up the finished rebuild, turns this red.
+  // Waiting for the new Plex listing on a load that already has one under 5 minutes old, or never picking up the finished rebuild, turns this red.
   await t.test('the first load after 60 seconds answers from the old Plex listing and the next load has the new one', async () => {
     const file = '/movies/Dune (2021)/Dune.mkv';
     const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
@@ -3782,7 +3782,29 @@ test('watch status from Plex marks library titles, both title pages and Continue
     }
   });
 
-  // Replacing the old listing with unavailable when a rebuild fails, or starting a new rebuild on every load after one fails, turns this red.
+  // Answering at once from a Plex listing 5 minutes old instead of waiting for the rebuild turns this red.
+  await t.test('a Plex listing 5 minutes old makes the next load wait for the new one', async () => {
+    const file = '/movies/Dune (2021)/Dune.mkv';
+    const imported = { ratingKey: '400', type: 'movie', Guid: [{ id: 'tmdb://438631' }], Media: [{ id: 41, height: 2160, Part: [{ id: 411, file }] }] };
+    let inPlex = false;
+    const { get } = connect({ fetch: async (url, init) => (
+      inPlex && new URL(String(url)).pathname === '/library/sections/1/all'
+        ? new Response(JSON.stringify({ MediaContainer: { Metadata: [...movies, imported] } }), { status: 200 })
+        : plexFetch(url, init)
+    ) });
+    const saved = fake.radarr.state.movies;
+    fake.radarr.state.movies = [...saved, movieRecord({ id: 11, title: 'Dune', tmdbId: 438631, hasFile: true, movieFile: { id: 111, path: file } })];
+    try {
+      assert.equal((await get('/movie/11')).body.watch, null);
+      inPlex = true;
+      clock.value += 300_001;
+      assert.equal((await get('/movie/11')).body.watch?.ratingKey, '400');
+    } finally {
+      fake.radarr.state.movies = saved;
+    }
+  });
+
+  // Keeping a listing 5 minutes old after a failed rebuild, replacing a younger one with unavailable, or starting a new rebuild on every load after one fails, turns this red.
   await t.test('a failed Plex rebuild keeps the old marks and is not retried on every load', async () => {
     let fail = false;
     const { requests, get } = connect({ fetch: async (url, init) => {
@@ -3798,9 +3820,11 @@ test('watch status from Plex marks library titles, both title pages and Continue
       assert.equal(titleWatch(body.titles, 'Arrival').ratingKey, '200');
     }
     assert.equal(requests.filter((path) => path === '/library/sections').length, 2);
+    clock.value += 240_000;
+    assert.deepEqual((await get('/titles')).body.watch, { kind: 'unavailable' });
   });
 
-  // Dropping the marks while a slow new listing runs past the 1.5 s cap turns this red.
+  // Showing no marks when the wait for a new listing behind one 5 minutes old runs past the 1.5 s cap, instead of falling back to the old listing, turns this red.
   await t.test('a slow new Plex listing keeps the old marks', async () => {
     let release;
     const slow = new Promise((resolve) => { release = resolve; });
@@ -3811,7 +3835,7 @@ test('watch status from Plex marks library titles, both title pages and Continue
     });
     await get('/titles');
     hold = true;
-    clock.value += 60_001;
+    clock.value += 300_001;
     const { body } = await get('/titles');
     release();
     assert.equal(body.watch.kind, 'ok');

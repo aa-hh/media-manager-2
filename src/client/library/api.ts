@@ -19,7 +19,7 @@ export type LibraryTitle = {
   sizeOnDisk: number;
   tv: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; seasonCount: number } | null;
   movie: { hasFile: boolean; isAvailable: boolean } | null;
-  /** Plex watch marks; null when unmatched or when Plex is off or not answering. */
+  /** Plex watch marks; null when unmatched or when Plex is off or has not answered for 5 minutes. */
   watch: TitleWatch;
 };
 

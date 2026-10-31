@@ -203,7 +203,7 @@ export const createApp = (options: CreateAppOptions) => {
 
   app.use('*', async (context, next) => {
     await next();
-    // Cached poster and fanart may be reused by the browser for five minutes; everything else, error answers included, is never stored.
+    // Cached poster and fanart may be reused by the browser for five minutes; everything else but a built file under /assets/, error answers included, is never stored.
     // Vite names every file under /assets/ by content hash, so a browser may keep it for a year.
     const reusableImage = context.req.path.startsWith('/api/images/') && (context.res.status === 200 || context.res.status === 304);
     const builtFile = context.req.path.startsWith('/assets/') && context.res.status === 200;
