@@ -21,7 +21,24 @@ export type ContinueWatchingItem = {
   episode: { seasonNumber: number; episodeNumber: number; title: string | null } | null;
 };
 
-export type LibraryWatch = { kind: 'ok'; machineIdentifier: string; continueWatching: ContinueWatchingItem[] } | Off;
+export type RecentlyAddedItem = { service: Service; id: number; addedAt: number };
+
+export type LibraryWatch = {
+  kind: 'ok';
+  machineIdentifier: string;
+  continueWatching: ContinueWatchingItem[];
+  // Newest first, at most RECENT_LIMIT each: a show by its newest episode's addedAt, a film by its own.
+  recentlyAddedTv: RecentlyAddedItem[];
+  recentlyAddedFilms: RecentlyAddedItem[];
+} | Off;
+
+export type Playlist = { id: string; title: string; smart: boolean; itemCount: number };
+
+export type PlaylistItem = {
+  service: Service;
+  id: number;
+  episode: { seasonNumber: number; episodeNumber: number; title: string | null } | null;
+};
 
 type Playable = {
   ratingKey: string;
@@ -63,8 +80,12 @@ type Snapshot = {
   // Each folder holding a Plex episode file, to its show's ratingKey.
   episodeFolders: Map<string, string>;
   continueWatching: Item[];
+  movies: Item[];
+  // Each show's ratingKey to the addedAt of its newest episode.
+  showAddedAt: Map<string, number>;
 };
 
+const RECENT_LIMIT = 20;
 const CACHE_MS = 60_000;
 // Plex webhook events that change what the app shows: a saved position (pause, stop), a watched mark (scrobble), and the
 // top of Continue Watching (play). Resume changes nothing a pause did not.
@@ -137,10 +158,13 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
       episodesByNumber: new Map(),
       episodeFolders: new Map(),
       continueWatching,
+      movies: [],
+      showAddedAt: new Map(),
     };
     for (const { type, items } of lists) {
       for (const item of items) {
         if (type === 1) {
+          snapshot.movies.push(item);
           for (const file of partFiles(item)) snapshot.moviesByFile.set(file, item);
           for (const guid of guids(item)) snapshot.moviesByGuid.set(guid, item);
         } else if (type === 2) {
@@ -155,6 +179,8 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
             if (showKey !== null && !snapshot.episodeFolders.has(folder)) snapshot.episodeFolders.set(folder, showKey);
           }
           if (showKey !== null) snapshot.episodesByNumber.set(episodeNumberKey(showKey, item.parentIndex, item.index), item);
+          const addedAt = num(item.addedAt);
+          if (showKey !== null && addedAt !== null && addedAt > (snapshot.showAddedAt.get(showKey) ?? -Infinity)) snapshot.showAddedAt.set(showKey, addedAt);
         }
       }
     }
@@ -208,6 +234,19 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
     return (await snapshot()) ?? { kind: 'unavailable' };
   };
   const isOff = (value: Off | Snapshot): value is Off => 'kind' in value;
+
+  // Each matched Plex movie's and show's ratingKey to its Radarr or Sonarr id.
+  const libraryKeys = (found: Snapshot, records: Array<{ service: Service; record: Series | Movie }>) => {
+    const movies = new Map<string, number>();
+    const shows = new Map<string, number>();
+    for (const { service, record } of records) {
+      if (record.id === null) continue;
+      const item = service === 'sonarr' ? matchShow(found, record as Series) : matchMovie(found, record as Movie);
+      const ratingKey = item === undefined ? null : key(item.ratingKey);
+      if (ratingKey !== null) (service === 'sonarr' ? shows : movies).set(ratingKey, record.id);
+    }
+    return { movies, shows };
+  };
 
   // A listing already under way may predate the change, so a new one follows it, uncapped: pages read only once it is
   // in. A failed listing tells no page, so none swaps its marks for the failure.
@@ -293,6 +332,50 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
       });
     },
 
+    /** The owner's video playlists, in Plex's order. Read from Plex each time; never throws. */
+    async playlists(): Promise<{ kind: 'ok'; playlists: Playlist[] } | Off> {
+      if (!enabled()) return { kind: 'off' };
+      try {
+        return { kind: 'ok', playlists: (await plex.playlists()).flatMap((item) => {
+          const id = key(item.ratingKey);
+          return id === null || typeof item.title !== 'string'
+            ? []
+            : [{ id, title: item.title, smart: item.smart === true || item.smart === 1, itemCount: num(item.leafCount) ?? 0 }];
+        }) };
+      } catch {
+        return { kind: 'unavailable' };
+      }
+    },
+
+    /**
+     * One playlist's items that are library titles, in playlist order; an episode names its show and its number. Null when
+     * Plex has no such playlist.
+     */
+    async playlist(id: string, records: Array<{ service: Service; record: Series | Movie }>): Promise<{ kind: 'ok'; title: string; items: PlaylistItem[] } | null | Off> {
+      const found = await start();
+      if (isOff(found)) return found;
+      let listed: { title: string; items: Item[] } | null;
+      try {
+        listed = await plex.playlistItems(id);
+      } catch {
+        return { kind: 'unavailable' };
+      }
+      if (listed === null) return null;
+      const { movies, shows } = libraryKeys(found, records);
+      return { kind: 'ok', title: listed.title, items: listed.items.flatMap((item): PlaylistItem[] => {
+        if (item.type === 'movie') {
+          const movie = movies.get(key(item.ratingKey) ?? '');
+          return movie === undefined ? [] : [{ service: 'radarr', id: movie, episode: null }];
+        }
+        const show = item.type === 'episode' ? shows.get(key(item.grandparentRatingKey) ?? '') : undefined;
+        const season = num(item.parentIndex);
+        const number = num(item.index);
+        return show === undefined || season === null || number === null
+          ? []
+          : [{ service: 'sonarr', id: show, episode: { seasonNumber: season, episodeNumber: number, title: typeof item.title === 'string' ? item.title : null } }];
+      }) };
+    },
+
     async forLibrary(records: Array<{ service: Service; record: Series | Movie }>): Promise<{ watch: LibraryWatch; byTitle: Map<string, TitleWatch> }> {
       const byTitle = new Map<string, TitleWatch>();
       const found = await start();
@@ -333,7 +416,17 @@ export const createWatchStatus = ({ plex, enabled, now, events, webhookUrl, slee
             : null,
         }];
       });
-      return { watch: { kind: 'ok', machineIdentifier: found.machineIdentifier, continueWatching }, byTitle };
+      const newest = (entries: RecentlyAddedItem[]) => entries.sort((a, b) => b.addedAt - a.addedAt).slice(0, RECENT_LIMIT);
+      const recentlyAddedTv = newest([...shows].flatMap(([ratingKey, id]) => {
+        const addedAt = found.showAddedAt.get(ratingKey);
+        return addedAt === undefined ? [] : [{ service: 'sonarr' as const, id, addedAt }];
+      }));
+      const recentlyAddedFilms = newest(found.movies.flatMap((item) => {
+        const id = movies.get(key(item.ratingKey) ?? '');
+        const addedAt = num(item.addedAt);
+        return id === undefined || addedAt === null ? [] : [{ service: 'radarr' as const, id, addedAt }];
+      }));
+      return { watch: { kind: 'ok', machineIdentifier: found.machineIdentifier, continueWatching, recentlyAddedTv, recentlyAddedFilms }, byTitle };
     },
 
     async forSeries(record: Series, episodes: Episode[]): Promise<SeriesWatch> {

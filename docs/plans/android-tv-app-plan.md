@@ -15,7 +15,7 @@ A Kotlin + Compose for TV app lives in `android-tv/` beside `desktop/`. It has o
 **What the TV does.**
 - Screens: home/discover, library, search, a title page with live download progress from the server's event stream, add with monitoring, automatic search and Pick a release, Play/Resume.
 - Per-title actions (mark watched, monitor, remove from Continue Watching): holding OK on a card, and as buttons on the title page.
-- No settings, no sign-out and no address change on the TV in v1.
+- A Settings page (owner, 31 Oct): playback preferences (kept on the TV), Log out, app details, and Get logs, which sends recent app logs to the server and shows the short reference it gets back. No address change on the TV in v1.
 
 **The player.**
 - Media3 ExoPlayer with the box's own decoders, plus Media3's FFmpeg audio decoder built from source.
@@ -46,7 +46,7 @@ None. The owner answered all eight on 31 Oct 2026:
 | Q2: FFmpeg decoder | Built once per Media3 version, kept out of git, cached in CI | T05 |
 | Q3: TV design path | Start from the TV Design Kit library, restyle to our theme; approved parts go into our library as `v2/TV/<Family>/<Variant>`; Kotlin is the master copy; library redrawn after merge | T12, T03a–c, T13b |
 | Q4: http addresses | Allowed, as desktop; no warning text | contracts, T04, T08 |
-| Q5: sign-out / change address on TV | Not in v1 | T13a |
+| Q5: sign-out / change address on TV | Sign-out and a Settings page are in v1 (owner, 31 Oct); address change is not | T13a |
 | Q6: grab progress | Live, through the existing event stream | T26, T17, T18 |
 | Q7: when TV tests run | At every commit that touches `android-tv/` | T04 |
 | Q8: Plex identity | Plan a per-request Android identity; box-test it against Plex Desktop; if Android is worse, keep Desktop | T24, B15, T25 |
@@ -99,8 +99,14 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - A device row renews when `expires_at − now < 90 d − 24 h`: set `expires_at = now + 90 d`, and `privateGuard` (`app.ts:492-508`) re-sends the cookie with Max-Age 90 d.
 
 **Device routes** (behind `privateGuard`):
-- `GET /api/devices` → `{devices:[{id, name, signedInAt, expiresAt}]}`. `id` is the row's `rowid`; only unexpired rows with a device name are listed.
+- `GET /api/devices` → `{devices:[{id, name, signedInAt, expiresAt}]}`. `id` is a random 22-character id (not the rowid, which a later TV reuses); only unexpired rows with a device name are listed.
 - `POST /api/devices/:id/sign-out` → 204, or 404 `not_found`. Deletes the row and its in-memory Plex token.
+
+**TV Settings routes** (owner, 31 Oct):
+- Log out: `POST /auth/logout` with body `{}` and the browser headers. 204 deletes this TV's own session row and clears its cookie; other TVs and browsers stay signed in, and web Settings stops listing it. The TV then forgets its cookie and shows first launch.
+- Get logs: `POST /api/device-logs` (behind `privateGuard`) with body exactly `{"appVersion": string, "log": string}`. `appVersion` matches `^[0-9A-Za-z._+-]{1,40}$`; `log` is 1 to 262144 characters. 201 `{reference}`: six characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, shown on the TV as is. Else 400 `invalid_request`, or 413 above 2 MiB.
+- The TV sends only its own recent lines, with the TV HTTP rules' token scrubbing already applied; never cookies or the server's session value.
+- Reading back: `GET /api/device-logs` → `{logs:[{reference, deviceName, appVersion, receivedAt, characters}]}`, newest first. `GET /api/device-logs/:reference` → the log as `text/plain`, headed by the TV's name, app version and time; 404 `not_found`. The server keeps the newest 20 for 30 days.
 
 **Title action routes** (T23, behind `privateGuard`; `:service` is `sonarr` or `radarr`):
 - `POST /api/library/:service/:id/watched` with body exactly `{"watched": boolean}`.
@@ -108,6 +114,11 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
 - Replies: 204; 404 `not_found` when the title, its Plex item or (for remove) its Continue Watching entry is missing; 502 `plex_unavailable`; 503 `not_configured` when Plex is off; 400 `invalid_request`.
 - Remove sends one `PUT` per listed item: the movie, or each of the show's episodes in the row.
 - Monitoring reuses `POST /api/library/monitor`: `writeRoute('/monitor', …)` at `src/server/library.ts:856`.
+
+**Home rails and playlists** (behind `privateGuard`; asked for by the approved T03a Home design):
+- `GET /api/library/titles` `watch` (kind `ok`) adds `recentlyAddedTv` and `recentlyAddedFilms`: up to 20 `{service, id, addedAt}` each, newest first; a show ranks by its newest episode's `addedAt`. From the same cached Plex listing as Continue Watching.
+- `GET /api/library/playlists` → `{kind:'ok', playlists:[{id, title, smart, itemCount}]}` (the owner's video playlists, Plex order) or `{kind:'off'|'unavailable'}`.
+- `GET /api/library/playlists/:id` (digits) → `{kind:'ok', title, items:[{service, id, episode:{seasonNumber, episodeNumber, title}|null}]}`, only library titles, playlist order; 404 `not_found`; or `{kind:'off'|'unavailable'}`.
 
 **Plex identity header** (T24):
 - Every `/api/playback/*` request may carry `X-Media-Manager-Plex-Identity: android` or `desktop`.
@@ -379,7 +390,7 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
   - Port `normaliseAddress`/`isMediaManager` (`desktop/lib/address.js:6-22`), http and https both allowed.
   - Link code: start, poll every 2 s until `expiresAt`, cancel.
   - Device name from `Settings.Global.DEVICE_NAME`, else `Build.MODEL`, cut to 64 characters.
-  - kotlinx-serialization models with `ignoreUnknownKeys`, field names copied from the server source, for: `/api/session`, `/api/discover/home`, `/api/discover/:type`, `/api/search`, `/api/add/options/:service`, `POST /api/add`, `/api/library/titles`, `/series/:id`, `/movie/:id`, `/preview/…`, `/tmdb/:type/:tmdbId`, `POST /api/library/monitor`, `POST /api/library/search`, both T23 routes, `/api/releases`, `/api/releases/refresh`, `GET`/`POST /api/grabs`, `/api/downloads`, and every `/api/playback/*` route (`src/server/playback.ts:396-510`).
+  - kotlinx-serialization models with `ignoreUnknownKeys`, field names copied from the server source, for: `/api/session`, `/api/discover/home`, `/api/discover/:type`, `/api/search`, `/api/add/options/:service`, `POST /api/add`, `/api/library/titles`, `/series/:id`, `/movie/:id`, `/preview/…`, `/tmdb/:type/:tmdbId`, `POST /api/library/monitor`, `POST /api/library/search`, both T23 routes, `/api/library/playlists`, `/api/library/playlists/:id`, `/api/releases`, `/api/releases/refresh`, `GET`/`POST /api/grabs`, `/api/downloads`, and every `/api/playback/*` route (`src/server/playback.ts:396-510`).
   - A Coil `ImageLoader` on the same client, for `/api/images/*`.
 - **Tests (MockWebServer):** browser headers on POST and not on GET; the cookie survives a client restart; 401 → signed out; address rows; link poll pending → done.
 - **Kind:** new-code · **Depends on:** T04

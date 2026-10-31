@@ -1636,6 +1636,82 @@ test('a TV signs in with a Plex link code and keeps a named 90-day session', asy
     assert.equal(stale.status, 404);
     assert.equal((await app.request('/api/session', { headers: { Cookie: tvB.session } })).status, 200);
   });
+
+  // The TV's own Settings page signs out through /auth/logout. Leaving its row (so web Settings still lists it), keeping
+  // its cookie, or signing out another TV or the browser with it turns this red.
+  await t.test('a TV signs itself out and only itself', async () => {
+    const { app } = await makeApp();
+    const web = await signIn(app);
+    const livingRoom = await signInTv(app, 'Living room TV');
+    const den = await signInTv(app, 'Den TV');
+    const signedOut = await post(app, '/auth/logout', {}, livingRoom.session);
+    assert.equal(signedOut.status, 204);
+    assert.match(sessionSetCookie(signedOut), /Max-Age=0/i);
+    assert.equal((await app.request('/api/session', { headers: { Cookie: livingRoom.session } })).status, 401);
+    for (const session of [den.session, web.session]) assert.equal((await app.request('/api/session', { headers: { Cookie: session } })).status, 200);
+    const listed = await (await app.request('/api/devices', { headers: { Cookie: web.session } })).json();
+    assert.deepEqual(listed.devices.map(({ name }) => name), ['Den TV']);
+  });
+
+  // Keeping more than the newest 20 or anything past 30 days, losing the TV's name, accepting a body with other keys,
+  // an empty or oversized log or a version with spaces, skipping the browser headers, or answering a log as anything but
+  // plain text turns this red.
+  await t.test('a TV sends its recent app log and gets a short reference to read it back by', async () => {
+    const { app, clock } = await makeApp();
+    const web = await signIn(app);
+    const tv = await signInTv(app, 'Living room TV');
+    const sent = await post(app, '/api/device-logs', { appVersion: '1.0.12', log: 'line one\nline two' }, tv.session);
+    assert.equal(sent.status, 201);
+    const { reference } = await sent.json();
+    assert.match(reference, /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}$/);
+    const listed = await (await app.request('/api/device-logs', { headers: { Cookie: web.session } })).json();
+    assert.deepEqual(listed, { logs: [{ reference, deviceName: 'Living room TV', appVersion: '1.0.12', receivedAt: clock.value, characters: 17 }] });
+    const read = await app.request(`/api/device-logs/${reference}`, { headers: { Cookie: web.session } });
+    assert.equal(read.status, 200);
+    assert.match(read.headers.get('Content-Type'), /^text\/plain; charset=utf-8$/i);
+    assert.equal(await read.text(), `Living room TV · app 1.0.12 · received ${new Date(clock.value).toISOString()}\n\nline one\nline two`);
+    for (const missing of ['AAAAAA', reference.toLowerCase(), 'ABC']) {
+      assert.equal((await app.request(`/api/device-logs/${missing}`, { headers: { Cookie: web.session } })).status, 404, missing);
+    }
+
+    for (const body of [
+      { appVersion: '1.0', log: 'x', extra: true },
+      { appVersion: '1.0', log: '' },
+      { appVersion: '1.0', log: 'x'.repeat(256 * 1024 + 1) },
+      { appVersion: '1 0', log: 'x' },
+      { appVersion: '', log: 'x' },
+      { appVersion: 1, log: 'x' },
+      { log: 'x' },
+    ]) {
+      const refused = await post(app, '/api/device-logs', body, tv.session);
+      assert.equal(refused.status, 400, JSON.stringify(body).slice(0, 60));
+      assert.deepEqual(await refused.json(), { error: 'invalid_request' });
+    }
+    assert.equal((await post(app, '/api/device-logs', { appVersion: '1.0', log: 'x'.repeat(256 * 1024) }, tv.session)).status, 201);
+    const unsafe = await app.request('/api/device-logs', { method: 'POST', headers: { Cookie: tv.session }, body: JSON.stringify({ appVersion: '1.0', log: 'x' }) });
+    assert.equal(unsafe.status, 403);
+    assert.equal((await post(app, '/api/device-logs', { appVersion: '1.0', log: 'x' })).status, 401);
+
+    // A browser may send one too; it has no device name.
+    assert.equal((await post(app, '/api/device-logs', { appVersion: '1.0', log: 'web' }, web.session)).status, 201);
+    assert.equal((await (await app.request('/api/device-logs', { headers: { Cookie: web.session } })).json()).logs[0].deviceName, null);
+
+    for (let index = 0; index < 25; index += 1) {
+      clock.value += 1;
+      assert.equal((await post(app, '/api/device-logs', { appVersion: '1.0', log: `log ${index}` }, tv.session)).status, 201);
+    }
+    const kept = (await (await app.request('/api/device-logs', { headers: { Cookie: web.session } })).json()).logs;
+    assert.equal(kept.length, 20);
+    assert.equal(kept[0].characters, 'log 24'.length);
+    assert.equal(kept.at(-1).characters, 'log 5'.length);
+    assert.equal((await app.request(`/api/device-logs/${reference}`, { headers: { Cookie: web.session } })).status, 404);
+
+    const newest = kept[0].reference;
+    clock.value += 30 * DAY;
+    // The browser's day-long session is gone by now; the TV's 90-day one reads instead.
+    assert.equal((await app.request(`/api/device-logs/${newest}`, { headers: { Cookie: tv.session } })).status, 404);
+    assert.deepEqual((await (await app.request('/api/device-logs', { headers: { Cookie: tv.session } })).json()).logs, []);
+  });
 });
 
 test('discover routes, rows and recipes never reach upstream', async () => {
@@ -3826,20 +3902,20 @@ test('watch status from Plex marks library titles, both title pages and Continue
   ];
   const movies = [
     {
-      ratingKey: '100', type: 'movie', Guid: [{ id: 'tmdb://693134' }], viewOffset: 600000, duration: 9960000, viewCount: 1, lastViewedAt: 1800000000,
+      ratingKey: '100', type: 'movie', Guid: [{ id: 'tmdb://693134' }], viewOffset: 600000, duration: 9960000, viewCount: 1, lastViewedAt: 1800000000, addedAt: 1700000100,
       Media: [
         { id: 11, height: 1080, bitrate: 8000, container: 'mkv', Part: [{ id: 111, key: '/library/parts/111/file.mkv', file: dune1080 }] },
         { id: 12, height: 2160, bitrate: 40000, container: 'mkv', Part: [{ id: 122, key: '/library/parts/122/file.mkv', file: dune2160 }] },
       ],
     },
     {
-      ratingKey: '200', type: 'movie', Guid: [{ id: 'imdb://tt2543164' }, { id: 'tmdb://329865' }], viewOffset: 120000, duration: 6960000,
+      ratingKey: '200', type: 'movie', Guid: [{ id: 'imdb://tt2543164' }, { id: 'tmdb://329865' }], viewOffset: 120000, duration: 6960000, addedAt: 1700000200,
       Media: [{ id: 21, height: 1080, bitrate: 9000, container: 'mkv', Part: [{ id: 211, file: '/plex/films/Arrival.mkv' }] }],
     },
   ];
   const shows = [{ ratingKey: '300', type: 'show', Guid: [{ id: 'tvdb://371980' }], leafCount: 19, viewedLeafCount: 3, lastViewedAt: 1800000100 }];
   const episodes = [{
-    ratingKey: '302', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 2, viewOffset: 2511000, duration: 3300000,
+    ratingKey: '302', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 2, viewOffset: 2511000, duration: 3300000, addedAt: 1700000300,
     Media: [{ id: 31, height: 2160, bitrate: 20000, container: 'mkv', Part: [{ id: 3021, file: '/plex/tv/Severance/S01E02.mkv' }] }],
   }];
   const continueWatching = [
@@ -3859,6 +3935,15 @@ test('watch status from Plex marks library titles, both title pages and Continue
       '/library/sections/2/all': { Metadata: searchParams.get('type') === '2' ? shows : episodes },
       '/hubs/continueWatching/items': { Metadata: continueWatching },
       '/library/metadata/300': { Metadata: [{ ratingKey: '300', OnDeck: { Metadata: [{ ratingKey: '303', parentIndex: 1, index: 3 }] } }] },
+      '/playlists': { Metadata: [
+        { ratingKey: '900', title: 'Weekend', smart: false, playlistType: 'video', leafCount: 3 },
+        { ratingKey: '901', title: 'Unwatched films', smart: true, playlistType: 'video', leafCount: 12 },
+      ] },
+      '/playlists/900/items': { title: 'Weekend', Metadata: [
+        { ratingKey: '200', type: 'movie', title: 'Arrival' },
+        { ratingKey: '999', type: 'movie', title: 'Not in Radarr' },
+        { ratingKey: '302', type: 'episode', grandparentRatingKey: '300', parentIndex: 1, index: 2, title: 'Half Loop' },
+      ] },
     };
     const body = answers[pathname];
     return body === undefined ? new Response('', { status: 404 }) : new Response(JSON.stringify({ MediaContainer: body }), { status: 200 });
@@ -3950,6 +4035,8 @@ test('watch status from Plex marks library titles, both title pages and Continue
         { service: 'sonarr', id: 7, viewOffsetMs: 2511000, durationMs: 3300000, lastViewedAt: 1800000200, episode: { seasonNumber: 1, episodeNumber: 2, title: 'Half Loop' } },
         { service: 'radarr', id: 9, viewOffsetMs: 600000, durationMs: 9960000, lastViewedAt: 1800000000, episode: null },
       ],
+      recentlyAddedTv: [{ service: 'sonarr', id: 7, addedAt: 1700000300 }],
+      recentlyAddedFilms: [{ service: 'radarr', id: 10, addedAt: 1700000200 }, { service: 'radarr', id: 9, addedAt: 1700000100 }],
     });
     const off = connect({ enabled: () => false });
     const offBody = (await off.get('/titles')).body;
@@ -4188,6 +4275,43 @@ test('watch status from Plex marks library titles, both title pages and Continue
     fake.sonarr.state.episodes = saved;
     assert.deepEqual([watched['74'].ratingKey, watched['74'].viewOffsetMs], ['304', 1000]);
     assert.deepEqual([watched['75'].ratingKey, watched['75'].viewOffsetMs], ['305', 2000]);
+  });
+
+  // Ranking a show by its own addedAt instead of its newest episode's, or listing films Radarr does not have, turns this red.
+  await t.test('recently added lists shows by their newest episode and films by their own date, newest first', async () => {
+    const later = { ...episodes[0], ratingKey: '303', index: 3, addedAt: 1700000800, Media: [] };
+    const { body } = await connect({ fetch: async (url, init) => {
+      const { pathname, searchParams } = new URL(String(url));
+      if (pathname === '/library/sections/1/all') {
+        return new Response(JSON.stringify({ MediaContainer: { Metadata: [...movies, { ratingKey: '998', type: 'movie', addedAt: 1700009999 }] } }), { status: 200 });
+      }
+      if (pathname === '/library/sections/2/all') {
+        const listed = searchParams.get('type') === '2' ? [{ ...shows[0], addedAt: 1600000000 }] : [...episodes, later];
+        return new Response(JSON.stringify({ MediaContainer: { Metadata: listed } }), { status: 200 });
+      }
+      return plexFetch(url, init);
+    } }).get('/titles');
+    assert.deepEqual(body.watch.recentlyAddedFilms, [{ service: 'radarr', id: 10, addedAt: 1700000200 }, { service: 'radarr', id: 9, addedAt: 1700000100 }]);
+    assert.deepEqual(body.watch.recentlyAddedTv, [{ service: 'sonarr', id: 7, addedAt: 1700000800 }]);
+  });
+
+  // Listing music or photo playlists, dropping the smart flag, keeping items that are not library titles, or answering a
+  // missing playlist with an empty one turns this red.
+  await t.test('playlists list the owner\'s video playlists and their library titles in playlist order', async () => {
+    const { get, requests } = connect();
+    assert.deepEqual((await get('/playlists')).body, { kind: 'ok', playlists: [
+      { id: '900', title: 'Weekend', smart: false, itemCount: 3 },
+      { id: '901', title: 'Unwatched films', smart: true, itemCount: 12 },
+    ] });
+    assert.ok(requests.includes('/playlists'));
+    assert.deepEqual((await get('/playlists/900')).body, { kind: 'ok', title: 'Weekend', items: [
+      { service: 'radarr', id: 10, episode: null },
+      { service: 'sonarr', id: 7, episode: { seasonNumber: 1, episodeNumber: 2, title: 'Half Loop' } },
+    ] });
+    assert.deepEqual(await get('/playlists/902'), { status: 404, body: { error: 'not_found' } });
+    assert.equal((await get('/playlists/abc')).status, 400);
+    assert.deepEqual((await connect({ enabled: () => false }).get('/playlists')).body, { kind: 'off' });
+    assert.deepEqual((await connect({ fetch: async () => { throw new TypeError('fetch failed'); } }).get('/playlists')).body, { kind: 'unavailable' });
   });
 
   // Sending the wrong verb or ratingKey, marking a show's episodes one by one, or not telling open pages afterwards turns this red.

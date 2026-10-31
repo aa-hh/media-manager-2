@@ -427,6 +427,14 @@ export const applicationMigrations = [
   // both NULL and lasts a day.
   `ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUMN created_at INTEGER;
   ALTER TABLE sessions ADD COLUMN device_id TEXT; CREATE UNIQUE INDEX sessions_device_id ON sessions (device_id);`,
+  // Recent app logs a TV sent from its Settings page, read back by their short reference (deviceLogs.ts keeps the newest 20).
+  `CREATE TABLE device_logs (
+    reference TEXT PRIMARY KEY,
+    device_name TEXT,
+    app_version TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    log TEXT NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}

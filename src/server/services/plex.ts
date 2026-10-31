@@ -112,6 +112,17 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     return isRecord(next) ? next : undefined;
   };
 
+  // The owner's video playlists, and one playlist's items; playlistItems is null when Plex has no such playlist.
+  const playlists = async () => metadata(await container('/playlists?playlistType=video', 'the playlists'));
+  const playlistItems = async (id: string): Promise<{ title: string; items: Array<Record<string, unknown>> } | null> => {
+    const result = await request(`/playlists/${encodeURIComponent(id)}/items`);
+    if (result.status === 404) return null;
+    if (result.status < 200 || result.status > 299) throw new Error('Plex refused the playlist.');
+    const body = isRecord(result.body) ? result.body.MediaContainer : undefined;
+    if (!isRecord(body)) throw new Error('Plex sent an unreadable reply for the playlist.');
+    return { title: typeof body.title === 'string' ? body.title : '', items: metadata(body) };
+  };
+
   // Watch-state writes; each throws when Plex is unset, unreachable or refuses. Marking by hand sets played or unplayed
   // without adding to Plex's watch history, and works on a show to mark every episode.
   const write = async (path: string, what: string) => {
@@ -163,5 +174,5 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     });
   };
 
-  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, markWatched, removeFromContinueWatching, webhooks, setWebhooks };
+  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, playlists, playlistItems, markWatched, removeFromContinueWatching, webhooks, setWebhooks };
 };
