@@ -33,6 +33,9 @@ jobs:
         with:
           path: android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
           key: ffmpeg-${{ hashFiles('android-tv/ffmpeg/build.sh','android-tv/gradle/libs.versions.toml') }}
+      - name: Unit tests
+        run: sh scripts/android-tv.sh test
+      # Decoded only after the tests, so the key is on disk just for signing and publishing.
       - name: Decode the release keystore
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_TV_RELEASE_KEYSTORE }}
@@ -44,8 +47,6 @@ jobs:
           fi
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
           echo "ANDROID_TV_KEYSTORE_PATH=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
-      - name: Unit tests
-        run: sh scripts/android-tv.sh test
       - name: Build the signed release APK
         env:
           ANDROID_TV_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_TV_RELEASE_PASSWORD }}
