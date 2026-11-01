@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Tests that `scripts/android-tv.sh` runs one Android build at a time per machine: a second run waits for the first,
-# a lock left by a dead run is taken over, and the lock is gone after a run, failed or not. Runs the real script
-# against a stand-in SDK and gradlew, with the lock in a temporary folder.
+# Tests that `scripts/android-tv.sh` runs one Android build at a time per machine: a run that finds another running
+# exits 75 and names it, a lock left by a dead run is taken over, and the lock is gone after a run, failed or not.
+# Runs the real script against a stand-in SDK and gradlew, with the lock in a temporary folder.
 #
 # Usage: scripts/test-android-lock.sh
 
@@ -25,28 +25,30 @@ echo 'unused' > "$repo/android-tv/ffmpeg/build.sh"
 touch "$repo/android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar"
 { cat "$repo/android-tv/ffmpeg/build.sh"; grep '^media3 = ' "$repo/android-tv/gradle/libs.versions.toml"; } \
     | shasum -a 256 | cut -c1-16 > "$repo/android-tv/ffmpeg/out/key"
-# The stand-in Gradle logs when it starts and ends, sleeping in between so two runs would overlap.
+# The stand-in Gradle records that it ran.
 cat > "$repo/android-tv/gradlew" <<STUB
 #!/bin/sh
-echo "start \$\$" >> "$TMP_DIR/log"
-sleep "\${STUB_SLEEP:-0}"
-echo "end \$\$" >> "$TMP_DIR/log"
+echo ran >> "$TMP_DIR/log"
 exit "\${STUB_STATUS:-0}"
 STUB
 
 tv() { ANDROID_HOME="$TMP_DIR/sdk" ANDROID_TV_LOCK="$lock" sh "$repo/scripts/android-tv.sh" "$@"; }
 
-# Two runs at once: the second starts only after the first ends. Dropping take_lock turns this red.
+# A run that finds a live holder says who and exits 75 without running Gradle; the holder's lock stays.
+# Dropping take_lock turns this red.
 rm -f "$TMP_DIR/log"
-STUB_SLEEP=2 tv test > "$TMP_DIR/first" 2>&1 &
-first=$!
-sleep 0.5
-STUB_SLEEP=0 tv build > "$TMP_DIR/second" 2>&1
-wait "$first"
-if [ "$(cut -d' ' -f1 "$TMP_DIR/log" | tr '\n' ' ')" = "start end start end " ]; then ok "a second run waits for the first"
-else fail "the runs overlapped: $(tr '\n' ' ' < "$TMP_DIR/log")"; fi
-grep -q 'waiting for it to finish' "$TMP_DIR/second" && ok "the waiting run says why" || fail "no waiting message"
-[ -L "$lock" ] && fail "the lock is still there after both runs" || ok "the lock is removed after a run"
+ln -s $$ "$lock"
+tv build > "$TMP_DIR/out" 2>&1
+status=$?
+if [ "$status" = 75 ] && [ ! -f "$TMP_DIR/log" ] && [ "$(readlink "$lock")" = "$$" ]; then ok "a run that finds another running exits 75"
+else fail "a busy lock: exit $status, gradle $( [ -f "$TMP_DIR/log" ] && echo ran || echo 'did not run' )"; cat "$TMP_DIR/out" >&2; fi
+grep -q "pid $$" "$TMP_DIR/out" && ok "it names the holder" || fail "the holder's pid is not in the message"
+rm -f "$lock"
+
+# A free lock is taken for the run and removed after it.
+tv test > "$TMP_DIR/out" 2>&1
+if [ "$?" = 0 ] && [ -f "$TMP_DIR/log" ] && [ ! -L "$lock" ]; then ok "the lock is removed after a run"
+else fail "a free lock: the run failed or left the lock"; cat "$TMP_DIR/out" >&2; fi
 
 # A lock naming a pid that no longer runs is taken over instead of waited on forever.
 sh -c 'exit 0' & dead=$!
@@ -55,19 +57,27 @@ ln -s "$dead" "$lock"
 if tv test > "$TMP_DIR/out" 2>&1 && [ ! -L "$lock" ]; then ok "a dead run's lock is taken over"
 else fail "a dead run's lock was not taken over"; cat "$TMP_DIR/out" >&2; fi
 
+# Something at the lock path that is not a lock stops the run with a message instead of spinning.
+echo junk > "$lock"
+tv test > "$TMP_DIR/out" 2>&1
+status=$?
+if [ "$status" = 75 ] && grep -q 'not a lock' "$TMP_DIR/out"; then ok "a file in the lock's place is reported"
+else fail "a file in the lock's place: exit $status"; cat "$TMP_DIR/out" >&2; fi
+rm -f "$lock"
+
 # A failed build still lets the next one run.
 STUB_STATUS=1 tv test > "$TMP_DIR/out" 2>&1
 status=$?
 if [ "$status" = 1 ] && [ ! -L "$lock" ]; then ok "a failed run removes the lock"
 else fail "a failed run: exit $status, lock $( [ -L "$lock" ] && echo kept || echo removed )"; fi
 
-# install only talks to the box, so it neither waits for nor takes the lock.
+# install only talks to the box, so it neither checks nor takes the lock.
 ln -s $$ "$lock"
 mkdir -p "$TMP_DIR/sdk/platform-tools"
 printf '#!/bin/sh\nexit 0\n' > "$TMP_DIR/sdk/platform-tools/adb"
 chmod +x "$TMP_DIR/sdk/platform-tools/adb"
-if ANDROID_TV_DEVICE=box tv install > "$TMP_DIR/out" 2>&1 && [ "$(readlink "$lock")" = "$$" ]; then ok "install does not wait for the lock"
-else fail "install waited for or took the lock"; cat "$TMP_DIR/out" >&2; fi
+if ANDROID_TV_DEVICE=box tv install > "$TMP_DIR/out" 2>&1 && [ "$(readlink "$lock")" = "$$" ]; then ok "install ignores the lock"
+else fail "install was refused by or took the lock"; cat "$TMP_DIR/out" >&2; fi
 rm -f "$lock"
 
 [ "$FAILURES" -eq 0 ] || { echo "$FAILURES failure(s)" >&2; exit 1; }

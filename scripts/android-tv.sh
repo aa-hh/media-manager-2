@@ -9,7 +9,7 @@
 #   install  the debug APK onto the box named by $ANDROID_TV_DEVICE (adb serial or IP:port)
 #   release  the signed release APK; needs ANDROID_TV_KEYSTORE_PATH (a PKCS12 .p12)
 #            and ANDROID_TV_KEYSTORE_PASSWORD; versionCode from ANDROID_TV_VERSION_CODE (default 1)
-# build, test, ffmpeg and release run one at a time per machine; a second run waits for the first.
+# build, test, ffmpeg and release run one at a time per machine; a run that finds another running exits 75.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -44,23 +44,28 @@ if [ ! -d "$ANDROID_HOME/platforms" ] || [ -z "$(ls "$ANDROID_HOME/platforms" 2>
 fi
 
 # One Android build at a time on a machine. Each build starts Gradle and Kotlin daemons of several GB, and two at once
-# swap the mule to a standstill, so a second run waits here. The lock is a symlink whose target is the holder's pid
-# (ln -s is atomic, and macOS has no flock); a lock whose holder has died is taken over.
-LOCK=${ANDROID_TV_LOCK:-${TMPDIR:-/tmp}/media-manager-2-android-tv.lock}
+# swap the mule to a standstill. A run that finds another holding the lock says who and exits 75, so its caller does
+# other work and retries later (AGENTS.md: a busy shared resource is reported, not waited on). The lock is a symlink
+# whose target is the holder's pid (ln -s is atomic, and macOS has no flock); a lock whose holder has died is taken over.
+# A fixed path, not $TMPDIR: macOS gives each login session its own TMPDIR and none to ssh, so a run from Terminal
+# and one sent over ssh would each see a different lock.
+LOCK=${ANDROID_TV_LOCK:-/tmp/media-manager-2-android-tv.lock}
 take_lock() {
-    told=0
     until ln -s "$$" "$LOCK" 2>/dev/null; do
-        holder=$(readlink "$LOCK" 2>/dev/null) || continue
-        if ! kill -0 "$holder" 2>/dev/null; then
-            # Removed only if it still names the dead holder, so a lock another run has just taken survives.
-            [ "$(readlink "$LOCK" 2>/dev/null)" = "$holder" ] && rm -f "$LOCK"
-            continue
+        if ! holder=$(readlink "$LOCK" 2>/dev/null); then
+            [ -e "$LOCK" ] || continue   # released between the two calls
+            echo "android-tv: $LOCK is in the way and is not a lock; remove it" >&2
+            exit 75
         fi
-        if [ "$told" = 0 ]; then
-            echo "android-tv: another Android build (pid $holder) is running on this machine; waiting for it to finish" >&2
-            told=1
+        if kill -0 "$holder" 2>/dev/null; then
+            echo "android-tv: another Android build (pid $holder) is running on this machine; retry when it has finished" >&2
+            exit 75
         fi
-        sleep 2
+        # Removed only if it still names the dead holder, so a lock another run has just taken survives.
+        if [ "$(readlink "$LOCK" 2>/dev/null)" = "$holder" ] && ! rm -f "$LOCK" 2>/dev/null; then
+            echo "android-tv: could not remove the stale lock $LOCK (pid $holder); remove it by hand" >&2
+            exit 75
+        fi
     done
     trap 'rm -f "$LOCK"' EXIT
     trap 'exit 130' INT
