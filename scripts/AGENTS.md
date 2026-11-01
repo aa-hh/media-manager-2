@@ -16,13 +16,12 @@ The only sanctioned way to build, test, review, land and deploy this repo. Hooks
 
 - `build.sh` → compile and typecheck everything.
 - `test.sh` → the test suite and its modes.
-- `android-tv.sh` → TV app build, tests, install.
+- `android-tv.sh` → TV app build, tests, install; `cloud-android-sdk.sh` → its SDK in a cloud container.
 - `review-branch.sh` → picks and runs the branch review, posts the `review` status.
 - `housekeeping.sh` → removes `.prunable` worktrees; `build.sh` runs it.
 - `test-*.sh` → self-tests; `test.sh --review-script` runs them.
-- `setup.sh` → one-time hook setup; `--sync-main` installs the main mirror job.
+- `setup.sh` → one-time hook setup; `--sync-main` installs the mirror job from `launchd/`.
 - `sync-main.sh` → keeps local `main` matching `origin/main`.
 - `desktop-build.sh` → build, sign and notarise the desktop app.
 - `deploy.sh`, `ensure-running.sh` → deploy to and keep the server running on the host.
-- `launchd/` → the job `setup.sh --sync-main` installs.
 - `screenshots/` → headless-Chrome title-page shots against the arr fake; macOS.

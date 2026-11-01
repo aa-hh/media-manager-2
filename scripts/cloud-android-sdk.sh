@@ -25,8 +25,11 @@ if [ ! -x "$JDK_DIR/bin/java" ]; then
     echo "cloud-android-sdk: installing JDK 25 into $JDK_DIR"
     curl -fsSL -o "$tmp/jdk.tar.gz" \
         "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse"
-    mkdir -p "$JDK_DIR"
-    tar -xzf "$tmp/jdk.tar.gz" -C "$JDK_DIR" --strip-components=1
+    # Unpacked aside and moved into place, so a run cut short never leaves a bin/java that looks finished.
+    mkdir -p "$tmp/jdk" "$(dirname "$JDK_DIR")"
+    tar -xzf "$tmp/jdk.tar.gz" -C "$tmp/jdk" --strip-components=1
+    rm -rf "$JDK_DIR"
+    mv "$tmp/jdk" "$JDK_DIR"
 fi
 
 sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
