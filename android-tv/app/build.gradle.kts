@@ -12,17 +12,37 @@ android {
         applicationId = "io.github.aahh.mediamanager2.tv"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.1"
+        // Only `android-tv.sh release` passes -PversionCode (the CI run number), so
+        // debug builds stay at 1. The release title is "TV app 1.0.<versionCode>".
+        versionCode = (findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = "1.0.$versionCode"
         ndk {
             // Both until box test B2 shows whether the Streamer runs 32-bit Android.
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
+    // The release key lives only in CI secrets and this Mac's Keychain. Without
+    // ANDROID_TV_KEYSTORE_PATH the release build is unsigned and debug is untouched.
+    val keystorePath = System.getenv("ANDROID_TV_KEYSTORE_PATH")
+    signingConfigs {
+        if (!keystorePath.isNullOrEmpty()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storeType = "PKCS12"
+                storePassword = System.getenv("ANDROID_TV_KEYSTORE_PASSWORD")
+                keyAlias = "release"
+                keyPassword = System.getenv("ANDROID_TV_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+        }
+        release {
+            if (!keystorePath.isNullOrEmpty()) signingConfig = signingConfigs.getByName("release")
         }
     }
 
