@@ -44,6 +44,7 @@ if [ "${1:-}" = --review-script ]; then
     /bin/bash scripts/test-guard-bash.sh
     /bin/bash scripts/test-android-tests.sh
     /bin/bash scripts/test-android-release.sh
+    /bin/bash scripts/test-check-apk-cert.sh
     /bin/bash scripts/test-android-ffmpeg-cache.sh
     exit 0
 fi
