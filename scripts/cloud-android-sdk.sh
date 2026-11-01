@@ -14,7 +14,8 @@ set -eu
 JDK_DIR=${JDK_DIR:-/opt/jdk-25}
 ANDROID_HOME=${ANDROID_HOME:-/opt/android-sdk}
 # Kept in step with android-tv/app/build.gradle.kts (compileSdk) and android-tv/ffmpeg/build.sh (NDK_VERSION).
-PACKAGES="platform-tools platforms;android-37 build-tools;37.0.0 ndk;26.1.10909125"
+# Google lists API 37 as platforms;android-37.0 (there is no platforms;android-37).
+PACKAGES="platform-tools platforms;android-37.0 build-tools;37.0.0 ndk;26.1.10909125"
 CMDLINE_TOOLS=commandlinetools-linux-16111833_latest.zip
 
 tmp=$(mktemp -d)
@@ -46,7 +47,11 @@ if [ -n "$missing" ]; then
     echo "cloud-android-sdk: installing$missing"
     yes | JAVA_HOME=$JDK_DIR "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
     # shellcheck disable=SC2086 # one argument per package
-    JAVA_HOME=$JDK_DIR "$sdkmanager" --sdk_root="$ANDROID_HOME" $missing >/dev/null
+    JAVA_HOME=$JDK_DIR "$sdkmanager" --sdk_root="$ANDROID_HOME" $missing
+    # sdkmanager exits 0 on a package name it doesn't know, so check the folders it should have made.
+    for p in $missing; do
+        [ -d "$ANDROID_HOME/$(echo "$p" | tr ';' '/')" ] || { echo "cloud-android-sdk: $p did not install" >&2; exit 1; }
+    done
 fi
 
 echo "cloud-android-sdk: ready (JAVA_HOME=$JDK_DIR ANDROID_HOME=$ANDROID_HOME)"

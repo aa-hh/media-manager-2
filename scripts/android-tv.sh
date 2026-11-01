@@ -14,11 +14,15 @@ cd "$(dirname "$0")/.."
 
 # CI sets both; on a Mac they default to Android Studio's JDK (or, on a Mac
 # without Android Studio, the copy of it on the Space drive) and the SDK that
-# Android Studio's first-launch setup installs.
+# Android Studio's first-launch setup installs. In a cloud container they default
+# to where scripts/cloud-android-sdk.sh installs them.
 studio_jdk="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 [ -d "$studio_jdk" ] || studio_jdk=/Volumes/Space/Android/jdk-25/Contents/Home
+[ -d "$studio_jdk" ] || studio_jdk=/opt/jdk-25
+sdk=$HOME/Library/Android/sdk
+[ -d "$sdk" ] || [ ! -d /opt/android-sdk ] || sdk=/opt/android-sdk
 JAVA_HOME=${JAVA_HOME:-$studio_jdk}
-ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+ANDROID_HOME=${ANDROID_HOME:-$sdk}
 export JAVA_HOME ANDROID_HOME
 
 usage() {
