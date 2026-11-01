@@ -90,8 +90,18 @@ sealed interface Route
 @Serializable data class ShowRoute(val seriesId: Int) : Route
 /** Pick a release for a movie (`radarr`, [id] a movie id) or an episode (`sonarr`, [id] an episode id). */
 @Serializable data class ReleasesRoute(val service: String, val id: Int) : Route
-/** Plays a title ([service] and [id] as the library names it), or a Plex list from its start ([playlistId], [shuffle]). */
-@Serializable data class PlayerRoute(val service: String? = null, val id: Int? = null, val playlistId: String? = null, val shuffle: Boolean = false) : Route
+/**
+ * Plays a title ([service] and [id] as the library names it; [ratingKey] is the Plex item to start and [resume] asks Plex
+ * to resume it), or a Plex list from its start ([playlistId], [shuffle]).
+ */
+@Serializable data class PlayerRoute(
+    val service: String? = null,
+    val id: Int? = null,
+    val ratingKey: String? = null,
+    val resume: Boolean = false,
+    val playlistId: String? = null,
+    val shuffle: Boolean = false,
+) : Route
 
 /**
  * The app's screens and how they connect. Opens on Home; with no address on Address, with no session on the link code.
