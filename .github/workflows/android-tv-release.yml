@@ -28,11 +28,15 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v4
-      # Same path and key as tests.yml, so the two workflows share the decoder.
+      # Same paths and key as tests.yml (and ffmpeg_key in scripts/android-tv.sh), so all three share the decoder.
+      - id: ffmpeg-key
+        run: echo "key=$({ cat android-tv/ffmpeg/build.sh; grep '^media3 = ' android-tv/gradle/libs.versions.toml; } | shasum -a 256 | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
-          path: android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
-          key: ffmpeg-${{ hashFiles('android-tv/ffmpeg/build.sh','android-tv/gradle/libs.versions.toml') }}
+          path: |
+            android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
+            android-tv/ffmpeg/out/key
+          key: ffmpeg-v2-${{ steps.ffmpeg-key.outputs.key }}
       - name: Unit tests
         run: sh scripts/android-tv.sh test
       # Decoded only after the tests, so the key is on disk just for signing and publishing.

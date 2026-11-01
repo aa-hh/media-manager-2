@@ -3,7 +3,7 @@
 # call this, never android-tv/gradlew directly (the guard hook denies that).
 #
 # Usage: sh scripts/android-tv.sh build|test|ffmpeg|release|install
-#   build    the debug APK (runs ffmpeg first when its AAR is missing)
+#   build    the debug APK (gets the FFmpeg decoder first when out/ has none for the current key)
 #   test     the JVM unit tests (likewise)
 #   ffmpeg   Media3's FFmpeg audio decoder AAR, into android-tv/ffmpeg/out/
 #   install  the debug APK onto the box named by $ANDROID_TV_DEVICE (adb serial or IP:port)
@@ -39,7 +39,16 @@ gradle() {
     sh android-tv/gradlew -p android-tv --console=plain "$@"
 }
 
-# Media3's FFmpeg audio decoder, built once per Media3 version and kept out of git.
+# Media3's FFmpeg audio decoder, kept out of git. It is rebuilt only when its key changes: a hash of the build script
+# and the catalogue's media3 line, so other dependency bumps reuse it. CI's caches use the same key (tests.yml and
+# android-tv-release.yml).
+# out/key records the key of the AAR in out/. A Mac with the Space drive keeps one copy per key there, so every
+# worktree on that Mac, and every run sent to it, reuses it.
+FFMPEG_AAR=android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
+FFMPEG_CACHE=${ANDROID_TV_FFMPEG_CACHE:-/Volumes/Space/Android/ffmpeg-cache}
+ffmpeg_key() {
+    { cat android-tv/ffmpeg/build.sh; grep '^media3 = ' android-tv/gradle/libs.versions.toml; } | shasum -a 256 | cut -c1-16
+}
 ffmpeg() {
     if [ ! -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then
         if [ -z "${CI:-}" ]; then
@@ -48,10 +57,27 @@ ffmpeg() {
         fi
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;26.1.10909125" >/dev/null
     fi
+    key=$(ffmpeg_key)
     bash android-tv/ffmpeg/build.sh
+    echo "$key" > android-tv/ffmpeg/out/key
+    # Copied under a temporary name, then renamed, so a run reading the cache never sees half a file.
+    if [ -d "$(dirname "$FFMPEG_CACHE")" ] && mkdir -p "$FFMPEG_CACHE" 2>/dev/null; then
+        # A cache that can't be written (drive full, no permission) is skipped, never a failed build.
+        { cp "$FFMPEG_AAR" "$FFMPEG_CACHE/$key.aar.$$" && mv "$FFMPEG_CACHE/$key.aar.$$" "$FFMPEG_CACHE/$key.aar"; } \
+            || { rm -f "$FFMPEG_CACHE/$key.aar.$$"; echo "android-tv: could not save the decoder to $FFMPEG_CACHE" >&2; }
+    fi
 }
 need_ffmpeg() {
-    [ -f android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar ] || ffmpeg
+    key=$(ffmpeg_key)
+    [ -f "$FFMPEG_AAR" ] && [ "$(cat android-tv/ffmpeg/out/key 2>/dev/null)" = "$key" ] && return
+    if [ -f "$FFMPEG_CACHE/$key.aar" ]; then
+        mkdir -p android-tv/ffmpeg/out
+        cp "$FFMPEG_CACHE/$key.aar" "$FFMPEG_AAR"
+        echo "$key" > android-tv/ffmpeg/out/key
+        echo "android-tv: FFmpeg decoder reused from $FFMPEG_CACHE ($key)"
+        return
+    fi
+    ffmpeg
 }
 
 case "$1" in
