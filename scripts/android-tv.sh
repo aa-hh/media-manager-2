@@ -3,7 +3,7 @@
 # call this, never android-tv/gradlew directly (the guard hook denies that).
 #
 # Usage: sh scripts/android-tv.sh build|test|ffmpeg|release|install
-#   build    the debug APK (runs ffmpeg first when its AAR is missing)
+#   build    the debug APK (gets the FFmpeg decoder first when out/ has none for the current key)
 #   test     the JVM unit tests (likewise)
 #   ffmpeg   Media3's FFmpeg audio decoder AAR, into android-tv/ffmpeg/out/
 #   install  the debug APK onto the box named by $ANDROID_TV_DEVICE (adb serial or IP:port)
@@ -42,7 +42,7 @@ gradle() {
 # Media3's FFmpeg audio decoder, kept out of git. It is rebuilt only when its key changes: a hash of the build script
 # and the catalogue's media3 line, so other dependency bumps reuse it. CI's cache uses the same key (tests.yml).
 # out/key records the key of the AAR in out/. A Mac with the Space drive keeps one copy per key there, so every
-# worktree and every run on the mule reuses it.
+# worktree on that Mac, and every run sent to it, reuses it.
 FFMPEG_AAR=android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
 FFMPEG_CACHE=${ANDROID_TV_FFMPEG_CACHE:-/Volumes/Space/Android/ffmpeg-cache}
 ffmpeg_key() {
