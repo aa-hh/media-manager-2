@@ -40,7 +40,8 @@ gradle() {
 }
 
 # Media3's FFmpeg audio decoder, kept out of git. It is rebuilt only when its key changes: a hash of the build script
-# and the catalogue's media3 line, so other dependency bumps reuse it. CI's cache uses the same key (tests.yml).
+# and the catalogue's media3 line, so other dependency bumps reuse it. CI's caches use the same key (tests.yml and
+# android-tv-release.yml).
 # out/key records the key of the AAR in out/. A Mac with the Space drive keeps one copy per key there, so every
 # worktree on that Mac, and every run sent to it, reuses it.
 FFMPEG_AAR=android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
@@ -61,7 +62,9 @@ ffmpeg() {
     echo "$key" > android-tv/ffmpeg/out/key
     # Copied under a temporary name, then renamed, so a run reading the cache never sees half a file.
     if [ -d "$(dirname "$FFMPEG_CACHE")" ] && mkdir -p "$FFMPEG_CACHE" 2>/dev/null; then
-        cp "$FFMPEG_AAR" "$FFMPEG_CACHE/$key.aar.$$" && mv "$FFMPEG_CACHE/$key.aar.$$" "$FFMPEG_CACHE/$key.aar"
+        # A cache that can't be written (drive full, no permission) is skipped, never a failed build.
+        { cp "$FFMPEG_AAR" "$FFMPEG_CACHE/$key.aar.$$" && mv "$FFMPEG_CACHE/$key.aar.$$" "$FFMPEG_CACHE/$key.aar"; } \
+            || { rm -f "$FFMPEG_CACHE/$key.aar.$$"; echo "android-tv: could not save the decoder to $FFMPEG_CACHE" >&2; }
     fi
 }
 need_ffmpeg() {

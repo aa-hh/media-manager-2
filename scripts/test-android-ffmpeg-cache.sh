@@ -32,14 +32,15 @@ STUB
 echo 'media3 = "1.0.0"' > "$repo/android-tv/gradle/libs.versions.toml"
 aar="$repo/android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar"
 
-# name, expected builds (0 or 1), expected AAR contents afterwards
+# name, expected builds (0 or 1), expected AAR contents afterwards; every run must also exit 0
 run() {
-    local name=$1 builds=$2 want=$3 got_builds
+    local name=$1 builds=$2 want=$3 got_builds status
     rm -f "$TMP_DIR/built"
     ANDROID_HOME="$TMP_DIR/sdk" ANDROID_TV_FFMPEG_CACHE="$cache" sh "$repo/scripts/android-tv.sh" test > "$TMP_DIR/out" 2>&1
+    status=$?
     got_builds=$( [ -f "$TMP_DIR/built" ] && wc -l < "$TMP_DIR/built" | tr -d ' ' || echo 0 )
-    if [ "$got_builds" = "$builds" ] && [ "$(cat "$aar" 2>/dev/null)" = "$want" ]; then ok "$name"
-    else fail "$name: expected $builds build(s) and AAR '$want', got $got_builds and '$(cat "$aar" 2>/dev/null)'"; cat "$TMP_DIR/out" >&2; fi
+    if [ "$status" = 0 ] && [ "$got_builds" = "$builds" ] && [ "$(cat "$aar" 2>/dev/null)" = "$want" ]; then ok "$name"
+    else fail "$name: expected exit 0, $builds build(s) and AAR '$want'; got exit $status, $got_builds and '$(cat "$aar" 2>/dev/null)'"; cat "$TMP_DIR/out" >&2; fi
 }
 
 # Building when out/ is empty but not filling the cache turns the fourth case red.
@@ -52,6 +53,11 @@ run "a Media3 bump with no cached copy rebuilds" 1 'media3 = "1.1.0"'
 rm -rf "$repo/android-tv/ffmpeg/out"
 run "a fresh worktree copies the cached decoder" 0 'media3 = "1.1.0"'
 grep -q 'reused from' "$TMP_DIR/out" && ok "the copy says where it came from" || fail "no 'reused from' line"
+# A cache folder that can't be written must not fail a build that worked; dropping the fallback turns this red.
+echo 'media3 = "1.2.0"' > "$repo/android-tv/gradle/libs.versions.toml"
+chmod a-w "$cache"
+run "a cache that can't be written still leaves a built decoder" 1 'media3 = "1.2.0"'
+chmod u+w "$cache"
 echo 'media3 = "1.0.0"' > "$repo/android-tv/gradle/libs.versions.toml"
 rm -f "$repo/android-tv/ffmpeg/out/key"
 run "a decoder with no out/key takes the cached copy for the current key" 0 'media3 = "1.0.0"'
