@@ -80,6 +80,7 @@ private const val FOCUS_REST_MS = 300L
  *
  * Library cards open the hold-OK action list; [onChanged] runs after one of its actions, so the page reads again.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RailsPage(
     rails: List<Rail>,
