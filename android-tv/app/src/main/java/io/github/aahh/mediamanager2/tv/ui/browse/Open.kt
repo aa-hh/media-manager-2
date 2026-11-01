@@ -9,13 +9,24 @@ import io.github.aahh.mediamanager2.tv.ui.ShowRoute
 
 /**
  * Where OK on a card goes: a library title's page, a Plex list's page, or a Trakt card's page when that title is already
- * in the library. A Trakt card for a title not in the library goes nowhere yet: adding it is T18's dialog.
+ * in the library. A Trakt card for a title not in the library opens the add dialog instead ([addTarget]).
  */
 fun openRoute(item: RailItem): Route? = when (item) {
     is RailItem.Title -> if (item.title.service == "sonarr") ShowRoute(item.title.id) else FilmRoute(item.title.id)
     is RailItem.PlexList -> PlexListRoute(item.playlist.id, item.playlist.title)
     is RailItem.Found -> item.result.libraryId?.let { if (item.result.type == "tv") ShowRoute(it) else FilmRoute(it) }
 }
+
+/** A Trakt title to offer in the add dialog. */
+data class AddTarget(val service: String, val tmdbId: Int, val name: String)
+
+/** The add dialog's title for a Trakt card not in the library; null for every other card. */
+fun addTarget(item: RailItem): AddTarget? =
+    if (item is RailItem.Found && item.result.libraryId == null) {
+        AddTarget(if (item.result.type == "tv") "sonarr" else "radarr", item.result.tmdbId, item.result.title)
+    } else {
+        null
+    }
 
 /**
  * The top of the page for a card. A Trakt card carries its own summary and backdrop; a library card needs its title's
