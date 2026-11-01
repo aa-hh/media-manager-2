@@ -39,13 +39,14 @@ gradle() {
     sh android-tv/gradlew -p android-tv --console=plain "$@"
 }
 
-# Media3's FFmpeg audio decoder, kept out of git. It is rebuilt only when its key (a hash of the build script and the
-# version catalogue, as CI's cache key) changes; out/key records the key of the AAR in out/. A Mac with the Space drive
-# keeps one copy per key there, so every worktree and every run on the mule reuses it.
+# Media3's FFmpeg audio decoder, kept out of git. It is rebuilt only when its key changes: a hash of the build script
+# and the catalogue's media3 line, so other dependency bumps reuse it. CI's cache uses the same key (tests.yml).
+# out/key records the key of the AAR in out/. A Mac with the Space drive keeps one copy per key there, so every
+# worktree and every run on the mule reuses it.
 FFMPEG_AAR=android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
 FFMPEG_CACHE=${ANDROID_TV_FFMPEG_CACHE:-/Volumes/Space/Android/ffmpeg-cache}
 ffmpeg_key() {
-    cat android-tv/ffmpeg/build.sh android-tv/gradle/libs.versions.toml | shasum -a 256 | cut -c1-16
+    { cat android-tv/ffmpeg/build.sh; grep '^media3 = ' android-tv/gradle/libs.versions.toml; } | shasum -a 256 | cut -c1-16
 }
 ffmpeg() {
     if [ ! -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then

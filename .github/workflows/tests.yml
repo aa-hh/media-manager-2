@@ -39,13 +39,15 @@ jobs:
           java-version: 25
       - uses: gradle/actions/setup-gradle@v4
       # The TV app's FFmpeg decoder; on a miss scripts/android-tv.sh installs the NDK and builds it.
+      # The same key as ffmpeg_key in scripts/android-tv.sh: the build script and the catalogue's media3 line.
+      - id: ffmpeg-key
+        run: echo "key=$({ cat android-tv/ffmpeg/build.sh; grep '^media3 = ' android-tv/gradle/libs.versions.toml; } | shasum -a 256 | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: |
             android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
             android-tv/ffmpeg/out/key
-          # v2: entries also hold out/key, which scripts/android-tv.sh checks before reusing the AAR.
-          key: ffmpeg-v2-${{ hashFiles('android-tv/ffmpeg/build.sh','android-tv/gradle/libs.versions.toml') }}
+          key: ffmpeg-v2-${{ steps.ffmpeg-key.outputs.key }}
       - name: Chromium for the story tests
         run: npx playwright install --with-deps --only-shell chromium
       - name: Full suite
