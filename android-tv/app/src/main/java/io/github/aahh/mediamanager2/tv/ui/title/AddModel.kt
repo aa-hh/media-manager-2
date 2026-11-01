@@ -77,22 +77,24 @@ fun optionsProblem(serviceName: String, result: ApiResult<AddOptions>): String? 
     }
 }
 
-/** Why a Trakt show card cannot be added: the preview found no TheTVDB id, or the lookup failed. Null when it found one. */
+/** Why a Trakt show card cannot be added: the preview found no TheTVDB id, or the lookup failed. The lookup asks TMDB first, so the server's
+ * reason, which names TMDB or Sonarr, beats the per-code words. Null when it found one. */
 fun lookupProblem(result: ApiResult<ShowPreview>): String? {
     val notFound = "Couldn’t find this show on TheTVDB."
     return when (result) {
         is ApiResult.Ok -> if (result.value.links?.tvdbId != null) null else notFound
-        is ApiResult.Error -> if (result.status == 404) notFound else failureMessage("Sonarr", result.code, "Couldn’t look this show up. Try again in a minute.")
+        is ApiResult.Error -> if (result.status == 404) notFound else result.reason ?: failureMessage("Sonarr", result.code, "Couldn’t look this show up. Try again in a minute.")
         is ApiResult.Failed -> "Can’t reach Media Manager."
     }
 }
 
-/** Why an add did not go through, or null when it did (201). A 409 shows Sonarr or Radarr's own reason. */
+/** Why an add did not go through, or null when it did (201). A 409 shows Sonarr or Radarr's own reason. A lost reply
+ * warns that the add may have happened, because the server does not deduplicate adds (as the web says). */
 fun addProblem(serviceName: String, result: ApiResult<Added?>): String? {
     val fallback = "$serviceName didn’t add it."
     return when (result) {
         is ApiResult.Ok -> if (result.status == 201 && result.value != null) null else fallback
         is ApiResult.Error -> if (result.status == 409) result.reason ?: fallback else failureMessage(serviceName, result.code, fallback)
-        is ApiResult.Failed -> "Can’t reach Media Manager."
+        is ApiResult.Failed -> "Lost contact with Media Manager. The add may have gone through, so check the library before trying again."
     }
 }

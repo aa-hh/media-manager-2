@@ -11,6 +11,8 @@ import io.github.aahh.mediamanager2.tv.api.SeriesDetail
 import io.github.aahh.mediamanager2.tv.api.SeriesWatch
 import io.github.aahh.mediamanager2.tv.downloads.SubjectProgress
 import io.github.aahh.mediamanager2.tv.ui.components.EpisodeStatus
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -126,5 +128,19 @@ class TitleModelTest {
         val film = MovieDetail(id = 1, title = "Dune", year = 2021, runtime = 166, genres = listOf("Sci-Fi"), file = FileSummary(quality = "2160p WEB-DL"))
         assertEquals("Movie · 2021 · 2 h 46 min · Sci-Fi · 2160p WEB-DL", filmFacts(film))
         assertEquals("Movie", filmFacts(MovieDetail(id = 1, title = "Y", runtime = 0)))
+    }
+
+    // The watched button marks or unmarks by these rules. Counting an empty show as watched, a partly watched show as
+    // done, or trusting counts while Plex is off, turns this red.
+    @Test
+    fun watchedNeedsEveryEpisodeOrOnePlay() {
+        fun show(kind: String, leaves: Int, viewed: Int) = SeriesDetail(id = 1, title = "X", watch = SeriesWatch(kind = kind, leafCount = leaves, viewedLeafCount = viewed))
+        assertFalse(titleWatched(show("ok", 0, 0)))
+        assertFalse(titleWatched(show("ok", 8, 7)))
+        assertTrue(titleWatched(show("ok", 8, 8)))
+        assertFalse(titleWatched(show("plex_off", 8, 8)))
+        assertFalse(titleWatched(SeriesDetail(id = 1, title = "X")))
+        assertTrue(titleWatched(MovieDetail(id = 1, title = "Y", watch = MovieWatch(kind = "ok", viewCount = 2))))
+        assertFalse(titleWatched(MovieDetail(id = 1, title = "Y", watch = MovieWatch(kind = "ok"))))
     }
 }

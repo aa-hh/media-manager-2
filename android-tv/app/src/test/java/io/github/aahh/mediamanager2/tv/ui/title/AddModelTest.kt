@@ -40,7 +40,8 @@ class AddModelTest {
     }
 
     // Each failure code gets the web’s words, a 409 shows Sonarr or Radarr’s own reason, and only a 404 or a missing id
-    // reads as a show TheTVDB lacks; swapping a code’s words, or hiding the reason behind the fallback, turns this red.
+    // reads as a show TheTVDB lacks; swapping a code’s words, hiding a reason behind the fallback, or offering a retry
+    // after a lost add reply without the may-have-gone-through warning, turns this red.
     @Test
     fun problemsAreWordedPerCode() {
         assertNull(optionsProblem("Sonarr", ApiResult.Ok(200, options)))
@@ -54,11 +55,12 @@ class AddModelTest {
         assertEquals("Radarr didn’t add it.", addProblem("Radarr", ApiResult.Error(409, "refused")))
         assertEquals("Sonarr refused the API key. Check the key in Settings.", addProblem("Sonarr", ApiResult.Error(502, "rejected")))
         assertEquals("Sonarr didn’t answer. Check it’s running, then try again.", addProblem("Sonarr", ApiResult.Error(502, "unreachable")))
-        assertEquals("Can’t reach Media Manager.", addProblem("Sonarr", ApiResult.Failed(IOException())))
+        assertEquals("Lost contact with Media Manager. The add may have gone through, so check the library before trying again.", addProblem("Sonarr", ApiResult.Failed(IOException())))
 
         assertNull(lookupProblem(ApiResult.Ok(200, ShowPreview(TitleLinks(tvdbId = 121361)))))
         assertEquals("Couldn’t find this show on TheTVDB.", lookupProblem(ApiResult.Ok(200, ShowPreview())))
         assertEquals("Couldn’t find this show on TheTVDB.", lookupProblem(ApiResult.Error(404, "not_found")))
         assertEquals("Sonarr isn’t connected. Add it in Settings.", lookupProblem(ApiResult.Error(503, "not_configured")))
+        assertEquals("TMDB isn’t set up for the show preview.", lookupProblem(ApiResult.Error(503, "not_configured", "TMDB isn’t set up for the show preview.")))
     }
 }
