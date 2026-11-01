@@ -7,7 +7,8 @@
 #   test     the JVM unit tests (likewise)
 #   ffmpeg   Media3's FFmpeg audio decoder AAR, into android-tv/ffmpeg/out/
 #   install  the debug APK onto the box named by $ANDROID_TV_DEVICE (adb serial or IP:port)
-#   release  not built yet
+#   release  the signed release APK; needs ANDROID_TV_KEYSTORE_PATH (a PKCS12 .p12)
+#            and ANDROID_TV_KEYSTORE_PASSWORD; versionCode from ANDROID_TV_VERSION_CODE (default 1)
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -66,8 +67,14 @@ case "$1" in
             android-tv/app/build/outputs/apk/debug/app-debug.apk
         ;;
     release)
-        echo "android-tv: '$1' is not built yet" >&2
-        exit 2
+        # Checked before anything builds, so an unsigned APK can never come out of this.
+        if [ -z "${ANDROID_TV_KEYSTORE_PATH:-}" ] || [ -z "${ANDROID_TV_KEYSTORE_PASSWORD:-}" ]; then
+            echo "android-tv: release needs ANDROID_TV_KEYSTORE_PATH (the release .p12) and ANDROID_TV_KEYSTORE_PASSWORD; the release workflow sets both from its secrets" >&2
+            exit 2
+        fi
+        need_ffmpeg
+        gradle assembleRelease -PversionCode="${ANDROID_TV_VERSION_CODE:-1}"
+        echo android-tv/app/build/outputs/apk/release/app-release.apk
         ;;
     *) usage ;;
 esac

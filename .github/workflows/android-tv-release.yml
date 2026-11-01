@@ -1,0 +1,86 @@
+name: Android TV release
+
+# Signs the TV app with the release key and publishes it as a GitHub release
+# whenever TV changes land on main. The installed app updates itself from the
+# newest release, so the job refuses to publish anything not signed by the
+# one release certificate below.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android-tv/**'
+      - 'scripts/android-tv.sh'
+
+concurrency: android-tv-release
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      # Same path and key as tests.yml, so the two workflows share the decoder.
+      - uses: actions/cache@v4
+        with:
+          path: android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar
+          key: ffmpeg-${{ hashFiles('android-tv/ffmpeg/build.sh','android-tv/gradle/libs.versions.toml') }}
+      - name: Unit tests
+        run: sh scripts/android-tv.sh test
+      # Decoded only after the tests, so the key is on disk just for signing and publishing.
+      - name: Decode the release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_TV_RELEASE_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_TV_RELEASE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Secret ANDROID_TV_RELEASE_KEYSTORE or ANDROID_TV_RELEASE_PASSWORD is missing or empty. Set both from this Mac's Keychain (plan step S2)."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          echo "ANDROID_TV_KEYSTORE_PATH=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+      - name: Build the signed release APK
+        env:
+          ANDROID_TV_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_TV_RELEASE_PASSWORD }}
+        run: ANDROID_TV_VERSION_CODE=$GITHUB_RUN_NUMBER sh scripts/android-tv.sh release
+      - name: Check the APK carries the release certificate
+        run: |
+          apk=android-tv/app/build/outputs/apk/release/app-release.apk
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          certs=$("$apksigner" verify --print-certs "$apk")
+          echo "$certs"
+          want=976a2a1b32d3745305e7cf41bb86657ee1c4203605cbce52cfdce84836ce7c7e
+          got=$(echo "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr 'A-F' 'a-f')
+          dn=$(echo "$certs" | sed -n 's/^Signer #1 certificate DN: //p')
+          signers=$(echo "$certs" | grep -c '^Signer #[0-9]* certificate DN:' || true)
+          if [ "$signers" != 1 ] || [ "$got" != "$want" ] || [ "$dn" != "CN=media-manager-2 TV" ]; then
+            echo "::error::The APK is not signed by the media-manager-2 TV release key alone (signers=$signers, SHA-256=$got, DN=$dn). Not publishing."
+            exit 1
+          fi
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Passed through the environment, never pasted into the script, so a
+          # commit message cannot inject shell.
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          subject=$(printf '%s\n' "$COMMIT_MESSAGE" | head -n 1)
+          # The asset's name comes from the file name (the part after # is only a
+          # label), and the app's updater looks for media-manager-2-tv.apk.
+          cp android-tv/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/media-manager-2-tv.apk"
+          gh release create "android-tv-v$GITHUB_RUN_NUMBER" \
+            "$RUNNER_TEMP/media-manager-2-tv.apk#media-manager-2-tv.apk" \
+            --target "$GITHUB_SHA" \
+            --title "TV app 1.0.$GITHUB_RUN_NUMBER" \
+            --notes "$subject"
+      - name: Delete the decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.p12" "$RUNNER_TEMP/media-manager-2-tv.apk"
