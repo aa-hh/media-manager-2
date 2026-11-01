@@ -9,6 +9,7 @@
 #   install  the debug APK onto the box named by $ANDROID_TV_DEVICE (adb serial or IP:port)
 #   release  the signed release APK; needs ANDROID_TV_KEYSTORE_PATH (a PKCS12 .p12)
 #            and ANDROID_TV_KEYSTORE_PASSWORD; versionCode from ANDROID_TV_VERSION_CODE (default 1)
+# build, test, ffmpeg and release run one at a time per machine; a second run waits for the first.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -20,6 +21,13 @@ studio_jdk="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 JAVA_HOME=${JAVA_HOME:-$studio_jdk}
 ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
 export JAVA_HOME ANDROID_HOME
+
+# On a Mac with the Space drive, Gradle's home (downloads, build cache, daemons) lives on the drive too: the main
+# disk runs near full, and every worktree on that Mac shares one build cache.
+if [ -z "${GRADLE_USER_HOME:-}" ] && [ -d /Volumes/Space/Android ]; then
+    GRADLE_USER_HOME=/Volumes/Space/Android/gradle-home
+    export GRADLE_USER_HOME
+fi
 
 usage() {
     echo "usage: sh scripts/android-tv.sh build|test|release|ffmpeg|install" >&2
@@ -34,6 +42,30 @@ if [ ! -d "$ANDROID_HOME/platforms" ] || [ -z "$(ls "$ANDROID_HOME/platforms" 2>
     echo "android-tv: no Android SDK at $ANDROID_HOME. Open Android Studio, finish its first-launch SDK setup, and install the SDK Platform, Build-Tools, Platform-Tools, Command-line Tools, NDK 26.1.10909125 and CMake 3.22.1 in SDK Manager." >&2
     exit 97
 fi
+
+# One Android build at a time on a machine. Each build starts Gradle and Kotlin daemons of several GB, and two at once
+# swap the mule to a standstill, so a second run waits here. The lock is a symlink whose target is the holder's pid
+# (ln -s is atomic, and macOS has no flock); a lock whose holder has died is taken over.
+LOCK=${ANDROID_TV_LOCK:-${TMPDIR:-/tmp}/media-manager-2-android-tv.lock}
+take_lock() {
+    told=0
+    until ln -s "$$" "$LOCK" 2>/dev/null; do
+        holder=$(readlink "$LOCK" 2>/dev/null) || continue
+        if ! kill -0 "$holder" 2>/dev/null; then
+            # Removed only if it still names the dead holder, so a lock another run has just taken survives.
+            [ "$(readlink "$LOCK" 2>/dev/null)" = "$holder" ] && rm -f "$LOCK"
+            continue
+        fi
+        if [ "$told" = 0 ]; then
+            echo "android-tv: another Android build (pid $holder) is running on this machine; waiting for it to finish" >&2
+            told=1
+        fi
+        sleep 2
+    done
+    trap 'rm -f "$LOCK"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+}
 
 gradle() {
     sh android-tv/gradlew -p android-tv --console=plain "$@"
@@ -81,9 +113,9 @@ need_ffmpeg() {
 }
 
 case "$1" in
-    build) need_ffmpeg; gradle assembleDebug ;;
-    test) need_ffmpeg; gradle testDebugUnitTest ;;
-    ffmpeg) ffmpeg ;;
+    build) take_lock; need_ffmpeg; gradle assembleDebug ;;
+    test) take_lock; need_ffmpeg; gradle testDebugUnitTest ;;
+    ffmpeg) take_lock; ffmpeg ;;
     install)
         if [ -z "${ANDROID_TV_DEVICE:-}" ]; then
             echo "android-tv: set ANDROID_TV_DEVICE to the box's adb serial or IP:port" >&2
@@ -98,6 +130,7 @@ case "$1" in
             echo "android-tv: release needs ANDROID_TV_KEYSTORE_PATH (the release .p12) and ANDROID_TV_KEYSTORE_PASSWORD; the release workflow sets both from its secrets" >&2
             exit 2
         fi
+        take_lock
         need_ffmpeg
         gradle assembleRelease -PversionCode="${ANDROID_TV_VERSION_CODE:-1}"
         echo android-tv/app/build/outputs/apk/release/app-release.apk

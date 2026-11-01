@@ -25,7 +25,7 @@ refuses() {
     local name=$1 got
     shift
     rm -f "$TMP_DIR/gradle-ran"
-    env -u ANDROID_TV_KEYSTORE_PATH -u ANDROID_TV_KEYSTORE_PASSWORD ANDROID_HOME="$TMP_DIR/sdk" "$@" \
+    env -u ANDROID_TV_KEYSTORE_PATH -u ANDROID_TV_KEYSTORE_PASSWORD ANDROID_HOME="$TMP_DIR/sdk" ANDROID_TV_LOCK="$TMP_DIR/lock" "$@" \
         sh "$repo/scripts/android-tv.sh" release > "$TMP_DIR/out" 2>&1
     got=$?
     if [ "$got" = 2 ] && grep -q 'release needs ANDROID_TV_KEYSTORE_PATH' "$TMP_DIR/out" && [ ! -f "$TMP_DIR/gradle-ran" ]; then
