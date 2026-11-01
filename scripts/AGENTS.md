@@ -16,7 +16,8 @@ The only sanctioned way to build, test, review, land and deploy this repo. Hooks
 
 - `build.sh` → compile and typecheck everything.
 - `test.sh` → the test suite and its modes.
-- `android-tv.sh` → TV app build, tests, install; `cloud-android-sdk.sh` → its SDK in a cloud container.
+- `android-tv.sh` → TV app build, tests, install.
+- `cloud-android-sdk.sh` → TV SDK for cloud containers.
 - `review-branch.sh` → picks and runs the branch review, posts the `review` status.
 - `housekeeping.sh` → removes `.prunable` worktrees; `build.sh` runs it.
 - `test-*.sh` → self-tests; `test.sh --review-script` runs them.
