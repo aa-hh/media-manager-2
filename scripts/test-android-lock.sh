@@ -89,6 +89,18 @@ status=$?
 if [ "$status" = 1 ] && [ ! -L "$lock" ]; then ok "a failed run removes the lock"
 else fail "a failed run: exit $status, lock $( [ -L "$lock" ] && echo kept || echo removed )"; fi
 
+# A run whose lock was taken over by another while it ran leaves the new holder's lock alone.
+cat > "$repo/android-tv/gradlew" <<STUB
+#!/bin/sh
+echo ran >> "$TMP_DIR/log"
+[ -n "\${STUB_TAKEOVER:-}" ] && rm -f "$lock" && ln -s "\$STUB_TAKEOVER" "$lock"
+exit 0
+STUB
+STUB_TAKEOVER=$$ tv test > "$TMP_DIR/out" 2>&1
+if [ "$(readlink "$lock" 2>/dev/null)" = "$$" ]; then ok "a run leaves a lock it no longer holds"
+else fail "a run removed a lock another run had taken"; fi
+rm -f "$lock"
+
 # install only talks to the box, so it neither checks nor takes the lock.
 ln -s $$ "$lock"
 mkdir -p "$TMP_DIR/sdk/platform-tools"

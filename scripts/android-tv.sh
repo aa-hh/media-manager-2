@@ -77,7 +77,8 @@ take_lock() {
             exit 75
         fi
     done
-    trap 'rm -f "$LOCK"' EXIT
+    # Removed only while it still names this run, so a lock another run has since taken survives this one's exit.
+    trap '[ "$(readlink "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"' EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
 }
