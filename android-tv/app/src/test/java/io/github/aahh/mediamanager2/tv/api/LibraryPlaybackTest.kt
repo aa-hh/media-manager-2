@@ -76,10 +76,11 @@ class LibraryPlaybackTest {
         assertEquals(FileSummary(1234, "WEBDL-1080p"), show.episodes.single().file)
     }
 
-    // Adding a show from Discover reads its TVDB id from the preview's links; renaming `links` or `tvdbId` turns this red.
+    // Adding a show from Discover reads its TVDB id from the preview’s links, whose `id` is null outside the library;
+    // renaming `links` or `tvdbId`, or decoding the reply as SeriesDetail, turns this red.
     @Test
     fun aShowPreviewCarriesItsTvdbId() = runTest {
-        reply("""{"id":0,"title":"Game of Thrones","links":{"imdbId":"tt0944947","tvdbId":121361,"tmdbId":1399}}""")
+        reply("""{"id":null,"title":"Game of Thrones","monitored":false,"links":{"imdbId":"tt0944947","tvdbId":121361,"tmdbId":1399}}""")
         val show = (library.previewShowByTmdb(1399) as ApiResult.Ok).value
         assertEquals("/api/library/preview/sonarr/tmdb/1399", server.takeRequest().path)
         assertEquals(121361, show.links!!.tvdbId)

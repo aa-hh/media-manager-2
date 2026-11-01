@@ -6,6 +6,8 @@ import io.github.aahh.mediamanager2.tv.api.ApiResult
 import io.github.aahh.mediamanager2.tv.api.LastChoice
 import io.github.aahh.mediamanager2.tv.api.QualityProfile
 import io.github.aahh.mediamanager2.tv.api.RootFolder
+import io.github.aahh.mediamanager2.tv.api.ShowPreview
+import io.github.aahh.mediamanager2.tv.api.TitleLinks
 import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -37,8 +39,8 @@ class AddModelTest {
         assertEquals(hd, nextProfile(options, 2))
     }
 
-    // Each failure code gets the web's words, and a 409 shows Sonarr or Radarr's own reason; swapping a code's words,
-    // or hiding the reason behind the fallback, turns this red.
+    // Each failure code gets the web’s words, a 409 shows Sonarr or Radarr’s own reason, and only a 404 or a missing id
+    // reads as a show TheTVDB lacks; swapping a code’s words, or hiding the reason behind the fallback, turns this red.
     @Test
     fun problemsAreWordedPerCode() {
         assertNull(optionsProblem("Sonarr", ApiResult.Ok(200, options)))
@@ -53,5 +55,10 @@ class AddModelTest {
         assertEquals("Sonarr refused the API key. Check the key in Settings.", addProblem("Sonarr", ApiResult.Error(502, "rejected")))
         assertEquals("Sonarr didn’t answer. Check it’s running, then try again.", addProblem("Sonarr", ApiResult.Error(502, "unreachable")))
         assertEquals("Can’t reach Media Manager.", addProblem("Sonarr", ApiResult.Failed(IOException())))
+
+        assertNull(lookupProblem(ApiResult.Ok(200, ShowPreview(TitleLinks(tvdbId = 121361)))))
+        assertEquals("Couldn’t find this show on TheTVDB.", lookupProblem(ApiResult.Ok(200, ShowPreview())))
+        assertEquals("Couldn’t find this show on TheTVDB.", lookupProblem(ApiResult.Error(404, "not_found")))
+        assertEquals("Sonarr isn’t connected. Add it in Settings.", lookupProblem(ApiResult.Error(503, "not_configured")))
     }
 }

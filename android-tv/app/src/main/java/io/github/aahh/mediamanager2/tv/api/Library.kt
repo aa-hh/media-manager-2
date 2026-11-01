@@ -143,6 +143,10 @@ data class Season(val seasonNumber: Int, val monitored: Boolean = false, val pos
 @Serializable
 data class TitleLinks(val imdbId: String? = null, val tvdbId: Int? = null, val tmdbId: Int? = null)
 
+/** `GET /api/library/preview/sonarr/tmdb/:tmdbId`, read only for its links: a show outside the library has `id: null`. */
+@Serializable
+data class ShowPreview(val links: TitleLinks? = null)
+
 /** `GET /api/library/series/:id`. */
 @Serializable
 data class SeriesDetail(
@@ -162,7 +166,6 @@ data class SeriesDetail(
     val seasons: List<Season> = emptyList(),
     val episodes: List<EpisodeDetail> = emptyList(),
     val watch: SeriesWatch? = null,
-    val links: TitleLinks? = null,
 )
 
 /** `GET /api/library/movie/:id`. */
@@ -222,9 +225,9 @@ class LibraryApi(private val client: ServerClient) {
     suspend fun movie(id: Int): ApiResult<MovieDetail> = client.get("/api/library/movie/$id", MovieDetail.serializer())
 
     /** A show not in the library, looked up by its TMDB id; its `links.tvdbId` is what adding it needs. */
-    suspend fun previewShowByTmdb(tmdbId: Int): ApiResult<SeriesDetail> {
+    suspend fun previewShowByTmdb(tmdbId: Int): ApiResult<ShowPreview> {
         require(tmdbId > 0) { "not a TMDB id" }
-        return client.get("/api/library/preview/sonarr/tmdb/$tmdbId", SeriesDetail.serializer())
+        return client.get("/api/library/preview/sonarr/tmdb/$tmdbId", ShowPreview.serializer())
     }
 
     suspend fun playlists(): ApiResult<Playlists> = client.get("/api/library/playlists", Playlists.serializer())

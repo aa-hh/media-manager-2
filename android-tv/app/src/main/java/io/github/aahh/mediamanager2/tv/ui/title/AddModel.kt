@@ -6,6 +6,7 @@ import io.github.aahh.mediamanager2.tv.api.ApiResult
 import io.github.aahh.mediamanager2.tv.api.MovieChoices
 import io.github.aahh.mediamanager2.tv.api.QualityProfile
 import io.github.aahh.mediamanager2.tv.api.SeriesChoices
+import io.github.aahh.mediamanager2.tv.api.ShowPreview
 
 // The add dialog's rules, copied from the web's add sentence (src/client/title/AddControls.tsx). The TV keeps the web's
 // defaults and lets the owner change only the quality profile.
@@ -73,6 +74,16 @@ fun optionsProblem(serviceName: String, result: ApiResult<AddOptions>): String? 
         }
         is ApiResult.Error -> failureMessage(serviceName, result.code, loadFailed)
         is ApiResult.Failed -> loadFailed
+    }
+}
+
+/** Why a Trakt show card cannot be added: the preview found no TheTVDB id, or the lookup failed. Null when it found one. */
+fun lookupProblem(result: ApiResult<ShowPreview>): String? {
+    val notFound = "Couldn’t find this show on TheTVDB."
+    return when (result) {
+        is ApiResult.Ok -> if (result.value.links?.tvdbId != null) null else notFound
+        is ApiResult.Error -> if (result.status == 404) notFound else failureMessage("Sonarr", result.code, "Couldn’t look this show up. Try again in a minute.")
+        is ApiResult.Failed -> "Can’t reach Media Manager."
     }
 }
 

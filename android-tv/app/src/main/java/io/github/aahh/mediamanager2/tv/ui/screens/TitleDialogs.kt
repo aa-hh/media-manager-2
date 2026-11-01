@@ -25,6 +25,7 @@ import io.github.aahh.mediamanager2.tv.ui.title.addProblem
 import io.github.aahh.mediamanager2.tv.ui.title.addSentence
 import io.github.aahh.mediamanager2.tv.ui.title.defaultMovieChoices
 import io.github.aahh.mediamanager2.tv.ui.title.defaultSeriesChoices
+import io.github.aahh.mediamanager2.tv.ui.title.lookupProblem
 import io.github.aahh.mediamanager2.tv.ui.title.nextProfile
 import io.github.aahh.mediamanager2.tv.ui.title.optionsProblem
 import io.github.aahh.mediamanager2.tv.ui.title.withProfile
@@ -70,16 +71,16 @@ fun AddDialog(
 
     LaunchedEffect(Unit) {
         val lookup = async {
-            if (tv && tvdbId == null) (library.previewShowByTmdb(tmdbId) as? ApiResult.Ok)?.value?.links?.tvdbId else tvdbId
+            if (tv && tvdbId == null) library.previewShowByTmdb(tmdbId) else null
         }
         val read = browse.addOptions(service)
-        val id = lookup.await()
-        val problem = if (tv && id == null) "Couldn’t find this show on TheTVDB." else optionsProblem(serviceName, read)
+        val preview = lookup.await()
+        val problem = optionsProblem(serviceName, read) ?: preview?.let(::lookupProblem)
         if (problem != null || read !is ApiResult.Ok) {
             loadProblem = problem
         } else {
-            showId = id
-            profileId = defaultMovieChoices(read.value).qualityProfileId
+            showId = tvdbId ?: (preview as? ApiResult.Ok)?.value?.links?.tvdbId
+            profileId = if (tv) defaultSeriesChoices(read.value).qualityProfileId else defaultMovieChoices(read.value).qualityProfileId
             options = read.value
         }
     }
