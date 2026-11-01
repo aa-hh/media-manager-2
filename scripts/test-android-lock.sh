@@ -38,8 +38,9 @@ tv() { ANDROID_HOME="$TMP_DIR/sdk" ANDROID_TV_LOCK="$lock" sh "$repo/scripts/and
 # Dropping take_lock turns this red.
 # The live holder is a process running a script named android-tv.sh, as a real holder is.
 mkdir -p "$TMP_DIR/holder"
-printf 'sleep 60\n:\n' > "$TMP_DIR/holder/android-tv.sh"
-bash "$TMP_DIR/holder/android-tv.sh" &
+# Its sleep is killed with it and writes nowhere, so no stray process holds the caller's output open.
+printf 'trap '"'"'kill $! 2>/dev/null; exit 0'"'"' TERM\nsleep 60 &\nwait\n' > "$TMP_DIR/holder/android-tv.sh"
+bash "$TMP_DIR/holder/android-tv.sh" > /dev/null 2>&1 &
 live=$!
 rm -f "$TMP_DIR/log"
 ln -s "$live" "$lock"
