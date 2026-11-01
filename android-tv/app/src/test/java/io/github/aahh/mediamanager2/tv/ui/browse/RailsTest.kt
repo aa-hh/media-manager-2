@@ -93,8 +93,9 @@ class RailsTest {
         assertEquals("the 90-day upcoming row", 4, (traktRails(home, everyRow = false)[2].items.single() as RailItem.Found).result.tmdbId)
     }
 
-    // OK opens the right page: Sonarr titles are shows, Trakt cards open only when in the library. Mixing up the ids
-    // turns this red.
+    // OK opens the right page: Sonarr titles are shows, Trakt cards open only when in the library and otherwise offer
+    // the add dialog for the right service. Mixing up the ids, or offering to add a title already in the library, turns
+    // this red.
     @Test
     fun okOpensTheRightPage() {
         assertEquals(ShowRoute(7), openRoute(RailItem.Title(show, "")))
@@ -102,6 +103,8 @@ class RailsTest {
         assertEquals(PlexListRoute("12", "Friday films"), openRoute(RailItem.PlexList(Playlist("12", "Friday films"))))
         assertEquals(ShowRoute(70), openRoute(RailItem.Found(found(1, type = "tv", libraryId = 70))))
         assertNull(openRoute(RailItem.Found(found(1))))
+        assertEquals(AddTarget("sonarr", 2, "T2"), addTarget(RailItem.Found(found(2, type = "tv"))))
+        assertNull(addTarget(RailItem.Found(found(2, type = "tv", libraryId = 70))))
     }
 
     // The top line and the card marks follow Plex's counts; marking a half-watched show as played, or counting episodes

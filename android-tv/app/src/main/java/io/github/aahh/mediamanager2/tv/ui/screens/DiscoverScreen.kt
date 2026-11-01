@@ -10,10 +10,14 @@ import androidx.compose.runtime.setValue
 import io.github.aahh.mediamanager2.tv.api.ApiResult
 import io.github.aahh.mediamanager2.tv.api.BrowseApi
 import io.github.aahh.mediamanager2.tv.api.LibraryApi
+import io.github.aahh.mediamanager2.tv.ui.FilmRoute
 import io.github.aahh.mediamanager2.tv.ui.Route
+import io.github.aahh.mediamanager2.tv.ui.ShowRoute
+import io.github.aahh.mediamanager2.tv.ui.browse.AddTarget
 import io.github.aahh.mediamanager2.tv.ui.browse.EmptyRails
 import io.github.aahh.mediamanager2.tv.ui.browse.Rail
 import io.github.aahh.mediamanager2.tv.ui.browse.RailsPage
+import io.github.aahh.mediamanager2.tv.ui.browse.addTarget
 import io.github.aahh.mediamanager2.tv.ui.browse.openRoute
 import io.github.aahh.mediamanager2.tv.ui.browse.summaryReader
 import io.github.aahh.mediamanager2.tv.ui.browse.traktRails
@@ -28,6 +32,7 @@ fun DiscoverScreen(browse: BrowseApi, library: LibraryApi, onNavigate: (Route) -
     var rails by remember { mutableStateOf<List<Rail>?>(null) }
     var failed by remember { mutableStateOf(false) }
     var reads by remember { mutableIntStateOf(0) }
+    var adding by remember { mutableStateOf<AddTarget?>(null) }
     val summaryFor = remember(library) { summaryReader(library) }
 
     LaunchedEffect(reads) {
@@ -56,10 +61,26 @@ fun DiscoverScreen(browse: BrowseApi, library: LibraryApi, onNavigate: (Route) -
     RailsPage(
         shown,
         library,
-        onOpen = { item -> openRoute(item)?.let(onNavigate) },
+        onOpen = { item -> openRoute(item)?.let(onNavigate) ?: addTarget(item)?.let { adding = it } },
         onChanged = { reads += 1 },
         summaryFor = summaryFor,
     )
+    adding?.let { target ->
+        AddDialog(
+            library,
+            browse,
+            target.service,
+            target.tmdbId,
+            null,
+            target.name,
+            onAdded = { id ->
+                adding = null
+                reads += 1
+                onNavigate(if (target.service == "sonarr") ShowRoute(id) else FilmRoute(id))
+            },
+            onDismiss = { adding = null },
+        )
+    }
 }
 
 private const val PENDING_RETRY_MS = 5_000L
