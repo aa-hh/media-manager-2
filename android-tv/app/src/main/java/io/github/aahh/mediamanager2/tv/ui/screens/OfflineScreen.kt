@@ -1,6 +1,7 @@
 package io.github.aahh.mediamanager2.tv.ui.screens
 
 import androidx.compose.runtime.Composable
+import io.github.aahh.mediamanager2.tv.ui.components.TvButton
 
 /**
  * Can't reach Media Manager: replaces any page and tries again.
@@ -8,5 +9,5 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 fun OfflineScreen(onRetry: () -> Unit) {
-    Placeholder("Can’t reach Media Manager", "T03d C1") { StubButton("Try again", onClick = onRetry) }
+    Placeholder("Can’t reach Media Manager", "T03d C1") { TvButton("Try again", onClick = onRetry) }
 }

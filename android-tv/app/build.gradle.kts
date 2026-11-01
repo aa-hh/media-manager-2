@@ -41,6 +41,8 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
     implementation(libs.tv.material)
     implementation(libs.navigation.compose)
     implementation(libs.media3.exoplayer)

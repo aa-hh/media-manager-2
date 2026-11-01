@@ -1,16 +1,14 @@
 package io.github.aahh.mediamanager2.tv.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.tv.material3.Text
-import io.github.aahh.mediamanager2.tv.ui.Tokens
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import io.github.aahh.mediamanager2.tv.ui.components.ButtonKind
+import io.github.aahh.mediamanager2.tv.ui.components.TvButton
+import io.github.aahh.mediamanager2.tv.ui.components.TvDialog
 import io.github.aahh.mediamanager2.tv.update.AvailableUpdate
 
 /**
@@ -21,13 +19,10 @@ import io.github.aahh.mediamanager2.tv.update.AvailableUpdate
  */
 @Composable
 fun UpdatePrompt(update: AvailableUpdate, onLater: () -> Unit) {
-    Dialog(onDismissRequest = onLater) {
-        Column(
-            Modifier.background(Tokens.popover, RoundedCornerShape(16.dp)).padding(32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("A new version is ready (${update.tag}).", color = Tokens.popoverForeground)
-            StubButton("Later", onClick = onLater)
-        }
+    val later = remember { FocusRequester() }
+    TvDialog(title = "A new version is ready (${update.tag}).", onDismiss = onLater) {
+        // Asked from inside the dialog, which composes in its own window after the page.
+        LaunchedEffect(Unit) { runCatching { later.requestFocus() } }
+        TvButton("Later", onClick = onLater, modifier = Modifier.focusRequester(later), kind = ButtonKind.Outline)
     }
 }

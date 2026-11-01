@@ -105,6 +105,19 @@ class LibraryPlaybackTest {
         assertEquals("{}", removed.body.readUtf8())
     }
 
+    // The monitor route takes exactly these keys per service; a missing or extra key is a 400, which turns this red.
+    @Test
+    fun monitorSendsTheTitleBodyTheServerTakes() = runTest {
+        reply("", 204)
+        reply("", 204)
+        library.monitor("sonarr", 7, monitored = false)
+        val series = server.takeRequest()
+        assertEquals("/api/library/monitor", series.path)
+        assertEquals("""{"seriesId":7,"monitored":false,"service":"sonarr","kind":"series"}""", series.body.readUtf8())
+        library.monitor("radarr", 3, monitored = true)
+        assertEquals("""{"movieId":3,"monitored":true,"service":"radarr","kind":"movie"}""", server.takeRequest().body.readUtf8())
+    }
+
     // The start body needs partIndex and offsetSeconds even at 0 and must leave out the keys not used; sending a default
     // as missing, or a null key, is a 400 that turns this red. The identity and desktop headers bring back the addresses.
     @Test
