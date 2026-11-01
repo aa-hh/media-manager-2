@@ -21,8 +21,15 @@ class ServerImages(context: Context, private val client: ServerClient) {
         .crossfade(true)
         .build()
 
-    /** The full address of a server path; null for anything that is not a path on our server. */
-    fun url(path: String): String? = if (path.startsWith("/") && !path.startsWith("//")) client.url(path).toString() else null
+    /**
+     * The full address of a server path, or an https address as given (library posters come straight from TMDB or
+     * TheTVDB; the cookie jar sends the session to our server only). Null for anything else.
+     */
+    fun url(path: String): String? = when {
+        path.startsWith("https://") -> path
+        path.startsWith("/") && !path.startsWith("//") -> client.url(path).toString()
+        else -> null
+    }
 }
 
 /** Set by the navigation once there is a server; null before then, when pictures show nothing. */

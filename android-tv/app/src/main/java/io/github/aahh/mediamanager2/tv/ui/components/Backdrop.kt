@@ -9,7 +9,15 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.ceil
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.aahh.mediamanager2.tv.ui.AppTheme
 import io.github.aahh.mediamanager2.tv.ui.Tokens
@@ -37,18 +45,35 @@ fun Backdrop(scrim: BackdropScrim, modifier: Modifier = Modifier, image: @Compos
         image()
         when (scrim) {
             BackdropScrim.Browse -> {
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to bg.copy(alpha = 0.95f), 0.55f to bg.copy(alpha = 0.55f), 1f to bg.copy(alpha = 0f))))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to bg.copy(alpha = 0f), 1f to bg)))
+                Box(Modifier.fillMaxSize().scrim(
+                    Brush.horizontalGradient(0f to bg.copy(alpha = 0.95f), 0.55f to bg.copy(alpha = 0.55f), 1f to bg.copy(alpha = 0f)),
+                    Brush.verticalGradient(0.45f to bg.copy(alpha = 0f), 1f to bg),
+                ))
             }
             BackdropScrim.TitlePage -> {
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to bg, 0.45f to bg.copy(alpha = 0.92f), 0.72f to bg.copy(alpha = 0.2f), 1f to bg.copy(alpha = 0f))))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to bg.copy(alpha = 0f), 1f to bg.copy(alpha = 0.85f))))
+                Box(Modifier.fillMaxSize().scrim(
+                    Brush.horizontalGradient(0f to bg, 0.45f to bg.copy(alpha = 0.92f), 0.72f to bg.copy(alpha = 0.2f), 1f to bg.copy(alpha = 0f)),
+                    Brush.verticalGradient(0.6f to bg.copy(alpha = 0f), 1f to bg.copy(alpha = 0.85f)),
+                ))
             }
             BackdropScrim.Episodes -> {
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0.3f to bg.copy(alpha = 0.95f), 1f to bg.copy(alpha = 0.75f))))
+                Box(Modifier.fillMaxSize().scrim(Brush.horizontalGradient(0.3f to bg.copy(alpha = 0.95f), 1f to bg.copy(alpha = 0.75f))))
             }
         }
     }
+}
+
+// The [brushes], drawn once into a picture a quarter of the size and stretched over the whole area. Shading full-screen
+// gradients every frame cost the Google TV Streamer's GPU ~26 ms of each 16 ms frame; stretching one small picture costs
+// a fraction of that, and a smooth gradient looks the same stretched.
+private fun Modifier.scrim(vararg brushes: Brush): Modifier = drawWithCache {
+    val small = IntSize(ceil(size.width / 4).toInt().coerceAtLeast(1), ceil(size.height / 4).toInt().coerceAtLeast(1))
+    val picture = ImageBitmap(small.width, small.height)
+    CanvasDrawScope().draw(this, layoutDirection, Canvas(picture), Size(small.width.toFloat(), small.height.toFloat())) {
+        brushes.forEach { drawRect(it) }
+    }
+    val full = IntSize(ceil(size.width).toInt(), ceil(size.height).toInt())
+    onDrawBehind { drawImage(picture, dstSize = full, filterQuality = FilterQuality.Low) }
 }
 
 @Preview(widthDp = 480, heightDp = 270)
