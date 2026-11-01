@@ -36,7 +36,7 @@ aar="$repo/android-tv/ffmpeg/out/lib-decoder-ffmpeg-release.aar"
 run() {
     local name=$1 builds=$2 want=$3 got_builds status
     rm -f "$TMP_DIR/built"
-    ANDROID_HOME="$TMP_DIR/sdk" ANDROID_TV_FFMPEG_CACHE="$cache" sh "$repo/scripts/android-tv.sh" test > "$TMP_DIR/out" 2>&1
+    ANDROID_HOME="$TMP_DIR/sdk" ANDROID_TV_FFMPEG_CACHE="$cache" ANDROID_TV_LOCK="$TMP_DIR/lock" sh "$repo/scripts/android-tv.sh" test > "$TMP_DIR/out" 2>&1
     status=$?
     got_builds=$( [ -f "$TMP_DIR/built" ] && wc -l < "$TMP_DIR/built" | tr -d ' ' || echo 0 )
     if [ "$status" = 0 ] && [ "$got_builds" = "$builds" ] && [ "$(cat "$aar" 2>/dev/null)" = "$want" ]; then ok "$name"
