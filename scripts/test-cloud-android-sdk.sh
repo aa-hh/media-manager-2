@@ -36,22 +36,27 @@ STUB
 }
 install() { JDK_DIR="$jdk" ANDROID_HOME="$sdk" env "$@" sh "$SCRIPT_DIR/cloud-android-sdk.sh" > "$TMP_DIR/out" 2>&1; }
 
+# Fails if the Linux check at the top of the installer is removed.
 reset; rm -rf "$jdk" "$sdk"; os Darwin
 install && [ ! -e "$jdk" ] && [ ! -e "$sdk" ] && ok "does nothing off Linux" || fail "touched $jdk or $sdk off Linux"
 
+# Fails if PACKAGES asks for platforms;android-37 again, a name Google does not list.
 reset; os Linux
 if install MAKE_DIRS=1 && grep -qx 'platforms;android-37.0' "$TMP_DIR/asked" && [ -d "$sdk/platforms/android-37.0" ]; then
     ok "installs platforms;android-37.0 and the rest"
 else fail "fresh install"; cat "$TMP_DIR/out" >&2; fi
 
+# Fails if the folder check stops matching the folders sdkmanager makes.
 rm -f "$TMP_DIR/asked"
 install MAKE_DIRS=1 && [ ! -e "$TMP_DIR/asked" ] && ok "a second run asks sdkmanager for nothing" || fail "second run reinstalled"
 
+# Fails if the check after sdkmanager is removed, since sdkmanager exits 0 on an unknown name.
 reset
 if ! install && grep -q 'did not install' "$TMP_DIR/out"; then ok "fails when sdkmanager installs nothing"
 else fail "a package sdkmanager skipped went unnoticed"; cat "$TMP_DIR/out" >&2; fi
 
-# With neither the Mac SDK nor /opt/android-sdk present, android-tv.sh keeps the Mac default and exits 97.
+# Fails if android-tv.sh picks /opt ahead of, or without checking, the Mac SDK path: with neither present it must
+# keep the Mac default and exit 97.
 if [ -d /opt/android-sdk ]; then
     echo "  skip — /opt/android-sdk exists here"
 else

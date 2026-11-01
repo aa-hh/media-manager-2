@@ -25,21 +25,26 @@ if [ ! -x "$JDK_DIR/bin/java" ]; then
     echo "cloud-android-sdk: installing JDK 25 into $JDK_DIR"
     curl -fsSL -o "$tmp/jdk.tar.gz" \
         "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse"
-    # Unpacked aside and moved into place, so a run cut short never leaves a bin/java that looks finished.
-    mkdir -p "$tmp/jdk" "$(dirname "$JDK_DIR")"
-    tar -xzf "$tmp/jdk.tar.gz" -C "$tmp/jdk" --strip-components=1
+    # Unpacked beside the target and renamed into place (one step on the same disk), so a run cut short never
+    # leaves a bin/java or sdkmanager that looks finished.
+    rm -rf "$JDK_DIR.part"
+    mkdir -p "$JDK_DIR.part"
+    tar -xzf "$tmp/jdk.tar.gz" -C "$JDK_DIR.part" --strip-components=1
     rm -rf "$JDK_DIR"
-    mv "$tmp/jdk" "$JDK_DIR"
+    mv "$JDK_DIR.part" "$JDK_DIR"
 fi
 
 sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
 if [ ! -x "$sdkmanager" ]; then
     echo "cloud-android-sdk: installing the Android command-line tools into $ANDROID_HOME"
     curl -fsSL -o "$tmp/tools.zip" "https://dl.google.com/android/repository/$CMDLINE_TOOLS"
-    mkdir -p "$ANDROID_HOME/cmdline-tools"
-    (cd "$tmp" && unzip -q tools.zip)
+    part=$ANDROID_HOME/cmdline-tools/.part
+    rm -rf "$part"
+    mkdir -p "$part"
+    unzip -q "$tmp/tools.zip" -d "$part"
     rm -rf "$ANDROID_HOME/cmdline-tools/latest"
-    mv "$tmp/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+    mv "$part/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+    rm -rf "$part"
 fi
 
 missing=
