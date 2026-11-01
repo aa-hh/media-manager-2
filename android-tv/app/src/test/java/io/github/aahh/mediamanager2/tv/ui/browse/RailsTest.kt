@@ -104,6 +104,8 @@ class RailsTest {
         assertNull(openRoute(RailItem.Found(found(1))))
     }
 
+    // The top line and the card marks follow Plex's counts; marking a half-watched show as played, or counting episodes
+    // on a show nobody has started, turns this red.
     @Test
     fun overlineAndMarks() {
         assertEquals("Series · 2026 · 2 seasons", overline(RailItem.Title(show, "")))

@@ -36,7 +36,7 @@ fun DiscoverScreen(browse: BrowseApi, library: LibraryApi, onNavigate: (Route) -
         val home = (result as? ApiResult.Ok)?.value
         // Keep what is shown when a later read fails.
         if (home != null || rails == null) rails = traktRails(home, everyRow = true)
-        val stillBuilding = home != null && listOfNotNull(home.trending.all, home.popularMovies, home.popularTv, home.upcomingTv)
+        val stillBuilding = home != null && listOfNotNull(home.trending.all, home.popularMovies, home.popularTv, home.upcomingMovies?.days90, home.upcomingTv)
             .plus(home.services).plus(home.extraRows).any { it.pending }
         if (stillBuilding && reads == 0) {
             kotlinx.coroutines.delay(PENDING_RETRY_MS)
