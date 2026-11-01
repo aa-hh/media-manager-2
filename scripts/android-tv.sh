@@ -46,18 +46,28 @@ fi
 # One Android build at a time on a machine. Each build starts Gradle and Kotlin daemons of several GB, and two at once
 # swap the mule to a standstill. A run that finds another holding the lock says who and exits 75, so its caller does
 # other work and retries later (AGENTS.md: a busy shared resource is reported, not waited on). The lock is a symlink
-# whose target is the holder's pid (ln -s is atomic, and macOS has no flock); a lock whose holder has died is taken over.
+# whose target is the holder's pid (ln -s is atomic, and macOS has no flock); a lock whose holder has gone is taken over.
 # A fixed path, not $TMPDIR: macOS gives each login session its own TMPDIR and none to ssh, so a run from Terminal
 # and one sent over ssh would each see a different lock.
 LOCK=${ANDROID_TV_LOCK:-/tmp/media-manager-2-android-tv.lock}
 take_lock() {
+    tries=0
     until ln -s "$$" "$LOCK" 2>/dev/null; do
         if ! holder=$(readlink "$LOCK" 2>/dev/null); then
-            [ -e "$LOCK" ] || continue   # released between the two calls
-            echo "android-tv: $LOCK is in the way and is not a lock; remove it" >&2
-            exit 75
+            if [ -e "$LOCK" ]; then
+                echo "android-tv: $LOCK is in the way and is not a lock; remove it" >&2
+                exit 75
+            fi
+            # Released between the two calls; but nothing there at all, again and again, means the lock can't be made.
+            tries=$((tries + 1))
+            if [ "$tries" -ge 5 ]; then
+                echo "android-tv: could not create the lock $LOCK" >&2
+                exit 75
+            fi
+            continue
         fi
-        if kill -0 "$holder" 2>/dev/null; then
+        # A live pid counts only while it is still this script, so a pid the system has since reused frees the lock.
+        if ps -o command= -p "$holder" 2>/dev/null | grep -q 'android-tv\.sh'; then
             echo "android-tv: another Android build (pid $holder) is running on this machine; retry when it has finished" >&2
             exit 75
         fi

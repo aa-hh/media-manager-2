@@ -36,14 +36,32 @@ tv() { ANDROID_HOME="$TMP_DIR/sdk" ANDROID_TV_LOCK="$lock" sh "$repo/scripts/and
 
 # A run that finds a live holder says who and exits 75 without running Gradle; the holder's lock stays.
 # Dropping take_lock turns this red.
+# The live holder is a process running a script named android-tv.sh, as a real holder is.
+mkdir -p "$TMP_DIR/holder"
+printf 'sleep 60\n:\n' > "$TMP_DIR/holder/android-tv.sh"
+bash "$TMP_DIR/holder/android-tv.sh" &
+live=$!
 rm -f "$TMP_DIR/log"
-ln -s $$ "$lock"
+ln -s "$live" "$lock"
 tv build > "$TMP_DIR/out" 2>&1
 status=$?
-if [ "$status" = 75 ] && [ ! -f "$TMP_DIR/log" ] && [ "$(readlink "$lock")" = "$$" ]; then ok "a run that finds another running exits 75"
+if [ "$status" = 75 ] && [ ! -f "$TMP_DIR/log" ] && [ "$(readlink "$lock")" = "$live" ]; then ok "a run that finds another running exits 75"
 else fail "a busy lock: exit $status, gradle $( [ -f "$TMP_DIR/log" ] && echo ran || echo 'did not run' )"; cat "$TMP_DIR/out" >&2; fi
-grep -q "pid $$" "$TMP_DIR/out" && ok "it names the holder" || fail "the holder's pid is not in the message"
+grep -q "pid $live" "$TMP_DIR/out" && ok "it names the holder" || fail "the holder's pid is not in the message"
+kill "$live" 2>/dev/null
+wait "$live" 2>/dev/null
 rm -f "$lock"
+
+# A live pid that is not this script (the pid was reused) does not hold the lock.
+ln -s $$ "$lock"
+if tv test > "$TMP_DIR/out" 2>&1 && [ ! -L "$lock" ]; then ok "a reused pid's lock is taken over"
+else fail "a reused pid's lock was not taken over"; cat "$TMP_DIR/out" >&2; fi
+
+# A lock that can't be made at all stops the run with a message instead of spinning.
+ANDROID_HOME="$TMP_DIR/sdk" ANDROID_TV_LOCK="$TMP_DIR/missing/lock" sh "$repo/scripts/android-tv.sh" test > "$TMP_DIR/out" 2>&1
+status=$?
+if [ "$status" = 75 ] && grep -q 'could not create' "$TMP_DIR/out"; then ok "a lock that can't be made is reported"
+else fail "a lock that can't be made: exit $status"; cat "$TMP_DIR/out" >&2; fi
 
 # A free lock is taken for the run and removed after it.
 tv test > "$TMP_DIR/out" 2>&1
