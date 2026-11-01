@@ -58,11 +58,13 @@ jobs:
           certs=$("$apksigner" verify --print-certs "$apk")
           echo "$certs"
           want=976a2a1b32d3745305e7cf41bb86657ee1c4203605cbce52cfdce84836ce7c7e
-          got=$(echo "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr 'A-F' 'a-f')
-          dn=$(echo "$certs" | sed -n 's/^Signer #1 certificate DN: //p')
-          signers=$(echo "$certs" | grep -c '^Signer #[0-9]* certificate DN:' || true)
+          # apksigner writes "Signer #1 certificate ..." or, per signing scheme, "V2 Signer: certificate ...".
+          # Every certificate line of either kind must name the one release certificate.
+          got=$(echo "$certs" | sed -n 's/^.*Signer.*certificate SHA-256 digest: //p' | tr -d ':' | tr 'A-F' 'a-f' | sort -u)
+          dn=$(echo "$certs" | sed -n 's/^.*Signer.*certificate DN: //p' | sort -u)
+          signers=$(printf '%s\n' "$got" | grep -c . || true)
           if [ "$signers" != 1 ] || [ "$got" != "$want" ] || [ "$dn" != "CN=media-manager-2 TV" ]; then
-            echo "::error::The APK is not signed by the media-manager-2 TV release key alone (signers=$signers, SHA-256=$got, DN=$dn). Not publishing."
+            echo "::error::The APK is not signed by the media-manager-2 TV release key alone (certificates=$signers, SHA-256=$got, DN=$dn). Not publishing."
             exit 1
           fi
       - name: Publish the release
