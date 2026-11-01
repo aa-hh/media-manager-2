@@ -1,6 +1,9 @@
 package io.github.aahh.mediamanager2.tv.ui.browse
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -23,6 +26,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -38,6 +42,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
@@ -74,6 +80,7 @@ private const val FOCUS_REST_MS = 300L
  *
  * Library cards open the hold-OK action list; [onChanged] runs after one of its actions, so the page reads again.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RailsPage(
     rails: List<Rail>,
@@ -84,6 +91,7 @@ fun RailsPage(
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf<RailItem?>(null) }
+    var focusedRail by remember { mutableStateOf(-1) }
     var shown by remember { mutableStateOf<RailItem?>(null) }
     val summaries = remember { mutableStateMapOf<String, Summary>() }
     val firstCard = remember { FocusRequester() }
@@ -96,6 +104,8 @@ fun RailsPage(
         shown = item
         if (item.key !in summaries) summaryFor(item)?.let { summaries[item.key] = it }
     }
+    // Back on the first row, the summary at the top comes back into view with it.
+    LaunchedEffect(focusedRail) { if (focusedRail == 0) list.animateScrollToItem(0) }
     LaunchedEffect(rails.isNotEmpty()) {
         if (rails.isNotEmpty() && !focusPlaced) focusPlaced = runCatching { firstCard.requestFocus() }.isSuccess
     }
@@ -110,6 +120,8 @@ fun RailsPage(
                 ServerImage(path, Modifier.fillMaxSize())
             }
         }
+        // Scrolling keeps a focused card clear of the page's edges, so its 1.1× growth, ring and title are never cut off.
+        CompositionLocalProvider(LocalBringIntoViewSpec provides rememberEdgeSpec(start = 40.dp, end = 64.dp)) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "summary") {
                 Box(Modifier.fillMaxWidth().height(288.dp)) {
@@ -122,18 +134,48 @@ fun RailsPage(
                 Column(Modifier.padding(bottom = 12.dp)) {
                     Text(rail.label, style = TvText.label, color = Tokens.foreground, modifier = Modifier.padding(start = 120.dp))
                     // Room above and below for the focused card's 1.1× growth and ring, which the row would otherwise clip.
+                    CompositionLocalProvider(LocalBringIntoViewSpec provides rememberEdgeSpec(start = 120.dp, end = 48.dp)) {
                     LazyRow(
                         contentPadding = PaddingValues(start = 120.dp, end = 48.dp, top = 12.dp, bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
                         itemsIndexed(rail.items, key = { _, item -> item.key }) { index, item ->
                             val tracking = Modifier
-                                .onFocusChanged { if (it.hasFocus) focused = item }
+                                .onFocusChanged {
+                                    if (it.hasFocus) {
+                                        focused = item
+                                        focusedRail = railIndex
+                                    }
+                                }
                                 .then(if (railIndex == 0 && index == 0) Modifier.focusRequester(firstCard) else Modifier)
                             RailCard(item, library, onOpen = { onOpen(item) }, onChanged = onChanged, modifier = tracking)
                         }
                     }
+                    }
                 }
+            }
+        }
+        }
+    }
+}
+
+/**
+ * Scrolls a focused card into view with at least [start] before it and [end] after it, instead of the default of just
+ * touching the edge, where the scroll container would clip the card's growth and ring (and, down the page, its title).
+ * A card bigger than the space between the two lines is lined up on [start].
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun rememberEdgeSpec(start: Dp, end: Dp): BringIntoViewSpec {
+    val density = LocalDensity.current
+    return remember(density, start, end) {
+        val before = with(density) { start.toPx() }
+        val after = with(density) { end.toPx() }
+        object : BringIntoViewSpec {
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
+                offset < before || size > containerSize - before - after -> offset - before
+                offset + size > containerSize - after -> offset + size - (containerSize - after)
+                else -> 0f
             }
         }
     }
