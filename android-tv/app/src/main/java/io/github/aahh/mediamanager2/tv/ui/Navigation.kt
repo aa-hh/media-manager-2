@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -44,6 +45,8 @@ import io.github.aahh.mediamanager2.tv.ui.components.SideMenuDivider
 import io.github.aahh.mediamanager2.tv.ui.components.TvIcons
 import io.github.aahh.mediamanager2.tv.ui.screens.AddressScreen
 import io.github.aahh.mediamanager2.tv.ui.screens.AppDetailsScreen
+import io.github.aahh.mediamanager2.tv.ui.components.LocalServerImages
+import io.github.aahh.mediamanager2.tv.ui.components.ServerImages
 import io.github.aahh.mediamanager2.tv.ui.screens.DiscoverScreen
 import io.github.aahh.mediamanager2.tv.ui.screens.FilmScreen
 import io.github.aahh.mediamanager2.tv.ui.screens.HomeScreen
@@ -143,78 +146,81 @@ fun AppNavigation(session: AppSession, onLeave: () -> Unit) {
         Shell(current, playlists, menuOpen, onNavigate = ::go, onLeave = onLeave, content = content)
     }
 
-    NavHost(nav, startDestination = StartupRoute, modifier = Modifier.fillMaxSize().background(Tokens.background)) {
-        composable<StartupRoute> {
-            LaunchedEffect(Unit) {
-                val active = client
-                val next: Route = when {
-                    active == null -> AddressRoute(session.address)
-                    else -> when (val result = AuthApi(active).session()) {
-                        is ApiResult.Ok -> HomeRoute
-                        is ApiResult.Error -> if (result.status == 401) LinkCodeRoute else OfflineRoute
-                        is ApiResult.Failed -> OfflineRoute
+    val images = remember(client) { client?.let { ServerImages(context, it) } }
+    CompositionLocalProvider(LocalServerImages provides images) {
+        NavHost(nav, startDestination = StartupRoute, modifier = Modifier.fillMaxSize().background(Tokens.background)) {
+            composable<StartupRoute> {
+                LaunchedEffect(Unit) {
+                    val active = client
+                    val next: Route = when {
+                        active == null -> AddressRoute(session.address)
+                        else -> when (val result = AuthApi(active).session()) {
+                            is ApiResult.Ok -> HomeRoute
+                            is ApiResult.Error -> if (result.status == 401) LinkCodeRoute else OfflineRoute
+                            is ApiResult.Failed -> OfflineRoute
+                        }
+                    }
+                    nav.navigate(next) {
+                        popUpTo<StartupRoute> { inclusive = true }
+                        launchSingleTop = true
                     }
                 }
-                nav.navigate(next) {
-                    popUpTo<StartupRoute> { inclusive = true }
-                    launchSingleTop = true
-                }
             }
-        }
-        composable<AddressRoute> { entry ->
-            AddressScreen(prefill = entry.toRoute<AddressRoute>().prefill, onConnected = { origin ->
-                client = session.useAddress(origin)
-                nav.navigate(LinkCodeRoute) { popUpTo(nav.graph.id) { inclusive = true } }
-            })
-        }
-        composable<LinkCodeRoute> {
-            val active = client
-            if (active == null) {
-                LaunchedEffect(Unit) { nav.navigate(AddressRoute()) { popUpTo(nav.graph.id) { inclusive = true } } }
-            } else {
-                LinkCodeScreen(client = active, onSignedIn = {
-                    active.signedIn()
-                    menuOpen.value = false
-                    nav.navigate(HomeRoute) { popUpTo(nav.graph.id) { inclusive = true } }
-                }, onChangeAddress = {
-                    nav.navigate(AddressRoute(session.address)) { popUpTo(nav.graph.id) { inclusive = true } }
+            composable<AddressRoute> { entry ->
+                AddressScreen(prefill = entry.toRoute<AddressRoute>().prefill, onConnected = { origin ->
+                    client = session.useAddress(origin)
+                    nav.navigate(LinkCodeRoute) { popUpTo(nav.graph.id) { inclusive = true } }
                 })
             }
-        }
-        composable<OfflineRoute> {
-            OfflineScreen(onRetry = { nav.navigate(StartupRoute) { popUpTo(nav.graph.id) { inclusive = true } } })
-        }
-        composable<HomeRoute> { signedIn(client) { TopLevel(HomeRoute) { HomeScreen(LibraryApi(it), BrowseApi(it), onNavigate = ::go) } } }
-        composable<TvRoute> { signedIn(client) { TopLevel(TvRoute) { LibraryScreen(LibraryKind.Shows, LibraryApi(it), feed, onNavigate = ::go) } } }
-        composable<FilmsRoute> { signedIn(client) { TopLevel(FilmsRoute) { LibraryScreen(LibraryKind.Films, LibraryApi(it), feed, onNavigate = ::go) } } }
-        composable<SearchRoute> { signedIn(client) { TopLevel(SearchRoute) { SearchScreen(BrowseApi(it), onNavigate = ::go) } } }
-        composable<DiscoverRoute> { signedIn(client) { TopLevel(DiscoverRoute) { DiscoverScreen(BrowseApi(it), onNavigate = ::go) } } }
-        composable<PlexListRoute> { entry ->
-            val route = entry.toRoute<PlexListRoute>()
-            signedIn(client) { TopLevel(route) { PlexListScreen(route.id, route.title, LibraryApi(it), onNavigate = ::go) } }
-        }
-        composable<SettingsRoute> {
-            signedIn(client) { active ->
-                TopLevel(SettingsRoute) {
-                    SettingsScreen(AuthApi(active), onOpenAppDetails = { go(AppDetailsRoute) }, onLoggedOut = {
+            composable<LinkCodeRoute> {
+                val active = client
+                if (active == null) {
+                    LaunchedEffect(Unit) { nav.navigate(AddressRoute()) { popUpTo(nav.graph.id) { inclusive = true } } }
+                } else {
+                    LinkCodeScreen(client = active, onSignedIn = {
+                        active.signedIn()
                         menuOpen.value = false
+                        nav.navigate(HomeRoute) { popUpTo(nav.graph.id) { inclusive = true } }
+                    }, onChangeAddress = {
                         nav.navigate(AddressRoute(session.address)) { popUpTo(nav.graph.id) { inclusive = true } }
                     })
                 }
             }
+            composable<OfflineRoute> {
+                OfflineScreen(onRetry = { nav.navigate(StartupRoute) { popUpTo(nav.graph.id) { inclusive = true } } })
+            }
+            composable<HomeRoute> { signedIn(client) { TopLevel(HomeRoute) { HomeScreen(LibraryApi(it), BrowseApi(it), onNavigate = ::go) } } }
+            composable<TvRoute> { signedIn(client) { TopLevel(TvRoute) { LibraryScreen(LibraryKind.Shows, LibraryApi(it), feed, onNavigate = ::go) } } }
+            composable<FilmsRoute> { signedIn(client) { TopLevel(FilmsRoute) { LibraryScreen(LibraryKind.Films, LibraryApi(it), feed, onNavigate = ::go) } } }
+            composable<SearchRoute> { signedIn(client) { TopLevel(SearchRoute) { SearchScreen(BrowseApi(it), onNavigate = ::go) } } }
+            composable<DiscoverRoute> { signedIn(client) { TopLevel(DiscoverRoute) { DiscoverScreen(BrowseApi(it), LibraryApi(it), onNavigate = ::go) } } }
+            composable<PlexListRoute> { entry ->
+                val route = entry.toRoute<PlexListRoute>()
+                signedIn(client) { TopLevel(route) { PlexListScreen(route.id, route.title, LibraryApi(it), onNavigate = ::go) } }
+            }
+            composable<SettingsRoute> {
+                signedIn(client) { active ->
+                    TopLevel(SettingsRoute) {
+                        SettingsScreen(AuthApi(active), onOpenAppDetails = { go(AppDetailsRoute) }, onLoggedOut = {
+                            menuOpen.value = false
+                            nav.navigate(AddressRoute(session.address)) { popUpTo(nav.graph.id) { inclusive = true } }
+                        })
+                    }
+                }
+            }
+            composable<AppDetailsRoute> { AppDetailsScreen(onBack = { nav.popBackStack() }) }
+            composable<FilmRoute> { entry ->
+                signedIn(client) { FilmScreen(entry.toRoute<FilmRoute>().movieId, LibraryApi(it), feed, onNavigate = ::go) }
+            }
+            composable<ShowRoute> { entry ->
+                signedIn(client) { ShowScreen(entry.toRoute<ShowRoute>().seriesId, LibraryApi(it), feed, onNavigate = ::go) }
+            }
+            composable<ReleasesRoute> { entry ->
+                val route = entry.toRoute<ReleasesRoute>()
+                signedIn(client) { ReleasesScreen(route.service, route.id, onDone = { nav.popBackStack() }) }
+            }
+            composable<PlayerRoute> { entry -> PlayerScreen(entry.toRoute<PlayerRoute>(), onClose = { nav.popBackStack() }) }
         }
-        composable<AppDetailsRoute> { AppDetailsScreen(onBack = { nav.popBackStack() }) }
-        composable<FilmRoute> { entry ->
-            signedIn(client) { FilmScreen(entry.toRoute<FilmRoute>().movieId, LibraryApi(it), feed, onNavigate = ::go) }
-        }
-        composable<ShowRoute> { entry ->
-            signedIn(client) { ShowScreen(entry.toRoute<ShowRoute>().seriesId, LibraryApi(it), feed, onNavigate = ::go) }
-        }
-        composable<ReleasesRoute> { entry ->
-            val route = entry.toRoute<ReleasesRoute>()
-            signedIn(client) { ReleasesScreen(route.service, route.id, onDone = { nav.popBackStack() }) }
-        }
-        composable<PlayerRoute> { entry -> PlayerScreen(entry.toRoute<PlayerRoute>(), onClose = { nav.popBackStack() }) }
     }
 
     val state = updateState
