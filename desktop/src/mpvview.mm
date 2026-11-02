@@ -430,10 +430,16 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
   // mpv resized its window (fullscreen on or off): the Electron window takes the
   // same frame. Detached while it moves, because moving a parent drags its child along.
   // Nothing happens when the frames already match (Match's own resizes end here too).
+  // On a screen with a camera notch, macOS keeps titled windows below the menu bar strip even with the menu bar hidden,
+  // so the Electron window and then (through Match) mpv's sat below it. mpv drops its title for fullscreen
+  // (window.swift setToFullScreen); this window does the same while it fills the screen.
   void Follow() {
     if (!video_ || !win_ || NSEqualRects(win_.frame, video_.frame)) return;
+    bool full = NSEqualRects(video_.frame, video_.screen.frame);
     [win_ removeChildWindow:video_];
+    if (full) win_.styleMask &= ~NSWindowStyleMaskTitled;
     [win_ setFrame:video_.frame display:YES];
+    if (!full) win_.styleMask |= NSWindowStyleMaskTitled;
     [win_ addChildWindow:video_ ordered:NSWindowBelow];
     Corners();
   }

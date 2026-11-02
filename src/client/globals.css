@@ -619,6 +619,11 @@
     scrollbar-gutter: stable;
   }
 
+  /* The sign-in screens never scroll, so the kept space would show as a light strip down the right edge when macOS always shows scroll bars. */
+  html:has(main[data-sign-in]) {
+    scrollbar-gutter: auto;
+  }
+
   body {
     @apply bg-background text-foreground font-ui;
     min-width: 320px;
