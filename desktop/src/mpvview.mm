@@ -421,10 +421,14 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
   }
 
   // Square while mpv's fullscreen fills the screen, macOS's corners otherwise.
+  // No shadow while full: macOS draws a window's shadow with a light outline, which showed round the screen's edges.
   void Corners() {
-    CGFloat radius = video_ && NSEqualRects(video_.frame, video_.screen.frame) ? 0 : radius_;
-    Round(win_, radius);
-    if (video_) Round(video_, radius);
+    bool full = video_ && NSEqualRects(video_.frame, video_.screen.frame);
+    Round(win_, full ? 0 : radius_);
+    if (video_) {
+      Round(video_, full ? 0 : radius_);
+      video_.hasShadow = !full;
+    }
   }
 
   // mpv resized its window (fullscreen on or off): the Electron window takes the
