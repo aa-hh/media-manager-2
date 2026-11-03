@@ -7,6 +7,14 @@
           { "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-bash.sh\"" }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          { "type": "command", "command": "[ \"$CLAUDE_CODE_REMOTE\" != true ] || sh \"$CLAUDE_PROJECT_DIR/scripts/cloud-android-sdk.sh\" >&2" }
+        ]
+      }
     ]
   }
 }
