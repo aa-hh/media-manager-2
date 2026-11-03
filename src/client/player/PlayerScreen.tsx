@@ -273,6 +273,9 @@ export function PlayerScreen(props: PlayerScreenProps) {
 
   return (
     <div ref={rootRef} data-player-root className={cn('fixed inset-0 z-40', controls === 'none' && 'cursor-none', props.className)}>
+      {/* The window's drag area only. Electron applies drag and no-drag areas in page order, later winning, so it comes
+          before the stage: the Back button's no-drag (player.css) then wins over it. */}
+      <div aria-hidden="true" className="player-drag pointer-events-none absolute inset-x-0 top-0 h-18" />
       <PlayerStage
         className={seeThrough ? 'bg-transparent' : undefined}
         dim={screen === 'opening' ? 0.55 : screen === 'buffering' ? 0.35 : screen === 'error' || screen === 'unreachable' ? 0.7 : undefined}
@@ -377,8 +380,6 @@ export function PlayerScreen(props: PlayerScreenProps) {
           </div>
         )}
       </PlayerStage>
-      {/* Over the stage for the window's drag area only; clicks fall through to the buttons under it (player.css). */}
-      <div aria-hidden="true" className="player-drag pointer-events-none absolute inset-x-0 top-0 h-18" />
     </div>
   );
 }

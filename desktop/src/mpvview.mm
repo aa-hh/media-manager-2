@@ -421,19 +421,29 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
   }
 
   // Square while mpv's fullscreen fills the screen, macOS's corners otherwise.
+  // No shadow while full: macOS draws a window's shadow with a light outline, which showed round the screen's edges.
   void Corners() {
-    CGFloat radius = video_ && NSEqualRects(video_.frame, video_.screen.frame) ? 0 : radius_;
-    Round(win_, radius);
-    if (video_) Round(video_, radius);
+    bool full = video_ && NSEqualRects(video_.frame, video_.screen.frame);
+    Round(win_, full ? 0 : radius_);
+    if (video_) {
+      Round(video_, full ? 0 : radius_);
+      video_.hasShadow = !full;
+    }
   }
 
   // mpv resized its window (fullscreen on or off): the Electron window takes the
   // same frame. Detached while it moves, because moving a parent drags its child along.
   // Nothing happens when the frames already match (Match's own resizes end here too).
+  // On a screen with a camera notch, macOS keeps titled windows below the menu bar strip even with the menu bar hidden,
+  // so the Electron window and then (through Match) mpv's sat below it. mpv drops its title for fullscreen
+  // (window.swift setToFullScreen); this window does the same while it fills the screen.
   void Follow() {
     if (!video_ || !win_ || NSEqualRects(win_.frame, video_.frame)) return;
+    bool full = NSEqualRects(video_.frame, video_.screen.frame);
     [win_ removeChildWindow:video_];
+    if (full) win_.styleMask &= ~NSWindowStyleMaskTitled;
     [win_ setFrame:video_.frame display:YES];
+    if (!full) win_.styleMask |= NSWindowStyleMaskTitled;
     [win_ addChildWindow:video_ ordered:NSWindowBelow];
     Corners();
   }

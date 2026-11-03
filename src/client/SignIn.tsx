@@ -376,7 +376,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
   }, [planetState]);
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#07080b]" aria-busy={view === 'status' || view === 'preparing' || view === 'checking'}>
+    <main data-sign-in className="relative min-h-screen overflow-hidden bg-[#07080b]" aria-busy={view === 'status' || view === 'preparing' || view === 'checking'}>
       <canvas ref={canvasRef} aria-hidden="true" className="fixed inset-0 size-full" />
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgb(7_8_11/0)_45%,#07080b_100%)] sm:bg-[linear-gradient(90deg,#07080b_0%,rgb(7_8_11/0)_55%)]" />
       {firstRun ? (
