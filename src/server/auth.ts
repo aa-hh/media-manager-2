@@ -26,7 +26,7 @@ const USER_ENDPOINT = 'https://plex.tv/api/v2/user';
 const HANDOFF_ENDPOINT = 'https://app.plex.tv/auth';
 const ATTEMPT_LIFETIME_MS = 10 * 60_000;
 const SESSION_LIFETIME_MS = 24 * 60 * 60_000;
-// A TV's session, signed in with a Plex link code. Renewed on use once a day has passed, so a TV in use stays signed in.
+// A TV's or the Mac app's session. Renewed on use once a day has passed, so a device in use stays signed in.
 export const DEVICE_SESSION_LIFETIME_MS = 90 * 24 * 60 * 60_000;
 const RATE_WINDOW_MS = 60_000;
 // Per client, so a stranger at the cap leaves the owner room; across all clients the backstop is ten times these.
@@ -41,6 +41,8 @@ type PinAttempt = {
   clientIdentifier: string;
   expiresAt: number;
   checking: boolean;
+  // Set for a TV or the Mac app, which get a device's session; a browser sends none.
+  deviceName?: string;
 };
 
 type Attempt = PinAttempt & {
@@ -49,6 +51,7 @@ type Attempt = PinAttempt & {
   kid: string;
   privateKey: KeyObject;
 };
+
 
 // A TV's link-code sign-in: a plain PIN with no device key, so its check carries no signed token.
 type LinkAttempt = PinAttempt & { deviceName: string };
@@ -228,7 +231,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     plexTokens.delete(key);
   };
 
-  // A device name marks a TV's session: it lasts 90 days and is listed in Settings. A browser's has none and lasts a day.
+  // A device name marks a TV's or the Mac app's session: it lasts 90 days and is listed in Settings. A browser's has none and lasts a day.
   const createSession = (ownerUserId: string, suppliedSession: string | undefined, deviceName?: string) => {
     if (suppliedSession !== undefined) deleteSession(hash(suppliedSession));
     for (const { token_hash } of database.prepare('DELETE FROM sessions WHERE expires_at <= ? RETURNING token_hash')
@@ -237,7 +240,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     if (count >= MAX_SESSIONS) return { kind: 'unavailable' as const };
     const session = randomBytes(32).toString('base64url');
     const expiresAt = options.now() + (deviceName === undefined ? SESSION_LIFETIME_MS : DEVICE_SESSION_LIFETIME_MS);
-    // A TV gets a random id for Settings' sign-out; the row's rowid would be reused once its row is deleted.
+    // A TV or the Mac app gets a random id for Settings' sign-out; the row's rowid would be reused once its row is deleted.
     database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at, device_name, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run(hash(session), ownerUserId, expiresAt, deviceName ?? null, deviceName === undefined ? null : randomBytes(16).toString('base64url'), options.now());
     return { kind: 'success' as const, session, expiresAt };
@@ -339,7 +342,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return { kind: 'success', pinId, code, clientIdentifier, expiresAt: Math.min(currentTime + ATTEMPT_LIFETIME_MS, returnedExpiry) };
   };
 
-  const start = async (existingBinding: string | undefined, client: string): Promise<StartResult> => {
+  const start = async (existingBinding: string | undefined, client: string, deviceName?: string): Promise<StartResult> => {
     if (configuration === undefined) return { kind: 'not_configured' };
     // Checked again inside requestPin; here it keeps a refused start from making a key pair.
     const limited = rateLimited(client);
@@ -363,6 +366,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
       privateKey,
       expiresAt: pin.expiresAt,
       checking: false,
+      deviceName,
     });
 
     const forwardUrl = new URL('/auth/callback', configuration.origin);
@@ -424,7 +428,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     const signature = sign(null, Buffer.from(signed, 'ascii'), attempt.privateKey).toString('base64url');
     const checkUrl = new URL(`${PIN_ENDPOINT}/${attempt.pinId}`);
     checkUrl.searchParams.set('deviceJWT', `${signed}.${signature}`);
-    return checkPin(attempts, bindingHash, attempt, checkUrl, suppliedSession);
+    return checkPin(attempts, bindingHash, attempt, checkUrl, suppliedSession, false);
   };
 
   const linkComplete = async (binding: string | undefined, suppliedSession?: string): Promise<CompleteResult> => {
@@ -437,19 +441,19 @@ export const createAuthentication = (options: AuthenticationOptions) => {
       return { kind: 'flow_expired' };
     }
     if (attempt.checking) return { kind: 'in_progress' };
-    return checkPin(links, key, attempt, new URL(`${PIN_ENDPOINT}/${attempt.pinId}`), suppliedSession, attempt.deviceName);
+    return checkPin(links, key, attempt, new URL(`${PIN_ENDPOINT}/${attempt.pinId}`), suppliedSession, true);
   };
 
   // The end both Plex sign-ins share: ask Plex whether the PIN is linked, read the account, admit only the owner, open a
   // session. Cancel, logout or a newer start may replace the attempt while Plex answers; a late answer then creates nothing.
-  // Only the browser sign-in (no device name) may make the first owner or switch media server.
+  // Only the popup sign-in, whose PIN carries a device key, may make the first owner or switch media server; a link code may not.
   const checkPin = async (
     map: Map<string, PinAttempt>,
     key: string,
     attempt: PinAttempt,
     checkUrl: URL,
     suppliedSession: string | undefined,
-    deviceName?: string,
+    linkCode: boolean,
   ): Promise<CompleteResult> => {
     attempt.checking = true;
     const currentAttempt = () => map.get(key) === attempt;
@@ -513,7 +517,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     ) return terminal('owner_only');
     const userId = String(user.id);
     const userName = typeof user.username === 'string' && user.username !== '' ? user.username : userId;
-    if (deviceName === undefined) {
+    if (!linkCode) {
       // First run: this account becomes the owner. A failed insert means another sign-in got there first.
       if (currentOwner() === undefined) {
         try {
@@ -528,7 +532,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     if (owner?.provider !== 'plex' || owner.userId !== userId) return terminal('owner_only');
 
     map.delete(key);
-    const created = createSession(owner.userId, suppliedSession, deviceName);
+    const created = createSession(owner.userId, suppliedSession, attempt.deviceName);
     if (created.kind === 'success') plexTokens.set(hash(created.session), checkBody.authToken);
     return created;
   };
@@ -702,7 +706,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     if (session !== undefined) deleteSession(hash(session));
   };
 
-  // Only a request that can send the cookie back passes `renew`, so a TV's cookie and its row move together; the event
+  // Only a request that can send the cookie back passes `renew`, so a device's cookie and its row move together; the event
   // stream's checks never renew.
   const validateSession = (session?: string, renew = false): SessionResult => {
     if (configuration === undefined || session === undefined) return { kind: 'unauthenticated' };
@@ -716,7 +720,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
       deleteSession(key);
       return { kind: 'expired' };
     }
-    // At most one write a day per TV.
+    // At most one write a day per TV or Mac app.
     if (renew && stored.device_name !== null && stored.expires_at - currentTime < DEVICE_SESSION_LIFETIME_MS - SESSION_LIFETIME_MS) {
       const expiresAt = currentTime + DEVICE_SESSION_LIFETIME_MS;
       database.prepare('UPDATE sessions SET expires_at = ? WHERE token_hash = ?').run(expiresAt, key);
@@ -725,7 +729,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return { kind: 'success', expiresAt: stored.expires_at };
   };
 
-  // Signed-in TVs for Settings. A browser's session is never listed here or signed out by id.
+  // Signed-in TVs and Mac apps for Settings. A browser's session is never listed here or signed out by id.
   const devices = () => (database.prepare(`SELECT device_id AS id, device_name AS name, created_at AS signedInAt, expires_at AS expiresAt
     FROM sessions WHERE device_name IS NOT NULL AND device_id IS NOT NULL AND expires_at > ? ORDER BY created_at, rowid`).all(options.now()) as Array<{
     id: string; name: string; signedInAt: number; expiresAt: number;
@@ -738,7 +742,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return removed !== undefined;
   };
 
-  // The name a TV signed in with, or null for a browser's session; a signed-out session has no row and gives undefined.
+  // The name a TV or the Mac app signed in with, or null for a browser's session; a signed-out session has no row and gives undefined.
   const deviceNameOf = (session: string) => (database.prepare('SELECT device_name FROM sessions WHERE token_hash = ?')
     .get(hash(session)) as { device_name: string | null } | undefined)?.device_name;
 

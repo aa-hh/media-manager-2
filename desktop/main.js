@@ -1,6 +1,7 @@
 'use strict';
 const { app, BrowserWindow, Menu, ipcMain, nativeTheme, net, shell } = require('electron');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { randomBytes, randomUUID } = require('node:crypto');
 const { normaliseAddress, isMediaManager } = require('./lib/address');
@@ -680,6 +681,9 @@ handle('app:setTheme', (choice) => {
   writeSettings({ theme: value });
   nativeTheme.themeSource = value;
 });
+
+// The name Settings lists this Mac under; the server takes 1 to 64 characters.
+handle('app:deviceName', () => [...`Mac app on ${os.hostname().replace(/\.local$/, '')}`].slice(0, 64).join('').trim());
 
 // `npm start` runs Electron's own app, which shows the Electron logo in the Dock. The built app has the planet icon from
 // icon.icns and leaves icon.png out, so only `npm start` finds the file.
