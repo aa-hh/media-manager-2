@@ -48,10 +48,14 @@ export const searchDueAt = (candidate: Pick<Candidate, 'availableAt' | 'addedAt'
   return lastSearchAt + REPEAT_SEARCH_MS;
 };
 
-// Gaps the owner opened on purpose (a search-again delete) are recorded as already seen, so the next check never holds them as a burst.
+// razor: a search-again delete must re-monitor its gaps within this window (it waits up to 2 minutes for files); a longer run would need a stamp after its last monitor request.
+const EXPECTED_GAP_MS = 15 * 60_000;
+
+// Gaps the owner opened on purpose (a search-again delete) are recorded as already seen, so no check holds them as a burst. They are
+// stamped ahead, so a check that starts before the delete re-monitors them, and so reads Sonarr or Radarr without them, keeps them.
 export const expectGaps = (database: DatabaseSync, subjects: Subject[], at: number) => {
-  const insert = database.prepare('INSERT INTO missing_seen (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
-  for (const subject of subjects) insert.run(`${subject.service}:${subject.type}:${subject.id}`, at);
+  const insert = database.prepare('INSERT INTO missing_seen (subject, seen_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET seen_at = max(seen_at, excluded.seen_at)');
+  for (const subject of subjects) insert.run(`${subject.service}:${subject.type}:${subject.id}`, at + EXPECTED_GAP_MS);
 };
 
 export const createSearchScheduler = (options: {
@@ -175,7 +179,8 @@ export const createSearchScheduler = (options: {
     const lastKey = `searches.lastCheckAt.${service}`;
     const last = getPreference(database, lastKey);
     const before = new Set(database.prepare('SELECT subject FROM missing_seen WHERE subject LIKE ?').all(`${service}:%`).map((row) => String(row.subject)));
-    database.prepare('DELETE FROM missing_seen WHERE subject LIKE ?').run(`${service}:%`);
+    // Rows stamped after this check began are expected gaps it may have read too early to see.
+    database.prepare('DELETE FROM missing_seen WHERE subject LIKE ? AND seen_at <= ?').run(`${service}:%`, at);
     const insert = database.prepare('INSERT INTO missing_seen (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
     for (const subject of missing) insert.run(subject, at);
     setPreference(database, lastKey, String(at));

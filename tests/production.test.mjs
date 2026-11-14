@@ -8439,7 +8439,7 @@ test('missing movies and episodes are searched when they come out and every six 
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems, subjectHistory } = await import(problemsModuleUrl);
   const { writeDependency } = await import(dependenciesModuleUrl);
-  const { createSearchScheduler, searchDueAt } = await import(searchesModuleUrl);
+  const { createSearchScheduler, searchDueAt, expectGaps } = await import(searchesModuleUrl);
   const { createProtection } = await import(protectionModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-searches-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -8611,6 +8611,31 @@ test('missing movies and episodes are searched when they come out and every six 
     await scheduler.check();
     assert.deepEqual(fake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [50] }]);
     assert.equal(database.prepare("SELECT count(*) AS n FROM search_backlog WHERE subject LIKE 'radarr:movie:%'").get().n, 11);
+    database.close();
+  });
+
+  // A check deleting expected gaps it did not see missing (it read Sonarr before the delete re-monitored them), or expected gaps lasting
+  // no longer than the check that starts after them, turns this red.
+  await t.test('gaps a search-again delete expects survive a check that reads Sonarr before they go missing', async () => {
+    const database = openDatabase(join(root, 'expected-gaps', 'media-manager.sqlite'));
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const { fake, ...arr } = connectArr(database);
+    liveMissing(fake);
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const scheduler = createSearchScheduler({ database, arr, problems: createProblems({ database, events: createEventHub(), now }), now, isManualDownload: () => false });
+    const ids = Array.from({ length: 11 }, (_, index) => 100 + index);
+    fake.sonarr.state.episodes.push(...ids.map((id) => ({ ...oldEpisode(id), hasFile: true })));
+
+    await scheduler.check();
+    expectGaps(database, ids.map((id) => ({ type: 'episode', service: 'sonarr', id: String(id) })), clock.value);
+    clock.value += minute;
+    await scheduler.check();
+    for (const episode of fake.sonarr.state.episodes) episode.hasFile = false;
+    clock.value += 2 * minute;
+    await scheduler.check();
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: ids }]);
+    assert.equal(database.prepare("SELECT count(*) AS n FROM problems WHERE kind = 'search_burst'").get().n, 0);
     database.close();
   });
 
@@ -14367,7 +14392,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   );
 
   // Deleting the file before the movie is monitored, leaving its manual-download protection, blocklisting or searching before the file
-  // is gone, removing the movie record, or leaving it unmonitored after Radarr's Unmonitor Deleted Movies turns this red.
+  // is gone, removing the movie record, leaving it unmonitored after Radarr's Unmonitor Deleted Movies, or leaving it out of missing_seen turns this red.
   await t.test('searching again monitors the movie and lifts its protection, deletes the file, blocklists its grab, then searches', async () => {
     const w = await dune();
     w.arrFake.radarr.state.movies[0].monitored = false;
@@ -14386,6 +14411,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual([w.protection.lifted, w.protection.failedBeforeLift], [[{ service: 'radarr', kind: 'movie', movieId: 1 }], 0]);
     assert.deepEqual(w.arrFake.radarr.state.failed, [501]);
     assert.deepEqual(w.arrFake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [1] }]);
+    assert.deepEqual(w.database.prepare('SELECT subject FROM missing_seen').all().map((row) => row.subject), ['radarr:movie:1']);
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [CUR, OLD, SHARED, V1]);
     assert.equal(w.versionState(w.version), 'imported');
     assert.equal((await w.deletions())[0].event, 'Movie file deleted, searching again');
@@ -14757,6 +14783,11 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 102, seasonNumber: 1, episodeNumber: 2 },
       { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 201, seasonNumber: 2, episodeNumber: 1 },
     );
+    let seenAtMonitor = null;
+    w.arrFake.sonarr.routes.unshift((method) => {
+      if (method === 'PUT' && seenAtMonitor === null) seenAtMonitor = w.database.prepare('SELECT subject FROM missing_seen ORDER BY subject').all().map((row) => row.subject);
+      return undefined;
+    });
     const { body } = await w.remove('/series/5/season/1', { mode: 'searchAgain', removeTorrents: [], secondVersions: [] });
     assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     const sonarr = w.requests('sonarr');
@@ -14765,9 +14796,10 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(state.series[0].seasons.map((season) => [season.seasonNumber, season.monitored]), [[1, true], [2, true]]);
     assert.deepEqual(w.protection.lifted.map((item) => item.episodeId), [102]);
     assert.deepEqual(state.commands, [{ name: 'EpisodeSearch', episodeIds: [101, 102, 103, 104] }]);
-    // Leaving the searched episodes out of missing_seen lets a big search again trip the scheduler's burst hold.
-    assert.deepEqual(w.database.prepare('SELECT subject FROM missing_seen ORDER BY subject').all().map((row) => row.subject),
-      ['sonarr:episode:101', 'sonarr:episode:102', 'sonarr:episode:103', 'sonarr:episode:104']);
+    // Writing the searched episodes to missing_seen only after the first monitor request lets a check that runs meanwhile hold them as a burst.
+    const expected = ['sonarr:episode:101', 'sonarr:episode:102', 'sonarr:episode:103', 'sonarr:episode:104'];
+    assert.deepEqual(seenAtMonitor, expected);
+    assert.deepEqual(w.database.prepare('SELECT subject FROM missing_seen ORDER BY subject').all().map((row) => row.subject), expected);
     assert.deepEqual(state.failed, []);
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [PACK, w.FULL, V1, V2]);
     const [event] = await w.deletions();
