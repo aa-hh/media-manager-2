@@ -8942,28 +8942,40 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     run.database.close();
   });
 
-  // Removing a torrent still in a queue, one no grab owns, a finished one or one with only video, or leaving a fake in rTorrent, turns this red.
-  await t.test('a grabbed, unfinished torrent holding a program file is removed once no queue lists it; a finished one goes to the owner', async () => {
-    const { createExecutableSweep } = await import(executablesModuleUrl);
+  // Removing anything but an obvious fake (one with video, partly or fully downloaded, picked by hand, unowned, still queued or too new
+  // for the queue copy), leaving an obvious fake in rTorrent, or giving up on it after one refused removal turns this red.
+  await t.test('only an obvious fake is removed: a grabbed torrent with a program file, no video and nothing downloaded', async () => {
+    const { createExecutableSweep, QUEUE_SETTLE_MS } = await import(executablesModuleUrl);
     const run = await setup({ message: 'Caution: Found executable file with extension: .exe' });
-    const addTorrent = (torrent, name, paths, complete = 0) => {
+    const settled = run.clock.value - QUEUE_SETTLE_MS;
+    const addTorrent = (torrent, paths, { complete = 0, done = 0, seenAt = settled, byHand = false, owned = true } = {}) => {
       run.database.prepare(`INSERT INTO torrents (hash, name, size_bytes, completed_bytes, down_rate, up_rate, started, open, active, complete, message,
         finished_at, ratio_thousandths, peers_connected, seeders_connected, first_seen_at, last_seen_at, seeding_seconds)
-        VALUES (?, ?, 1, 0, 0, 0, 1, 1, 1, ?, '', 0, 0, 0, 0, 0, 0, 0)`).run(torrent, name, complete);
+        VALUES (?, ?, 1, ?, 0, 0, 1, 1, 1, ?, '', 0, 0, 0, 0, ?, ?, 0)`).run(torrent, `Torrent ${torrent.slice(0, 2)}`, done, complete, seenAt, seenAt);
       paths.forEach((path, index) => run.database.prepare('INSERT INTO torrent_files (hash, "index", path, size_bytes) VALUES (?, ?, ?, 1)').run(torrent, index, path));
+      if (owned && torrent !== hash) run.grabs.recordGrab({ hash: torrent, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [41],
+        releaseTitle: 'Other', indexer: 'TheRARBG', grabbedAt: seenAt, publishedAt: null, byHand });
     };
-    const grab = (torrent) => run.grabs.recordGrab({ hash: torrent, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [41],
-      releaseTitle: 'Other', indexer: 'TheRARBG', grabbedAt: run.clock.value, publishedAt: null, byHand: false });
-    const [finished, stranger, video] = ['AA'.repeat(20), 'BB'.repeat(20), 'CC'.repeat(20)];
-    addTorrent(hash, 'Show S01E05 1080p WEB H264-FLUX.exe', ['/files/Sonarr/Show S01E05 1080p WEB H264-FLUX.exe']);
-    addTorrent(finished, 'Show S01E06', ['/files/Sonarr/Show S01E06/Show.mkv', '/files/Sonarr/Show S01E06/Codec.Installer.EXE'], 1);
-    addTorrent(stranger, 'Some.Program', ['/files/Some.Program/setup.exe']);
-    addTorrent(video, 'Show S01E07', ['/files/Sonarr/Show S01E07.mkv']);
-    grab(finished);
-    grab(video);
+    const fake = ['/files/Sonarr/Show S01E05 1080p WEB H264-FLUX.exe'];
+    const torrents = { withVideo: 'AA', partial: 'BB', finished: 'CC', byHand: 'DD', stranger: 'FF', videoOnly: '11', young: '22', refused: '33' };
+    for (const key of Object.keys(torrents)) torrents[key] = torrents[key].repeat(20);
+    addTorrent(hash, fake);
+    addTorrent(torrents.withVideo, ['/files/Sonarr/Show/Show.mkv', '/files/Sonarr/Show/Codec.Installer.EXE']);
+    addTorrent(torrents.partial, fake, { done: 5 });
+    addTorrent(torrents.finished, fake, { complete: 1 });
+    addTorrent(torrents.byHand, fake, { byHand: true });
+    addTorrent(torrents.stranger, ['/files/Some.Program/setup.exe'], { owned: false });
+    addTorrent(torrents.videoOnly, ['/files/Sonarr/Show S01E07.mkv']);
+    addTorrent(torrents.young, fake, { seenAt: run.clock.value - 60_000 });
+    addTorrent(torrents.refused, fake);
     const removed = [];
-    const sweep = createExecutableSweep({ database: run.database, problems: run.problems, now: () => run.clock.value,
-      removeTorrent: async (torrent) => { removed.push(torrent); return { removed: true, deleted: [], left: [] }; } });
+    let refusals = 1;
+    const sweep = createExecutableSweep({ database: run.database, problems: run.problems, now: () => run.clock.value, isManualDownload: () => false,
+      removeTorrent: async (torrent) => {
+        if (torrent === torrents.refused && refusals-- > 0) return { removed: false, reason: 'rTorrent is not answering.' };
+        removed.push(torrent);
+        return { removed: true, deleted: [], left: [] };
+      } });
 
     await sweep.check();
     assert.deepEqual(removed, []);
@@ -8971,10 +8983,19 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     await run.grabs.reconcile();
     await sweep.check();
     await sweep.check();
-    assert.deepEqual(removed, [hash]);
+    assert.deepEqual(removed.sort(), [hash, torrents.refused].sort());
     assert.equal(run.database.prepare("SELECT searched_at FROM search_log WHERE subject = 'sonarr:episode:31'").get()?.searched_at, run.clock.value);
-    const open = listOpenProblems(run.database).filter((problem) => problem.kind === 'program_file');
-    assert.deepEqual(open.map((problem) => [problem.subject.id, problem.state]), [[finished, 'needs_you']]);
+    const flagged = listOpenProblems(run.database).filter((problem) => problem.kind === 'program_file')
+      .map((problem) => [problem.subject.id, problem.state, problem.steps.at(-1).text]).sort();
+    assert.deepEqual(flagged, [
+      [torrents.withVideo, 'needs_you', 'Left in rTorrent because it also holds video.'],
+      [torrents.partial, 'needs_you', 'Left in rTorrent because part of it downloaded, so its tracker may be owed seeding time.'],
+      [torrents.finished, 'needs_you', 'Left in rTorrent because it finished downloading, so its tracker may be owed seeding time.'],
+      [torrents.byHand, 'needs_you', 'Left in rTorrent because you picked it by hand.'],
+    ].sort());
+    run.clock.value += QUEUE_SETTLE_MS;
+    await sweep.check();
+    assert.ok(removed.includes(torrents.young));
     run.database.close();
   });
 

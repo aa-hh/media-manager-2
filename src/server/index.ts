@@ -162,7 +162,7 @@ if (database !== undefined) {
     database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected, labels, removeTorrent: torrentFiles.removeTorrent,
   });
   runner.register('stall-fix', 60_000, stalls.check);
-  const executables = createExecutableSweep({ database, problems, removeTorrent: torrentFiles.removeTorrent });
+  const executables = createExecutableSweep({ database, problems, removeTorrent: torrentFiles.removeTorrent, isManualDownload: protection.isProtected });
   runner.register('executable-sweep', 60_000, executables.check);
   const relink = createRelinkFix({ database, rtorrent, arr, problems, isManualDownload: protection.isProtected });
   runner.register('relink-fix', 60_000, relink.check);
