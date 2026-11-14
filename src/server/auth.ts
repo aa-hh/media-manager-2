@@ -240,7 +240,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     if (count >= MAX_SESSIONS) return { kind: 'unavailable' as const };
     const session = randomBytes(32).toString('base64url');
     const expiresAt = options.now() + (deviceName === undefined ? SESSION_LIFETIME_MS : DEVICE_SESSION_LIFETIME_MS);
-    // A TV gets a random id for Settings' sign-out; the row's rowid would be reused once its row is deleted.
+    // A TV or the Mac app gets a random id for Settings' sign-out; the row's rowid would be reused once its row is deleted.
     database.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at, device_name, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run(hash(session), ownerUserId, expiresAt, deviceName ?? null, deviceName === undefined ? null : randomBytes(16).toString('base64url'), options.now());
     return { kind: 'success' as const, session, expiresAt };
@@ -706,7 +706,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     if (session !== undefined) deleteSession(hash(session));
   };
 
-  // Only a request that can send the cookie back passes `renew`, so a TV's cookie and its row move together; the event
+  // Only a request that can send the cookie back passes `renew`, so a device's cookie and its row move together; the event
   // stream's checks never renew.
   const validateSession = (session?: string, renew = false): SessionResult => {
     if (configuration === undefined || session === undefined) return { kind: 'unauthenticated' };
@@ -720,7 +720,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
       deleteSession(key);
       return { kind: 'expired' };
     }
-    // At most one write a day per TV.
+    // At most one write a day per TV or Mac app.
     if (renew && stored.device_name !== null && stored.expires_at - currentTime < DEVICE_SESSION_LIFETIME_MS - SESSION_LIFETIME_MS) {
       const expiresAt = currentTime + DEVICE_SESSION_LIFETIME_MS;
       database.prepare('UPDATE sessions SET expires_at = ? WHERE token_hash = ?').run(expiresAt, key);
@@ -729,7 +729,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return { kind: 'success', expiresAt: stored.expires_at };
   };
 
-  // Signed-in TVs for Settings. A browser's session is never listed here or signed out by id.
+  // Signed-in TVs and Mac apps for Settings. A browser's session is never listed here or signed out by id.
   const devices = () => (database.prepare(`SELECT device_id AS id, device_name AS name, created_at AS signedInAt, expires_at AS expiresAt
     FROM sessions WHERE device_name IS NOT NULL AND device_id IS NOT NULL AND expires_at > ? ORDER BY created_at, rowid`).all(options.now()) as Array<{
     id: string; name: string; signedInAt: number; expiresAt: number;
@@ -742,7 +742,7 @@ export const createAuthentication = (options: AuthenticationOptions) => {
     return removed !== undefined;
   };
 
-  // The name a TV signed in with, or null for a browser's session; a signed-out session has no row and gives undefined.
+  // The name a TV or the Mac app signed in with, or null for a browser's session; a signed-out session has no row and gives undefined.
   const deviceNameOf = (session: string) => (database.prepare('SELECT device_name FROM sessions WHERE token_hash = ?')
     .get(hash(session)) as { device_name: string | null } | undefined)?.device_name;
 

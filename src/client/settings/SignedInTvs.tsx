@@ -12,7 +12,7 @@ import { writeHeaders } from './useServices';
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; tvs: SignedInTv[] };
 
-/** Settings, Signed-in TVs: the TVs signed in with a Plex link code, each with Sign out. Browsers are never listed. */
+/** Settings, Signed-in devices: the TVs and Mac apps holding a 90-day session, each with Sign out. Browsers are never listed. */
 export function SignedInTvs({ now, onUnauthenticated }: { now: number; onUnauthenticated: () => void }) {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   // The TV the dialog names; kept after it closes so the closing dialog does not go blank.
@@ -69,7 +69,7 @@ export function SignedInTvs({ now, onUnauthenticated }: { now: number; onUnauthe
 
   return (
     <>
-      <LabelGroup count={load.kind === 'ready' && load.tvs.length > 0 ? load.tvs.length : undefined}>Signed-in TVs</LabelGroup>
+      <LabelGroup count={load.kind === 'ready' && load.tvs.length > 0 ? load.tvs.length : undefined}>Signed-in devices</LabelGroup>
       {load.kind === 'loading' && (
         <div role="status" aria-label="Loading" className="flex flex-col gap-1.5 px-4 py-2.5">
           <Skeleton className="w-35" />
@@ -78,14 +78,14 @@ export function SignedInTvs({ now, onUnauthenticated }: { now: number; onUnauthe
       )}
       {load.kind === 'failed' && (
         <div className="flex flex-col items-start gap-2 px-4 py-2">
-          <p className="font-ui text-[13px] leading-[1.5] text-muted-foreground">Signed-in TVs could not be read.</p>
+          <p className="font-ui text-[13px] leading-[1.5] text-muted-foreground">Signed-in devices could not be read.</p>
           <Button variant="outline" size="row" onClick={() => { setLoad({ kind: 'loading' }); void read(); }}>Try again</Button>
         </div>
       )}
       {load.kind === 'ready' && load.tvs.length === 0 && (
         <div className="rounded-lg border border-border">
-          <EmptyState icon={<Tv />} title="No TVs signed in">
-            Open media-manager-2 on a TV and sign in there with a Plex link code. It will show up here.
+          <EmptyState icon={<Tv />} title="No devices signed in">
+            Sign in from the Mac app, or on a TV with a Plex link code. It will show up here.
           </EmptyState>
         </div>
       )}
@@ -94,7 +94,7 @@ export function SignedInTvs({ now, onUnauthenticated }: { now: number; onUnauthe
           {load.tvs.map((tv) => (
             <RowSignedInTv key={tv.id} name={tv.name} dates={tvDates(tv, now)} disabled={signingOut} onSignOut={() => { setAsking(tv); setOpen(true); }} />
           ))}
-          <p className="px-4 py-2 font-ui text-[13px] text-muted-foreground">A TV stays signed in for {TV_SESSION_DAYS} days after it was last used.</p>
+          <p className="px-4 py-2 font-ui text-[13px] text-muted-foreground">A TV or Mac stays signed in for {TV_SESSION_DAYS} days after it was last used.</p>
         </>
       )}
 
@@ -111,7 +111,7 @@ export function SignedInTvs({ now, onUnauthenticated }: { now: number; onUnauthe
         )}
       >
         <p className="font-ui text-sm leading-[1.5] text-muted-foreground">
-          The TV goes back to the sign-in screen the next time it is used. To sign it in again, enter a new Plex link code on plex.tv/link.
+          It goes back to the sign-in screen the next time it is used. A TV signs in again with a new Plex link code on plex.tv/link; the Mac app signs in again with Plex.
         </p>
       </Dialog>
     </>
