@@ -129,7 +129,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
-const readExactJson = async (context: Context, keys: string[]) => {
+const readExactJson = async (context: Context, keys: string[], optionalKeys: string[] = []) => {
   let value: unknown;
   try {
     value = await context.req.json();
@@ -137,10 +137,15 @@ const readExactJson = async (context: Context, keys: string[]) => {
     return undefined;
   }
   if (!isRecord(value)) return undefined;
-  const actualKeys = Object.keys(value).sort();
-  const expectedKeys = [...keys].sort();
-  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) return undefined;
-  return value;
+  const record = value;
+  if (keys.some((key) => !Object.hasOwn(record, key)) || Object.keys(record).some((key) => !keys.includes(key) && !optionalKeys.includes(key))) return undefined;
+  return record;
+};
+
+// The name Settings lists a TV or the Mac app under: trimmed, 1 to 64 characters, no control characters.
+const deviceNameFrom = (value: unknown) => {
+  const name = typeof value === 'string' ? value.trim() : '';
+  return name === '' || [...name].length > 64 || /\p{Cc}/u.test(name) ? undefined : name;
 };
 
 const acceptsHtml = (header: string | undefined) => header?.split(',').some(
@@ -294,15 +299,17 @@ export const createApp = (options: CreateAppOptions) => {
     return context.json(authentication.status(binding.kind === 'value' ? binding.value : undefined));
   });
 
+  // The Mac app sends its device name and gets a TV's 90-day session; it still needs the owner's Plex approval, as a TV does.
   app.post('/auth/start', requireBrowserPost, async (context) => {
-    const body = await readExactJson(context, []);
-    if (body === undefined) return context.json({ error: 'invalid_request' }, 400);
+    const body = await readExactJson(context, [], ['deviceName']);
+    const deviceName = deviceNameFrom(body?.deviceName);
+    if (body === undefined || (body.deviceName !== undefined && deviceName === undefined)) return context.json({ error: 'invalid_request' }, 400);
     const binding = readCookie(context.req.header('Cookie'), bindingCookieName);
     if (binding.kind === 'duplicate' || binding.kind === 'invalid') {
       clearBindingCookie(context);
       return context.json({ error: 'invalid_request' }, 400);
     }
-    const result = await authentication.start(binding.kind === 'value' ? binding.value : undefined, clientOf(context));
+    const result = await authentication.start(binding.kind === 'value' ? binding.value : undefined, clientOf(context), deviceName);
     if (result.kind === 'not_configured') return context.json({ error: 'not_configured' }, 503);
     if (result.kind === 'unavailable') return context.json({ error: 'plex_unavailable' }, 503);
     if (result.kind === 'rate_limited') {
@@ -338,11 +345,11 @@ export const createApp = (options: CreateAppOptions) => {
       body.state,
       session.kind === 'value' ? session.value : undefined,
     );
-    return plexCompleteReply(context, result, SESSION_LIFETIME_SECONDS);
+    return plexCompleteReply(context, result);
   });
 
   // The answers the browser's and the TV's Plex sign-ins share once Plex has been asked.
-  const plexCompleteReply = (context: Context, result: CompleteResult, maxAge: number) => {
+  const plexCompleteReply = (context: Context, result: CompleteResult) => {
     if (result.kind === 'pending') return context.json({ status: 'pending' }, 202);
     if (result.kind === 'in_progress') return context.json({ error: 'in_progress' }, 409);
     if (result.kind === 'invalid_flow') return context.json({ error: 'invalid_flow' }, 401);
@@ -353,17 +360,16 @@ export const createApp = (options: CreateAppOptions) => {
     clearBindingCookie(context);
     if (result.kind === 'owner_only') return context.json({ error: 'owner_only' }, 403);
     if (result.kind === 'unavailable') return context.json({ error: 'plex_unavailable' }, 503);
-    setCookie(context, sessionCookieName, result.session, { ...cookieOptions, maxAge });
+    // A day for a browser, 90 days for a TV or the Mac app: the cookie ends with the session.
+    setCookie(context, sessionCookieName, result.session, { ...cookieOptions, maxAge: Math.round((result.expiresAt - now()) / 1000) });
     return context.json({ expiresAt: result.expiresAt });
   };
 
   // A TV signs in with a Plex link code and keeps a 90-day session; it sends the browser headers itself.
   app.post('/auth/link/start', requireBrowserPost, async (context) => {
     const body = await readExactJson(context, ['deviceName']);
-    const deviceName = typeof body?.deviceName === 'string' ? body.deviceName.trim() : '';
-    if (deviceName === '' || [...deviceName].length > 64 || /\p{Cc}/u.test(deviceName)) {
-      return context.json({ error: 'invalid_request' }, 400);
-    }
+    const deviceName = deviceNameFrom(body?.deviceName);
+    if (deviceName === undefined) return context.json({ error: 'invalid_request' }, 400);
     const binding = readCookie(context.req.header('Cookie'), bindingCookieName);
     if (binding.kind === 'duplicate' || binding.kind === 'invalid') {
       clearBindingCookie(context);
@@ -397,7 +403,7 @@ export const createApp = (options: CreateAppOptions) => {
       return context.json({ error: 'invalid_flow' }, 401);
     }
     const result = await authentication.linkComplete(binding.value, session.kind === 'value' ? session.value : undefined);
-    return plexCompleteReply(context, result, DEVICE_SESSION_LIFETIME_SECONDS);
+    return plexCompleteReply(context, result);
   });
 
   app.post('/auth/cancel', requireBrowserPost, async (context) => {

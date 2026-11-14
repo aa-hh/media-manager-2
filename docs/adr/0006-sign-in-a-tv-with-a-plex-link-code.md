@@ -19,3 +19,5 @@ The TV asks for the server's address once, at first launch, as the desktop app d
 ## Consequences
 
 The server gains a start-and-poll pair of routes for the link code, a device name and lifetime per session row, and a list-and-revoke pair for Settings. No route learns a second way to check sign-in. A stolen TV session lasts up to 90 days unless signed out from Settings, against 24 hours for a browser. The link-code flow trusts plex.tv to bind the code to the owner's account, as the web flow trusts `app.plex.tv/auth`; it has no device-key binding like the strong PIN, so the 4-character code must be used within Plex's own expiry window.
+
+The Mac app later took the same 90-day session without a link code: it signs in through the web sign-in's Plex popup and adds its name to `POST /auth/start`. The server cannot tell the Mac app from a browser that sends a name, just as it cannot tell a TV from any client calling the link routes; in both cases the session exists only after the owner approves the sign-in with his Plex account, and Settings lists it for sign-out.

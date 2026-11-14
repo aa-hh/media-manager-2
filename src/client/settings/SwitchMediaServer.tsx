@@ -7,6 +7,7 @@ import { InputSearch } from '@/components/ui/input-search';
 import { Logo } from '@/components/ui/logo';
 import { StatusInline } from '@/components/ui/status-inline';
 import { useToastManager } from '@/components/ui/toast';
+import { signInStartBody } from '../desktopBridge';
 import { useJellyfinLogin } from '../FirstRun';
 import { handoffState, isPopupMessage, openPopup, sendToPlex } from '../plexPopup';
 import { browserPost, isAbort, popupHost, readJson } from '../SignIn';
@@ -160,7 +161,7 @@ export function SwitchMediaServer({ target, pinned, ready, currentServerName, je
     window.addEventListener('message', onMessage);
     setBusy(true);
     try {
-      const response = await browserPost('/auth/start', {}, controller.signal);
+      const response = await browserPost('/auth/start', await signInStartBody(), controller.signal);
       const answer = await readJson(response);
       if (runRef.current !== run) return;
       const state = response.status === 201 && typeof answer.url === 'string' ? handoffState(answer.url) : undefined;

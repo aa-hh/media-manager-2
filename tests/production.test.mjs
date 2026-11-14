@@ -1595,6 +1595,27 @@ test('a TV signs in with a Plex link code and keeps a named 90-day session', asy
     assert.deepEqual(await tvExpired.json(), { error: 'session_expired' });
   });
 
+  // Dropping the device name from the Plex popup sign-in, giving it a browser's 24-hour cookie or no Settings row, refusing
+  // it the first owner, or accepting a bad name turns this red.
+  await t.test('the Mac app signs in through the Plex popup with a device name and keeps a 90-day session', async () => {
+    const { app, clock, database } = await makeApp({ ownerPlexId: undefined });
+    for (const body of [{ deviceName: '' }, { deviceName: 7 }, { deviceName: 'x'.repeat(65) }, { deviceName: 'Mac\u0007' }, { deviceName: 'Mac', extra: true }]) {
+      const refused = await startAuthentication(app, { body });
+      assert.equal(refused.response.status, 400, JSON.stringify(body));
+      assert.deepEqual(refused.json, { error: 'invalid_request' });
+    }
+    const started = await startAuthentication(app, { body: { deviceName: '  Mac app on studio  ' } });
+    assert.equal(started.response.status, 201);
+    const completed = await completeAuthentication(app, started.binding, plexStateFromUrl(started.json.url).state);
+    assert.equal(completed.status, 200);
+    assert.deepEqual(await completed.json(), { expiresAt: clock.value + 90 * DAY });
+    assert.match(sessionSetCookie(completed), /Max-Age=7776000/i);
+    assert.equal(database.prepare('SELECT user_id FROM owner').get().user_id, '42');
+    const session = cookieValue(completed, '__Host-mm_session');
+    const listed = await (await app.request('/api/devices', { headers: { Cookie: session } })).json();
+    assert.deepEqual(listed.devices.map(({ name, expiresAt }) => ({ name, expiresAt })), [{ name: 'Mac app on studio', expiresAt: clock.value + 90 * DAY }]);
+  });
+
   // Listing a browser's session or an expired TV, leaving the TV's session working after sign-out, skipping the browser
   // headers on sign-out, or naming a TV by an id a later TV can reuse (such as SQLite's rowid) turns this red.
   await t.test('Settings lists signed-in TVs and signs one out', async () => {

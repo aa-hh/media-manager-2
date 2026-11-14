@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SignInBlock } from './components/ui/sign-in-block';
+import { signInStartBody } from './desktopBridge';
 import { FirstRun, JellyfinSignIn } from './FirstRun';
 import {
   POLL_INTERVAL_MS,
@@ -197,7 +198,7 @@ export function SignIn({ entryReason, onSignedIn }: SignInProps) {
     setAnnouncement('Opening Plex…');
     setView('preparing');
     try {
-      const response = await browserPost('/auth/start', {}, request.controller.signal);
+      const response = await browserPost('/auth/start', await signInStartBody(), request.controller.signal);
       const body = await readJson(response);
       if (!isCurrent(request.version)) return;
       if (response.status === 201 && isPlexHandoff(body.url)) {
