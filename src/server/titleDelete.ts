@@ -5,6 +5,7 @@ import type { RemovalAdvice } from './advice.js';
 import type { Blocklist } from './blocklist.js';
 import type { Protection } from './protection.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
+import { expectGaps } from './searches.js';
 import { listSecondVersionRows, type SecondVersionRow } from './secondVersionRows.js';
 import type { ArrServices, FileDetail, HistoryRecord, QueueItem, Result } from './services/arr.js';
 import type { createTorrentFiles, LibraryFileState, RemovalCheck } from './torrentFiles.js';
@@ -724,11 +725,19 @@ export const createTitleDelete = (options: {
           steps.push({ step: 'search', outcome: 'skipped', message: 'Not searched: no episode file was deleted.' });
         } else {
           const words = target.service === 'radarr' ? 'the movie' : plural(held.length, 'episode');
-          const lifted = await liftProtection(target, held);
+          // Unmonitor Deleted Episodes and Unmonitor Deleted Movies, which the search scheduler keeps on, unmonitor what each deleted
+          // file held, undoing the monitor step; without monitoring again here, only this first search would ever look for it.
+          const remonitored = await monitorAgain(target, held, allEpisodes);
+          const lifted = remonitored.kind !== 'ok' ? remonitored : await liftProtection(target, held);
           if (choices.blocklistCurrent && lifted.kind === 'ok') steps.push(await blocklistGrabs(target, history, deletedFileIds, held));
           const searched = lifted.kind !== 'ok' ? lifted
             : target.service === 'radarr' ? await arr.radarr.searchAutomatically({ movieIds: [target.movieId] })
               : await arr.sonarr.searchAutomatically({ episodeIds: held.map((episode) => episode.id) });
+          if (searched.kind === 'ok') {
+            expectGaps(database, target.service === 'radarr'
+              ? [{ type: 'movie', service: 'radarr', id: String(target.movieId) }]
+              : held.map((episode) => ({ type: 'episode', service: 'sonarr', id: String(episode.id) })), now());
+          }
           steps.push(searched.kind === 'ok'
             ? { step: 'search', outcome: 'done', message: `${label} is searching for ${words}.${lifted.kind === 'ok' ? lifted.value : ''}` }
             : { step: 'search', outcome: 'failed', message: `${label} did not start the search for ${words}: ${searched.message}` });

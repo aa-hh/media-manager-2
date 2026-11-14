@@ -18,7 +18,12 @@ export type HistoryRecord = {
   data: Record<string, string>;
 };
 
-export type HistoryFilterBase = { since?: number; downloadId?: string; eventType?: 'grabbed'; page?: number; pageSize?: number };
+// The paged read filters by number: Sonarr's episodeFileDeleted is 5, Radarr's movieFileDeleted is 6, grabbed is 1 in both.
+// Checked against the live Sonarr and Radarr on 14 Nov 2026: Radarr's 5 returns nothing, its 6 returns movieFileDeleted records.
+const eventNumbers = { grabbed: 1, episodeFileDeleted: 5, movieFileDeleted: 6 } as const;
+export type HistoryFilterBase = {
+  since?: number; downloadId?: string; eventType?: 'grabbed' | 'episodeFileDeleted' | 'movieFileDeleted'; page?: number; pageSize?: number;
+};
 export type SonarrHistoryFilter = HistoryFilterBase & { seriesId?: number; episodeId?: number; seasonNumber?: number; movieId?: never };
 export type RadarrHistoryFilter = HistoryFilterBase & { movieId?: number; seriesId?: never; episodeId?: never; seasonNumber?: never };
 export type HistoryFilter<S extends Service> = S extends 'sonarr' ? SonarrHistoryFilter : RadarrHistoryFilter;
@@ -75,7 +80,7 @@ export const createHistory = <S extends Service>({ service, label, send }: { ser
     if (filter.episodeId !== undefined) query.push(`episodeId=${filter.episodeId}`);
     if (filter.seriesId !== undefined) query.push(`seriesIds=${filter.seriesId}`);
     if (filter.movieId !== undefined) query.push(`movieIds=${filter.movieId}`);
-    if (filter.eventType !== undefined) query.push('eventType=1');
+    if (filter.eventType !== undefined) query.push(`eventType=${eventNumbers[filter.eventType]}`);
     return `/api/v3/history?${query.join('&')}`;
   };
 

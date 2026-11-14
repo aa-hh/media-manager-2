@@ -435,6 +435,11 @@ export const applicationMigrations = [
     received_at INTEGER NOT NULL,
     log TEXT NOT NULL
   ) STRICT;`,
+  // The gaps the search scheduler saw at its last check, so a burst of new ones in titles already in the library is held.
+  `CREATE TABLE missing_seen (
+    subject TEXT PRIMARY KEY,
+    seen_at INTEGER NOT NULL
+  ) STRICT;`,
 ] as const;
 
 class DatabaseError extends Error {}
