@@ -76,6 +76,7 @@ const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).hre
 const labelsModuleUrl = new URL('../dist/server/labels.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
+const executablesModuleUrl = new URL('../dist/server/executables.js', import.meta.url).href;
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const torrentFilesModuleUrl = new URL('../dist/server/torrentFiles.js', import.meta.url).href;
@@ -8928,6 +8929,74 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     assert.deepEqual(third.writes(), [{ queueId: 9, removeFromClient: false, blocklist: true, skipRedownload: true }]);
     assert.equal(listOpenProblems(third.database)[0].state, 'needs_you');
     third.database.close();
+  });
+
+  // Searching again straight after a release holding a program file, or not holding the next scheduled search, turns this red.
+  await t.test('a release holding a program file is blocked without a search, and the next scheduled search waits', async () => {
+    const run = await setup({ message: 'Caution: Found executable file with extension: .exe' });
+    await run.fix.check();
+    assert.deepEqual(run.writes(), [{ queueId: 9, removeFromClient: false, blocklist: true, skipRedownload: true }]);
+    assert.deepEqual(run.database.prepare('SELECT subject, searched_at FROM search_log ORDER BY subject').all().map((row) => [row.subject, row.searched_at]),
+      [['sonarr:episode:31', run.clock.value], ['sonarr:episode:32', run.clock.value]]);
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
+  // Removing anything but an obvious fake (one with video, partly or fully downloaded, picked by hand, unowned, still queued or too new
+  // for the queue copy), leaving an obvious fake in rTorrent, or giving up on it after one refused removal turns this red.
+  await t.test('only an obvious fake is removed: a grabbed torrent with a program file, no video and nothing downloaded', async () => {
+    const { createExecutableSweep, QUEUE_SETTLE_MS } = await import(executablesModuleUrl);
+    const run = await setup({ message: 'Caution: Found executable file with extension: .exe' });
+    const settled = run.clock.value - QUEUE_SETTLE_MS;
+    const addTorrent = (torrent, paths, { complete = 0, done = 0, seenAt = settled, byHand = false, owned = true } = {}) => {
+      run.database.prepare(`INSERT INTO torrents (hash, name, size_bytes, completed_bytes, down_rate, up_rate, started, open, active, complete, message,
+        finished_at, ratio_thousandths, peers_connected, seeders_connected, first_seen_at, last_seen_at, seeding_seconds)
+        VALUES (?, ?, 1, ?, 0, 0, 1, 1, 1, ?, '', 0, 0, 0, 0, ?, ?, 0)`).run(torrent, `Torrent ${torrent.slice(0, 2)}`, done, complete, seenAt, seenAt);
+      paths.forEach((path, index) => run.database.prepare('INSERT INTO torrent_files (hash, "index", path, size_bytes) VALUES (?, ?, ?, 1)').run(torrent, index, path));
+      if (owned && torrent !== hash) run.grabs.recordGrab({ hash: torrent, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [41],
+        releaseTitle: 'Other', indexer: 'TheRARBG', grabbedAt: seenAt, publishedAt: null, byHand });
+    };
+    const fake = ['/files/Sonarr/Show S01E05 1080p WEB H264-FLUX.exe'];
+    const torrents = { withVideo: 'AA', partial: 'BB', finished: 'CC', byHand: 'DD', stranger: 'FF', videoOnly: '11', young: '22', refused: '33' };
+    for (const key of Object.keys(torrents)) torrents[key] = torrents[key].repeat(20);
+    addTorrent(hash, fake);
+    addTorrent(torrents.withVideo, ['/files/Sonarr/Show/Show.mkv', '/files/Sonarr/Show/Codec.Installer.EXE']);
+    addTorrent(torrents.partial, fake, { done: 5 });
+    addTorrent(torrents.finished, fake, { complete: 1 });
+    addTorrent(torrents.byHand, fake, { byHand: true });
+    addTorrent(torrents.stranger, ['/files/Some.Program/setup.exe'], { owned: false });
+    addTorrent(torrents.videoOnly, ['/files/Sonarr/Show S01E07.mkv']);
+    addTorrent(torrents.young, fake, { seenAt: run.clock.value - 60_000 });
+    addTorrent(torrents.refused, fake);
+    const removed = [];
+    let refusals = 1;
+    const sweep = createExecutableSweep({ database: run.database, problems: run.problems, now: () => run.clock.value, isManualDownload: () => false,
+      removeTorrent: async (torrent) => {
+        if (torrent === torrents.refused && refusals-- > 0) return { removed: false, reason: 'rTorrent is not answering.' };
+        removed.push(torrent);
+        return { removed: true, deleted: [], left: [] };
+      } });
+
+    await sweep.check();
+    assert.deepEqual(removed, []);
+    run.fake.sonarr.state.queue = [];
+    await run.grabs.reconcile();
+    await sweep.check();
+    await sweep.check();
+    assert.deepEqual(removed.sort(), [hash, torrents.refused].sort());
+    assert.equal(run.database.prepare("SELECT searched_at FROM search_log WHERE subject = 'sonarr:episode:31'").get()?.searched_at, run.clock.value);
+    const flagged = listOpenProblems(run.database).filter((problem) => problem.kind === 'program_file')
+      .map((problem) => [problem.subject.id, problem.state, problem.steps.at(-1).text]).sort();
+    assert.deepEqual(flagged, [
+      [torrents.withVideo, 'needs_you', 'Left in rTorrent because it also holds video.'],
+      [torrents.partial, 'needs_you', 'Left in rTorrent because part of it downloaded, so its tracker may be owed seeding time.'],
+      [torrents.finished, 'needs_you', 'Left in rTorrent because it finished downloading, so its tracker may be owed seeding time.'],
+      [torrents.byHand, 'needs_you', 'Left in rTorrent because you picked it by hand.'],
+    ].sort());
+    run.clock.value += QUEUE_SETTLE_MS;
+    await sweep.check();
+    assert.ok(removed.includes(torrents.young));
+    run.database.close();
   });
 
   // Ignoring removeFromQueue's removed count, or treating 0 as a block, turns this red.
