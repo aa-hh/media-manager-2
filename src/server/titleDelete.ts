@@ -663,6 +663,10 @@ export const createTitleDelete = (options: {
           steps.push({ step: 'unmonitor', outcome: 'done', message: unmonitored.value });
           planned = unmonitored.intent;
         } else {
+          // Expected before anything is monitored, so a search check running at any point of this delete never holds them as a burst.
+          expectGaps(database, target.service === 'radarr'
+            ? [{ type: 'movie', service: 'radarr', id: String(target.movieId) }]
+            : deletedEpisodes(fileIds).map((episode) => ({ type: 'episode', service: 'sonarr', id: String(episode.id) })), now());
           const monitored = await monitorAgain(target, deletedEpisodes(fileIds), allEpisodes);
           if (monitored.kind !== 'ok') return stop('monitor', monitored.message);
           steps.push({ step: 'monitor', outcome: 'done', message: monitored.value });
@@ -733,11 +737,6 @@ export const createTitleDelete = (options: {
           const searched = lifted.kind !== 'ok' ? lifted
             : target.service === 'radarr' ? await arr.radarr.searchAutomatically({ movieIds: [target.movieId] })
               : await arr.sonarr.searchAutomatically({ episodeIds: held.map((episode) => episode.id) });
-          if (searched.kind === 'ok') {
-            expectGaps(database, target.service === 'radarr'
-              ? [{ type: 'movie', service: 'radarr', id: String(target.movieId) }]
-              : held.map((episode) => ({ type: 'episode', service: 'sonarr', id: String(episode.id) })), now());
-          }
           steps.push(searched.kind === 'ok'
             ? { step: 'search', outcome: 'done', message: `${label} is searching for ${words}.${lifted.kind === 'ok' ? lifted.value : ''}` }
             : { step: 'search', outcome: 'failed', message: `${label} did not start the search for ${words}: ${searched.message}` });
