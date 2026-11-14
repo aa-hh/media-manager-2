@@ -48,6 +48,12 @@ export const searchDueAt = (candidate: Pick<Candidate, 'availableAt' | 'addedAt'
   return lastSearchAt + REPEAT_SEARCH_MS;
 };
 
+// Gaps the owner opened on purpose (a search-again delete) are recorded as already seen, so the next check never holds them as a burst.
+export const expectGaps = (database: DatabaseSync, subjects: Subject[], at: number) => {
+  const insert = database.prepare('INSERT INTO missing_seen (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
+  for (const subject of subjects) insert.run(`${subject.service}:${subject.type}:${subject.id}`, at);
+};
+
 export const createSearchScheduler = (options: {
   database: DatabaseSync;
   arr: ArrServices;
@@ -97,10 +103,13 @@ export const createSearchScheduler = (options: {
     }
   };
 
-  const missingMovies = async (at: number): Promise<Candidate[]> => {
+  // `missing` collects every monitored movie without a file, released or not, for the burst check.
+  const missingMovies = async (at: number, missing: string[] = []): Promise<Candidate[]> => {
     return valueOrThrow(await arr.radarr.listMovies()).flatMap((movie) => {
-      if (movie.id === null || !movie.monitored || movie.hasFile || !movie.isAvailable) return [];
+      if (movie.id === null || !movie.monitored || movie.hasFile) return [];
       const subject: Subject = { type: 'movie', service: 'radarr', id: String(movie.id) };
+      missing.push(key(subject));
+      if (!movie.isAvailable) return [];
       return [{
         subject,
         availableAt: availableSince(subject, at),
@@ -160,19 +169,20 @@ export const createSearchScheduler = (options: {
 
   // A burst of gaps in titles already in the library (a lost disk, a mass delete with Unmonitor Deleted off, a re-monitored backlog)
   // is never searched by itself: the gaps join the search backlog and the owner is told. New releases never count: an episode that
-  // aired, or a movie first seen available, since the last check, and titles added since then.
-  const holdBurst = (service: Service, candidates: Candidate[], at: number) => {
+  // aired since the last check (Sonarr lists only aired episodes as missing), a movie released since then (unreleased movies are
+  // in `missing` already), and titles added since then. `missing` is every gap seen this check, searchable or not.
+  const holdBurst = (service: Service, candidates: Candidate[], missing: string[], at: number) => {
     const lastKey = `searches.lastCheckAt.${service}`;
     const last = getPreference(database, lastKey);
     const before = new Set(database.prepare('SELECT subject FROM missing_seen WHERE subject LIKE ?').all(`${service}:%`).map((row) => String(row.subject)));
     database.prepare('DELETE FROM missing_seen WHERE subject LIKE ?').run(`${service}:%`);
     const insert = database.prepare('INSERT INTO missing_seen (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
-    for (const candidate of candidates) insert.run(key(candidate.subject), at);
+    for (const subject of missing) insert.run(subject, at);
     setPreference(database, lastKey, String(at));
     if (last === undefined) return;
     const since = Number(last);
     const inBacklog = database.prepare('SELECT 1 FROM search_backlog WHERE subject = ?');
-    const fresh = candidates.filter((candidate) => !before.has(key(candidate.subject)) && candidate.availableAt < since
+    const fresh = candidates.filter((candidate) => !before.has(key(candidate.subject)) && (service === 'radarr' || candidate.availableAt < since)
       && candidate.addedAt < since && inBacklog.get(key(candidate.subject)) === undefined);
     if (fresh.length <= BURST_LIMIT) return;
     const backlog = database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
@@ -268,8 +278,9 @@ export const createSearchScheduler = (options: {
 
   const checkService = async (service: Service, at: number) => {
     await keepDeletedUnmonitored(service, at);
-    const candidates = service === 'sonarr' ? await missingEpisodes() : await missingMovies(at);
-    holdBurst(service, candidates, at);
+    const missing: string[] = [];
+    const candidates = service === 'sonarr' ? await missingEpisodes() : await missingMovies(at, missing);
+    holdBurst(service, candidates, service === 'sonarr' ? candidates.map((candidate) => key(candidate.subject)) : missing, at);
     const queued = inQueue(service);
     const inBacklog = database.prepare('SELECT 1 FROM search_backlog WHERE subject = ?');
     const skippedSeasons = new Set<string>();

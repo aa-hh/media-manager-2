@@ -19,6 +19,7 @@ export type HistoryRecord = {
 };
 
 // The paged read filters by number: Sonarr's episodeFileDeleted is 5, Radarr's movieFileDeleted is 6, grabbed is 1 in both.
+// Checked against the live Sonarr and Radarr on 14 Nov 2026: Radarr's 5 returns nothing, its 6 returns movieFileDeleted records.
 const eventNumbers = { grabbed: 1, episodeFileDeleted: 5, movieFileDeleted: 6 } as const;
 export type HistoryFilterBase = {
   since?: number; downloadId?: string; eventType?: 'grabbed' | 'episodeFileDeleted' | 'movieFileDeleted'; page?: number; pageSize?: number;

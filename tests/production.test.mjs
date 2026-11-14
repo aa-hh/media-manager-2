@@ -8568,8 +8568,8 @@ test('missing movies and episodes are searched when they come out and every six 
     database.close();
   });
 
-  // Searching a burst of more than ten gaps in titles already in the library, counting new releases toward it, holding ten or fewer,
-  // or holding gaps without telling the owner turns this red.
+  // Searching a burst of more than ten gaps in titles already in the library (episodes or movies), counting new releases toward it,
+  // holding ten or fewer, or holding gaps without telling the owner turns this red.
   await t.test('more than ten gaps opening at once in titles already in the library go to the backlog instead of being searched', async () => {
     const database = openDatabase(join(root, 'burst', 'media-manager.sqlite'));
     const events = createEventHub();
@@ -8600,6 +8600,17 @@ test('missing movies and episodes are searched when they come out and every six 
     clock.value += 2 * minute;
     await scheduler.check();
     assert.deepEqual(searched(), [200, ...range(300, 10)]);
+
+    // Radarr: eleven movies lose their files while one already listed comes out; only the new release is searched.
+    const old = { added: '2025-01-01T00:00:00Z', isAvailable: true, hasFile: true };
+    fake.radarr.state.movies.push(movieRecord({ id: 50, ...old, isAvailable: false, hasFile: false }), ...range(60, 11).map((id) => movieRecord({ id, ...old })));
+    clock.value += 2 * minute;
+    await scheduler.check();
+    for (const movie of fake.radarr.state.movies) Object.assign(movie, { isAvailable: true, hasFile: false });
+    clock.value += 2 * minute;
+    await scheduler.check();
+    assert.deepEqual(fake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [50] }]);
+    assert.equal(database.prepare("SELECT count(*) AS n FROM search_backlog WHERE subject LIKE 'radarr:movie:%'").get().n, 11);
     database.close();
   });
 
@@ -14754,6 +14765,9 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(state.series[0].seasons.map((season) => [season.seasonNumber, season.monitored]), [[1, true], [2, true]]);
     assert.deepEqual(w.protection.lifted.map((item) => item.episodeId), [102]);
     assert.deepEqual(state.commands, [{ name: 'EpisodeSearch', episodeIds: [101, 102, 103, 104] }]);
+    // Leaving the searched episodes out of missing_seen lets a big search again trip the scheduler's burst hold.
+    assert.deepEqual(w.database.prepare('SELECT subject FROM missing_seen ORDER BY subject').all().map((row) => row.subject),
+      ['sonarr:episode:101', 'sonarr:episode:102', 'sonarr:episode:103', 'sonarr:episode:104']);
     assert.deepEqual(state.failed, []);
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [PACK, w.FULL, V1, V2]);
     const [event] = await w.deletions();
