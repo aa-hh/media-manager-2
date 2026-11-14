@@ -51,6 +51,13 @@ export const searchDueAt = (candidate: Pick<Candidate, 'availableAt' | 'addedAt'
 // razor: a search-again delete must re-monitor its gaps within this window (it waits up to 2 minutes for files); a longer run would need a stamp after its last monitor request.
 const EXPECTED_GAP_MS = 15 * 60_000;
 
+// A fake release's subjects count as searched now, so the next search waits the full repeat: public trackers post several fakes
+// of a new episode within minutes, and a search straight after one finds the next while real copies reach private trackers later.
+export const deferSearches = (database: DatabaseSync, subjects: Subject[], at: number) => {
+  const upsert = database.prepare('INSERT INTO search_log (subject, searched_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET searched_at = excluded.searched_at');
+  for (const subject of subjects) upsert.run(`${subject.service}:${subject.type}:${subject.id}`, at);
+};
+
 // Gaps the owner opened on purpose (a search-again delete) are recorded as already seen, so no check holds them as a burst. They are
 // stamped ahead, so a check that starts before the delete re-monitors them, and so reads Sonarr or Radarr without them, keeps them.
 export const expectGaps = (database: DatabaseSync, subjects: Subject[], at: number) => {

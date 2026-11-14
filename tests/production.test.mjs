@@ -76,6 +76,7 @@ const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).hre
 const labelsModuleUrl = new URL('../dist/server/labels.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
+const executablesModuleUrl = new URL('../dist/server/executables.js', import.meta.url).href;
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const torrentFilesModuleUrl = new URL('../dist/server/torrentFiles.js', import.meta.url).href;
@@ -8928,6 +8929,53 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     assert.deepEqual(third.writes(), [{ queueId: 9, removeFromClient: false, blocklist: true, skipRedownload: true }]);
     assert.equal(listOpenProblems(third.database)[0].state, 'needs_you');
     third.database.close();
+  });
+
+  // Searching again straight after a release holding a program file, or not holding the next scheduled search, turns this red.
+  await t.test('a release holding a program file is blocked without a search, and the next scheduled search waits', async () => {
+    const run = await setup({ message: 'Caution: Found executable file with extension: .exe' });
+    await run.fix.check();
+    assert.deepEqual(run.writes(), [{ queueId: 9, removeFromClient: false, blocklist: true, skipRedownload: true }]);
+    assert.deepEqual(run.database.prepare('SELECT subject, searched_at FROM search_log ORDER BY subject').all().map((row) => [row.subject, row.searched_at]),
+      [['sonarr:episode:31', run.clock.value], ['sonarr:episode:32', run.clock.value]]);
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
+  // Removing a torrent still in a queue, one no grab owns, a finished one or one with only video, or leaving a fake in rTorrent, turns this red.
+  await t.test('a grabbed, unfinished torrent holding a program file is removed once no queue lists it; a finished one goes to the owner', async () => {
+    const { createExecutableSweep } = await import(executablesModuleUrl);
+    const run = await setup({ message: 'Caution: Found executable file with extension: .exe' });
+    const addTorrent = (torrent, name, paths, complete = 0) => {
+      run.database.prepare(`INSERT INTO torrents (hash, name, size_bytes, completed_bytes, down_rate, up_rate, started, open, active, complete, message,
+        finished_at, ratio_thousandths, peers_connected, seeders_connected, first_seen_at, last_seen_at, seeding_seconds)
+        VALUES (?, ?, 1, 0, 0, 0, 1, 1, 1, ?, '', 0, 0, 0, 0, 0, 0, 0)`).run(torrent, name, complete);
+      paths.forEach((path, index) => run.database.prepare('INSERT INTO torrent_files (hash, "index", path, size_bytes) VALUES (?, ?, ?, 1)').run(torrent, index, path));
+    };
+    const grab = (torrent) => run.grabs.recordGrab({ hash: torrent, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [41],
+      releaseTitle: 'Other', indexer: 'TheRARBG', grabbedAt: run.clock.value, publishedAt: null, byHand: false });
+    const [finished, stranger, video] = ['AA'.repeat(20), 'BB'.repeat(20), 'CC'.repeat(20)];
+    addTorrent(hash, 'Show S01E05 1080p WEB H264-FLUX.exe', ['/files/Sonarr/Show S01E05 1080p WEB H264-FLUX.exe']);
+    addTorrent(finished, 'Show S01E06', ['/files/Sonarr/Show S01E06/Show.mkv', '/files/Sonarr/Show S01E06/Codec.Installer.EXE'], 1);
+    addTorrent(stranger, 'Some.Program', ['/files/Some.Program/setup.exe']);
+    addTorrent(video, 'Show S01E07', ['/files/Sonarr/Show S01E07.mkv']);
+    grab(finished);
+    grab(video);
+    const removed = [];
+    const sweep = createExecutableSweep({ database: run.database, problems: run.problems, now: () => run.clock.value,
+      removeTorrent: async (torrent) => { removed.push(torrent); return { removed: true, deleted: [], left: [] }; } });
+
+    await sweep.check();
+    assert.deepEqual(removed, []);
+    run.fake.sonarr.state.queue = [];
+    await run.grabs.reconcile();
+    await sweep.check();
+    await sweep.check();
+    assert.deepEqual(removed, [hash]);
+    assert.equal(run.database.prepare("SELECT searched_at FROM search_log WHERE subject = 'sonarr:episode:31'").get()?.searched_at, run.clock.value);
+    const open = listOpenProblems(run.database).filter((problem) => problem.kind === 'program_file');
+    assert.deepEqual(open.map((problem) => [problem.subject.id, problem.state]), [[finished, 'needs_you']]);
+    run.database.close();
   });
 
   // Ignoring removeFromQueue's removed count, or treating 0 as a block, turns this red.
