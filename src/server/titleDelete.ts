@@ -724,7 +724,10 @@ export const createTitleDelete = (options: {
           steps.push({ step: 'search', outcome: 'skipped', message: 'Not searched: no episode file was deleted.' });
         } else {
           const words = target.service === 'radarr' ? 'the movie' : plural(held.length, 'episode');
-          const lifted = await liftProtection(target, held);
+          // Unmonitor Deleted Episodes and Unmonitor Deleted Movies, which the search scheduler keeps on, unmonitor what each deleted
+          // file held, undoing the monitor step; without monitoring again here, only this first search would ever look for it.
+          const remonitored = await monitorAgain(target, held, allEpisodes);
+          const lifted = remonitored.kind !== 'ok' ? remonitored : await liftProtection(target, held);
           if (choices.blocklistCurrent && lifted.kind === 'ok') steps.push(await blocklistGrabs(target, history, deletedFileIds, held));
           const searched = lifted.kind !== 'ok' ? lifted
             : target.service === 'radarr' ? await arr.radarr.searchAutomatically({ movieIds: [target.movieId] })
