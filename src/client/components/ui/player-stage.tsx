@@ -1,11 +1,12 @@
 // Figma: PlayerStage — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=114-725
 import { Slider } from '@base-ui/react/slider';
 import {
-  AudioLines, Captions, ChevronLeft, Gauge, Maximize, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Settings, SkipBack, SkipForward,
+  AudioLines, Captions, ChevronLeft, Gauge, Maximize, Pause, PictureInPicture2, Play, Settings, SkipBack, SkipForward,
 } from 'lucide-react';
 import type { ReactElement, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { SkipBack10, SkipForward30 } from '@/components/ui/icon-skip';
 import { PlayerScrubPreview } from '@/components/ui/player-scrub-preview';
 import { Spinner } from '@/components/ui/spinner';
 import { TooltipNext } from '@/components/ui/tooltip-next';
@@ -201,10 +202,10 @@ function PlayerStage({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-0.5">
               {previous !== undefined && queueButton(previous, <SkipBack />, 'Previous')}
+              <Button variant="on-dark" iconOnly icon={<SkipBack10 />} aria-label="Back 10 seconds" onClick={onBack10} className="w-11 [&>svg]:size-6" />
               <Button variant="on-dark" iconOnly icon={playing ? <Pause /> : <Play />} aria-label={playing ? 'Pause' : 'Play'} onClick={onPlayPause} className="w-11 [&>svg]:size-6" />
+              <Button variant="on-dark" iconOnly icon={<SkipForward30 />} aria-label="Forward 30 seconds" onClick={onForward30} className="w-11 [&>svg]:size-6" />
               {next !== undefined && queueButton(next, <SkipForward />, 'Next')}
-              <Button variant="on-dark" iconOnly icon={<RotateCcw />} aria-label="Back 10 seconds" onClick={onBack10} />
-              <Button variant="on-dark" iconOnly icon={<RotateCw />} aria-label="Forward 30 seconds" onClick={onForward30} />
               <VolumeButton
                 volume={volume}
                 muted={muted}
