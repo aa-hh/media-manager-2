@@ -8461,7 +8461,7 @@ test('missing movies and episodes are searched when they come out and every six 
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems, subjectHistory } = await import(problemsModuleUrl);
   const { writeDependency } = await import(dependenciesModuleUrl);
-  const { createSearchScheduler, searchDueAt, expectGaps } = await import(searchesModuleUrl);
+  const { createSearchScheduler, searchDueAt, expectGaps, recordOwnerSearch } = await import(searchesModuleUrl);
   const { createProtection } = await import(protectionModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-searches-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -8648,6 +8648,8 @@ test('missing movies and episodes are searched when they come out and every six 
     const scheduler = createSearchScheduler({ database, arr, problems: createProblems({ database, events: createEventHub(), now }), now, isManualDownload: () => false });
     const ids = Array.from({ length: 11 }, (_, index) => 100 + index);
     fake.sonarr.state.episodes.push(...ids.map((id) => ({ ...oldEpisode(id), hasFile: true })));
+    // Imported before, as every file a search-again delete removes was: holding them as downloaded before also turns this red.
+    fake.sonarr.state.history.push(...ids.map((id) => historyRecord({ eventType: 'downloadFolderImported', seriesId: 1, episodeId: id })));
 
     await scheduler.check();
     expectGaps(database, ids.map((id) => ({ type: 'episode', service: 'sonarr', id: String(id) })), clock.value);
@@ -8656,13 +8658,18 @@ test('missing movies and episodes are searched when they come out and every six 
     for (const episode of fake.sonarr.state.episodes) episode.hasFile = false;
     clock.value += 2 * minute;
     await scheduler.check();
+    // The search-again sent its own search, so the scheduler's first one comes six hours after it.
+    assert.deepEqual(fake.sonarr.state.commands, []);
+    clock.value += 6 * hour;
+    await scheduler.check();
     assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: ids }]);
     assert.equal(database.prepare("SELECT count(*) AS n FROM problems WHERE kind = 'search_burst'").get().n, 0);
+    assert.equal(database.prepare('SELECT count(*) AS n FROM search_backlog').get().n, 0);
     database.close();
   });
 
   // Searching an episode or movie Sonarr or Radarr imported before (from a download or from its folder), season-searching a season
-  // that holds one, or reading its history again at every check turns this red.
+  // that holds one, reading its history again at every check, or still holding one the owner asked for again turns this red.
   await t.test('an episode or movie imported before is never searched by the scheduler, only held in the backlog', async () => {
     const database = openDatabase(join(root, 'imported-before', 'media-manager.sqlite'));
     const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
@@ -8696,6 +8703,13 @@ test('missing movies and episodes are searched when they come out and every six 
     const told = database.prepare("SELECT service, state, summary FROM problems WHERE kind = 'downloaded_before' ORDER BY service").all();
     assert.deepEqual(told.map((row) => [row.service, row.state]), [['radarr', 'resolved'], ['sonarr', 'resolved']]);
     assert.match(told[1].summary, /^2 episodes Sonarr downloaded before are missing again, so they are not searched for: Show S01E12, Show S01E14\./);
+
+    // The owner asks for episode 12 again: no longer held, and the scheduler retries it six hours after that request.
+    recordOwnerSearch(database, [{ type: 'episode', service: 'sonarr', id: '12' }], clock.value);
+    clock.value += 7 * hour;
+    await scheduler.check();
+    assert.deepEqual(fake.sonarr.state.commands.at(-1), { name: 'EpisodeSearch', episodeIds: [11, 12, 13] });
+    assert.equal(database.prepare("SELECT count(*) AS n FROM search_backlog WHERE subject = 'sonarr:episode:12'").get().n, 0);
     database.close();
   });
 

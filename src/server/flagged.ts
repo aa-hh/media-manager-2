@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import type { createLabels } from './labels.js';
 import { listOpenProblems, type Problem, type Subject } from './problems.js';
 import type { ReleaseTarget } from './releases.js';
-import { searchDueAt } from './searches.js';
+import { recordOwnerSearch, searchDueAt } from './searches.js';
 import { FILE_MISSING, ORPHANED } from './secondVersionRows.js';
 import type { ArrServices } from './services/arr.js';
 import { findGrab, listGrabs, listQueue, type Grab, type Service } from './torrentGrabs.js';
@@ -241,12 +241,7 @@ export const createFlagged = (options: {
       : await arr.radarr.searchAutomatically({ movieIds: ids });
     if (result.kind === 'not_configured' || result.kind === 'unreachable') return 'unavailable';
     if (result.kind !== 'ok') return 'refused';
-    const at = now();
-    for (const id of ids) {
-      database.prepare(`
-        INSERT INTO search_log (subject, searched_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET searched_at = excluded.searched_at
-      `).run(key(service, type, id), at);
-    }
+    recordOwnerSearch(database, ids.map((id) => ({ type, service, id: String(id) })), now());
     return 'ok';
   };
 

@@ -55,7 +55,7 @@ import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller, LIVE_POLL_INTERVAL_MS } from './torrents.js';
 import { trackerRulesFromEnvironment } from './trackerRules.js';
 import { createTrackerWatch } from './trackers.js';
-import { createSearchScheduler } from './searches.js';
+import { createSearchScheduler, recordOwnerSearch } from './searches.js';
 import { createStallFix } from './stalls.js';
 import { createTorrentFiles } from './torrentFiles.js';
 import { createTitleDelete } from './titleDelete.js';
@@ -204,7 +204,7 @@ if (database !== undefined) {
     forget: search.forget,
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
-  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips, watchStatus);
+  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips, watchStatus, (subjects) => recordOwnerSearch(openedDatabase, subjects, Date.now()));
   const add = createAdd(arr, titleStore, openedDatabase);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);
