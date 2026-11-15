@@ -9,7 +9,7 @@ const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = r
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
 const {
-  fileEvent, playsOnOpen, showsPosition, sendsPosition, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions, tracksFrom,
+  fileEvent, playsOnOpen, showsPosition, sendsPosition, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions, tracksFrom, startSubtitle,
 } = require('./lib/player');
 
 const MiB = 1024 * 1024;
@@ -404,9 +404,7 @@ async function startPlaying() {
       const audio = reply.tracks.audio.find((track) => track.selected);
       const audioTrack = audio ? tracks.filter((track) => track.type === 'audio')[audio.index] : undefined;
       if (audioTrack) await mpv.setProperty('aid', String(audioTrack.id));
-      // No subtitle chosen in Plex turns mpv's off too: left alone, mpv picks a default track itself while the menu says Off.
-      const subtitle = reply.tracks.subtitle.find((track) => track.selected);
-      await selectSubtitle(subtitle ? { url: subtitle.external ? subtitle.key : null, ffIndex: subtitle.ffIndex } : {}, tracks);
+      await selectSubtitle(startSubtitle(reply.tracks.subtitle), tracks);
     }
   } finally {
     // A refused unpause must still let the page past its opening screen.

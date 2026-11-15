@@ -161,7 +161,17 @@ const tracksFrom = (json) => {
   return list.map((track) => Object.fromEntries(TRACK_FIELDS.map((field) => [field, track?.[field] ?? null])));
 };
 
+/**
+ * The subtitle mpv starts a file with, from the start reply's tracks: an external one by its stream key, an embedded one
+ * by its ffIndex. None chosen in Plex gives {}, which turns mpv's subtitles off: left alone, mpv picks a default track
+ * itself (or the closed-caption track sub-create-cc-track adds) while the menu says Off.
+ */
+const startSubtitle = (subtitles) => {
+  const subtitle = subtitles.find((track) => track.selected);
+  return subtitle ? { url: subtitle.external ? subtitle.key : null, ffIndex: subtitle.ffIndex } : {};
+};
+
 module.exports = {
   fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource,
-  mpvStartOptions, tracksFrom,
+  mpvStartOptions, tracksFrom, startSubtitle,
 };
