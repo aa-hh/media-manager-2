@@ -21,6 +21,8 @@ const unmonitorDeleted = {
 } as const;
 // Upgrade, ManualOverride and NoLinkedEpisodes deletes are Sonarr's or Radarr's own housekeeping, not the owner removing a file.
 const OWNER_DELETES = new Set(['Manual', 'MissingFromDisk']);
+// A file imported from a download, or found in the title's folder when it was added.
+const IMPORTS = new Set(['downloadFolderImported', 'seriesFolderImported', 'movieFolderImported']);
 
 type Candidate = {
   subject: Subject;
@@ -41,7 +43,7 @@ const time = (value: unknown) => {
 };
 
 // When a search is due, by AA-13: never before availability; at availability (but 15 minutes after adding, so search-on-add runs first);
-// then every six hours while nothing is found.
+// then every six hours while nothing is found. Something imported before is never due unless the owner asked for it since.
 export const searchDueAt = (candidate: Pick<Candidate, 'availableAt' | 'addedAt' | 'lastSearchAt'>) => {
   const { availableAt, addedAt, lastSearchAt } = candidate;
   if (lastSearchAt === null || lastSearchAt < availableAt) return Math.max(availableAt, addedAt + NEVER_SEARCHED_GRACE_MS);
@@ -63,6 +65,19 @@ export const deferSearches = (database: DatabaseSync, subjects: Subject[], at: n
 export const expectGaps = (database: DatabaseSync, subjects: Subject[], at: number) => {
   const insert = database.prepare('INSERT INTO missing_seen (subject, seen_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET seen_at = max(seen_at, excluded.seen_at)');
   for (const subject of subjects) insert.run(`${subject.service}:${subject.type}:${subject.id}`, at + EXPECTED_GAP_MS);
+  recordOwnerSearch(database, subjects, at);
+};
+
+// A search the owner asked for: logged as searched, so the scheduler keeps looking every six hours even for something imported
+// before, and taken out of the backlog.
+export const recordOwnerSearch = (database: DatabaseSync, subjects: Subject[], at: number) => {
+  const log = database.prepare('INSERT INTO search_log (subject, searched_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET searched_at = excluded.searched_at');
+  const unhold = database.prepare('DELETE FROM search_backlog WHERE subject = ?');
+  for (const subject of subjects) {
+    const key = `${subject.service}:${subject.type}:${subject.id}`;
+    log.run(key, at);
+    unhold.run(key);
+  }
 };
 
 export const createSearchScheduler = (options: {
@@ -310,7 +325,35 @@ export const createSearchScheduler = (options: {
       waiting.push(candidate);
       return [];
     });
-    await search(service, due, waiting, skippedSeasons, at);
+    await search(service, await skipDownloadedBefore(service, due, skippedSeasons, at), waiting, skippedSeasons, at);
+  };
+
+  // Something Sonarr or Radarr imported since the owner last asked for it was a file they had, so its gap is one they deleted (often
+  // straight from the disk): it joins the backlog instead of being searched, and its season is never searched whole. Their own history
+  // is the record. The scheduler never searches such a gap itself, so a search_log row newer than the import is the owner asking again.
+  const skipDownloadedBefore = async (service: Service, due: Candidate[], skippedSeasons: Set<string>, at: number) => {
+    const fresh: Candidate[] = [];
+    const before: Candidate[] = [];
+    for (const candidate of due) {
+      const id = Number(candidate.subject.id);
+      const history = valueOrThrow(service === 'sonarr' ? await arr.sonarr.history({ episodeId: id }) : await arr.radarr.history({ movieId: id })) as HistoryRecord[];
+      const imports = history.filter((record) => IMPORTS.has(record.eventType)).map((record) => time(record.date) ?? Number.POSITIVE_INFINITY);
+      const asked = ourLastSearch(candidate.subject);
+      (imports.length > 0 && (asked === null || asked < Math.max(...imports)) ? before : fresh).push(candidate);
+    }
+    if (before.length === 0) return fresh;
+    const backlog = database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
+    for (const candidate of before) {
+      backlog.run(key(candidate.subject), at);
+      if (candidate.seriesId !== null && candidate.seasonNumber !== null) skippedSeasons.add(`${candidate.seriesId}:${candidate.seasonNumber}`);
+    }
+    const things = service === 'sonarr' ? (before.length === 1 ? 'episode' : 'episodes') : (before.length === 1 ? 'movie' : 'movies');
+    const examples = before.slice(0, 3).map((candidate) => candidate.title).join(', ');
+    const summary = `${before.length} ${things} ${labels[service]} downloaded before ${before.length === 1 ? 'is' : 'are'} missing again, so `
+      + `${before.length === 1 ? 'it is' : 'they are'} not searched for: ${examples}${before.length > 3 ? ' and more' : ''}. Search from a title's page for any you want back.`;
+    const problem = problems.open({ kind: 'downloaded_before', subject: { type: 'dependency', service, id: service }, summary });
+    problems.setState(problem.id, 'resolved', 'Not searched.');
+    return fresh;
   };
 
   // razor: backlog rows never expire; DELETE FROM search_backlog by hand to let the scheduler chase the old gaps. A UI control is the upgrade path.
