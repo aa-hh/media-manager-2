@@ -8661,6 +8661,44 @@ test('missing movies and episodes are searched when they come out and every six 
     database.close();
   });
 
+  // Searching an episode or movie Sonarr or Radarr imported before (from a download or from its folder), season-searching a season
+  // that holds one, or reading its history again at every check turns this red.
+  await t.test('an episode or movie imported before is never searched by the scheduler, only held in the backlog', async () => {
+    const database = openDatabase(join(root, 'imported-before', 'media-manager.sqlite'));
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const { fake, ...arr } = connectArr(database);
+    const aired = (id) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: '2025-06-01T00:00:00Z', series: { title: 'Show', added: '2025-01-01T00:00:00Z', seriesType: 'standard' } });
+    const episodes = [aired(11), aired(12), aired(13), aired(14)];
+    fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
+      ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
+    fake.sonarr.state.episodes = episodes.map(({ id, airDateUtc }) => episodeRecord({ id, seriesId: 1, seasonNumber: 1, airDateUtc }));
+    fake.sonarr.state.history.push(
+      historyRecord({ eventType: 'downloadFolderImported', seriesId: 1, episodeId: 12 }),
+      historyRecord({ eventType: 'seriesFolderImported', seriesId: 1, episodeId: 14 }),
+      historyRecord({ eventType: 'grabbed', seriesId: 1, episodeId: 13 }),
+    );
+    const old = { added: '2025-01-01T00:00:00Z', isAvailable: true, hasFile: false };
+    fake.radarr.state.movies.push(movieRecord({ id: 7, title: 'Seen', ...old }), movieRecord({ id: 8, title: 'Wanted', ...old }));
+    fake.radarr.state.history.push(historyRecord({ eventType: 'downloadFolderImported', movieId: 7 }));
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const scheduler = createSearchScheduler({ database, arr, problems: createProblems({ database, events: createEventHub(), now }), now, isManualDownload: () => false });
+
+    await scheduler.check();
+    clock.value += 7 * hour;
+    await scheduler.check();
+    const episodeSearch = { name: 'EpisodeSearch', episodeIds: [11, 13] };
+    assert.deepEqual(fake.sonarr.state.commands, [episodeSearch, episodeSearch]);
+    assert.deepEqual(fake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [8] }, { name: 'MoviesSearch', movieIds: [8] }]);
+    assert.deepEqual(database.prepare('SELECT subject FROM search_backlog ORDER BY subject').all().map((row) => row.subject),
+      ['radarr:movie:7', 'sonarr:episode:12', 'sonarr:episode:14']);
+    assert.equal(fake.sonarr.requests.filter((request) => request.path === '/api/v3/history' && request.params.get('episodeId') === '12').length, 1);
+    const told = database.prepare("SELECT service, state, summary FROM problems WHERE kind = 'downloaded_before' ORDER BY service").all();
+    assert.deepEqual(told.map((row) => [row.service, row.state]), [['radarr', 'resolved'], ['sonarr', 'resolved']]);
+    assert.match(told[1].summary, /^2 episodes Sonarr downloaded before are missing again, so they are not searched for: Show S01E12, Show S01E14\./);
+    database.close();
+  });
+
   // Sending an EpisodeSearch for a finished season with several missing episodes, a SeasonSearch for an airing season or a single missing episode, or two SeasonSearches in a row for the same season (including by comparing against Sonarr's later lastSearchTime) turns this red.
   await t.test('an aired season with several missing episodes gets a season search, then an episode search for what is left, then a season search again', async () => {
     const database = openDatabase(join(root, 'season-search', 'media-manager.sqlite'));
