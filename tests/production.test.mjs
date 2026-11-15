@@ -16474,3 +16474,19 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
     assert.deepEqual(subtitleAdd(track, answered), ['sub-add', `${answered}/library/streams/7?X-Plex-Token=transient-abc&encoding=utf-8`, 'cached', name]);
   }
 });
+
+test('the desktop player reads mpv\'s whole track list from one reply', async () => {
+  const { tracksFrom } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  // As mpv 0.41 answers `track-list` asked for as a string: JSON with more fields than the app reads.
+  const reply = JSON.stringify([
+    { id: 1, type: 'video', 'src-id': 1, 'ff-index': 0, external: false, selected: true, default: true, codec: 'hevc' },
+    { id: 1, type: 'sub', 'ff-index': 3, lang: 'en', title: 'English', codec: 'subrip', external: false, selected: false, default: false },
+    { id: 42, type: 'sub', codec: 'eia_608', external: false, selected: true, default: true },
+  ]);
+  assert.deepEqual(tracksFrom(reply), [
+    { id: 1, type: 'video', 'ff-index': 0, lang: null, title: null, codec: 'hevc', external: false, selected: true, default: true },
+    { id: 1, type: 'sub', 'ff-index': 3, lang: 'en', title: 'English', codec: 'subrip', external: false, selected: false, default: false },
+    { id: 42, type: 'sub', 'ff-index': null, lang: null, title: null, codec: 'eia_608', external: false, selected: true, default: true },
+  ]);
+  for (const nothing of [null, '', 'not json', '{}']) assert.deepEqual(tracksFrom(nothing), []);
+});

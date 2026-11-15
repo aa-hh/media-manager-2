@@ -143,7 +143,25 @@ const mpvStartOptions = (env, userData) => ({
   'gpu-shader-cache-dir': path.join(userData, 'mpv-shader-cache'),
 });
 
+/**
+ * mpv's track list, from its `track-list` property read as a string (JSON, as mpv 0.41 gives it), with only the fields the app
+ * uses; a field mpv leaves out is null. Read in one request: reading it field by field sent mpv 9 requests per track,
+ * 414 for a title with 46 tracks, and mpv refuses requests past about 1000 waiting ("event queue full"), so a subtitle
+ * pick made while another read was waiting failed.
+ */
+const TRACK_FIELDS = ['id', 'type', 'ff-index', 'lang', 'title', 'codec', 'external', 'selected', 'default'];
+const tracksFrom = (json) => {
+  let list;
+  try {
+    list = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  return list.map((track) => Object.fromEntries(TRACK_FIELDS.map((field) => [field, track?.[field] ?? null])));
+};
+
 module.exports = {
   fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource,
-  mpvStartOptions,
+  mpvStartOptions, tracksFrom,
 };
