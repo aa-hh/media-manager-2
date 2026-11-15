@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fn } from 'storybook/test';
+import { expect, fn, waitFor, within } from 'storybook/test';
 import { PlayerScreen } from '@/player/PlayerScreen';
 
 // In the desktop app mpv's picture shows through the see-through stage; a gradient stands in for it here.
@@ -100,6 +100,42 @@ export const SubtitleSizePicture: Story = {
 // Subtitles off: the Text size row greyed.
 export const SubtitleSizeOff: Story = {
   args: { openMenu: 'subtitles', subtitles: { tracks: subtitles.map((track) => ({ ...track, selected: false })), saved: false, delay: 0, delaySaved: false, size: 1 } },
+};
+
+// A file with 42 subtitle tracks (Mobland has 42): the list stops at 400 px and scrolls inside the menu, Timing, Text size
+// and the Saved to Plex line stay in view, and the menu opens with the chosen track (Language 30) in view.
+const manySubtitles = Array.from({ length: 42 }, (_, at) => ({
+  id: 100 + at, index: at, ffIndex: 3 + at, codec: 'srt', language: `Language ${at + 1}`, title: null,
+  selected: at === 29, external: false, key: null, url: null, offsetMs: null,
+}));
+export const SubtitlesLong: Story = {
+  args: { openMenu: 'subtitles', subtitles: { tracks: manySubtitles, saved: true, delay: 0, delaySaved: false, size: 1 } },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement.ownerDocument.body);
+    const chosen = await page.findByRole('menuitemradio', { name: 'Language 30 · SRT' });
+    const list = chosen.parentElement!;
+    await expect(list.clientHeight).toBeLessThanOrEqual(400);
+    await expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+    const box = list.getBoundingClientRect();
+    const row = chosen.getBoundingClientRect();
+    await expect(row.top >= box.top && row.bottom <= box.bottom).toBe(true);
+    await expect(page.getByRole('menuitemradio', { name: 'Normal' })).toBeVisible();
+  },
+};
+
+// The same list from the keyboard: twelve Down presses from Language 30 land on the last track, scrolled into view.
+export const SubtitlesLongKeyboard: Story = {
+  args: SubtitlesLong.args,
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement.ownerDocument.body);
+    const chosen = await page.findByRole('menuitemradio', { name: 'Language 30 · SRT' });
+    const list = chosen.parentElement!;
+    await userEvent.hover(chosen);
+    await userEvent.keyboard('{ArrowDown>12/}');
+    const last = page.getByRole('menuitemradio', { name: 'Language 42 · SRT' });
+    await waitFor(() => expect(last).toHaveFocus());
+    await waitFor(() => expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(list.getBoundingClientRect().bottom + 1));
+  },
 };
 
 // 10 · Skip intro with the controls hidden.

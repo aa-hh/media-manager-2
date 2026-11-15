@@ -117,6 +117,9 @@ export type PlayerScreenProps = {
 const menu = { onDark: true, side: 'top', align: 'end', sideOffset: 8 } as const;
 const ORIGINAL = 'original';
 const OFF = 'off';
+// A file can carry dozens of tracks (Mobland has 42 subtitles): the list scrolls inside the menu and the rows under it stay in view.
+const trackMenu = 'w-80 max-h-(--available-height)';
+const trackGroup = 'flex min-h-0 flex-col';
 
 const centred = 'absolute inset-0 flex items-center justify-center';
 
@@ -154,10 +157,11 @@ export function PlayerScreen(props: PlayerScreenProps) {
 
   const menus = {
     audio: (
-      <DropdownMenuContent {...menu} className="w-80">
-        <DropdownMenuGroup>
+      <DropdownMenuContent {...menu} className={trackMenu}>
+        <DropdownMenuGroup className={trackGroup}>
           <DropdownMenuGroupLabel>Audio</DropdownMenuGroupLabel>
           <DropdownMenuRadioGroup
+            scroll
             value={selectedAudio?.index ?? null}
             onValueChange={(value) => {
               const track = audio.tracks.find((candidate) => candidate.index === value);
@@ -176,10 +180,11 @@ export function PlayerScreen(props: PlayerScreenProps) {
       </DropdownMenuContent>
     ),
     subtitles: (
-      <DropdownMenuContent {...menu} className="w-80">
-        <DropdownMenuGroup>
+      <DropdownMenuContent {...menu} className={trackMenu}>
+        <DropdownMenuGroup className={trackGroup}>
           <DropdownMenuGroupLabel>Subtitles</DropdownMenuGroupLabel>
           <DropdownMenuRadioGroup
+            scroll
             value={selectedSubtitle === undefined ? OFF : String(selectedSubtitle.id)}
             onValueChange={(value) => props.onSubtitle(subtitles.tracks.find((track) => String(track.id) === value) ?? null)}
           >
