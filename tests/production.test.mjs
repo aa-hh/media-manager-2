@@ -12572,7 +12572,8 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     });
   }
   const calls = () => ['sonarr', 'radarr'].flatMap((name) => fake[name].requests.map(({ method, path, body }) => ({ name, method, path, body })));
-  const library = createLibrary(services, () => [], createTitleStore(database));
+  const asked = [];
+  const library = createLibrary(services, () => [], createTitleStore(database), undefined, undefined, undefined, undefined, undefined, undefined, (subjects) => asked.push(subjects.map((subject) => `${subject.service}:${subject.type}:${subject.id}`)));
   const routes = createLibraryRoutes(library);
   const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -12632,6 +12633,19 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     assert.equal((await post('/monitor', { service: 'sonarr', kind: 'series', seriesId: 3, monitored: true, extra: 1 })).status, 400);
     assert.equal((await post('/refresh', { service: 'sonarr', kind: 'episodes', episodeIds: [1] })).status, 400);
     assert.equal((await post('/search', { service: 'radarr', kind: 'movie', movieId: 5 })).status, 204);
+  });
+
+  // Not telling the scheduler about a season or show search (so it never retries an episode it held as downloaded before), or
+  // counting an episode that still has its file, turns this red.
+  await t.test('every search the owner starts names the episodes or movie it looks for', async () => {
+    asked.length = 0;
+    for (const body of [
+      { service: 'sonarr', kind: 'season', seriesId: 3, seasonNumber: 1 },
+      { service: 'sonarr', kind: 'series', seriesId: 3 },
+      { service: 'sonarr', kind: 'episodes', episodeIds: [31] },
+      { service: 'radarr', kind: 'movie', movieId: 5 },
+    ]) assert.equal((await post('/search', body)).status, 204);
+    assert.deepEqual(asked, [['sonarr:episode:32'], ['sonarr:episode:32'], ['sonarr:episode:31'], ['radarr:movie:5']]);
   });
 
   await t.test('calendar emits one movie entry per release date in range and refuses long windows', async () => {

@@ -712,11 +712,16 @@ export const createLibrary = (
     },
 
     async search(request: Target): Promise<Result<void>> {
-      if (request.kind === 'series') return fromArr(await services.sonarr.searchAutomatically({ seriesId: request.seriesId }));
-      if (request.kind === 'season') {
-        return fromArr(await services.sonarr.searchAutomatically({ seriesId: request.seriesId, seasonNumber: request.seasonNumber }));
+      if (request.kind === 'series' || request.kind === 'season') {
+        const season = request.kind === 'season' ? { seasonNumber: request.seasonNumber } : {};
+        const result = await services.sonarr.searchAutomatically({ seriesId: request.seriesId, ...season });
+        // Sonarr searches the monitored episodes without a file, so those are what the owner asked for; an unreadable list records none.
+        const listed = result.kind === 'ok' ? await services.sonarr.episodes(request.seriesId, season) : null;
+        if (listed?.kind === 'ok') {
+          onOwnerSearch(listed.value.filter((episode) => episode.monitored && !episode.hasFile).map((episode) => ({ type: 'episode', service: 'sonarr', id: String(episode.id) })));
+        }
+        return fromArr(result);
       }
-      // razor: a series or season search is not recorded, so the scheduler does not retry what it held there; recording needs the episode ids.
       const subjects: Subject[] = request.kind === 'episodes'
         ? request.episodeIds.map((id) => ({ type: 'episode', service: 'sonarr', id: String(id) }))
         : [{ type: 'movie', service: 'radarr', id: String(request.movieId) }];
