@@ -62,6 +62,23 @@ class RailsTest {
         assertEquals("Movie · 2025", (rails[2].items.single() as RailItem.Title).subtitle)
     }
 
+    // Not watched yet leads Home, since only the first row shows the backdrop (owner, 16 Nov 2026): titles in Plex never
+    // started, newest added first. A started or watched title, or one Plex lacks, in that row turns this red.
+    @Test
+    fun notWatchedYetLeadsWithNewestUnstartedTitles() {
+        val newShow = show.copy(id = 1, added = "2026-11-10", watch = TitleWatch("show", "a", leafCount = 8))
+        val newFilm = film.copy(id = 2, added = "2026-11-12", watch = TitleWatch("movie", "b"))
+        val started = film.copy(id = 4, added = "2026-11-14", watch = TitleWatch("movie", "c", viewOffsetMs = 60_000))
+        val halfSeen = show.copy(id = 5, added = "2026-11-15", watch = TitleWatch("show", "d", leafCount = 8, viewedLeafCount = 2))
+        val notInPlex = film.copy(id = 6, added = "2026-11-16")
+        val titles = LibraryTitles(listOf(newShow, newFilm, started, halfSeen, notInPlex), LibraryWatch(kind = "ok"))
+
+        val first = plexRails(titles, null).first()
+
+        assertEquals("Not watched yet", first.label)
+        assertEquals(listOf(2, 1), first.items.map { (it as RailItem.Title).title.id })
+    }
+
     // An empty or failed row is hidden (plan T16a), and Plex being off or unavailable hides Playlists. Showing an empty
     // heading turns this red.
     @Test
