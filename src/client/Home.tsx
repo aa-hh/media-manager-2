@@ -210,7 +210,7 @@ export function Home({ headingRef, signOutLabel, signOutDisabled, signOutProblem
         <Suspense fallback={<ScreenLoading />}>
         {view === 'play' ? null
           : view === 'search'
-          ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), result)} onRetry={() => search(query)} />
+          ? <SearchResults state={state} onOpen={(result) => navigate(routeFor(result), { ...result, query: query.trim() })} onRetry={() => search(query)} />
           : view === 'downloads'
             ? downloads
             : view === 'flagged' ? flagged
