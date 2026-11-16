@@ -2,7 +2,7 @@ import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { Clapperboard, LayoutGrid } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs-trigger';
 
-const largeUrl = 'https://www.figma.com/design/dFQMjELOx6ObLS0qOG3NCF/media-manager-2----screens?node-id=35-3978';
+const largeUrl = 'https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=157-934';
 
 const meta = {
   title: 'Actions & inputs/TabsTrigger',
