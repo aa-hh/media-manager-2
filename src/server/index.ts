@@ -16,6 +16,7 @@ import { createFlagged } from './flagged.js';
 import { createGrabs, handGrab } from './grabs.js';
 import { createHealth } from './health.js';
 import { createHistory } from './history.js';
+import { createExecutableSweep } from './executables.js';
 import { createImportFix } from './imports.js';
 import { createManualImport } from './manualImport.js';
 import { createJobRunner } from './jobs.js';
@@ -54,7 +55,7 @@ import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller, LIVE_POLL_INTERVAL_MS } from './torrents.js';
 import { trackerRulesFromEnvironment } from './trackerRules.js';
 import { createTrackerWatch } from './trackers.js';
-import { createSearchScheduler } from './searches.js';
+import { createSearchScheduler, recordOwnerSearch } from './searches.js';
 import { createStallFix } from './stalls.js';
 import { createTorrentFiles } from './torrentFiles.js';
 import { createTitleDelete } from './titleDelete.js';
@@ -161,6 +162,8 @@ if (database !== undefined) {
     database, rtorrent, arr, problems, trackers, isManualDownload: protection.isProtected, labels, removeTorrent: torrentFiles.removeTorrent,
   });
   runner.register('stall-fix', 60_000, stalls.check);
+  const executables = createExecutableSweep({ database, problems, removeTorrent: torrentFiles.removeTorrent, isManualDownload: protection.isProtected });
+  runner.register('executable-sweep', 60_000, executables.check);
   const relink = createRelinkFix({ database, rtorrent, arr, problems, isManualDownload: protection.isProtected });
   runner.register('relink-fix', 60_000, relink.check);
   const versionChecks = createSecondVersionChecks({ database, arr, problems });
@@ -201,7 +204,7 @@ if (database !== undefined) {
     forget: search.forget,
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
-  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips, watchStatus);
+  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips, watchStatus, (subjects) => recordOwnerSearch(openedDatabase, subjects, Date.now()));
   const add = createAdd(arr, titleStore, openedDatabase);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);

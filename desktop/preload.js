@@ -35,6 +35,7 @@ if (window.location.protocol === 'file:') {
     setMuted: call('player:setMuted'),
     setSubtitleScale: call('player:setSubtitleScale'),
     setTheme: call('app:setTheme'),
+    deviceName: call('app:deviceName'),
     // Events: position, duration, paused, buffering, loadedAhead, endOfFile, error, tracks, started, volume, muted.
     on: (name, listener) => {
       if (!listeners.has(name)) listeners.set(name, new Set());

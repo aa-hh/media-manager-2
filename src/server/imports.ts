@@ -6,6 +6,7 @@ import { type ArrServices, type QueueItem, valueOrThrow } from './services/arr.j
 import { findGrab, type Grab, listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Problem, Subject } from './problems.js';
 import { listOpenProblems, RELEASE_LIMIT } from './problems.js';
+import { deferSearches, REPEAT_SEARCH_MS } from './searches.js';
 
 type Problems = ReturnType<typeof createProblems>;
 
@@ -26,6 +27,9 @@ const patterns: [ImportCategory, RegExp][] = [
   ['file_move', /failed to (move|import|copy|hardlink)|couldn't (move|import|copy)|unable to (move|copy)|file move/i],
   ['matching', /mismatch|matched to (series|movie) by id|was unexpected|not found in the grab|unable to (parse|identify)|partial season|contains all episodes|invalid season|unknown (series|movie|episode)|manual import required|automatic import is not possible/i],
 ];
+
+// Sonarr's and Radarr's wording for a program file in a download: the mark of a fake release.
+const PROGRAM_FILE = /dangerous|executable/i;
 
 export const TEMPORARY_RETRY_MS = 15 * 60_000;
 export const TEMPORARY_LIMIT_MS = 24 * 60 * 60_000;
@@ -59,7 +63,7 @@ export const recordHandImport = (database: DatabaseSync, service: Service, downl
   saveHandling(database, { service, downloadId, category: 'manual', firstSeenAt: at, attempts: 1, lastAttemptAt: at, done: false });
 };
 
-const subjectsOf = (grab: Grab): Subject[] => (grab.movieId !== null
+export const subjectsOf = (grab: Grab): Subject[] => (grab.movieId !== null
   ? [{ type: 'movie', service: grab.service, id: String(grab.movieId) }]
   : grab.episodeIds.map((id) => ({ type: 'episode' as const, service: grab.service, id: String(id) })));
 
@@ -169,12 +173,17 @@ export const createImportFix = (options: {
         return;
       }
       case 'bad_release': {
-        const counts = grab === undefined ? [0] : subjectsOf(grab).map((item) => problems.recordReleaseAttempt(item, downloadId));
+        const subjects = grab === undefined ? [] : subjectsOf(grab);
+        const counts = grab === undefined ? [0] : subjects.map((item) => problems.recordReleaseAttempt(item, downloadId));
         const giveUp = Math.max(...counts) >= RELEASE_LIMIT;
-        // Not skipping the redownload lets Sonarr or Radarr search again for this item straight away.
-        await removeFromQueue(giveUp ? 'block' : 'block_and_search');
+        const fake = messages.some((message) => PROGRAM_FILE.test(message));
+        // Not skipping the redownload lets Sonarr or Radarr search again for this item straight away; never after a fake (see deferSearches).
+        await removeFromQueue(giveUp || fake ? 'block' : 'block_and_search');
         if (giveUp) finish('needs_you', `Blocked the release; gave up after ${RELEASE_LIMIT} different releases.`);
-        else finish('resolved', 'Blocked the release and searched again.');
+        else if (fake) {
+          deferSearches(database, subjects, at);
+          finish('resolved', `Blocked the release: it held a program file, not a video. Searching again in ${REPEAT_SEARCH_MS / 3_600_000} hours, so a real release has time to turn up.`);
+        } else finish('resolved', 'Blocked the release and searched again.');
         return;
       }
       case 'temporary': {

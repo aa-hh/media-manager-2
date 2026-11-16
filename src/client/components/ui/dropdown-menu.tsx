@@ -105,8 +105,35 @@ function DropdownMenuCheckboxItem({ icon, kbd, className, children, ...props }: 
   );
 }
 
-/** One choice of several, such as a version, an audio track or a quality step; holds DropdownMenuRadioItem rows. */
-const DropdownMenuRadioGroup = Menu.RadioGroup;
+// A long list stops at 400 px (twelve rows and half of the next) and scrolls inside the menu; the rows around it stay put.
+// The thumb follows Plex Web's menus: 8 px wide in a 14 px gutter, fully round.
+const scrollList = cn(
+  'relative max-h-100 min-h-0 overflow-y-auto',
+  '[&::-webkit-scrollbar]:w-3.5 [&::-webkit-scrollbar-track]:bg-transparent',
+  '[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-[3px] [&::-webkit-scrollbar-thumb]:border-solid [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-input [&::-webkit-scrollbar-thumb]:bg-clip-padding',
+);
+
+// The list mounts each time its menu opens; this centres the ticked row so the current choice is in view.
+function showChecked(list: HTMLDivElement | null) {
+  const row = list?.querySelector<HTMLElement>('[aria-checked="true"]');
+  if (list && row) list.scrollTop = row.offsetTop - (list.clientHeight - row.offsetHeight) / 2;
+}
+
+/**
+ * One choice of several, such as a version, an audio track or a quality step; holds DropdownMenuRadioItem rows.
+ * `scroll` caps a list that can run long, such as a file's subtitle tracks; give the menu `max-h-(--available-height)` and its
+ * DropdownMenuGroup `flex min-h-0 flex-col` so a short window shrinks the list rather than the rows around it.
+ */
+function DropdownMenuRadioGroup({ scroll = false, className, ...props }: ComponentProps<typeof Menu.RadioGroup> & { scroll?: boolean }) {
+  const onDark = use(OnDarkContext);
+  return (
+    <Menu.RadioGroup
+      ref={scroll ? showChecked : undefined}
+      className={cn(scroll && scrollList, scroll && onDark && '[&::-webkit-scrollbar-thumb]:bg-input-on-dark', className)}
+      {...props}
+    />
+  );
+}
 
 /** A row in a DropdownMenuRadioGroup; the chosen one carries the check at the right. */
 function DropdownMenuRadioItem({ icon, kbd, className, children, ...props }: ComponentProps<typeof Menu.RadioItem> & ItemParts) {

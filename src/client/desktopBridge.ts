@@ -94,6 +94,8 @@ export type DesktopBridge = {
   setSubtitleScale?(scale: number): Promise<void>;
   /** Settings' Appearance choice; the desktop app applies it to its window now and keeps it for the next launch. Missing from builds older than the page. */
   setTheme?(choice: 'light' | 'dark' | 'system'): Promise<void>;
+  /** The name Settings lists this Mac under. Missing from builds older than the page. */
+  deviceName?(): Promise<string>;
   stop(): Promise<void>;
   /** Subscribes to one event; the returned function unsubscribes. */
   on<E extends keyof DesktopEvents>(event: E, listener: (value: DesktopEvents[E]) => void): () => void;
@@ -109,3 +111,9 @@ declare global {
 export const desktopBridge = (): DesktopBridge | undefined => (typeof window === 'undefined' ? undefined : window.mediaManagerDesktop);
 
 export const inDesktopApp = () => desktopBridge() !== undefined;
+
+/** POST /auth/start's body. The desktop app adds its name, which gets it a TV's 90-day session that Settings lists; a browser sends none. */
+export const signInStartBody = async (): Promise<{ deviceName?: string }> => {
+  const deviceName = await desktopBridge()?.deviceName?.().catch(() => undefined);
+  return deviceName === undefined ? {} : { deviceName };
+};

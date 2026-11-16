@@ -5,6 +5,7 @@ import type { RemovalAdvice } from './advice.js';
 import type { Blocklist } from './blocklist.js';
 import type { Protection } from './protection.js';
 import type { SecondVersionDelete } from './secondVersionDelete.js';
+import { expectGaps } from './searches.js';
 import { listSecondVersionRows, type SecondVersionRow } from './secondVersionRows.js';
 import type { ArrServices, FileDetail, HistoryRecord, QueueItem, Result } from './services/arr.js';
 import type { createTorrentFiles, LibraryFileState, RemovalCheck } from './torrentFiles.js';
@@ -662,6 +663,10 @@ export const createTitleDelete = (options: {
           steps.push({ step: 'unmonitor', outcome: 'done', message: unmonitored.value });
           planned = unmonitored.intent;
         } else {
+          // Expected before anything is monitored, so a search check running at any point of this delete never holds them as a burst.
+          expectGaps(database, target.service === 'radarr'
+            ? [{ type: 'movie', service: 'radarr', id: String(target.movieId) }]
+            : deletedEpisodes(fileIds).map((episode) => ({ type: 'episode', service: 'sonarr', id: String(episode.id) })), now());
           const monitored = await monitorAgain(target, deletedEpisodes(fileIds), allEpisodes);
           if (monitored.kind !== 'ok') return stop('monitor', monitored.message);
           steps.push({ step: 'monitor', outcome: 'done', message: monitored.value });
@@ -724,7 +729,10 @@ export const createTitleDelete = (options: {
           steps.push({ step: 'search', outcome: 'skipped', message: 'Not searched: no episode file was deleted.' });
         } else {
           const words = target.service === 'radarr' ? 'the movie' : plural(held.length, 'episode');
-          const lifted = await liftProtection(target, held);
+          // Unmonitor Deleted Episodes and Unmonitor Deleted Movies, which the search scheduler keeps on, unmonitor what each deleted
+          // file held, undoing the monitor step; without monitoring again here, only this first search would ever look for it.
+          const remonitored = await monitorAgain(target, held, allEpisodes);
+          const lifted = remonitored.kind !== 'ok' ? remonitored : await liftProtection(target, held);
           if (choices.blocklistCurrent && lifted.kind === 'ok') steps.push(await blocklistGrabs(target, history, deletedFileIds, held));
           const searched = lifted.kind !== 'ok' ? lifted
             : target.service === 'radarr' ? await arr.radarr.searchAutomatically({ movieIds: [target.movieId] })

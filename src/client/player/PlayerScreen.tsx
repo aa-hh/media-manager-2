@@ -117,6 +117,9 @@ export type PlayerScreenProps = {
 const menu = { onDark: true, side: 'top', align: 'end', sideOffset: 8 } as const;
 const ORIGINAL = 'original';
 const OFF = 'off';
+// A file can carry dozens of tracks (Mobland has 42 subtitles): the list scrolls inside the menu and the rows under it stay in view.
+const trackMenu = 'w-80 max-h-(--available-height)';
+const trackGroup = 'flex min-h-0 flex-col';
 
 const centred = 'absolute inset-0 flex items-center justify-center';
 
@@ -154,10 +157,11 @@ export function PlayerScreen(props: PlayerScreenProps) {
 
   const menus = {
     audio: (
-      <DropdownMenuContent {...menu} className="w-80">
-        <DropdownMenuGroup>
+      <DropdownMenuContent {...menu} className={trackMenu}>
+        <DropdownMenuGroup className={trackGroup}>
           <DropdownMenuGroupLabel>Audio</DropdownMenuGroupLabel>
           <DropdownMenuRadioGroup
+            scroll
             value={selectedAudio?.index ?? null}
             onValueChange={(value) => {
               const track = audio.tracks.find((candidate) => candidate.index === value);
@@ -176,10 +180,11 @@ export function PlayerScreen(props: PlayerScreenProps) {
       </DropdownMenuContent>
     ),
     subtitles: (
-      <DropdownMenuContent {...menu} className="w-80">
-        <DropdownMenuGroup>
+      <DropdownMenuContent {...menu} className={trackMenu}>
+        <DropdownMenuGroup className={trackGroup}>
           <DropdownMenuGroupLabel>Subtitles</DropdownMenuGroupLabel>
           <DropdownMenuRadioGroup
+            scroll
             value={selectedSubtitle === undefined ? OFF : String(selectedSubtitle.id)}
             onValueChange={(value) => props.onSubtitle(subtitles.tracks.find((track) => String(track.id) === value) ?? null)}
           >
@@ -273,6 +278,9 @@ export function PlayerScreen(props: PlayerScreenProps) {
 
   return (
     <div ref={rootRef} data-player-root className={cn('fixed inset-0 z-40', controls === 'none' && 'cursor-none', props.className)}>
+      {/* The window's drag area only. Electron applies drag and no-drag areas in page order, later winning, so it comes
+          before the stage: the Back button's no-drag (player.css) then wins over it. */}
+      <div aria-hidden="true" className="player-drag pointer-events-none absolute inset-x-0 top-0 h-18" />
       <PlayerStage
         className={seeThrough ? 'bg-transparent' : undefined}
         dim={screen === 'opening' ? 0.55 : screen === 'buffering' ? 0.35 : screen === 'error' || screen === 'unreachable' ? 0.7 : undefined}
@@ -377,8 +385,6 @@ export function PlayerScreen(props: PlayerScreenProps) {
           </div>
         )}
       </PlayerStage>
-      {/* Over the stage for the window's drag area only; clicks fall through to the buttons under it (player.css). */}
-      <div aria-hidden="true" className="player-drag pointer-events-none absolute inset-x-0 top-0 h-18" />
     </div>
   );
 }

@@ -143,7 +143,35 @@ const mpvStartOptions = (env, userData) => ({
   'gpu-shader-cache-dir': path.join(userData, 'mpv-shader-cache'),
 });
 
+/**
+ * mpv's track list, from its `track-list` property read as a string (JSON, as mpv 0.41 gives it), with only the fields the app
+ * uses; a field mpv leaves out is null. Read in one request: reading it field by field sent mpv 9 requests per track,
+ * 414 for a title with 46 tracks, and mpv refuses requests past about 1000 waiting ("event queue full"), so a subtitle
+ * pick made while another read was waiting failed.
+ */
+const TRACK_FIELDS = ['id', 'type', 'ff-index', 'lang', 'title', 'codec', 'external', 'selected', 'default'];
+const tracksFrom = (json) => {
+  let list;
+  try {
+    list = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  return list.map((track) => Object.fromEntries(TRACK_FIELDS.map((field) => [field, track?.[field] ?? null])));
+};
+
+/**
+ * The subtitle mpv starts a file with, from the start reply's tracks: an external one by its stream key, an embedded one
+ * by its ffIndex. None chosen in Plex gives {}, which turns mpv's subtitles off: left alone, mpv picks a default track
+ * itself (or the closed-caption track sub-create-cc-track adds) while the menu says Off.
+ */
+const startSubtitle = (subtitles) => {
+  const subtitle = subtitles.find((track) => track.selected);
+  return subtitle ? { url: subtitle.external ? subtitle.key : null, ffIndex: subtitle.ffIndex } : {};
+};
+
 module.exports = {
   fileEvent, playsOnOpen, showsPosition, sendsPosition, clickTime, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource,
-  mpvStartOptions,
+  mpvStartOptions, tracksFrom, startSubtitle,
 };

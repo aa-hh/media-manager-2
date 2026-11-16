@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type Context, Hono } from 'hono';
 import type { Subject } from './problems.js';
+import { recordOwnerSearch } from './searches.js';
 import type { ArrServices, Result } from './services/arr.js';
 import type { Service } from './torrentGrabs.js';
 
@@ -103,6 +104,7 @@ export const createBlocklist = (options: {
     const searched = service === 'sonarr'
       ? await arr.sonarr.searchAutomatically({ episodeIds: body.episodeIds })
       : await arr.radarr.searchAutomatically({ movieIds: body.movieId === null ? [] : [body.movieId] });
+    if (searched.kind === 'ok') recordOwnerSearch(database, subjects, now());
     return { kind: 'ok', searched: searched.kind === 'ok' ? 'media-manager-2' : 'search_failed' };
   };
 

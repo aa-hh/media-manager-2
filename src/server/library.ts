@@ -13,6 +13,7 @@ import {
   type Result as ArrResult,
   type Series,
 } from './services/arr.js';
+import type { Subject } from './problems.js';
 import { lookupTitle, thumbnail } from './search.js';
 import { notConfigured } from './services/arr/result.js';
 import type { SecondVersionRow, TrackedHitAndRun } from './secondVersionRows.js';
@@ -522,6 +523,8 @@ export const createLibrary = (
   trackedHitAndRun: TrackedRows = () => [],
   chipsOf?: (type: 'tv' | 'movie', tmdbId: number) => Promise<TmdbChips>,
   watchStatus?: WatchStatus,
+  // Told of each episode or movie search the owner starts, so the scheduler retries it even when it was imported before.
+  onOwnerSearch: (subjects: Subject[]) => void = () => {},
 ) => {
   const chips = (type: 'tv' | 'movie', record: Series | Movie): Promise<TmdbChips> => (
     chipsOf === undefined || record.tmdbId === null ? Promise.resolve(null) : chipsOf(type, record.tmdbId)
@@ -709,12 +712,24 @@ export const createLibrary = (
     },
 
     async search(request: Target): Promise<Result<void>> {
-      if (request.kind === 'series') return fromArr(await services.sonarr.searchAutomatically({ seriesId: request.seriesId }));
-      if (request.kind === 'season') {
-        return fromArr(await services.sonarr.searchAutomatically({ seriesId: request.seriesId, seasonNumber: request.seasonNumber }));
+      if (request.kind === 'series' || request.kind === 'season') {
+        const season = request.kind === 'season' ? { seasonNumber: request.seasonNumber } : {};
+        const result = await services.sonarr.searchAutomatically({ seriesId: request.seriesId, ...season });
+        // Sonarr searches the monitored episodes without a file, so those are what the owner asked for; an unreadable list records none.
+        const listed = result.kind === 'ok' ? await services.sonarr.episodes(request.seriesId, season) : null;
+        if (listed?.kind === 'ok') {
+          onOwnerSearch(listed.value.filter((episode) => episode.monitored && !episode.hasFile).map((episode) => ({ type: 'episode', service: 'sonarr', id: String(episode.id) })));
+        }
+        return fromArr(result);
       }
-      if (request.kind === 'episodes') return fromArr(await services.sonarr.searchAutomatically({ episodeIds: request.episodeIds }));
-      return fromArr(await services.radarr.searchAutomatically({ movieIds: [request.movieId] }));
+      const subjects: Subject[] = request.kind === 'episodes'
+        ? request.episodeIds.map((id) => ({ type: 'episode', service: 'sonarr', id: String(id) }))
+        : [{ type: 'movie', service: 'radarr', id: String(request.movieId) }];
+      const result = request.kind === 'episodes'
+        ? await services.sonarr.searchAutomatically({ episodeIds: request.episodeIds })
+        : await services.radarr.searchAutomatically({ movieIds: [request.movieId] });
+      if (result.kind === 'ok') onOwnerSearch(subjects);
+      return fromArr(result);
     },
 
     async refresh(request: RefreshRequest): Promise<Result<void>> {

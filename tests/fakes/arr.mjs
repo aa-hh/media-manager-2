@@ -65,7 +65,8 @@ export const episodeRecord = (overrides = {}) => {
   return { id, seriesId: null, seasonNumber: 1, episodeNumber: id, title: `Episode ${id}`, monitored: true, hasFile: false, ...overrides };
 };
 
-const eventTypes = { 1: 'grabbed', 3: 'downloadFolderImported', 4: 'downloadFailed' };
+// 5 and 6 are Sonarr's episodeFileDeleted and Radarr's movieFileDeleted; neither fake records the other service's 5 or 6.
+const eventTypes = { 1: 'grabbed', 3: 'downloadFolderImported', 4: 'downloadFailed', 5: 'episodeFileDeleted', 6: 'movieFileDeleted' };
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -90,6 +91,8 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
     episodeFiles: [],
     lookup: [],
     copyUsingHardlinks: true,
+    // Sonarr's Unmonitor Deleted Episodes and Radarr's Unmonitor Deleted Movies; the fake answers under both names.
+    autoUnmonitor: true,
     down: false,
   };
   const routes = [];
@@ -247,7 +250,19 @@ export const createArrFake = ({ apiKey = 'test-key', pageSize = 10 } = {}) => {
       return { status: 200, body: state.manualImport[(params.get('downloadId') ?? '').toUpperCase()] ?? [] };
     }
     if (method === 'GET' && path === '/api/v3/config/mediamanagement') {
-      return { status: 200, body: { copyUsingHardlinks: state.copyUsingHardlinks } };
+      return { status: 200, body: {
+        id: 1,
+        copyUsingHardlinks: state.copyUsingHardlinks,
+        autoUnmonitorPreviouslyDownloadedEpisodes: state.autoUnmonitor,
+        autoUnmonitorPreviouslyDownloadedMovies: state.autoUnmonitor,
+      } };
+    }
+    if (method === 'PUT' && path === '/api/v3/config/mediamanagement/1') {
+      state.copyUsingHardlinks = body.copyUsingHardlinks;
+      // Whichever name changed wins, since a real service sends back only its own name.
+      const flipped = [body.autoUnmonitorPreviouslyDownloadedEpisodes, body.autoUnmonitorPreviouslyDownloadedMovies].includes(!state.autoUnmonitor);
+      if (flipped) state.autoUnmonitor = !state.autoUnmonitor;
+      return { status: 202, body };
     }
     if (method === 'GET' && path === '/api/v3/blocklist') {
       const seriesIds = idList(params, 'seriesIds');

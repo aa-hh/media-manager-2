@@ -407,8 +407,22 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
     On(video_, NSWindowWillCloseNotification, ^{ self->Detach(); });
     On(win_, NSWindowDidEndLiveResizeNotification, ^{ self->Match(); });
     On(win_, NSWindowDidResizeNotification, ^{ if (!self->win_.inLiveResize) self->Match(); });
-    [win_ makeKeyAndOrderFront:nil];  // mpv makes its own window key when it opens it
+    On(video_, NSWindowDidBecomeKeyNotification, ^{ self->Focus(); });
+    On(video_, NSWindowDidBecomeMainNotification, ^{ self->Focus(); });
+    [win_ orderFront:nil];
+    Focus();
     Emit("attached", "mpv " + Describe(video_) + " | electron " + Describe(win_));
+  }
+
+  // mpv's window only shows the picture; the Electron window above it must stay key and main. While mpv's is, the page
+  // gets no key presses (they go to mpv, whose libmpv defaults ignore them: input-vo-keyboard=no), no mouse moves
+  // (Chromium drops them in a window that is neither key nor main), and the first click only brings the Electron window
+  // forward. mpv makes its window main and key when it opens it (common.swift initWindow), and macOS can hand key back
+  // to it later, so this runs on attach and each time mpv's window takes either.
+  void Focus() {
+    if (!win_ || !win_.visible) return;
+    [win_ makeMainWindow];
+    [win_ makeKeyWindow];
   }
 
   void Detach() {
@@ -421,19 +435,34 @@ class MpvView : public Napi::ObjectWrap<MpvView> {
   }
 
   // Square while mpv's fullscreen fills the screen, macOS's corners otherwise.
+  // No shadow while full: macOS draws a window's shadow with a light outline, which showed round the screen's edges.
   void Corners() {
-    CGFloat radius = video_ && NSEqualRects(video_.frame, video_.screen.frame) ? 0 : radius_;
-    Round(win_, radius);
-    if (video_) Round(video_, radius);
+    bool full = video_ && NSEqualRects(video_.frame, video_.screen.frame);
+    Round(win_, full ? 0 : radius_);
+    if (video_) {
+      Round(video_, full ? 0 : radius_);
+      video_.hasShadow = !full;
+    }
   }
 
   // mpv resized its window (fullscreen on or off): the Electron window takes the
   // same frame. Detached while it moves, because moving a parent drags its child along.
   // Nothing happens when the frames already match (Match's own resizes end here too).
+  // On a screen with a camera notch, macOS keeps titled windows below the menu bar strip even with the menu bar hidden,
+  // so the Electron window and then (through Match) mpv's sat below it. mpv drops its title for fullscreen
+  // (window.swift setToFullScreen); this window does the same while it fills the screen.
+  // Changing a window's style mask between titled and untitled makes the window itself its first responder, without
+  // telling the view that had it (mpv works round the same in window.swift's styleMask). That view is the page's, so
+  // after a fullscreen change the page lost every key press until a click; it gets first responder back here.
   void Follow() {
     if (!video_ || !win_ || NSEqualRects(win_.frame, video_.frame)) return;
+    bool full = NSEqualRects(video_.frame, video_.screen.frame);
+    NSResponder *focused = win_.firstResponder;
     [win_ removeChildWindow:video_];
+    if (full) win_.styleMask &= ~NSWindowStyleMaskTitled;
     [win_ setFrame:video_.frame display:YES];
+    if (!full) win_.styleMask |= NSWindowStyleMaskTitled;
+    [win_ makeFirstResponder:focused];
     [win_ addChildWindow:video_ ordered:NSWindowBelow];
     Corners();
   }

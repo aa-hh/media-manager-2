@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { type ArrServices, valueOrThrow } from './services/arr.js';
+import type { HistoryRecord } from './services/arr/history.js';
 import { listQueue, type Service } from './torrentGrabs.js';
 import type { createProblems, Subject } from './problems.js';
 import { getPreference, setPreference } from './preferences.js';
@@ -8,7 +9,20 @@ type Problems = ReturnType<typeof createProblems>;
 
 export const NEVER_SEARCHED_GRACE_MS = 15 * 60_000;
 export const REPEAT_SEARCH_MS = 6 * 60 * 60_000;
+// More gaps than this opening at once in titles already in the library looks like lost or deleted files, not new releases.
+export const BURST_LIMIT = 10;
 const PAGE_SIZE = 500;
+const MONITOR_BATCH = 200;
+
+const labels = { sonarr: 'Sonarr', radarr: 'Radarr' } as const;
+const unmonitorDeleted = {
+  sonarr: { field: 'autoUnmonitorPreviouslyDownloadedEpisodes', name: 'Unmonitor Deleted Episodes', event: 'episodeFileDeleted' },
+  radarr: { field: 'autoUnmonitorPreviouslyDownloadedMovies', name: 'Unmonitor Deleted Movies', event: 'movieFileDeleted' },
+} as const;
+// Upgrade, ManualOverride and NoLinkedEpisodes deletes are Sonarr's or Radarr's own housekeeping, not the owner removing a file.
+const OWNER_DELETES = new Set(['Manual', 'MissingFromDisk']);
+// A file imported from a download, or found in the title's folder when it was added.
+const IMPORTS = new Set(['downloadFolderImported', 'seriesFolderImported', 'movieFolderImported']);
 
 type Candidate = {
   subject: Subject;
@@ -29,11 +43,41 @@ const time = (value: unknown) => {
 };
 
 // When a search is due, by AA-13: never before availability; at availability (but 15 minutes after adding, so search-on-add runs first);
-// then every six hours while nothing is found.
+// then every six hours while nothing is found. Something imported before is never due unless the owner asked for it since.
 export const searchDueAt = (candidate: Pick<Candidate, 'availableAt' | 'addedAt' | 'lastSearchAt'>) => {
   const { availableAt, addedAt, lastSearchAt } = candidate;
   if (lastSearchAt === null || lastSearchAt < availableAt) return Math.max(availableAt, addedAt + NEVER_SEARCHED_GRACE_MS);
   return lastSearchAt + REPEAT_SEARCH_MS;
+};
+
+// razor: a search-again delete must re-monitor its gaps within this window (it waits up to 2 minutes for files); a longer run would need a stamp after its last monitor request.
+const EXPECTED_GAP_MS = 15 * 60_000;
+
+// A fake release's subjects count as searched now, so the next search waits the full repeat: public trackers post several fakes
+// of a new episode within minutes, and a search straight after one finds the next while real copies reach private trackers later.
+export const deferSearches = (database: DatabaseSync, subjects: Subject[], at: number) => {
+  const upsert = database.prepare('INSERT INTO search_log (subject, searched_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET searched_at = excluded.searched_at');
+  for (const subject of subjects) upsert.run(`${subject.service}:${subject.type}:${subject.id}`, at);
+};
+
+// Gaps the owner opened on purpose (a search-again delete) are recorded as already seen, so no check holds them as a burst. They are
+// stamped ahead, so a check that starts before the delete re-monitors them, and so reads Sonarr or Radarr without them, keeps them.
+export const expectGaps = (database: DatabaseSync, subjects: Subject[], at: number) => {
+  const insert = database.prepare('INSERT INTO missing_seen (subject, seen_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET seen_at = max(seen_at, excluded.seen_at)');
+  for (const subject of subjects) insert.run(`${subject.service}:${subject.type}:${subject.id}`, at + EXPECTED_GAP_MS);
+  recordOwnerSearch(database, subjects, at);
+};
+
+// A search the owner asked for: logged as searched, so the scheduler keeps looking every six hours even for something imported
+// before, and taken out of the backlog.
+export const recordOwnerSearch = (database: DatabaseSync, subjects: Subject[], at: number) => {
+  const log = database.prepare('INSERT INTO search_log (subject, searched_at) VALUES (?, ?) ON CONFLICT (subject) DO UPDATE SET searched_at = excluded.searched_at');
+  const unhold = database.prepare('DELETE FROM search_backlog WHERE subject = ?');
+  for (const subject of subjects) {
+    const key = `${subject.service}:${subject.type}:${subject.id}`;
+    log.run(key, at);
+    unhold.run(key);
+  }
 };
 
 export const createSearchScheduler = (options: {
@@ -85,10 +129,13 @@ export const createSearchScheduler = (options: {
     }
   };
 
-  const missingMovies = async (at: number): Promise<Candidate[]> => {
+  // `missing` collects every monitored movie without a file, released or not, for the burst check.
+  const missingMovies = async (at: number, missing: string[] = []): Promise<Candidate[]> => {
     return valueOrThrow(await arr.radarr.listMovies()).flatMap((movie) => {
-      if (movie.id === null || !movie.monitored || movie.hasFile || !movie.isAvailable) return [];
+      if (movie.id === null || !movie.monitored || movie.hasFile) return [];
       const subject: Subject = { type: 'movie', service: 'radarr', id: String(movie.id) };
+      missing.push(key(subject));
+      if (!movie.isAvailable) return [];
       return [{
         subject,
         availableAt: availableSince(subject, at),
@@ -99,6 +146,81 @@ export const createSearchScheduler = (options: {
         seasonNumber: null,
       }];
     });
+  };
+
+  // A file the owner deleted stays deleted, wherever it was deleted. With Unmonitor Deleted on, Sonarr and Radarr unmonitor what a
+  // deleted file held, so neither they nor this scheduler search for it again. Found off, it is turned back on, and anything still
+  // monitored whose file was deleted meanwhile is unmonitored; the same sweep runs once on the first check after this upgrade.
+  // An unreadable setting throws, so nothing is searched until the setting is known.
+  const keepDeletedUnmonitored = async (service: Service, at: number) => {
+    const { field, name, event } = unmonitorDeleted[service];
+    const label = labels[service];
+    const read = await arr[service].request('/api/v3/config/mediamanagement');
+    if (read.status < 200 || read.status > 299 || !isRecord(read.body) || typeof read.body.id !== 'number') {
+      throw new Error(`${label} media management settings could not be read.`);
+    }
+    const sweptKey = `searches.deletedSweptAt.${service}`;
+    const wasOn = read.body[field] === true;
+    if (wasOn && getPreference(database, sweptKey) !== undefined) return;
+    if (!wasOn) {
+      const written = await arr[service].request(`/api/v3/config/mediamanagement/${read.body.id}`, { method: 'PUT', body: { ...read.body, [field]: true } });
+      if (written.status < 200 || written.status > 299) throw new Error(`${label} refused turning on ${name}.`);
+    }
+    const deletions = valueOrThrow(service === 'sonarr'
+      ? await arr.sonarr.history({ eventType: event })
+      : await arr.radarr.history({ eventType: event })) as HistoryRecord[];
+    const deleted = new Set(deletions.filter((record) => OWNER_DELETES.has(record.data.reason ?? ''))
+      .map((record) => (service === 'sonarr' ? record.episodeId : record.movieId)).filter((id): id is number => id !== null));
+    const queued = inQueue(service);
+    // Every monitored item without a file, released or not: Radarr's list is read directly, since missingMovies records availability.
+    const missing = service === 'sonarr'
+      ? (await missingEpisodes()).map((candidate) => ({ id: Number(candidate.subject.id), title: candidate.title }))
+      : valueOrThrow(await arr.radarr.listMovies()).flatMap((movie) => (movie.id !== null && movie.monitored && !movie.hasFile ? [{ id: movie.id, title: movie.title }] : []));
+    const gone = missing.filter((item) => deleted.has(item.id) && !queued.has(String(item.id)));
+    const ids = gone.map((item) => item.id);
+    if (service === 'sonarr') {
+      for (let start = 0; start < ids.length; start += MONITOR_BATCH) valueOrThrow(await arr.sonarr.monitorEpisodes(ids.slice(start, start + MONITOR_BATCH), false));
+    } else {
+      for (const id of ids) valueOrThrow(await arr.radarr.monitorMovie(id, false));
+    }
+    setPreference(database, sweptKey, String(at));
+    if (wasOn && gone.length === 0) return;
+    const examples = gone.slice(0, 3).map((item) => item.title).join(', ');
+    const summary = `${wasOn ? '' : `${label}'s ${name} was off, so it was turned back on. `}`
+      + `Unmonitored ${gone.length} ${service === 'sonarr' ? 'episode' : 'movie'}${gone.length === 1 ? '' : 's'} whose files were deleted, so they are not downloaded again`
+      + `${examples === '' ? '' : `: ${examples}${gone.length > 3 ? ' and more' : ''}`}.`;
+    const problem = problems.open({ kind: 'deleted_kept_unmonitored', subject: { type: 'dependency', service, id: service }, summary });
+    problems.setState(problem.id, 'resolved', 'Done automatically.');
+  };
+
+  // A burst of gaps in titles already in the library (a lost disk, a mass delete with Unmonitor Deleted off, a re-monitored backlog)
+  // is never searched by itself: the gaps join the search backlog and the owner is told. New releases never count: an episode that
+  // aired since the last check (Sonarr lists only aired episodes as missing), a movie released since then (unreleased movies are
+  // in `missing` already), and titles added since then. `missing` is every gap seen this check, searchable or not.
+  const holdBurst = (service: Service, candidates: Candidate[], missing: string[], at: number) => {
+    const lastKey = `searches.lastCheckAt.${service}`;
+    const last = getPreference(database, lastKey);
+    const before = new Set(database.prepare('SELECT subject FROM missing_seen WHERE subject LIKE ?').all(`${service}:%`).map((row) => String(row.subject)));
+    // Rows stamped after this check began are expected gaps it may have read too early to see.
+    database.prepare('DELETE FROM missing_seen WHERE subject LIKE ? AND seen_at <= ?').run(`${service}:%`, at);
+    const insert = database.prepare('INSERT INTO missing_seen (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
+    for (const subject of missing) insert.run(subject, at);
+    setPreference(database, lastKey, String(at));
+    if (last === undefined) return;
+    const since = Number(last);
+    const inBacklog = database.prepare('SELECT 1 FROM search_backlog WHERE subject = ?');
+    const fresh = candidates.filter((candidate) => !before.has(key(candidate.subject)) && (service === 'radarr' || candidate.availableAt < since)
+      && candidate.addedAt < since && inBacklog.get(key(candidate.subject)) === undefined);
+    if (fresh.length <= BURST_LIMIT) return;
+    const backlog = database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
+    for (const candidate of fresh) backlog.run(key(candidate.subject), at);
+    const things = service === 'sonarr' ? 'episodes' : 'movies';
+    const examples = fresh.slice(0, 3).map((candidate) => candidate.title).join(', ');
+    const summary = `${fresh.length} ${things} already in ${labels[service]} went missing at once, so none of them is searched for: `
+      + `${examples}${fresh.length > 3 ? ' and more' : ''}. Files that were deleted or lost look like this. Search from a title's page for any you want back.`;
+    // A burst while the last one is still open adds to it, since open() returns the open problem unchanged.
+    const problem = problems.open({ kind: 'search_burst', subject: { type: 'dependency', service, id: service }, state: 'needs_you', summary });
+    if (problem.summary !== summary) problems.step(problem.id, 'result', summary);
   };
 
   const inQueue = (service: Service) => {
@@ -182,7 +304,10 @@ export const createSearchScheduler = (options: {
   };
 
   const checkService = async (service: Service, at: number) => {
-    const candidates = service === 'sonarr' ? await missingEpisodes() : await missingMovies(at);
+    await keepDeletedUnmonitored(service, at);
+    const missing: string[] = [];
+    const candidates = service === 'sonarr' ? await missingEpisodes() : await missingMovies(at, missing);
+    holdBurst(service, candidates, service === 'sonarr' ? candidates.map((candidate) => key(candidate.subject)) : missing, at);
     const queued = inQueue(service);
     const inBacklog = database.prepare('SELECT 1 FROM search_backlog WHERE subject = ?');
     const skippedSeasons = new Set<string>();
@@ -200,7 +325,35 @@ export const createSearchScheduler = (options: {
       waiting.push(candidate);
       return [];
     });
-    await search(service, due, waiting, skippedSeasons, at);
+    await search(service, await skipDownloadedBefore(service, due, skippedSeasons, at), waiting, skippedSeasons, at);
+  };
+
+  // Something Sonarr or Radarr imported since the owner last asked for it was a file they had, so its gap is one they deleted (often
+  // straight from the disk): it joins the backlog instead of being searched, and its season is never searched whole. Their own history
+  // is the record. The scheduler never searches such a gap itself, so a search_log row newer than the import is the owner asking again.
+  const skipDownloadedBefore = async (service: Service, due: Candidate[], skippedSeasons: Set<string>, at: number) => {
+    const fresh: Candidate[] = [];
+    const before: Candidate[] = [];
+    for (const candidate of due) {
+      const id = Number(candidate.subject.id);
+      const history = valueOrThrow(service === 'sonarr' ? await arr.sonarr.history({ episodeId: id }) : await arr.radarr.history({ movieId: id })) as HistoryRecord[];
+      const imports = history.filter((record) => IMPORTS.has(record.eventType)).map((record) => time(record.date) ?? Number.POSITIVE_INFINITY);
+      const asked = ourLastSearch(candidate.subject);
+      (imports.length > 0 && (asked === null || asked < Math.max(...imports)) ? before : fresh).push(candidate);
+    }
+    if (before.length === 0) return fresh;
+    const backlog = database.prepare('INSERT INTO search_backlog (subject, seen_at) VALUES (?, ?) ON CONFLICT DO NOTHING');
+    for (const candidate of before) {
+      backlog.run(key(candidate.subject), at);
+      if (candidate.seriesId !== null && candidate.seasonNumber !== null) skippedSeasons.add(`${candidate.seriesId}:${candidate.seasonNumber}`);
+    }
+    const things = service === 'sonarr' ? (before.length === 1 ? 'episode' : 'episodes') : (before.length === 1 ? 'movie' : 'movies');
+    const examples = before.slice(0, 3).map((candidate) => candidate.title).join(', ');
+    const summary = `${before.length} ${things} ${labels[service]} downloaded before ${before.length === 1 ? 'is' : 'are'} missing again, so `
+      + `${before.length === 1 ? 'it is' : 'they are'} not searched for: ${examples}${before.length > 3 ? ' and more' : ''}. Search from a title's page for any you want back.`;
+    const problem = problems.open({ kind: 'downloaded_before', subject: { type: 'dependency', service, id: service }, summary });
+    problems.setState(problem.id, 'resolved', 'Not searched.');
+    return fresh;
   };
 
   // razor: backlog rows never expire; DELETE FROM search_backlog by hand to let the scheduler chase the old gaps. A UI control is the upgrade path.

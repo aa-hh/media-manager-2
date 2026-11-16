@@ -22,7 +22,7 @@ function formatOffset(offset: number) {
 /**
  * The row inside the dark Subtitle timing menu (place it in a DropdownMenuContent): minus, the offset in 0.1 s steps with what
  * it means, plus. Minus and plus are menu rows, so the arrow keys reach them and a press keeps the menu open.
- * At 0.0 s the second line stays empty: the design draws only the "later than the voice" case.
+ * At 0.0 s there is no second line: the design draws only the "later than the voice" case.
  */
 function StepperSubtitleTiming({ offset, onEarlier, onLater, className }: StepperSubtitleTimingProps) {
   const tenths = Math.round(offset * 10);
@@ -32,10 +32,11 @@ function StepperSubtitleTiming({ offset, onEarlier, onLater, className }: Steppe
   return (
     <div className={cn('flex items-center justify-between px-2 py-1', className)}>
       <Menu.Item nativeButton closeOnClick={false} onClick={onEarlier} aria-describedby={valueId} render={<Button variant="on-dark" iconOnly icon={<Minus />} aria-label="Earlier" className={step} />} />
-      <div id={valueId} className="flex flex-col items-center gap-0.5">
+      {/* min-h holds both lines' height, so the menu keeps one size; at 0.0 s the second line is left out and the number
+          centres on the buttons. */}
+      <div id={valueId} className="flex min-h-11.5 flex-col items-center justify-center gap-0.5">
         <span className="font-data text-xl font-semibold text-bar-foreground">{formatOffset(offset)}</span>
-        {/* min-h keeps the row one height when the line is empty. */}
-        <span className="min-h-4 font-ui text-xs text-bar-muted-foreground">{meaning}</span>
+        {meaning !== '' && <span className="font-ui text-xs text-bar-muted-foreground">{meaning}</span>}
       </div>
       <Menu.Item nativeButton closeOnClick={false} onClick={onLater} aria-describedby={valueId} render={<Button variant="on-dark" iconOnly icon={<Plus />} aria-label="Later" className={step} />} />
     </div>

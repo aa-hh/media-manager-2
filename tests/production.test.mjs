@@ -76,6 +76,7 @@ const stallsModuleUrl = new URL('../dist/server/stalls.js', import.meta.url).hre
 const labelsModuleUrl = new URL('../dist/server/labels.js', import.meta.url).href;
 const relinkModuleUrl = new URL('../dist/server/relink.js', import.meta.url).href;
 const searchesModuleUrl = new URL('../dist/server/searches.js', import.meta.url).href;
+const executablesModuleUrl = new URL('../dist/server/executables.js', import.meta.url).href;
 const importsModuleUrl = new URL('../dist/server/imports.js', import.meta.url).href;
 const torrentsModuleUrl = new URL('../dist/server/torrents.js', import.meta.url).href;
 const torrentFilesModuleUrl = new URL('../dist/server/torrentFiles.js', import.meta.url).href;
@@ -1592,6 +1593,27 @@ test('a TV signs in with a Plex link code and keeps a named 90-day session', asy
     const tvExpired = await app.request('/api/session', { headers: { Cookie: tv.session } });
     assert.equal(tvExpired.status, 401);
     assert.deepEqual(await tvExpired.json(), { error: 'session_expired' });
+  });
+
+  // Dropping the device name from the Plex popup sign-in, giving it a browser's 24-hour cookie or no Settings row, refusing
+  // it the first owner, or accepting a bad name turns this red.
+  await t.test('the Mac app signs in through the Plex popup with a device name and keeps a 90-day session', async () => {
+    const { app, clock, database } = await makeApp({ ownerPlexId: undefined });
+    for (const body of [{ deviceName: '' }, { deviceName: 7 }, { deviceName: 'x'.repeat(65) }, { deviceName: 'Mac\u0007' }, { deviceName: 'Mac', extra: true }]) {
+      const refused = await startAuthentication(app, { body });
+      assert.equal(refused.response.status, 400, JSON.stringify(body));
+      assert.deepEqual(refused.json, { error: 'invalid_request' });
+    }
+    const started = await startAuthentication(app, { body: { deviceName: '  Mac app on studio  ' } });
+    assert.equal(started.response.status, 201);
+    const completed = await completeAuthentication(app, started.binding, plexStateFromUrl(started.json.url).state);
+    assert.equal(completed.status, 200);
+    assert.deepEqual(await completed.json(), { expiresAt: clock.value + 90 * DAY });
+    assert.match(sessionSetCookie(completed), /Max-Age=7776000/i);
+    assert.equal(database.prepare('SELECT user_id FROM owner').get().user_id, '42');
+    const session = cookieValue(completed, '__Host-mm_session');
+    const listed = await (await app.request('/api/devices', { headers: { Cookie: session } })).json();
+    assert.deepEqual(listed.devices.map(({ name, expiresAt }) => ({ name, expiresAt })), [{ name: 'Mac app on studio', expiresAt: clock.value + 90 * DAY }]);
   });
 
   // Listing a browser's session or an expired TV, leaving the TV's session working after sign-out, skipping the browser
@@ -8439,7 +8461,7 @@ test('missing movies and episodes are searched when they come out and every six 
   const { createEventHub } = await import(eventsModuleUrl);
   const { createProblems, subjectHistory } = await import(problemsModuleUrl);
   const { writeDependency } = await import(dependenciesModuleUrl);
-  const { createSearchScheduler, searchDueAt } = await import(searchesModuleUrl);
+  const { createSearchScheduler, searchDueAt, expectGaps, recordOwnerSearch } = await import(searchesModuleUrl);
   const { createProtection } = await import(protectionModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-searches-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -8509,6 +8531,185 @@ test('missing movies and episodes are searched when they come out and every six 
     clock.value = Date.parse('2026-10-09T08:30:00Z');
     await scheduler.check();
     assert.equal(commands().length, 2);
+    database.close();
+  });
+
+  // Sonarr's missing list worked out from the fake's episodes, so a monitor change shows up in the next check.
+  const liveMissing = (fake) => fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing' ? {
+    status: 200,
+    body: { totalRecords: 0, records: fake.sonarr.state.episodes.filter((episode) => episode.monitored && !episode.hasFile)
+      .map((episode) => ({ ...episode, series: { title: 'Show', added: '2025-01-01T00:00:00Z' } })) },
+  } : undefined));
+  const oldEpisode = (id) => episodeRecord({ id, seriesId: 1, airDateUtc: '2025-06-01T00:00:00Z' });
+
+  // Leaving Unmonitor Deleted off, searching for a file the owner deleted, unmonitoring one Sonarr deleted for an upgrade,
+  // or searching while the setting cannot be read turns this red.
+  await t.test('a deleted file is never searched again: Unmonitor Deleted is turned back on and what was deleted meanwhile is unmonitored', async () => {
+    const database = openDatabase(join(root, 'deleted', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const { fake, ...arr } = connectArr(database);
+    liveMissing(fake);
+    fake.sonarr.state.autoUnmonitor = false;
+    fake.radarr.state.autoUnmonitor = false;
+    fake.sonarr.state.episodes.push(oldEpisode(1), oldEpisode(2), oldEpisode(3));
+    fake.sonarr.state.history.push(
+      historyRecord({ eventType: 'episodeFileDeleted', seriesId: 1, episodeId: 1, data: { reason: 'Manual' } }),
+      historyRecord({ eventType: 'episodeFileDeleted', seriesId: 1, episodeId: 2, data: { reason: 'Upgrade' } }),
+    );
+    fake.radarr.state.movies.push(
+      movieRecord({ id: 7, title: 'Gone', isAvailable: true, added: '2025-01-01T00:00:00Z' }),
+      movieRecord({ id: 8, title: 'Wanted', isAvailable: true, added: '2025-01-01T00:00:00Z' }),
+    );
+    fake.radarr.state.history.push(historyRecord({ eventType: 'movieFileDeleted', movieId: 7, data: { reason: 'MissingFromDisk' } }));
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const problems = createProblems({ database, events, now });
+    const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: () => false });
+
+    await scheduler.check();
+    assert.deepEqual([fake.sonarr.state.autoUnmonitor, fake.radarr.state.autoUnmonitor], [true, true]);
+    assert.deepEqual(fake.sonarr.state.episodes.map((episode) => [episode.id, episode.monitored]), [[1, false], [2, true], [3, true]]);
+    assert.deepEqual(fake.radarr.state.movies.map((movie) => [movie.id, movie.monitored]), [[7, false], [8, true]]);
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: [2, 3] }]);
+    assert.deepEqual(fake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [8] }]);
+    const told = database.prepare("SELECT service, state, summary FROM problems WHERE kind = 'deleted_kept_unmonitored' ORDER BY service").all();
+    assert.deepEqual(told.map((row) => [row.service, row.state]), [['radarr', 'resolved'], ['sonarr', 'resolved']]);
+    assert.match(told[1].summary, /^Sonarr's Unmonitor Deleted Episodes was off, so it was turned back on\. Unmonitored 1 episode whose files were deleted/);
+
+    // Switched off again: back on at the next check. Unreadable: nothing is searched until it can be read.
+    fake.sonarr.state.autoUnmonitor = false;
+    clock.value += 2 * minute;
+    await scheduler.check();
+    assert.equal(fake.sonarr.state.autoUnmonitor, true);
+    fake.sonarr.state.episodes.push(oldEpisode(4));
+    fake.sonarr.routes.unshift((method, url) => (url.pathname === '/api/v3/config/mediamanagement' ? { status: 500, body: {} } : undefined));
+    clock.value += 2 * minute;
+    await scheduler.check();
+    assert.equal(fake.sonarr.state.commands.length, 1);
+    database.close();
+  });
+
+  // Searching a burst of more than ten gaps in titles already in the library (episodes or movies), counting new releases toward it,
+  // holding ten or fewer, or holding gaps without telling the owner turns this red.
+  await t.test('more than ten gaps opening at once in titles already in the library go to the backlog instead of being searched', async () => {
+    const database = openDatabase(join(root, 'burst', 'media-manager.sqlite'));
+    const events = createEventHub();
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const { fake, ...arr } = connectArr(database);
+    liveMissing(fake);
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const problems = createProblems({ database, events, now });
+    const scheduler = createSearchScheduler({ database, arr, problems, now, isManualDownload: () => false });
+    const searched = () => fake.sonarr.state.commands.flatMap((command) => command.episodeIds);
+    const lose = (ids) => fake.sonarr.state.episodes.push(...ids.map(oldEpisode));
+    const range = (from, count) => Array.from({ length: count }, (_, index) => from + index);
+
+    await scheduler.check();
+    lose(range(100, 11));
+    fake.sonarr.state.episodes.push(episodeRecord({ id: 200, seriesId: 1, airDateUtc: '2026-10-08T20:01:00Z' }));
+    clock.value += 2 * minute;
+    await scheduler.check();
+    assert.deepEqual(searched(), [200]);
+    const backlog = database.prepare("SELECT subject FROM search_backlog WHERE subject LIKE 'sonarr:episode:1__'").all();
+    assert.equal(backlog.length, 11);
+    const held = database.prepare("SELECT state, summary FROM problems WHERE kind = 'search_burst'").get();
+    assert.equal(held.state, 'needs_you');
+    assert.match(held.summary, /^11 episodes already in Sonarr went missing at once, so none of them is searched for: Show S01E100, /);
+
+    lose(range(300, 10));
+    clock.value += 2 * minute;
+    await scheduler.check();
+    assert.deepEqual(searched(), [200, ...range(300, 10)]);
+
+    // Radarr: eleven movies lose their files while one already listed comes out; only the new release is searched.
+    const old = { added: '2025-01-01T00:00:00Z', isAvailable: true, hasFile: true };
+    fake.radarr.state.movies.push(movieRecord({ id: 50, ...old, isAvailable: false, hasFile: false }), ...range(60, 11).map((id) => movieRecord({ id, ...old })));
+    clock.value += 2 * minute;
+    await scheduler.check();
+    for (const movie of fake.radarr.state.movies) Object.assign(movie, { isAvailable: true, hasFile: false });
+    clock.value += 2 * minute;
+    await scheduler.check();
+    assert.deepEqual(fake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [50] }]);
+    assert.equal(database.prepare("SELECT count(*) AS n FROM search_backlog WHERE subject LIKE 'radarr:movie:%'").get().n, 11);
+    database.close();
+  });
+
+  // A check deleting expected gaps it did not see missing (it read Sonarr before the delete re-monitored them), or expected gaps lasting
+  // no longer than the check that starts after them, turns this red.
+  await t.test('gaps a search-again delete expects survive a check that reads Sonarr before they go missing', async () => {
+    const database = openDatabase(join(root, 'expected-gaps', 'media-manager.sqlite'));
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const { fake, ...arr } = connectArr(database);
+    liveMissing(fake);
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const scheduler = createSearchScheduler({ database, arr, problems: createProblems({ database, events: createEventHub(), now }), now, isManualDownload: () => false });
+    const ids = Array.from({ length: 11 }, (_, index) => 100 + index);
+    fake.sonarr.state.episodes.push(...ids.map((id) => ({ ...oldEpisode(id), hasFile: true })));
+    // Imported before, as every file a search-again delete removes was: holding them as downloaded before also turns this red.
+    fake.sonarr.state.history.push(...ids.map((id) => historyRecord({ eventType: 'downloadFolderImported', seriesId: 1, episodeId: id })));
+
+    await scheduler.check();
+    expectGaps(database, ids.map((id) => ({ type: 'episode', service: 'sonarr', id: String(id) })), clock.value);
+    clock.value += minute;
+    await scheduler.check();
+    for (const episode of fake.sonarr.state.episodes) episode.hasFile = false;
+    clock.value += 2 * minute;
+    await scheduler.check();
+    // The search-again sent its own search, so the scheduler's first one comes six hours after it.
+    assert.deepEqual(fake.sonarr.state.commands, []);
+    clock.value += 6 * hour;
+    await scheduler.check();
+    assert.deepEqual(fake.sonarr.state.commands, [{ name: 'EpisodeSearch', episodeIds: ids }]);
+    assert.equal(database.prepare("SELECT count(*) AS n FROM problems WHERE kind = 'search_burst'").get().n, 0);
+    assert.equal(database.prepare('SELECT count(*) AS n FROM search_backlog').get().n, 0);
+    database.close();
+  });
+
+  // Searching an episode or movie Sonarr or Radarr imported before (from a download or from its folder), season-searching a season
+  // that holds one, reading its history again at every check, or still holding one the owner asked for again turns this red.
+  await t.test('an episode or movie imported before is never searched by the scheduler, only held in the backlog', async () => {
+    const database = openDatabase(join(root, 'imported-before', 'media-manager.sqlite'));
+    const clock = { value: Date.parse('2026-10-08T20:00:00Z') };
+    const now = () => clock.value;
+    const { fake, ...arr } = connectArr(database);
+    const aired = (id) => ({ id, seriesId: 1, seasonNumber: 1, episodeNumber: id, monitored: true, hasFile: false, airDateUtc: '2025-06-01T00:00:00Z', series: { title: 'Show', added: '2025-01-01T00:00:00Z', seriesType: 'standard' } });
+    const episodes = [aired(11), aired(12), aired(13), aired(14)];
+    fake.sonarr.routes.push((method, url) => (method === 'GET' && url.pathname === '/api/v3/wanted/missing'
+      ? { status: 200, body: { totalRecords: episodes.length, records: episodes } } : undefined));
+    fake.sonarr.state.episodes = episodes.map(({ id, airDateUtc }) => episodeRecord({ id, seriesId: 1, seasonNumber: 1, airDateUtc }));
+    fake.sonarr.state.history.push(
+      historyRecord({ eventType: 'downloadFolderImported', seriesId: 1, episodeId: 12 }),
+      historyRecord({ eventType: 'seriesFolderImported', seriesId: 1, episodeId: 14 }),
+      historyRecord({ eventType: 'grabbed', seriesId: 1, episodeId: 13 }),
+    );
+    const old = { added: '2025-01-01T00:00:00Z', isAvailable: true, hasFile: false };
+    fake.radarr.state.movies.push(movieRecord({ id: 7, title: 'Seen', ...old }), movieRecord({ id: 8, title: 'Wanted', ...old }));
+    fake.radarr.state.history.push(historyRecord({ eventType: 'downloadFolderImported', movieId: 7 }));
+    database.prepare("INSERT INTO preferences (key, value) VALUES ('searches.baselineAt', '0')").run();
+    const scheduler = createSearchScheduler({ database, arr, problems: createProblems({ database, events: createEventHub(), now }), now, isManualDownload: () => false });
+
+    await scheduler.check();
+    clock.value += 7 * hour;
+    await scheduler.check();
+    const episodeSearch = { name: 'EpisodeSearch', episodeIds: [11, 13] };
+    assert.deepEqual(fake.sonarr.state.commands, [episodeSearch, episodeSearch]);
+    assert.deepEqual(fake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [8] }, { name: 'MoviesSearch', movieIds: [8] }]);
+    assert.deepEqual(database.prepare('SELECT subject FROM search_backlog ORDER BY subject').all().map((row) => row.subject),
+      ['radarr:movie:7', 'sonarr:episode:12', 'sonarr:episode:14']);
+    assert.equal(fake.sonarr.requests.filter((request) => request.path === '/api/v3/history' && request.params.get('episodeId') === '12').length, 1);
+    const told = database.prepare("SELECT service, state, summary FROM problems WHERE kind = 'downloaded_before' ORDER BY service").all();
+    assert.deepEqual(told.map((row) => [row.service, row.state]), [['radarr', 'resolved'], ['sonarr', 'resolved']]);
+    assert.match(told[1].summary, /^2 episodes Sonarr downloaded before are missing again, so they are not searched for: Show S01E12, Show S01E14\./);
+
+    // The owner asks for episode 12 again: no longer held, and the scheduler retries it six hours after that request.
+    recordOwnerSearch(database, [{ type: 'episode', service: 'sonarr', id: '12' }], clock.value);
+    clock.value += 7 * hour;
+    await scheduler.check();
+    assert.deepEqual(fake.sonarr.state.commands.at(-1), { name: 'EpisodeSearch', episodeIds: [11, 12, 13] });
+    assert.equal(database.prepare("SELECT count(*) AS n FROM search_backlog WHERE subject = 'sonarr:episode:12'").get().n, 0);
     database.close();
   });
 
@@ -8801,6 +9002,74 @@ test('blocked imports are cleared, forced, retried or flagged by reason', async 
     assert.deepEqual(third.writes(), [{ queueId: 9, removeFromClient: false, blocklist: true, skipRedownload: true }]);
     assert.equal(listOpenProblems(third.database)[0].state, 'needs_you');
     third.database.close();
+  });
+
+  // Searching again straight after a release holding a program file, or not holding the next scheduled search, turns this red.
+  await t.test('a release holding a program file is blocked without a search, and the next scheduled search waits', async () => {
+    const run = await setup({ message: 'Caution: Found executable file with extension: .exe' });
+    await run.fix.check();
+    assert.deepEqual(run.writes(), [{ queueId: 9, removeFromClient: false, blocklist: true, skipRedownload: true }]);
+    assert.deepEqual(run.database.prepare('SELECT subject, searched_at FROM search_log ORDER BY subject').all().map((row) => [row.subject, row.searched_at]),
+      [['sonarr:episode:31', run.clock.value], ['sonarr:episode:32', run.clock.value]]);
+    assert.deepEqual(listOpenProblems(run.database), []);
+    run.database.close();
+  });
+
+  // Removing anything but an obvious fake (one with video, partly or fully downloaded, picked by hand, unowned, still queued or too new
+  // for the queue copy), leaving an obvious fake in rTorrent, or giving up on it after one refused removal turns this red.
+  await t.test('only an obvious fake is removed: a grabbed torrent with a program file, no video and nothing downloaded', async () => {
+    const { createExecutableSweep, QUEUE_SETTLE_MS } = await import(executablesModuleUrl);
+    const run = await setup({ message: 'Caution: Found executable file with extension: .exe' });
+    const settled = run.clock.value - QUEUE_SETTLE_MS;
+    const addTorrent = (torrent, paths, { complete = 0, done = 0, seenAt = settled, byHand = false, owned = true } = {}) => {
+      run.database.prepare(`INSERT INTO torrents (hash, name, size_bytes, completed_bytes, down_rate, up_rate, started, open, active, complete, message,
+        finished_at, ratio_thousandths, peers_connected, seeders_connected, first_seen_at, last_seen_at, seeding_seconds)
+        VALUES (?, ?, 1, ?, 0, 0, 1, 1, 1, ?, '', 0, 0, 0, 0, ?, ?, 0)`).run(torrent, `Torrent ${torrent.slice(0, 2)}`, done, complete, seenAt, seenAt);
+      paths.forEach((path, index) => run.database.prepare('INSERT INTO torrent_files (hash, "index", path, size_bytes) VALUES (?, ?, ?, 1)').run(torrent, index, path));
+      if (owned && torrent !== hash) run.grabs.recordGrab({ hash: torrent, service: 'sonarr', movieId: null, seriesId: 3, episodeIds: [41],
+        releaseTitle: 'Other', indexer: 'TheRARBG', grabbedAt: seenAt, publishedAt: null, byHand });
+    };
+    const fake = ['/files/Sonarr/Show S01E05 1080p WEB H264-FLUX.exe'];
+    const torrents = { withVideo: 'AA', partial: 'BB', finished: 'CC', byHand: 'DD', stranger: 'FF', videoOnly: '11', young: '22', refused: '33' };
+    for (const key of Object.keys(torrents)) torrents[key] = torrents[key].repeat(20);
+    addTorrent(hash, fake);
+    addTorrent(torrents.withVideo, ['/files/Sonarr/Show/Show.mkv', '/files/Sonarr/Show/Codec.Installer.EXE']);
+    addTorrent(torrents.partial, fake, { done: 5 });
+    addTorrent(torrents.finished, fake, { complete: 1 });
+    addTorrent(torrents.byHand, fake, { byHand: true });
+    addTorrent(torrents.stranger, ['/files/Some.Program/setup.exe'], { owned: false });
+    addTorrent(torrents.videoOnly, ['/files/Sonarr/Show S01E07.mkv']);
+    addTorrent(torrents.young, fake, { seenAt: run.clock.value - 60_000 });
+    addTorrent(torrents.refused, fake);
+    const removed = [];
+    let refusals = 1;
+    const sweep = createExecutableSweep({ database: run.database, problems: run.problems, now: () => run.clock.value, isManualDownload: () => false,
+      removeTorrent: async (torrent) => {
+        if (torrent === torrents.refused && refusals-- > 0) return { removed: false, reason: 'rTorrent is not answering.' };
+        removed.push(torrent);
+        return { removed: true, deleted: [], left: [] };
+      } });
+
+    await sweep.check();
+    assert.deepEqual(removed, []);
+    run.fake.sonarr.state.queue = [];
+    await run.grabs.reconcile();
+    await sweep.check();
+    await sweep.check();
+    assert.deepEqual(removed.sort(), [hash, torrents.refused].sort());
+    assert.equal(run.database.prepare("SELECT searched_at FROM search_log WHERE subject = 'sonarr:episode:31'").get()?.searched_at, run.clock.value);
+    const flagged = listOpenProblems(run.database).filter((problem) => problem.kind === 'program_file')
+      .map((problem) => [problem.subject.id, problem.state, problem.steps.at(-1).text]).sort();
+    assert.deepEqual(flagged, [
+      [torrents.withVideo, 'needs_you', 'Left in rTorrent because it also holds video.'],
+      [torrents.partial, 'needs_you', 'Left in rTorrent because part of it downloaded, so its tracker may be owed seeding time.'],
+      [torrents.finished, 'needs_you', 'Left in rTorrent because it finished downloading, so its tracker may be owed seeding time.'],
+      [torrents.byHand, 'needs_you', 'Left in rTorrent because you picked it by hand.'],
+    ].sort());
+    run.clock.value += QUEUE_SETTLE_MS;
+    await sweep.check();
+    assert.ok(removed.includes(torrents.young));
+    run.database.close();
   });
 
   // Ignoring removeFromQueue's removed count, or treating 0 as a block, turns this red.
@@ -12303,7 +12572,8 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     });
   }
   const calls = () => ['sonarr', 'radarr'].flatMap((name) => fake[name].requests.map(({ method, path, body }) => ({ name, method, path, body })));
-  const library = createLibrary(services, () => [], createTitleStore(database));
+  const asked = [];
+  const library = createLibrary(services, () => [], createTitleStore(database), undefined, undefined, undefined, undefined, undefined, undefined, (subjects) => asked.push(subjects.map((subject) => `${subject.service}:${subject.type}:${subject.id}`)));
   const routes = createLibraryRoutes(library);
   const post = (path, body) => routes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -12363,6 +12633,19 @@ test('the library reads Sonarr and Radarr, orders titles newest first and forwar
     assert.equal((await post('/monitor', { service: 'sonarr', kind: 'series', seriesId: 3, monitored: true, extra: 1 })).status, 400);
     assert.equal((await post('/refresh', { service: 'sonarr', kind: 'episodes', episodeIds: [1] })).status, 400);
     assert.equal((await post('/search', { service: 'radarr', kind: 'movie', movieId: 5 })).status, 204);
+  });
+
+  // Not telling the scheduler about a season or show search (so it never retries an episode it held as downloaded before), or
+  // counting an episode that still has its file, turns this red.
+  await t.test('every search the owner starts names the episodes or movie it looks for', async () => {
+    asked.length = 0;
+    for (const body of [
+      { service: 'sonarr', kind: 'season', seriesId: 3, seasonNumber: 1 },
+      { service: 'sonarr', kind: 'series', seriesId: 3 },
+      { service: 'sonarr', kind: 'episodes', episodeIds: [31] },
+      { service: 'radarr', kind: 'movie', movieId: 5 },
+    ]) assert.equal((await post('/search', body)).status, 204);
+    assert.deepEqual(asked, [['sonarr:episode:32'], ['sonarr:episode:32'], ['sonarr:episode:31'], ['radarr:movie:5']]);
   });
 
   await t.test('calendar emits one movie entry per release date in range and refuses long windows', async () => {
@@ -14047,10 +14330,19 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
         subject.episodeId ?? null, hash, destination, `${stats.dev}:${stats.ino}`);
       return nextVersion;
     };
-    // Sonarr's or Radarr's answer to one DELETE; on success it deletes `removes` from disk, as it does in the background.
+    // Sonarr's or Radarr's answer to one DELETE; on success it deletes `removes` from disk, as it does in the background,
+    // and with Unmonitor Deleted on, unmonitors what the deleted file held, as the live services are set.
     const onDelete = (service, path, { status = 200, removes = [] } = {}) => arrFake[service].routes.push((method, url) => {
       if (method !== 'DELETE' || url.pathname !== path) return undefined;
       if (status === 200) for (const file of removes) rmSync(file, { force: true });
+      const { state } = arrFake[service];
+      const fileId = Number(path.split('/').at(-1));
+      if (status === 200 && state.autoUnmonitor && path.startsWith('/api/v3/episodefile/')) {
+        for (const episode of state.episodes) if (episode.episodeFile?.id === fileId) episode.monitored = false;
+      }
+      if (status === 200 && state.autoUnmonitor && path.startsWith('/api/v3/moviefile/')) {
+        for (const movie of state.movies) if (movie.movieFile?.id === fileId) movie.monitored = false;
+      }
       return status === 200 ? { status, body: {} } : { status, body: { message: 'Root folder does not exist' } };
     });
     const plan = async (path) => {
@@ -14256,7 +14548,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   );
 
   // Deleting the file before the movie is monitored, leaving its manual-download protection, blocklisting or searching before the file
-  // is gone, or removing the movie record turns this red.
+  // is gone, removing the movie record, leaving it unmonitored after Radarr's Unmonitor Deleted Movies, or leaving it out of missing_seen turns this red.
   await t.test('searching again monitors the movie and lifts its protection, deletes the file, blocklists its grab, then searches', async () => {
     const w = await dune();
     w.arrFake.radarr.state.movies[0].monitored = false;
@@ -14275,6 +14567,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual([w.protection.lifted, w.protection.failedBeforeLift], [[{ service: 'radarr', kind: 'movie', movieId: 1 }], 0]);
     assert.deepEqual(w.arrFake.radarr.state.failed, [501]);
     assert.deepEqual(w.arrFake.radarr.state.commands, [{ name: 'MoviesSearch', movieIds: [1] }]);
+    assert.deepEqual(w.database.prepare('SELECT subject FROM missing_seen').all().map((row) => row.subject), ['radarr:movie:1']);
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [CUR, OLD, SHARED, V1]);
     assert.equal(w.versionState(w.version), 'imported');
     assert.equal((await w.deletions())[0].event, 'Movie file deleted, searching again');
@@ -14297,6 +14590,7 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
   // Reporting the read-back as done when Radarr kept the movie monitored, or as done when the read failed, turns this red.
   await t.test('the monitoring read-back fails when Radarr disagrees and is skipped when Radarr cannot be read', async () => {
     const w = await dune();
+    w.arrFake.radarr.state.autoUnmonitor = false;
     w.onDelete('radarr', '/api/v3/moviefile/11', { removes: [w.file] });
     w.arrFake.radarr.routes.unshift((method, url) => (method === 'PUT' && url.pathname === '/api/v3/movie/editor' ? { status: 202, body: [] } : undefined));
     const { body } = await w.remove('/movie/1', { mode: 'keepUnmonitored', removeTorrents: [], secondVersions: [] });
@@ -14645,6 +14939,11 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
       { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 102, seasonNumber: 1, episodeNumber: 2 },
       { service: 'sonarr', kind: 'episode', seriesId: 5, episodeId: 201, seasonNumber: 2, episodeNumber: 1 },
     );
+    let seenAtMonitor = null;
+    w.arrFake.sonarr.routes.unshift((method) => {
+      if (method === 'PUT' && seenAtMonitor === null) seenAtMonitor = w.database.prepare('SELECT subject FROM missing_seen ORDER BY subject').all().map((row) => row.subject);
+      return undefined;
+    });
     const { body } = await w.remove('/series/5/season/1', { mode: 'searchAgain', removeTorrents: [], secondVersions: [] });
     assert.deepEqual(w.steps(body), ['map:done', 'monitor:done', 'delete:done', 'wait:done', 'search:done', 'torrents:skipped', 'secondVersions:skipped', 'monitoring:done', 'history:done']);
     const sonarr = w.requests('sonarr');
@@ -14653,6 +14952,10 @@ test('deleting a movie or a show maps its files first, keeps seeding unless chos
     assert.deepEqual(state.series[0].seasons.map((season) => [season.seasonNumber, season.monitored]), [[1, true], [2, true]]);
     assert.deepEqual(w.protection.lifted.map((item) => item.episodeId), [102]);
     assert.deepEqual(state.commands, [{ name: 'EpisodeSearch', episodeIds: [101, 102, 103, 104] }]);
+    // Writing the searched episodes to missing_seen only after the first monitor request lets a check that runs meanwhile hold them as a burst.
+    const expected = ['sonarr:episode:101', 'sonarr:episode:102', 'sonarr:episode:103', 'sonarr:episode:104'];
+    assert.deepEqual(seenAtMonitor, expected);
+    assert.deepEqual(w.database.prepare('SELECT subject FROM missing_seen ORDER BY subject').all().map((row) => row.subject), expected);
     assert.deepEqual(state.failed, []);
     assert.deepEqual(w.fake.torrents.map((torrent) => torrent.hash), [PACK, w.FULL, V1, V2]);
     const [event] = await w.deletions();
@@ -16170,4 +16473,27 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
   for (const [track, name] of subtitles) {
     assert.deepEqual(subtitleAdd(track, answered), ['sub-add', `${answered}/library/streams/7?X-Plex-Token=transient-abc&encoding=utf-8`, 'cached', name]);
   }
+});
+
+// Turns red if the track list goes back to being read field by field, if a field mpv leaves out stops being null, or if
+// a title with no subtitle chosen in Plex stops turning mpv's subtitles off.
+test('the desktop player reads mpv\'s whole track list from one reply and starts with the subtitle Plex chose', async () => {
+  const { tracksFrom, startSubtitle } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const sub = (fields) => ({ selected: false, external: false, key: null, ffIndex: null, ...fields });
+  assert.deepEqual(startSubtitle([sub({ ffIndex: 3 }), sub({ external: true, key: '/library/streams/9' })]), {});
+  assert.deepEqual(startSubtitle([sub({ ffIndex: 3, selected: true })]), { url: null, ffIndex: 3 });
+  assert.deepEqual(startSubtitle([sub({ external: true, key: '/library/streams/9', selected: true })]), { url: '/library/streams/9', ffIndex: null });
+  assert.deepEqual(startSubtitle([]), {});
+  // As mpv 0.41 answers `track-list` asked for as a string: JSON with more fields than the app reads.
+  const reply = JSON.stringify([
+    { id: 1, type: 'video', 'src-id': 1, 'ff-index': 0, external: false, selected: true, default: true, codec: 'hevc' },
+    { id: 1, type: 'sub', 'ff-index': 3, lang: 'en', title: 'English', codec: 'subrip', external: false, selected: false, default: false },
+    { id: 42, type: 'sub', codec: 'eia_608', external: false, selected: true, default: true },
+  ]);
+  assert.deepEqual(tracksFrom(reply), [
+    { id: 1, type: 'video', 'ff-index': 0, lang: null, title: null, codec: 'hevc', external: false, selected: true, default: true },
+    { id: 1, type: 'sub', 'ff-index': 3, lang: 'en', title: 'English', codec: 'subrip', external: false, selected: false, default: false },
+    { id: 42, type: 'sub', 'ff-index': null, lang: null, title: null, codec: 'eia_608', external: false, selected: true, default: true },
+  ]);
+  for (const nothing of [null, '', 'not json', '{}']) assert.deepEqual(tracksFrom(nothing), []);
 });
