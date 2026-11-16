@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fn } from 'storybook/test';
+import { expect, fn, within } from 'storybook/test';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { StepperSubtitleTiming } from '@/components/ui/stepper-subtitle-timing';
@@ -28,3 +28,14 @@ type Story = StoryObj<typeof meta>;
 
 // player.pen state 7: +0.5 s, later than the voice.
 export const Later: Story = {};
+
+// Turns red if 0.0 s keeps an empty line under the number again, which lifts the number above the minus and plus buttons.
+export const Zero: Story = {
+  args: { offset: 0 },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement.ownerDocument.body);
+    const value = (await page.findByText('0.0 s')).getBoundingClientRect();
+    const button = page.getByRole('menuitem', { name: 'Earlier' }).getBoundingClientRect();
+    await expect(Math.abs((value.top + value.bottom) / 2 - (button.top + button.bottom) / 2)).toBeLessThanOrEqual(1);
+  },
+};
