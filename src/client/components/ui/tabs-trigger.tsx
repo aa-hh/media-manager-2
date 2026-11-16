@@ -1,5 +1,5 @@
 // Figma: TabsTrigger — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=8-3545
-// v2/TabsTrigger/large-icon — https://www.figma.com/design/dFQMjELOx6ObLS0qOG3NCF/media-manager-2----screens?node-id=35-3978
+// v2/TabsTrigger/large-icon — https://www.figma.com/design/xXlrfBjHLkPumAfRzEFXtO/media-manager-2----design-library?node-id=157-934
 import { Tabs as TabsPrimitive } from '@base-ui/react/tabs';
 import type { ComponentProps, ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
