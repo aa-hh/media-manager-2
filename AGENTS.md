@@ -71,6 +71,10 @@ symbol you cannot find in source, believe the source and fix the doc.
   there. If the mule is unreachable or full, remote-run falls back to this Mac, which has no
   SDK, and the script exits 97. The hook denies bare `gradle` and `gradlew`. The TV emulator
   runs on the mule too: see `docs/research/android-tv-emulator.md`.
+  In a cloud container run it bare (`sh scripts/android-tv.sh <cmd>`): `scripts/cloud-android-sdk.sh`
+  installs JDK 25 and the SDK into `/opt`, from the cloud environment's setup script or, failing that, the
+  SessionStart hook in `.claude/settings.json`. The first `test` or `build` in a fresh container builds the
+  FFmpeg decoder from source.
 - **"Does this code exist anywhere?" needs more than `git grep`.** Unreachable
   commits and other worktrees' uncommitted work are invisible to it. Also
   check `git stash list`, the reflog, `git fsck --unreachable` and the other
