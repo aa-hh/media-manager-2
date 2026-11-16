@@ -16474,3 +16474,26 @@ test('the desktop player ignores a replaced load\'s file events, keeps the owner
     assert.deepEqual(subtitleAdd(track, answered), ['sub-add', `${answered}/library/streams/7?X-Plex-Token=transient-abc&encoding=utf-8`, 'cached', name]);
   }
 });
+
+// Turns red if the track list goes back to being read field by field, if a field mpv leaves out stops being null, or if
+// a title with no subtitle chosen in Plex stops turning mpv's subtitles off.
+test('the desktop player reads mpv\'s whole track list from one reply and starts with the subtitle Plex chose', async () => {
+  const { tracksFrom, startSubtitle } = await import(new URL('../desktop/lib/player.js', import.meta.url));
+  const sub = (fields) => ({ selected: false, external: false, key: null, ffIndex: null, ...fields });
+  assert.deepEqual(startSubtitle([sub({ ffIndex: 3 }), sub({ external: true, key: '/library/streams/9' })]), {});
+  assert.deepEqual(startSubtitle([sub({ ffIndex: 3, selected: true })]), { url: null, ffIndex: 3 });
+  assert.deepEqual(startSubtitle([sub({ external: true, key: '/library/streams/9', selected: true })]), { url: '/library/streams/9', ffIndex: null });
+  assert.deepEqual(startSubtitle([]), {});
+  // As mpv 0.41 answers `track-list` asked for as a string: JSON with more fields than the app reads.
+  const reply = JSON.stringify([
+    { id: 1, type: 'video', 'src-id': 1, 'ff-index': 0, external: false, selected: true, default: true, codec: 'hevc' },
+    { id: 1, type: 'sub', 'ff-index': 3, lang: 'en', title: 'English', codec: 'subrip', external: false, selected: false, default: false },
+    { id: 42, type: 'sub', codec: 'eia_608', external: false, selected: true, default: true },
+  ]);
+  assert.deepEqual(tracksFrom(reply), [
+    { id: 1, type: 'video', 'ff-index': 0, lang: null, title: null, codec: 'hevc', external: false, selected: true, default: true },
+    { id: 1, type: 'sub', 'ff-index': 3, lang: 'en', title: 'English', codec: 'subrip', external: false, selected: false, default: false },
+    { id: 42, type: 'sub', 'ff-index': null, lang: null, title: null, codec: 'eia_608', external: false, selected: true, default: true },
+  ]);
+  for (const nothing of [null, '', 'not json', '{}']) assert.deepEqual(tracksFrom(nothing), []);
+});

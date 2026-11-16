@@ -9,7 +9,7 @@ const { chooseConnection, originsOf, createAddressKeeper, PROBE_TIMEOUT_MS } = r
 const { nextStep, planLabel } = require('./lib/retry');
 const { originOf, pageCopy, pageTrack, callerAllowed, stopsPlayerOnNavigation, NO_SELECT_CSS } = require('./lib/page');
 const {
-  fileEvent, playsOnOpen, showsPosition, sendsPosition, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions,
+  fileEvent, playsOnOpen, showsPosition, sendsPosition, readAsk, startSecondsFor, subtitleAdd, volumePercent, subtitleScale, themeSource, mpvStartOptions, tracksFrom, startSubtitle,
 } = require('./lib/player');
 
 const MiB = 1024 * 1024;
@@ -333,17 +333,7 @@ const release = (playing) => {
   send('position', playing.position);
 };
 
-const TRACK_FIELDS = { id: 'number', type: 'string', 'ff-index': 'number', lang: 'string', title: 'string', codec: 'string', external: 'boolean', selected: 'boolean', default: 'boolean' };
-// mpv only gives the whole track list as display text over this addon, so it is read field by field.
-const readTracks = async () => {
-  const count = number(await mpv.getProperty('track-list/count')) ?? 0;
-  return Promise.all(Array.from({ length: count }, async (_, index) => Object.fromEntries(await Promise.all(
-    Object.entries(TRACK_FIELDS).map(async ([field, type]) => {
-      const value = await mpv.getProperty(`track-list/${index}/${field}`);
-      return [field, value === null ? null : type === 'number' ? Number(value) : type === 'boolean' ? value === 'yes' : value];
-    }),
-  )).then(pageTrack)));
-};
+const readTracks = async () => tracksFrom(await mpv.getProperty('track-list')).map(pageTrack);
 
 function onMpvEvent(event) {
   if (event.event === 'property-change') {
@@ -414,8 +404,7 @@ async function startPlaying() {
       const audio = reply.tracks.audio.find((track) => track.selected);
       const audioTrack = audio ? tracks.filter((track) => track.type === 'audio')[audio.index] : undefined;
       if (audioTrack) await mpv.setProperty('aid', String(audioTrack.id));
-      const subtitle = reply.tracks.subtitle.find((track) => track.selected);
-      if (subtitle) await selectSubtitle({ url: subtitle.external ? subtitle.key : null, ffIndex: subtitle.ffIndex }, tracks);
+      await selectSubtitle(startSubtitle(reply.tracks.subtitle), tracks);
     }
   } finally {
     // A refused unpause must still let the page past its opening screen.
@@ -560,7 +549,7 @@ async function setFullscreen(on) {
 
 // --- The bridge (C1.2): every handler answers only the app window showing the app.
 
-const handle = (channel, run) => ipcMain.handle(channel, (event, ...args) => {
+const handle = (channel, run) => ipcMain.handle(channel, async (event, ...args) => {
   const frame = event.senderFrame; // null once the frame has navigated away
   if (!callerAllowed({
     fromAppWindow: event.sender === win?.webContents,
@@ -568,7 +557,13 @@ const handle = (channel, run) => ipcMain.handle(channel, (event, ...args) => {
     frameUrl: frame?.url ?? '',
     appOrigin,
   })) throw new Error('not_allowed');
-  return run(...args);
+  try {
+    return await run(...args);
+  } catch (error) {
+    // The page drops most of these failures, so they are printed here (Terminal shows them when it started the app).
+    console.error(`${channel} failed: ${error?.message ?? error}`);
+    throw error;
+  }
 });
 const ready = () => {
   if (!mpv) throw new Error('nothing_playing');
