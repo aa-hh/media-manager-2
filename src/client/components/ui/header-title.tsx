@@ -9,8 +9,8 @@ type HeaderTitleProps = {
   /** Sonarr or Radarr backdrop image; the band fades to the page colour under it. */
   backdropUrl?: string;
   posterUrl?: string;
-  /** A Breadcrumb. */
-  breadcrumb: ReactNode;
+  /** A SectionLabel: top left above the poster, and at the left of the compact strip. */
+  section?: ReactNode;
   bookmark?: { state: BookmarkState; onToggle?: () => void };
   /** A StatusInline beside the title, such as a monitor change Sonarr refused. */
   status?: ReactNode;
@@ -31,7 +31,7 @@ type HeaderTitleProps = {
   facts?: ReactNode;
   /** Title page overview band layout: the backdrop fills the header and runs past its foot, poster and title block sit at the bottom, and the actions sit at the right, bottom-aligned. Overview and facts are not shown. */
   actionsRight?: boolean;
-  /** The page has scrolled: one 72 px strip with a poster thumb, breadcrumb over a 20/700 title, and the same actions. */
+  /** The page has scrolled: one 72 px strip with the section label, a poster thumb, a 20/700 title, and the same actions. */
   compact?: boolean;
   className?: string;
 };
@@ -97,7 +97,7 @@ function HeaderTitle({
   title,
   backdropUrl,
   posterUrl,
-  breadcrumb,
+  section,
   bookmark,
   status,
   meta,
@@ -123,9 +123,9 @@ function HeaderTitle({
   if (compact) {
     return (
       <header className={cn('flex w-full items-center gap-4 border-b border-border bg-background px-10 py-3', className)}>
+        {section !== undefined && <div className="shrink-0 border-r border-border pr-4">{section}</div>}
         <Poster url={posterUrl} className="h-12 w-8 rounded-xs" />
         <div className="flex min-w-0 flex-col gap-0.5">
-          {breadcrumb}
           <h1 className="truncate font-ui text-xl font-bold tracking-[-0.3px] text-foreground">{title}</h1>
         </div>
         <span aria-hidden="true" className="flex-1" />
@@ -137,11 +137,11 @@ function HeaderTitle({
   return (
     <header className={cn('relative flex w-full flex-col px-10 pt-25', actionsRight ? 'pb-8' : 'overflow-hidden bg-background pb-6', className)}>
       <HeaderBackdrop posterUrl={posterUrl} backdropUrl={backdropUrl} tall={actionsRight} className="inset-x-0" />
+      {section !== undefined && <div className="relative pb-8">{section}</div>}
       <div className={cn('relative flex w-full gap-8', actionsRight && 'items-end')}>
         {/* title-poster: a poster card opening this page morphs into it (globals.css). */}
         <Poster url={posterUrl} className="title-poster h-78.75 w-52.5 rounded-md" />
         <div className="flex min-w-0 flex-1 flex-col gap-3 pt-15">
-          {breadcrumb}
           <div className="flex min-w-0 items-center gap-2.5">
             {bookmark !== undefined && <ToggleBookmark state={bookmark.state} onToggle={bookmark.onToggle} className="size-9" />}
             <h1 className="min-w-0 font-ui text-4xl font-extrabold tracking-[-0.6px] [overflow-wrap:anywhere] text-foreground">{title}</h1>

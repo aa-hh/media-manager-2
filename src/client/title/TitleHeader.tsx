@@ -1,12 +1,12 @@
 import { Ellipsis, ExternalLink, History as HistoryIcon, List, RefreshCw, Search, SlidersHorizontal, Star, Tag, Trash2, X } from 'lucide-react';
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { CardLibrary } from '@/components/ui/card-library';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { FactStacked } from '@/components/ui/fact-stacked';
 import { HeaderTitle } from '@/components/ui/header-title';
+import { SectionLabel } from '@/components/ui/section-label';
 import { StatusInline } from '@/components/ui/status-inline';
 import type { BookmarkState } from '@/components/ui/toggle-bookmark';
 import { postJson, type Credits, type EpisodeDetail, type MovieDetail, type SeriesDetail } from '../library/api';
@@ -289,11 +289,17 @@ export function TitleHeader({ subject, owned, badges, play, facts, monitored, on
     set(await sendAction(path, target, onUnauthenticated) ? 'sent' : 'failed');
   };
 
-  // Titles opened from search results carry the result as history state; going back keeps the search.
-  const fromSearch = state !== null && state !== undefined;
-  const crumb = fromSearch
-    ? { label: 'Search', href: '/search', onClick: (event: MouseEvent<HTMLAnchorElement>) => { event.preventDefault(); window.history.back(); } }
-    : { label: 'Library', href: '/', onClick: (event: MouseEvent<HTMLAnchorElement>) => { event.preventDefault(); navigate('/'); } };
+  // The section label, borrowed from Plex: where this title sits, one click away from anywhere on the page. A title opened
+  // from search results carries the result and the search words as history state; going back keeps the search.
+  const kindLabel = subject.type === 'tv' ? 'TV' : 'Movies';
+  const fromSearch = typeof state === 'object' && state !== null && 'service' in state;
+  const query = fromSearch && 'query' in state && typeof state.query === 'string' ? state.query : '';
+  const goTo = (path: string, passed?: unknown) => (event: MouseEvent<HTMLAnchorElement>) => { event.preventDefault(); navigate(path, passed); };
+  const section = fromSearch
+    ? <SectionLabel label="Search" place={query === '' ? 'Results' : `“${query}”`} href="/search" onClick={(event) => { event.preventDefault(); window.history.back(); }} />
+    : owned
+      ? <SectionLabel label={kindLabel} place="Library" href="/" onClick={goTo('/', { libraryKind: subject.type })} />
+      : <SectionLabel label={kindLabel} place="Discover" href="/discover" onClick={goTo('/discover')} />;
 
   const status = (
     <>
@@ -322,13 +328,13 @@ export function TitleHeader({ subject, owned, badges, play, facts, monitored, on
     <>
       <HeaderTitle
         // Starts under the see-through app bar, so the backdrop runs up behind it.
-        className="-mx-(--page-margin) -mt-(--topbar) w-auto pt-[calc(var(--topbar)+100px)]"
+        className="-mx-(--page-margin) -mt-(--topbar) w-auto pt-[calc(var(--topbar)+24px)]"
         compact={compact}
         actionsRight
         title={detail.title}
         backdropUrl={detail.backdropUrl ?? undefined}
         posterUrl={detail.smallPosterUrl ?? undefined}
-        breadcrumb={<Breadcrumb links={[crumb]} current={detail.title} />}
+        section={section}
         bookmark={owned && monitored !== undefined ? { state: monitored, onToggle: onToggleMonitored } : { state: 'none' }}
         status={monitorProblem !== undefined && <StatusInline status="failed">{monitorProblem}</StatusInline>}
         meta={metaLine(subject)}

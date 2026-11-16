@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Ellipsis, List, Play, Search } from 'lucide-react';
 import { fn } from 'storybook/test';
 import { Badge } from '@/components/ui/badge';
-import { Breadcrumb } from '@/components/ui/breadcrumb';
+import { SectionLabel } from '@/components/ui/section-label';
 import { Button } from '@/components/ui/button';
 import { Fact } from '@/components/ui/fact';
 import { HeaderPlayLine, HeaderTitle } from '@/components/ui/header-title';
@@ -24,7 +24,7 @@ const meta = {
     title: 'Severance',
     posterUrl,
     backdropUrl,
-    breadcrumb: <Breadcrumb links={[{ label: 'Library', href: '/', onClick: fn() }]} current="Severance" />,
+    section: <SectionLabel label="TV" place="Library" href="/" onClick={fn()} />,
     bookmark: { state: 'all', onToggle: fn() },
     meta: 'TV · Apple TV+ · 2022 · Continuing · TV-MA · ★ 8.7 · 2 seasons · 19 episodes',
     badges: (
@@ -79,7 +79,7 @@ export const MonitorRefused: Story = {
 export const NotAdded: Story = {
   args: {
     title: 'Dune: Part Two',
-    breadcrumb: <Breadcrumb links={[{ label: 'Search', href: '/search', onClick: fn() }]} current="Dune: Part Two" />,
+    section: <SectionLabel label="Search" place="“dune”" href="/search" onClick={fn()} />,
     bookmark: { state: 'none' },
     meta: 'Movie · Legendary Pictures · 2024 · Released · PG-13 · ★ 8.2',
     badges: <Badge>Not in library</Badge>,

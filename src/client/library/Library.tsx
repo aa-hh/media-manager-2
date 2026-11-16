@@ -168,7 +168,11 @@ const PosterCard = memo(function PosterCard({ title, fields, live, downloading, 
 
 export function Library({ downloads, onUnauthenticated }: { downloads: DownloadsState; onUnauthenticated: () => void }) {
   const [state, setState] = useState<LoadState>(() => (lastLoaded === undefined ? { kind: 'loading' } : { kind: 'ready', data: lastLoaded }));
-  const [kind, setKind] = useState<Kind>('all');
+  // A title page's section label ("TV" over "Library") opens the Library on that tab.
+  const [kind, setKind] = useState<Kind>(() => {
+    const passed: unknown = window.history.state;
+    return typeof passed === 'object' && passed !== null && 'libraryKind' in passed && (passed.libraryKind === 'tv' || passed.libraryKind === 'movie') ? passed.libraryKind : 'all';
+  });
   const [segment, setSegment] = useState<Segment>('all');
   const mediaServer = use(MediaServerContext).name;
   const [fields, setFields] = useState<Field[]>(readFields);
