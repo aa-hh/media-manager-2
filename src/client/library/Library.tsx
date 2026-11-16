@@ -1,4 +1,4 @@
-import { BookmarkX, Library as LibraryIcon } from 'lucide-react';
+import { BookmarkX, Clapperboard, LayoutGrid, Library as LibraryIcon, Tv } from 'lucide-react';
 import { memo, use, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,7 @@ export const forgetLoadedLibrary = () => { lastLoaded = undefined; };
 
 const fieldLabels: Record<Field, string> = { year: 'Year', progress: 'Progress', size: 'Size', profile: 'Quality profile', added: 'Date added' };
 const kindLabels: Record<Kind, string> = { all: 'All', movie: 'Movies', tv: 'TV' };
+const kindIcons: Record<Kind, ReactNode> = { all: <LayoutGrid aria-hidden="true" />, movie: <Clapperboard aria-hidden="true" />, tv: <Tv aria-hidden="true" /> };
 const segmentLabels: Record<Segment, string> = { all: 'All', continue: 'Continue Watching', unwatched: 'Unwatched', missing: 'Missing', downloading: 'Downloading' };
 const noProgress = new Map<string, SubjectProgress>();
 const noTitles: LibraryTitle[] = [];
@@ -254,9 +255,9 @@ export function Library({ downloads, onUnauthenticated }: { downloads: Downloads
         )}
       </div>
       <Tabs value={kind} onValueChange={(value) => setKind(value as Kind)} className="pt-4">
-        <TabsList aria-label="Type" className="gap-5 border-b border-border">
+        <TabsList aria-label="Type" size="large" className="gap-4 border-b border-border">
           {KINDS.map((value) => (
-            <TabsTrigger key={value} value={value} count={state.kind === 'ready' ? counts.kinds[value] : undefined}>{kindLabels[value]}</TabsTrigger>
+            <TabsTrigger key={value} value={value} size="large" icon={kindIcons[value]} count={state.kind === 'ready' ? counts.kinds[value] : undefined}>{kindLabels[value]}</TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
