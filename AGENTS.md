@@ -66,9 +66,11 @@ symbol you cannot find in source, believe the source and fix the doc.
   They are the one place that knows how this repo builds; a Claude hook denies
   the bare commands.
 - **Build and test the TV app only through `scripts/android-tv.sh`**, run as
-  `AUDIOUT_REMOTE_LOCAL=1 ~/.claude/scripts/remote-run sh scripts/android-tv.sh <cmd>`
-  on the Mac that has the Space drive (the SDK lives there). remote-run falls back only when
-  the mule is unreachable; a mule without the drive fails with 97. The hook denies bare `gradle` and `gradlew`.
+  `~/.claude/scripts/remote-run sh scripts/android-tv.sh <cmd>`. The Android SDK lives on
+  the Space drive, which is plugged into the mule (since 16 Nov 2026), so these runs go
+  there. If the mule is unreachable or full, remote-run falls back to this Mac, which has no
+  SDK, and the script exits 97. The hook denies bare `gradle` and `gradlew`. The TV emulator
+  runs on the mule too: see `docs/research/android-tv-emulator.md`.
 - **"Does this code exist anywhere?" needs more than `git grep`.** Unreachable
   commits and other worktrees' uncommitted work are invisible to it. Also
   check `git stash list`, the reflog, `git fsck --unreachable` and the other

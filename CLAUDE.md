@@ -20,7 +20,7 @@ sh scripts/setup.sh --sync-main   # macOS: also keep local main mirroring origin
 sh scripts/build.sh               # compile / typecheck
 sh scripts/test.sh                # fast run (what Guard 4 runs at commit)
 sh scripts/test.sh --full         # full suite (what pre-push runs)
-AUDIOUT_REMOTE_LOCAL=1 ~/.claude/scripts/remote-run sh scripts/android-tv.sh build   # TV app (also: test, install)
+~/.claude/scripts/remote-run sh scripts/android-tv.sh build   # TV app, runs on the mule (also: test, install)
 ```
 
 **Always go through these wrappers, never the bare build or test command.**
