@@ -167,8 +167,11 @@ Targets are the 75th percentile on the home network, measured by the app itself 
 
 ### 9. If Home gets a backdrop band (direction A in patterns.md)
 
-- Follow the TV app: the band follows focus or hover only after it rests 300 ms (`RailsPage.kt:72-73`), crossfades in 150 ms (`RailsPage.kt:119`), and fades out once the first row scrolls away (`RailsPage.kt:113`).
+- **First row only (owner, 16 Nov 2026).** The band follows hover or focus on the first row and no other. When hover or focus moves to a lower row, the band starts fading at once, so a lower row never slides up into the picture. The owner first asked for every row, then withdrew it: following every row needs too much layout shift, with the row above disappearing to make room.
+- **The first row is "Not watched yet"** (owner, same day, built first on the TV app): titles in Plex never started, meaning a film with no plays and no resume point, or a show with episodes and none watched. Newest added first, up to 20. The picture adds the most there. A show the viewer is in the middle of every week doesn't need it, since they already know they'll click it.
+- Timing follows the TV app: the band follows focus or hover only after it rests 300 ms (`RailsPage.kt:72-73`), crossfades in 150 ms (`RailsPage.kt:119`), and fades out once the first row scrolls away (`RailsPage.kt:113`).
 - Rule 1's idle prefetch of the first row's backdrops means the band never shows an empty frame.
+- Open: where the large picture sits and how it is cropped when shown on hover. The owner wants to settle this next.
 
 ### 10. Anything cached shows almost at once (owner, 16 Nov 2026)
 
@@ -197,7 +200,7 @@ Ranked by how much faster the page feels per hour of work.
 | 8 | TV side menu over the page, 150 ms slide in, 120 ms out | `android-tv/…/tv/ui/Navigation.kt` | S |
 | 9 | Day-long browser cache for TMDB image copies | `server/app.ts:235` | S |
 | 10 | Phone rows stop on card edges | row strip classes | S |
-| 11 | Backdrop band following hover and focus, first row only (only if direction A is picked) | Home screen, rules from `RailsPage.kt` | M |
+| 11 | Backdrop band following hover and focus on the first row ("Not watched yet") only, fading as soon as focus leaves it (only if direction A is picked) | Home screen, rules from `RailsPage.kt` | M |
 
 Not worth copying:
 

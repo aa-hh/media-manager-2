@@ -117,6 +117,13 @@ Google's rules for apps that feed the TV's home screen ([guidelines](https://dev
 
 Each row hides itself when empty. When every row is empty, show the one empty-state sentence with a link to Discover (as the TV design does).
 
+**Owner change, 16 Nov 2026: "Not watched yet" goes first when Home has a backdrop band.** Titles in Plex never started (a film with no plays and no resume point, a show with episodes and none watched), newest added first, up to 20, ahead of Continue watching. The band follows this row only (motion-and-speed.md, rule 9). The owner's reason: the picture helps most for things added but not yet watched, while a show watched every week needs no picture to be clicked. The TV app is building this row first.
+
+Two things this leaves open:
+
+- It overlaps Recently added TV and films (rows 3 and 4) and Unwatched films (row 8). A title can only appear in one of them, or those rows need to change.
+- Whether layouts without a band (B and C) also put this row first, or keep Continue watching first.
+
 Left off Home: Trakt trending, popular and upcoming (they show titles not on disk, so they stay on Discover), Calendar, and anything about downloads beyond a card's own progress.
 
 ## Behaviour on each screen
@@ -163,7 +170,7 @@ Left off Home: Trakt trending, popular and upcoming (they show titles not on dis
 ### A. Backdrop at the top, then rows (matches the TV design)
 
 - Desktop: a 420 px band under the app bar holding the backdrop of the first Continue watching item, fading into the page colour. On it, left-aligned at the page margin: the show name (36/800), "S2 · E5 · Woe's Hollow · 31 min left" (16/500), a two-line summary, and a large Resume button with a watch bar under it. A second, outline button opens the title page.
-- The band follows hover or keyboard focus on any card in the first two rows, with a 160 ms crossfade, as the TV app follows focus.
+- The band follows hover or keyboard focus on the first row only, with a 160 ms crossfade, as the TV app follows focus. Changed by the owner on 16 Nov 2026 from "the first two rows": the first row is "Not watched yet" (see section 3), and the band fades as soon as focus leaves it.
 - Below the band: Continue watching (landscape, five across at 256 by 144), Up next (landscape, same size), then poster rows at 210 by 315.
 - Phone: the band shrinks to 16:9 at full width with the button under it; rows follow.
 - Risk: the band takes a third of the screen on a laptop. It only works if the band always shows something the viewer was already watching, never promotion.
