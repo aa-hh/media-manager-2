@@ -3464,16 +3464,27 @@ test('the TMDB client sends the key only to TMDB, parses partial replies and cac
   };
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 
-  // Reading a missing field as anything but null or an empty list, or confusing the movie and TV reply shapes, turns this red.
+  // Reading a missing field as anything but null or an empty list, confusing the movie and TV reply shapes, dropping images from the request or reading the wrong logo turns this red.
   await t.test('title details from a reply with most fields missing', async () => {
     const { tmdb, calls } = connect(() => json({ id: 7, name: 'Show', keywords: { results: [{ id: 1, name: 'heist' }, { id: 'x' }] }, aggregate_credits: { cast: [{ id: 3, name: 'Ann', roles: [{ character: 'Lead' }] }, { name: 'No id' }] } }));
     assert.deepEqual(await tmdb.details('tv', 7), { kind: 'ok', value: {
-      id: 7, mediaType: 'tv', tvdbId: null, title: 'Show', overview: null, tagline: null, posterPath: null, backdropPath: null, date: null, runtime: null,
+      id: 7, mediaType: 'tv', tvdbId: null, title: 'Show', overview: null, tagline: null, posterPath: null, backdropPath: null, logoPath: null, date: null, runtime: null,
       status: null, voteAverage: null, genres: [], keywords: [{ id: 1, name: 'heist' }], recommendations: [], cast: [{ id: 3, name: 'Ann', character: 'Lead', profilePath: null }],
     } });
     assert.equal(calls[0].origin + calls[0].pathname, 'https://api.themoviedb.org/3/tv/7');
-    assert.equal(calls[0].searchParams.get('append_to_response'), 'keywords,recommendations,aggregate_credits,external_ids');
+    assert.equal(calls[0].searchParams.get('append_to_response'), 'keywords,recommendations,aggregate_credits,external_ids,images');
+    assert.equal(calls[0].searchParams.get('include_image_language'), 'en,null');
     assert.equal(calls[0].searchParams.get('api_key'), key);
+    const logos = [
+      { file_path: '/a.svg', iso_639_1: 'en' },
+      { file_path: '/fr.png', iso_639_1: 'fr' },
+      { file_path: '/none.png', iso_639_1: null },
+      { file_path: '/en.png', iso_639_1: 'en' },
+    ];
+    const chosen = await connect(() => json({ id: 8, title: 'Film', images: { logos } })).tmdb.details('movie', 8);
+    assert.equal(chosen.value.logoPath, '/en.png');
+    const unlabelled = await connect(() => json({ id: 9, title: 'Film', images: { logos: logos.slice(0, 3) } })).tmdb.details('movie', 9);
+    assert.equal(unlabelled.value.logoPath, '/none.png');
   });
 
   // Asking the wrong path, or reading a body without a name as a keyword, turns this red.
@@ -4904,6 +4915,20 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     await settle(() => store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails') !== undefined);
     assert.equal(store.get({ type: 'movie', tmdbId: 88888 }, 'tmdbDetails'), undefined);
     assert.equal(await titles.backdropPath('movie', 88888), null);
+  });
+
+  // Waiting for TMDB in logoPath, skipping the save, or answering the /logo route with anything but the saved path or null turns this red.
+  await t.test('logoPath answers from the saved details and the logo route gives its address or null', async () => {
+    let release;
+    respond = () => new Promise((resolve) => { release = resolve; });
+    assert.equal(await titles.logoPath('tv', 434343), null);
+    await settle(() => release !== undefined);
+    release(json({ id: 434343, name: 'Logo show', external_ids: { tvdb_id: 535353 }, images: { logos: [{ file_path: '/logo.png', iso_639_1: 'en' }] } })());
+    await settle(() => store.get({ type: 'tv', tmdbId: 434343 }, 'tmdbDetails') !== undefined);
+    assert.equal(await titles.logoPath('tv', 434343), '/logo.png');
+    assert.deepEqual(await page('/tmdb/tv/434343/logo'), { logoUrl: '/api/images/tmdb/w500/logo.png' });
+    respond = () => { throw new TypeError('fetch failed'); };
+    assert.deepEqual(await page('/tmdb/movie/77777/logo'), { logoUrl: null });
   });
 
   // Dropping the ids, reading TV keywords from the movie field, or answering a TMDB failure with anything but null turns this red.
@@ -7083,8 +7108,10 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
   });
 });
 
-// Sending the Plex token to the page, fetching the collage again while the list is unchanged, keeping an old picture after
-// the list changes, or answering a missing list, a list with no picture, Plex off or Plex down with the wrong status turns this red.
+// Sending the Plex token to the page, fetching the collage or a title's logo again while it is unchanged, keeping an old
+// picture after the list changes, asking Plex for the logo at another size or format, fetching a logo whose address starts
+// with two slashes or is absolute (https://...) instead of answering 404, or answering a missing list or title, a list
+// or title with no picture, a non-numeric key, Plex off or Plex down with the wrong status turns this red.
 test('a Plex list\'s collage comes through our server without the token, once per version of the list', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -7097,7 +7124,7 @@ test('a Plex list\'s collage comes through our server without the token, once pe
     await rm(root, { recursive: true, force: true });
   });
   const token = `plex-collage-token-${process.pid}`;
-  const remote = { version: 1700000000, reachable: true, pictures: [] };
+  const remote = { version: 1700000000, reachable: true, pictures: [], logos: [] };
   const plex = createPlex(database, { fetch: async (input, init) => {
     const url = new URL(String(input));
     assert.equal(init.headers['X-Plex-Token'], token);
@@ -7106,16 +7133,26 @@ test('a Plex list\'s collage comes through our server without the token, once pe
     const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
     if (url.pathname === '/playlists/900') return json({ MediaContainer: { Metadata: [{ ratingKey: '900', composite: `/playlists/900/composite/${remote.version}` }] } });
     if (url.pathname === '/playlists/901') return json({ MediaContainer: { Metadata: [{ ratingKey: '901' }] } });
+    const logoKey = /^\/library\/metadata\/(\d+)$/.exec(url.pathname)?.[1];
+    if (logoKey === '700') return json({ MediaContainer: { Metadata: [{ ratingKey: '700', Image: [{ type: 'clearLogo', url: '/library/metadata/700/clearLogo/1' }] }] } });
+    if (logoKey === '701') return json({ MediaContainer: { Metadata: [{ ratingKey: '701', Image: [{ type: 'background', url: '/x' }] }] } });
+    if (logoKey === '702') return json({ MediaContainer: { Metadata: [{ ratingKey: '702', Image: [{ type: 'clearLogo', url: '//evil.test/x' }] }] } });
+    if (logoKey === '703') return json({ MediaContainer: { Metadata: [{ ratingKey: '703', Image: [{ type: 'clearLogo', url: 'https://evil.test/x' }] }] } });
+    if (url.pathname === '/photo/:/transcode') {
+      remote.logos.push(url.searchParams);
+      return new Response(new Uint8Array([0x89, 0x50]), { status: 200, headers: { 'Content-Type': 'image/png' } });
+    }
     if (url.pathname.startsWith('/playlists/900/composite/')) {
       remote.pictures.push(`${url.pathname}?${url.searchParams}`);
       return new Response(new Uint8Array([0xff, 0xd8, remote.version % 256]), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
     }
     return new Response('', { status: 404 });
   } });
-  const { app } = await makeApp({ images: createImageRoutes({ image: () => undefined }, undefined, plex.playlistCollage) });
+  const { app } = await makeApp({ images: createImageRoutes({ image: () => undefined }, undefined, plex.playlistCollage, plex.clearLogo) });
   const { session } = await signIn(app);
   const get = (path) => app.request(path, { headers: { Cookie: session } });
 
+  assert.equal((await get('/api/images/plex/logo/700')).status, 503);
   const off = await get('/api/images/plex/playlist/900');
   assert.equal(off.status, 503);
   assert.deepEqual(await off.json(), { error: 'not_configured' });
@@ -7141,6 +7178,22 @@ test('a Plex list\'s collage comes through our server without the token, once pe
     assert.deepEqual(await missing.json(), { error: 'not_found' });
   }
   assert.equal((await get('/api/images/plex/playlist/abc')).status, 404);
+  const logo = await get('/api/images/plex/logo/700');
+  assert.equal(logo.status, 200);
+  assert.equal(logo.headers.get('Content-Type'), 'image/png');
+  assert.equal(logo.headers.get('Cache-Control'), 'private, max-age=300');
+  assert.deepEqual([...new Uint8Array(await logo.arrayBuffer())], [0x89, 0x50]);
+  assert.equal(remote.logos.length, 1);
+  const asked = remote.logos[0];
+  assert.deepEqual(
+    ['width', 'height', 'minSize', 'upscale', 'format', 'url'].map((name) => asked.get(name)),
+    ['600', '128', '1', '1', 'png', '/library/metadata/700/clearLogo/1'],
+  );
+  assert.equal((await get('/api/images/plex/logo/700')).status, 200);
+  assert.equal(remote.logos.length, 1, 'the logo is kept while its address is unchanged');
+  for (const key of ['701', '702', '703', '999']) assert.equal((await get(`/api/images/plex/logo/${key}`)).status, 404, key);
+  assert.equal(remote.logos.length, 1, 'no logo address that fails the check reaches Plex');
+  assert.equal((await get('/api/images/plex/logo/abc')).status, 404);
   remote.reachable = false;
   const down = await get('/api/images/plex/playlist/900');
   assert.equal(down.status, 502);
@@ -7189,6 +7242,8 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     assert.deepEqual(fetched, ['https://image.tmdb.org/t/p/w342/abc123.jpg']);
     assert.equal((await get('/api/images/tmdb/w1920_and_h800_multi_faces/abc123.jpg')).status, 200);
     assert.equal(fetched.length, 2, 'each size is its own copy');
+    // Leaving w1280 or w500 out of the allowed sizes, so TV Home's picture and the title logo cannot load, turns this red.
+    for (const size of ['w1280', 'w500']) assert.equal((await get(`/api/images/tmdb/${size}/abc123.jpg`)).status, 200, size);
   });
 
   // Loosening the size or file check, so a caller can steer the fetch or reach outside the image folder, turns this red.
@@ -7196,7 +7251,7 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     const { fetched, get, rows } = await setup();
     for (const path of [
       '/api/images/tmdb/original/abc123.jpg',
-      '/api/images/tmdb/w500/abc123.jpg',
+      '/api/images/tmdb/w185/abc123.jpg',
       '/api/images/tmdb/w342/abc123.gif',
       '/api/images/tmdb/w342/abc_123.jpg',
       '/api/images/tmdb/w342/..%2F..%2Fmedia-manager.sqlite',
@@ -9682,12 +9737,13 @@ test('clearing the cache drops saved details, Discover rows and image copies, an
 });
 
 // Dropping the fanart fallback when the chosen source has no picture, ignoring the backdrop.source preference, asking fanart.tv for a show by anything
-// but its TVDB id, waiting on Trakt or fanart.tv instead of loading in the background, or serving TMDB's backdrop at another size, turns this red.
+// but its TVDB id, waiting on Trakt or fanart.tv instead of loading in the background, serving TMDB's backdrop at another size, or giving TV Home's
+// heroBackdropUrl anything but the w1280 copy (the same address as backdropUrl for Trakt and fanart.tv), turns this red.
 test('title pages take the backdrop from the chosen source and fall back to the Sonarr or Radarr fanart', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { createLibrary } = await import(libraryModuleUrl);
   const { createTitleStore } = await import(titleStoreModuleUrl);
-  const { createBackdrops } = await import(backdropsModuleUrl);
+  const { createBackdrops, createLogos } = await import(backdropsModuleUrl);
   const { setPreference } = await import(preferencesModuleUrl);
   const root = await mkdtemp(join(tmpdir(), 'media-manager-2-backdrop-'));
   const database = openDatabase(join(root, 'media-manager.sqlite'));
@@ -9714,23 +9770,84 @@ test('title pages take the backdrop from the chosen source and fall back to the 
   }));
   const backdrops = async () => [(await pages.series(7)).value.backdropUrl, (await pages.series(8)).value.backdropUrl,
     (await pages.preview('sonarr', 371980)).value.backdropUrl, (await pages.movie(3)).value.backdropUrl];
+  const heroes = async () => [(await pages.series(7)).value.heroBackdropUrl, (await pages.series(8)).value.heroBackdropUrl,
+    (await pages.preview('sonarr', 371980)).value.heroBackdropUrl, (await pages.movie(3)).value.heroBackdropUrl];
   const fallbacks = ['https://artworks.thetvdb.com/severance.jpg', 'https://artworks.thetvdb.com/none.jpg', 'https://artworks.thetvdb.com/severance.jpg', 'https://artworks.thetvdb.com/spirited.jpg'];
   const settle = async () => { for (let turn = 0; turn < 20; turn += 1) await new Promise((resolve) => setImmediate(resolve)); };
 
   assert.deepEqual(await backdrops(), fallbacks);
+  assert.deepEqual(await heroes(), fallbacks);
   answers = { 'tmdb:tv/95396': '/sev.jpg', 'tmdb:movie/129': '/spirit.jpg', 'trakt:tv/95396': 'https://media.trakt.tv/sev.webp', 'trakt:movie/129': 'https://media.trakt.tv/spirit.webp', 'fanart:tv/371980': 'https://assets.fanart.tv/sev.jpg', 'fanart:tv/1': 'https://assets.fanart.tv/none.jpg' };
   assert.deepEqual(await backdrops(), [
     '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg', fallbacks[1], '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg', '/api/images/tmdb/w1920_and_h800_multi_faces/spirit.jpg',
+  ]);
+  assert.deepEqual(await heroes(), [
+    '/api/images/tmdb/w1280/sev.jpg', fallbacks[1], '/api/images/tmdb/w1280/sev.jpg', '/api/images/tmdb/w1280/spirit.jpg',
   ]);
   setPreference(database, 'backdrop.source', 'trakt');
   assert.equal((await pages.series(7)).value.backdropUrl, fallbacks[0]);
   await backdrops();
   await settle();
   assert.deepEqual(await backdrops(), ['https://media.trakt.tv/sev.webp', fallbacks[1], 'https://media.trakt.tv/sev.webp', 'https://media.trakt.tv/spirit.webp']);
+  assert.deepEqual(await heroes(), await backdrops());
   setPreference(database, 'backdrop.source', 'fanart');
   await backdrops();
   await settle();
   assert.deepEqual(await backdrops(), ['https://assets.fanart.tv/sev.jpg', 'https://assets.fanart.tv/none.jpg', 'https://assets.fanart.tv/sev.jpg', fallbacks[3]]);
+  assert.deepEqual(await heroes(), await backdrops());
+
+  // Waiting on Plex's logo load, preferring TMDB's logo to Plex's, or saving a Plex load that threw turns this red.
+  const logoStore = createTitleStore(database);
+  const tmdbLogos = { '95396': '/tmdb-logo.png' };
+  const plexLogos = { 55: { kind: 'ok' }, 56: { kind: 'not_found' }, 57: { kind: 'off' } };
+  const logos = createLogos({
+    store: logoStore,
+    tmdbTitles: { logoPath: async (type, id) => tmdbLogos[id] ?? null },
+    plex: { clearLogo: async (ratingKey) => {
+      if (ratingKey === '59') throw new TypeError('fetch failed');
+      return plexLogos[ratingKey];
+    } },
+  });
+  const sev = { tmdbId: 95396, tvdbId: 371980 };
+  assert.equal(await logos('tv', sev, '55'), '/api/images/tmdb/w500/tmdb-logo.png', 'no saved Plex copy yet: the TMDB logo, without waiting on Plex');
+  await settle();
+  assert.equal(await logos('tv', sev, '55'), '/api/images/plex/logo/55');
+  assert.equal(await logos('tv', sev, null), '/api/images/tmdb/w500/tmdb-logo.png', 'a title with no rating key skips Plex');
+  const other = { tmdbId: 95397, tvdbId: 5 };
+  await logos('tv', other, '56');
+  await settle();
+  assert.equal(await logos('tv', other, '56'), null, 'Plex has none and TMDB has none');
+  tmdbLogos['95397'] = '/other.png';
+  assert.equal(await logos('tv', other, '56'), '/api/images/tmdb/w500/other.png');
+  assert.equal(await logos('tv', { tmdbId: 95397, tvdbId: null }, '57'), '/api/images/tmdb/w500/other.png', 'a title with no store entry skips Plex');
+  assert.equal(await logos('movie', { tmdbId: null, tvdbId: null }, null), null);
+  tmdbLogos['95398'] = '/third.png';
+  const third = { tmdbId: 95398, tvdbId: 6 };
+  assert.equal(await logos('tv', third, '59'), '/api/images/tmdb/w500/third.png', 'Plex threw: the TMDB logo');
+  await settle();
+  assert.equal(logoStore.get({ type: 'tv', tvdbId: 6, tmdbId: 95398 }, 'plexLogo'), undefined, 'a Plex load that threw is not saved');
+  assert.equal(await logos('tv', third, '59'), '/api/images/tmdb/w500/third.png');
+
+  // Not passing the watch status's rating key to the logo lookup, or holding the reply until Plex's logo load is done, turns this red.
+  const tmdbLoaded = new Set();
+  const logoPages = createLibrary(services, () => [], createTitleStore(database), undefined, undefined, undefined, undefined, undefined, {
+    forSeries: async () => ({ kind: 'ok', ratingKey: '60' }),
+    forMovie: async () => null,
+  }, undefined, createLogos({
+    store: createTitleStore(database),
+    // Like the real logoPath: the saved copy or null, with the load running in the background.
+    tmdbTitles: { logoPath: async (type, id) => {
+      const answer = tmdbLoaded.has(id) ? '/spirit-logo.png' : null;
+      setImmediate(() => tmdbLoaded.add(id));
+      return answer;
+    } },
+    plex: { clearLogo: async (ratingKey) => (ratingKey === '60' ? { kind: 'ok' } : { kind: 'not_found' }) },
+  }));
+  const logoUrls = async () => [(await logoPages.series(8)).value.logoUrl, (await logoPages.movie(3)).value.logoUrl];
+  assert.deepEqual(await logoUrls(), [null, null], 'no saved copy yet: null, without waiting on the loads');
+  await settle();
+  assert.deepEqual(await logoUrls(), ['/api/images/plex/logo/60', '/api/images/tmdb/w500/spirit-logo.png'],
+    'the show has a rating key and a Plex logo; the film has no rating key, so TMDB');
 });
 
 // Linking Trakt's 1280-wide copy instead of the 1920-wide one, passing on a link to another host, picking a fanart.tv background other than the
@@ -15203,10 +15320,12 @@ test('the discover routes check every value, mark library titles and turn a miss
   assert.equal(page.status, 200);
   assert.deepEqual({ page: page.body.page, totalPages: page.body.totalPages, pending: page.body.pending }, { page: 2, totalPages: 3, pending: false });
   assert.deepEqual(page.body.results[0], {
-    tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, date: '2021-09-15', posterUrl: '/api/images/tmdb/w342/d5NX.jpg', backdropUrl: null,
+    tmdbId: 438631, type: 'movie', title: 'Dune', year: 2021, date: '2021-09-15', posterUrl: '/api/images/tmdb/w342/d5NX.jpg', backdropUrl: null, heroBackdropUrl: null,
     rating: 7.8, genres: ['Science Fiction', 'Drama'], overview: 'Paul travels. Then more.', libraryId: 7,
   });
   assert.equal(page.body.results[1].backdropUrl, '/api/images/tmdb/w1920_and_h800_multi_faces/bg.jpg');
+  // Giving TV Home's heroBackdropUrl any size but w1280, or changing backdropUrl, turns this red.
+  assert.equal(page.body.results[1].heroBackdropUrl, '/api/images/tmdb/w1280/bg.jpg');
   assert.equal(page.body.results[1].libraryId, null);
   assert.deepEqual([page.body.results[1].genres, page.body.results[1].date], [[], '2022-02-17']);
   const saved = store.get({ type: 'movie', tmdbId: 438631 }, 'tmdbSummary').value;

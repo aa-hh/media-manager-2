@@ -70,10 +70,10 @@ import kotlinx.coroutines.delay
 data class Summary(val text: String?, val backdropPath: String?)
 
 /** How long focus must rest on a card before the top of the page follows it, so moving along a row doesn't flash pictures. */
-private const val FOCUS_REST_MS = 300L
+internal const val FOCUS_REST_MS = 300L
 
 /**
- * Home and Discover (T03d A1, T03a A1 and A6): the focused card's backdrop and summary at the top, then [rails] of cards.
+ * Discover (T03a A1): the focused card's backdrop and summary at the top, then [rails] of cards.
  * Only the first row drives the top: it follows focus there once it rests ~300 ms and crossfades over 150 ms; [summaryFor]
  * supplies the summary and backdrop (a title's detail read, for library cards) and each answer is kept. The moment focus
  * moves to a lower row the backdrop and summary start fading out, before the rows finish scrolling up, so a lower row
@@ -204,7 +204,15 @@ private fun nameOf(item: RailItem) = when (item) {
 }
 
 @Composable
-private fun RailCard(item: RailItem, library: LibraryApi, onOpen: () -> Unit, onChanged: () -> Unit, modifier: Modifier) {
+internal fun RailCard(
+    item: RailItem,
+    library: LibraryApi,
+    onOpen: () -> Unit,
+    onChanged: () -> Unit,
+    modifier: Modifier,
+    width: Dp = 104.dp,
+    caption: Boolean = true,
+) {
     when (item) {
         is RailItem.Title -> {
             val title = item.title
@@ -215,13 +223,14 @@ private fun RailCard(item: RailItem, library: LibraryApi, onOpen: () -> Unit, on
                 subtitle = item.subtitle,
                 onClick = onOpen,
                 modifier = modifier,
-                width = 104.dp,
+                width = width,
                 actionTarget = CardActionTarget(title.service, title.id, heading, watched, title.monitored, item.inContinueWatching),
                 library = library,
                 onActionDone = { onChanged() },
                 played = watched && !item.inContinueWatching,
                 unwatched = if (item.inContinueWatching) 0 else unwatched(title.watch),
                 watchProgress = item.progress,
+                caption = caption,
             ) { ServerImage(title.smallPosterUrl ?: title.posterUrl, Modifier.fillMaxSize()) }
         }
         is RailItem.Found -> PosterTile(
@@ -229,9 +238,21 @@ private fun RailCard(item: RailItem, library: LibraryApi, onOpen: () -> Unit, on
             subtitle = item.subtitle,
             onClick = onOpen,
             modifier = modifier,
-            width = 104.dp,
+            width = width,
+            caption = caption,
         ) { ServerImage(item.result.posterUrl, Modifier.fillMaxSize()) }
-        is RailItem.PlexList -> PlaylistTile(item, library, onOpen, modifier)
+        is RailItem.PlexList -> if (caption) {
+            PlaylistTile(item, library, onOpen, modifier)
+        } else {
+            PosterTile(
+                title = item.playlist.title,
+                subtitle = null,
+                onClick = onOpen,
+                modifier = modifier,
+                width = width,
+                caption = false,
+            ) { ServerImage(library.playlistCollage(item.playlist.id).encodedPath, Modifier.fillMaxSize()) }
+        }
     }
 }
 

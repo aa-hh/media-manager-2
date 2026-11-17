@@ -45,6 +45,7 @@ export type TmdbDetails = {
   tagline: string | null;
   posterPath: string | null;
   backdropPath: string | null;
+  logoPath: string | null;
   date: string | null;
   runtime: number | null;
   status: string | null;
@@ -106,6 +107,9 @@ const parseDetails = (body: unknown, mediaType: TmdbMediaType): TmdbDetails | un
   const credits = isRecord(creditsBody) ? creditsBody : {};
   const episodeRuntimes = Array.isArray(body.episode_run_time) ? body.episode_run_time : [];
   const externalIds = isRecord(body.external_ids) ? body.external_ids : {};
+  // The logo is the first PNG in English, else the first PNG with no language.
+  const logos = records(isRecord(body.images) ? body.images.logos : undefined).filter((logo) => text(logo.file_path)?.endsWith('.png'));
+  const logo = logos.find((entry) => entry.iso_639_1 === 'en') ?? logos.find((entry) => entry.iso_639_1 === null || entry.iso_639_1 === undefined);
   return {
     id,
     mediaType,
@@ -115,6 +119,7 @@ const parseDetails = (body: unknown, mediaType: TmdbMediaType): TmdbDetails | un
     tagline: text(body.tagline),
     posterPath: text(body.poster_path),
     backdropPath: text(body.backdrop_path),
+    logoPath: text(logo?.file_path),
     date: text(body.release_date) ?? text(body.first_air_date),
     runtime: number(body.runtime) ?? number(episodeRuntimes[0]),
     status: text(body.status),
@@ -247,8 +252,8 @@ export const createTmdb = (database: DatabaseSync, options: ServiceOptions & { n
   // Not cached here: title details are saved in the title store.
   const details = async (mediaType: TmdbMediaType, id: number): Promise<Result<TmdbDetails>> => {
     const operation = `the ${mediaType === 'movie' ? 'movie' : 'show'} details`;
-    const append = mediaType === 'movie' ? 'keywords,recommendations,credits' : 'keywords,recommendations,aggregate_credits,external_ids';
-    const result = await get(operation, `/${mediaType}/${id}`, { append_to_response: append });
+    const append = mediaType === 'movie' ? 'keywords,recommendations,credits,images' : 'keywords,recommendations,aggregate_credits,external_ids,images';
+    const result = await get(operation, `/${mediaType}/${id}`, { append_to_response: append, include_image_language: 'en,null' });
     if (result.kind !== 'ok') return result;
     const parsed = parseDetails(result.value, mediaType);
     return parsed === undefined ? { kind: 'refused', status: null, message: `${LABEL} sent no usable ${operation}.` } : { kind: 'ok', value: parsed };

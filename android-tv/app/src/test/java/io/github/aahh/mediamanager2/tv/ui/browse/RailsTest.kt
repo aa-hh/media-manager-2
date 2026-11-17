@@ -8,9 +8,11 @@ import io.github.aahh.mediamanager2.tv.api.EpisodeRef
 import io.github.aahh.mediamanager2.tv.api.LibraryTitle
 import io.github.aahh.mediamanager2.tv.api.LibraryTitles
 import io.github.aahh.mediamanager2.tv.api.LibraryWatch
+import io.github.aahh.mediamanager2.tv.api.MovieDetail
 import io.github.aahh.mediamanager2.tv.api.Playlist
 import io.github.aahh.mediamanager2.tv.api.Playlists
 import io.github.aahh.mediamanager2.tv.api.RecentlyAddedItem
+import io.github.aahh.mediamanager2.tv.api.SeriesDetail
 import io.github.aahh.mediamanager2.tv.api.TitleWatch
 import io.github.aahh.mediamanager2.tv.api.TrendingRows
 import io.github.aahh.mediamanager2.tv.api.TvCounts
@@ -62,7 +64,7 @@ class RailsTest {
         assertEquals("Movie · 2025", (rails[2].items.single() as RailItem.Title).subtitle)
     }
 
-    // Not watched yet leads Home, since only the first row shows the backdrop (owner, 16 Nov 2026): titles in Plex never
+    // Not watched yet leads Home, since the top of the page helps most on titles not started: titles in Plex never
     // started, newest added first. A started or watched title, or one Plex lacks, in that row turns this red.
     @Test
     fun notWatchedYetLeadsWithNewestUnstartedTitles() {
@@ -136,5 +138,81 @@ class RailsTest {
         assertFalse(played(TitleWatch("show", "1", leafCount = 3, viewedLeafCount = 2)))
         assertEquals(1, unwatched(TitleWatch("show", "1", leafCount = 3, viewedLeafCount = 2)))
         assertEquals("an unstarted show shows no count", 0, unwatched(TitleWatch("show", "1", leafCount = 3)))
+    }
+
+    // A row slides one pitch per card until its last card's right edge reaches x 912, and a row that fits never slides.
+    // Dropping the clamp, or getting the 792 wide space wrong, turns this red.
+    @Test
+    fun rowSlideStopsAtTheRowEnd() {
+        assertEquals(0f, rowSlide(4, 5, 112f, 124f), 0f)
+        assertEquals(0f, rowSlide(0, 9, 112f, 124f), 0f)
+        assertEquals(248f, rowSlide(2, 9, 112f, 124f), 0f)
+        for (card in 3..8) assertEquals(312f, rowSlide(card, 9, 112f, 124f), 0f)
+        assertEquals("the last card's right edge", 912f, 120f + 8 * 124f - rowSlide(8, 9, 112f, 124f) + 112f, 0f)
+    }
+
+    // The open row sits 12 into the rows' area, the next row's title at page y 460, the row above 183 out of sight.
+    // Changing the 195 or 47 heights turns this red.
+    @Test
+    fun rowTopsFollowTheOpenRow() {
+        assertEquals(12, rowTop(2, 2))
+        assertEquals(254, rowTop(3, 2))
+        assertEquals(460, 206 + rowTop(3, 2))
+        assertEquals(-183, rowTop(1, 2))
+    }
+
+    // Each row keeps its own card across Up and Down, presses stop at the ends, and a row that got shorter reads as its
+    // last card. Resetting a row's card on Up or Down, or letting focus run past an end, turns this red.
+    @Test
+    fun moveFocusKeepsEachRowsCard() {
+        fun rail(key: String, size: Int) = Rail(key, key, (1..size).map { RailItem.Title(film.copy(id = it), "") })
+        val rails = listOf(rail("a", 5), rail("b", 3))
+
+        var focus = HomeFocus()
+        focus = moveFocus(rails, focus, Move.Left)
+        assertEquals("the first card stops Left", 0, focus.cardIn(rails[0]))
+        repeat(2) { focus = moveFocus(rails, focus, Move.Right) }
+        focus = moveFocus(rails, focus, Move.Down)
+        assertEquals(1, focus.open)
+        assertEquals("a row first opened starts at its first card", 0, focus.cardIn(rails[1]))
+        repeat(5) { focus = moveFocus(rails, focus, Move.Right) }
+        assertEquals("the last card stops Right", 2, focus.cardIn(rails[1]))
+        focus = moveFocus(rails, focus, Move.Down)
+        assertEquals("the last row stops Down", 1, focus.open)
+        focus = moveFocus(rails, focus, Move.Up)
+        assertEquals(0, focus.open)
+        assertEquals("the first row kept its card", 2, focus.cardIn(rails[0]))
+        focus = moveFocus(rails, focus, Move.Up)
+        assertEquals("the first row stops Up", 0, focus.open)
+
+        val shorter = listOf(rail("a", 2))
+        assertEquals(1, HomeFocus(open = 3, cards = mapOf("a" to 4)).cardIn(shorter[0]))
+        assertEquals("a gone row reads as the last row", 0, HomeFocus(open = 3).openIn(shorter))
+        assertEquals("Left from past the end lands one before the last", 0, moveFocus(shorter, HomeFocus(cards = mapOf("a" to 4)), Move.Left).cardIn(shorter[0]))
+    }
+
+    // The top's facts line is year, length or seasons, and first genre, and the picture is always the 16:9 one. Reading
+    // backdropUrl, or formatting the length wrong, turns this red.
+    @Test
+    fun heroFactsAndPicture() {
+        val filmCard = RailItem.Title(film.copy(year = 2014), "")
+        val filmDetail = MovieDetail(
+            id = 3, title = "Night Harbour", runtime = 118, genres = listOf("Thriller", "Drama"), overview = "A pilot.",
+            backdropUrl = "/wide.jpg", heroBackdropUrl = "/hero.jpg", logoUrl = "/logo.png",
+        )
+        assertEquals(Hero("Night Harbour", "2014 · 1h 58m · Thriller", "A pilot.", "/logo.png", "/hero.jpg"), heroOf(filmCard, film = filmDetail))
+        assertEquals("2014 · 2h 0m · Thriller", heroOf(filmCard, film = filmDetail.copy(runtime = 120)).facts)
+        assertEquals("2014 · 57m · Thriller", heroOf(filmCard, film = filmDetail.copy(runtime = 57)).facts)
+
+        val showCard = RailItem.Title(show.copy(year = 2022), "")
+        val showDetail = SeriesDetail(id = 7, title = "The Quiet Year", genres = listOf("Drama"), backdropUrl = "/wide.jpg", heroBackdropUrl = "/hero.jpg")
+        assertEquals("2022 · 2 seasons · Drama", heroOf(showCard, show = showDetail).facts)
+        assertEquals("/hero.jpg", heroOf(showCard, show = showDetail).backdropPath)
+        assertEquals(Hero("The Quiet Year", "2022 · 2 seasons", null, null, null), heroOf(showCard))
+
+        val trakt = RailItem.Found(found(9).copy(genres = listOf("Comedy", "Drama"), overview = "Fun.", backdropUrl = "/wide.jpg", heroBackdropUrl = "/hero.jpg"))
+        assertEquals(Hero("T9", "2024 · Comedy", "Fun.", null, "/hero.jpg"), heroOf(trakt))
+
+        assertEquals(Hero("x", "Plex list · 1 item", null, null, null), heroOf(RailItem.PlexList(Playlist("1", "x", itemCount = 1))))
     }
 }

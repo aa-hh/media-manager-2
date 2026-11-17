@@ -16,20 +16,21 @@ import io.github.aahh.mediamanager2.tv.ui.Route
 import io.github.aahh.mediamanager2.tv.ui.ShowRoute
 import io.github.aahh.mediamanager2.tv.ui.browse.AddTarget
 import io.github.aahh.mediamanager2.tv.ui.browse.EmptyRails
+import io.github.aahh.mediamanager2.tv.ui.browse.HomeRowsPage
 import io.github.aahh.mediamanager2.tv.ui.browse.Rail
-import io.github.aahh.mediamanager2.tv.ui.browse.RailsPage
 import io.github.aahh.mediamanager2.tv.ui.browse.addTarget
+import io.github.aahh.mediamanager2.tv.ui.browse.heroReader
 import io.github.aahh.mediamanager2.tv.ui.browse.openRoute
 import io.github.aahh.mediamanager2.tv.ui.browse.plexRails
-import io.github.aahh.mediamanager2.tv.ui.browse.summaryReader
 import io.github.aahh.mediamanager2.tv.ui.browse.traktRails
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
 /**
- * Home, where the app opens: the Plex rows (Continue watching, Recently added TV, Recently added films, Playlists), then
- * the Trakt rows; the top backdrop follows the focused card. A row that failed or is empty is hidden; with no rows at all
- * the page says so and offers Discover. FINAL frames: T03d A1, T03a A6 (rails scrolled), T03a A2 and T03d C6 (the side
+ * Home, where the app opens: the Plex rows (Not watched yet first, then Continue watching, Recently added TV, Recently
+ * added films, Playlists), then the Trakt rows. Every row drives the top of the page (the picture, logo, facts and
+ * summary follow the focused card), and no card has text under it. A row that failed or is empty is hidden; with no
+ * rows at all the page says so and offers Discover. FINAL frames: T03d A1, T03a A6 (rails scrolled), T03a A2 and T03d C6 (the side
  * menu, in Navigation.kt).
  */
 @Composable
@@ -37,7 +38,7 @@ fun HomeScreen(library: LibraryApi, browse: BrowseApi, onNavigate: (Route) -> Un
     var rails by remember { mutableStateOf<List<Rail>?>(null) }
     var reads by remember { mutableIntStateOf(0) }
     var adding by remember { mutableStateOf<AddTarget?>(null) }
-    val summaryFor = remember(library) { summaryReader(library) }
+    val heroFor = remember(library, browse) { heroReader(library, browse) }
 
     LaunchedEffect(reads) {
         rails = coroutineScope {
@@ -59,12 +60,12 @@ fun HomeScreen(library: LibraryApi, browse: BrowseApi, onNavigate: (Route) -> Un
         )
         return
     }
-    RailsPage(
+    HomeRowsPage(
         shown,
         library,
         onOpen = { item -> openRoute(item)?.let(onNavigate) ?: addTarget(item)?.let { adding = it } },
         onChanged = { reads += 1 },
-        summaryFor = summaryFor,
+        heroFor = heroFor,
     )
     adding?.let { target ->
         AddDialog(

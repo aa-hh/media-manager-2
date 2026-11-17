@@ -1,6 +1,7 @@
 package io.github.aahh.mediamanager2.tv.ui.browse
 
 import io.github.aahh.mediamanager2.tv.api.ApiResult
+import io.github.aahh.mediamanager2.tv.api.BrowseApi
 import io.github.aahh.mediamanager2.tv.api.LibraryApi
 import io.github.aahh.mediamanager2.tv.ui.FilmRoute
 import io.github.aahh.mediamanager2.tv.ui.PlexListRoute
@@ -41,5 +42,22 @@ fun summaryReader(library: LibraryApi): suspend (RailItem) -> Summary? = { item 
         } else {
             (library.movie(item.title.id) as? ApiResult.Ok)?.value?.let { Summary(it.overview, it.backdropUrl) }
         }
+    }
+}
+
+/**
+ * Home's top for a card, read once focus rests. A library title needs its detail read (summary, logo and picture; when the
+ * read fails the top keeps what the card knows). A Trakt card carries its summary and picture and asks for its logo; a
+ * Plex list shows its collage.
+ */
+fun heroReader(library: LibraryApi, browse: BrowseApi): suspend (RailItem) -> Hero = { item ->
+    when (item) {
+        is RailItem.Title -> if (item.title.service == "sonarr") {
+            heroOf(item, show = (library.series(item.title.id) as? ApiResult.Ok)?.value)
+        } else {
+            heroOf(item, film = (library.movie(item.title.id) as? ApiResult.Ok)?.value)
+        }
+        is RailItem.Found -> heroOf(item).copy(logoPath = (browse.logo(item.result.type, item.result.tmdbId) as? ApiResult.Ok)?.value?.logoUrl)
+        is RailItem.PlexList -> heroOf(item).copy(backdropPath = library.playlistCollage(item.playlist.id).encodedPath)
     }
 }

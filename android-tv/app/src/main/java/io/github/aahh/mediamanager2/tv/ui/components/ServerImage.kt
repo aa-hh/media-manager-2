@@ -3,6 +3,7 @@ package io.github.aahh.mediamanager2.tv.ui.components
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import coil3.ImageLoader
@@ -37,8 +38,24 @@ val LocalServerImages = staticCompositionLocalOf<ServerImages?> { null }
 
 /** A picture from our server at [path], filling [modifier]; nothing while it loads, when it fails or when [path] is null. */
 @Composable
-fun ServerImage(path: String?, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
+fun ServerImage(
+    path: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    alignment: Alignment = Alignment.Center,
+    onSuccess: () -> Unit = {},
+    onError: () -> Unit = {},
+) {
     val images = LocalServerImages.current ?: return
     val url = path?.let(images::url) ?: return
-    AsyncImage(model = url, contentDescription = null, imageLoader = images.loader, modifier = modifier, contentScale = contentScale)
+    AsyncImage(
+        model = url,
+        contentDescription = null,
+        imageLoader = images.loader,
+        modifier = modifier,
+        alignment = alignment,
+        contentScale = contentScale,
+        onSuccess = { onSuccess() },
+        onError = { onError() },
+    )
 }

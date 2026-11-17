@@ -114,6 +114,20 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
       return saved?.value.backdropPath ?? null;
     },
 
+    // Same as backdropPath, for the title logo.
+    async logoPath(type: TmdbMediaType, tmdbId: number): Promise<string | null> {
+      const saved = store.get<Partial<TmdbDetails>>(type === 'movie' ? { type, tmdbId } : { type, tmdbId }, PART);
+      void details(type, tmdbId).catch(() => undefined);
+      return saved?.value.logoPath ?? null;
+    },
+
+    // Waits for TMDB: the TV asks for it once, when a Trakt card has rested in focus.
+    async logo(type: TmdbMediaType, tmdbId: number): Promise<{ logoUrl: string | null }> {
+      const result = await details(type, tmdbId).catch(() => undefined);
+      const path = result?.kind === 'ok' ? result.value.logoPath : null;
+      return { logoUrl: path === null || path === undefined ? null : `/api/images/tmdb/w500/${path.replace(/^\//, '')}` };
+    },
+
     async airing(tmdbId: number): Promise<{ seasons: Array<{ seasonNumber: number; aired: number }> | null; nextAirDate: string | null }> {
       const result = await tmdb.tvAiring(tmdbId);
       return result.kind === 'ok' ? result.value : { seasons: null, nextAirDate: null };
@@ -142,6 +156,12 @@ export const createTmdbTitleRoutes = (titles: TmdbTitles) => {
     const collectionTmdbId = idOf(context.req.param('collectionTmdbId'));
     if (collectionTmdbId === null) return context.json({ error: 'invalid_request' }, 400);
     return context.json(await titles.collectionSize(collectionTmdbId));
+  });
+  routes.get('/tmdb/:type/:tmdbId/logo', async (context) => {
+    const type = context.req.param('type');
+    const tmdbId = idOf(context.req.param('tmdbId'));
+    if ((type !== 'movie' && type !== 'tv') || tmdbId === null) return context.json({ error: 'invalid_request' }, 400);
+    return context.json(await titles.logo(type, tmdbId));
   });
   routes.get('/tmdb/:type/:tmdbId', async (context) => {
     const type = context.req.param('type');

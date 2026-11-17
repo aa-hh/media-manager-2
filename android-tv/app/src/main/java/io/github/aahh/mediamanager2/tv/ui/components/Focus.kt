@@ -21,7 +21,9 @@ import androidx.compose.ui.unit.dp
 // Focus motion shared by every TV component: 150 ms on the desktop's ease-out curve (DESIGN.md, Motion). Focus grows a
 // control from its centre with a graphics layer, so nothing around it moves.
 
-private val EaseOut = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+internal val EaseOut = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+internal val EaseIn = CubicBezierEasing(0.4f, 0f, 1f, 1f)
 
 internal fun <T> focusSpec(): AnimationSpec<T> = tween(durationMillis = 150, easing = EaseOut)
 

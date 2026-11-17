@@ -327,7 +327,7 @@ export const createTitleCache = (options: {
 };
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
-const TMDB_IMAGE_SIZES = new Set(['w342', 'w1920_and_h800_multi_faces']);
+const TMDB_IMAGE_SIZES = new Set(['w342', 'w1920_and_h800_multi_faces', 'w1280', 'w500']);
 const TMDB_IMAGE_FILE = /^[A-Za-z0-9]+\.(jpg|png)$/;
 // TMDB's terms cap how long a copy may be kept at six months; 180 days stays inside that.
 const TMDB_IMAGE_MAX_AGE_MS = 180 * 24 * 60 * 60_000;
@@ -430,34 +430,37 @@ type PlexCollage = (id: string) => Promise<
 >;
 // The newest few Plex list collages, by Plex's composite address, which changes when the list does.
 const KEPT_COLLAGES = 32;
+const KEPT_LOGOS = 64;
 
 export const createImageRoutes = (
   cache: Pick<ReturnType<typeof createTitleCache>, 'image'>,
   tmdb?: ReturnType<typeof createTmdbImages>,
   plexCollage?: PlexCollage,
+  plexLogo?: PlexCollage,
 ) => {
   const routes = new Hono();
   routes.use('*', etag());
-  if (plexCollage !== undefined) {
-    const collages = new Map<string, { bytes: Uint8Array; contentType: string }>();
-    // Fetched through the server so the Plex token never reaches the TV or the page.
-    routes.get('/plex/playlist/:id{[0-9]{1,12}}', async (context) => {
+  // Fetched through the server so the Plex token never reaches the TV or the page.
+  const plexPicture = (source: PlexCollage, kept: number) => {
+    const pictures = new Map<string, { bytes: Uint8Array; contentType: string }>();
+    return async (context: Context) => {
       let found: { bytes: Uint8Array; contentType: string };
       try {
-        const collage = await plexCollage(context.req.param('id'));
-        if (collage.kind === 'off') return context.json({ error: 'not_configured' }, 503);
-        if (collage.kind === 'not_found') return context.json({ error: 'not_found' }, 404);
-        const kept = collages.get(collage.key);
-        found = kept ?? await collage.load();
-        collages.delete(collage.key);
-        collages.set(collage.key, found);
-        while (collages.size > KEPT_COLLAGES) collages.delete(collages.keys().next().value as string);
+        const picture = await source(context.req.param('id') ?? context.req.param('ratingKey') ?? '');
+        if (picture.kind === 'off') return context.json({ error: 'not_configured' }, 503);
+        if (picture.kind === 'not_found') return context.json({ error: 'not_found' }, 404);
+        found = pictures.get(picture.key) ?? await picture.load();
+        pictures.delete(picture.key);
+        pictures.set(picture.key, found);
+        while (pictures.size > kept) pictures.delete(pictures.keys().next().value as string);
       } catch {
         return context.json({ error: 'plex_unavailable' }, 502);
       }
       return context.body(new Uint8Array(found.bytes), 200, { 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=300' });
-    });
-  }
+    };
+  };
+  if (plexCollage !== undefined) routes.get('/plex/playlist/:id{[0-9]{1,12}}', plexPicture(plexCollage, KEPT_COLLAGES));
+  if (plexLogo !== undefined) routes.get('/plex/logo/:ratingKey{[0-9]{1,12}}', plexPicture(plexLogo, KEPT_LOGOS));
   routes.get('/:service{sonarr|radarr}/:id{[0-9]{1,18}}/:kind{poster|fanart}', (context) => {
     const found = cache.image(
       context.req.param('service') as Service,

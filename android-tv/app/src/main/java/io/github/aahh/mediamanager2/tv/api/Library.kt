@@ -166,6 +166,8 @@ data class SeriesDetail(
     val seasons: List<Season> = emptyList(),
     val episodes: List<EpisodeDetail> = emptyList(),
     val watch: SeriesWatch? = null,
+    val heroBackdropUrl: String? = null,
+    val logoUrl: String? = null,
 )
 
 /** `GET /api/library/movie/:id`. */
@@ -188,6 +190,8 @@ data class MovieDetail(
     val sizeOnDisk: Long = 0,
     val file: FileSummary? = null,
     val watch: MovieWatch? = null,
+    val heroBackdropUrl: String? = null,
+    val logoUrl: String? = null,
 )
 
 /** One of the signed-in Plex user's video lists. */

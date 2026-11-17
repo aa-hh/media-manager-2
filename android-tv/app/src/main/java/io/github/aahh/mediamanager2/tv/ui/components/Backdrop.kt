@@ -66,7 +66,7 @@ fun Backdrop(scrim: BackdropScrim, modifier: Modifier = Modifier, image: @Compos
 // The [brushes], drawn once into a picture a quarter of the size and stretched over the whole area. Shading full-screen
 // gradients every frame cost the Google TV Streamer's GPU ~26 ms of each 16 ms frame; stretching one small picture costs
 // a fraction of that, and a smooth gradient looks the same stretched.
-private fun Modifier.scrim(vararg brushes: Brush): Modifier = drawWithCache {
+internal fun Modifier.scrim(vararg brushes: Brush): Modifier = drawWithCache {
     val small = IntSize(ceil(size.width / 4).toInt().coerceAtLeast(1), ceil(size.height / 4).toInt().coerceAtLeast(1))
     val picture = ImageBitmap(small.width, small.height)
     CanvasDrawScope().draw(this, layoutDirection, Canvas(picture), Size(small.width.toFloat(), small.height.toFloat())) {

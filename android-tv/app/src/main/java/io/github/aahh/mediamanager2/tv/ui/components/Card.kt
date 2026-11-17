@@ -1,5 +1,6 @@
 // v2/TV/Card/Poster — https://www.figma.com/design/LOntH5HQXfvTnfapJoyoqZ/media-manager-2----Android-tv----screens?node-id=53-4359
 //   (focused: https://www.figma.com/design/LOntH5HQXfvTnfapJoyoqZ/media-manager-2----Android-tv----screens?node-id=53-4361)
+// v2/TV/Card/Poster with printed title — https://www.figma.com/design/LOntH5HQXfvTnfapJoyoqZ/?node-id=137-14643
 // v2/TV/Card/Title — https://www.figma.com/design/LOntH5HQXfvTnfapJoyoqZ/media-manager-2----Android-tv----screens?node-id=53-4360
 // v2/TV/Card/Actions — https://www.figma.com/design/LOntH5HQXfvTnfapJoyoqZ/media-manager-2----Android-tv----screens?node-id=56-5541
 package io.github.aahh.mediamanager2.tv.ui.components
@@ -52,7 +53,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 /**
- * A 2:3 poster card, [width] wide (104 in rails, 127 in the library grids). Focus grows it 1.1× from its centre with the
+ * A 2:3 poster card, [width] wide (112 on Home, 104 in Discover's rows, 127 in the library grids). Focus grows it 1.1× from its centre with the
  * 3dp `ring` just outside its edge, over the gap, so its neighbours and its title never move; rows and grids leave room
  * for that growth (5% of the card on each side). Holding OK runs [onLongClick] (tv-material `Card`).
  *
@@ -133,8 +134,9 @@ data class CardActionTarget(
 enum class CardAction { MarkWatched, MarkUnwatched, Monitor, StopMonitoring, RemoveFromContinueWatching }
 
 /**
- * A poster card with its title under it, 12 below. With an [actionTarget], holding OK opens the hold-OK action list
- * beside the card; [onActionDone] gets the action once the server has done it, so the page can reload the title.
+ * A poster card with its title under it, 12 below; with [caption] false nothing is drawn under it (Home's cards, 112
+ * wide, where the poster carries the name). With an [actionTarget], holding OK opens the hold-OK action list beside the
+ * card; [onActionDone] gets the action once the server has done it, so the page can reload the title.
  */
 @Composable
 fun PosterTile(
@@ -150,6 +152,7 @@ fun PosterTile(
     unwatched: Int = 0,
     watchProgress: Float? = null,
     downloadingPercent: Int? = null,
+    caption: Boolean = true,
     poster: @Composable BoxScope.() -> Unit = {},
 ) {
     var actionsOpen by remember { mutableStateOf(false) }
@@ -166,8 +169,10 @@ fun PosterTile(
             downloadingPercent = downloadingPercent,
             poster = poster,
         )
-        Spacer(Modifier.height(12.dp))
-        CardTitle(title, subtitle)
+        if (caption) {
+            Spacer(Modifier.height(12.dp))
+            CardTitle(title, subtitle)
+        }
     }
     if (actionsOpen && actionTarget != null && library != null) {
         CardActionList(actionTarget, library, anchor = bounds, onDismiss = { actionsOpen = false }, onDone = {
@@ -279,6 +284,7 @@ private fun PosterCardPreview() = AppTheme {
             watchProgress = 0.6f,
         )
         PosterTile("Iron Valley", "TV · 2023", onClick = {}, downloadingPercent = 64)
+        PosterTile("Night Harbour", null, onClick = {}, width = 112.dp, caption = false)
     }
 }
 
