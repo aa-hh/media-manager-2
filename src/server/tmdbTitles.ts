@@ -12,6 +12,9 @@ const MAX_CAST = 10;
 const MAX_SIMILAR = 20;
 // The title page waits this long for TMDB's genre and keyword ids before showing its chips as plain labels.
 const CHIPS_WAIT_MS = 1500;
+// How long a logo answer that could not be saved is trusted: a show TMDB knows no TVDB id for, or a failed load.
+const UNSAVED_LOGO_MS = 60 * 60_000;
+const FAILED_LOGO_MS = 5 * 60_000;
 
 type Tmdb = Pick<ReturnType<typeof createTmdb>, 'details' | 'tvAiring' | 'collection'>;
 
@@ -41,6 +44,15 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
     return typeof tvdbId === 'number' ? { type, tvdbId, tmdbId } : undefined;
   };
 
+  // First loads of titles with no saved copy, so two callers of one title share one TMDB request.
+  const firstLoads = new Map<string, Promise<Result<Partial<TmdbDetails>>>>();
+  // Logos of titles whose last load saved nothing, so the TV Home hero batch can answer them without asking TMDB again.
+  const unsavedLogos = new Map<string, { logoPath: string | null; until: number }>();
+  const unsavedLogo = (type: TmdbMediaType, tmdbId: number) => {
+    const entry = unsavedLogos.get(`${type}:${tmdbId}`);
+    return entry !== undefined && store.now() < entry.until ? entry : undefined;
+  };
+
   // A saved copy is served at once; a stale one is refetched in the background for the next request.
   const details = async (type: TmdbMediaType, tmdbId: number): Promise<Result<Partial<TmdbDetails>>> => {
     const load = () => tmdb.details(type, tmdbId);
@@ -54,12 +66,23 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
       }
       return { kind: 'ok', value: saved.value };
     }
-    const result = await load();
-    if (result.kind !== 'ok') return result;
-    // razor: a show TMDB knows no TVDB id for cannot be saved, so it is fetched on every visit.
-    const title = titleOf(type, tmdbId, result.value.tvdbId);
-    if (title !== undefined) store.put(title, PART, result.value);
-    return result;
+    const key = `${type}:${tmdbId}`;
+    const running = firstLoads.get(key);
+    if (running !== undefined) return running;
+    const loading = (async (): Promise<Result<Partial<TmdbDetails>>> => {
+      const result = await load();
+      if (result.kind !== 'ok') {
+        unsavedLogos.set(key, { logoPath: null, until: store.now() + FAILED_LOGO_MS });
+        return result;
+      }
+      // razor: a show TMDB knows no TVDB id for cannot be saved, so it is fetched on every visit; only its logo is kept, in memory.
+      const title = titleOf(type, tmdbId, result.value.tvdbId);
+      if (title !== undefined) store.put(title, PART, result.value);
+      else unsavedLogos.set(key, { logoPath: result.value.logoPath ?? null, until: store.now() + UNSAVED_LOGO_MS });
+      return result;
+    })().finally(() => firstLoads.delete(key));
+    firstLoads.set(key, loading);
+    return loading;
   };
 
   return {
@@ -115,14 +138,24 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
       return saved?.value.backdropPath ?? null;
     },
 
-    // Same as backdropPath, for the title logo.
+    // Same as backdropPath, for the title logo. With no saved copy, a logo remembered from an unsaved load answers and
+    // starts no load until it expires.
     async logoPath(type: TmdbMediaType, tmdbId: number): Promise<string | null> {
       const saved = store.get<Partial<TmdbDetails>>(type === 'movie' ? { type, tmdbId } : { type, tmdbId }, PART);
+      const remembered = saved === undefined ? unsavedLogo(type, tmdbId) : undefined;
+      if (remembered !== undefined) return remembered.logoPath;
       void details(type, tmdbId).catch(() => undefined);
       return saved?.value.logoPath ?? null;
     },
 
-    // Waits for TMDB: the TV asks for it once, when a Trakt card has rested in focus.
+    // True when saved details were read with logos, or an unsaved load's logo is still remembered, so a null logoPath
+    // means there is none for now. Starts no load.
+    logoKnown(type: TmdbMediaType, tmdbId: number): boolean {
+      const saved = store.get<Partial<TmdbDetails>>(type === 'movie' ? { type, tmdbId } : { type, tmdbId }, PART);
+      return (saved !== undefined && 'logoPath' in saved.value) || unsavedLogo(type, tmdbId) !== undefined;
+    },
+
+    // Waits for TMDB: the TV asks for it only when the hero batch had no answer for a Trakt card.
     async logo(type: TmdbMediaType, tmdbId: number): Promise<{ logoUrl: string | null }> {
       const result = await details(type, tmdbId).catch(() => undefined);
       const path = result?.kind === 'ok' ? result.value.logoPath : null;

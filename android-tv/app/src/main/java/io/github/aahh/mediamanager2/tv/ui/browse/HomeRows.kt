@@ -1,17 +1,20 @@
 package io.github.aahh.mediamanager2.tv.ui.browse
 
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -23,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -39,7 +43,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import io.github.aahh.mediamanager2.tv.api.LibraryApi
@@ -47,9 +53,12 @@ import io.github.aahh.mediamanager2.tv.ui.Tokens
 import io.github.aahh.mediamanager2.tv.ui.components.EaseIn
 import io.github.aahh.mediamanager2.tv.ui.components.EaseOut
 import io.github.aahh.mediamanager2.tv.ui.components.HeroWords
+import io.github.aahh.mediamanager2.tv.ui.components.LocalServerImages
 import io.github.aahh.mediamanager2.tv.ui.components.ServerImage
+import io.github.aahh.mediamanager2.tv.ui.components.TIMING_TAG
 import io.github.aahh.mediamanager2.tv.ui.components.TvText
 import io.github.aahh.mediamanager2.tv.ui.components.scrim
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -58,9 +67,11 @@ import kotlinx.coroutines.launch
 
 /**
  * TV Home: a 16:9 picture at the top right, the focused card's [HeroWords] at the left, and [rails] below, where the
- * open row is large and the others small. Every row drives the top. The words change the moment focus moves (from what
- * the card knows, then from [heroFor]'s answer once focus has rested); the picture follows only after the rest and its
- * load. Each row remembers its card. No card has text under it.
+ * open row is large and the others small. Every row drives the top. The words change the moment focus moves, from
+ * [heroes] (which the screen fills from one heroes read for every card) or else from what the card knows; a card the
+ * read did not answer, or whose logo it still had loading, asks [heroFor] once focus has rested 300 ms. The picture
+ * follows after a 200 ms rest and its load, and is prefetched as focus lands when its address is known; once focus has
+ * rested, the pictures of the cards around it are prefetched too. Each row remembers its card. No card has text under it.
  *
  * Library cards open the hold-OK action list; [onChanged] runs after one of its actions, so the page reads again, and
  * focus stays where it was.
@@ -72,10 +83,10 @@ fun HomeRowsPage(
     onOpen: (RailItem) -> Unit,
     onChanged: () -> Unit,
     heroFor: suspend (RailItem) -> Hero,
+    heroes: SnapshotStateMap<String, Hero>,
     modifier: Modifier = Modifier,
 ) {
     var focus by remember { mutableStateOf(HomeFocus()) }
-    val heroes = remember { mutableStateMapOf<String, Hero>() }
     var restedKey by remember { mutableStateOf<String?>(null) }
     val requester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -84,14 +95,30 @@ fun HomeRowsPage(
     var held by remember { mutableStateOf<Move?>(null) }
     var pageHasFocus by remember { mutableStateOf(false) }
 
+    val images = LocalServerImages.current
+    val pictureSize = with(LocalDensity.current) { IntSize(672.dp.roundToPx(), 378.dp.roundToPx()) }
+
     val open = focus.openIn(rails)
     val item = rails[open].items[focus.cardIn(rails[open])]
+    val landed = remember(item.key) { SystemClock.uptimeMillis() }
+
+    fun CoroutineScope.prefetchPicture(key: String) {
+        val path = heroes[key]?.backdropPath ?: return
+        images ?: return
+        launch { images.prefetch(path, pictureSize.width, pictureSize.height, fill = true, kind = "picture") }
+    }
 
     LaunchedEffect(item.key) {
         restedKey = null
-        delay(FOCUS_REST_MS)
+        prefetchPicture(item.key)
+        delay(PICTURE_REST_MS)
         restedKey = item.key
-        if (item.key !in heroes) heroes[item.key] = heroFor(item)
+        delay(FOCUS_REST_MS - PICTURE_REST_MS)
+        if (heroes[item.key]?.logoPending != false) {
+            heroes[item.key] = heroFor(item)
+            Log.i(TIMING_TAG, "fallback key=${item.key} ms=${SystemClock.uptimeMillis() - landed}")
+        }
+        for (near in picturesNear(currentRails, focus)) prefetchPicture(near.key)
     }
     LaunchedEffect(focus) { runCatching { requester.requestFocus() } }
     // A reload after an action takes focus back only if the page had it, so an open side menu keeps focus.
@@ -140,8 +167,8 @@ fun HomeRowsPage(
             true
         },
     ) {
-        HeroPicture(item.key, if (restedKey == item.key) heroes[item.key] else null, Modifier.align(Alignment.TopEnd))
-        Words(heroes[item.key] ?: heroOf(item))
+        HeroPicture(item.key, if (restedKey == item.key) heroes[item.key] else null, landed, Modifier.align(Alignment.TopEnd))
+        Words(heroes[item.key] ?: heroOf(item), item.key, landed)
         // The rows, clipped at x 104 where the side menu would end.
         Box(Modifier.fillMaxSize().padding(start = 104.dp, top = 206.dp).clipToBounds()) {
             for (row in (open - 1).coerceAtLeast(0)..(open + 2).coerceAtMost(rails.lastIndex)) {
@@ -185,26 +212,48 @@ private fun HomeRow(
             .offset { IntOffset(16.dp.roundToPx(), top.value.dp.roundToPx()) }
             .graphicsLayer { alpha = fade.value * (0.5f + 0.5f * openness.value) },
     )
-    rail.items.forEachIndexed { index, item ->
-        key(item.key) {
-            // Positions go through a placement offset, so the hold-OK list is anchored where the card really is.
-            val placed = Modifier
-                .offset { cardOffset(index, openness, slideOpen, slideClosed, top).let { (x, y) -> IntOffset(x.dp.roundToPx(), y.dp.roundToPx()) } }
-                .graphicsLayer {
-                    val s = CLOSED_SCALE + (1f - CLOSED_SCALE) * openness.value
-                    scaleX = s
-                    scaleY = s
-                    transformOrigin = TransformOrigin(0f, 0f)
-                    alpha = fade.value * (0.55f + 0.45f * openness.value)
-                }
-                // Only the open row's remembered card can take focus, so focus coming from the side menu lands on it.
-                .then(if (isOpen && index == card) Modifier.focusRequester(requester) else Modifier.focusProperties { canFocus = false })
-            RailCard(item, library, onOpen = { onOpen(item) }, onChanged = onChanged, modifier = placed, width = 112.dp, caption = false)
-        }
+    // Only the cards near the screen are composed, so an Up or Down press builds a few cards, not whole rows.
+    for (index in cardWindow(card, count)) {
+        val item = rail.items[index]
+        key(item.key) { HomeCard(item, index, isOpen && index == card, openness, slideOpen, slideClosed, top, fade, requester, library, onOpen, onChanged) }
     }
 }
 
+/** One card of a [HomeRow], placed and faded by the row's animations; [focusable] only for the open row's card. */
+@Composable
+private fun HomeCard(
+    item: RailItem,
+    index: Int,
+    focusable: Boolean,
+    openness: State<Float>,
+    slideOpen: State<Float>,
+    slideClosed: State<Float>,
+    top: State<Float>,
+    fade: State<Float>,
+    requester: FocusRequester,
+    library: LibraryApi,
+    onOpen: (RailItem) -> Unit,
+    onChanged: () -> Unit,
+) {
+    // Positions go through a placement offset, so the hold-OK list is anchored where the card really is.
+    val placed = Modifier
+        .offset { cardOffset(index, openness, slideOpen, slideClosed, top).let { (x, y) -> IntOffset(x.dp.roundToPx(), y.dp.roundToPx()) } }
+        .graphicsLayer {
+            val s = CLOSED_SCALE + (1f - CLOSED_SCALE) * openness.value
+            scaleX = s
+            scaleY = s
+            transformOrigin = TransformOrigin(0f, 0f)
+            alpha = fade.value * (0.55f + 0.45f * openness.value)
+        }
+        // Only the open row's remembered card can take focus, so focus coming from the side menu lands on it.
+        .then(if (focusable) Modifier.focusRequester(requester) else Modifier.focusProperties { canFocus = false })
+    RailCard(item, library, onOpen = { onOpen(item) }, onChanged = onChanged, modifier = placed, width = 112.dp, caption = false)
+}
+
 private const val CLOSED_SCALE = 90f / 112f
+
+/** How long focus must rest on a card before its picture may fade in; the fallback read waits the full [FOCUS_REST_MS]. */
+private const val PICTURE_REST_MS = 200L
 
 // A card's place inside the rows' area (which starts at x 104 on the page): page x 120 + index × pitch − slide, with the
 // open and closed numbers blended by how open the row is.
@@ -216,23 +265,35 @@ private fun cardOffset(index: Int, openness: State<Float>, slideOpen: State<Floa
 }
 
 /**
- * The words at start 120, top 40. A [wanted] with a different title, facts, summary or logo fades the words out over
- * 50 ms, swaps them, and fades them in over 120 ms while the logo box rises 4 dp; a change during the 50 ms only changes
- * which words land. One that differs only in its picture swaps without a fade. A logo that fails to load shows the
- * plain title from then on.
+ * The words at start 120, top 40, for the focused card [key], whose focus [landed] at that uptime. A [wanted] with a
+ * different title, facts or summary fades the words out over 50 ms, swaps them, and fades them in over 120 ms while the
+ * logo box rises 4 dp; a change during the 50 ms only changes which words land. One that differs only in its logo, in
+ * whether the logo is still pending, or in its picture swaps without a fade, so the facts and summary don't blink when
+ * the logo arrives. The logo box stays empty while the logo is pending; the plain title shows for a title with no logo,
+ * and from then on for one whose logo fails to load.
  */
 @Composable
-private fun Words(wanted: Hero) {
+private fun Words(wanted: Hero, key: String, landed: Long) {
     val fade = remember { Animatable(1f) }
     val rise = remember { Animatable(0f) }
-    var shown by remember { mutableStateOf(wanted) }
-    val latest by rememberUpdatedState(wanted)
+    var shown by remember { mutableStateOf(wanted to key) }
+    val latest by rememberUpdatedState(wanted to key)
+    val focusedKey by rememberUpdatedState(key)
+    val landedAt by rememberUpdatedState(landed)
     val badLogos = remember { mutableStateMapOf<String, Unit>() }
+    // The landing already logged, outside snapshot state so logging recomposes nothing.
+    val logged = remember { LongArray(1) }
+
+    fun logWords(shownKey: String) {
+        if (shownKey != focusedKey || logged[0] == landedAt) return
+        logged[0] = landedAt
+        Log.i(TIMING_TAG, "words key=$shownKey ms=${SystemClock.uptimeMillis() - landedAt}")
+    }
 
     LaunchedEffect(Unit) {
         var fadeIn: Job? = null
         snapshotFlow { latest }.collect {
-            if (it.copy(backdropPath = null) == shown.copy(backdropPath = null)) {
+            if (it.first.wordsOnly() == shown.first.wordsOnly()) {
                 shown = it
                 return@collect
             }
@@ -247,31 +308,49 @@ private fun Words(wanted: Hero) {
         }
     }
 
-    val hero = shown
+    val (hero, shownKey) = shown
     val logoPath = hero.logoPath?.takeIf { it !in badLogos }
+    val logo: (@Composable BoxScope.() -> Unit)? = when {
+        hero.logoPending -> ({})
+        logoPath != null -> ({
+            ServerImage(
+                logoPath,
+                Modifier.fillMaxSize(),
+                ContentScale.Fit,
+                alignment = Alignment.BottomStart,
+                onSuccess = { logWords(shownKey) },
+                onError = { badLogos[logoPath] = Unit },
+                timing = "logo",
+            )
+        })
+        else -> null
+    }
+    if (logo == null) SideEffect { logWords(shownKey) }
     HeroWords(
         hero.title,
         hero.facts,
         hero.summary,
         Modifier.padding(start = 120.dp, top = 40.dp).graphicsLayer { alpha = fade.value },
         rise = { rise.value },
-        logo = logoPath?.let { path ->
-            { ServerImage(path, Modifier.fillMaxSize(), ContentScale.Fit, alignment = Alignment.BottomStart, onError = { badLogos[path] = Unit }) }
-        },
+        logo = logo,
     )
 }
+
+// The parts of a hero whose change fades the words: everything but the logo, whether it is pending, and the picture.
+private fun Hero.wordsOnly() = copy(logoPath = null, backdropPath = null, logoPending = false)
 
 /** A picture on screen, or loading, and the card ([key]) it belongs to. */
 private data class Picture(val path: String, val key: String)
 
 /**
- * The 672 × 378 picture, crop centred under two gradients. The picture on screen dims to 55% while focus is on another
- * card. Once focus has rested and the card's [known] hero has a different picture, that picture loads as a second layer
- * and, once loaded, fades in from 1.03× over 600 ms and replaces the old one. A started fade finishes; a load for a card
- * that lost focus is dropped; no picture, or a failed load, fades the one on screen out.
+ * The 672 × 378 picture, crop centred under two gradients. The picture on screen fades out over 150 ms the moment focus
+ * moves to another card. Once focus has rested 200 ms and the card's [known] hero has a picture, that picture loads as a
+ * second layer and, once loaded, fades in from 1.03× over 600 ms and replaces the old one. A started fade finishes; a
+ * load for a card that lost focus is dropped; no picture, or a failed load, fades the one on screen out over 160 ms.
+ * [landed] is the uptime focus landed on [focusedKey], for the timing log.
  */
 @Composable
-private fun HeroPicture(focusedKey: String, known: Hero?, modifier: Modifier) {
+private fun HeroPicture(focusedKey: String, known: Hero?, landed: Long, modifier: Modifier) {
     var onScreen by remember { mutableStateOf<Picture?>(null) }
     var incoming by remember { mutableStateOf<Picture?>(null) }
     var fading by remember { mutableStateOf(false) }
@@ -280,14 +359,16 @@ private fun HeroPicture(focusedKey: String, known: Hero?, modifier: Modifier) {
     val inAlpha = remember { Animatable(0f) }
     val inScale = remember { Animatable(1.03f) }
     val scope = rememberCoroutineScope()
+    val landedAt by rememberUpdatedState(landed)
 
+    val otherCard = !cleared && onScreen?.key != focusedKey
     val screenTarget = when {
         cleared -> 0f
-        onScreen?.key == focusedKey -> 1f
-        else -> 0.55f
+        otherCard -> 0f
+        else -> 1f
     }
     LaunchedEffect(screenTarget, onScreen) {
-        screenAlpha.animateTo(screenTarget, tween(160, easing = EaseOut))
+        screenAlpha.animateTo(screenTarget, tween(if (otherCard) 150 else 160, easing = EaseOut))
         if (screenTarget == 0f) {
             onScreen = null
             cleared = false
@@ -317,6 +398,7 @@ private fun HeroPicture(focusedKey: String, known: Hero?, modifier: Modifier) {
         val arriving = incoming ?: return
         if (fading) return
         fading = true
+        Log.i(TIMING_TAG, "picture-shown key=${arriving.key} ms=${SystemClock.uptimeMillis() - landedAt}")
         scope.launch {
             coroutineScope {
                 launch { inScale.animateTo(1f, tween(600, easing = EaseOut)) }
@@ -352,6 +434,7 @@ private fun HeroPicture(focusedKey: String, known: Hero?, modifier: Modifier) {
                             cleared = true
                         }
                     },
+                    timing = "picture",
                 )
             }
         }

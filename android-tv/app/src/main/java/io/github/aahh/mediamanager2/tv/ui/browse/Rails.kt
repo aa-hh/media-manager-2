@@ -4,6 +4,7 @@ import io.github.aahh.mediamanager2.tv.api.DiscoverHome
 import io.github.aahh.mediamanager2.tv.api.DiscoverResult
 import io.github.aahh.mediamanager2.tv.api.DiscoverRow
 import io.github.aahh.mediamanager2.tv.api.EpisodeRef
+import io.github.aahh.mediamanager2.tv.api.HeroAnswer
 import io.github.aahh.mediamanager2.tv.api.LibraryTitle
 import io.github.aahh.mediamanager2.tv.api.LibraryTitles
 import io.github.aahh.mediamanager2.tv.api.MovieDetail
@@ -11,6 +12,8 @@ import io.github.aahh.mediamanager2.tv.api.Playlist
 import io.github.aahh.mediamanager2.tv.api.Playlists
 import io.github.aahh.mediamanager2.tv.api.SeriesDetail
 import io.github.aahh.mediamanager2.tv.api.TitleWatch
+import kotlin.math.ceil
+import kotlin.math.floor
 
 // The rows of Home and Discover, worked out from the server's replies (T03d A1, T03a A1 and A6). Pure, so it is tested
 // without a screen.
@@ -109,24 +112,31 @@ fun itemCount(count: Int) = if (count == 1) "1 item" else "$count items"
 
 /**
  * What Home's top shows for a card: the plain [title] (always the accessibility label, and shown when there is no logo),
- * the [facts] line, the [summary], the [logoPath] and the 16:9 [backdropPath].
+ * the [facts] line, the [summary], the [logoPath] and the 16:9 [backdropPath]. [logoPending] means the logo is not known
+ * yet, so the logo box stays empty.
  */
-data class Hero(val title: String, val facts: String, val summary: String?, val logoPath: String?, val backdropPath: String?)
+data class Hero(
+    val title: String,
+    val facts: String,
+    val summary: String?,
+    val logoPath: String?,
+    val backdropPath: String?,
+    val logoPending: Boolean = false,
+)
 
 /**
  * The [Hero] for a card. A library title's summary, logo and picture come from its detail ([show] or [film]) and are null
- * without it; its year and season count come from the card. Facts are the parts that exist, joined with " · ".
+ * without it; its year and season count come from the card. Facts are the parts that exist, joined with " · ". A library
+ * title with no detail and a Trakt card don't know their logo yet.
  */
 fun heroOf(item: RailItem, show: SeriesDetail? = null, film: MovieDetail? = null): Hero = when (item) {
     is RailItem.Title -> {
         val title = item.title
-        val year = title.year?.toString()
+        val pending = show == null && film == null
         if (title.service == "sonarr") {
-            val seasons = title.tv?.seasonCount?.takeIf { it > 0 }?.let { if (it == 1) "1 season" else "$it seasons" }
-            Hero(title.title, facts(year, seasons, show?.genres?.firstOrNull()), show?.overview, show?.logoUrl, show?.heroBackdropUrl)
+            Hero(title.title, libraryFacts(item, null, show?.genres?.firstOrNull()), show?.overview, show?.logoUrl, show?.heroBackdropUrl, pending)
         } else {
-            val length = film?.runtime?.takeIf { it > 0 }?.let { if (it < 60) "${it}m" else "${it / 60}h ${it % 60}m" }
-            Hero(title.title, facts(year, length, film?.genres?.firstOrNull()), film?.overview, film?.logoUrl, film?.heroBackdropUrl)
+            Hero(title.title, libraryFacts(item, film?.runtime, film?.genres?.firstOrNull()), film?.overview, film?.logoUrl, film?.heroBackdropUrl, pending)
         }
     }
     is RailItem.Found -> Hero(
@@ -135,11 +145,77 @@ fun heroOf(item: RailItem, show: SeriesDetail? = null, film: MovieDetail? = null
         item.result.overview,
         null,
         item.result.heroBackdropUrl,
+        logoPending = true,
     )
     is RailItem.PlexList -> Hero(item.playlist.title, "Plex list · ${itemCount(item.playlist.itemCount)}", null, null, null)
 }
 
+/**
+ * The [Hero] for a card from the heroes read's [answer]: the same facts as the detail form, with the logo still pending
+ * while the answer says `loading`. A Trakt card keeps its own words and picture and takes only the logo.
+ */
+fun heroOf(item: RailItem, answer: HeroAnswer): Hero {
+    val pending = answer.logo == "loading"
+    return when (item) {
+        is RailItem.Title -> Hero(
+            item.title.title,
+            libraryFacts(item, answer.runtime, answer.genre),
+            answer.overview,
+            answer.logoUrl,
+            answer.heroBackdropUrl,
+            pending,
+        )
+        is RailItem.Found -> heroOf(item).copy(logoPath = answer.logoUrl, logoPending = pending)
+        is RailItem.PlexList -> heroOf(item)
+    }
+}
+
+// Year, then seasons (from the card, for a show) or length (for a film), then genre.
+private fun libraryFacts(item: RailItem.Title, runtime: Int?, genre: String?): String {
+    val title = item.title
+    val middle = if (title.service == "sonarr") {
+        title.tv?.seasonCount?.takeIf { it > 0 }?.let { if (it == 1) "1 season" else "$it seasons" }
+    } else {
+        runtime?.takeIf { it > 0 }?.let { if (it < 60) "${it}m" else "${it / 60}h ${it % 60}m" }
+    }
+    return facts(title.year?.toString(), middle, genre)
+}
+
 private fun facts(vararg parts: String?) = parts.filterNotNull().joinToString(" · ")
+
+/** The keys the heroes read asks for: library and Trakt cards in row order, each once, at most 300; Plex lists left out. */
+fun heroKeys(rails: List<Rail>): List<String> =
+    rails.asSequence().flatMap { it.items }.filter { it !is RailItem.PlexList }.map { it.key }.distinct().take(300).toList()
+
+/**
+ * The cards of a row worth composing while card [card] of [count] is its remembered one: every card on screen in either
+ * the open (112 wide, 124 apart) or the closed (90 wide, 100 apart) layout between x 104 and 960, and two more each side.
+ */
+fun cardWindow(card: Int, count: Int): IntRange {
+    var first = Int.MAX_VALUE
+    var last = Int.MIN_VALUE
+    for ((width, pitch) in listOf(112f to 124f, 90f to 100f)) {
+        val s = rowSlide(card, count, width, pitch)
+        // Smallest i with 120 + i·pitch − s + width > 104, and largest i with 120 + i·pitch − s < 960.
+        first = minOf(first, floor((104f - 120f + s - width) / pitch).toInt() + 1)
+        last = maxOf(last, ceil((960f - 120f + s) / pitch).toInt() - 1)
+    }
+    val end = maxOf(0, count - 1)
+    return (first - 2).coerceIn(0, end)..(last + 2).coerceIn(0, end)
+}
+
+/**
+ * The cards whose pictures are worth loading early from [focus]: the open row's cards two either side of the focused one,
+ * then the remembered card of the row above and of the row below.
+ */
+fun picturesNear(rails: List<Rail>, focus: HomeFocus): List<RailItem> {
+    if (rails.isEmpty()) return emptyList()
+    val open = focus.openIn(rails)
+    val row = rails[open]
+    val card = focus.cardIn(row)
+    return listOf(-2, -1, 1, 2).mapNotNull { row.items.getOrNull(card + it) } +
+        listOfNotNull(rails.getOrNull(open - 1), rails.getOrNull(open + 1)).map { it.items[focus.cardIn(it)] }
+}
 
 /**
  * How far a row of [count] cards slides left so card [focus] is in view: one [pitch] per card, never past the point where

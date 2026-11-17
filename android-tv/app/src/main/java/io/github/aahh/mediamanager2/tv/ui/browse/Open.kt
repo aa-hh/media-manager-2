@@ -46,9 +46,10 @@ fun summaryReader(library: LibraryApi): suspend (RailItem) -> Summary? = { item 
 }
 
 /**
- * Home's top for a card, read once focus rests. A library title needs its detail read (summary, logo and picture; when the
- * read fails the top keeps what the card knows). A Trakt card carries its summary and picture and asks for its logo; a
- * Plex list shows its collage.
+ * Home's top for a card the heroes read did not answer, or whose logo it still had loading: the fallback, read after
+ * focus has rested. A library title needs its detail read (summary, logo and picture; when the read fails the top keeps
+ * what the card knows). A Trakt card carries its summary and picture and asks for its logo; a Plex list shows its
+ * collage. Every answer is final, so the logo is never left pending.
  */
 fun heroReader(library: LibraryApi, browse: BrowseApi): suspend (RailItem) -> Hero = { item ->
     when (item) {
@@ -59,5 +60,5 @@ fun heroReader(library: LibraryApi, browse: BrowseApi): suspend (RailItem) -> He
         }
         is RailItem.Found -> heroOf(item).copy(logoPath = (browse.logo(item.result.type, item.result.tmdbId) as? ApiResult.Ok)?.value?.logoUrl)
         is RailItem.PlexList -> heroOf(item).copy(backdropPath = library.playlistCollage(item.playlist.id).encodedPath)
-    }
+    }.copy(logoPending = false)
 }

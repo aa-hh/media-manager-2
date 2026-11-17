@@ -32,6 +32,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
@@ -156,11 +157,13 @@ fun PosterTile(
     poster: @Composable BoxScope.() -> Unit = {},
 ) {
     var actionsOpen by remember { mutableStateOf(false) }
-    var bounds by remember { mutableStateOf<Rect?>(null) }
+    // The card's latest layout, kept outside snapshot state so a placement (every row slide) recomposes nothing; its
+    // window bounds are worked out only when the hold-OK list opens.
+    val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
     Column(modifier.width(width)) {
         PosterCard(
             onClick = onClick,
-            modifier = Modifier.onGloballyPositioned { bounds = it.boundsInWindow() },
+            modifier = Modifier.onGloballyPositioned { placed[0] = it },
             width = width,
             onLongClick = if (actionTarget != null && library != null) ({ actionsOpen = true }) else null,
             played = played,
@@ -175,7 +178,8 @@ fun PosterTile(
         }
     }
     if (actionsOpen && actionTarget != null && library != null) {
-        CardActionList(actionTarget, library, anchor = bounds, onDismiss = { actionsOpen = false }, onDone = {
+        val anchor = remember { placed[0]?.boundsInWindow() }
+        CardActionList(actionTarget, library, anchor = anchor, onDismiss = { actionsOpen = false }, onDone = {
             actionsOpen = false
             onActionDone(it)
         })

@@ -5,6 +5,7 @@ import io.github.aahh.mediamanager2.tv.api.DiscoverHome
 import io.github.aahh.mediamanager2.tv.api.DiscoverResult
 import io.github.aahh.mediamanager2.tv.api.DiscoverRow
 import io.github.aahh.mediamanager2.tv.api.EpisodeRef
+import io.github.aahh.mediamanager2.tv.api.HeroAnswer
 import io.github.aahh.mediamanager2.tv.api.LibraryTitle
 import io.github.aahh.mediamanager2.tv.api.LibraryTitles
 import io.github.aahh.mediamanager2.tv.api.LibraryWatch
@@ -208,11 +209,69 @@ class RailsTest {
         val showDetail = SeriesDetail(id = 7, title = "The Quiet Year", genres = listOf("Drama"), backdropUrl = "/wide.jpg", heroBackdropUrl = "/hero.jpg")
         assertEquals("2022 · 2 seasons · Drama", heroOf(showCard, show = showDetail).facts)
         assertEquals("/hero.jpg", heroOf(showCard, show = showDetail).backdropPath)
-        assertEquals(Hero("The Quiet Year", "2022 · 2 seasons", null, null, null), heroOf(showCard))
+        assertEquals(Hero("The Quiet Year", "2022 · 2 seasons", null, null, null, logoPending = true), heroOf(showCard))
 
         val trakt = RailItem.Found(found(9).copy(genres = listOf("Comedy", "Drama"), overview = "Fun.", backdropUrl = "/wide.jpg", heroBackdropUrl = "/hero.jpg"))
-        assertEquals(Hero("T9", "2024 · Comedy", "Fun.", null, "/hero.jpg"), heroOf(trakt))
+        assertEquals(Hero("T9", "2024 · Comedy", "Fun.", null, "/hero.jpg", logoPending = true), heroOf(trakt))
 
         assertEquals(Hero("x", "Plex list · 1 item", null, null, null), heroOf(RailItem.PlexList(Playlist("1", "x", itemCount = 1))))
+    }
+
+    // The heroes read's answer gives the same top as the detail read, and only a `loading` answer leaves the logo box empty.
+    // Building the facts differently from the detail form, or reading `none` as pending, turns this red.
+    @Test
+    fun heroFromTheHeroesReadMatchesTheDetailForm() {
+        val filmCard = RailItem.Title(film.copy(year = 2014), "")
+        val filmDetail = MovieDetail(id = 3, title = "Night Harbour", runtime = 118, genres = listOf("Thriller"), overview = "A pilot.", heroBackdropUrl = "/hero.jpg", logoUrl = "/logo.png")
+        val filmAnswer = HeroAnswer("A pilot.", "Thriller", 118, "/hero.jpg", "/logo.png", "ready")
+        assertEquals(heroOf(filmCard, film = filmDetail), heroOf(filmCard, filmAnswer))
+
+        val showCard = RailItem.Title(show.copy(year = 2022), "")
+        val showDetail = SeriesDetail(id = 7, title = "The Quiet Year", genres = listOf("Drama"), overview = "Calm.", heroBackdropUrl = "/hero.jpg")
+        assertEquals(heroOf(showCard, show = showDetail), heroOf(showCard, HeroAnswer("Calm.", "Drama", 50, "/hero.jpg", null, "none")))
+        assertEquals("a show's length never joins its facts", "2022 · 2 seasons · Drama", heroOf(showCard, HeroAnswer(genre = "Drama", runtime = 50, logo = "none")).facts)
+
+        assertTrue(heroOf(filmCard, HeroAnswer(logo = "loading")).logoPending)
+        assertFalse(heroOf(filmCard, filmAnswer).logoPending)
+
+        val trakt = RailItem.Found(found(9).copy(overview = "Fun.", heroBackdropUrl = "/hero.jpg"))
+        assertEquals(heroOf(trakt).copy(logoPath = "/l.png", logoPending = false), heroOf(trakt, HeroAnswer(overview = "x", logoUrl = "/l.png", logo = "ready")))
+        assertTrue(heroOf(trakt, HeroAnswer()).logoPending)
+        val list = RailItem.PlexList(Playlist("1", "x"))
+        assertEquals(heroOf(list), heroOf(list, HeroAnswer(logoUrl = "/l.png", logo = "ready")))
+    }
+
+    // The heroes read asks for library and Trakt cards in row order, each once; dropping the de-duplication, or sending a
+    // Plex list (which the server answers 400), turns this red.
+    @Test
+    fun heroKeysAreLibraryAndTraktCardsOnce() {
+        val rails = listOf(
+            Rail("a", "A", listOf(RailItem.Title(show, ""), RailItem.Found(found(5)), RailItem.PlexList(Playlist("1", "x")))),
+            Rail("b", "B", listOf(RailItem.Found(found(5)), RailItem.Title(film, ""), RailItem.Found(found(6, type = "tv")))),
+        )
+        assertEquals(listOf("sonarr:7", "movie:5", "radarr:3", "tv:6"), heroKeys(rails))
+    }
+
+    // Only the cards near the screen are composed, in either row layout plus two each side; a wrong edge or pitch in the
+    // window sum turns this red.
+    @Test
+    fun cardWindowCoversTheCardsOnScreen() {
+        assertEquals(0..10, cardWindow(0, 20))
+        assertEquals(7..19, cardWindow(10, 20))
+        assertEquals(9..19, cardWindow(19, 20))
+        assertEquals(0..4, cardWindow(4, 5))
+    }
+
+    // Pictures load early for two cards each side and the remembered cards above and below; dropping a neighbour or
+    // reading the other rows' first card instead of their remembered one turns this red.
+    @Test
+    fun picturesNearTheFocusedCard() {
+        fun rail(key: String, first: Int, size: Int) = Rail(key, key, (first until first + size).map { RailItem.Title(film.copy(id = it), "") })
+        val rails = listOf(rail("up", 10, 5), rail("open", 20, 6), rail("down", 30, 5))
+        val focus = HomeFocus(open = 1, cards = mapOf("up" to 2, "open" to 3, "down" to 1))
+        assertEquals(
+            listOf(rails[1].items[1], rails[1].items[2], rails[1].items[4], rails[1].items[5], rails[0].items[2], rails[2].items[1]),
+            picturesNear(rails, focus),
+        )
     }
 }

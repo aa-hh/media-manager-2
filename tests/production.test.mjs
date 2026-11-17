@@ -4943,6 +4943,18 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     assert.equal(asked, 1);
   });
 
+  // Letting a second caller of a title with no saved details start its own TMDB request instead of sharing the running one (S1) turns this red.
+  await t.test('two reads of a title with no saved details share one TMDB request', async () => {
+    respond = json({ id: 454545, title: 'Shared film', images: { logos: [{ file_path: '/shared.png', iso_639_1: 'en' }] } });
+    assert.equal(titles.logoKnown('movie', 454545), false);
+    const before = calls;
+    const [first, second] = await Promise.all([titles.logo('movie', 454545), titles.logo('movie', 454545)]);
+    assert.equal(calls - before, 1);
+    assert.deepEqual(first, { logoUrl: '/api/images/tmdb/w500/shared.png' });
+    assert.deepEqual(second, first);
+    assert.equal(titles.logoKnown('movie', 454545), true);
+  });
+
   // Dropping the ids, reading TV keywords from the movie field, or answering a TMDB failure with anything but null turns this red.
   await t.test('chips gives genres and keywords with their ids, and null when TMDB fails', async () => {
     respond = json({ id: 61, title: 'Film', genres: [{ id: 28, name: 'Action' }], keywords: { keywords: [{ id: 9715, name: 'superhero' }] } });
@@ -9860,6 +9872,115 @@ test('title pages take the backdrop from the chosen source and fall back to the 
   await settle();
   assert.deepEqual(await logoUrls(), ['/api/images/plex/logo/60', '/api/images/tmdb/w500/spirit-logo.png'],
     'the show has a rating key and a Plex logo; the film has no rating key, so TMDB');
+});
+
+test('the TV Home hero batch answers from saved copies and says whether each logo is ready, missing or still loading', async (t) => {
+  const { openDatabase } = await import(databaseModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const { createTmdbTitles } = await import(tmdbTitlesModuleUrl);
+  const { createBackdrops, createLogos, createHeroes, createHeroRoutes } = await import(backdropsModuleUrl);
+  const root = await mkdtemp(join(tmpdir(), 'media-manager-2-heroes-'));
+  const database = openDatabase(join(root, 'media-manager.sqlite'));
+  t.after(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const insert = (service, detail) => database.prepare('INSERT INTO titles (service, id, title, year, detail, fingerprint, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(service, detail.id, `Title ${detail.id}`, 2020, JSON.stringify(detail), 'x', 0);
+  insert('radarr', { id: 3, tmdbId: 129, overview: 'A girl in a spirit world.', genres: ['Animation', 'Fantasy'], runtime: 125,
+    images: [{ coverType: 'fanart', remoteUrl: 'https://artworks.thetvdb.com/spirited.jpg' }] });
+  insert('sonarr', { id: 7, tmdbId: 95396, tvdbId: 371980, overview: '', genres: [], runtime: 0, images: [] });
+  for (let id = 20; id < 30; id += 1) insert('sonarr', { id, tmdbId: 0, tvdbId: 1000 + id, images: [] });
+
+  const tmdbLogos = { 'movie:129': null, 'tv:95396': null, 'tv:1399': '/got.png', 'movie:77': null };
+  const tvdbIds = { 'tv:95396': 371980, 'tv:1399': 121361 };
+  let tmdbCalls = 0;
+  const store = createTitleStore(database);
+  const tmdbTitles = createTmdbTitles({ database, store, tmdb: { details: async (type, id) => {
+    tmdbCalls += 1;
+    if (id === 666) return { kind: 'unreachable', message: 'TMDB is down.' };
+    return { kind: 'ok', value: { id, mediaType: type, title: 'x', tvdbId: tvdbIds[`${type}:${id}`] ?? null, backdropPath: null, logoPath: tmdbLogos[`${type}:${id}`] ?? null } };
+  } } });
+  let lookups = 0;
+  let inFlight = 0;
+  let mostInFlight = 0;
+  const plex = { clearLogo: async (ratingKey) => {
+    lookups += 1;
+    inFlight += 1;
+    mostInFlight = Math.max(mostInFlight, inFlight);
+    for (let turn = 0; turn < 3; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+    inFlight -= 1;
+    return { kind: ratingKey === '55' ? 'ok' : 'not_found' };
+  } };
+  const ratingKeys = { 'radarr:3': '55', 'sonarr:7': '56', ...Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`sonarr:${20 + index}`, `k${20 + index}`])) };
+  const watchStatus = { forLibrary: async (records) => ({ watch: { kind: 'off' }, byTitle: new Map(records.flatMap(({ service, record }) => {
+    const ratingKey = ratingKeys[`${service}:${record.id}`];
+    return ratingKey === undefined ? [] : [[`${service}:${record.id}`, { kind: service === 'sonarr' ? 'show' : 'movie', ratingKey }]];
+  })) }) };
+  const none = async () => ({ kind: 'ok', value: null });
+  const backdrops = createBackdrops({ database, store, tmdbTitles, trakt: { fanart: none }, fanart: { background: none } });
+  const logos = createLogos({ store, tmdbTitles, plex });
+  const routes = createHeroRoutes(createHeroes({ database, store, tmdbTitles, backdrops, logos, watchStatus }));
+  const ask = async (items) => {
+    const response = await routes.request(`/heroes?items=${items}`);
+    assert.equal(response.status, 200, items);
+    return (await response.json()).heroes;
+  };
+  const until = async (items, done) => {
+    for (let turn = 0; turn < 200; turn += 1) {
+      const heroes = await ask(items);
+      if (done(heroes)) return heroes;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    return assert.fail(`${items} never settled`);
+  };
+
+  // Accepting a key list the contract refuses, or starting any load for one, turns this red.
+  const tooMany = Array.from({ length: 301 }, (_, index) => `movie:${index + 1}`).join(',');
+  for (const path of ['/heroes', '/heroes?items=', `/heroes?items=${tooMany}`, '/heroes?items=sonarr:0', '/heroes?items=plex:1', '/heroes?items=movie:abc', '/heroes?items=movie:1,']) {
+    const response = await routes.request(path);
+    assert.equal(response.status, 400, path.slice(0, 40));
+    assert.deepEqual(await response.json(), { error: 'invalid_request' });
+  }
+  assert.equal(tmdbCalls + lookups, 0);
+
+  // Waiting on the logo loads, losing the record's overview, first genre, runtime or fanart, or not ending on Plex's logo once it is saved turns this red.
+  assert.deepEqual((await ask('radarr:3'))['radarr:3'], {
+    overview: 'A girl in a spirit world.', genre: 'Animation', runtime: 125, heroBackdropUrl: 'https://artworks.thetvdb.com/spirited.jpg', logoUrl: null, logo: 'loading',
+  });
+  const film = (await until('radarr:3', (heroes) => heroes['radarr:3'].logo !== 'loading'))['radarr:3'];
+  assert.deepEqual([film.logo, film.logoUrl], ['ready', '/api/images/plex/logo/55']);
+
+  // Answering "none" before both Plex and TMDB have said there is no logo, or never answering it once they have, turns this red.
+  assert.equal((await ask('sonarr:7'))['sonarr:7'].logo, 'loading');
+  const show = (await until('sonarr:7', (heroes) => heroes['sonarr:7'].logo !== 'loading'))['sonarr:7'];
+  assert.deepEqual(show, { overview: null, genre: null, runtime: null, heroBackdropUrl: null, logoUrl: null, logo: 'none' });
+
+  // Looking a Trakt card up in the library, giving it anything but a logo, or not starting its TMDB load turns this red.
+  assert.deepEqual((await ask('tv:1399'))['tv:1399'], { overview: null, genre: null, runtime: null, heroBackdropUrl: null, logoUrl: null, logo: 'loading' });
+  const trakt = await until('tv:1399,movie:77', (heroes) => heroes['tv:1399'].logo !== 'loading' && heroes['movie:77'].logo !== 'loading');
+  assert.deepEqual([trakt['tv:1399'].logo, trakt['tv:1399'].logoUrl], ['ready', '/api/images/tmdb/w500/got.png']);
+  assert.deepEqual([trakt['movie:77'].logo, trakt['movie:77'].logoUrl], ['none', null]);
+
+  // Not remembering the logo of a show TMDB knows no TVDB id for, which cannot be saved, turns this red: it answers "loading" and asks TMDB on every call.
+  assert.equal((await ask('tv:500'))['tv:500'].logo, 'loading');
+  assert.deepEqual((await until('tv:500', (heroes) => heroes['tv:500'].logo !== 'loading'))['tv:500'], { overview: null, genre: null, runtime: null, heroBackdropUrl: null, logoUrl: null, logo: 'none' });
+  const unsavedCalls = tmdbCalls;
+  assert.equal((await ask('tv:500'))['tv:500'].logo, 'none');
+  assert.equal(tmdbCalls, unsavedCalls);
+
+  // Not remembering a failed TMDB load for a while turns this red: the logo stays "loading" for as long as TMDB fails.
+  assert.equal((await until('movie:666', (heroes) => heroes['movie:666'].logo !== 'loading'))['movie:666'].logo, 'none');
+
+  // Answering a library key with no saved title, or a repeated key twice, turns this red.
+  assert.deepEqual(Object.keys(await ask('radarr:3,radarr:999,radarr:3')), ['radarr:3']);
+
+  // Starting every Plex logo lookup at once instead of at most four turns this red.
+  const ten = Array.from({ length: 10 }, (_, index) => `sonarr:${20 + index}`).join(',');
+  const before = lookups;
+  mostInFlight = 0;
+  await until(ten, () => lookups - before === 10 && inFlight === 0);
+  assert.equal(mostInFlight, 4);
 });
 
 // Linking Trakt's 1280-wide copy instead of the 1920-wide one, passing on a link to another host, picking a fanart.tv background other than the
