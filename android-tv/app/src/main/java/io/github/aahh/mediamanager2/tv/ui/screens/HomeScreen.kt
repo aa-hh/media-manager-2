@@ -29,7 +29,7 @@ import kotlinx.coroutines.coroutineScope
 /**
  * Home, where the app opens: the Plex rows (Continue watching, Recently added TV, Recently added films, Playlists), then
  * the Trakt rows; the top backdrop follows the focused card. A row that failed or is empty is hidden; with no rows at all
- * the page says so and offers Discover. FINAL frames: T03d A1, T03a A6 (rails scrolled), T03a A2 and T03d C6 (the side
+ * the page says so and offers Discover. FINAL frames: T03d A1, T03a A6 (rails scrolled), T04 (the side
  * menu, in Navigation.kt).
  */
 @Composable

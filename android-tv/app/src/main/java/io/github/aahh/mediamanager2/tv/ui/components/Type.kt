@@ -21,6 +21,7 @@ internal object TvText {
     val labelMedium = ui(FontWeight.Medium, 16, 20, 0.1)
     val outlineLabel = ui(FontWeight.Medium, 15, 20, 0.1)
     val nav = ui(FontWeight.Medium, 16, 24, 0.15)
+    val navGroup = ui(FontWeight.Medium, 12, 18)
     val cardTitle = ui(FontWeight.Medium, 16, 24, 0.15)
     val cardSubtitle = ui(FontWeight.Normal, 12, 16, 0.2)
     val panelTitle = ui(FontWeight.Bold, 18, 22)

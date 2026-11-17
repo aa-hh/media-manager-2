@@ -331,3 +331,13 @@ fun subjectProgress(snapshot: Snapshot, rows: List<Row>): Map<String, SubjectPro
     }
     return result
 }
+
+// The web has no such figure, so this is not part of the port: the side menu's ring and its stalled mark.
+data class MenuDownloads(val fraction: Float?, val stalled: Boolean)
+
+fun menuDownloads(snapshot: Snapshot): MenuDownloads {
+    val downloading = snapshot.torrents.filter { it.goneAt == null && !it.complete && it.started }
+    val size = downloading.sumOf { it.sizeBytes }
+    val fraction = if (size > 0) (downloading.sumOf { it.completedBytes }.toDouble() / size).toFloat().coerceIn(0f, 1f) else null
+    return MenuDownloads(fraction, buildRows(snapshot).any { it.status.word == "stalled" })
+}

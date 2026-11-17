@@ -513,10 +513,10 @@ ALTER TABLE sessions ADD COLUMN device_name TEXT; ALTER TABLE sessions ADD COLUM
   - `Theme.kt` copies every dark token from `src/client/globals.css` into tv-material `darkColorScheme` plus a token object, same names in camelCase.
   - One route per FINAL frame. Each stub has its final signature.
   - Routing: no address → Address; no session → LinkCode; else Home. A later 401 → LinkCode.
-  - Side menu: Home, TV, Films, Search, Discover, a divider, one item per Plex list from `GET /api/library/playlists` (loaded at launch; the divider and lists hidden when there are none or Plex is off), Settings at the bottom. The app opens on Home.
+  - Side menu (rebuilt from T04 on 17 Nov): Search, Discover; under "Watch": Home, Films, TV, Calendar; under "Manage": Library, Downloads, Settings. Narrow at rest on every main page; it opens over the page with focus on Home. Calendar, Library and Downloads have no page yet: their rows take focus and OK does nothing. Plex lists are reached from Home's Playlists row. Back never opens the menu: it closes an open menu, returns from a main page to Home, and on Home leaves the app. The app opens on Home.
   - Routes for Home, TV, Films, Search, Discover, a Plex list (by id) and Settings, plus the title pages.
   - Log out (from Settings) goes to Address with the old address filled in and focus on Continue. There is no other address-change route.
-  - Back follows the interactions doc (https://claude.ai/artifact/FnYdCGH4PvPRZAv6uPYbtg): on a top-level page Back opens the menu; Back from the menu goes to Home, and from Home's menu leaves the app.
+  - Back goes back one screen: with the menu open it closes the menu, on a main page it returns to Home, and on Home it leaves the app. Back never opens the menu. Holding Back goes to Home from any signed-in page but the player, and does nothing on Home. It works on Android 15 and older; from Android 16 the system hands the app one Back on release, so a hold acts as one press.
   - Pop-ups use `androidx.compose.ui.window.Dialog`, because tv-material has no dialog (`tv-design-guidelines.md:187`).
   - Text entry uses `BasicTextField` with the keyboard set to URI input, because tv-material has no text field (`tv-design-guidelines.md:193`).
   - The update check runs at launch.
@@ -668,7 +668,7 @@ The owner added these during the TV design work. Scope and the owner's answers: 
 
 **T31 · Plex list page** (AA-441)
 - **Files:** the Plex list stub.
-- **What:** From S4d on T08: the list's name, Play all (first focus), Shuffle, then its items as a grid from `GET /api/library/playlists/:id`; "This list is empty". Play all and Shuffle open the player with `playlistId` (and `shuffle`). OK on an item opens its title page; Play/Pause plays it (T33). Back opens the menu on this list's item.
+- **What:** From S4d on T08: the list's name, Play all (first focus), Shuffle, then its items as a grid from `GET /api/library/playlists/:id`; "This list is empty". Play all and Shuffle open the player with `playlistId` (and `shuffle`). OK on an item opens its title page; Play/Pause plays it (T33). Back returns to Home.
 - **Kind:** new-code · **Depends on:** T13b, T08, T29, S4d
 - **Model:** Sonnet 5.5. **Effort:** medium.
 - **Verify:** build green; S6b.

@@ -83,6 +83,35 @@ object TvIcons {
             evenOdd = true,
         )
     }
+    val Library by lazy {
+        ImageVector.Builder(name = "library", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+            .addGroup(translationX = 2f, translationY = 2f)
+            .addPath(
+                pathData = addPathNodes(
+                    "M6 0 L18 0 C19.1 0 20 0.9 20 2 L20 14 C20 15.1 19.1 16 18 16 L6 16 C4.9 16 4 15.1 4 14 L4 2 C4 0.9 4.9 0 6 0 Z " +
+                        "M0 4 L2 4 L2 18 L16 18 L16 20 L2 20 C0.9 20 0 19.1 0 18 Z M18 14 L6 14 L6 2 L18 2 Z M10 12.5 L10 3.5 L16 8 Z",
+                ),
+                pathFillType = PathFillType.EvenOdd,
+                fill = SolidColor(Color.White),
+            )
+            .clearGroup()
+            .build()
+    }
+
+    // The side menu's download arrow, drawn at its own 9.3333 size inside the Downloads ring.
+    val Download by lazy {
+        ImageVector.Builder(name = "download", defaultWidth = 9.3333.dp, defaultHeight = 9.3333.dp, viewportWidth = 9.3333f, viewportHeight = 9.3333f)
+            .addPath(
+                pathData = addPathNodes(
+                    "M8.1667 6.4167 L8.1667 8.1667 L1.1667 8.1667 L1.1667 6.4167 L0 6.4167 L0 8.1667 C0 8.8083 0.525 9.3333 1.1667 9.3333 " +
+                        "L8.1667 9.3333 C8.8083 9.3333 9.3333 8.8083 9.3333 8.1667 L9.3333 6.4167 Z M7.5833 4.0833 L6.7608 3.2608 " +
+                        "L5.25 4.7658 L5.25 0 L4.0833 0 L4.0833 4.7658 L2.5725 3.2608 L1.75 4.0833 L4.6667 7 Z",
+                ),
+                pathFillType = PathFillType.NonZero,
+                fill = SolidColor(Color.White),
+            )
+            .build()
+    }
     val Add by lazy { icon("add", "M20 13H13V20H11V13H4V11H11V4H13V11H20V13Z") }
     val Check by lazy {
         icon(
@@ -299,6 +328,7 @@ private fun IconsPreview() = AppTheme {
             TvIcons.Home, TvIcons.Tv, TvIcons.Movie, TvIcons.Search, TvIcons.Explore, TvIcons.PlaylistPlay, TvIcons.Settings,
             TvIcons.Check, TvIcons.Bookmark, TvIcons.BookmarkBorder, TvIcons.VisibilityOff, TvIcons.RadioChecked,
             TvIcons.RadioUnchecked, TvIcons.PlayArrow, TvIcons.Pause, TvIcons.Replay10, TvIcons.Forward30, TvIcons.Subtitles,
+            TvIcons.Library, TvIcons.Download,
         )) Icon(vector, contentDescription = null, tint = Tokens.foreground)
     }
 }

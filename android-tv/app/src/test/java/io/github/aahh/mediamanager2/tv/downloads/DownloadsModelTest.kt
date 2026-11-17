@@ -125,6 +125,20 @@ class DownloadsModelTest {
         assertEquals("delayed" to null, delayed?.word to delayed?.percent)
     }
 
+    // Counting a finished, paused or gone torrent in the side menu's ring, or missing an open stalled problem, turns this red.
+    @Test
+    fun theSideMenuRingSumsOnlyRunningDownloadsAndMarksAStall() {
+        val running = listOf(torrent(), torrent(hash = "EF".repeat(20), completedBytes = 100))
+        val finished = torrent(hash = "01".repeat(20), completedBytes = 1000, complete = true)
+        val others = listOf(finished, torrent(hash = "02".repeat(20), started = false), torrent(hash = "03".repeat(20), goneAt = 1))
+        assertEquals(MenuDownloads(null, false), menuDownloads(Snapshot()))
+        assertEquals(0.25f, menuDownloads(Snapshot(torrents = running)).fraction)
+        assertEquals(0.25f, menuDownloads(Snapshot(torrents = running + others)).fraction)
+        assertNull(menuDownloads(Snapshot(torrents = listOf(finished))).fraction)
+        assertEquals(true, menuDownloads(Snapshot(torrents = listOf(torrent()), problems = listOf(problem()))).stalled)
+        assertEquals(false, menuDownloads(Snapshot(torrents = listOf(torrent()), problems = listOf(problem(state = "resolved")))).stalled)
+    }
+
     // Printing sizes, speeds or times differently from the web turns this red.
     @Test
     fun numbersReadAsOnTheWeb() {
