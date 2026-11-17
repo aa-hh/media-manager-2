@@ -108,7 +108,7 @@ export const createRows = (database: DatabaseSync, now: () => number = Date.now)
 
 export type Rows = ReturnType<typeof createRows>;
 
-// The image route serves TMDB files by size name; these three sizes are the agreed ones.
+// The image route serves TMDB files by size name; TMDB_IMAGE_SIZES in titles.ts lists the allowed ones.
 const image = (size: string, path: string | null) => (path === null ? null : `/api/images/tmdb/${size}/${path.replace(/^\//, '')}`);
 
 export const present = (items: StoredItem[], database: DatabaseSync): DiscoverResult[] => {

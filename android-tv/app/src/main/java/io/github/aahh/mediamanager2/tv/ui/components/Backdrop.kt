@@ -24,7 +24,7 @@ import io.github.aahh.mediamanager2.tv.ui.Tokens
 
 /** How much of the backdrop the page darkens, so its words stay readable over any art. */
 enum class BackdropScrim {
-    /** Home and Discover: the left half dark under the summary, the bottom under the rows. */
+    /** Discover: the left half dark under the summary, the bottom under the rows. */
     Browse,
 
     /** A title page: nearly solid on the left 45%, fading out by 72%, and a heavier bottom. */

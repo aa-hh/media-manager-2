@@ -48,8 +48,9 @@ export const createTmdbTitles = (options: { database: DatabaseSync; tmdb: Tmdb; 
     const saved = store.get<Partial<TmdbDetails>>(type === 'movie' ? { type, tmdbId } : { type, tmdbId }, PART);
     if (saved !== undefined) {
       const title = titleOf(type, tmdbId, saved.value.tvdbId);
-      if (title !== undefined && store.now() - saved.fetchedAt >= MAX_AGE_MS) {
-        void store.fetch(title, PART, MAX_AGE_MS, load).catch(() => undefined);
+      // A copy saved before logos were read has no logoPath key, so it is refetched like a stale one.
+      if (title !== undefined && (store.now() - saved.fetchedAt >= MAX_AGE_MS || !('logoPath' in saved.value))) {
+        void store.fetch(title, PART, 0, load).catch(() => undefined);
       }
       return { kind: 'ok', value: saved.value };
     }

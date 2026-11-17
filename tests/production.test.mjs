@@ -4931,6 +4931,18 @@ test('a title page gets top cast, keywords and similar titles from TMDB, saved f
     assert.deepEqual(await page('/tmdb/movie/77777/logo'), { logoUrl: null });
   });
 
+  // Serving a fresh copy saved before logos were read without refetching it, or refetching on every visit, turns this red.
+  await t.test('a saved copy from before logos were read is refetched once in the background', async () => {
+    store.put({ type: 'tv', tvdbId: 545454, tmdbId: 444444 }, 'tmdbDetails', { id: 444444, mediaType: 'tv', tvdbId: 545454, title: 'Old copy', backdropPath: '/old.jpg' });
+    let asked = 0;
+    respond = () => { asked += 1; return json({ id: 444444, name: 'Old copy', external_ids: { tvdb_id: 545454 }, images: { logos: [{ file_path: '/fresh.png', iso_639_1: 'en' }] } })(); };
+    assert.equal(await titles.logoPath('tv', 444444), null);
+    await settle(() => store.get({ type: 'tv', tmdbId: 444444 }, 'tmdbDetails')?.value.logoPath !== undefined);
+    assert.equal(await titles.logoPath('tv', 444444), '/fresh.png');
+    await settle(() => false);
+    assert.equal(asked, 1);
+  });
+
   // Dropping the ids, reading TV keywords from the movie field, or answering a TMDB failure with anything but null turns this red.
   await t.test('chips gives genres and keywords with their ids, and null when TMDB fails', async () => {
     respond = json({ id: 61, title: 'Film', genres: [{ id: 28, name: 'Action' }], keywords: { keywords: [{ id: 9715, name: 'superhero' }] } });
