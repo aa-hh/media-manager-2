@@ -75,9 +75,10 @@ private const val FOCUS_REST_MS = 300L
 
 /**
  * Home and Discover (T03d A1, T03a A1 and A6): the focused card's backdrop and summary at the top, then [rails] of cards.
- * The top follows focus once it rests ~300 ms and crossfades over 150 ms; [summaryFor] supplies the summary and backdrop
- * (a title's detail read, for library cards) and each answer is kept. Once the rows scroll past the first, the backdrop
- * fades out, as A6 draws. Focus starts on the first card of the first row.
+ * Only the first row drives the top: it follows focus there once it rests ~300 ms and crossfades over 150 ms; [summaryFor]
+ * supplies the summary and backdrop (a title's detail read, for library cards) and each answer is kept. The moment focus
+ * moves to a lower row the backdrop and summary start fading out, before the rows finish scrolling up, so a lower row
+ * never slides up into a picture (owner, 16 Nov 2026). Focus starts on the first card of the first row.
  *
  * Library cards open the hold-OK action list; [onChanged] runs after one of its actions, so the page reads again.
  */
@@ -111,12 +112,12 @@ fun RailsPage(
         if (rails.isNotEmpty() && !focusPlaced) focusPlaced = runCatching { firstCard.requestFocus() }.isSuccess
     }
 
-    val backdropAlpha by animateFloatAsState(if (list.firstVisibleItemIndex == 0) 1f else 0f, tween(150), label = "backdrop")
+    val topAlpha by animateFloatAsState(if (focusedRail <= 0) 1f else 0f, tween(150), label = "top")
     val current = shown
     val summary = current?.let { summaries[it.key] }
 
     Box(modifier.fillMaxSize().background(Tokens.background)) {
-        Backdrop(BackdropScrim.Browse, Modifier.alpha(backdropAlpha)) {
+        Backdrop(BackdropScrim.Browse, Modifier.alpha(topAlpha)) {
             Crossfade(summary?.backdropPath, animationSpec = tween(150), label = "backdrop picture") { path ->
                 ServerImage(path, Modifier.fillMaxSize())
             }
@@ -127,7 +128,7 @@ fun RailsPage(
             item(key = "summary") {
                 Box(Modifier.fillMaxWidth().height(288.dp)) {
                     if (current != null) {
-                        TitleSummary(overline(current), nameOf(current), summary?.text, Modifier.padding(start = 120.dp, top = 110.dp))
+                        TitleSummary(overline(current), nameOf(current), summary?.text, Modifier.padding(start = 120.dp, top = 110.dp).alpha(topAlpha))
                     }
                 }
             }
@@ -145,7 +146,7 @@ fun RailsPage(
                             val tracking = Modifier
                                 .onFocusChanged {
                                     if (it.hasFocus) {
-                                        focused = item
+                                        if (railIndex == 0) focused = item
                                         focusedRail = railIndex
                                     }
                                 }

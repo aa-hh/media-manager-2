@@ -43,12 +43,17 @@ sealed interface RailItem {
 data class Rail(val key: String, val label: String, val items: List<RailItem>)
 
 /**
- * Home's Plex rows, in order: Continue watching, Recently added TV, Recently added films, Playlists. A row whose reply
- * failed or has nothing in it is left out, as is any item whose title is no longer in the library.
+ * Home's Plex rows, in order: Not watched yet, Continue watching, Recently added TV, Recently added films, Playlists. A row
+ * whose reply failed or has nothing in it is left out, as is any item whose title is no longer in the library.
+ *
+ * Not watched yet comes first because only the first row shows the backdrop at the top, and the backdrop helps most on
+ * titles the viewer has added but not started; a show they watch every week needs no picture (owner, 16 Nov 2026).
  */
 fun plexRails(titles: LibraryTitles?, playlists: Playlists?): List<Rail> = buildList {
     if (titles != null) {
         val byKey = titles.titles.associateBy { "${it.service}:${it.id}" }
+        // razor: newest 20 by date added; a "see all" page is the upgrade if the viewer wants the rest.
+        addRail("not-watched", "Not watched yet", titles.titles.filter { notStarted(it.watch) }.sortedByDescending { it.added }.take(20).map(::libraryItem))
         val continueWatching = titles.watch.continueWatching.mapNotNull { item ->
             val title = byKey["${item.service}:${item.id}"] ?: return@mapNotNull null
             RailItem.Title(
@@ -105,6 +110,13 @@ fun played(watch: TitleWatch?): Boolean = when {
     watch == null -> false
     watch.kind == "show" -> watch.leafCount > 0 && watch.viewedLeafCount >= watch.leafCount
     else -> watch.viewCount > 0
+}
+
+/** In Plex and never started: a film with no views and no resume point, or a show with episodes and none watched. */
+fun notStarted(watch: TitleWatch?): Boolean = when {
+    watch == null -> false
+    watch.kind == "show" -> watch.leafCount > 0 && watch.viewedLeafCount == 0
+    else -> watch.viewCount == 0 && watch.viewOffsetMs == null
 }
 
 /** Episodes left to watch on a show that has been started; 0 otherwise, when the card shows no count. */
