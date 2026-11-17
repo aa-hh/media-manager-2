@@ -22,7 +22,7 @@ import io.github.aahh.mediamanager2.tv.ui.Tokens
 /** What a stub screen shows until its task builds it: its name and the FINAL frames it comes from. */
 @Composable
 internal fun Placeholder(name: String, frames: String, modifier: Modifier = Modifier, content: @Composable () -> Unit = {}) {
-    Column(modifier.fillMaxSize().padding(48.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(modifier.fillMaxSize().padding(start = 120.dp, top = 48.dp, end = 48.dp, bottom = 48.dp),verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(name, style = MaterialTheme.typography.headlineMedium, color = Tokens.foreground)
         Text("Built from $frames", color = Tokens.mutedForeground)
         content()

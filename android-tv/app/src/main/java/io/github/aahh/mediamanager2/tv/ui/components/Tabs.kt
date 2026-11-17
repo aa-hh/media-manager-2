@@ -34,7 +34,7 @@ import io.github.aahh.mediamanager2.tv.ui.Tokens
 
 /**
  * One tab: 32 high, a pill, 16 in, the label 16/500 in `muted-foreground`. The [selected] tab is 16/600 in `foreground`
- * with a 3dp bar under its label. Focus is the off-white fill with dark words that menu rows and the side menu share.
+ * with a 3dp bar under its label. Focus is the off-white fill with dark words that menu rows share.
  */
 @Composable
 fun Tab(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {

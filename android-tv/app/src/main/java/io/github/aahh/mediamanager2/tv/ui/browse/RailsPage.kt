@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
@@ -122,7 +123,7 @@ fun RailsPage(
         }
         // Scrolling keeps a focused card clear of the page's edges, so its 1.1× growth, ring and title are never cut off.
         CompositionLocalProvider(LocalBringIntoViewSpec provides rememberEdgeSpec(start = 40.dp, end = 64.dp)) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize().focusRestorer(), contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "summary") {
                 Box(Modifier.fillMaxWidth().height(288.dp)) {
                     if (current != null) {
@@ -136,6 +137,7 @@ fun RailsPage(
                     // Room above and below for the focused card's 1.1× growth and ring, which the row would otherwise clip.
                     CompositionLocalProvider(LocalBringIntoViewSpec provides rememberEdgeSpec(start = 120.dp, end = 48.dp)) {
                     LazyRow(
+                        modifier = Modifier.focusRestorer(),
                         contentPadding = PaddingValues(start = 120.dp, end = 48.dp, top = 12.dp, bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(20.dp),
                     ) {

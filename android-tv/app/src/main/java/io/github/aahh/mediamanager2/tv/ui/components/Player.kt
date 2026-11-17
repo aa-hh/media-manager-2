@@ -205,7 +205,7 @@ fun MenuSeparator(modifier: Modifier = Modifier) {
 /**
  * One choice in a [MenuPanel]: 40 high, radius 10, a 20dp icon (the radio, filled when [checked], unless an [icon] is
  * given) and the label 16/600, with an optional 12/400 [detail] line. Focus is the off-white fill with dark words, as
- * the side menu and tabs, not the ring. Disabled is 40% and focus skips it.
+ * tabs, not the ring. Disabled is 40% and focus skips it.
  */
 @Composable
 fun MenuRow(
