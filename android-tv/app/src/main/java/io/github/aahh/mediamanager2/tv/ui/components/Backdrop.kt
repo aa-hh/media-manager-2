@@ -24,7 +24,7 @@ import io.github.aahh.mediamanager2.tv.ui.Tokens
 
 /** How much of the backdrop the page darkens, so its words stay readable over any art. */
 enum class BackdropScrim {
-    /** Home and Discover: the left half dark under the summary, the bottom under the rows. */
+    /** Discover: the left half dark under the summary, the bottom under the rows. */
     Browse,
 
     /** A title page: nearly solid on the left 45%, fading out by 72%, and a heavier bottom. */
@@ -66,7 +66,7 @@ fun Backdrop(scrim: BackdropScrim, modifier: Modifier = Modifier, image: @Compos
 // The [brushes], drawn once into a picture a quarter of the size and stretched over the whole area. Shading full-screen
 // gradients every frame cost the Google TV Streamer's GPU ~26 ms of each 16 ms frame; stretching one small picture costs
 // a fraction of that, and a smooth gradient looks the same stretched.
-private fun Modifier.scrim(vararg brushes: Brush): Modifier = drawWithCache {
+internal fun Modifier.scrim(vararg brushes: Brush): Modifier = drawWithCache {
     val small = IntSize(ceil(size.width / 4).toInt().coerceAtLeast(1), ceil(size.height / 4).toInt().coerceAtLeast(1))
     val picture = ImageBitmap(small.width, small.height)
     CanvasDrawScope().draw(this, layoutDirection, Canvas(picture), Size(small.width.toFloat(), small.height.toFloat())) {

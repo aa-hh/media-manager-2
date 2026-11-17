@@ -25,7 +25,12 @@ data class DiscoverResult(
     val genres: List<String> = emptyList(),
     val overview: String? = null,
     val libraryId: Int? = null,
+    val heroBackdropUrl: String? = null,
 )
+
+/** `GET /api/library/tmdb/:type/:tmdbId/logo`: the title's logo picture, null when TMDB has none. */
+@Serializable
+data class TitleLogo(val logoUrl: String? = null)
 
 /** One Discover row. [pending] means it is still being built; [failed] only when the build failed and nothing is saved. */
 @Serializable
@@ -169,6 +174,12 @@ class BrowseApi(private val client: ServerClient) {
         require(sort in setOf("popular", "rating", "newest", "upcoming")) { "unknown sort $sort" }
         require(page in 1..500) { "page out of range" }
         return client.get("/api/discover/$type?sort=$sort&page=$page", DiscoverPage.serializer())
+    }
+
+    /** `type` is `movie` or `tv`. */
+    suspend fun logo(type: String, tmdbId: Int): ApiResult<TitleLogo> {
+        require(type == "movie" || type == "tv") { "unknown type $type" }
+        return client.get("/api/library/tmdb/$type/$tmdbId/logo", TitleLogo.serializer())
     }
 
     /**

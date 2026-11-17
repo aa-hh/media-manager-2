@@ -49,7 +49,7 @@ import { createPlexPlayback } from './services/plexPlayback.js';
 import { createTmdb } from './services/tmdb.js';
 import { createTrakt } from './services/trakt.js';
 import { createFanart } from './services/fanart.js';
-import { createBackdrops } from './backdrops.js';
+import { createBackdrops, createHeroes, createHeroRoutes, createLogos } from './backdrops.js';
 import { createRtorrent } from './services/rtorrent.js';
 import { createTrackerAccounts } from './services/trackerAccounts.js';
 import { createTorrentPoller, LIVE_POLL_INTERVAL_MS } from './torrents.js';
@@ -204,7 +204,10 @@ if (database !== undefined) {
     forget: search.forget,
   });
   const tmdbTitles = createTmdbTitles({ database, tmdb, store: titleStore });
-  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) }), (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips, watchStatus, (subjects) => recordOwnerSearch(openedDatabase, subjects, Date.now()));
+  const backdrops = createBackdrops({ database, store: titleStore, tmdbTitles, trakt, fanart: createFanart(database) });
+  const logos = createLogos({ store: titleStore, tmdbTitles, plex });
+  const library = createLibrary(arr, (title) => listSecondVersionRows(openedDatabase, title), titleStore, mdblist, tmdbTitles.tvdbIdOf, backdrops, (title) => listTrackedHitAndRun(openedDatabase, title), tmdbTitles.chips, watchStatus, (subjects) => recordOwnerSearch(openedDatabase, subjects, Date.now()), logos);
+  const heroes = createHeroes({ database, store: titleStore, tmdbTitles, backdrops, logos, watchStatus });
   const add = createAdd(arr, titleStore, openedDatabase);
   const discover = createDiscover({ tmdb, trakt, store: titleStore, database });
   runner.register('discover-refresh', 10 * 60_000, discover.refresh);
@@ -240,6 +243,7 @@ if (database !== undefined) {
     library,
     discover,
     tmdbTitles,
+    heroes: createHeroRoutes(heroes),
     playback,
     setup: createSetupRoutes({ database, arr, rtorrent, trackers: trackerAccounts, env: process.env }),
     api: createApiRoutes(database, {
@@ -252,7 +256,7 @@ if (database !== undefined) {
       history: createHistory({ database, arr, labels }),
       blocklist,
     }),
-    images: createImageRoutes(titles, tmdbImages, plex.playlistCollage),
+    images: createImageRoutes(titles, tmdbImages, plex.playlistCollage, plex.clearLogo),
     cache: createCacheRoutes(database, imageDirectory, titles.reconcile),
     webhooks: {
       secret: () => readSetting(openedDatabase, 'credentials', 'webhook.secret'),

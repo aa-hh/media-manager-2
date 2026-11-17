@@ -100,6 +100,29 @@ class LibraryPlaybackTest {
         assertEquals("$origin/api/images/plex/playlist/900", library.playlistCollage("900").toString())
     }
 
+    // Home's top comes from one heroes read keyed by card; renaming a field, changing the query, or dropping the key check
+    // (so a bad key or 301 keys reach the server, which answers 400) turns this red.
+    @Test
+    fun theHeroesReadAsksForEveryCardInOneQuery() = runTest {
+        reply("""{"heroes":{"sonarr:7":{"overview":"Spies.","genre":"Drama","runtime":50,"heroBackdropUrl":"/api/images/h.jpg",
+            "logoUrl":"/api/images/l.png","logo":"ready"},"movie:603":{"overview":null,"genre":null,"runtime":null,
+            "heroBackdropUrl":null,"logoUrl":null,"logo":"loading"}}}""")
+        val heroes = (library.heroes(listOf("sonarr:7", "movie:603")) as ApiResult.Ok).value.heroes
+        val url = server.takeRequest().requestUrl!!
+        assertEquals("/api/library/heroes", url.encodedPath)
+        assertEquals("sonarr:7,movie:603", url.queryParameter("items"))
+        assertEquals(HeroAnswer("Spies.", "Drama", 50, "/api/images/h.jpg", "/api/images/l.png", "ready"), heroes["sonarr:7"])
+        assertEquals(HeroAnswer(logo = "loading"), heroes["movie:603"])
+        for (bad in listOf(listOf("list:5"), listOf("sonarr:0"), List(301) { "tv:${it + 1}" }, emptyList())) {
+            try {
+                library.heroes(bad)
+                fail("a bad heroes read was sent")
+            } catch (expected: IllegalArgumentException) {
+            }
+        }
+        assertEquals(1, server.requestCount)
+    }
+
     // The T23 routes take exactly these bodies; a different one is a 400 from the server, which turns this red.
     @Test
     fun watchedAndRemoveSendWhatTheServerTakes() = runTest {

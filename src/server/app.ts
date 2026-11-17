@@ -35,6 +35,7 @@ import { createSecondVersionRoutes, type SecondVersions } from './secondVersions
 import type { SetupEnvironment } from './setup.js';
 import { createTitleDeleteRoutes, type TitleDelete } from './titleDelete.js';
 import { createTmdbTitleRoutes, type TmdbTitles } from './tmdbTitles.js';
+import type { createHeroRoutes } from './backdrops.js';
 
 export type CreateAppOptions = {
   clientDirectory: string;
@@ -59,6 +60,7 @@ export type CreateAppOptions = {
   discover?: Discover;
   titleDelete?: TitleDelete;
   tmdbTitles?: TmdbTitles;
+  heroes?: ReturnType<typeof createHeroRoutes>;
   playback?: Playback;
   setup?: Hono<SetupEnvironment>;
   api?: Hono;
@@ -694,6 +696,7 @@ export const createApp = (options: CreateAppOptions) => {
   if (options.library !== undefined) app.route('/api/library', createLibraryRoutes(options.library));
   if (options.titleDelete !== undefined) app.route('/api/library', createTitleDeleteRoutes(options.titleDelete));
   if (options.tmdbTitles !== undefined) app.route('/api/library', createTmdbTitleRoutes(options.tmdbTitles));
+  if (options.heroes !== undefined) app.route('/api/library', options.heroes);
   if (options.discover !== undefined) app.route('/api/discover', createDiscoverRoutes(options.discover));
   if (options.playback !== undefined) app.route('/api/playback', createPlaybackRoutes(options.playback));
   if (options.images !== undefined) app.route('/api/images', options.images);

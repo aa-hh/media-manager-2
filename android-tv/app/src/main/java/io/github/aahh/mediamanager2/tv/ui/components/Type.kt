@@ -43,6 +43,9 @@ internal object TvText {
     val listSubtitle = ui(FontWeight.Normal, 13, 16, 0.2)
     val badge = ui(FontWeight.Medium, 12, 16, 0.1)
     val time = ui(FontWeight.Medium, 16, 20)
+    val rowTitle = ui(FontWeight.SemiBold, 20, 24)
+    val heroFacts = ui(FontWeight.Normal, 15, 20)
+    val heroSummary = ui(FontWeight.Normal, 15, 22)
 
     /** Barlow Semi Condensed 600, for counts and percentages. */
     fun number(size: Int) = TextStyle(fontFamily = Fonts.data, fontWeight = FontWeight.SemiBold, fontSize = size.sp, lineHeight = 16.sp)

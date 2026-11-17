@@ -166,6 +166,8 @@ data class SeriesDetail(
     val seasons: List<Season> = emptyList(),
     val episodes: List<EpisodeDetail> = emptyList(),
     val watch: SeriesWatch? = null,
+    val heroBackdropUrl: String? = null,
+    val logoUrl: String? = null,
 )
 
 /** `GET /api/library/movie/:id`. */
@@ -188,6 +190,8 @@ data class MovieDetail(
     val sizeOnDisk: Long = 0,
     val file: FileSummary? = null,
     val watch: MovieWatch? = null,
+    val heroBackdropUrl: String? = null,
+    val logoUrl: String? = null,
 )
 
 /** One of the signed-in Plex user's video lists. */
@@ -204,6 +208,24 @@ data class PlaylistItem(val service: Service, val id: Int, val episode: EpisodeR
 /** `GET /api/library/playlists/:id`: `kind` `ok`, `off` or `unavailable`; 404 `not_found` for an unknown list. */
 @Serializable
 data class PlaylistItems(val kind: String, val title: String? = null, val items: List<PlaylistItem> = emptyList())
+
+/**
+ * One Home card's top, from saved copies (`GET /api/library/heroes`). [logo] is `ready` (the logo is [logoUrl]), `none`
+ * (the title has no logo) or `loading` (not known yet; ask again). A Trakt card's answer carries only the logo.
+ */
+@Serializable
+data class HeroAnswer(
+    val overview: String? = null,
+    val genre: String? = null,
+    val runtime: Int? = null,
+    val heroBackdropUrl: String? = null,
+    val logoUrl: String? = null,
+    val logo: String = "loading",
+)
+
+/** `GET /api/library/heroes`: answers by card key; a library title the server has no saved copy of is left out. */
+@Serializable
+data class Heroes(val heroes: Map<String, HeroAnswer> = emptyMap())
 
 @Serializable
 private data class WatchedBody(val watched: Boolean)
@@ -228,6 +250,12 @@ class LibraryApi(private val client: ServerClient) {
     suspend fun previewShowByTmdb(tmdbId: Int): ApiResult<ShowPreview> {
         require(tmdbId > 0) { "not a TMDB id" }
         return client.get("/api/library/preview/sonarr/tmdb/$tmdbId", ShowPreview.serializer())
+    }
+
+    /** The top of Home for up to 300 cards in one read, keyed `sonarr:<id>`, `radarr:<id>`, `movie:<tmdbId>` or `tv:<tmdbId>`. */
+    suspend fun heroes(keys: List<String>): ApiResult<Heroes> {
+        require(keys.size in 1..300 && keys.all(HERO_KEY::matches)) { "not 1 to 300 card keys" }
+        return client.get("/api/library/heroes?items=${keys.joinToString(",")}", Heroes.serializer())
     }
 
     suspend fun playlists(): ApiResult<Playlists> = client.get("/api/library/playlists", Playlists.serializer())
@@ -261,5 +289,6 @@ class LibraryApi(private val client: ServerClient) {
 
     private companion object {
         val PLAYLIST_ID = Regex("^\\d{1,12}$")
+        val HERO_KEY = Regex("^(sonarr|radarr|movie|tv):[1-9]\\d{0,9}$")
     }
 }

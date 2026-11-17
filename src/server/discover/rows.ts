@@ -53,6 +53,7 @@ export type DiscoverResult = {
   date: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
+  heroBackdropUrl: string | null;
   rating: number | null;
   genres: string[];
   overview: string | null;
@@ -107,7 +108,7 @@ export const createRows = (database: DatabaseSync, now: () => number = Date.now)
 
 export type Rows = ReturnType<typeof createRows>;
 
-// The image route serves TMDB files by size name; these two sizes are the agreed ones.
+// The image route serves TMDB files by size name; TMDB_IMAGE_SIZES in titles.ts lists the allowed ones.
 const image = (size: string, path: string | null) => (path === null ? null : `/api/images/tmdb/${size}/${path.replace(/^\//, '')}`);
 
 export const present = (items: StoredItem[], database: DatabaseSync): DiscoverResult[] => {
@@ -123,6 +124,7 @@ export const present = (items: StoredItem[], database: DatabaseSync): DiscoverRe
     date: item.date,
     posterUrl: image('w342', item.posterPath),
     backdropUrl: image('w1920_and_h800_multi_faces', item.backdropPath),
+    heroBackdropUrl: image('w1280', item.backdropPath),
     rating: item.rating,
     genres: item.genres,
     overview: item.overview,
