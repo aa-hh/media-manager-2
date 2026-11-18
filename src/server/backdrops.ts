@@ -10,6 +10,13 @@ const MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 export const BACKDROP_SOURCES = ['tmdb', 'trakt', 'fanart'] as const;
 export const BACKDROP_SOURCE_KEY = 'backdrop.source';
 
+const TMDB_WIDE = '/api/images/tmdb/w1920_and_h800_multi_faces/';
+
+// The plain 16:9 copy of a TMDB backdrop address; any other address stays as it is.
+export const heroUrl = (backdropUrl: string | null): string | null => (
+  backdropUrl?.startsWith(TMDB_WIDE) ? `/api/images/tmdb/w1280/${backdropUrl.slice(TMDB_WIDE.length)}` : backdropUrl
+);
+
 // Which source the title page backdrop comes from is the owner's choice while comparing them; TMDB unless set.
 // razor: Trakt and fanart.tv pictures are linked straight from their servers for the comparison. Copy them through
 // /api/images like TMDB's if one becomes the source for good; Trakt's terms ask for copies.
@@ -45,5 +52,22 @@ export const createBackdrops = (options: {
     }
     const path = tmdbId === null ? null : await tmdbTitles.backdropPath(type, tmdbId);
     return path === null ? null : `/api/images/tmdb/w1920_and_h800_multi_faces/${path.replace(/^\//, '')}`;
+  };
+};
+
+// The fanart.tv background fans tagged with each season of a show, whatever backdrop source is chosen. Answers from the
+// saved copy; a missing or old one loads in the background, so the page never waits on fanart.tv.
+export const createSeasonHeroes = (options: { store: TitleStore; fanart: Pick<Fanart, 'seasonBackgrounds'> }) => {
+  const { store, fanart } = options;
+  return (ids: { tvdbId: number | null; tmdbId: number | null }): Array<{ seasonNumber: number; url: string }> => {
+    if (ids.tvdbId === null) return [];
+    const { tvdbId } = ids;
+    const title: Title = { type: 'tv', tvdbId, tmdbId: ids.tmdbId };
+    const part = 'fanartSeasonBackdrops';
+    void store.fetch(title, part, MAX_AGE_MS, async () => {
+      const result = await fanart.seasonBackgrounds(tvdbId);
+      return result.kind === 'ok' ? { kind: 'ok' as const, value: { seasons: result.value } } : result;
+    }).catch(() => undefined);
+    return store.get<{ seasons: Array<{ seasonNumber: number; url: string }> }>(title, part)?.value.seasons ?? [];
   };
 };
