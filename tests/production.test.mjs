@@ -7085,6 +7085,7 @@ test('title details, episodes and images are cached from Sonarr and Radarr and k
 
 // Sending the Plex token to the page, fetching the collage again while the list is unchanged, keeping an old picture after
 // the list changes, or answering a missing list, a list with no picture, Plex off or Plex down with the wrong status turns this red.
+// Dropping the logo route, sending the token in an address or header, changing the transcode query, or answering 200 for an item with no clearLogo or a `//` url turns the logo part of this red.
 test('a Plex list\'s collage comes through our server without the token, once per version of the list', async (t) => {
   const { openDatabase } = await import(databaseModuleUrl);
   const { setSetting } = await import(settingsModuleUrl);
@@ -7097,8 +7098,9 @@ test('a Plex list\'s collage comes through our server without the token, once pe
     await rm(root, { recursive: true, force: true });
   });
   const token = `plex-collage-token-${process.pid}`;
-  const remote = { version: 1700000000, reachable: true, pictures: [] };
+  const remote = { version: 1700000000, reachable: true, pictures: [], logos: [], requests: 0 };
   const plex = createPlex(database, { fetch: async (input, init) => {
+    remote.requests += 1;
     const url = new URL(String(input));
     assert.equal(init.headers['X-Plex-Token'], token);
     assert.ok(!String(input).includes(token));
@@ -7106,19 +7108,30 @@ test('a Plex list\'s collage comes through our server without the token, once pe
     const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
     if (url.pathname === '/playlists/900') return json({ MediaContainer: { Metadata: [{ ratingKey: '900', composite: `/playlists/900/composite/${remote.version}` }] } });
     if (url.pathname === '/playlists/901') return json({ MediaContainer: { Metadata: [{ ratingKey: '901' }] } });
+    if (url.pathname === '/library/metadata/500') return json({ MediaContainer: { Metadata: [{ ratingKey: '500', Image: [{ type: 'coverPoster', url: '/library/metadata/500/thumb/1' }, { type: 'clearLogo', url: '/library/metadata/500/clearLogo/1700' }] }] } });
+    if (url.pathname === '/library/metadata/501') return json({ MediaContainer: { Metadata: [{ ratingKey: '501', Image: [{ type: 'coverPoster', url: '/library/metadata/501/thumb/1' }] }] } });
+    if (url.pathname === '/library/metadata/502') return json({ MediaContainer: { Metadata: [{ ratingKey: '502', Image: [{ type: 'clearLogo', url: '//evil.example/logo.png' }] }] } });
+    if (url.pathname === '/library/metadata/503') return json({ MediaContainer: { Metadata: [{ ratingKey: '503', Image: [{ type: 'clearLogo', url: '/library/metadata/503/clearLogo/1' }] }] } });
+    if (url.pathname === '/library/metadata/504') return json({ MediaContainer: { Metadata: [{ ratingKey: '504', Image: [{ type: 'clearLogo', url: '//evil.example/first.png' }, { type: 'clearLogo', url: '/library/metadata/504/clearLogo/2' }] }] } });
+    if (url.pathname === '/photo/:/transcode') {
+      remote.logos.push(`${url.pathname}?${url.searchParams}`);
+      if (url.searchParams.get('url') === '/library/metadata/503/clearLogo/1') return new Response('<html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+      return new Response(new Uint8Array([0x89, 0x50]), { status: 200, headers: { 'Content-Type': 'image/png' } });
+    }
     if (url.pathname.startsWith('/playlists/900/composite/')) {
       remote.pictures.push(`${url.pathname}?${url.searchParams}`);
       return new Response(new Uint8Array([0xff, 0xd8, remote.version % 256]), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
     }
     return new Response('', { status: 404 });
   } });
-  const { app } = await makeApp({ images: createImageRoutes({ image: () => undefined }, undefined, plex.playlistCollage) });
+  const { app } = await makeApp({ images: createImageRoutes({ image: () => undefined }, undefined, plex.playlistCollage, plex.titleLogo) });
   const { session } = await signIn(app);
   const get = (path) => app.request(path, { headers: { Cookie: session } });
 
   const off = await get('/api/images/plex/playlist/900');
   assert.equal(off.status, 503);
   assert.deepEqual(await off.json(), { error: 'not_configured' });
+  assert.equal((await get('/api/images/plex/logo/500')).status, 503);
   setSetting(database, 'serviceAddresses', 'plex.url', 'http://plex.test');
   setSetting(database, 'credentials', 'plex.token', token);
 
@@ -7141,7 +7154,35 @@ test('a Plex list\'s collage comes through our server without the token, once pe
     assert.deepEqual(await missing.json(), { error: 'not_found' });
   }
   assert.equal((await get('/api/images/plex/playlist/abc')).status, 404);
+
+  const logo = await get('/api/images/plex/logo/500');
+  assert.equal(logo.status, 200);
+  assert.equal(logo.headers.get('Content-Type'), 'image/png');
+  assert.equal(logo.headers.get('Cache-Control'), 'private, max-age=300');
+  assert.ok(![...logo.headers.values()].some((value) => value.includes(token)));
+  assert.deepEqual([...new Uint8Array(await logo.arrayBuffer())], [0x89, 0x50]);
+  assert.deepEqual(remote.logos, ['/photo/:/transcode?width=600&height=128&minSize=1&upscale=1&format=png&url=%2Flibrary%2Fmetadata%2F500%2FclearLogo%2F1700']);
+  for (const ratingKey of ['501', '502', '999']) {
+    const missing = await get(`/api/images/plex/logo/${ratingKey}`);
+    assert.equal(missing.status, 404, ratingKey);
+    assert.deepEqual(await missing.json(), { error: 'not_found' });
+  }
+  // Picking the first clearLogo entry before checking its url, instead of the first entry whose url is a local path, turns this red.
+  const secondLogo = await get('/api/images/plex/logo/504');
+  assert.equal(secondLogo.status, 200);
+  assert.equal(remote.logos.at(-1), '/photo/:/transcode?width=600&height=128&minSize=1&upscale=1&format=png&url=%2Flibrary%2Fmetadata%2F504%2FclearLogo%2F2');
+  // Dropping the image/png check in titleLogo's load turns this red.
+  const notPng = await get('/api/images/plex/logo/503');
+  assert.equal(notPng.status, 502);
+  assert.deepEqual(await notPng.json(), { error: 'plex_unavailable' });
+  // Loosening the logo route's {[0-9]{1,12}} pattern turns this red.
+  const requestsBefore = remote.requests;
+  for (const ratingKey of ['abc', '1234567890123']) assert.equal((await get(`/api/images/plex/logo/${ratingKey}`)).status, 404, ratingKey);
+  assert.equal(remote.requests, requestsBefore);
   remote.reachable = false;
+  const logoDown = await get('/api/images/plex/logo/500');
+  assert.equal(logoDown.status, 502);
+  assert.deepEqual(await logoDown.json(), { error: 'plex_unavailable' });
   const down = await get('/api/images/plex/playlist/900');
   assert.equal(down.status, 502);
   assert.deepEqual(await down.json(), { error: 'plex_unavailable' });
@@ -7174,7 +7215,7 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     return { app, clock, fetched, get, remote, rows, tmdb, images: join(directory, 'images') };
   };
 
-  // Fetching from TMDB on every request instead of serving the saved copy, or not sharing one fetch between concurrent misses, turns this red.
+  // Fetching from TMDB on every request instead of serving the saved copy, not sharing one fetch between concurrent misses, or dropping w1280 from the allowed sizes turns this red.
   await t.test('the first request fetches from TMDB once and later requests serve the saved copy', async () => {
     const { app, fetched, get } = await setup();
     assert.equal((await app.request('/api/images/tmdb/w342/abc123.jpg')).status, 401);
@@ -7188,7 +7229,9 @@ test('TMDB posters and backdrops are copied to our server on first request', asy
     assert.deepEqual(new Uint8Array(await second.arrayBuffer()), new Uint8Array([1, 2, 3]));
     assert.deepEqual(fetched, ['https://image.tmdb.org/t/p/w342/abc123.jpg']);
     assert.equal((await get('/api/images/tmdb/w1920_and_h800_multi_faces/abc123.jpg')).status, 200);
-    assert.equal(fetched.length, 2, 'each size is its own copy');
+    assert.equal((await get('/api/images/tmdb/w1280/abc123.jpg')).status, 200);
+    assert.equal(fetched.length, 3, 'each size is its own copy');
+    assert.equal(fetched[2], 'https://image.tmdb.org/t/p/w1280/abc123.jpg');
   });
 
   // Loosening the size or file check, so a caller can steer the fetch or reach outside the image folder, turns this red.
@@ -9698,20 +9741,25 @@ test('title pages take the backdrop from the chosen source and fall back to the 
   const { fake, ...services } = connectArr(database);
   const fanart = (name) => [{ coverType: 'fanart', remoteUrl: `https://artworks.thetvdb.com/${name}.jpg` }];
   fake.sonarr.state.series = [
-    seriesRecord({ id: 7, title: 'Severance', tvdbId: 371980, tmdbId: 95396, images: fanart('severance') }),
+    seriesRecord({ id: 7, title: 'Severance', tvdbId: 371980, tmdbId: 95396, images: [...fanart('severance'), { coverType: 'clearlogo', remoteUrl: 'https://artworks.thetvdb.com/severance-logo.png' }],
+      seasons: [{ seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: true }] }),
     seriesRecord({ id: 8, title: 'No TMDB id', tvdbId: 1, images: fanart('none') }),
   ];
-  fake.sonarr.state.lookup = [{ title: 'Severance', tvdbId: 371980, tmdbId: 95396, seasons: [], images: fanart('severance') }];
-  fake.radarr.state.movies = [movieRecord({ id: 3, title: 'Spirited Away', tmdbId: 129, images: fanart('spirited') })];
+  fake.sonarr.state.lookup = [{ title: 'Severance', tvdbId: 371980, tmdbId: 95396, seasons: [{ seasonNumber: 1, monitored: true }], images: fanart('severance') }];
+  fake.radarr.state.movies = [movieRecord({ id: 3, title: 'Spirited Away', tmdbId: 129, images: [...fanart('spirited'), { coverType: 'clearlogo', remoteUrl: 'https://artworks.thetvdb.com/spirited-logo.png' }] })];
   let answers = {};
   const answer = (source) => async (type, id) => ({ kind: 'ok', value: answers[`${source}:${type}/${id}`] ?? null });
+  const seasonPictures = [{ seasonNumber: 2, url: 'https://assets.fanart.tv/sev-s2.jpg' }];
   const pages = createLibrary(services, () => [], createTitleStore(database), undefined, undefined, createBackdrops({
     database,
     store: createTitleStore(database),
     tmdbTitles: { backdropPath: async (type, id) => answers[`tmdb:${type}/${id}`] ?? null },
     trakt: { fanart: answer('trakt') },
     fanart: { background: answer('fanart') },
-  }));
+  }), undefined, undefined, {
+    forSeries: async () => ({ kind: 'ok', ratingKey: '55' }),
+    forMovie: async () => ({ kind: 'ok', ratingKey: '66' }),
+  }, undefined, (ids) => (ids.tvdbId === 371980 ? seasonPictures : []));
   const backdrops = async () => [(await pages.series(7)).value.backdropUrl, (await pages.series(8)).value.backdropUrl,
     (await pages.preview('sonarr', 371980)).value.backdropUrl, (await pages.movie(3)).value.backdropUrl];
   const fallbacks = ['https://artworks.thetvdb.com/severance.jpg', 'https://artworks.thetvdb.com/none.jpg', 'https://artworks.thetvdb.com/severance.jpg', 'https://artworks.thetvdb.com/spirited.jpg'];
@@ -9722,11 +9770,20 @@ test('title pages take the backdrop from the chosen source and fall back to the 
   assert.deepEqual(await backdrops(), [
     '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg', fallbacks[1], '/api/images/tmdb/w1920_and_h800_multi_faces/sev.jpg', '/api/images/tmdb/w1920_and_h800_multi_faces/spirit.jpg',
   ]);
+  // Dropping the per-season hero, its fallback to the show's 16:9 copy, the movie's heroUrl, the logo order, or putting heroUrl on preview turns this red.
+  const show = (await pages.series(7)).value;
+  assert.deepEqual(show.seasons.map((season) => season.heroUrl), ['/api/images/tmdb/w1280/sev.jpg', 'https://assets.fanart.tv/sev-s2.jpg']);
+  assert.equal((await pages.movie(3)).value.heroUrl, '/api/images/tmdb/w1280/spirit.jpg');
+  assert.deepEqual(show.logoUrls, ['/api/images/plex/logo/55', 'https://artworks.thetvdb.com/severance-logo.png']);
+  assert.deepEqual((await pages.movie(3)).value.logoUrls, ['/api/images/plex/logo/66', 'https://artworks.thetvdb.com/spirited-logo.png']);
+  const previewed = (await pages.preview('sonarr', 371980)).value;
+  assert.ok(previewed.seasons.length > 0 && previewed.seasons.every((season) => !('heroUrl' in season)));
   setPreference(database, 'backdrop.source', 'trakt');
   assert.equal((await pages.series(7)).value.backdropUrl, fallbacks[0]);
   await backdrops();
   await settle();
   assert.deepEqual(await backdrops(), ['https://media.trakt.tv/sev.webp', fallbacks[1], 'https://media.trakt.tv/sev.webp', 'https://media.trakt.tv/spirit.webp']);
+  assert.equal((await pages.series(7)).value.seasons[0].heroUrl, 'https://media.trakt.tv/sev.webp', 'a non-TMDB backdrop is the hero unchanged');
   setPreference(database, 'backdrop.source', 'fanart');
   await backdrops();
   await settle();
@@ -9766,8 +9823,55 @@ test('Trakt and fanart.tv backdrop lookups read their replies', async (t) => {
     { kind: 'ok', value: 'https://assets.fanart.tv/fanart/tv/371980/showbackground/b.jpg' });
   // Putting the fanart.tv key in the URL instead of its api-key header turns this red.
   assert.deepEqual(sent.at(-1), { url: 'https://webservice.fanart.tv/v3/tv/371980', headers: { Accept: 'application/json', 'api-key': 'fanart-key' } });
+  // Picking a less-liked season picture, taking an entry with no season or "all", or passing on another host's link turns this red.
+  const seasonal = { showbackground: [
+    { url: 'https://assets.fanart.tv/s7-low.jpg', likes: '1', season: '7' },
+    { url: 'http://assets.fanart.tv/s7-high.jpg', likes: '5', season: '7' },
+    { url: 'https://assets.fanart.tv/none.jpg', likes: '50' },
+    { url: 'https://assets.fanart.tv/all.jpg', likes: '60', season: 'all' },
+    { url: 'https://evil.example/s2.jpg', likes: '70', season: '2' },
+    { url: 'https://assets.fanart.tv/s2.jpg', likes: '3', season: '2' },
+  ] };
+  assert.deepEqual(await createFanart(database, replying(200, seasonal)).seasonBackgrounds(371980), { kind: 'ok', value: [
+    { seasonNumber: 7, url: 'https://assets.fanart.tv/s7-high.jpg' }, { seasonNumber: 2, url: 'https://assets.fanart.tv/s2.jpg' },
+  ] });
+  assert.deepEqual(await createFanart(database, replying(404, {})).seasonBackgrounds(371980), { kind: 'ok', value: [] });
+  const keyless = openDatabase(join(root, 'keyless.sqlite'));
+  t.after(() => keyless.close());
+  assert.equal((await createFanart(keyless, replying(200, seasonal)).seasonBackgrounds(371980)).kind, 'not_configured');
   assert.deepEqual(await createFanart(database, replying(404, { status: 'error', 'error message': 'Not found' })).background('movie', 129), { kind: 'ok', value: null });
   assert.equal((await createFanart(database, replying(401, {})).background('movie', 129)).kind, 'rejected');
+
+  const { createSeasonHeroes } = await import(backdropsModuleUrl);
+  const { createTitleStore } = await import(titleStoreModuleUrl);
+  const settle = async () => { for (let turn = 0; turn < 20; turn += 1) await new Promise((resolve) => setImmediate(resolve)); };
+  const standIn = { requests: 0, reply: () => new Response(JSON.stringify(seasonal), { status: 200 }) };
+  const fanartStandIn = { fetch: async () => { standIn.requests += 1; return standIn.reply(); } };
+  const heroes = createSeasonHeroes({ store: createTitleStore(database), fanart: createFanart(database, fanartStandIn) });
+  // Making the season heroes wait on fanart.tv, or not saving them under fanartSeasonBackdrops, turns this red.
+  assert.deepEqual(heroes({ tvdbId: 371980, tmdbId: 95396 }), []);
+  assert.equal(standIn.requests, 1);
+  for (let turn = 0; turn < 200 && createTitleStore(database).get({ type: 'tv', tvdbId: 371980 }, 'fanartSeasonBackdrops') === undefined; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const seasonHeroes = [{ seasonNumber: 7, url: 'https://assets.fanart.tv/s7-high.jpg' }, { seasonNumber: 2, url: 'https://assets.fanart.tv/s2.jpg' }];
+  assert.deepEqual(createTitleStore(database).get({ type: 'tv', tvdbId: 371980 }, 'fanartSeasonBackdrops').value, { seasons: seasonHeroes });
+  assert.deepEqual(heroes({ tvdbId: 371980, tmdbId: 95396 }), seasonHeroes);
+  // Asking fanart.tv without a key, or for a show with no TVDB id, turns this red.
+  standIn.requests = 0;
+  assert.deepEqual(createSeasonHeroes({ store: createTitleStore(keyless), fanart: createFanart(keyless, fanartStandIn) })({ tvdbId: 371980, tmdbId: 95396 }), []);
+  assert.deepEqual(heroes({ tvdbId: null, tmdbId: 95396 }), []);
+  await settle();
+  assert.equal(standIn.requests, 0);
+  // Making createSeasonHeroes return a promise, or letting a failed fanart.tv load put anything into the list, turns this red.
+  for (const [tvdbId, reply] of [[81189, () => new Response('{}', { status: 500 })], [121361, () => { throw new TypeError('fetch failed'); }]]) {
+    standIn.reply = reply;
+    const answer = heroes({ tvdbId, tmdbId: null });
+    assert.ok(Array.isArray(answer), String(tvdbId));
+    assert.deepEqual(answer, [], String(tvdbId));
+    await settle();
+    assert.deepEqual(heroes({ tvdbId, tmdbId: null }), [], String(tvdbId));
+  }
 });
 
 // Using one max age for every part, saving a failed load, letting a second caller start its own load while one runs,

@@ -14,6 +14,7 @@ import {
   type Series,
 } from './services/arr.js';
 import type { Subject } from './problems.js';
+import { heroUrl } from './backdrops.js';
 import { lookupTitle, thumbnail } from './search.js';
 import { notConfigured } from './services/arr/result.js';
 import type { SecondVersionRow, TrackedHitAndRun } from './secondVersionRows.js';
@@ -115,6 +116,7 @@ export type SeriesDetail = {
     seasonNumber: number;
     monitored: boolean;
     posterUrl: string | null;
+    heroUrl?: string | null;
     statistics: {
       episodeFileCount: number;
       episodeCount: number;
@@ -525,6 +527,7 @@ export const createLibrary = (
   watchStatus?: WatchStatus,
   // Told of each episode or movie search the owner starts, so the scheduler retries it even when it was imported before.
   onOwnerSearch: (subjects: Subject[]) => void = () => {},
+  seasonHeroes?: (ids: { tvdbId: number | null; tmdbId: number | null }) => Array<{ seasonNumber: number; url: string }>,
 ) => {
   const chips = (type: 'tv' | 'movie', record: Series | Movie): Promise<TmdbChips> => (
     chipsOf === undefined || record.tmdbId === null ? Promise.resolve(null) : chipsOf(type, record.tmdbId)
@@ -534,6 +537,11 @@ export const createLibrary = (
     (backdropOf === undefined ? null : await backdropOf(type, { tmdbId: record.tmdbId, tvdbId: 'tvdbId' in record ? record.tvdbId : null }))
       ?? imageUrl(record.images, 'fanart')
   );
+  // Plex's own title logo first, then the clearlogo Sonarr or Radarr hold; empty when neither exists.
+  const logoUrls = (watch: SeriesWatch | MovieWatch, record: Series | Movie): string[] => [
+    ...(watch !== null && watch.kind === 'ok' ? [`/api/images/plex/logo/${watch.ratingKey}`] : []),
+    ...[imageUrl(record.images, 'clearlogo')].filter((url): url is string => url !== null),
+  ];
   const showRatings = (record: Series) => (
     mdblist === undefined ? Promise.resolve(noRatings) : mdblist.showRatings(store, { tvdbId: record.tvdbId, tmdbId: record.tmdbId })
   );
@@ -615,7 +623,7 @@ export const createLibrary = (
       return { titles: newestFirst(titles), services: { sonarr: sonarr.outcome, radarr: radarr.outcome }, watch: watched.watch };
     },
 
-    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[]; watch: SeriesWatch }>> {
+    async series(id: number): Promise<Result<SeriesDetail & { secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[]; watch: SeriesWatch; logoUrls: string[] }>> {
       const read = services.sonarr.series(id).then(fromArr);
       const [record, episodes, profiles, tags, backdrop, tmdbChips] = await Promise.all([
         read,
@@ -632,10 +640,17 @@ export const createLibrary = (
         showRatings(record.value),
         watchStatus === undefined ? { kind: 'off' as const } : watchStatus.forSeries(record.value, episodes.value),
       ]);
+      const showDetail = seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite, chips: tmdbChips });
+      const seasonPictures = seasonHeroes?.({ tvdbId: record.value.tvdbId, tmdbId: record.value.tmdbId }) ?? [];
       return {
         kind: 'ok',
         value: {
-          ...seriesDetail(record.value, { profiles, tags, episodes: episodes.value, owned: true, ratingsBySite, chips: tmdbChips }),
+          ...showDetail,
+          seasons: showDetail.seasons.map((season) => ({
+            ...season,
+            heroUrl: seasonPictures.find((picture) => picture.seasonNumber === season.seasonNumber)?.url ?? heroUrl(backdrop),
+          })),
+          logoUrls: logoUrls(watch, record.value),
           backdropUrl: backdrop,
           secondVersions: versionRows({ service: 'sonarr', seriesId: id }),
           trackedHitAndRun: trackedHitAndRun({ service: 'sonarr', seriesId: id }),
@@ -645,7 +660,7 @@ export const createLibrary = (
     },
 
     // Credits cost one more Radarr call, so only this route asks for them; a failed read leaves them empty.
-    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[]; watch: MovieWatch }>> {
+    async movie(id: number): Promise<Result<MovieDetail & { credits: Credits; secondVersions: SecondVersionRow[]; trackedHitAndRun: TrackedHitAndRun[]; watch: MovieWatch; heroUrl: string | null; logoUrls: string[] }>> {
       const read = services.radarr.movie(id).then(fromArr);
       const [record, profiles, tags, credits, backdrop, tmdbChips] = await Promise.all([
         read,
@@ -662,6 +677,8 @@ export const createLibrary = (
         value: {
           ...movieDetail(record.value, { profiles, tags, owned: true, chips: tmdbChips }),
           backdropUrl: backdrop,
+          heroUrl: heroUrl(backdrop),
+          logoUrls: logoUrls(watch, record.value),
           credits: creditList(credits.kind === 'ok' ? credits.value : []),
           secondVersions: versionRows({ service: 'radarr', movieId: id }),
           trackedHitAndRun: trackedHitAndRun({ service: 'radarr', movieId: id }),

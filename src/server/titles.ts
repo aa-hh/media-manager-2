@@ -327,7 +327,7 @@ export const createTitleCache = (options: {
 };
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
-const TMDB_IMAGE_SIZES = new Set(['w342', 'w1920_and_h800_multi_faces']);
+const TMDB_IMAGE_SIZES = new Set(['w342', 'w1280', 'w1920_and_h800_multi_faces']);
 const TMDB_IMAGE_FILE = /^[A-Za-z0-9]+\.(jpg|png)$/;
 // TMDB's terms cap how long a copy may be kept at six months; 180 days stays inside that.
 const TMDB_IMAGE_MAX_AGE_MS = 180 * 24 * 60 * 60_000;
@@ -435,6 +435,7 @@ export const createImageRoutes = (
   cache: Pick<ReturnType<typeof createTitleCache>, 'image'>,
   tmdb?: ReturnType<typeof createTmdbImages>,
   plexCollage?: PlexCollage,
+  plexLogo?: PlexCollage,
 ) => {
   const routes = new Hono();
   routes.use('*', etag());
@@ -452,6 +453,26 @@ export const createImageRoutes = (
         collages.delete(collage.key);
         collages.set(collage.key, found);
         while (collages.size > KEPT_COLLAGES) collages.delete(collages.keys().next().value as string);
+      } catch {
+        return context.json({ error: 'plex_unavailable' }, 502);
+      }
+      return context.body(new Uint8Array(found.bytes), 200, { 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=300' });
+    });
+  }
+  if (plexLogo !== undefined) {
+    const logos = new Map<string, { bytes: Uint8Array; contentType: string }>();
+    // Fetched through the server so the Plex token never reaches the TV or the page.
+    routes.get('/plex/logo/:ratingKey{[0-9]{1,12}}', async (context) => {
+      let found: { bytes: Uint8Array; contentType: string };
+      try {
+        const logo = await plexLogo(context.req.param('ratingKey'));
+        if (logo.kind === 'off') return context.json({ error: 'not_configured' }, 503);
+        if (logo.kind === 'not_found') return context.json({ error: 'not_found' }, 404);
+        const kept = logos.get(logo.key);
+        found = kept ?? await logo.load();
+        logos.delete(logo.key);
+        logos.set(logo.key, found);
+        while (logos.size > KEPT_COLLAGES) logos.delete(logos.keys().next().value as string);
       } catch {
         return context.json({ error: 'plex_unavailable' }, 502);
       }

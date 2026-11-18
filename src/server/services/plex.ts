@@ -156,6 +156,39 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     return { kind: 'ok', key: composite, load };
   };
 
+  // A title's clear logo, sized for a hero. Off when Plex is unset, not_found when Plex has no such item or no logo;
+  // throws when Plex is unreachable or refuses. The logo's own path is the cache key.
+  const titleLogo = async (ratingKey: string): Promise<
+    { kind: 'off' } | { kind: 'not_found' } | { kind: 'ok'; key: string; load: () => Promise<{ bytes: Uint8Array; contentType: string }> }
+  > => {
+    const configuration = readConfiguration();
+    if (configuration === undefined) return { kind: 'off' };
+    const result = await request(`/library/metadata/${encodeURIComponent(ratingKey)}`);
+    if (result.status === 404) return { kind: 'not_found' };
+    if (result.status < 200 || result.status > 299) throw new Error('Plex refused the title.');
+    const body = isRecord(result.body) ? result.body.MediaContainer : undefined;
+    if (!isRecord(body)) throw new Error('Plex sent an unreadable reply for the title.');
+    const images = metadata(body)[0]?.Image;
+    const path = (Array.isArray(images) ? images.filter(isRecord) : [])
+      .map((image) => (image.type === 'clearLogo' ? image.url : undefined))
+      .find((url): url is string => typeof url === 'string' && url.startsWith('/') && !url.startsWith('//'));
+    if (path === undefined) return { kind: 'not_found' };
+    const load = async () => {
+      let response: Response;
+      try {
+        response = await requestWithTimeout(fetchImpl, `${configuration.url.replace(/\/+$/, '')}/photo/:/transcode?width=600&height=128&minSize=1&upscale=1&format=png&url=${encodeURIComponent(path)}`, {
+          headers: { 'X-Plex-Token': configuration.token, Accept: 'image/png' },
+        });
+      } catch {
+        throw new Error('Plex is unreachable.');
+      }
+      const contentType = response.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase() ?? '';
+      if (response.status < 200 || response.status > 299 || contentType !== 'image/png') throw new Error('Plex refused the title logo.');
+      return { bytes: new Uint8Array(await response.arrayBuffer()), contentType };
+    };
+    return { kind: 'ok', key: path, load };
+  };
+
   // Watch-state writes; each throws when Plex is unset, unreachable or refuses. Marking by hand sets played or unplayed
   // without adding to Plex's watch history, and works on a show to mark every episode.
   const write = async (path: string, what: string) => {
@@ -207,5 +240,5 @@ export const createPlex = (database: DatabaseSync, options: ServiceOptions = {})
     });
   };
 
-  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, playlists, playlistItems, playlistCollage, markWatched, removeFromContinueWatching, webhooks, setWebhooks };
+  return { name: 'plex' as const, label: 'Plex', check, request, findLibraryFor, refresh, identity, sections, listItems, continueWatching, onDeck, playlists, playlistItems, playlistCollage, titleLogo, markWatched, removeFromContinueWatching, webhooks, setWebhooks };
 };

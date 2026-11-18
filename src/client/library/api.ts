@@ -131,6 +131,8 @@ export type SeriesDetail = {
   posterUrl: string | null;
   smallPosterUrl: string | null;
   backdropUrl: string | null;
+  /** Each site's own score; the same four sites the server reads from MDBList. */
+  ratingsBySite: Record<'imdb' | 'rottenTomatoes' | 'rottenTomatoesAudience' | 'metacritic', { value: number; votes: number | null } | null>;
   /** Sonarr's one rating, out of 10; the server does not say which site it comes from. */
   rating: number | null;
   ratingVotes: number | null;
@@ -151,9 +153,13 @@ export type SeriesDetail = {
     seasonNumber: number;
     monitored: boolean;
     posterUrl: string | null;
+    /** Only on a series already in the library. */
+    heroUrl?: string | null;
     statistics: { episodeFileCount: number; episodeCount: number; totalEpisodeCount: number; sizeOnDisk: number; nextAiring: string | null; previousAiring: string | null };
   }>;
   episodes: EpisodeDetail[];
+  /** Only on a series already in the library. */
+  logoUrls?: string[];
   /** Only on a series already in the library. */
   secondVersions?: SecondVersion[];
   /** Only on a series already in the library. */
@@ -204,7 +210,7 @@ export type Credits = {
   cast: Array<{ name: string; character: string | null; order: number | null; photoUrl: string | null; tmdbId: number | null }>;
   crew: Array<{ name: string; job: string | null; department: string | null; photoUrl: string | null; tmdbId: number | null }>;
 };
-export type OwnedMovieDetail = MovieDetail & { credits: Credits; secondVersions: SecondVersion[]; trackedHitAndRun: TrackedHitAndRun[] };
+export type OwnedMovieDetail = MovieDetail & { credits: Credits; secondVersions: SecondVersion[]; trackedHitAndRun: TrackedHitAndRun[]; heroUrl: string | null; logoUrls: string[] };
 
 /** The tracker rule against each imported grab's torrent, newest import first; src/server/secondVersionRows.ts is the source of truth. */
 export type TrackedHitAndRun = { episodeIds: number[]; hitAndRun: NonNullable<SecondVersion['hitAndRun']> };
